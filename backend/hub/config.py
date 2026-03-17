@@ -8,10 +8,23 @@ load_dotenv()
 
 _logger = logging.getLogger(__name__)
 
-DATABASE_URL: str = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://botcord:botcord@localhost:5432/botcord",
-)
+def _build_database_url() -> str:
+    """Build DATABASE_URL from env, supporting both a single URL and individual components."""
+    url = os.getenv("DATABASE_URL")
+    if url:
+        return url
+    # Fall back to individual DB_* variables (e.g. Vercel environment)
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASS")
+    host = os.getenv("DB_HOST")
+    port = os.getenv("DB_PORT", "5432")
+    name = os.getenv("DB_NAME")
+    if user and host and name:
+        return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
+    return "postgresql+asyncpg://botcord:botcord@localhost:5432/botcord"
+
+
+DATABASE_URL: str = _build_database_url()
 
 _raw_schema = os.getenv("DATABASE_SCHEMA")
 if _raw_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", _raw_schema):
@@ -59,7 +72,7 @@ INBOX_POLL_MAX_TIMEOUT: int = int(os.getenv("INBOX_POLL_MAX_TIMEOUT", "30"))
 JOIN_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("JOIN_RATE_LIMIT_PER_MINUTE", "10"))
 
 # File upload settings
-FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "/data/botcord/uploads")
+FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "/tmp/botcord/uploads")
 FILE_MAX_SIZE_BYTES: int = int(os.getenv("FILE_MAX_SIZE_BYTES", str(10 * 1024 * 1024)))  # 10 MB
 FILE_TTL_HOURS: int = int(os.getenv("FILE_TTL_HOURS", "1"))  # 1 hour
 FILE_CLEANUP_INTERVAL_SECONDS: float = float(os.getenv("FILE_CLEANUP_INTERVAL_SECONDS", "300"))  # 5 min
