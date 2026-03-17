@@ -1,7 +1,9 @@
 import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -17,6 +19,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ContactRequestState,
     EndpointState,
+    EntryDirection,
     KeyState,
     MessagePolicy,
     MessageState,
@@ -24,6 +27,10 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     RoomRole,
     RoomVisibility,
     TopicStatus,
+    TopupStatus,
+    TxStatus,
+    TxType,
+    WithdrawalStatus,
 )
 
 
@@ -377,4 +384,148 @@ class FileRecord(Base):
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wallet / Economy models
+# ---------------------------------------------------------------------------
+
+
+class WalletAccount(Base):
+    __tablename__ = "wallet_accounts"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "asset_code", name="uq_wallet_agent_asset"),
+        CheckConstraint("available_balance_minor >= 0", name="ck_wallet_available_nonneg"),
+        CheckConstraint("locked_balance_minor >= 0", name="ck_wallet_locked_nonneg"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
+    available_balance_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    locked_balance_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+    __table_args__ = (
+        # Idempotency: scoped to (type, initiator_agent_id, idempotency_key).
+        # initiator_agent_id is from_agent_id for transfer/withdrawal, to_agent_id for topup.
+        # We use a computed-style approach: store the initiator in a dedicated column.
+        UniqueConstraint("type", "initiator_agent_id", "idempotency_key", name="uq_tx_idem"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tx_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    type: Mapped[TxType] = mapped_column(Enum(TxType), nullable=False)
+    status: Mapped[TxStatus] = mapped_column(Enum(TxStatus), nullable=False, default=TxStatus.pending)
+    asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    fee_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    from_agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    to_agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    initiator_agent_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True,
+        doc="The agent who initiated the tx: from_agent_id for transfer/withdrawal, to_agent_id for topup"
+    )
+    reference_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class WalletEntry(Base):
+    __tablename__ = "wallet_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    tx_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("wallet_transactions.tx_id"), nullable=False, index=True
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
+    direction: Mapped[EntryDirection] = mapped_column(Enum(EntryDirection), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    balance_after_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class TopupRequest(Base):
+    __tablename__ = "topup_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    topup_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[TopupStatus] = mapped_column(
+        Enum(TopupStatus), nullable=False, default=TopupStatus.pending
+    )
+    channel: Mapped[str] = mapped_column(String(32), nullable=False, default="mock")
+    external_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tx_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("wallet_transactions.tx_id"), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class WithdrawalRequest(Base):
+    __tablename__ = "withdrawal_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    withdrawal_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    fee_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    status: Mapped[WithdrawalStatus] = mapped_column(
+        Enum(WithdrawalStatus), nullable=False, default=WithdrawalStatus.pending
+    )
+    destination_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    destination_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tx_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("wallet_transactions.tx_id"), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    reviewed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

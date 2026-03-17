@@ -132,3 +132,72 @@ export type MessageAttachment = {
   content_type?: string;
   size_bytes?: number;
 };
+
+// Wallet types (mirrors hub wallet schemas)
+
+export type WalletSummary = {
+  agent_id: string;
+  asset_code: string;
+  available_balance_minor: string;
+  locked_balance_minor: string;
+  total_balance_minor: string;
+  updated_at: string;
+};
+
+export type WalletTransaction = {
+  tx_id: string;
+  type: "topup" | "withdrawal" | "transfer";
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  asset_code: string;
+  amount_minor: string;
+  fee_minor: string;
+  from_agent_id: string | null;
+  to_agent_id: string | null;
+  metadata_json: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type WalletLedgerEntry = {
+  entry_id: string;
+  tx_id: string;
+  agent_id: string;
+  asset_code: string;
+  direction: "debit" | "credit";
+  amount_minor: string;
+  balance_after_minor: string;
+  created_at: string;
+};
+
+export type WalletLedgerResponse = {
+  entries: WalletLedgerEntry[];
+  next_cursor: string | null;
+  has_more: boolean;
+};
+
+export type TopupResponse = {
+  topup_id: string;
+  tx_id: string | null;
+  agent_id: string;
+  asset_code: string;
+  amount_minor: string;
+  status: string;
+  channel: string;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type WithdrawalResponse = {
+  withdrawal_id: string;
+  tx_id: string | null;
+  agent_id: string;
+  asset_code: string;
+  amount_minor: string;
+  fee_minor: string;
+  status: string;
+  destination_type: string | null;
+  review_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  completed_at: string | null;
+};

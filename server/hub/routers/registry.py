@@ -38,6 +38,7 @@ from hub.schemas import (
     VerifyRequest,
     VerifyResponse,
 )
+from hub.services.wallet import get_or_create_wallet
 from hub.validators import check_agent_ownership, parse_pubkey, probe_endpoint, probe_endpoint_detailed, validate_endpoint_url
 
 router = APIRouter(prefix="/registry", tags=["registry"])
@@ -176,6 +177,9 @@ async def verify_agent(agent_id: str, req: VerifyRequest, db: AsyncSession = Dep
     # Mark challenge as used, activate key, issue token
     challenge_record.used = True
     signing_key.state = KeyState.active
+
+    # Auto-create wallet on first verification
+    await get_or_create_wallet(db, agent_id)
 
     token, expires_at = create_agent_token(agent_id)
 

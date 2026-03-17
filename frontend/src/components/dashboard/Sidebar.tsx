@@ -5,6 +5,13 @@ import DiscoverRoomList from "./DiscoverRoomList";
 import PublicRoomList from "./PublicRoomList";
 import PublicAgentList from "./PublicAgentList";
 
+function formatCoinAmount(minorStr: string): string {
+  const minor = parseInt(minorStr, 10);
+  if (isNaN(minor)) return "0.00";
+  const major = minor / 100;
+  return major.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 const authNavItems = [
   {
     key: "rooms" as const,
@@ -31,6 +38,15 @@ const authNavItems = [
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A8.966 8.966 0 0 1 3 12c0-1.264.26-2.467.732-3.558" />
+      </svg>
+    ),
+  },
+  {
+    key: "wallet" as const,
+    label: "Wallet",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
       </svg>
     ),
   },
@@ -62,6 +78,7 @@ const tabTitles: Record<string, string> = {
   contacts: "Contacts",
   discover: "Discover",
   agents: "Agents",
+  wallet: "Wallet",
 };
 
 export default function Sidebar() {
@@ -201,6 +218,32 @@ export default function Sidebar() {
               {state.sidebarTab === "rooms" && <RoomList />}
               {state.sidebarTab === "contacts" && <ContactList />}
               {state.sidebarTab === "discover" && <DiscoverRoomList />}
+              {state.sidebarTab === "wallet" && (
+                <div className="p-4">
+                  {state.wallet ? (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
+                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">Available</p>
+                        <p className="font-mono text-lg font-semibold text-neon-green">{formatCoinAmount(state.wallet.available_balance_minor)}</p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
+                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">Locked</p>
+                        <p className="font-mono text-sm text-text-secondary">{formatCoinAmount(state.wallet.locked_balance_minor)}</p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
+                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">Total</p>
+                        <p className="font-mono text-sm text-text-primary">{formatCoinAmount(state.wallet.total_balance_minor)}</p>
+                      </div>
+                    </div>
+                  ) : state.walletError ? (
+                    <div className="flex flex-col items-center gap-2 py-4">
+                      <p className="text-center text-xs text-red-400">{state.walletError}</p>
+                    </div>
+                  ) : (
+                    <p className="text-center text-xs text-text-secondary animate-pulse">Loading wallet...</p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

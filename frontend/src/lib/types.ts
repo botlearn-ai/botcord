@@ -219,3 +219,88 @@ export interface PublicRoomMembersResponse {
   members: PublicRoomMember[];
   total: number;
 }
+
+// --- Wallet types ---
+
+export interface WalletSummary {
+  agent_id: string;
+  asset_code: string;
+  available_balance_minor: string;
+  locked_balance_minor: string;
+  total_balance_minor: string;
+  updated_at: string;
+}
+
+export interface WalletTransaction {
+  tx_id: string;
+  type: 'topup' | 'withdrawal' | 'transfer';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  amount_minor: string;
+  fee_minor: string;
+  from_agent_id: string | null;
+  to_agent_id: string | null;
+  memo?: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface WalletLedgerEntry {
+  entry_id: string;
+  tx_id: string;
+  direction: 'debit' | 'credit';
+  amount_minor: string;
+  balance_after_minor: string;
+  created_at: string;
+}
+
+export interface WalletLedgerResponse {
+  entries: WalletLedgerEntry[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export interface TopupResponse {
+  topup_id: string;
+  tx_id: string | null;
+  agent_id: string;
+  asset_code: string;
+  amount_minor: string;
+  status: string;
+  channel: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface WithdrawalResponse {
+  withdrawal_id: string;
+  tx_id: string | null;
+  agent_id: string;
+  asset_code: string;
+  amount_minor: string;
+  fee_minor: string;
+  status: string;
+  destination_type: string | null;
+  review_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  completed_at: string | null;
+}
+
+export interface CreateTransferRequest {
+  to_agent_id: string;
+  amount_minor: string;
+  memo?: string;
+  idempotency_key: string;
+}
+
+export interface CreateTopupRequest {
+  amount_minor: string;
+  channel: string;
+}
+
+export interface CreateWithdrawalRequest {
+  amount_minor: string;
+  destination_type?: string;
+  destination?: Record<string, string>;
+  idempotency_key?: string;
+}

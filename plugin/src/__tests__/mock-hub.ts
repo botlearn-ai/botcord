@@ -5,6 +5,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
+export interface MockWallet {
+  agent_id: string;
+  available_balance_minor: number;
+  locked_balance_minor: number;
+}
+
 export interface MockHubState {
   /** Sent messages stored here */
   messages: Array<{ envelope: any; topic?: string }>;
@@ -20,6 +26,16 @@ export interface MockHubState {
   tokenRefreshCount: number;
   /** Custom response overrides by path pattern */
   overrides: Map<string, { status: number; body: any; headers?: Record<string, string> }>;
+  /** Wallets keyed by agent_id */
+  wallets: Map<string, MockWallet>;
+  /** Wallet transactions */
+  walletTransactions: any[];
+  /** Wallet ledger entries */
+  walletEntries: any[];
+  /** Seen idempotency keys */
+  idempotencyKeys: Map<string, any>;
+  /** Known agent IDs (for transfer recipient validation) */
+  knownAgents: Set<string>;
 }
 
 function parseBody(req: IncomingMessage): Promise<any> {
@@ -37,6 +53,11 @@ function parseBody(req: IncomingMessage): Promise<any> {
   });
 }
 
+let _idCounter = 0;
+function uniqueId(prefix: string): string {
+  return `${prefix}${Date.now()}_${++_idCounter}`;
+}
+
 export function createMockHub() {
   const state: MockHubState = {
     messages: [],
@@ -46,6 +67,11 @@ export function createMockHub() {
     contacts: [],
     tokenRefreshCount: 0,
     overrides: new Map(),
+    wallets: new Map(),
+    walletTransactions: [],
+    walletEntries: [],
+    idempotencyKeys: new Map(),
+    knownAgents: new Set(["ag_testclient00"]),
   };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -197,6 +223,322 @@ export function createMockHub() {
     if (path.includes("/accept") || path.includes("/reject")) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // ── Wallet: get balance ──────────────────────────────────────
+    if (path === "/wallet/me" && method === "GET") {
+      // Extract agent from auth header (simplified — use a default)
+      const agentId = "ag_testclient00";
+      let w = state.wallets.get(agentId);
+      if (!w) {
+        w = { agent_id: agentId, available_balance_minor: 0, locked_balance_minor: 0 };
+        state.wallets.set(agentId, w);
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        agent_id: w.agent_id,
+        asset_code: "COIN",
+        available_balance_minor: String(w.available_balance_minor),
+        locked_balance_minor: String(w.locked_balance_minor),
+        total_balance_minor: String(w.available_balance_minor + w.locked_balance_minor),
+        updated_at: new Date().toISOString(),
+      }));
+      return;
+    }
+
+    // ── Wallet: transfer ──────────────────────────────────────
+    if (path === "/wallet/transfers" && method === "POST") {
+      const body = await parseBody(req);
+      const fromId = "ag_testclient00";
+      const toId = body.to_agent_id;
+      const amount = parseInt(body.amount_minor, 10);
+
+      // Idempotency check
+      if (body.idempotency_key && state.idempotencyKeys.has(body.idempotency_key)) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(state.idempotencyKeys.get(body.idempotency_key)));
+        return;
+      }
+
+      let fromW = state.wallets.get(fromId);
+      if (!fromW) {
+        fromW = { agent_id: fromId, available_balance_minor: 0, locked_balance_minor: 0 };
+        state.wallets.set(fromId, fromW);
+      }
+      if (fromId === toId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Cannot transfer to yourself" }));
+        return;
+      }
+      if (!state.knownAgents.has(toId)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Recipient agent not found" }));
+        return;
+      }
+      if (amount <= 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Amount must be positive" }));
+        return;
+      }
+      if (fromW.available_balance_minor < amount) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Insufficient balance" }));
+        return;
+      }
+
+      fromW.available_balance_minor -= amount;
+      let toW = state.wallets.get(toId);
+      if (!toW) {
+        toW = { agent_id: toId, available_balance_minor: 0, locked_balance_minor: 0 };
+        state.wallets.set(toId, toW);
+      }
+      toW.available_balance_minor += amount;
+
+      const txId = uniqueId("tx_");
+      const now = new Date().toISOString();
+      const metadataJson = body.memo ? JSON.stringify({ memo: body.memo }) : null;
+      const tx = {
+        tx_id: txId,
+        type: "transfer",
+        status: "completed",
+        asset_code: "COIN",
+        amount_minor: String(amount),
+        fee_minor: "0",
+        from_agent_id: fromId,
+        to_agent_id: toId,
+        metadata_json: metadataJson,
+        created_at: now,
+        completed_at: now,
+      };
+      state.walletTransactions.push(tx);
+
+      // Ledger entries
+      state.walletEntries.push({
+        entry_id: uniqueId("we_"),
+        tx_id: txId,
+        agent_id: fromId,
+        asset_code: "COIN",
+        direction: "debit",
+        amount_minor: String(amount),
+        balance_after_minor: String(fromW.available_balance_minor),
+        created_at: now,
+      });
+      state.walletEntries.push({
+        entry_id: uniqueId("we_"),
+        tx_id: txId,
+        agent_id: toId,
+        asset_code: "COIN",
+        direction: "credit",
+        amount_minor: String(amount),
+        balance_after_minor: String(toW.available_balance_minor),
+        created_at: now,
+      });
+
+      if (body.idempotency_key) {
+        state.idempotencyKeys.set(body.idempotency_key, tx);
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(tx));
+      return;
+    }
+
+    // ── Wallet: topup (creates pending request, does NOT credit wallet) ──
+    if (path === "/wallet/topups" && method === "POST") {
+      const body = await parseBody(req);
+      const agentId = "ag_testclient00";
+      const amount = parseInt(body.amount_minor, 10);
+
+      if (body.idempotency_key && state.idempotencyKeys.has(body.idempotency_key)) {
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(state.idempotencyKeys.get(body.idempotency_key)));
+        return;
+      }
+
+      const topupId = uniqueId("tu_");
+      const txId = uniqueId("tx_");
+      const now = new Date().toISOString();
+
+      // Pending transaction — balance NOT changed yet
+      const tx = {
+        tx_id: txId,
+        type: "topup",
+        status: "pending",
+        asset_code: "COIN",
+        amount_minor: String(amount),
+        fee_minor: "0",
+        from_agent_id: null,
+        to_agent_id: agentId,
+        created_at: now,
+        completed_at: null,
+      };
+      state.walletTransactions.push(tx);
+
+      const result = {
+        topup_id: topupId,
+        tx_id: txId,
+        agent_id: agentId,
+        asset_code: "COIN",
+        amount_minor: String(amount),
+        status: "pending",
+        channel: body.channel || "mock",
+        created_at: now,
+        completed_at: null,
+      };
+      if (body.idempotency_key) {
+        state.idempotencyKeys.set(body.idempotency_key, result);
+      }
+
+      // Store topup for internal complete endpoint
+      (state as any)._topups = (state as any)._topups || new Map();
+      (state as any)._topups.set(topupId, { ...result, _amount: amount, _agentId: agentId, _txId: txId });
+
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    // ── Internal: complete topup ──────────────────────────────
+    if (path.match(/^\/internal\/wallet\/topups\/tu_[^/]+\/complete$/) && method === "POST") {
+      const topupId = path.split("/")[4];
+      const topups = (state as any)._topups as Map<string, any> | undefined;
+      const topup = topups?.get(topupId);
+      if (!topup || topup.status === "completed") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Topup not found or already completed" }));
+        return;
+      }
+
+      // Now credit the wallet
+      const agentId = topup._agentId;
+      let w = state.wallets.get(agentId);
+      if (!w) {
+        w = { agent_id: agentId, available_balance_minor: 0, locked_balance_minor: 0 };
+        state.wallets.set(agentId, w);
+      }
+      w.available_balance_minor += topup._amount;
+
+      const now = new Date().toISOString();
+      topup.status = "completed";
+      topup.completed_at = now;
+
+      // Update transaction status
+      const tx = state.walletTransactions.find((t: any) => t.tx_id === topup._txId);
+      if (tx) {
+        tx.status = "completed";
+        tx.completed_at = now;
+      }
+
+      // Write ledger entry
+      state.walletEntries.push({
+        entry_id: uniqueId("we_"),
+        tx_id: topup._txId,
+        agent_id: agentId,
+        asset_code: "COIN",
+        direction: "credit",
+        amount_minor: String(topup._amount),
+        balance_after_minor: String(w.available_balance_minor),
+        created_at: now,
+      });
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(topup));
+      return;
+    }
+
+    // ── Wallet: withdrawal ────────────────────────────────────
+    if (path === "/wallet/withdrawals" && method === "POST") {
+      const body = await parseBody(req);
+      const agentId = "ag_testclient00";
+      const amount = parseInt(body.amount_minor, 10);
+
+      if (body.idempotency_key && state.idempotencyKeys.has(body.idempotency_key)) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(state.idempotencyKeys.get(body.idempotency_key)));
+        return;
+      }
+
+      let w = state.wallets.get(agentId);
+      if (!w) {
+        w = { agent_id: agentId, available_balance_minor: 0, locked_balance_minor: 0 };
+        state.wallets.set(agentId, w);
+      }
+      if (w.available_balance_minor < amount) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Insufficient balance" }));
+        return;
+      }
+
+      w.available_balance_minor -= amount;
+      w.locked_balance_minor += amount;
+
+      const wdId = uniqueId("wd_");
+      const txId = uniqueId("tx_");
+      const now = new Date().toISOString();
+      const result = {
+        withdrawal_id: wdId,
+        tx_id: txId,
+        status: "pending",
+        amount_minor: String(amount),
+        fee_minor: "0",
+        created_at: now,
+      };
+      state.walletTransactions.push({
+        tx_id: txId,
+        type: "withdrawal",
+        status: "pending",
+        asset_code: "COIN",
+        amount_minor: String(amount),
+        fee_minor: "0",
+        from_agent_id: agentId,
+        to_agent_id: null,
+        created_at: now,
+        completed_at: null,
+      });
+
+      if (body.idempotency_key) {
+        state.idempotencyKeys.set(body.idempotency_key, result);
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    // ── Wallet: ledger ────────────────────────────────────────
+    if (path === "/wallet/ledger" && method === "GET") {
+      const agentId = "ag_testclient00";
+      const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+      const typeFilter = url.searchParams.get("type");
+      let entries = state.walletEntries.filter((e: any) => e.agent_id === agentId);
+      if (typeFilter) {
+        const matchingTxIds = new Set(
+          state.walletTransactions.filter((t: any) => t.type === typeFilter).map((t: any) => t.tx_id),
+        );
+        entries = entries.filter((e: any) => matchingTxIds.has(e.tx_id));
+      }
+      const sliced = entries.slice(0, limit);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        entries: sliced,
+        next_cursor: sliced.length < entries.length ? "next" : null,
+        has_more: sliced.length < entries.length,
+      }));
+      return;
+    }
+
+    // ── Wallet: transaction detail ────────────────────────────
+    if (path.startsWith("/wallet/transactions/") && method === "GET") {
+      const txId = path.split("/").pop()!;
+      const tx = state.walletTransactions.find((t: any) => t.tx_id === txId);
+      if (tx) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(tx));
+      } else {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Transaction not found" }));
+      }
       return;
     }
 

@@ -47,3 +47,23 @@ def generate_topic_id() -> str:
 def generate_file_id() -> str:
     """Generate file_id: 'f_' + 32 random hex chars (128-bit unguessable)."""
     return "f_" + secrets.token_hex(16)
+
+
+def generate_tx_id() -> str:
+    """Generate wallet transaction ID: 'tx_' + 16 random hex chars."""
+    return "tx_" + secrets.token_hex(8)
+
+
+def generate_wallet_entry_id() -> str:
+    """Generate wallet entry ID: 'we_' + 16 random hex chars."""
+    return "we_" + secrets.token_hex(8)
+
+
+def generate_topup_id() -> str:
+    """Generate topup request ID: 'tu_' + 16 random hex chars."""
+    return "tu_" + secrets.token_hex(8)
+
+
+def generate_withdrawal_id() -> str:
+    """Generate withdrawal request ID: 'wd_' + 16 random hex chars."""
+    return "wd_" + secrets.token_hex(8)

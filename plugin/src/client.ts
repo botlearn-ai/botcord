@@ -15,6 +15,11 @@ import type {
   ContactRequestInfo,
   FileUploadResponse,
   MessageAttachment,
+  WalletSummary,
+  WalletTransaction,
+  WalletLedgerResponse,
+  TopupResponse,
+  WithdrawalResponse,
 } from "./types.js";
 
 const MAX_RETRIES = 2;
@@ -533,6 +538,70 @@ export class BotCordClient {
     await this.hubFetch(`/hub/rooms/${roomId}/topics/${topicId}`, {
       method: "DELETE",
     });
+  }
+
+  // ── Wallet ──────────────────────────────────────────────────
+
+  async getWallet(): Promise<WalletSummary> {
+    const resp = await this.hubFetch("/wallet/me");
+    return (await resp.json()) as WalletSummary;
+  }
+
+  async getWalletLedger(opts?: {
+    cursor?: string;
+    limit?: number;
+    type?: string;
+  }): Promise<WalletLedgerResponse> {
+    const params = new URLSearchParams();
+    if (opts?.cursor) params.set("cursor", opts.cursor);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.type) params.set("type", opts.type);
+    const q = params.toString();
+    const resp = await this.hubFetch(`/wallet/ledger${q ? `?${q}` : ""}`);
+    return (await resp.json()) as WalletLedgerResponse;
+  }
+
+  async createTransfer(params: {
+    to_agent_id: string;
+    amount_minor: string;
+    memo?: string;
+    idempotency_key?: string;
+  }): Promise<WalletTransaction> {
+    const resp = await this.hubFetch("/wallet/transfers", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+    return (await resp.json()) as WalletTransaction;
+  }
+
+  async createTopup(params: {
+    amount_minor: string;
+    channel?: string;
+    idempotency_key?: string;
+  }): Promise<TopupResponse> {
+    const resp = await this.hubFetch("/wallet/topups", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+    return (await resp.json()) as TopupResponse;
+  }
+
+  async createWithdrawal(params: {
+    amount_minor: string;
+    destination_type?: string;
+    destination?: Record<string, string>;
+    idempotency_key?: string;
+  }): Promise<WithdrawalResponse> {
+    const resp = await this.hubFetch("/wallet/withdrawals", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+    return (await resp.json()) as WithdrawalResponse;
+  }
+
+  async getWalletTransaction(txId: string): Promise<WalletTransaction> {
+    const resp = await this.hubFetch(`/wallet/transactions/${txId}`);
+    return (await resp.json()) as WalletTransaction;
   }
 
   // ── Accessors ─────────────────────────────────────────────────

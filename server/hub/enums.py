@@ -69,6 +69,40 @@ class TopicStatus(str, enum.Enum):
     expired = "expired"
 
 
+class TxType(str, enum.Enum):
+    topup = "topup"
+    withdrawal = "withdrawal"
+    transfer = "transfer"
+
+
+class TxStatus(str, enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class TopupStatus(str, enum.Enum):
+    pending = "pending"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class WithdrawalStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    completed = "completed"
+    cancelled = "cancelled"
+
+
+class EntryDirection(str, enum.Enum):
+    debit = "debit"
+    credit = "credit"
+
+
 class ErrorCode(str, enum.Enum):
     INVALID_SIGNATURE = "INVALID_SIGNATURE"
     UNKNOWN_AGENT = "UNKNOWN_AGENT"

@@ -27,6 +27,8 @@ from hub.routers.registry import router as registry_router
 from hub.routers.public import router as public_router
 from hub.routers.room import router as room_router
 from hub.routers.topics import router as topics_router
+from hub.routers.wallet import internal_router as wallet_internal_router
+from hub.routers.wallet import router as wallet_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -118,6 +120,8 @@ app.include_router(hub_router)
 app.include_router(room_router)
 app.include_router(topics_router)
 app.include_router(files_router)
+app.include_router(wallet_router)
+app.include_router(wallet_internal_router)
 app.include_router(dashboard_router)
 app.include_router(public_router)
 app.include_router(share_public_router)

@@ -1,10 +1,11 @@
 import { createContext, useContext, useReducer, useEffect, useCallback, useState } from "react";
-import type { DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, DiscoverRoom, PublicRoom, TopicInfo } from "../../lib/types";
+import type { DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry } from "../../lib/types";
 import { api } from "../../lib/api";
 import LoginPanel from "./LoginPanel";
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
+import WalletPanel from "./WalletPanel";
 
 // --- State ---
 
@@ -21,7 +22,7 @@ interface DashboardState {
   selectedAgentProfile: AgentProfile | null;
   selectedAgentConversations: DashboardRoom[] | null;
   searchResults: AgentProfile[] | null;
-  sidebarTab: "rooms" | "contacts" | "discover" | "agents";
+  sidebarTab: "rooms" | "contacts" | "discover" | "agents" | "wallet";
   discoverRooms: DiscoverRoom[];
   discoverLoading: boolean;
   joiningRoomId: string | null;
@@ -32,6 +33,15 @@ interface DashboardState {
   publicRoomsLoading: boolean;
   publicAgents: AgentProfile[];
   publicAgentsLoading: boolean;
+  // Wallet state
+  wallet: WalletSummary | null;
+  walletLedger: WalletLedgerEntry[];
+  walletLedgerHasMore: boolean;
+  walletLedgerCursor: string | null;
+  walletLoading: boolean;
+  walletError: string | null;
+  walletLedgerError: string | null;
+  walletView: 'overview' | 'ledger';
 }
 
 type Action =
@@ -46,7 +56,7 @@ type Action =
   | { type: "TOGGLE_RIGHT_PANEL" }
   | { type: "SET_SELECTED_AGENT"; agentId: string | null; profile?: AgentProfile | null; conversations?: DashboardRoom[] | null }
   | { type: "SET_SEARCH_RESULTS"; results: AgentProfile[] | null }
-  | { type: "SET_SIDEBAR_TAB"; tab: "rooms" | "contacts" | "discover" | "agents" }
+  | { type: "SET_SIDEBAR_TAB"; tab: "rooms" | "contacts" | "discover" | "agents" | "wallet" }
   | { type: "SET_DISCOVER_ROOMS"; rooms: DiscoverRoom[] }
   | { type: "SET_DISCOVER_LOADING"; loading: boolean }
   | { type: "SET_JOINING_ROOM"; roomId: string | null }
@@ -56,7 +66,14 @@ type Action =
   | { type: "SET_PUBLIC_ROOMS"; rooms: PublicRoom[] }
   | { type: "SET_PUBLIC_ROOMS_LOADING"; loading: boolean }
   | { type: "SET_PUBLIC_AGENTS"; agents: AgentProfile[] }
-  | { type: "SET_PUBLIC_AGENTS_LOADING"; loading: boolean };
+  | { type: "SET_PUBLIC_AGENTS_LOADING"; loading: boolean }
+  | { type: "SET_WALLET"; wallet: WalletSummary | null }
+  | { type: "SET_WALLET_LEDGER"; entries: WalletLedgerEntry[]; hasMore: boolean; cursor: string | null }
+  | { type: "APPEND_WALLET_LEDGER"; entries: WalletLedgerEntry[]; hasMore: boolean; cursor: string | null }
+  | { type: "SET_WALLET_LOADING"; loading: boolean }
+  | { type: "SET_WALLET_ERROR"; error: string | null }
+  | { type: "SET_WALLET_LEDGER_ERROR"; error: string | null }
+  | { type: "SET_WALLET_VIEW"; view: 'overview' | 'ledger' };
 
 function reducer(state: DashboardState, action: Action): DashboardState {
   switch (action.type) {
@@ -128,6 +145,20 @@ function reducer(state: DashboardState, action: Action): DashboardState {
       return { ...state, publicAgents: action.agents, publicAgentsLoading: false };
     case "SET_PUBLIC_AGENTS_LOADING":
       return { ...state, publicAgentsLoading: action.loading };
+    case "SET_WALLET":
+      return { ...state, wallet: action.wallet, walletLoading: false, walletError: null };
+    case "SET_WALLET_LEDGER":
+      return { ...state, walletLedger: action.entries, walletLedgerHasMore: action.hasMore, walletLedgerCursor: action.cursor, walletLoading: false, walletLedgerError: null };
+    case "APPEND_WALLET_LEDGER":
+      return { ...state, walletLedger: [...state.walletLedger, ...action.entries], walletLedgerHasMore: action.hasMore, walletLedgerCursor: action.cursor, walletLoading: false, walletLedgerError: null };
+    case "SET_WALLET_LOADING":
+      return { ...state, walletLoading: action.loading };
+    case "SET_WALLET_ERROR":
+      return { ...state, walletError: action.error, walletLoading: false };
+    case "SET_WALLET_LEDGER_ERROR":
+      return { ...state, walletLedgerError: action.error, walletLoading: false };
+    case "SET_WALLET_VIEW":
+      return { ...state, walletView: action.view };
     default:
       return state;
   }
@@ -155,6 +186,14 @@ const initialState: DashboardState = {
   publicRoomsLoading: false,
   publicAgents: [],
   publicAgentsLoading: false,
+  wallet: null,
+  walletLedger: [],
+  walletLedgerHasMore: false,
+  walletLedgerCursor: null,
+  walletLoading: false,
+  walletError: null,
+  walletLedgerError: null,
+  walletView: 'overview',
 };
 
 // --- Context ---
@@ -172,6 +211,8 @@ interface DashboardContextValue {
   loadPublicRooms: () => Promise<void>;
   loadPublicAgents: () => Promise<void>;
   loadTopics: (roomId: string) => Promise<void>;
+  loadWallet: () => Promise<void>;
+  loadWalletLedger: (loadMore?: boolean) => Promise<void>;
   isGuest: boolean;
   showLoginModal: () => void;
 }
@@ -227,6 +268,16 @@ export default function DashboardApp() {
           console.warn("[Dashboard] 401 → logging out");
           dispatch({ type: "LOGOUT" });
         }
+      });
+    // Also load wallet summary
+    api
+      .getWallet(state.token)
+      .then((wallet) => {
+        dispatch({ type: "SET_WALLET", wallet });
+      })
+      .catch((err) => {
+        console.error("[Dashboard] Wallet load failed (non-fatal):", err);
+        dispatch({ type: "SET_WALLET_ERROR", error: err.message || "Failed to load wallet" });
       });
   }, [state.token]);
 
@@ -428,6 +479,34 @@ export default function DashboardApp() {
     }
   }, []);
 
+  const loadWallet = useCallback(async () => {
+    if (!state.token) return;
+    try {
+      const wallet = await api.getWallet(state.token);
+      dispatch({ type: "SET_WALLET", wallet });
+    } catch (err: any) {
+      console.error("[Dashboard] Failed to load wallet:", err);
+      dispatch({ type: "SET_WALLET_ERROR", error: err.message || "Failed to load wallet" });
+    }
+  }, [state.token]);
+
+  const loadWalletLedger = useCallback(async (loadMore = false) => {
+    if (!state.token) return;
+    dispatch({ type: "SET_WALLET_LOADING", loading: true });
+    try {
+      const cursor = loadMore ? state.walletLedgerCursor : undefined;
+      const result = await api.getWalletLedger(state.token, { cursor: cursor ?? undefined, limit: 20 });
+      if (loadMore) {
+        dispatch({ type: "APPEND_WALLET_LEDGER", entries: result.entries, hasMore: result.has_more, cursor: result.next_cursor });
+      } else {
+        dispatch({ type: "SET_WALLET_LEDGER", entries: result.entries, hasMore: result.has_more, cursor: result.next_cursor });
+      }
+    } catch (err: any) {
+      console.error("[Dashboard] Failed to load wallet ledger:", err);
+      dispatch({ type: "SET_WALLET_LEDGER_ERROR", error: err.message || "Failed to load ledger" });
+    }
+  }, [state.token, state.walletLedgerCursor]);
+
   const handleLogin = useCallback((token: string) => {
     localStorage.setItem("botcord_token", token);
     dispatch({ type: "SET_TOKEN", token });
@@ -452,6 +531,8 @@ export default function DashboardApp() {
     loadPublicRooms,
     loadPublicAgents,
     loadTopics,
+    loadWallet,
+    loadWalletLedger,
     isGuest,
     showLoginModal,
   };
@@ -484,8 +565,14 @@ export default function DashboardApp() {
     <DashboardContext.Provider value={ctxValue}>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <ChatPane />
-        {state.rightPanelOpen && <AgentBrowser />}
+        {state.sidebarTab === "wallet" ? (
+          <WalletPanel />
+        ) : (
+          <>
+            <ChatPane />
+            {state.rightPanelOpen && <AgentBrowser />}
+          </>
+        )}
       </div>
       {/* Login Modal */}
       {loginModalOpen && (

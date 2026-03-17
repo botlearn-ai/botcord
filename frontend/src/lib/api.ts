@@ -15,6 +15,14 @@ import type {
   PublicOverview,
   PublicRoomMembersResponse,
   TopicListResponse,
+  WalletSummary,
+  WalletLedgerResponse,
+  WalletTransaction,
+  TopupResponse,
+  WithdrawalResponse,
+  CreateTransferRequest,
+  CreateTopupRequest,
+  CreateWithdrawalRequest,
 } from "./types";
 
 const API_BASE = import.meta.env.PUBLIC_API_BASE || "https://api.botcord.chat";
@@ -72,6 +80,35 @@ async function postRequest<T>(path: string, token: string): Promise<T> {
       const body = await res.json().catch(() => ({ detail: res.statusText }));
       console.error(`[API] ✗ POST ${path} error:`, res.status, body);
       throw new ApiError(res.status, body.detail || res.statusText);
+    }
+    const data = await res.json();
+    console.log(`[API] ✓ POST ${path} response:`, data);
+    return data;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    console.error(`[API] ✗ POST ${path} network error:`, err);
+    throw err;
+  }
+}
+
+async function postJsonRequest<T>(path: string, token: string, body: unknown): Promise<T> {
+  const url = new URL(path, API_BASE);
+  const fullUrl = url.toString();
+  console.log(`[API] → POST ${path}`, fullUrl);
+  try {
+    const res = await fetch(fullUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    console.log(`[API] ← POST ${path} status=${res.status}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ detail: res.statusText }));
+      console.error(`[API] ✗ POST ${path} error:`, res.status, data);
+      throw new ApiError(res.status, data.detail || res.statusText);
     }
     const data = await res.json();
     console.log(`[API] ✓ POST ${path} response:`, data);
@@ -204,6 +241,31 @@ export const api = {
 
   getTopics(token: string, roomId: string) {
     return request<TopicListResponse>(`/hub/rooms/${roomId}/topics`, token);
+  },
+
+  // --- Wallet APIs ---
+
+  getWallet(token: string) {
+    return request<WalletSummary>("/wallet/me", token);
+  },
+
+  getWalletLedger(token: string, opts?: { cursor?: string; limit?: number }) {
+    const params: Record<string, string> = {};
+    if (opts?.cursor) params.cursor = opts.cursor;
+    if (opts?.limit) params.limit = String(opts.limit);
+    return request<WalletLedgerResponse>("/wallet/ledger", token, params);
+  },
+
+  createTransfer(token: string, payload: CreateTransferRequest) {
+    return postJsonRequest<WalletTransaction>("/wallet/transfers", token, payload);
+  },
+
+  createTopup(token: string, payload: CreateTopupRequest) {
+    return postJsonRequest<TopupResponse>("/wallet/topups", token, payload);
+  },
+
+  createWithdrawal(token: string, payload: CreateWithdrawalRequest) {
+    return postJsonRequest<WithdrawalResponse>("/wallet/withdrawals", token, payload);
   },
 };
 

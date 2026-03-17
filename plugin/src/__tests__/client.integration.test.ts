@@ -22,6 +22,15 @@ function makeClient(overrides?: Record<string, string>) {
   });
 }
 
+/** Helper: create a topup and complete it via internal endpoint to seed balance. */
+async function seedBalance(client: BotCordClient, amountMinor: string) {
+  const topup = await client.createTopup({ amount_minor: amountMinor });
+  // Complete via internal mock endpoint
+  await fetch(`${hubUrl}/internal/wallet/topups/${topup.topup_id}/complete`, {
+    method: "POST",
+  });
+}
+
 beforeAll(async () => {
   hub = createMockHub();
   hubUrl = await hub.start();
@@ -39,6 +48,12 @@ beforeEach(() => {
   hub.state.contacts = [];
   hub.state.tokenRefreshCount = 0;
   hub.state.overrides.clear();
+  hub.state.wallets.clear();
+  hub.state.walletTransactions = [];
+  hub.state.walletEntries = [];
+  hub.state.idempotencyKeys.clear();
+  hub.state.knownAgents.clear();
+  hub.state.knownAgents.add("ag_testclient00");
 });
 
 // ── Constructor ──────────────────────────────────────────────────
@@ -290,6 +305,164 @@ describe("contact requests", () => {
     const client = makeClient();
     const requests = await client.listSentRequests();
     expect(requests).toEqual([]);
+  });
+});
+
+// ── Wallet ──────────────────────────────────────────────────
+
+describe("wallet", () => {
+  it("returns default zero balance", async () => {
+    const client = makeClient();
+    const wallet = await client.getWallet();
+    expect(wallet.agent_id).toBe("ag_testclient00");
+    expect(wallet.asset_code).toBe("COIN");
+    expect(wallet.available_balance_minor).toBe("0");
+    expect(wallet.locked_balance_minor).toBe("0");
+    expect(wallet.total_balance_minor).toBe("0");
+  });
+
+  it("topup creates pending request without crediting balance", async () => {
+    const client = makeClient();
+    const result = await client.createTopup({ amount_minor: "10000", channel: "mock" });
+    expect(result.status).toBe("pending");
+    expect(result.amount_minor).toBe("10000");
+    expect(result.topup_id).toMatch(/^tu_/);
+
+    // Balance should NOT increase yet
+    const wallet = await client.getWallet();
+    expect(wallet.available_balance_minor).toBe("0");
+  });
+
+  it("topup idempotency — same key returns same result without duplication", async () => {
+    const client = makeClient();
+    const key = "idem-topup-1";
+    const r1 = await client.createTopup({ amount_minor: "5000", idempotency_key: key });
+    const r2 = await client.createTopup({ amount_minor: "5000", idempotency_key: key });
+    expect(r1.topup_id).toBe(r2.topup_id);
+
+    // Balance still zero — pending topups don't credit
+    const wallet = await client.getWallet();
+    expect(wallet.available_balance_minor).toBe("0");
+  });
+
+  it("transfer moves coins between agents", async () => {
+    const client = makeClient();
+    hub.state.knownAgents.add("ag_receiver1234");
+    await seedBalance(client, "20000");
+
+    const tx = await client.createTransfer({
+      to_agent_id: "ag_receiver1234",
+      amount_minor: "8000",
+      memo: "test payment",
+    });
+    expect(tx.type).toBe("transfer");
+    expect(tx.status).toBe("completed");
+    expect(tx.amount_minor).toBe("8000");
+    expect(tx.from_agent_id).toBe("ag_testclient00");
+    expect(tx.to_agent_id).toBe("ag_receiver1234");
+    // memo is stored in metadata_json, not as top-level field
+    expect(tx.metadata_json).toBe(JSON.stringify({ memo: "test payment" }));
+
+    const wallet = await client.getWallet();
+    expect(wallet.available_balance_minor).toBe("12000");
+  });
+
+  it("transfer rejects insufficient balance", async () => {
+    const client = makeClient();
+    hub.state.knownAgents.add("ag_other");
+    await expect(
+      client.createTransfer({ to_agent_id: "ag_other", amount_minor: "999999" }),
+    ).rejects.toThrow("400");
+  });
+
+  it("transfer rejects unknown recipient", async () => {
+    const client = makeClient();
+    await seedBalance(client, "5000");
+    await expect(
+      client.createTransfer({ to_agent_id: "ag_unknown", amount_minor: "100" }),
+    ).rejects.toThrow("400");
+  });
+
+  it("transfer rejects self-transfer", async () => {
+    const client = makeClient();
+    await seedBalance(client, "1000");
+    await expect(
+      client.createTransfer({ to_agent_id: "ag_testclient00", amount_minor: "100" }),
+    ).rejects.toThrow("400");
+  });
+
+  it("transfer idempotency — same key returns same result", async () => {
+    const client = makeClient();
+    hub.state.knownAgents.add("ag_receiver1234");
+    await seedBalance(client, "10000");
+
+    const key = "idem-transfer-1";
+    const r1 = await client.createTransfer({
+      to_agent_id: "ag_receiver1234",
+      amount_minor: "3000",
+      idempotency_key: key,
+    });
+    const r2 = await client.createTransfer({
+      to_agent_id: "ag_receiver1234",
+      amount_minor: "3000",
+      idempotency_key: key,
+    });
+    expect(r1.tx_id).toBe(r2.tx_id);
+
+    // Only deducted once
+    const wallet = await client.getWallet();
+    expect(wallet.available_balance_minor).toBe("7000");
+  });
+
+  it("withdrawal locks balance", async () => {
+    const client = makeClient();
+    await seedBalance(client, "15000");
+
+    const result = await client.createWithdrawal({ amount_minor: "5000" });
+    expect(result.status).toBe("pending");
+    expect(result.withdrawal_id).toMatch(/^wd_/);
+
+    const wallet = await client.getWallet();
+    expect(wallet.available_balance_minor).toBe("10000");
+    expect(wallet.locked_balance_minor).toBe("5000");
+  });
+
+  it("withdrawal rejects insufficient balance", async () => {
+    const client = makeClient();
+    await expect(
+      client.createWithdrawal({ amount_minor: "999999" }),
+    ).rejects.toThrow("400");
+  });
+
+  it("ledger returns entries for the agent", async () => {
+    const client = makeClient();
+    hub.state.knownAgents.add("ag_other");
+    await seedBalance(client, "5000");
+    await client.createTransfer({ to_agent_id: "ag_other", amount_minor: "2000" });
+
+    const ledger = await client.getWalletLedger();
+    // topup credit + transfer debit = 2 entries
+    expect(ledger.entries.length).toBeGreaterThanOrEqual(2);
+    expect(ledger.entries.every((e: any) => e.agent_id === "ag_testclient00")).toBe(true);
+  });
+
+  it("getWalletTransaction returns transaction detail", async () => {
+    const client = makeClient();
+    hub.state.knownAgents.add("ag_other");
+    await seedBalance(client, "1000");
+    const transfer = await client.createTransfer({
+      to_agent_id: "ag_other",
+      amount_minor: "500",
+    });
+
+    const tx = await client.getWalletTransaction(transfer.tx_id);
+    expect(tx.tx_id).toBe(transfer.tx_id);
+    expect(tx.type).toBe("transfer");
+  });
+
+  it("getWalletTransaction returns 404 for unknown tx", async () => {
+    const client = makeClient();
+    await expect(client.getWalletTransaction("tx_nonexistent")).rejects.toThrow("404");
   });
 });
 

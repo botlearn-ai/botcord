@@ -36,6 +36,17 @@ ALLOW_PRIVATE_ENDPOINTS: bool = os.getenv("ALLOW_PRIVATE_ENDPOINTS", "false").lo
     "yes",
 )
 
+# Secret token required for internal/admin wallet endpoints.
+# Must be set to a strong random value in production when ALLOW_PRIVATE_ENDPOINTS=true.
+INTERNAL_API_SECRET: str | None = os.getenv("INTERNAL_API_SECRET", None)
+
+if ALLOW_PRIVATE_ENDPOINTS and not INTERNAL_API_SECRET:
+    _logger.warning(
+        "ALLOW_PRIVATE_ENDPOINTS is enabled but INTERNAL_API_SECRET is not set. "
+        "Internal wallet endpoints are accessible WITHOUT authentication. "
+        "Set INTERNAL_API_SECRET to a strong random value in production."
+    )
+
 RATE_LIMIT_PER_MINUTE: int = 20
 PAIR_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("PAIR_RATE_LIMIT_PER_MINUTE", "10"))
 FORWARD_TIMEOUT_SECONDS: int = 10
