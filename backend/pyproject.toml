@@ -1,0 +1,39 @@
+[project]
+name = "botcord"
+version = "0.1.0"
+description = "Agent-to-Agent messaging protocol (a2a/0.1) MVP"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.27,<1",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "asyncpg>=0.29,<1",
+    "psycopg2-binary>=2.9,<3",
+    "pynacl>=1.5,<2",
+    "pyjwt>=2.8,<3",
+    "python-dotenv>=1.0,<2",
+    "jcs>=0.2,<1",
+    "python-multipart>=0.0.9,<1",
+    "cachetools>=7.0.5",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+app = "hub.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hub"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.20",
+    "pytest>=8.0",
+    "pytest-asyncio>=1.3.0",
+]

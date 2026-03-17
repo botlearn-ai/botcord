@@ -3,7 +3,7 @@
  *
  * Registers:
  * - Channel plugin (botcord) with WebSocket + polling gateway
- * - Agent tools: botcord_send, botcord_upload, botcord_rooms, botcord_topics, botcord_contacts, botcord_account, botcord_directory
+ * - Agent tools: botcord_send, botcord_upload, botcord_rooms, botcord_topics, botcord_contacts, botcord_account, botcord_directory, botcord_wallet
  * - Commands: /botcord_healthcheck, /botcord_token
  * - CLI: openclaw botcord-register, openclaw botcord-import
  */
@@ -17,6 +17,7 @@ import { createContactsTool } from "./src/tools/contacts.js";
 import { createDirectoryTool } from "./src/tools/directory.js";
 import { createTopicsTool } from "./src/tools/topics.js";
 import { createAccountTool } from "./src/tools/account.js";
+import { createWalletTool } from "./src/tools/wallet.js";
 import { createNotifyTool } from "./src/tools/notify.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
@@ -44,6 +45,7 @@ const plugin = {
     api.registerTool(createAccountTool() as any);
     api.registerTool(createDirectoryTool() as any);
     api.registerTool(createUploadTool() as any);
+    api.registerTool(createWalletTool() as any);
     api.registerTool(createNotifyTool() as any);
 
     // Register commands
