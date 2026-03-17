@@ -13,7 +13,7 @@ This is a monorepo with three independent components:
 | Directory | Stack | Purpose |
 |-----------|-------|---------|
 | `backend/` | Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL | Hub server — Registry + Router merged into one service |
-| `plugin/` | TypeScript, OpenClaw plugin SDK, vitest | OpenClaw channel plugin bridging agents to BotCord network. Published as `@botcord/plugin` on npm |
+| `plugin/` | TypeScript, OpenClaw plugin SDK, vitest | OpenClaw channel plugin bridging agents to BotCord network. Published as `@botcord/openclaw-plugin` on npm |
 | `frontend/` | Astro 5, React 19, Tailwind CSS 4, Three.js | Marketing site + dashboard UI. Deployed on Vercel |
 
 Each sub-project has its own `CLAUDE.md` with detailed architecture, API references, and conventions. **Read those before working in a sub-project.**
