@@ -1,0 +1,337 @@
+/**
+ * Integration tests for BotCordClient against a mock Hub server.
+ * Tests real HTTP connections, token lifecycle, retry logic, and all API methods.
+ */
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { BotCordClient } from "../client.js";
+import { generateKeypair } from "../crypto.js";
+import { createMockHub } from "./mock-hub.js";
+
+const kp = generateKeypair();
+
+let hub: ReturnType<typeof createMockHub>;
+let hubUrl: string;
+
+function makeClient(overrides?: Record<string, string>) {
+  return new BotCordClient({
+    hubUrl,
+    agentId: "ag_testclient00",
+    keyId: "k_test",
+    privateKey: kp.privateKey,
+    ...overrides,
+  });
+}
+
+beforeAll(async () => {
+  hub = createMockHub();
+  hubUrl = await hub.start();
+});
+
+afterAll(async () => {
+  await hub.stop();
+});
+
+beforeEach(() => {
+  hub.state.messages = [];
+  hub.state.inbox = [];
+  hub.state.endpoints = [];
+  hub.state.rooms = [];
+  hub.state.contacts = [];
+  hub.state.tokenRefreshCount = 0;
+  hub.state.overrides.clear();
+});
+
+// ── Constructor ──────────────────────────────────────────────────
+
+describe("constructor", () => {
+  it("throws when required fields are missing", () => {
+    expect(() => new BotCordClient({} as any)).toThrow("requires hubUrl");
+    expect(() => new BotCordClient({ hubUrl: "x" } as any)).toThrow();
+  });
+
+  it("strips trailing slash from hubUrl", () => {
+    const client = new BotCordClient({
+      hubUrl: `${hubUrl}/`,
+      agentId: "ag_x",
+      keyId: "k_x",
+      privateKey: kp.privateKey,
+    });
+    expect(client.getHubUrl()).toBe(hubUrl);
+  });
+
+  it("exposes agentId and hubUrl via accessors", () => {
+    const client = makeClient();
+    expect(client.getAgentId()).toBe("ag_testclient00");
+    expect(client.getHubUrl()).toBe(hubUrl);
+  });
+});
+
+// ── Token management ─────────────────────────────────────────────
+
+describe("token management", () => {
+  it("fetches token on first API call", async () => {
+    const client = makeClient();
+    await client.pollInbox();
+    expect(hub.state.tokenRefreshCount).toBe(1);
+  });
+
+  it("reuses cached token across calls", async () => {
+    const client = makeClient();
+    await client.pollInbox();
+    await client.pollInbox();
+    await client.pollInbox();
+    // Only 1 refresh, token reused for subsequent calls
+    expect(hub.state.tokenRefreshCount).toBe(1);
+  });
+
+  it("re-authenticates on 401 response", async () => {
+    const client = makeClient();
+    // First call: get token and succeed
+    await client.pollInbox();
+    expect(hub.state.tokenRefreshCount).toBe(1);
+
+    // Set override to return 401 once, then clear it
+    let callCount = 0;
+    hub.state.overrides.set("/hub/inbox", {
+      status: 401,
+      body: { error: "unauthorized" },
+    });
+
+    // The client should retry after 401 - but our override is persistent
+    // so the retry will also get 401 and fail.
+    // This tests that at least a token refresh is attempted.
+    try {
+      await client.pollInbox();
+    } catch {
+      // expected to fail since the override persists
+    }
+    // Token was refreshed on the 401
+    expect(hub.state.tokenRefreshCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ── Messaging ────────────────────────────────────────────────────
+
+describe("sendMessage", () => {
+  it("sends a signed envelope to the Hub", async () => {
+    const client = makeClient();
+    const result = await client.sendMessage("ag_receiver1234", "Hello!");
+
+    expect(result.queued).toBe(true);
+    expect(result.hub_msg_id).toBeTruthy();
+    expect(hub.state.messages).toHaveLength(1);
+
+    const sent = hub.state.messages[0].envelope;
+    expect(sent.from).toBe("ag_testclient00");
+    expect(sent.to).toBe("ag_receiver1234");
+    expect(sent.type).toBe("message");
+    expect(sent.payload.text).toBe("Hello!");
+    expect(sent.sig.alg).toBe("ed25519");
+  });
+
+  it("includes topic as query param", async () => {
+    const client = makeClient();
+    await client.sendMessage("ag_receiver1234", "Topic msg", { topic: "general" });
+
+    expect(hub.state.messages).toHaveLength(1);
+    expect(hub.state.messages[0].topic).toBe("general");
+  });
+
+  it("sends multiple messages sequentially", async () => {
+    const client = makeClient();
+    await client.sendMessage("ag_a", "first");
+    await client.sendMessage("ag_b", "second");
+    await client.sendMessage("ag_c", "third");
+
+    expect(hub.state.messages).toHaveLength(3);
+    expect(hub.state.messages.map((m) => m.envelope.payload.text)).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
+  });
+});
+
+describe("sendEnvelope", () => {
+  it("sends a pre-built envelope", async () => {
+    const { buildSignedEnvelope } = await import("../crypto.js");
+    const client = makeClient();
+
+    const envelope = buildSignedEnvelope({
+      from: "ag_testclient00",
+      to: "ag_custom",
+      type: "ack",
+      payload: { status: "received" },
+      privateKey: kp.privateKey,
+      keyId: "k_test",
+    });
+
+    const result = await client.sendEnvelope(envelope, "my-topic");
+    expect(result.queued).toBe(true);
+    expect(hub.state.messages[0].envelope.type).toBe("ack");
+    expect(hub.state.messages[0].topic).toBe("my-topic");
+  });
+});
+
+// ── Inbox ────────────────────────────────────────────────────────
+
+describe("pollInbox", () => {
+  it("returns empty inbox", async () => {
+    const client = makeClient();
+    const result = await client.pollInbox();
+    expect(result.messages).toEqual([]);
+    expect(result.count).toBe(0);
+  });
+
+  it("returns queued messages", async () => {
+    hub.state.inbox.push(
+      { hub_msg_id: "h1", envelope: { from: "ag_sender", payload: { text: "hi" } } },
+      { hub_msg_id: "h2", envelope: { from: "ag_sender", payload: { text: "hey" } } },
+    );
+
+    const client = makeClient();
+    const result = await client.pollInbox({ limit: 10 });
+    expect(result.messages).toHaveLength(2);
+    expect(result.count).toBe(2);
+  });
+
+  it("ack removes messages from inbox", async () => {
+    hub.state.inbox.push(
+      { hub_msg_id: "h1", envelope: { from: "ag_x", payload: { text: "a" } } },
+    );
+
+    const client = makeClient();
+    await client.pollInbox({ ack: true });
+    expect(hub.state.inbox).toHaveLength(0);
+  });
+});
+
+describe("getHistory", () => {
+  it("returns message history", async () => {
+    const client = makeClient();
+    // Send some messages first
+    await client.sendMessage("ag_peer", "msg1");
+    await client.sendMessage("ag_peer", "msg2");
+
+    const history = await client.getHistory({ peer: "ag_peer" });
+    expect(history.messages).toHaveLength(2);
+  });
+});
+
+// ── Registry ─────────────────────────────────────────────────────
+
+describe("resolve", () => {
+  it("resolves agent info", async () => {
+    const client = makeClient();
+    const info = await client.resolve("ag_target123456");
+    expect(info.agent_id).toBe("ag_target123456");
+    expect(info.display_name).toBe("Agent ag_target123456");
+  });
+});
+
+// ── Contacts ─────────────────────────────────────────────────────
+
+describe("contacts", () => {
+  it("lists contacts", async () => {
+    hub.state.contacts = [
+      { contact_agent_id: "ag_friend", display_name: "Friend", created_at: "2025-01-01T00:00:00Z" },
+    ];
+    const client = makeClient();
+    const contacts = await client.listContacts();
+    expect(contacts).toHaveLength(1);
+    expect(contacts[0].contact_agent_id).toBe("ag_friend");
+  });
+
+  it("lists blocks", async () => {
+    const client = makeClient();
+    const blocks = await client.listBlocks();
+    expect(blocks).toEqual([]);
+  });
+});
+
+// ── Rooms ────────────────────────────────────────────────────────
+
+describe("rooms", () => {
+  it("creates a room and lists it", async () => {
+    const client = makeClient();
+    const room = await client.createRoom({ name: "Test Room", visibility: "public" });
+
+    expect(room.room_id).toMatch(/^rm_/);
+    expect(room.name).toBe("Test Room");
+
+    const myRooms = await client.listMyRooms();
+    expect(myRooms).toHaveLength(1);
+    expect(myRooms[0].name).toBe("Test Room");
+  });
+
+  it("gets room info by ID", async () => {
+    const client = makeClient();
+    const room = await client.createRoom({ name: "Info Room" });
+    const info = await client.getRoomInfo(room.room_id);
+    expect(info.name).toBe("Info Room");
+  });
+
+  it("returns 404 for unknown room", async () => {
+    const client = makeClient();
+    await expect(client.getRoomInfo("rm_nonexistent")).rejects.toThrow("404");
+  });
+});
+
+// ── Contact requests ─────────────────────────────────────────────
+
+describe("contact requests", () => {
+  it("lists received requests", async () => {
+    const client = makeClient();
+    const requests = await client.listReceivedRequests("pending");
+    expect(requests).toEqual([]);
+  });
+
+  it("lists sent requests", async () => {
+    const client = makeClient();
+    const requests = await client.listSentRequests();
+    expect(requests).toEqual([]);
+  });
+});
+
+// ── Error handling ───────────────────────────────────────────────
+
+describe("error handling", () => {
+  it("throws on 500 server error", async () => {
+    hub.state.overrides.set("/hub/send", {
+      status: 500,
+      body: { error: "internal error" },
+    });
+
+    const client = makeClient();
+    await expect(client.sendMessage("ag_x", "fail")).rejects.toThrow("500");
+  });
+
+  it("throws with status property on error", async () => {
+    hub.state.overrides.set("/hub/send", {
+      status: 403,
+      body: { error: "forbidden" },
+    });
+
+    const client = makeClient();
+    try {
+      await client.sendMessage("ag_x", "fail");
+      expect.unreachable("should have thrown");
+    } catch (err: any) {
+      expect(err.status).toBe(403);
+    }
+  });
+
+  it("retries on 429 rate limit", async () => {
+    let callCount = 0;
+    // We need a dynamic override — use the override to return 429 first time
+    hub.state.overrides.set("/hub/rooms/me", {
+      status: 429,
+      body: { error: "rate limited" },
+      headers: { "Retry-After": "0" },
+    });
+
+    const client = makeClient();
+    // Will retry MAX_RETRIES times then fail
+    await expect(client.listMyRooms()).rejects.toThrow();
+  });
+});

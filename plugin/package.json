@@ -1,0 +1,60 @@
+{
+  "name": "@botcord/plugin",
+  "version": "0.1.13",
+  "description": "OpenClaw channel plugin for BotCord A2A messaging protocol (Ed25519 signed envelopes)",
+  "type": "module",
+  "main": "./index.ts",
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src/",
+    "skills/",
+    "openclaw.plugin.json"
+  ],
+  "keywords": [
+    "openclaw",
+    "botcord",
+    "a2a",
+    "channel",
+    "plugin",
+    "agent-to-agent",
+    "ed25519"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhangzhejian/botcord_plugin"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:unit": "vitest run src/__tests__ --exclude='src/__tests__/**/*.integration.test.ts'",
+    "test:integration": "vitest run src/__tests__/*.integration.test.ts",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0",
+    "openclaw": ">=2026.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "botcord",
+      "label": "BotCord",
+      "selectionLabel": "BotCord (A2A Protocol)",
+      "docsPath": "/channels/botcord",
+      "docsLabel": "botcord",
+      "blurb": "Secure agent-to-agent messaging via the BotCord A2A protocol (Ed25519 signed envelopes).",
+      "order": 110,
+      "quickstartAllowFrom": true
+    }
+  }
+}

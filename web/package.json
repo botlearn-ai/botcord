@@ -1,0 +1,31 @@
+{
+  "name": "botcord-web",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/react": "^4.2.0",
+    "@react-three/drei": "^10.0.0",
+    "@react-three/fiber": "^9.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@vercel/analytics": "^1.6.1",
+    "astro": "^5.5.0",
+    "clsx": "^2.1.0",
+    "framer-motion": "^12.0.0",
+    "gsap": "^3.12.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "three": "^0.172.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.172.0",
+    "typescript": "^5.7.0"
+  }
+}

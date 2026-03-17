@@ -1,0 +1,362 @@
+import datetime
+import hashlib
+import json
+import logging
+import uuid
+
+import httpx
+import jcs
+from fastapi import APIRouter, Depends, HTTPException, Request
+
+logger = logging.getLogger(__name__)
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from hub.auth import get_current_agent
+from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
+from hub.database import get_db
+from hub.id_generators import generate_hub_msg_id
+from hub.models import Agent, Block, Contact, MessagePolicy, MessageRecord, MessageState
+from hub.schemas import (
+    AddBlockRequest,
+    BlockListResponse,
+    BlockResponse,
+    ContactListResponse,
+    ContactResponse,
+    PolicyResponse,
+    UpdatePolicyRequest,
+)
+from hub.validators import check_agent_ownership
+
+router = APIRouter(prefix="/registry", tags=["contacts"])
+
+
+async def _create_contact_removed_notification(
+    db: AsyncSession,
+    remover_id: str,
+    other_id: str,
+    request: Request,
+) -> None:
+    """Push a contact_removed notification into the other agent's inbox."""
+    from hub.routers.hub import (
+        _compute_next_retry_at, _forward_envelope, _is_endpoint_unreachable,
+        _resolve_endpoint, notify_inbox,
+    )
+    from hub.forward import get_sender_display_name
+    from hub.schemas import MessageEnvelope
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    ts = int(now.timestamp())
+    msg_id = str(uuid.uuid4())
+    hub_msg_id = generate_hub_msg_id()
+    payload = {"removed_by": remover_id}
+    payload_bytes = jcs.canonicalize(payload)
+    payload_hash = "sha256:" + hashlib.sha256(payload_bytes).hexdigest()
+
+    envelope_dict = {
+        "v": PROTOCOL_VERSION,
+        "msg_id": msg_id,
+        "ts": ts,
+        "from": remover_id,
+        "to": other_id,
+        "type": "contact_removed",
+        "reply_to": None,
+        "ttl_sec": DEFAULT_TTL_SEC,
+        "payload": payload,
+        "payload_hash": payload_hash,
+        "sig": {"alg": "ed25519", "key_id": "system", "value": ""},
+    }
+
+    record = MessageRecord(
+        hub_msg_id=hub_msg_id,
+        msg_id=msg_id,
+        sender_id=remover_id,
+        receiver_id=other_id,
+        state=MessageState.queued,
+        envelope_json=json.dumps(envelope_dict),
+        ttl_sec=DEFAULT_TTL_SEC,
+        created_at=now,
+    )
+    db.add(record)
+    await db.commit()
+
+    # Try immediate push delivery to receiver's webhook endpoint
+    endpoint = await _resolve_endpoint(other_id, db)
+    if endpoint:
+        envelope_obj = MessageEnvelope(**envelope_dict)
+        sender_name = await get_sender_display_name(remover_id, db)
+        http_client: httpx.AsyncClient = request.app.state.http_client
+        err = await _forward_envelope(
+            http_client, endpoint.url, envelope_obj,
+            webhook_token=endpoint.webhook_token,
+            sender_display_name=sender_name,
+        )
+        if err is None:
+            record.state = MessageState.delivered
+            record.delivered_at = datetime.datetime.now(datetime.timezone.utc)
+        else:
+            record.last_error = err
+            record.next_retry_at = _compute_next_retry_at(0, record.created_at, record.ttl_sec)
+        await db.commit()
+    elif await _is_endpoint_unreachable(other_id, db):
+        record.last_error = "ENDPOINT_UNREACHABLE"
+        record.next_retry_at = None
+        await db.commit()
+
+    # Notify long-polling readers only if message remains queued
+    if record.state == MessageState.queued:
+        await notify_inbox(other_id)
+
+
+# ---------------------------------------------------------------------------
+# Contacts
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/agents/{agent_id}/contacts",
+    response_model=ContactListResponse,
+)
+async def list_contacts(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    check_agent_ownership(agent_id, current_agent)
+
+    result = await db.execute(
+        select(Contact)
+        .where(Contact.owner_id == agent_id)
+        .order_by(Contact.created_at.asc())
+    )
+    contacts = result.scalars().all()
+    return ContactListResponse(
+        contacts=[
+            ContactResponse(
+                contact_agent_id=c.contact_agent_id,
+                alias=c.alias,
+                created_at=c.created_at,
+            )
+            for c in contacts
+        ]
+    )
+
+
+@router.get(
+    "/agents/{agent_id}/contacts/{contact_agent_id}",
+    response_model=ContactResponse,
+)
+async def get_contact(
+    agent_id: str,
+    contact_agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    check_agent_ownership(agent_id, current_agent)
+
+    result = await db.execute(
+        select(Contact).where(
+            Contact.owner_id == agent_id,
+            Contact.contact_agent_id == contact_agent_id,
+        )
+    )
+    contact = result.scalar_one_or_none()
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    return ContactResponse(
+        contact_agent_id=contact.contact_agent_id,
+        alias=contact.alias,
+        created_at=contact.created_at,
+    )
+
+
+@router.delete(
+    "/agents/{agent_id}/contacts/{contact_agent_id}",
+    status_code=204,
+)
+async def remove_contact(
+    agent_id: str,
+    contact_agent_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    check_agent_ownership(agent_id, current_agent)
+
+    # Check A→B direction exists (required for 200 vs 404)
+    result = await db.execute(
+        select(Contact).where(
+            Contact.owner_id == agent_id,
+            Contact.contact_agent_id == contact_agent_id,
+        )
+    )
+    contact = result.scalar_one_or_none()
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    # Delete A→B
+    await db.delete(contact)
+
+    # Also delete B→A (reverse direction) if it exists
+    result = await db.execute(
+        select(Contact).where(
+            Contact.owner_id == contact_agent_id,
+            Contact.contact_agent_id == agent_id,
+        )
+    )
+    reverse_contact = result.scalar_one_or_none()
+    if reverse_contact is not None:
+        await db.delete(reverse_contact)
+
+    await db.commit()
+
+    # Notify the other party
+    await _create_contact_removed_notification(db, agent_id, contact_agent_id, request)
+
+
+# ---------------------------------------------------------------------------
+# Blocks
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/agents/{agent_id}/blocks",
+    response_model=BlockResponse,
+    status_code=201,
+)
+async def add_block(
+    agent_id: str,
+    body: AddBlockRequest,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    check_agent_ownership(agent_id, current_agent)
+
+    # Owner must exist
+    owner = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    if owner.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if body.blocked_agent_id == agent_id:
+        raise HTTPException(status_code=400, detail="Cannot block yourself")
+
+    # Target must exist
+    result = await db.execute(
+        select(Agent).where(Agent.agent_id == body.blocked_agent_id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Target agent not found")
+
+    block = Block(owner_id=agent_id, blocked_agent_id=body.blocked_agent_id)
+    db.add(block)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Agent already blocked")
+
+    await db.commit()
+    await db.refresh(block)
+    return BlockResponse(
+        blocked_agent_id=block.blocked_agent_id,
+        created_at=block.created_at,
+    )
+
+
+@router.get(
+    "/agents/{agent_id}/blocks",
+    response_model=BlockListResponse,
+)
+async def list_blocks(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    check_agent_ownership(agent_id, current_agent)
+
+    result = await db.execute(
+        select(Block)
+        .where(Block.owner_id == agent_id)
+        .order_by(Block.created_at.asc())
+    )
+    blocks = result.scalars().all()
+    return BlockListResponse(
+        blocks=[
+            BlockResponse(
+                blocked_agent_id=b.blocked_agent_id,
+                created_at=b.created_at,
+            )
+            for b in blocks
+        ]
+    )
+
+
+@router.delete(
+    "/agents/{agent_id}/blocks/{blocked_agent_id}",
+    status_code=204,
+)
+async def remove_block(
+    agent_id: str,
+    blocked_agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    check_agent_ownership(agent_id, current_agent)
+
+    result = await db.execute(
+        select(Block).where(
+            Block.owner_id == agent_id,
+            Block.blocked_agent_id == blocked_agent_id,
+        )
+    )
+    block = result.scalar_one_or_none()
+    if block is None:
+        raise HTTPException(status_code=404, detail="Block not found")
+
+    await db.delete(block)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Message Policy
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/agents/{agent_id}/policy",
+    response_model=PolicyResponse,
+)
+async def update_policy(
+    agent_id: str,
+    body: UpdatePolicyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    check_agent_ownership(agent_id, current_agent)
+
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.message_policy = body.message_policy
+    await db.commit()
+    return PolicyResponse(message_policy=body.message_policy)
+
+
+@router.get(
+    "/agents/{agent_id}/policy",
+    response_model=PolicyResponse,
+)
+async def get_policy(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return PolicyResponse(message_policy=agent.message_policy.value)

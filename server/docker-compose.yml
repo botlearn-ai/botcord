@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: botcord
+      POSTGRES_PASSWORD: botcord
+      POSTGRES_DB: botcord
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  hub:
+    build: .
+    ports:
+      - "80:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://botcord:botcord@postgres:5432/botcord
+      JWT_SECRET: dev-secret-change-in-prod
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
