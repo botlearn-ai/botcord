@@ -88,9 +88,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="BotCord Hub", version="1.0.1", lifespan=lifespan)
 
+_cors_origins = [
+    "http://localhost:4321",
+    "http://localhost:3000",
+    "https://botcord.chat",
+    "https://www.botcord.chat",
+    "https://botcord.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4321", "http://localhost:3000", "https://botcord.chat"],
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"https://botcord(-[a-z0-9]+)?-botlearn-ai\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
