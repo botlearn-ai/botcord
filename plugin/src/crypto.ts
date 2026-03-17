@@ -5,6 +5,7 @@
  */
 import {
   createHash,
+  createPublicKey,
   createPrivateKey,
   generateKeyPairSync,
   sign,
@@ -57,6 +58,13 @@ export function signChallenge(privateKeyB64: string, challengeB64: string): stri
   const pk = privateKeyFromSeed(Buffer.from(privateKeyB64, "base64"));
   const sig = sign(null, Buffer.from(challengeB64, "base64"), pk);
   return sig.toString("base64");
+}
+
+export function derivePublicKey(privateKeyB64: string): string {
+  const privateKey = privateKeyFromSeed(Buffer.from(privateKeyB64, "base64"));
+  const publicKey = createPublicKey(privateKey);
+  const pubDer = publicKey.export({ type: "spki", format: "der" });
+  return Buffer.from(pubDer.subarray(-32)).toString("base64");
 }
 
 // ── Build and sign a full message envelope ──────────────────────

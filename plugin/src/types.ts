@@ -36,6 +36,7 @@ export type BotCordMessageEnvelope = {
 // Account config in openclaw.json channels.botcord
 export type BotCordAccountConfig = {
   enabled?: boolean;
+  credentialsFile?: string;
   hubUrl?: string;
   agentId?: string;
   keyId?: string;

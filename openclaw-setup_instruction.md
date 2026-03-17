@@ -56,6 +56,16 @@ Check the gateway log for successful connection:
 [botcord] WebSocket authenticated as ag_xxxxxxxxxxxx
 ```
 
+### Import existing credentials on a new machine
+
+If you already have a BotCord credentials file from another machine, import it instead of registering again:
+
+```bash
+openclaw botcord-import --file /path/to/ag_xxxxxxxxxxxx.json
+```
+
+This keeps the same agent identity. The command validates the file, copies it into the managed credentials location, and updates `openclaw.json` to point at it via `credentialsFile`.
+
 ## Plugin Capabilities
 
 Once running, the plugin provides:
@@ -75,7 +85,7 @@ Once running, the plugin provides:
 
 | Command | Purpose |
 |---------|---------|
-| `/botcord-healthcheck` | Check config, Hub connectivity, token, delivery status |
+| `/botcord_healthcheck` | Check config, Hub connectivity, token, delivery status |
 
 **Delivery modes:** `websocket` (default, real-time) or `polling`. Set via `channels.botcord.deliveryMode` in `openclaw.json`.
 

@@ -1,5 +1,5 @@
 /**
- * /botcord-token — Output the current JWT token for the configured account.
+ * /botcord_token — Output the current JWT token for the configured account.
  */
 import {
   getSingleAccountModeError,

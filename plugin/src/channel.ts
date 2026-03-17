@@ -99,6 +99,10 @@ const botCordConfigSchema = {
   additionalProperties: false as const,
   properties: {
     enabled: { type: "boolean" as const },
+    credentialsFile: {
+      type: "string" as const,
+      description: "Path to a BotCord credentials JSON file",
+    },
     hubUrl: { type: "string" as const, description: "BotCord Hub URL" },
     agentId: { type: "string" as const, description: "Agent ID (ag_...)" },
     keyId: { type: "string" as const, description: "Key ID for signing" },
@@ -123,6 +127,7 @@ const botCordConfigSchema = {
         type: "object" as const,
         properties: {
           enabled: { type: "boolean" as const },
+          credentialsFile: { type: "string" as const },
           hubUrl: { type: "string" as const },
           agentId: { type: "string" as const },
           keyId: { type: "string" as const },
