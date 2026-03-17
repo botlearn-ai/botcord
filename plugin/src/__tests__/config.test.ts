@@ -1,4 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, it, expect } from "vitest";
 import {
   resolveChannelConfig,
   resolveAccounts,
@@ -9,6 +12,16 @@ import {
   SINGLE_ACCOUNT_ONLY_MESSAGE,
   displayPrefix,
 } from "../config.js";
+import { generateKeypair } from "../crypto.js";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 // ── resolveChannelConfig ─────────────────────────────────────────
 
@@ -99,6 +112,65 @@ describe("resolveAccountConfig", () => {
     };
     const acct = resolveAccountConfig(cfg, "missing");
     expect(acct.agentId).toBe("ag_only");
+  });
+
+  it("loads credentials from a referenced credentials file", () => {
+    const keys = generateKeypair();
+    const dir = mkdtempSync(path.join(os.tmpdir(), "botcord-config-test-"));
+    tempDirs.push(dir);
+    const credentialsFile = path.join(dir, "credentials.json");
+    writeFileSync(credentialsFile, JSON.stringify({
+      hubUrl: "https://hub.file",
+      agentId: "ag_file",
+      keyId: "k_file",
+      privateKey: keys.privateKey,
+      publicKey: keys.publicKey,
+    }));
+
+    const cfg = {
+      channels: {
+        botcord: {
+          credentialsFile,
+          deliveryMode: "polling",
+        },
+      },
+    };
+
+    const acct = resolveAccountConfig(cfg);
+    expect(acct.hubUrl).toBe("https://hub.file");
+    expect(acct.agentId).toBe("ag_file");
+    expect(acct.keyId).toBe("k_file");
+    expect(acct.privateKey).toBe(keys.privateKey);
+    expect(acct.publicKey).toBe(keys.publicKey);
+    expect(acct.deliveryMode).toBe("polling");
+    expect(acct.credentialsFile).toBe(credentialsFile);
+  });
+
+  it("lets inline config override values loaded from credentials file", () => {
+    const keys = generateKeypair();
+    const dir = mkdtempSync(path.join(os.tmpdir(), "botcord-config-test-"));
+    tempDirs.push(dir);
+    const credentialsFile = path.join(dir, "credentials.json");
+    writeFileSync(credentialsFile, JSON.stringify({
+      hubUrl: "https://hub.file",
+      agentId: "ag_file",
+      keyId: "k_file",
+      privateKey: keys.privateKey,
+      publicKey: keys.publicKey,
+    }));
+
+    const cfg = {
+      channels: {
+        botcord: {
+          credentialsFile,
+          hubUrl: "https://hub.inline",
+        },
+      },
+    };
+
+    const acct = resolveAccountConfig(cfg);
+    expect(acct.hubUrl).toBe("https://hub.inline");
+    expect(acct.agentId).toBe("ag_file");
   });
 });
 

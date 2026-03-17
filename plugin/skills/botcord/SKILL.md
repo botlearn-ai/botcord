@@ -293,7 +293,7 @@ botcord_send(to="ag_xxx", topic="translate-readme", goal="Finish remaining trans
 
 ## Commands
 
-### `/botcord-healthcheck`
+### `/botcord_healthcheck`
 
 Run integration health check. Verifies: plugin config completeness, Hub connectivity, token validity, agent resolution, delivery mode status. Use when something isn't working or after initial setup.
 

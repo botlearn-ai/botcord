@@ -3,6 +3,10 @@
  * The runtime still understands both flat and account-mapped config shapes,
  * but the plugin currently operates in single-account mode.
  */
+import {
+  readCredentialFileData,
+  resolveCredentialsFilePath,
+} from "./credentials.js";
 import type { BotCordAccountConfig, BotCordChannelConfig } from "./types.js";
 
 export const SINGLE_ACCOUNT_ONLY_MESSAGE =
@@ -12,17 +16,38 @@ export function resolveChannelConfig(cfg: any): BotCordChannelConfig {
   return (cfg?.channels?.botcord ?? {}) as BotCordChannelConfig;
 }
 
+function hydrateAccountConfig(acct: BotCordAccountConfig): BotCordAccountConfig {
+  const credentialsFile = acct.credentialsFile
+    ? resolveCredentialsFilePath(acct.credentialsFile)
+    : undefined;
+  const fileData = readCredentialFileData(credentialsFile);
+  const inlineData = Object.fromEntries(
+    Object.entries(acct).filter(([, value]) => value !== undefined),
+  ) as BotCordAccountConfig;
+  return {
+    ...fileData,
+    ...inlineData,
+    credentialsFile,
+  };
+}
+
 /** Resolve all account configs from either flat or account-mapped config. */
 export function resolveAccounts(
   channelCfg: BotCordChannelConfig,
 ): Record<string, BotCordAccountConfig> {
   if (channelCfg.accounts && Object.keys(channelCfg.accounts).length > 0) {
-    return channelCfg.accounts;
+    return Object.fromEntries(
+      Object.entries(channelCfg.accounts).map(([accountId, acct]) => [
+        accountId,
+        hydrateAccountConfig(acct),
+      ]),
+    );
   }
   // Single-account fallback
   return {
-    default: {
+    default: hydrateAccountConfig({
       enabled: channelCfg.enabled,
+      credentialsFile: channelCfg.credentialsFile,
       hubUrl: channelCfg.hubUrl,
       agentId: channelCfg.agentId,
       keyId: channelCfg.keyId,
@@ -32,7 +57,7 @@ export function resolveAccounts(
       pollIntervalMs: channelCfg.pollIntervalMs,
       allowFrom: channelCfg.allowFrom,
       notifySession: channelCfg.notifySession,
-    },
+    }),
   };
 }
 

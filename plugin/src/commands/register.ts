@@ -2,10 +2,24 @@
  * `openclaw botcord-register` — CLI command for agent registration.
  *
  * Generates Ed25519 keypair, registers with Hub, writes credentials
- * to openclaw.json via OpenClaw's writeConfigFile API.
+ * to a dedicated file, then saves only its reference in openclaw.json.
  */
-import { generateKeypair, signChallenge } from "../crypto.js";
-import { getSingleAccountModeError } from "../config.js";
+import {
+  defaultCredentialsFile,
+  loadStoredCredentials,
+  resolveCredentialsFilePath,
+  type StoredBotCordCredentials,
+  writeCredentialsFile,
+} from "../credentials.js";
+import {
+  derivePublicKey,
+  generateKeypair,
+  signChallenge,
+} from "../crypto.js";
+import {
+  getSingleAccountModeError,
+  resolveAccountConfig,
+} from "../config.js";
 import { getBotCordRuntime } from "../runtime.js";
 
 const DEFAULT_HUB = "https://api.botcord.chat";
@@ -15,22 +29,117 @@ interface RegisterResult {
   keyId: string;
   displayName: string;
   hub: string;
+  credentialsFile: string;
 }
 
-async function registerAgent(opts: {
+interface ImportResult {
+  agentId: string;
+  keyId: string;
+  hub: string;
+  sourceFile: string;
+  credentialsFile: string;
+}
+
+function buildRegistrationKeypair(config: Record<string, any>, newIdentity: boolean) {
+  if (newIdentity) return generateKeypair();
+
+  const existing = resolveAccountConfig(config);
+  if (!existing.privateKey) return generateKeypair();
+
+  const publicKey = existing.publicKey || derivePublicKey(existing.privateKey);
+  return {
+    privateKey: existing.privateKey,
+    publicKey,
+    pubkeyFormatted: `ed25519:${publicKey}`,
+  };
+}
+
+function stripInlineCredentials(botcordCfg: Record<string, any>): Record<string, any> {
+  const next = { ...botcordCfg };
+  delete next.hubUrl;
+  delete next.agentId;
+  delete next.keyId;
+  delete next.privateKey;
+  delete next.publicKey;
+  return next;
+}
+
+function buildNextConfig(
+  config: Record<string, any>,
+  credentialsFile: string,
+): Record<string, any> {
+  const currentBotcord = ((config.channels as Record<string, any>)?.botcord ?? {}) as Record<string, any>;
+  return {
+    ...config,
+    channels: {
+      ...(config.channels as Record<string, any>),
+      botcord: {
+        ...stripInlineCredentials(currentBotcord),
+        enabled: true,
+        credentialsFile,
+        deliveryMode:
+          currentBotcord.deliveryMode === "polling"
+            ? "polling"
+            : "websocket",
+        notifySession:
+          currentBotcord.notifySession ||
+          "agent:main:main",
+      },
+    },
+    session: {
+      ...(config.session as Record<string, any>),
+      dmScope:
+        (config.session as Record<string, any>)?.dmScope ||
+        "per-channel-peer",
+    },
+  };
+}
+
+async function persistCredentials(params: {
+  config: Record<string, any>;
+  credentials: StoredBotCordCredentials;
+  destinationFile?: string;
+}): Promise<string> {
+  const runtime = getBotCordRuntime();
+  const existingAccount = resolveAccountConfig(params.config);
+  const credentialsFile = writeCredentialsFile(
+    params.destinationFile || existingAccount.credentialsFile || defaultCredentialsFile(params.credentials.agentId),
+    params.credentials,
+  );
+  await runtime.config.writeConfigFile(buildNextConfig(params.config, credentialsFile));
+  return credentialsFile;
+}
+
+export async function registerAgent(opts: {
   name: string;
   bio: string;
   hub: string;
   config: Record<string, any>;
+  newIdentity?: boolean;
 }): Promise<RegisterResult> {
-  const { name, bio, hub, config } = opts;
+  const {
+    name,
+    bio,
+    hub,
+    config,
+    newIdentity = false,
+  } = opts;
   const singleAccountError = getSingleAccountModeError(config);
   if (singleAccountError) {
     throw new Error(singleAccountError);
   }
 
-  // 1. Generate keypair
-  const keys = generateKeypair();
+  const currentBotcord = ((config.channels as Record<string, any>)?.botcord ?? {}) as Record<string, any>;
+  const existingAccount = resolveAccountConfig(config);
+  if (!newIdentity && currentBotcord.credentialsFile && !existingAccount.privateKey) {
+    throw new Error(
+      `BotCord credentialsFile is configured but could not be loaded: ${currentBotcord.credentialsFile}`,
+    );
+  }
+
+  // 1. Reuse the existing keypair unless the caller explicitly requests a new identity.
+  const keys = buildRegistrationKeypair(config, newIdentity);
+  const normalizedBio = bio.trim() || `${name} on BotCord`;
 
   // 2. Register with Hub
   const regResp = await fetch(`${hub}/registry/agents`, {
@@ -39,7 +148,7 @@ async function registerAgent(opts: {
     body: JSON.stringify({
       display_name: name,
       pubkey: keys.pubkeyFormatted,
-      bio,
+      bio: normalizedBio,
     }),
   });
 
@@ -77,44 +186,58 @@ async function registerAgent(opts: {
   }
 
   // 5. Write credentials via OpenClaw's config API
-  const runtime = getBotCordRuntime();
-
-  const nextConfig = {
-    ...config,
-    channels: {
-      ...(config.channels as Record<string, any>),
-      botcord: {
-        ...(config.channels as Record<string, any>)?.botcord,
-        enabled: true,
-        hubUrl: hub,
-        agentId: regData.agent_id,
-        keyId: regData.key_id,
-        privateKey: keys.privateKey,
-        publicKey: keys.publicKey,
-        deliveryMode:
-          (config.channels as Record<string, any>)?.botcord?.deliveryMode === "polling"
-            ? "polling"
-            : "websocket",
-        notifySession:
-          (config.channels as Record<string, any>)?.botcord?.notifySession ||
-          "agent:main:main",
-      },
+  const credentialsFile = await persistCredentials({
+    config,
+    credentials: {
+      version: 1,
+      hubUrl: hub,
+      agentId: regData.agent_id,
+      keyId: regData.key_id,
+      privateKey: keys.privateKey,
+      publicKey: keys.publicKey,
+      displayName: name,
+      savedAt: new Date().toISOString(),
     },
-    session: {
-      ...(config.session as Record<string, any>),
-      dmScope:
-        (config.session as Record<string, any>)?.dmScope ||
-        "per-channel-peer",
-    },
-  };
-
-  await runtime.config.writeConfigFile(nextConfig);
+  });
 
   return {
     agentId: regData.agent_id,
     keyId: regData.key_id,
     displayName: name,
     hub,
+    credentialsFile,
+  };
+}
+
+export async function importAgentCredentials(opts: {
+  file: string;
+  config: Record<string, any>;
+  destinationFile?: string;
+}): Promise<ImportResult> {
+  const {
+    file,
+    config,
+    destinationFile,
+  } = opts;
+  const singleAccountError = getSingleAccountModeError(config);
+  if (singleAccountError) {
+    throw new Error(singleAccountError);
+  }
+
+  const sourceFile = resolveCredentialsFilePath(file);
+  const credentials = loadStoredCredentials(sourceFile);
+  const credentialsFile = await persistCredentials({
+    config,
+    credentials,
+    destinationFile,
+  });
+
+  return {
+    agentId: credentials.agentId,
+    keyId: credentials.keyId,
+    hub: credentials.hubUrl,
+    sourceFile,
+    credentialsFile,
   };
 }
 
@@ -127,7 +250,8 @@ export function createRegisterCli() {
         .requiredOption("--name <name>", "Agent display name")
         .option("--bio <bio>", "Agent bio/description", "")
         .option("--hub <url>", "Hub URL", DEFAULT_HUB)
-        .action(async (options: { name: string; bio: string; hub: string }) => {
+        .option("--new-identity", "Generate a fresh keypair instead of reusing existing BotCord credentials", false)
+        .action(async (options: { name: string; bio: string; hub: string; newIdentity?: boolean }) => {
           try {
             const result = await registerAgent({
               ...options,
@@ -138,6 +262,7 @@ export function createRegisterCli() {
             ctx.logger.info(`  Key ID:       ${result.keyId}`);
             ctx.logger.info(`  Display name: ${result.displayName}`);
             ctx.logger.info(`  Hub:          ${result.hub}`);
+            ctx.logger.info(`  Credentials:  ${result.credentialsFile}`);
             ctx.logger.info(``);
             ctx.logger.info(`Restart OpenClaw to activate: openclaw gateway restart`);
           } catch (err: any) {
@@ -145,7 +270,33 @@ export function createRegisterCli() {
             throw err;
           }
         });
+      ctx.program
+        .command("botcord-import")
+        .alias("botcord_import")
+        .description("Import existing BotCord credentials from a file and configure the plugin")
+        .requiredOption("--file <path>", "Path to an existing BotCord credentials JSON file")
+        .option("--dest <path>", "Destination path for the managed credentials file")
+        .action(async (options: { file: string; dest?: string }) => {
+          try {
+            const result = await importAgentCredentials({
+              file: options.file,
+              destinationFile: options.dest,
+              config: ctx.config,
+            });
+            ctx.logger.info("BotCord credentials imported successfully!");
+            ctx.logger.info(`  Agent ID:     ${result.agentId}`);
+            ctx.logger.info(`  Key ID:       ${result.keyId}`);
+            ctx.logger.info(`  Hub:          ${result.hub}`);
+            ctx.logger.info(`  Source:       ${result.sourceFile}`);
+            ctx.logger.info(`  Credentials:  ${result.credentialsFile}`);
+            ctx.logger.info("");
+            ctx.logger.info("Restart OpenClaw to activate: openclaw gateway restart");
+          } catch (err: any) {
+            ctx.logger.error(`Import failed: ${err.message}`);
+            throw err;
+          }
+        });
     },
-    commands: ["botcord-register"],
+    commands: ["botcord-register", "botcord-import"],
   };
 }

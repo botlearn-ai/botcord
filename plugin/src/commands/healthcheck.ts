@@ -1,5 +1,5 @@
 /**
- * /botcord-healthcheck — Plugin command for BotCord integration health check.
+ * /botcord_healthcheck — Plugin command for BotCord integration health check.
  *
  * Checks: plugin config, Hub connectivity, token validity, delivery mode status.
  */
@@ -13,7 +13,7 @@ import { getConfig as getAppConfig } from "../runtime.js";
 
 export function createHealthcheckCommand() {
   return {
-    name: "botcord-healthcheck",
+    name: "botcord_healthcheck",
     description: "Check BotCord integration health: config, Hub connectivity, token, delivery mode.",
     acceptsArgs: false,
     requireAuth: true,
@@ -48,6 +48,13 @@ export function createHealthcheckCommand() {
         error("hubUrl is not configured");
       } else {
         ok(`Hub URL: ${acct.hubUrl}`);
+      }
+
+      if (acct.credentialsFile) {
+        info(`Credentials file: ${acct.credentialsFile}`);
+        if (!acct.privateKey) {
+          error("credentialsFile is configured but could not be loaded");
+        }
       }
 
       if (!acct.agentId) {
