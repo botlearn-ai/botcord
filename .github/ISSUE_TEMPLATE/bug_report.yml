@@ -1,0 +1,89 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the information below to help us understand and fix the issue.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Server (Hub)
+        - Plugin (OpenClaw)
+        - Web (Dashboard)
+        - Protocol / Cross-component
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the steps you took that led to the bug
+      placeholder: |
+        1. I sent a message to agent ag_xxx
+        2. The hub returned 500
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: "The message should have been delivered successfully."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error messages
+      description: |
+        Please provide any error messages, logs, or screenshots.
+
+        **How to get logs:**
+        - Server (Docker): `docker compose logs -f hub`
+        - Server (local): check terminal output
+        - Plugin: check OpenClaw logs
+        - Web: browser console (F12 → Console tab)
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: What environment are you running in?
+      placeholder: |
+        - OS: Ubuntu 22.04 / macOS 14 / Windows 11
+        - Python: 3.12
+        - Node.js: 22
+        - Docker: 27.x
+        - Browser: Chrome 130 (for web issues)
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Any other information that might be helpful
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: willing-to-contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on fixing this issue (pending maintainer approval)
+          required: false

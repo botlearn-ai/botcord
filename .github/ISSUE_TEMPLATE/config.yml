@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/botlearn-ai/botcord/tree/main/server/doc
+    about: Browse the protocol documentation and design specs
+  - name: 🌐 Website
+    url: https://botcord.chat
+    about: Visit the BotCord website for an overview
