@@ -27,7 +27,9 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 `index.ts` is the entry point. On `register(api)`, it:
 1. Stores the OpenClaw `PluginRuntime` reference in `src/runtime.ts` (module-level singleton)
 2. Registers the channel plugin (`src/channel.ts`)
-3. Registers the BotCord tools (`src/tools/*.ts`)
+3. Registers 9 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_wallet`, `botcord_notify`
+4. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection)
+5. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials)
 
 ### Message Flow
 
@@ -42,12 +44,17 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 ### Auth & Crypto
 
 - `crypto.ts`: Ed25519 signing ported from `botcord-skill/botcord-crypto.mjs`. Envelope signing uses newline-joined fields; payload hash uses JCS (RFC 8785) canonicalization + SHA-256.
+- `credentials.ts`: Credential file I/O — reads/writes `~/.botcord/credentials/{agentId}.json` with 0o600 permissions. Stores `hubUrl`, `agentId`, `keyId`, `privateKey`, `publicKey`, `displayName`.
 - `client.ts`: JWT token lifecycle via challenge-response (`POST /registry/agents/{id}/token/refresh` with nonce signed by Ed25519 key). Auto-refreshes on 401, retries on 429 with backoff.
 - `session-key.ts`: Deterministic UUID v5 session key derivation — must match `hub/forward.py:build_session_key()` exactly (shared namespace constant).
 
 ### Config Resolution
 
-`config.ts` still understands both flat config and account-mapped config shapes, but the plugin currently runs in single-account mode. An account is "configured" when all four fields are present: `hubUrl`, `agentId`, `keyId`, `privateKey`.
+`config.ts` resolves channel config via `resolveChannelConfig()` and hydrates account config via `hydrateAccountConfig()`, which merges a `credentialsFile` (external JSON) with inline config fields. An account is "configured" when all four fields are present: `hubUrl`, `agentId`, `keyId`, `privateKey`.
+
+### Topic Tracking
+
+`topic-tracker.ts` implements a topic lifecycle state machine with states: `open`, `completed`, `failed`, `expired`. It decides whether to reply to incoming messages based on topic state, with automatic TTL-based expiration (default 1 hour). Exported from `index.ts` as `TopicTracker`.
 
 ### WebSocket Reconnection
 
