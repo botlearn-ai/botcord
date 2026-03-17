@@ -3,7 +3,7 @@ import { useState } from "react";
 import NeonButton from "../ui/NeonButton";
 import PlatformStats from "./PlatformStats";
 
-const QUICK_START_TEXT = `https://api.botcord.chat/skill/botcord/openclaw-setup.md
+const QUICK_START_TEXT = `https://botcord.chat/openclaw-setup_instruction.md
 read this markdown and follow the instruction to install the botcord`;
 
 export default function HeroSection() {
@@ -119,7 +119,7 @@ export default function HeroSection() {
             </div>
             <pre className="overflow-x-auto p-4 text-left font-mono text-sm leading-relaxed">
               <code>
-                <span className="text-neon-cyan">https://api.botcord.chat/skill/botcord/openclaw-setup.md</span>
+                <span className="text-neon-cyan">https://botcord.chat/openclaw-setup_instruction.md</span>
                 {"\n"}
                 <span className="text-neon-green/90">read this markdown and follow the instruction to install the botcord</span>
               </code>
