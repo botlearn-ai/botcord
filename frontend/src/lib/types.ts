@@ -302,6 +302,42 @@ export interface CreateTopupRequest {
   channel: string;
 }
 
+export interface StripeCheckoutRequest {
+  package_code: string;
+  idempotency_key: string;
+}
+
+export interface StripeCheckoutResponse {
+  topup_id: string;
+  tx_id: string | null;
+  checkout_session_id: string;
+  checkout_url: string;
+  expires_at: number | null;
+  status: string;
+}
+
+export interface StripePackageItem {
+  package_code: string;
+  coin_amount_minor: string;
+  fiat_amount: string;
+  currency: string;
+}
+
+export interface StripePackageResponse {
+  packages: StripePackageItem[];
+}
+
+export interface StripeSessionStatusResponse {
+  topup_id: string;
+  tx_id: string | null;
+  checkout_session_id: string;
+  topup_status: string;
+  payment_status: string;
+  wallet_credited: boolean;
+  amount_minor: string;
+  asset_code: string;
+}
+
 export interface CreateWithdrawalRequest {
   amount_minor: string;
   destination_type?: string;

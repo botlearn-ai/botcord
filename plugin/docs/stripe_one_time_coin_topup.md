@@ -410,6 +410,70 @@ async def fulfill_stripe_checkout(session_id: str) -> TopupRequest:
 - `stripe_price_id`
 - `coin_amount_minor`
 
+### 10.1.1 需要产品或运营提前提供的信息
+
+在正式开发前，至少需要拿到下面这些配置：
+
+- `STRIPE_SECRET_KEY`
+  - 测试环境先使用 `sk_test_...`
+- `STRIPE_WEBHOOK_SECRET`
+  - 在 Stripe Dashboard 或 Stripe CLI 建立 webhook endpoint 后获取
+- `STRIPE_TOPUP_CURRENCY`
+  - MVP 建议固定为 `usd`
+- `FRONTEND_BASE_URL`
+  - 例如 `https://app.botcord.example`
+- Hub 对外可访问的公网地址
+  - 例如 `https://api.botcord.example/stripe/webhook`
+- 固定充值套餐映射
+  - 每个套餐至少需要 `package_code`、`stripe_price_id`、`coin_amount_minor`
+
+推荐把套餐配置整理成如下 JSON，直接写入 `STRIPE_TOPUP_PACKAGES_JSON`：
+
+```json
+[
+  {
+    "package_code": "coin_500",
+    "stripe_price_id": "price_xxx",
+    "coin_amount_minor": "50000"
+  },
+  {
+    "package_code": "coin_1200",
+    "stripe_price_id": "price_yyy",
+    "coin_amount_minor": "120000"
+  }
+]
+```
+
+如果 Stripe 侧对象还没建好，也至少需要先明确：
+
+- 卖几个固定套餐
+- 每个套餐卖多少钱
+- 每个套餐对应多少 COIN
+- 首版币种是否固定为 `usd`
+- 是否只开通 `card` 支付方式
+
+### 10.1.2 Stripe Dashboard 侧需要准备的对象
+
+Stripe 平台侧至少要准备：
+
+- 一个可用的 Stripe account
+- 每个充值套餐对应的 Product / Price
+- 一个指向 Hub 的 webhook endpoint
+- 允许的支付方式配置
+- 测试模式下的测试卡和联调环境
+
+Hosted Checkout 首版建议：
+
+- `mode=payment`
+- payment methods 先只启用 `card`
+- success URL 带 `{CHECKOUT_SESSION_ID}`
+- cancel URL 只负责回站，不负责把本地 topup 改失败
+
+推荐 URL 约定：
+
+- `success_url = https://<frontend>/chats?wallet_topup=success&session_id={CHECKOUT_SESSION_ID}`
+- `cancel_url = https://<frontend>/chats?wallet_topup=cancelled`
+
 ### 10.2 不要这样做
 
 以下做法不建议：
@@ -524,7 +588,71 @@ stripe listen --forward-to localhost:8000/stripe/webhook
 7. 上线测试环境 webhook
 8. 小流量灰度
 
-## 15. 关键结论
+## 15. Checklist
+
+下面这份 checklist 可以直接作为实施和上线前核对表。
+
+### 15.1 配置准备
+
+- [ ] 确认首版只做 Stripe 单次充值，不做订阅
+- [ ] 确认首版使用固定套餐，不接受前端自定义 COIN 数量
+- [ ] 确认币种，例如 `usd`
+- [ ] 确认首版只启用 `card` 支付方式
+- [ ] 准备 `STRIPE_SECRET_KEY`
+- [ ] 准备 `FRONTEND_BASE_URL`
+- [ ] 确认 Hub 的公网访问地址
+- [ ] 在 Stripe 中创建每个套餐对应的 Product / Price
+- [ ] 整理 `STRIPE_TOPUP_PACKAGES_JSON`
+- [ ] 创建 webhook endpoint 并拿到 `STRIPE_WEBHOOK_SECRET`
+
+### 15.2 后端开发
+
+- [ ] 增加 Stripe 配置读取
+- [ ] 增加 Stripe SDK 封装
+- [ ] 增加 `POST /wallet/topups/stripe/checkout-session`
+- [ ] 增加 `GET /wallet/topups/stripe/session-status`
+- [ ] 增加 `POST /stripe/webhook`
+- [ ] 实现 `fulfill_stripe_checkout(session_id)`
+- [ ] 复用现有 `create_topup_request()` / `complete_topup_request()` / `fail_topup_request()`
+- [ ] 把 `topup_id`、`agent_id`、`package_code`、`coin_amount_minor` 写入 Stripe metadata
+- [ ] 按 `agent_id + idempotency_key + channel=stripe` 做本地幂等
+- [ ] 调 Stripe 创建 Checkout Session 时复用同一个 idempotency key
+- [ ] 校验 `Stripe-Signature`
+- [ ] 只处理白名单事件
+
+### 15.3 前端开发
+
+- [ ] 把当前 mock 充值入口改成固定套餐卡片
+- [ ] 点击套餐后调用 `POST /wallet/topups/stripe/checkout-session`
+- [ ] 拿到 `checkout_url` 后跳转 Stripe Hosted Checkout
+- [ ] success 回站后根据 `session_id` 调用状态查询接口
+- [ ] 支持显示成功 / 处理中 / 失败三种状态
+- [ ] 充值完成后刷新 wallet summary 和 ledger
+- [ ] cancel 回站只做提示，不直接改本地 topup 状态
+
+### 15.4 测试与联调
+
+- [ ] 覆盖创建 session 成功用例
+- [ ] 覆盖同一 `idempotency_key` 重试用例
+- [ ] 覆盖重复 webhook 不重复加币
+- [ ] 覆盖 webhook 先到、`external_ref` 尚未回写的恢复场景
+- [ ] 覆盖 Stripe session 创建失败时 topup 置 `failed`
+- [ ] 覆盖 `session-status` 在 webhook 前后返回正确状态
+- [ ] 使用 `stripe listen --forward-to localhost:8000/stripe/webhook` 做本地联调
+- [ ] 用 Stripe 测试卡跑通完整支付流程
+- [ ] 确认余额变化和 ledger 记账正确
+
+### 15.5 上线前检查
+
+- [ ] 生产环境 Product / Price 与测试环境隔离
+- [ ] 生产环境 webhook endpoint 已配置并验签通过
+- [ ] 生产环境回跳域名已配置正确
+- [ ] 已明确退款 / 拒付的人工处理规则
+- [ ] 已准备日志和告警，至少能查到 topup_id、session_id、payment_intent
+- [ ] 已完成测试环境验收
+- [ ] 先小流量灰度，再全量放开
+
+## 16. 关键结论
 
 如果要给 BotCord 接 Stripe 单次充值，最稳的做法不是“支付成功后直接改余额”，而是：
 
@@ -534,7 +662,7 @@ stripe listen --forward-to localhost:8000/stripe/webhook
 
 这样改动最小，也最符合当前仓库已经存在的钱包设计。
 
-## 16. 参考资料
+## 17. 参考资料
 
 - Stripe Checkout Sessions API: https://docs.stripe.com/api/checkout/sessions
 - Stripe Checkout fulfillment guide: https://docs.stripe.com/checkout/fulfillment

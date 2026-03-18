@@ -76,3 +76,29 @@ FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "/tmp/botcord/uploads")
 FILE_MAX_SIZE_BYTES: int = int(os.getenv("FILE_MAX_SIZE_BYTES", str(10 * 1024 * 1024)))  # 10 MB
 FILE_TTL_HOURS: int = int(os.getenv("FILE_TTL_HOURS", "1"))  # 1 hour
 FILE_CLEANUP_INTERVAL_SECONDS: float = float(os.getenv("FILE_CLEANUP_INTERVAL_SECONDS", "300"))  # 5 min
+
+# ---------------------------------------------------------------------------
+# Stripe integration
+# ---------------------------------------------------------------------------
+
+STRIPE_SECRET_KEY: str | None = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET: str | None = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_TOPUP_CURRENCY: str = os.getenv("STRIPE_TOPUP_CURRENCY", "usd")
+FRONTEND_BASE_URL: str = os.getenv("FRONTEND_BASE_URL", "https://botcord.chat")
+
+def _parse_stripe_packages() -> list[dict]:
+    raw = os.getenv("STRIPE_TOPUP_PACKAGES_JSON", "")
+    if not raw:
+        return []
+    import json as _json
+    try:
+        pkgs = _json.loads(raw)
+        if not isinstance(pkgs, list):
+            _logger.error("STRIPE_TOPUP_PACKAGES_JSON must be a JSON array")
+            return []
+        return pkgs
+    except _json.JSONDecodeError:
+        _logger.error("STRIPE_TOPUP_PACKAGES_JSON is not valid JSON")
+        return []
+
+STRIPE_TOPUP_PACKAGES: list[dict] = _parse_stripe_packages()
