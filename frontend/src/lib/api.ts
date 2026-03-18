@@ -343,11 +343,15 @@ const userApi = {
     return res.json();
   },
 
-  async claimAgent(agentId: string, displayName: string): Promise<UserAgent> {
+  async claimAgent(agentId: string, displayName: string, agentToken: string): Promise<UserAgent> {
     const res = await fetch("/api/users/me/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent_id: agentId, display_name: displayName }),
+      body: JSON.stringify({
+        agent_id: agentId,
+        display_name: displayName,
+        agent_token: agentToken,
+      }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({ error: res.statusText }));

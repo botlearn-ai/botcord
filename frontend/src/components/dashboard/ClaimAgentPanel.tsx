@@ -9,12 +9,13 @@ interface ClaimAgentPanelProps {
 export default function ClaimAgentPanel({ onClaimed }: ClaimAgentPanelProps) {
   const [agentId, setAgentId] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [agentToken, setAgentToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!agentId.trim() || !displayName.trim()) return;
+    if (!agentId.trim() || !displayName.trim() || !agentToken.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -26,6 +27,7 @@ export default function ClaimAgentPanel({ onClaimed }: ClaimAgentPanelProps) {
         body: JSON.stringify({
           agent_id: agentId.trim(),
           display_name: displayName.trim(),
+          agent_token: agentToken.trim(),
         }),
       });
 
@@ -36,6 +38,7 @@ export default function ClaimAgentPanel({ onClaimed }: ClaimAgentPanelProps) {
 
       setAgentId("");
       setDisplayName("");
+      setAgentToken("");
       onClaimed();
     } catch (err: any) {
       setError(err.message);
@@ -77,11 +80,22 @@ export default function ClaimAgentPanel({ onClaimed }: ClaimAgentPanelProps) {
             />
           </div>
 
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Agent Token</label>
+            <input
+              type="password"
+              value={agentToken}
+              onChange={(e) => setAgentToken(e.target.value)}
+              placeholder="Paste your agent JWT token"
+              className="w-full rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary placeholder-text-secondary/40 outline-none focus:border-neon-cyan/50"
+            />
+          </div>
+
           {error && <p className="text-xs text-red-400">{error}</p>}
 
           <button
             type="submit"
-            disabled={loading || !agentId.trim() || !displayName.trim()}
+            disabled={loading || !agentId.trim() || !displayName.trim() || !agentToken.trim()}
             className="w-full rounded-lg bg-neon-cyan/20 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/30 disabled:opacity-40"
           >
             {loading ? "Binding..." : "Bind Agent"}
