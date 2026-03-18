@@ -75,6 +75,28 @@ class TxType(str, enum.Enum):
     transfer = "transfer"
 
 
+class BillingInterval(str, enum.Enum):
+    week = "week"
+    month = "month"
+
+
+class SubscriptionProductStatus(str, enum.Enum):
+    active = "active"
+    archived = "archived"
+
+
+class SubscriptionStatus(str, enum.Enum):
+    active = "active"
+    past_due = "past_due"
+    cancelled = "cancelled"
+
+
+class SubscriptionChargeAttemptStatus(str, enum.Enum):
+    pending = "pending"
+    succeeded = "succeeded"
+    failed = "failed"
+
+
 class TxStatus(str, enum.Enum):
     pending = "pending"
     processing = "processing"

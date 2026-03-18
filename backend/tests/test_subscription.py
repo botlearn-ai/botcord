@@ -1,0 +1,436 @@
+"""Focused tests for subscription products and recurring billing."""
+
+import base64
+import datetime
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from nacl.signing import SigningKey
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from hub.enums import SubscriptionChargeAttemptStatus, SubscriptionStatus
+from hub.models import AgentSubscription, Base, SubscriptionChargeAttempt
+
+TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    engine = create_async_engine(TEST_DB_URL)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        yield session
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession, monkeypatch):
+    import hub.config as cfg
+
+    monkeypatch.setattr(cfg, "ALLOW_PRIVATE_ENDPOINTS", True)
+
+    from hub.database import get_db
+    from hub.main import app
+
+    async def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+def _make_keypair() -> tuple[SigningKey, str]:
+    sk = SigningKey.generate()
+    pub_b64 = base64.b64encode(bytes(sk.verify_key)).decode()
+    return sk, f"ed25519:{pub_b64}"
+
+
+async def _register_and_verify(
+    client: AsyncClient,
+    sk: SigningKey,
+    pubkey_str: str,
+    name: str = "agent",
+):
+    resp = await client.post(
+        "/registry/agents",
+        json={"display_name": name, "pubkey": pubkey_str, "bio": "test"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    agent_id = data["agent_id"]
+    key_id = data["key_id"]
+    challenge = data["challenge"]
+
+    challenge_bytes = base64.b64decode(challenge)
+    sig_b64 = base64.b64encode(sk.sign(challenge_bytes).signature).decode()
+
+    resp = await client.post(
+        f"/registry/agents/{agent_id}/verify",
+        json={"key_id": key_id, "challenge": challenge, "sig": sig_b64},
+    )
+    assert resp.status_code == 200
+    token = resp.json()["agent_token"]
+    return agent_id, token
+
+
+def _auth(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _utc(dt: datetime.datetime) -> datetime.datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc)
+
+
+async def _fund_agent(client: AsyncClient, token: str, amount_minor: int):
+    resp = await client.post(
+        "/wallet/topups",
+        json={"amount_minor": str(amount_minor), "channel": "mock"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    topup_id = resp.json()["topup_id"]
+    resp = await client.post(f"/internal/wallet/topups/{topup_id}/complete")
+    assert resp.status_code == 200
+
+
+async def _create_product(
+    client: AsyncClient,
+    token: str,
+    *,
+    name: str,
+    amount_minor: int,
+    billing_interval: str,
+    description: str = "",
+):
+    resp = await client.post(
+        "/subscriptions/products",
+        json={
+            "name": name,
+            "description": description,
+            "amount_minor": str(amount_minor),
+            "billing_interval": billing_interval,
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def _subscribe(client: AsyncClient, token: str, product_id: str, key: str | None = None):
+    payload = {}
+    if key:
+        payload["idempotency_key"] = key
+    resp = await client.post(
+        f"/subscriptions/products/{product_id}/subscribe",
+        json=payload,
+        headers=_auth(token),
+    )
+    return resp
+
+
+async def _set_subscription_due(
+    db_session: AsyncSession,
+    subscription_id: str,
+    due_at: datetime.datetime,
+    period_end: datetime.datetime | None = None,
+):
+    result = await db_session.execute(
+        select(AgentSubscription).where(AgentSubscription.subscription_id == subscription_id)
+    )
+    sub = result.scalar_one()
+    sub.next_charge_at = due_at
+    if period_end is not None:
+        sub.current_period_end = period_end
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_create_product_and_list(client: AsyncClient):
+    sk, pubkey = _make_keypair()
+    agent_id, token = await _register_and_verify(client, sk, pubkey, "Provider")
+
+    product = await _create_product(
+        client,
+        token,
+        name="Weekly Advice",
+        description="1 week access",
+        amount_minor=10000,
+        billing_interval="week",
+    )
+    assert product["owner_agent_id"] == agent_id
+    assert product["status"] == "active"
+    assert product["billing_interval"] == "week"
+
+    resp = await client.get("/subscriptions/products")
+    assert resp.status_code == 200
+    assert len(resp.json()["products"]) == 1
+
+    resp = await client.get("/subscriptions/products/me", headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json()["products"][0]["product_id"] == product["product_id"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_charges_first_period_immediately(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    subscriber_id, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Weekly Club",
+        amount_minor=10000,
+        billing_interval="week",
+    )
+
+    await _fund_agent(client, subscriber_token, 20000)
+
+    resp = await _subscribe(client, subscriber_token, product["product_id"], key="sub-key-1")
+    assert resp.status_code == 201, resp.text
+    subscription = resp.json()
+    assert subscription["subscriber_agent_id"] == subscriber_id
+    assert subscription["provider_agent_id"] == provider_id
+    assert subscription["status"] == "active"
+    assert subscription["amount_minor"] == "10000"
+    assert subscription["last_charge_tx_id"]
+
+    resp = await client.get("/wallet/me", headers=_auth(subscriber_token))
+    assert resp.json()["available_balance_minor"] == "10000"
+
+    resp = await client.get("/wallet/me", headers=_auth(provider_token))
+    assert resp.json()["available_balance_minor"] == "10000"
+
+    resp = await client.get(
+        f"/wallet/transactions/{subscription['last_charge_tx_id']}",
+        headers=_auth(subscriber_token),
+    )
+    assert resp.status_code == 200
+    tx = resp.json()
+    assert tx["type"] == "transfer"
+    assert tx["reference_type"] == "subscription_charge"
+    assert tx["reference_id"] == subscription["subscription_id"]
+    assert tx["metadata_json"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_insufficient_balance(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    _, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Monthly Club",
+        amount_minor=10000,
+        billing_interval="month",
+    )
+
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    assert resp.status_code == 400
+    assert "Insufficient balance" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_recurring_billing_success(client: AsyncClient, db_session: AsyncSession):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    _, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Weekly Billing",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _fund_agent(client, subscriber_token, 20000)
+
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    subscription_id = resp.json()["subscription_id"]
+
+    result = await db_session.execute(
+        select(AgentSubscription).where(AgentSubscription.subscription_id == subscription_id)
+    )
+    sub = result.scalar_one()
+    due_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    await _set_subscription_due(db_session, subscription_id, due_at, due_at)
+
+    resp = await client.post("/internal/subscriptions/run-billing")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["charged_count"] == 1
+
+    result = await db_session.execute(
+        select(AgentSubscription).where(AgentSubscription.subscription_id == subscription_id)
+    )
+    sub = result.scalar_one()
+    assert sub.status == SubscriptionStatus.active
+    assert sub.consecutive_failed_attempts == 0
+    assert sub.next_charge_at > due_at
+    assert sub.current_period_end > due_at
+
+    result = await db_session.execute(
+        select(SubscriptionChargeAttempt).where(
+            SubscriptionChargeAttempt.subscription_id == subscription_id
+        )
+    )
+    attempt = result.scalar_one()
+    assert attempt.status == SubscriptionChargeAttemptStatus.succeeded
+
+
+@pytest.mark.asyncio
+async def test_recurring_billing_failure_moves_to_past_due(
+    client: AsyncClient, db_session: AsyncSession
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    _, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Weekly Billing Fail",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _fund_agent(client, subscriber_token, 5000)
+
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    subscription_id = resp.json()["subscription_id"]
+
+    due_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    await _set_subscription_due(db_session, subscription_id, due_at, due_at)
+
+    resp = await client.post("/internal/subscriptions/run-billing")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["failed_count"] == 1
+
+    result = await db_session.execute(
+        select(AgentSubscription).where(AgentSubscription.subscription_id == subscription_id)
+    )
+    sub = result.scalar_one()
+    assert sub.status == SubscriptionStatus.past_due
+    assert sub.consecutive_failed_attempts == 1
+    assert _utc(sub.next_charge_at) > datetime.datetime.now(datetime.timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_auto_cancel_after_three_failed_attempts(
+    client: AsyncClient, db_session: AsyncSession
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    _, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Weekly Billing Auto Cancel",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _fund_agent(client, subscriber_token, 5000)
+
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    subscription_id = resp.json()["subscription_id"]
+
+    for _ in range(3):
+        due_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+        await _set_subscription_due(db_session, subscription_id, due_at, due_at)
+        resp = await client.post("/internal/subscriptions/run-billing")
+        assert resp.status_code == 200, resp.text
+
+    result = await db_session.execute(
+        select(AgentSubscription).where(AgentSubscription.subscription_id == subscription_id)
+    )
+    sub = result.scalar_one()
+    assert sub.status == SubscriptionStatus.cancelled
+    assert sub.consecutive_failed_attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_duplicate_billing_cycle_processing_is_idempotent(
+    client: AsyncClient, db_session: AsyncSession
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    _, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Weekly Billing Idempotent",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _fund_agent(client, subscriber_token, 20000)
+
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    subscription_id = resp.json()["subscription_id"]
+
+    result = await db_session.execute(
+        select(AgentSubscription).where(AgentSubscription.subscription_id == subscription_id)
+    )
+    sub = result.scalar_one()
+    due_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    await _set_subscription_due(db_session, subscription_id, due_at, due_at)
+
+    resp = await client.post("/internal/subscriptions/run-billing")
+    assert resp.status_code == 200, resp.text
+    wallet_after_first = await client.get("/wallet/me", headers=_auth(subscriber_token))
+    first_available = wallet_after_first.json()["available_balance_minor"]
+
+    await _set_subscription_due(db_session, subscription_id, due_at, due_at)
+
+    resp = await client.post("/internal/subscriptions/run-billing")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["skipped_count"] == 1
+
+    wallet_after_second = await client.get("/wallet/me", headers=_auth(subscriber_token))
+    assert wallet_after_second.json()["available_balance_minor"] == first_available
+
+
+@pytest.mark.asyncio
+async def test_archived_product_blocks_new_subscribe(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    _, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="One Shot Product",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+
+    resp = await client.post(
+        f"/subscriptions/products/{product['product_id']}/archive",
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "archived"
+
+    await _fund_agent(client, subscriber_token, 10000)
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    assert resp.status_code == 400
+    assert "archived" in resp.json()["detail"].lower()

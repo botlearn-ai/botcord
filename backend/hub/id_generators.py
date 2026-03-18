@@ -67,3 +67,18 @@ def generate_topup_id() -> str:
 def generate_withdrawal_id() -> str:
     """Generate withdrawal request ID: 'wd_' + 16 random hex chars."""
     return "wd_" + secrets.token_hex(8)
+
+
+def generate_subscription_product_id() -> str:
+    """Generate subscription product ID: 'sp_' + 16 random hex chars."""
+    return "sp_" + secrets.token_hex(8)
+
+
+def generate_subscription_id() -> str:
+    """Generate subscription ID: 'sub_' + 16 random hex chars."""
+    return "sub_" + secrets.token_hex(8)
+
+
+def generate_subscription_charge_attempt_id() -> str:
+    """Generate subscription charge attempt ID: 'sca_' + 16 random hex chars."""
+    return "sca_" + secrets.token_hex(8)

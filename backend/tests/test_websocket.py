@@ -162,11 +162,8 @@ async def test_ws_receives_inbox_update(client: AsyncClient):
             auth_msg = ws.receive_json()
             assert auth_msg["type"] == "auth_ok"
 
-            # Trigger inbox notification in a background task
-            import asyncio
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(notify_inbox(agent_id))
-            loop.close()
+            # Trigger inbox notification from the current test loop.
+            await notify_inbox(agent_id)
 
             # We should receive an inbox_update
             msg = ws.receive_json()

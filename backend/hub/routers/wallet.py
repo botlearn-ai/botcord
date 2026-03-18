@@ -101,6 +101,9 @@ async def create_transfer(
             amount_minor=amount,
             idempotency_key=req.idempotency_key,
             memo=req.memo,
+            reference_type=req.reference_type,
+            reference_id=req.reference_id,
+            metadata=req.metadata,
         )
         await db.commit()
     except ValueError as e:

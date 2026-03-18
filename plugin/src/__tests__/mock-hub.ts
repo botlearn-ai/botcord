@@ -11,6 +11,53 @@ export interface MockWallet {
   locked_balance_minor: number;
 }
 
+export interface MockSubscriptionProduct {
+  product_id: string;
+  owner_agent_id: string;
+  name: string;
+  description: string;
+  asset_code: string;
+  amount_minor: number;
+  billing_interval: "week" | "month";
+  status: "active" | "archived";
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+export interface MockSubscription {
+  subscription_id: string;
+  product_id: string;
+  subscriber_agent_id: string;
+  provider_agent_id: string;
+  asset_code: string;
+  amount_minor: number;
+  billing_interval: "week" | "month";
+  status: "active" | "past_due" | "cancelled";
+  current_period_start: string;
+  current_period_end: string;
+  next_charge_at: string;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  last_charged_at: string | null;
+  last_charge_tx_id: string | null;
+  consecutive_failed_attempts: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MockSubscriptionChargeAttempt {
+  attempt_id: string;
+  subscription_id: string;
+  billing_cycle_key: string;
+  status: "pending" | "succeeded" | "failed";
+  scheduled_at: string;
+  attempted_at: string | null;
+  tx_id: string | null;
+  failure_reason: string | null;
+  created_at: string;
+}
+
 export interface MockHubState {
   /** Sent messages stored here */
   messages: Array<{ envelope: any; topic?: string }>;
@@ -32,10 +79,18 @@ export interface MockHubState {
   walletTransactions: any[];
   /** Wallet ledger entries */
   walletEntries: any[];
+  /** Subscription products */
+  subscriptionProducts: MockSubscriptionProduct[];
+  /** Active subscriptions */
+  subscriptions: MockSubscription[];
+  /** Billing attempts, keyed by subscription_id + billing_cycle_key */
+  subscriptionChargeAttempts: Map<string, MockSubscriptionChargeAttempt>;
   /** Seen idempotency keys */
   idempotencyKeys: Map<string, any>;
   /** Known agent IDs (for transfer recipient validation) */
   knownAgents: Set<string>;
+  /** JWT token to agent mapping */
+  tokens: Map<string, string>;
 }
 
 function parseBody(req: IncomingMessage): Promise<any> {
@@ -58,6 +113,207 @@ function uniqueId(prefix: string): string {
   return `${prefix}${Date.now()}_${++_idCounter}`;
 }
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function getBearerToken(req: IncomingMessage): string | null {
+  const header = req.headers.authorization;
+  if (!header || Array.isArray(header)) return null;
+  return header.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
+}
+
+function getAgentIdFromRequest(req: IncomingMessage, state: MockHubState): string {
+  const token = getBearerToken(req);
+  if (token && state.tokens.has(token)) {
+    return state.tokens.get(token)!;
+  }
+  return "ag_testclient00";
+}
+
+function ensureWallet(state: MockHubState, agentId: string): MockWallet {
+  let wallet = state.wallets.get(agentId);
+  if (!wallet) {
+    wallet = { agent_id: agentId, available_balance_minor: 0, locked_balance_minor: 0 };
+    state.wallets.set(agentId, wallet);
+  }
+  return wallet;
+}
+
+function addInterval(baseIso: string, interval: "week" | "month"): string {
+  const date = new Date(baseIso);
+  if (interval === "week") {
+    date.setUTCDate(date.getUTCDate() + 7);
+    return date.toISOString();
+  }
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
+  const target = new Date(Date.UTC(year, month + 1, 1, date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString();
+}
+
+function productResponse(product: MockSubscriptionProduct) {
+  return {
+    ...product,
+    amount_minor: String(product.amount_minor),
+  };
+}
+
+function subscriptionResponse(subscription: MockSubscription) {
+  return {
+    ...subscription,
+    amount_minor: String(subscription.amount_minor),
+  };
+}
+
+function recordWalletTx(state: MockHubState, tx: Record<string, any>) {
+  state.walletTransactions.push(tx);
+}
+
+function writeLedgerEntry(
+  state: MockHubState,
+  entry: {
+    entry_id: string;
+    tx_id: string;
+    agent_id: string;
+    asset_code: string;
+    direction: "debit" | "credit";
+    amount_minor: string;
+    balance_after_minor: string;
+    created_at: string;
+  },
+) {
+  state.walletEntries.push(entry);
+}
+
+function makeChargeTx(
+  fromId: string,
+  toId: string,
+  amount: number,
+  now: string,
+  referenceType: string,
+  referenceId: string,
+  metadata: Record<string, unknown>,
+): Record<string, any> {
+  return {
+    tx_id: uniqueId("tx_"),
+    type: "transfer",
+    status: "completed",
+    asset_code: "COIN",
+    amount_minor: String(amount),
+    fee_minor: "0",
+    from_agent_id: fromId,
+    to_agent_id: toId,
+    reference_type: referenceType,
+    reference_id: referenceId,
+    idempotency_key: null,
+    metadata_json: JSON.stringify(metadata),
+    created_at: now,
+    updated_at: now,
+    completed_at: now,
+  };
+}
+
+function chargeSubscription(
+  state: MockHubState,
+  subscription: MockSubscription,
+  now: string,
+  billingCycleKey: string,
+  phase: "initial" | "renewal",
+): { ok: true; txId: string } | { ok: false; reason: string } {
+  const attemptKey = `${subscription.subscription_id}:${billingCycleKey}`;
+  const existingAttempt = state.subscriptionChargeAttempts.get(attemptKey);
+  if (existingAttempt?.status === "succeeded") {
+    return { ok: true, txId: existingAttempt.tx_id! };
+  }
+
+  const subscriberWallet = ensureWallet(state, subscription.subscriber_agent_id);
+  const providerWallet = ensureWallet(state, subscription.provider_agent_id);
+  const amount = subscription.amount_minor;
+
+  if (subscriberWallet.available_balance_minor < amount) {
+    const failedAttempt: MockSubscriptionChargeAttempt = existingAttempt ?? {
+      attempt_id: uniqueId("sa_"),
+      subscription_id: subscription.subscription_id,
+      billing_cycle_key: billingCycleKey,
+      status: "pending",
+      scheduled_at: billingCycleKey,
+      attempted_at: null,
+      tx_id: null,
+      failure_reason: null,
+      created_at: now,
+    };
+    failedAttempt.status = "failed";
+    failedAttempt.attempted_at = now;
+    failedAttempt.failure_reason = "Insufficient balance";
+    state.subscriptionChargeAttempts.set(attemptKey, failedAttempt);
+    return { ok: false, reason: "Insufficient balance" };
+  }
+
+  subscriberWallet.available_balance_minor -= amount;
+  providerWallet.available_balance_minor += amount;
+
+  const tx = makeChargeTx(
+    subscription.subscriber_agent_id,
+    subscription.provider_agent_id,
+    amount,
+    now,
+    "subscription_charge",
+    subscription.subscription_id,
+    {
+      kind: "subscription_charge",
+      subscription_id: subscription.subscription_id,
+      product_id: subscription.product_id,
+      billing_cycle_key: billingCycleKey,
+      phase,
+    },
+  );
+  recordWalletTx(state, tx);
+
+  writeLedgerEntry(state, {
+    entry_id: uniqueId("we_"),
+    tx_id: tx.tx_id,
+    agent_id: subscription.subscriber_agent_id,
+    asset_code: "COIN",
+    direction: "debit",
+    amount_minor: String(amount),
+    balance_after_minor: String(subscriberWallet.available_balance_minor),
+    created_at: now,
+  });
+  writeLedgerEntry(state, {
+    entry_id: uniqueId("we_"),
+    tx_id: tx.tx_id,
+    agent_id: subscription.provider_agent_id,
+    asset_code: "COIN",
+    direction: "credit",
+    amount_minor: String(amount),
+    balance_after_minor: String(providerWallet.available_balance_minor),
+    created_at: now,
+  });
+
+  const attempt: MockSubscriptionChargeAttempt = existingAttempt ?? {
+    attempt_id: uniqueId("sa_"),
+    subscription_id: subscription.subscription_id,
+    billing_cycle_key: billingCycleKey,
+    status: "pending",
+    scheduled_at: billingCycleKey,
+    attempted_at: null,
+    tx_id: null,
+    failure_reason: null,
+    created_at: now,
+  };
+  attempt.status = "succeeded";
+  attempt.attempted_at = now;
+  attempt.tx_id = tx.tx_id;
+  attempt.failure_reason = null;
+  state.subscriptionChargeAttempts.set(attemptKey, attempt);
+
+  return { ok: true, txId: tx.tx_id };
+}
+
 export function createMockHub() {
   const state: MockHubState = {
     messages: [],
@@ -70,8 +326,12 @@ export function createMockHub() {
     wallets: new Map(),
     walletTransactions: [],
     walletEntries: [],
+    subscriptionProducts: [],
+    subscriptions: [],
+    subscriptionChargeAttempts: new Map(),
     idempotencyKeys: new Map(),
     knownAgents: new Set(["ag_testclient00"]),
+    tokens: new Map(),
   };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -94,9 +354,14 @@ export function createMockHub() {
     // ── Token refresh ──────────────────────────────────────────
     if (path.includes("/token/refresh") && method === "POST") {
       state.tokenRefreshCount++;
+      const agentId = path.split("/")[3] || "ag_testclient00";
+      state.knownAgents.add(agentId);
+      const token = `mock-jwt-token-${state.tokenRefreshCount}-${agentId}`;
+      state.tokens.set(token, agentId);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
-        token: `mock-jwt-token-${state.tokenRefreshCount}`,
+        token,
+        agent_token: token,
         expires_at: Math.floor(Date.now() / 1000) + 86400,
       }));
       return;
@@ -249,13 +514,8 @@ export function createMockHub() {
 
     // ── Wallet: get balance ──────────────────────────────────────
     if (path === "/wallet/me" && method === "GET") {
-      // Extract agent from auth header (simplified — use a default)
-      const agentId = "ag_testclient00";
-      let w = state.wallets.get(agentId);
-      if (!w) {
-        w = { agent_id: agentId, available_balance_minor: 0, locked_balance_minor: 0 };
-        state.wallets.set(agentId, w);
-      }
+      const agentId = getAgentIdFromRequest(req, state);
+      const w = ensureWallet(state, agentId);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         agent_id: w.agent_id,
@@ -263,7 +523,7 @@ export function createMockHub() {
         available_balance_minor: String(w.available_balance_minor),
         locked_balance_minor: String(w.locked_balance_minor),
         total_balance_minor: String(w.available_balance_minor + w.locked_balance_minor),
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso(),
       }));
       return;
     }
@@ -271,7 +531,7 @@ export function createMockHub() {
     // ── Wallet: transfer ──────────────────────────────────────
     if (path === "/wallet/transfers" && method === "POST") {
       const body = await parseBody(req);
-      const fromId = "ag_testclient00";
+      const fromId = getAgentIdFromRequest(req, state);
       const toId = body.to_agent_id;
       const amount = parseInt(body.amount_minor, 10);
 
@@ -282,11 +542,7 @@ export function createMockHub() {
         return;
       }
 
-      let fromW = state.wallets.get(fromId);
-      if (!fromW) {
-        fromW = { agent_id: fromId, available_balance_minor: 0, locked_balance_minor: 0 };
-        state.wallets.set(fromId, fromW);
-      }
+      const fromW = ensureWallet(state, fromId);
       if (fromId === toId) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ detail: "Cannot transfer to yourself" }));
@@ -309,15 +565,11 @@ export function createMockHub() {
       }
 
       fromW.available_balance_minor -= amount;
-      let toW = state.wallets.get(toId);
-      if (!toW) {
-        toW = { agent_id: toId, available_balance_minor: 0, locked_balance_minor: 0 };
-        state.wallets.set(toId, toW);
-      }
+      const toW = ensureWallet(state, toId);
       toW.available_balance_minor += amount;
 
       const txId = uniqueId("tx_");
-      const now = new Date().toISOString();
+      const now = nowIso();
       const metadataJson = body.memo ? JSON.stringify({ memo: body.memo }) : null;
       const tx = {
         tx_id: txId,
@@ -328,8 +580,12 @@ export function createMockHub() {
         fee_minor: "0",
         from_agent_id: fromId,
         to_agent_id: toId,
+        reference_type: body.reference_type ?? null,
+        reference_id: body.reference_id ?? null,
+        idempotency_key: body.idempotency_key ?? null,
         metadata_json: metadataJson,
         created_at: now,
+        updated_at: now,
         completed_at: now,
       };
       state.walletTransactions.push(tx);
@@ -368,7 +624,7 @@ export function createMockHub() {
     // ── Wallet: topup (creates pending request, does NOT credit wallet) ──
     if (path === "/wallet/topups" && method === "POST") {
       const body = await parseBody(req);
-      const agentId = "ag_testclient00";
+      const agentId = getAgentIdFromRequest(req, state);
       const amount = parseInt(body.amount_minor, 10);
 
       if (body.idempotency_key && state.idempotencyKeys.has(body.idempotency_key)) {
@@ -379,7 +635,7 @@ export function createMockHub() {
 
       const topupId = uniqueId("tu_");
       const txId = uniqueId("tx_");
-      const now = new Date().toISOString();
+      const now = nowIso();
 
       // Pending transaction — balance NOT changed yet
       const tx = {
@@ -391,7 +647,12 @@ export function createMockHub() {
         fee_minor: "0",
         from_agent_id: null,
         to_agent_id: agentId,
+        reference_type: null,
+        reference_id: null,
+        idempotency_key: body.idempotency_key ?? null,
+        metadata_json: body.metadata ? JSON.stringify(body.metadata) : null,
         created_at: now,
+        updated_at: now,
         completed_at: null,
       };
       state.walletTransactions.push(tx);
@@ -433,14 +694,10 @@ export function createMockHub() {
 
       // Now credit the wallet
       const agentId = topup._agentId;
-      let w = state.wallets.get(agentId);
-      if (!w) {
-        w = { agent_id: agentId, available_balance_minor: 0, locked_balance_minor: 0 };
-        state.wallets.set(agentId, w);
-      }
+      const w = ensureWallet(state, agentId);
       w.available_balance_minor += topup._amount;
 
-      const now = new Date().toISOString();
+      const now = nowIso();
       topup.status = "completed";
       topup.completed_at = now;
 
@@ -449,6 +706,7 @@ export function createMockHub() {
       if (tx) {
         tx.status = "completed";
         tx.completed_at = now;
+        tx.updated_at = now;
       }
 
       // Write ledger entry
@@ -471,7 +729,7 @@ export function createMockHub() {
     // ── Wallet: withdrawal ────────────────────────────────────
     if (path === "/wallet/withdrawals" && method === "POST") {
       const body = await parseBody(req);
-      const agentId = "ag_testclient00";
+      const agentId = getAgentIdFromRequest(req, state);
       const amount = parseInt(body.amount_minor, 10);
 
       if (body.idempotency_key && state.idempotencyKeys.has(body.idempotency_key)) {
@@ -480,11 +738,7 @@ export function createMockHub() {
         return;
       }
 
-      let w = state.wallets.get(agentId);
-      if (!w) {
-        w = { agent_id: agentId, available_balance_minor: 0, locked_balance_minor: 0 };
-        state.wallets.set(agentId, w);
-      }
+      const w = ensureWallet(state, agentId);
       if (w.available_balance_minor < amount) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ detail: "Insufficient balance" }));
@@ -496,7 +750,7 @@ export function createMockHub() {
 
       const wdId = uniqueId("wd_");
       const txId = uniqueId("tx_");
-      const now = new Date().toISOString();
+      const now = nowIso();
       const result = {
         withdrawal_id: wdId,
         tx_id: txId,
@@ -514,7 +768,12 @@ export function createMockHub() {
         fee_minor: "0",
         from_agent_id: agentId,
         to_agent_id: null,
+        reference_type: null,
+        reference_id: null,
+        idempotency_key: body.idempotency_key ?? null,
+        metadata_json: body.destination ? JSON.stringify(body.destination) : null,
         created_at: now,
+        updated_at: now,
         completed_at: null,
       });
 
@@ -527,9 +786,274 @@ export function createMockHub() {
       return;
     }
 
+    // ── Subscriptions: products ────────────────────────────────
+    if (path === "/subscriptions/products" && method === "POST") {
+      const body = await parseBody(req);
+      const ownerAgentId = getAgentIdFromRequest(req, state);
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const description = typeof body.description === "string" ? body.description : "";
+      const amount = parseInt(body.amount_minor, 10);
+      const billingInterval = body.billing_interval;
+      const assetCode = body.asset_code || "COIN";
+
+      if (!name) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "name is required" }));
+        return;
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "amount_minor must be positive" }));
+        return;
+      }
+      if (billingInterval !== "week" && billingInterval !== "month") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "billing_interval must be week or month" }));
+        return;
+      }
+
+      const now = nowIso();
+      const product: MockSubscriptionProduct = {
+        product_id: uniqueId("sp_"),
+        owner_agent_id: ownerAgentId,
+        name,
+        description,
+        asset_code: assetCode,
+        amount_minor: amount,
+        billing_interval: billingInterval,
+        status: "active",
+        created_at: now,
+        updated_at: now,
+        archived_at: null,
+      };
+      state.subscriptionProducts.push(product);
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(productResponse(product)));
+      return;
+    }
+
+    if (path === "/subscriptions/products/me" && method === "GET") {
+      const agentId = getAgentIdFromRequest(req, state);
+      const products = state.subscriptionProducts.filter((product) => product.owner_agent_id === agentId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(products.map(productResponse)));
+      return;
+    }
+
+    if (path === "/subscriptions/products" && method === "GET") {
+      const products = state.subscriptionProducts.filter((product) => product.status === "active");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(products.map(productResponse)));
+      return;
+    }
+
+    if (path.match(/^\/subscriptions\/products\/sp_[^/]+\/archive$/) && method === "POST") {
+      const productId = path.split("/")[3];
+      const agentId = getAgentIdFromRequest(req, state);
+      const product = state.subscriptionProducts.find((item) => item.product_id === productId);
+      if (!product) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Product not found" }));
+        return;
+      }
+      if (product.owner_agent_id !== agentId) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Not authorized" }));
+        return;
+      }
+      if (product.status === "archived") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(productResponse(product)));
+        return;
+      }
+      product.status = "archived";
+      product.updated_at = nowIso();
+      product.archived_at = product.updated_at;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(productResponse(product)));
+      return;
+    }
+
+    // ── Subscriptions: subscription instances ──────────────────
+    if (path.match(/^\/subscriptions\/products\/sp_[^/]+\/subscribe$/) && method === "POST") {
+      const productId = path.split("/")[3];
+      const subscriberAgentId = getAgentIdFromRequest(req, state);
+      const product = state.subscriptionProducts.find((item) => item.product_id === productId);
+      if (!product) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Product not found" }));
+        return;
+      }
+      if (product.status !== "active") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Product is archived" }));
+        return;
+      }
+      if (product.owner_agent_id === subscriberAgentId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Cannot subscribe to your own product" }));
+        return;
+      }
+
+      const existing = state.subscriptions.find(
+        (subscription) =>
+          subscription.product_id === productId &&
+          subscription.subscriber_agent_id === subscriberAgentId,
+      );
+      if (existing) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(subscriptionResponse(existing)));
+        return;
+      }
+
+      const now = nowIso();
+      const currentPeriodEnd = addInterval(now, product.billing_interval);
+      const subscription: MockSubscription = {
+        subscription_id: uniqueId("su_"),
+        product_id: product.product_id,
+        subscriber_agent_id: subscriberAgentId,
+        provider_agent_id: product.owner_agent_id,
+        asset_code: product.asset_code,
+        amount_minor: product.amount_minor,
+        billing_interval: product.billing_interval,
+        status: "active",
+        current_period_start: now,
+        current_period_end: currentPeriodEnd,
+        next_charge_at: currentPeriodEnd,
+        cancel_at_period_end: false,
+        cancelled_at: null,
+        last_charged_at: null,
+        last_charge_tx_id: null,
+        consecutive_failed_attempts: 0,
+        created_at: now,
+        updated_at: now,
+      };
+
+      const charge = chargeSubscription(state, subscription, now, `initial:${subscription.subscription_id}`, "initial");
+      if (!charge.ok) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: charge.reason }));
+        return;
+      }
+
+      subscription.last_charged_at = now;
+      subscription.last_charge_tx_id = charge.txId;
+      state.subscriptions.push(subscription);
+      res.writeHead(201, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(subscriptionResponse(subscription)));
+      return;
+    }
+
+    if (path === "/subscriptions/me" && method === "GET") {
+      const agentId = getAgentIdFromRequest(req, state);
+      const subscriptions = state.subscriptions.filter((subscription) => subscription.subscriber_agent_id === agentId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(subscriptions.map(subscriptionResponse)));
+      return;
+    }
+
+    if (path.match(/^\/subscriptions\/products\/sp_[^/]+\/subscribers$/) && method === "GET") {
+      const productId = path.split("/")[3];
+      const agentId = getAgentIdFromRequest(req, state);
+      const product = state.subscriptionProducts.find((item) => item.product_id === productId);
+      if (!product) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Product not found" }));
+        return;
+      }
+      if (product.owner_agent_id !== agentId) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Not authorized" }));
+        return;
+      }
+      const subscriptions = state.subscriptions.filter((subscription) => subscription.product_id === productId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(subscriptions.map(subscriptionResponse)));
+      return;
+    }
+
+    if (path.match(/^\/subscriptions\/su_[^/]+\/cancel$/) && method === "POST") {
+      const subscriptionId = path.split("/")[2];
+      const agentId = getAgentIdFromRequest(req, state);
+      const subscription = state.subscriptions.find((item) => item.subscription_id === subscriptionId);
+      if (!subscription) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Subscription not found" }));
+        return;
+      }
+      if (subscription.subscriber_agent_id !== agentId) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Not authorized" }));
+        return;
+      }
+      if (subscription.status === "cancelled") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(subscriptionResponse(subscription)));
+        return;
+      }
+      subscription.status = "cancelled";
+      subscription.cancelled_at = nowIso();
+      subscription.updated_at = subscription.cancelled_at;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(subscriptionResponse(subscription)));
+      return;
+    }
+
+    if (path === "/internal/subscriptions/run-billing" && method === "POST") {
+      const now = nowIso();
+      let processed = 0;
+      let charged = 0;
+      let failed = 0;
+      let cancelled = 0;
+
+      for (const subscription of state.subscriptions) {
+        if (subscription.status === "cancelled") continue;
+        if (subscription.next_charge_at > now) continue;
+
+        const billingCycleKey = subscription.next_charge_at;
+        const attemptKey = `${subscription.subscription_id}:${billingCycleKey}`;
+        const existingAttempt = state.subscriptionChargeAttempts.get(attemptKey);
+        if (existingAttempt) {
+          continue;
+        }
+
+        processed += 1;
+        const charge = chargeSubscription(state, subscription, now, billingCycleKey, "renewal");
+        if (charge.ok) {
+          charged += 1;
+          const previousPeriodEnd = subscription.current_period_end;
+          subscription.current_period_start = previousPeriodEnd;
+          subscription.current_period_end = addInterval(previousPeriodEnd, subscription.billing_interval);
+          subscription.next_charge_at = subscription.current_period_end;
+          subscription.last_charged_at = now;
+          subscription.last_charge_tx_id = charge.txId;
+          subscription.consecutive_failed_attempts = 0;
+          subscription.status = "active";
+          subscription.updated_at = now;
+        } else {
+          failed += 1;
+          subscription.consecutive_failed_attempts += 1;
+          subscription.status = subscription.consecutive_failed_attempts >= 3 ? "cancelled" : "past_due";
+          if (subscription.status === "cancelled") {
+            subscription.cancelled_at = now;
+            subscription.cancel_at_period_end = false;
+            cancelled += 1;
+          }
+          const retryAt = new Date(now);
+          retryAt.setUTCHours(retryAt.getUTCHours() + 24);
+          subscription.next_charge_at = retryAt.toISOString();
+          subscription.updated_at = now;
+        }
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ processed, charged, failed, cancelled }));
+      return;
+    }
+
     // ── Wallet: ledger ────────────────────────────────────────
     if (path === "/wallet/ledger" && method === "GET") {
-      const agentId = "ag_testclient00";
+      const agentId = getAgentIdFromRequest(req, state);
       const limit = parseInt(url.searchParams.get("limit") || "20", 10);
       const typeFilter = url.searchParams.get("type");
       let entries = state.walletEntries.filter((e: any) => e.agent_id === agentId);
@@ -554,6 +1078,12 @@ export function createMockHub() {
       const txId = path.split("/").pop()!;
       const tx = state.walletTransactions.find((t: any) => t.tx_id === txId);
       if (tx) {
+        const currentAgent = getAgentIdFromRequest(req, state);
+        if (tx.from_agent_id !== currentAgent && tx.to_agent_id !== currentAgent) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ detail: "Not authorized" }));
+          return;
+        }
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(tx));
       } else {

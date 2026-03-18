@@ -155,8 +155,12 @@ export type WalletTransaction = {
   fee_minor: string;
   from_agent_id: string | null;
   to_agent_id: string | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  idempotency_key: string | null;
   metadata_json: string | null;
   created_at: string;
+  updated_at: string;
   completed_at: string | null;
 };
 
@@ -202,4 +206,59 @@ export type WithdrawalResponse = {
   created_at: string;
   reviewed_at: string | null;
   completed_at: string | null;
+};
+
+export type BillingInterval = "week" | "month";
+
+export type SubscriptionProductStatus = "active" | "archived";
+
+export type SubscriptionStatus = "active" | "past_due" | "cancelled";
+
+export type SubscriptionChargeAttemptStatus = "pending" | "succeeded" | "failed";
+
+export type SubscriptionProduct = {
+  product_id: string;
+  owner_agent_id: string;
+  name: string;
+  description: string;
+  asset_code: string;
+  amount_minor: string;
+  billing_interval: BillingInterval;
+  status: SubscriptionProductStatus;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
+export type Subscription = {
+  subscription_id: string;
+  product_id: string;
+  subscriber_agent_id: string;
+  provider_agent_id: string;
+  asset_code: string;
+  amount_minor: string;
+  billing_interval: BillingInterval;
+  status: SubscriptionStatus;
+  current_period_start: string;
+  current_period_end: string;
+  next_charge_at: string;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  last_charged_at: string | null;
+  last_charge_tx_id: string | null;
+  consecutive_failed_attempts: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SubscriptionChargeAttempt = {
+  attempt_id: string;
+  subscription_id: string;
+  billing_cycle_key: string;
+  status: SubscriptionChargeAttemptStatus;
+  scheduled_at: string;
+  attempted_at: string | null;
+  tx_id: string | null;
+  failure_reason: string | null;
+  created_at: string;
 };

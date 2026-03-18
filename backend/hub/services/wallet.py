@@ -211,6 +211,9 @@ async def create_transfer(
     *,
     idempotency_key: str | None = None,
     memo: str | None = None,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    metadata: dict | None = None,
     asset_code: str = "COIN",
 ) -> WalletTransaction:
     """Atomic peer-to-peer transfer with double-entry bookkeeping."""
@@ -256,6 +259,14 @@ async def create_transfer(
     # Create transaction
     now = datetime.datetime.now(datetime.timezone.utc)
     tx_id = generate_tx_id()
+    metadata_obj = dict(metadata or {})
+    if memo is not None and "memo" not in metadata_obj:
+        metadata_obj["memo"] = memo
+    if reference_type is not None and "reference_type" not in metadata_obj:
+        metadata_obj["reference_type"] = reference_type
+    if reference_id is not None and "reference_id" not in metadata_obj:
+        metadata_obj["reference_id"] = reference_id
+
     tx = WalletTransaction(
         tx_id=tx_id,
         type=TxType.transfer,
@@ -267,7 +278,9 @@ async def create_transfer(
         to_agent_id=to_agent_id,
         initiator_agent_id=from_agent_id,
         idempotency_key=idempotency_key,
-        metadata_json=json.dumps({"memo": memo}) if memo else None,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        metadata_json=json.dumps(metadata_obj) if metadata_obj else None,
         completed_at=now,
     )
     session.add(tx)

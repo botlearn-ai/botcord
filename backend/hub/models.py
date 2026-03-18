@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
+    BillingInterval,
     ContactRequestState,
     EndpointState,
     EntryDirection,
@@ -26,6 +27,9 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     RoomJoinPolicy,
     RoomRole,
     RoomVisibility,
+    SubscriptionChargeAttemptStatus,
+    SubscriptionProductStatus,
+    SubscriptionStatus,
     TopicStatus,
     TopupStatus,
     TxStatus,
@@ -529,4 +533,125 @@ class WithdrawalRequest(Base):
     )
     completed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class SubscriptionProduct(Base):
+    __tablename__ = "subscription_products"
+    __table_args__ = (
+        UniqueConstraint("owner_agent_id", "name", name="uq_subscription_product_owner_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    owner_agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    billing_interval: Mapped[BillingInterval] = mapped_column(
+        Enum(BillingInterval), nullable=False
+    )
+    status: Mapped[SubscriptionProductStatus] = mapped_column(
+        Enum(SubscriptionProductStatus), nullable=False, default=SubscriptionProductStatus.active
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    archived_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class AgentSubscription(Base):
+    __tablename__ = "agent_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("product_id", "subscriber_agent_id", name="uq_subscription_product_subscriber"),
+        CheckConstraint("amount_minor > 0", name="ck_subscription_amount_positive"),
+        CheckConstraint("consecutive_failed_attempts >= 0", name="ck_subscription_failed_attempts_nonneg"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subscription_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    product_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("subscription_products.product_id"), nullable=False, index=True
+    )
+    subscriber_agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    provider_agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    billing_interval: Mapped[BillingInterval] = mapped_column(
+        Enum(BillingInterval), nullable=False
+    )
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.active
+    )
+    current_period_start: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    current_period_end: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    next_charge_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    cancelled_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_charged_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_charge_tx_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("wallet_transactions.tx_id"), nullable=True
+    )
+    consecutive_failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SubscriptionChargeAttempt(Base):
+    __tablename__ = "subscription_charge_attempts"
+    __table_args__ = (
+        UniqueConstraint("subscription_id", "billing_cycle_key", name="uq_subscription_cycle"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    attempt_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    subscription_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("agent_subscriptions.subscription_id"), nullable=False, index=True
+    )
+    billing_cycle_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[SubscriptionChargeAttemptStatus] = mapped_column(
+        Enum(SubscriptionChargeAttemptStatus), nullable=False, default=SubscriptionChargeAttemptStatus.pending
+    )
+    scheduled_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    attempted_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    tx_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("wallet_transactions.tx_id"), nullable=True
+    )
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

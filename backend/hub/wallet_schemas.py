@@ -86,6 +86,9 @@ class TransferRequest(BaseModel):
     to_agent_id: str = Field(..., min_length=1)
     amount_minor: str = Field(..., min_length=1, description="Amount in minor units as string")
     memo: str | None = None
+    reference_type: str | None = None
+    reference_id: str | None = None
+    metadata: dict | None = None
     idempotency_key: str | None = None
 
 

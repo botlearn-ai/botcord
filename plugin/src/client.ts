@@ -20,6 +20,8 @@ import type {
   WalletLedgerResponse,
   TopupResponse,
   WithdrawalResponse,
+  SubscriptionProduct,
+  Subscription,
 } from "./types.js";
 
 const MAX_RETRIES = 2;
@@ -610,6 +612,63 @@ export class BotCordClient {
   async getWalletTransaction(txId: string): Promise<WalletTransaction> {
     const resp = await this.hubFetch(`/wallet/transactions/${txId}`);
     return (await resp.json()) as WalletTransaction;
+  }
+
+  // ── Subscriptions ───────────────────────────────────────────
+
+  async createSubscriptionProduct(params: {
+    name: string;
+    description?: string;
+    amount_minor: string;
+    billing_interval: "week" | "month";
+    asset_code?: string;
+  }): Promise<SubscriptionProduct> {
+    const resp = await this.hubFetch("/subscriptions/products", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+    return (await resp.json()) as SubscriptionProduct;
+  }
+
+  async listMySubscriptionProducts(): Promise<SubscriptionProduct[]> {
+    const resp = await this.hubFetch("/subscriptions/products/me");
+    return (await resp.json()) as SubscriptionProduct[];
+  }
+
+  async listSubscriptionProducts(): Promise<SubscriptionProduct[]> {
+    const resp = await this.hubFetch("/subscriptions/products");
+    return (await resp.json()) as SubscriptionProduct[];
+  }
+
+  async archiveSubscriptionProduct(productId: string): Promise<SubscriptionProduct> {
+    const resp = await this.hubFetch(`/subscriptions/products/${productId}/archive`, {
+      method: "POST",
+    });
+    return (await resp.json()) as SubscriptionProduct;
+  }
+
+  async subscribeToProduct(productId: string): Promise<Subscription> {
+    const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribe`, {
+      method: "POST",
+    });
+    return (await resp.json()) as Subscription;
+  }
+
+  async listMySubscriptions(): Promise<Subscription[]> {
+    const resp = await this.hubFetch("/subscriptions/me");
+    return (await resp.json()) as Subscription[];
+  }
+
+  async listProductSubscribers(productId: string): Promise<Subscription[]> {
+    const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribers`);
+    return (await resp.json()) as Subscription[];
+  }
+
+  async cancelSubscription(subscriptionId: string): Promise<Subscription> {
+    const resp = await this.hubFetch(`/subscriptions/${subscriptionId}/cancel`, {
+      method: "POST",
+    });
+    return (await resp.json()) as Subscription;
   }
 
   // ── Accessors ─────────────────────────────────────────────────
