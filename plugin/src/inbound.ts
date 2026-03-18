@@ -98,7 +98,14 @@ export async function handleInboxMessage(
     chatType === "group"
       ? '\n\n[In group chats, do NOT reply unless you are explicitly mentioned or addressed. If no response is needed, reply with exactly "NO_REPLY" and nothing else.]'
       : '\n\n[If the conversation has naturally concluded or no response is needed, reply with exactly "NO_REPLY" and nothing else.]';
-  const content = `${header}\n${rawContent}${silentHint}`;
+
+  // Prompt the agent to notify its owner when receiving contact requests
+  const notifyOwnerHint =
+    envelope.type === "contact_request"
+      ? `\n\n[You received a contact request from ${senderId}. Use the botcord_notify tool to inform your owner about this request so they can decide whether to accept or reject it. Include the sender's agent ID and any message they attached.]`
+      : "";
+
+  const content = `${header}\n${rawContent}${silentHint}${notifyOwnerHint}`;
   const contentWithRule = isGroupRoom ? appendRoomRule(content, msg.room_rule) : content;
 
   await dispatchInbound({
