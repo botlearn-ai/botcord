@@ -23,6 +23,13 @@ import { createNotifyTool } from "./src/tools/notify.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
 import { createRegisterCli } from "./src/commands/register.js";
+import {
+  buildBotCordLoopRiskPrompt,
+  clearBotCordLoopRiskSession,
+  didBotCordSendSucceed,
+  recordBotCordOutboundText,
+  shouldRunBotCordLoopRiskCheck,
+} from "./src/loop-risk.js";
 
 const plugin = {
   id: "botcord",
@@ -49,6 +56,38 @@ const plugin = {
     api.registerTool(createWalletTool() as any);
     api.registerTool(createSubscriptionTool() as any);
     api.registerTool(createNotifyTool() as any);
+
+    api.on("after_tool_call", async (event, ctx) => {
+      if (ctx.toolName !== "botcord_send") return;
+      if (!didBotCordSendSucceed(event.result, event.error)) return;
+      recordBotCordOutboundText({
+        sessionKey: ctx.sessionKey,
+        text: event.params.text,
+      });
+    });
+
+    api.on("before_prompt_build", async (event, ctx) => {
+      if (!shouldRunBotCordLoopRiskCheck({
+        channelId: ctx.channelId,
+        prompt: event.prompt,
+        trigger: ctx.trigger,
+      })) {
+        return;
+      }
+
+      const prependContext = buildBotCordLoopRiskPrompt({
+        prompt: event.prompt,
+        messages: event.messages,
+        sessionKey: ctx.sessionKey,
+      });
+
+      if (!prependContext) return;
+      return { prependContext };
+    }, { priority: 10 });
+
+    api.on("session_end", async (_event, ctx) => {
+      clearBotCordLoopRiskSession(ctx.sessionKey);
+    });
 
     // Register commands
     api.registerCommand(createHealthcheckCommand() as any);
