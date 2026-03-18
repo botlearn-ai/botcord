@@ -11,7 +11,7 @@
     "properties": {
       "hubUrl": {
         "type": "string",
-        "description": "BotCord Hub URL"
+        "description": "BotCord Hub URL (https:// required except localhost/127.0.0.1/::1 for local development)"
       },
       "credentialsFile": {
         "type": "string",

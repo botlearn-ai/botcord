@@ -30,9 +30,8 @@ export function createTokenCommand() {
         return { text: "[FAIL] BotCord is not fully configured (need hubUrl, agentId, keyId, privateKey)" };
       }
 
-      const client = new BotCordClient(acct);
-
       try {
+        const client = new BotCordClient(acct);
         const token = await client.ensureToken();
         return { text: token };
       } catch (err: any) {

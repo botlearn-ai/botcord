@@ -74,6 +74,25 @@ describe("constructor", () => {
     expect(client.getHubUrl()).toBe(hubUrl);
   });
 
+  it("rejects non-loopback HTTP hub URLs", () => {
+    expect(() => new BotCordClient({
+      hubUrl: "http://api.botcord.chat",
+      agentId: "ag_x",
+      keyId: "k_x",
+      privateKey: kp.privateKey,
+    })).toThrow("must use https://");
+  });
+
+  it("allows loopback HTTP hub URLs for local development", () => {
+    const client = new BotCordClient({
+      hubUrl: "http://127.0.0.1:8000/",
+      agentId: "ag_x",
+      keyId: "k_x",
+      privateKey: kp.privateKey,
+    });
+    expect(client.getHubUrl()).toBe("http://127.0.0.1:8000");
+  });
+
   it("exposes agentId and hubUrl via accessors", () => {
     const client = makeClient();
     expect(client.getAgentId()).toBe("ag_testclient00");

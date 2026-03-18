@@ -4,6 +4,7 @@
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { buildSignedEnvelope, signChallenge } from "./crypto.js";
+import { normalizeAndValidateHubUrl } from "./hub-url.js";
 import type {
   BotCordAccountConfig,
   BotCordMessageEnvelope,
@@ -39,7 +40,7 @@ export class BotCordClient {
     if (!config.hubUrl || !config.agentId || !config.keyId || !config.privateKey) {
       throw new Error("BotCord client requires hubUrl, agentId, keyId, and privateKey");
     }
-    this.hubUrl = config.hubUrl.replace(/\/$/, "");
+    this.hubUrl = normalizeAndValidateHubUrl(config.hubUrl);
     this.agentId = config.agentId;
     this.keyId = config.keyId;
     this.privateKey = config.privateKey;

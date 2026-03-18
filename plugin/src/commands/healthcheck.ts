@@ -9,6 +9,7 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
+import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 
 export function createHealthcheckCommand() {
@@ -47,7 +48,15 @@ export function createHealthcheckCommand() {
       if (!acct.hubUrl) {
         error("hubUrl is not configured");
       } else {
-        ok(`Hub URL: ${acct.hubUrl}`);
+        try {
+          const normalizedHubUrl = normalizeAndValidateHubUrl(acct.hubUrl);
+          ok(`Hub URL: ${normalizedHubUrl}`);
+          if (normalizedHubUrl.startsWith("http://")) {
+            warning("Hub URL uses loopback HTTP; this is acceptable only for local development");
+          }
+        } catch (err: any) {
+          error(err.message);
+        }
       }
 
       if (acct.credentialsFile) {
@@ -85,7 +94,15 @@ export function createHealthcheckCommand() {
       // ── 2. Hub Connectivity & Token ──
       lines.push("", "── Hub Connectivity ──");
 
-      const client = new BotCordClient(acct);
+      let client: BotCordClient;
+      try {
+        client = new BotCordClient(acct);
+      } catch (err: any) {
+        error(err.message);
+        lines.push("", `── Summary ──`);
+        lines.push(`Passed: ${pass}  |  Warnings: ${warn}  |  Failed: ${fail}`);
+        return { text: lines.join("\n") };
+      }
 
       try {
         await client.ensureToken();

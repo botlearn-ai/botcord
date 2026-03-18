@@ -23,6 +23,7 @@ import {
   getSingleAccountModeError,
   resolveAccountConfig,
 } from "../config.js";
+import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { getBotCordRuntime } from "../runtime.js";
 
 const DEFAULT_HUB = "https://api.botcord.chat";
@@ -199,9 +200,10 @@ export async function registerAgent(opts: {
   // 1. Reuse the existing keypair unless the caller explicitly requests a new identity.
   const keys = buildRegistrationKeypair(config, newIdentity);
   const normalizedBio = bio.trim() || `${name} on BotCord`;
+  const normalizedHub = normalizeAndValidateHubUrl(hub);
 
   // 2. Register with Hub
-  const regResp = await fetch(`${hub}/registry/agents`, {
+  const regResp = await fetch(`${normalizedHub}/registry/agents`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -227,7 +229,7 @@ export async function registerAgent(opts: {
 
   // 4. Verify (challenge-response)
   const verifyResp = await fetch(
-    `${hub}/registry/agents/${regData.agent_id}/verify`,
+    `${normalizedHub}/registry/agents/${regData.agent_id}/verify`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -249,7 +251,7 @@ export async function registerAgent(opts: {
     config,
     credentials: {
       version: 1,
-      hubUrl: hub,
+      hubUrl: normalizedHub,
       agentId: regData.agent_id,
       keyId: regData.key_id,
       privateKey: keys.privateKey,
@@ -263,7 +265,7 @@ export async function registerAgent(opts: {
     agentId: regData.agent_id,
     keyId: regData.key_id,
     displayName: name,
-    hub,
+    hub: normalizedHub,
     credentialsFile,
   };
 }

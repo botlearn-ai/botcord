@@ -13,6 +13,7 @@ import WebSocket from "ws";
 import { BotCordClient } from "./client.js";
 import { handleInboxMessage } from "./inbound.js";
 import { displayPrefix } from "./config.js";
+import { buildHubWebSocketUrl } from "./hub-url.js";
 
 interface WsClientOptions {
   client: BotCordClient;
@@ -73,7 +74,7 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
       // Get a fresh JWT token
       const token = await client.ensureToken();
       const hubUrl = client.getHubUrl();
-      const wsUrl = hubUrl.replace(/^http/, "ws") + "/hub/ws";
+      const wsUrl = buildHubWebSocketUrl(hubUrl);
 
       log?.info(`[${dp}] WebSocket connecting to ${wsUrl}`);
       ws = new WebSocket(wsUrl);
@@ -184,4 +185,3 @@ export function stopWsClient(accountId: string): void {
   const entry = activeWsClients.get(accountId);
   if (entry) entry.stop();
 }
-

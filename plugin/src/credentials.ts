@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { derivePublicKey } from "./crypto.js";
+import { normalizeAndValidateHubUrl } from "./hub-url.js";
 import type { BotCordAccountConfig } from "./types.js";
 
 export interface StoredBotCordCredentials {
@@ -69,9 +70,16 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     );
   }
 
+  let normalizedHubUrl: string;
+  try {
+    normalizedHubUrl = normalizeAndValidateHubUrl(hubUrl);
+  } catch (err: any) {
+    throw new Error(`BotCord credentials file "${resolved}" has an invalid hubUrl: ${err.message}`);
+  }
+
   return {
     version: 1,
-    hubUrl,
+    hubUrl: normalizedHubUrl,
     agentId,
     keyId,
     privateKey,
@@ -103,8 +111,12 @@ export function writeCredentialsFile(
   credentials: StoredBotCordCredentials,
 ): string {
   const resolved = resolveCredentialsFilePath(credentialsFile);
+  const normalizedCredentials = {
+    ...credentials,
+    hubUrl: normalizeAndValidateHubUrl(credentials.hubUrl),
+  };
   mkdirSync(path.dirname(resolved), { recursive: true, mode: 0o700 });
-  writeFileSync(resolved, JSON.stringify(credentials, null, 2) + "\n", {
+  writeFileSync(resolved, JSON.stringify(normalizedCredentials, null, 2) + "\n", {
     encoding: "utf8",
     mode: 0o600,
   });

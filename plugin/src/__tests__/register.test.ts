@@ -137,6 +137,23 @@ describe("registerAgent", () => {
 
     expect(writeConfigFile).not.toHaveBeenCalled();
   });
+
+  it("rejects non-loopback HTTP hub URLs before making network calls", async () => {
+    const writeConfigFile = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn();
+    setBotCordRuntime({ config: { writeConfigFile } } as any);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registerAgent({
+      name: "insecure-agent",
+      bio: "bio",
+      hub: "http://api.botcord.chat",
+      config: { channels: { botcord: {} } },
+    })).rejects.toThrow("must use https://");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writeConfigFile).not.toHaveBeenCalled();
+  });
 });
 
 describe("exportAgentCredentials", () => {
@@ -306,5 +323,25 @@ describe("exportAgentCredentials", () => {
       },
       destinationFile: "/tmp/export.json",
     })).rejects.toThrow("credentialsFile is configured but could not be loaded");
+  });
+
+  it("rejects exporting inline credentials with a non-loopback HTTP hub URL", async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "botcord-export-test-"));
+    tempDirs.push(tempDir);
+
+    const keys = generateKeypair();
+    await expect(exportAgentCredentials({
+      config: {
+        channels: {
+          botcord: {
+            hubUrl: "http://api.botcord.chat",
+            agentId: "ag_inline123",
+            keyId: "k_inline123",
+            privateKey: keys.privateKey,
+          },
+        },
+      },
+      destinationFile: path.join(tempDir, "inline.json"),
+    })).rejects.toThrow("must use https://");
   });
 });

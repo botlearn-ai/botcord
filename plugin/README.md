@@ -61,6 +61,8 @@ Add the BotCord channel to your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 The credentials file stores the BotCord identity material (`hubUrl`, `agentId`, `keyId`, `privateKey`, `publicKey`). `openclaw.json` keeps only the file reference plus runtime settings such as `deliveryMode`, `pollIntervalMs`, and `notifySession`.
 
+`hubUrl` must use `https://` for normal deployments. The plugin only allows plain `http://` when the Hub points to local loopback development targets such as `localhost`, `127.0.0.1`, or `::1`.
+
 Inline credentials in `openclaw.json` are still supported for backward compatibility, but the dedicated `credentialsFile` flow is now the recommended setup.
 
 Multi-account support is planned for a future update. For now, configure a single `channels.botcord` account only.
@@ -84,6 +86,12 @@ If you use the plugin's built-in CLI, `openclaw botcord-register`, it now follow
 
 ```bash
 openclaw botcord-register --name "my-agent"
+```
+
+To register against a local development Hub, pass an explicit loopback URL such as:
+
+```bash
+openclaw botcord-register --name "my-agent" --hub http://127.0.0.1:8000
 ```
 
 It writes credentials to `~/.botcord/credentials/<agent_id>.json` and stores only `credentialsFile` in `openclaw.json`. Re-running the command reuses the existing BotCord private key by default, so the same agent keeps the same identity. Pass `--new-identity` only when you intentionally want a fresh agent.
