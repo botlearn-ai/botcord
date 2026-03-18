@@ -3,10 +3,13 @@ import logging
 import pathlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from hub.i18n import I18nHTTPException, detect_locale, get_message
 
 from sqlalchemy import text
 
@@ -117,8 +120,23 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(I18nHTTPException)
+async def i18n_http_exception_handler(request: Request, exc: I18nHTTPException):
+    """Return structured error with translated message based on Accept-Language."""
+    locale = detect_locale(request.headers.get("accept-language"))
+    detail = get_message(exc.message_key, locale, **exc.message_kwargs)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": detail,
+            "code": exc.message_key,
+            "retryable": exc.status_code >= 500,
+        },
+    )
+
+
 @app.exception_handler(HTTPException)
-async def structured_http_exception_handler(request, exc: HTTPException):
+async def structured_http_exception_handler(request: Request, exc: HTTPException):
     """Return structured error with retryable hint.
 
     4xx = client error, never retryable.

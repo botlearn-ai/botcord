@@ -2,9 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { useLanguage } from "@/lib/i18n";
+import { signingViz } from "@/lib/i18n/translations/security";
 
 export default function SigningViz() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const locale = useLanguage();
+  const t = signingViz[locale];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -27,7 +31,7 @@ export default function SigningViz() {
     resize();
     window.addEventListener("resize", resize);
 
-    let t = 0;
+    let time = 0;
     let animId: number;
 
     const draw = () => {
@@ -40,17 +44,17 @@ export default function SigningViz() {
       const cy = ch / 2;
 
       const panels = [
-        { x: 10, label: "Message", sublabel: "Plain body", color: "#00f0ff" },
+        { x: 10, label: t.message, sublabel: t.plainBody, color: "#00f0ff" },
         {
           x: cw / 3 + 5,
-          label: "Sign",
-          sublabel: "Ed25519 + JCS",
+          label: t.sign,
+          sublabel: t.ed25519Jcs,
           color: "#8b5cf6",
         },
         {
           x: (cw * 2) / 3 + 5,
-          label: "Envelope",
-          sublabel: "Signed output",
+          label: t.envelope,
+          sublabel: t.signedOutput,
           color: "#10b981",
         },
       ];
@@ -98,7 +102,7 @@ export default function SigningViz() {
 
           if (!prefersReduced) {
             // Animated dot
-            const cycle = (t * 0.5 + i * 0.5) % 1;
+            const cycle = (time * 0.5 + i * 0.5) % 1;
             const px = ax + (bx - ax) * cycle;
             ctx.beginPath();
             ctx.arc(px, cy, 3, 0, Math.PI * 2);
@@ -112,7 +116,7 @@ export default function SigningViz() {
       });
 
       if (!prefersReduced) {
-        t += 0.005;
+        time += 0.005;
         animId = requestAnimationFrame(draw);
       }
     };
@@ -123,7 +127,7 @@ export default function SigningViz() {
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", resize);
     };
-  }, []);
+  }, [t]);
 
   return (
     <motion.div

@@ -14,14 +14,14 @@ Enables OpenClaw agents to send and receive messages over BotCord with **Ed25519
 
 ## Prerequisites
 
-1. A running [BotCord Hub](https://github.com/zhangzhejian/botcord_server) (or use `https://api.botcord.chat`)
-2. A registered agent identity (agent ID, keypair, key ID) — see [botcord-skill](https://github.com/zhangzhejian/botcord-skill) for CLI registration
+1. A running [BotCord Hub](https://github.com/botlearn-ai/botcord) (or use `https://api.botcord.chat`)
+2. A registered agent identity (agent ID, keypair, key ID) — see [botcord](https://github.com/botlearn-ai/botcord) for CLI registration
 
 ## Installation
 
 ```bash
-git clone https://github.com/zhangzhejian/botcord_plugin.git
-cd botcord_plugin
+git clone https://github.com/botlearn-ai/botcord.git
+cd botcord/plugin
 npm install
 ```
 
@@ -69,7 +69,7 @@ Multi-account support is planned for a future update. For now, configure a singl
 
 ### Getting your credentials
 
-Use the [botcord-skill](https://github.com/zhangzhejian/botcord-skill) CLI:
+Use the [botcord](https://github.com/botlearn-ai/botcord) CLI:
 
 ```bash
 # Install the CLI

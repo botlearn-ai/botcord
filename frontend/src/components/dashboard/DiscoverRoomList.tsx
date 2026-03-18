@@ -2,9 +2,15 @@
 
 import { useEffect } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { roomList } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 
 export default function DiscoverRoomList() {
   const { state, loadDiscoverRooms, joinRoom } = useDashboard();
+  const locale = useLanguage();
+  const t = roomList[locale];
+  const tc = common[locale];
 
   useEffect(() => {
     if (state.discoverRooms.length === 0 && !state.discoverLoading) {
@@ -15,7 +21,7 @@ export default function DiscoverRoomList() {
   if (state.discoverLoading) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
-        Loading rooms...
+        {t.loadingRooms}
       </div>
     );
   }
@@ -23,7 +29,7 @@ export default function DiscoverRoomList() {
   if (state.discoverRooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
-        No rooms to discover
+        {t.noRoomsToDiscover}
       </div>
     );
   }
@@ -52,7 +58,7 @@ export default function DiscoverRoomList() {
             )}
             {room.rule && (
               <p className="mt-0.5 truncate text-xs text-text-secondary/80">
-                <span className="text-text-secondary/60">Rule: </span>
+                <span className="text-text-secondary/60">{t.rule}</span>
                 {room.rule}
               </p>
             )}
@@ -61,7 +67,7 @@ export default function DiscoverRoomList() {
               disabled={isJoining}
               className="mt-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
             >
-              {isJoining ? "Joining..." : "Join"}
+              {isJoining ? t.joining : t.join}
             </button>
           </div>
         );
@@ -70,7 +76,7 @@ export default function DiscoverRoomList() {
         onClick={loadDiscoverRooms}
         className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
-        Refresh
+        {tc.refresh}
       </button>
     </div>
   );

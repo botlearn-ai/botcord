@@ -1,17 +1,21 @@
 "use client";
 
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { agentBrowser } from '@/lib/i18n/translations/dashboard';
 import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
 
 export default function AgentBrowser() {
   const { state, dispatch, searchAgents, selectAgent, loadRoomMessages, isGuest } = useDashboard();
+  const locale = useLanguage();
+  const t = agentBrowser[locale];
 
   return (
     <div className="flex h-full w-[320px] min-w-[320px] flex-col border-l border-glass-border bg-deep-black-light">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
-        <h3 className="text-sm font-semibold text-text-primary">Agents</h3>
+        <h3 className="text-sm font-semibold text-text-primary">{t.agents}</h3>
         <button
           onClick={() => dispatch({ type: "TOGGLE_RIGHT_PANEL" })}
           className="rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
@@ -24,7 +28,7 @@ export default function AgentBrowser() {
 
       {/* Search */}
       <div className="border-b border-glass-border p-3">
-        <SearchBar onSearch={searchAgents} placeholder="Search agents..." />
+        <SearchBar onSearch={searchAgents} placeholder={t.searchAgents} />
       </div>
 
       {/* Content */}
@@ -32,9 +36,9 @@ export default function AgentBrowser() {
         {/* Search Results */}
         {state.searchResults && (
           <div className="border-b border-glass-border p-3">
-            <h4 className="mb-2 text-xs font-medium text-text-secondary">Search Results</h4>
+            <h4 className="mb-2 text-xs font-medium text-text-secondary">{t.searchResults}</h4>
             {state.searchResults.length === 0 ? (
-              <p className="text-xs text-text-secondary/60">No agents found</p>
+              <p className="text-xs text-text-secondary/60">{t.noAgentsFound}</p>
             ) : (
               state.searchResults.map((agent) => (
                 <button
@@ -53,7 +57,7 @@ export default function AgentBrowser() {
         {/* Agent Profile */}
         {state.selectedAgentProfile && (
           <div className="border-b border-glass-border p-4">
-            <h4 className="mb-3 text-xs font-medium text-text-secondary">Agent Profile</h4>
+            <h4 className="mb-3 text-xs font-medium text-text-secondary">{t.agentProfile}</h4>
             <div className="space-y-2">
               <div>
                 <div className="text-sm font-medium text-text-primary">
@@ -69,7 +73,7 @@ export default function AgentBrowser() {
                   {state.selectedAgentProfile.message_policy}
                 </span>
                 <span className="font-mono text-[10px] text-text-secondary/60">
-                  since {new Date(state.selectedAgentProfile.created_at).toLocaleDateString()}
+                  {t.since} {new Date(state.selectedAgentProfile.created_at).toLocaleDateString()}
                 </span>
               </div>
             </div>
@@ -80,10 +84,10 @@ export default function AgentBrowser() {
         {!isGuest && state.selectedAgentConversations && (
           <div className="p-4">
             <h4 className="mb-2 text-xs font-medium text-text-secondary">
-              Shared Rooms ({state.selectedAgentConversations.length})
+              {t.sharedRooms} ({state.selectedAgentConversations.length})
             </h4>
             {state.selectedAgentConversations.length === 0 ? (
-              <p className="text-xs text-text-secondary/60">No shared rooms</p>
+              <p className="text-xs text-text-secondary/60">{t.noSharedRooms}</p>
             ) : (
               state.selectedAgentConversations.map((room) => (
                 <button
@@ -98,7 +102,7 @@ export default function AgentBrowser() {
                 >
                   <div className="text-sm text-text-primary">{room.name}</div>
                   <div className="text-xs text-text-secondary">
-                    {room.member_count} members · {room.my_role}
+                    {room.member_count} {t.members} · {room.my_role}
                   </div>
                 </button>
               ))

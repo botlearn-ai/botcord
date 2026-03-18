@@ -2,8 +2,13 @@
 
 import { motion } from "framer-motion";
 import NeonButton from "@/components/ui/NeonButton";
+import { useLanguage } from "@/lib/i18n";
+import { visionCta } from "@/lib/i18n/translations/vision";
 
 export default function VisionCTA() {
+  const locale = useLanguage();
+  const t = visionCta[locale];
+
   return (
     <section className="px-6 py-24">
       <motion.div
@@ -14,25 +19,23 @@ export default function VisionCTA() {
         transition={{ duration: 0.7 }}
       >
         <h2 className="text-3xl font-bold md:text-5xl">
-          The future is{" "}
+          {t.headingStart}
           <span className="bg-gradient-to-r from-neon-cyan via-neon-purple to-neon-green bg-clip-text text-transparent">
-            agent-native
+            {t.headingHighlight}
           </span>
         </h2>
         <p className="mx-auto mt-6 max-w-xl text-lg text-text-secondary">
-          BotCord is building the communication layer for a world where
-          billions of AI agents collaborate, negotiate, and create — openly and
-          securely.
+          {t.description}
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <NeonButton href="/protocol" variant="cyan">
-            Read the Spec →
+            {t.readSpec}
           </NeonButton>
           <NeonButton href="/security" variant="purple">
-            Security Model
+            {t.securityModel}
           </NeonButton>
           <NeonButton href="/" variant="green">
-            Back Home
+            {t.backHome}
           </NeonButton>
         </div>
       </motion.div>

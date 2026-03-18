@@ -1,19 +1,27 @@
 "use client";
 
-import { createContext, useContext, useReducer, useEffect, useCallback, useState } from "react";
-import type { DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry } from "@/lib/types";
-import { api } from "@/lib/api";
-import LoginPanel from "./LoginPanel";
+import { createContext, useContext, useReducer, useEffect, useCallback } from "react";
+import type { DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry, UserProfile, UserAgent } from "@/lib/types";
+import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+import { useLanguage } from '@/lib/i18n';
+import { dashboardApp } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
 import WalletPanel from "./WalletPanel";
 import StripeReturnBanner from "./StripeReturnBanner";
+import ClaimAgentPanel from "./ClaimAgentPanel";
 
 // --- State ---
 
 interface DashboardState {
   token: string | null;
+  user: UserProfile | null;
+  ownedAgents: UserAgent[];
+  activeAgentId: string | null;
   overview: DashboardOverview | null;
   selectedRoomId: string | null;
   messages: Record<string, DashboardMessage[]>;
@@ -49,6 +57,9 @@ interface DashboardState {
 
 type Action =
   | { type: "SET_TOKEN"; token: string | null }
+  | { type: "SET_USER"; user: UserProfile }
+  | { type: "SET_OWNED_AGENTS"; agents: UserAgent[] }
+  | { type: "SET_ACTIVE_AGENT"; agentId: string | null }
   | { type: "SET_OVERVIEW"; overview: DashboardOverview }
   | { type: "SET_LOADING"; loading: boolean }
   | { type: "SET_ERROR"; error: string | null }
@@ -82,6 +93,12 @@ function reducer(state: DashboardState, action: Action): DashboardState {
   switch (action.type) {
     case "SET_TOKEN":
       return { ...state, token: action.token, error: null };
+    case "SET_USER":
+      return { ...state, user: action.user, ownedAgents: action.user.agents };
+    case "SET_OWNED_AGENTS":
+      return { ...state, ownedAgents: action.agents };
+    case "SET_ACTIVE_AGENT":
+      return { ...state, activeAgentId: action.agentId };
     case "SET_OVERVIEW":
       return { ...state, overview: action.overview, loading: false };
     case "SET_LOADING":
@@ -138,7 +155,6 @@ function reducer(state: DashboardState, action: Action): DashboardState {
     case "REFRESH":
       return { ...state, loading: true };
     case "LOGOUT":
-      localStorage.removeItem("botcord_token");
       return { ...initialState, publicRooms: state.publicRooms, publicAgents: state.publicAgents, sidebarTab: "discover" };
     case "SET_PUBLIC_ROOMS":
       return { ...state, publicRooms: action.rooms, publicRoomsLoading: false };
@@ -169,6 +185,9 @@ function reducer(state: DashboardState, action: Action): DashboardState {
 
 const initialState: DashboardState = {
   token: null,
+  user: null,
+  ownedAgents: [],
+  activeAgentId: null,
   overview: null,
   selectedRoomId: null,
   messages: {},
@@ -216,8 +235,11 @@ interface DashboardContextValue {
   loadTopics: (roomId: string) => Promise<void>;
   loadWallet: () => Promise<void>;
   loadWalletLedger: (loadMore?: boolean) => Promise<void>;
+  switchActiveAgent: (agentId: string) => void;
+  refreshUserProfile: () => Promise<void>;
   isGuest: boolean;
   showLoginModal: () => void;
+  handleLogout: () => Promise<void>;
 }
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -232,17 +254,35 @@ export function useDashboard() {
 
 export default function DashboardApp() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const router = useRouter();
+  const supabase = createClient();
+  const locale = useLanguage();
+  const tDash = dashboardApp[locale];
+  const tc = common[locale];
 
   const isGuest = !state.token;
 
-  // Restore token from localStorage on mount
+  // Restore token from Supabase session on mount
   useEffect(() => {
-    const saved = localStorage.getItem("botcord_token");
-    if (saved) {
-      dispatch({ type: "SET_TOKEN", token: saved });
-      dispatch({ type: "SET_SIDEBAR_TAB", tab: "rooms" });
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.access_token) {
+        dispatch({ type: "SET_TOKEN", token: session.access_token });
+        dispatch({ type: "SET_SIDEBAR_TAB", tab: "rooms" });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session?.access_token) {
+          dispatch({ type: "SET_TOKEN", token: session.access_token });
+          dispatch({ type: "SET_SIDEBAR_TAB", tab: "rooms" });
+        } else {
+          dispatch({ type: "SET_TOKEN", token: null });
+        }
+      },
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // Guest mode: load public data on mount
@@ -253,34 +293,83 @@ export default function DashboardApp() {
     }
   }, [state.token]);
 
-  // Load overview when token is set (auth mode)
+  // Load user profile + overview when token is set (auth mode)
   useEffect(() => {
     if (!state.token) return;
     dispatch({ type: "SET_LOADING", loading: true });
-    console.log("[Dashboard] Loading overview with token:", state.token.substring(0, 20) + "...");
-    api
-      .getOverview(state.token)
-      .then((overview) => {
-        console.log("[Dashboard] Overview loaded:", overview);
-        dispatch({ type: "SET_OVERVIEW", overview });
-      })
-      .catch((err) => {
-        console.error("[Dashboard] Overview failed:", err, "status:", err.status);
-        dispatch({ type: "SET_ERROR", error: err.message || "Failed to load overview" });
-        if (err.status === 401) {
-          console.warn("[Dashboard] 401 → logging out");
-          dispatch({ type: "LOGOUT" });
+
+    const token = state.token;
+
+    // Helper: load overview directly (fallback when user API is unavailable)
+    function loadOverviewDirect() {
+      api
+        .getOverview(token)
+        .then((overview) => {
+          console.log("[Dashboard] Overview loaded (direct):", overview);
+          dispatch({ type: "SET_OVERVIEW", overview });
+        })
+        .catch((err) => {
+          console.error("[Dashboard] Overview failed:", err);
+          dispatch({ type: "SET_ERROR", error: err.message || "Failed to load overview" });
+        });
+      api
+        .getWallet(token)
+        .then((wallet) => dispatch({ type: "SET_WALLET", wallet }))
+        .catch((err) => {
+          dispatch({ type: "SET_WALLET_ERROR", error: err.message || "Failed to load wallet" });
+        });
+    }
+
+    // Step 1: Try loading user profile + agents from Next.js API
+    userApi
+      .getMe()
+      .then((user) => {
+        console.log("[Dashboard] User profile loaded:", user);
+        dispatch({ type: "SET_USER", user });
+
+        // Step 2: Determine active agent
+        const savedAgentId = getActiveAgentId();
+        const hasAgents = user.agents.length > 0;
+        let activeId: string | null = null;
+
+        if (hasAgents) {
+          if (savedAgentId && user.agents.some((a) => a.agent_id === savedAgentId)) {
+            activeId = savedAgentId;
+          } else {
+            const defaultAgent = user.agents.find((a) => a.is_default) || user.agents[0];
+            activeId = defaultAgent.agent_id;
+          }
+          setActiveAgentId(activeId);
+          dispatch({ type: "SET_ACTIVE_AGENT", agentId: activeId });
         }
-      });
-    // Also load wallet summary
-    api
-      .getWallet(state.token)
-      .then((wallet) => {
-        dispatch({ type: "SET_WALLET", wallet });
+
+        // Step 3: Load dashboard overview
+        if (activeId) {
+          api
+            .getOverview(token)
+            .then((overview) => {
+              console.log("[Dashboard] Overview loaded:", overview);
+              dispatch({ type: "SET_OVERVIEW", overview });
+            })
+            .catch((err) => {
+              console.error("[Dashboard] Overview failed:", err);
+              dispatch({ type: "SET_ERROR", error: err.message || "Failed to load overview" });
+            });
+          api
+            .getWallet(token)
+            .then((wallet) => dispatch({ type: "SET_WALLET", wallet }))
+            .catch((err) => {
+              dispatch({ type: "SET_WALLET_ERROR", error: err.message || "Failed to load wallet" });
+            });
+        } else {
+          // No agents — stop loading, show claim panel
+          dispatch({ type: "SET_LOADING", loading: false });
+        }
       })
       .catch((err) => {
-        console.error("[Dashboard] Wallet load failed (non-fatal):", err);
-        dispatch({ type: "SET_WALLET_ERROR", error: err.message || "Failed to load wallet" });
+        // User API unavailable (DB not ready, etc.) — fall back to direct overview
+        console.warn("[Dashboard] User profile unavailable, falling back to direct mode:", err.message);
+        loadOverviewDirect();
       });
   }, [state.token]);
 
@@ -510,15 +599,43 @@ export default function DashboardApp() {
     }
   }, [state.token, state.walletLedgerCursor]);
 
-  const handleLogin = useCallback((token: string) => {
-    localStorage.setItem("botcord_token", token);
-    dispatch({ type: "SET_TOKEN", token });
-    dispatch({ type: "SET_SIDEBAR_TAB", tab: "rooms" });
-    setLoginModalOpen(false);
+  const handleLogout = useCallback(async () => {
+    setActiveAgentId(null);
+    await supabase.auth.signOut();
+    dispatch({ type: "LOGOUT" });
   }, []);
 
   const showLoginModal = useCallback(() => {
-    setLoginModalOpen(true);
+    router.push("/login");
+  }, [router]);
+
+  const switchActiveAgent = useCallback(
+    (agentId: string) => {
+      setActiveAgentId(agentId);
+      dispatch({ type: "SET_ACTIVE_AGENT", agentId });
+      // Reload overview for the new active agent
+      if (state.token) {
+        dispatch({ type: "SET_LOADING", loading: true });
+        api
+          .getOverview(state.token)
+          .then((overview) => dispatch({ type: "SET_OVERVIEW", overview }))
+          .catch((err) => dispatch({ type: "SET_ERROR", error: err.message }));
+        api
+          .getWallet(state.token)
+          .then((wallet) => dispatch({ type: "SET_WALLET", wallet }))
+          .catch(() => {});
+      }
+    },
+    [state.token],
+  );
+
+  const refreshUserProfile = useCallback(async () => {
+    try {
+      const user = await userApi.getMe();
+      dispatch({ type: "SET_USER", user });
+    } catch (err) {
+      console.error("[Dashboard] Failed to refresh user profile:", err);
+    }
   }, []);
 
   const ctxValue: DashboardContextValue = {
@@ -536,15 +653,18 @@ export default function DashboardApp() {
     loadTopics,
     loadWallet,
     loadWalletLedger,
+    switchActiveAgent,
+    refreshUserProfile,
     isGuest,
     showLoginModal,
+    handleLogout,
   };
 
   // Auth mode: loading state
   if (state.token && state.loading && !state.overview) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-neon-cyan animate-pulse text-lg">Loading...</div>
+        <div className="text-neon-cyan animate-pulse text-lg">{tc.loading}</div>
       </div>
     );
   }
@@ -555,20 +675,25 @@ export default function DashboardApp() {
       <div className="flex h-screen flex-col items-center justify-center gap-4">
         <div className="text-red-400">{state.error}</div>
         <button
-          onClick={() => dispatch({ type: "LOGOUT" })}
+          onClick={handleLogout}
           className="rounded border border-glass-border px-4 py-2 text-text-secondary hover:text-text-primary"
         >
-          Back to Login
+          {tDash.backToLogin}
         </button>
       </div>
     );
   }
 
+  // Auth mode: no agents bound — show claim panel
+  const showClaimPanel = state.token && !isGuest && state.user && state.ownedAgents.length === 0 && !state.loading;
+
   return (
     <DashboardContext.Provider value={ctxValue}>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        {state.sidebarTab === "wallet" ? (
+        {showClaimPanel ? (
+          <ClaimAgentPanel onClaimed={refreshUserProfile} />
+        ) : state.sidebarTab === "wallet" ? (
           <WalletPanel />
         ) : (
           <>
@@ -579,17 +704,6 @@ export default function DashboardApp() {
       </div>
       {/* Stripe return banner */}
       <StripeReturnBanner />
-      {/* Login Modal */}
-      {loginModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setLoginModalOpen(false)}
-        >
-          <div onClick={(e) => e.stopPropagation()}>
-            <LoginPanel onLogin={handleLogin} onClose={() => setLoginModalOpen(false)} />
-          </div>
-        </div>
-      )}
     </DashboardContext.Provider>
   );
 }

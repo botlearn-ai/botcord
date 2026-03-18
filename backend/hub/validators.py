@@ -9,6 +9,7 @@ import httpx
 from fastapi import HTTPException
 
 from hub.config import ALLOW_PRIVATE_ENDPOINTS, ENDPOINT_PROBE_ENABLED, ENDPOINT_PROBE_TIMEOUT_SECONDS
+from hub.i18n import I18nHTTPException
 from hub.schemas import EndpointProbeReport, ProbePathResult
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ _BLOCKED_HOSTNAME_SUFFIXES = (".local", ".internal", ".localhost")
 def check_agent_ownership(path_agent_id: str, token_agent_id: str) -> None:
     """Verify that the path agent_id matches the JWT agent_id."""
     if path_agent_id != token_agent_id:
-        raise HTTPException(status_code=403, detail="Agent ID mismatch")
+        raise I18nHTTPException(status_code=403, message_key="agent_id_mismatch")
 
 
 def parse_pubkey(pubkey: str) -> str:
@@ -28,14 +29,14 @@ def parse_pubkey(pubkey: str) -> str:
     Raises HTTPException if format is invalid.
     """
     if not pubkey.startswith("ed25519:"):
-        raise HTTPException(status_code=400, detail="pubkey must start with 'ed25519:'")
+        raise I18nHTTPException(status_code=400, message_key="pubkey_must_start_with_ed25519")
     b64_part = pubkey[len("ed25519:"):]
     try:
         decoded = base64.b64decode(b64_part)
     except Exception:
-        raise HTTPException(status_code=400, detail="pubkey base64 is invalid")
+        raise I18nHTTPException(status_code=400, message_key="pubkey_base64_invalid")
     if len(decoded) != 32:
-        raise HTTPException(status_code=400, detail="Ed25519 public key must be 32 bytes")
+        raise I18nHTTPException(status_code=400, message_key="pubkey_must_be_32_bytes")
     return b64_part
 
 
@@ -47,9 +48,9 @@ def validate_endpoint_url(url: str) -> None:
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise HTTPException(status_code=400, detail="URL must use http or https scheme")
+        raise I18nHTTPException(status_code=400, message_key="url_must_use_http_or_https")
     if not parsed.hostname:
-        raise HTTPException(status_code=400, detail="URL must have a hostname")
+        raise I18nHTTPException(status_code=400, message_key="url_must_have_hostname")
 
     if ALLOW_PRIVATE_ENDPOINTS:
         return
@@ -59,17 +60,17 @@ def validate_endpoint_url(url: str) -> None:
     if hostname == "localhost" or any(
         hostname.endswith(suffix) for suffix in _BLOCKED_HOSTNAME_SUFFIXES
     ):
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=400,
-            detail="Private/internal hostnames are not allowed",
+            message_key="private_hostnames_not_allowed",
         )
 
     try:
         addr = ipaddress.ip_address(hostname)
         if addr.is_private or addr.is_reserved or addr.is_loopback or addr.is_link_local or addr.is_unspecified:
-            raise HTTPException(
+            raise I18nHTTPException(
                 status_code=400,
-                detail="Private/internal IP addresses are not allowed",
+                message_key="private_ips_not_allowed",
             )
     except ValueError:
         pass
@@ -204,6 +205,6 @@ async def probe_endpoint(url: str, webhook_token: str) -> EndpointProbeReport | 
                 if result.hint:
                     detail += f" — {result.hint}"
                 details.append(detail)
-        raise HTTPException(status_code=422, detail="\n".join(details))
+        raise I18nHTTPException(status_code=422, message_key="endpoint_probe_failed_detail", detail="\n".join(details))
 
     return report

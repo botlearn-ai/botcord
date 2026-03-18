@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { walletPanel } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
@@ -16,6 +19,9 @@ function formatCoinAmount(minorStr: string): string {
 
 export default function WalletPanel() {
   const { state, dispatch, loadWallet, loadWalletLedger } = useDashboard();
+  const locale = useLanguage();
+  const t = walletPanel[locale];
+  const tc = common[locale];
   const [activeDialog, setActiveDialog] = useState<"transfer" | "topup" | "withdraw" | null>(null);
 
   const wallet = state.wallet;
@@ -44,11 +50,11 @@ export default function WalletPanel() {
               onClick={loadWallet}
               className="rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
             >
-              Retry
+              {tc.retry}
             </button>
           </>
         ) : (
-          <div className="text-neon-cyan animate-pulse text-sm">Loading wallet...</div>
+          <div className="text-neon-cyan animate-pulse text-sm">{tc.loading}</div>
         )}
       </div>
     );
@@ -58,7 +64,7 @@ export default function WalletPanel() {
     <div className="flex flex-1 flex-col bg-deep-black">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
-        <h2 className="text-lg font-semibold text-text-primary">Wallet</h2>
+        <h2 className="text-lg font-semibold text-text-primary">{t.wallet}</h2>
         <div className="flex gap-1">
           <button
             onClick={() => dispatch({ type: "SET_WALLET_VIEW", view: "overview" })}
@@ -68,7 +74,7 @@ export default function WalletPanel() {
                 : "text-text-secondary hover:text-text-primary"
             }`}
           >
-            Overview
+            {t.overview}
           </button>
           <button
             onClick={() => dispatch({ type: "SET_WALLET_VIEW", view: "ledger" })}
@@ -78,7 +84,7 @@ export default function WalletPanel() {
                 : "text-text-secondary hover:text-text-primary"
             }`}
           >
-            Ledger
+            {t.ledger}
           </button>
         </div>
       </div>
@@ -131,12 +137,15 @@ function WalletOverview({
   onTopup: () => void;
   onWithdraw: () => void;
 }) {
+  const locale = useLanguage();
+  const t = walletPanel[locale];
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {/* Balance Card */}
       <div className="rounded-2xl border border-glass-border bg-glass-bg p-6 backdrop-blur-xl">
         <div className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
-          Total Balance
+          {t.totalBalance}
         </div>
         <div className="mb-4 flex items-baseline gap-2">
           <span className="font-mono text-4xl font-bold text-text-primary">
@@ -148,7 +157,7 @@ function WalletOverview({
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-xl border border-glass-border bg-deep-black-light p-4">
             <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
-              Available
+              {t.available}
             </div>
             <div className="font-mono text-xl font-semibold text-neon-green">
               {formatCoinAmount(wallet.available_balance_minor)}
@@ -156,7 +165,7 @@ function WalletOverview({
           </div>
           <div className="rounded-xl border border-glass-border bg-deep-black-light p-4">
             <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
-              Locked
+              {t.locked}
             </div>
             <div className="font-mono text-xl font-semibold text-text-secondary">
               {formatCoinAmount(wallet.locked_balance_minor)}
@@ -165,7 +174,7 @@ function WalletOverview({
         </div>
 
         <div className="mt-3 text-right text-[10px] text-text-secondary/50">
-          Updated {new Date(wallet.updated_at).toLocaleString()}
+          {t.updated} {new Date(wallet.updated_at).toLocaleString()}
         </div>
       </div>
 
@@ -178,7 +187,7 @@ function WalletOverview({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-neon-green">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          <span className="text-xs font-medium text-text-primary">Recharge</span>
+          <span className="text-xs font-medium text-text-primary">{t.recharge}</span>
         </button>
 
         <button
@@ -188,7 +197,7 @@ function WalletOverview({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-neon-cyan">
             <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
           </svg>
-          <span className="text-xs font-medium text-text-primary">Transfer</span>
+          <span className="text-xs font-medium text-text-primary">{t.transfer}</span>
         </button>
 
         <button
@@ -198,7 +207,7 @@ function WalletOverview({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-neon-purple">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
           </svg>
-          <span className="text-xs font-medium text-text-primary">Withdraw</span>
+          <span className="text-xs font-medium text-text-primary">{t.withdraw}</span>
         </button>
       </div>
     </div>

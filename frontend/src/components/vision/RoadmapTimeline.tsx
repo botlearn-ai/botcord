@@ -2,6 +2,8 @@
 
 import { motion } from "framer-motion";
 import { milestones } from "@/data/roadmap";
+import { useLanguage } from "@/lib/i18n";
+import { roadmap as roadmapT } from "@/lib/i18n/translations/vision";
 
 const statusColors = {
   completed: "#10b981",
@@ -9,13 +11,10 @@ const statusColors = {
   planned: "#8b5cf6",
 };
 
-const statusLabels = {
-  completed: "Completed",
-  active: "In Progress",
-  planned: "Planned",
-};
-
 export default function RoadmapTimeline() {
+  const locale = useLanguage();
+  const t = roadmapT[locale];
+
   return (
     <div className="relative">
       {/* Vertical line */}
@@ -45,17 +44,17 @@ export default function RoadmapTimeline() {
                       style={{ backgroundColor: color }}
                     />
                     <span className="text-xs" style={{ color }}>
-                      {statusLabels[ms.status]}
+                      {t.statusLabels[ms.status]}
                     </span>
                   </div>
                   <h4 className="mt-1 font-semibold">
                     <span style={{ color }} className="font-mono text-sm">
                       {ms.id}
                     </span>{" "}
-                    {ms.title}
+                    {t.milestones[i].title}
                   </h4>
                   <p className="mt-1 text-sm text-text-secondary">
-                    {ms.description}
+                    {t.milestones[i].description}
                   </p>
                 </div>
               </div>
@@ -81,12 +80,12 @@ export default function RoadmapTimeline() {
                       style={{ backgroundColor: color }}
                     />
                     <span className="text-xs" style={{ color }}>
-                      {statusLabels[ms.status]}
+                      {t.statusLabels[ms.status]}
                     </span>
                   </div>
-                  <h4 className="mt-1 font-semibold">{ms.title}</h4>
+                  <h4 className="mt-1 font-semibold">{t.milestones[i].title}</h4>
                   <p className="mt-1 text-sm text-text-secondary">
-                    {ms.description}
+                    {t.milestones[i].description}
                   </p>
                 </div>
               </div>

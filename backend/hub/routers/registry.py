@@ -6,6 +6,7 @@ import uuid
 
 import jcs
 from fastapi import APIRouter, Depends, HTTPException, Response
+from hub.i18n import I18nHTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -69,10 +70,7 @@ async def register_agent(req: RegisterAgentRequest, db: AsyncSession = Depends(g
         )
         sk = existing_key.scalar_one_or_none()
         if sk is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Agent ID collision: a different pubkey already occupies this agent_id",
-            )
+            raise I18nHTTPException(status_code=409, message_key="agent_id_collision")
         # Issue a fresh challenge for re-verification
         key_id = sk.key_id
         challenge = generate_challenge()
@@ -144,17 +142,17 @@ async def verify_agent(agent_id: str, req: VerifyRequest, db: AsyncSession = Dep
     )
     challenge_record = result.scalar_one_or_none()
     if challenge_record is None:
-        raise HTTPException(status_code=404, detail="Challenge not found")
+        raise I18nHTTPException(status_code=404, message_key="challenge_not_found")
 
     if challenge_record.used:
-        raise HTTPException(status_code=400, detail="Challenge already used")
+        raise I18nHTTPException(status_code=400, message_key="challenge_already_used")
 
     now = datetime.datetime.now(datetime.timezone.utc)
     expires_at = challenge_record.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
     if now > expires_at:
-        raise HTTPException(status_code=400, detail="Challenge expired")
+        raise I18nHTTPException(status_code=400, message_key="challenge_expired")
 
     # Get the signing key (scoped to agent_id)
     result = await db.execute(
@@ -165,14 +163,14 @@ async def verify_agent(agent_id: str, req: VerifyRequest, db: AsyncSession = Dep
     )
     signing_key = result.scalar_one_or_none()
     if signing_key is None:
-        raise HTTPException(status_code=404, detail="Key not found")
+        raise I18nHTTPException(status_code=404, message_key="key_not_found")
 
     # Extract base64 pubkey from "ed25519:<base64>" format
     pubkey_b64 = signing_key.pubkey[len("ed25519:"):]
 
     # Verify the signature
     if not verify_challenge_sig(pubkey_b64, req.challenge, req.sig):
-        raise HTTPException(status_code=401, detail="Signature verification failed")
+        raise I18nHTTPException(status_code=401, message_key="signature_verification_failed")
 
     # Mark challenge as used, activate key, issue token
     challenge_record.used = True
@@ -245,7 +243,7 @@ async def register_endpoint(
     # Check agent exists
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     # If an active, unreachable, or unverified endpoint exists, update it
     result = await db.execute(
@@ -391,7 +389,7 @@ async def endpoint_status(
     )
     endpoint = result.scalar_one_or_none()
     if endpoint is None:
-        raise HTTPException(status_code=404, detail="No endpoint registered")
+        raise I18nHTTPException(status_code=404, message_key="no_endpoint_registered")
 
     # Queued message count
     queued_result = await db.execute(
@@ -454,7 +452,7 @@ async def get_key(agent_id: str, key_id: str, db: AsyncSession = Depends(get_db)
     )
     signing_key = result.scalar_one_or_none()
     if signing_key is None:
-        raise HTTPException(status_code=404, detail="Key not found")
+        raise I18nHTTPException(status_code=404, message_key="key_not_found")
 
     return KeyResponse(
         key_id=signing_key.key_id,
@@ -475,7 +473,7 @@ async def resolve_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     result = await db.execute(
         select(Endpoint).where(
@@ -510,7 +508,7 @@ async def resolve_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/agents", response_model=AgentDiscoveryResponse, include_in_schema=False)
 async def discover_agents(name: str | None = None, db: AsyncSession = Depends(get_db)):
     """Discover agents by display_name — temporarily disabled."""
-    raise HTTPException(status_code=403, detail="Agent discovery is currently disabled")
+    raise I18nHTTPException(status_code=403, message_key="agent_discovery_disabled")
 
 
 # ---------------------------------------------------------------------------
@@ -531,7 +529,7 @@ async def update_profile(
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     if req.display_name is not None:
         agent.display_name = req.display_name
@@ -634,10 +632,10 @@ async def revoke_key(
     )
     signing_key = result.scalar_one_or_none()
     if signing_key is None:
-        raise HTTPException(status_code=404, detail="Key not found")
+        raise I18nHTTPException(status_code=404, message_key="key_not_found")
 
     if signing_key.state == KeyState.revoked:
-        raise HTTPException(status_code=400, detail="Key is already revoked")
+        raise I18nHTTPException(status_code=400, message_key="key_already_revoked")
 
     # Count active keys for this agent
     result = await db.execute(
@@ -649,7 +647,7 @@ async def revoke_key(
     active_count = result.scalar() or 0
 
     if active_count <= 1 and signing_key.state == KeyState.active:
-        raise HTTPException(status_code=400, detail="Cannot revoke the last active key")
+        raise I18nHTTPException(status_code=400, message_key="cannot_revoke_last_active_key")
 
     signing_key.state = KeyState.revoked
     await db.commit()
@@ -671,10 +669,10 @@ async def refresh_token(
     )
     signing_key = result.scalar_one_or_none()
     if signing_key is None:
-        raise HTTPException(status_code=404, detail="Key not found")
+        raise I18nHTTPException(status_code=404, message_key="key_not_found")
 
     if signing_key.state != KeyState.active:
-        raise HTTPException(status_code=403, detail="Key is not active")
+        raise I18nHTTPException(status_code=403, message_key="key_not_active")
 
     # 2. Check nonce has not been used (anti-replay)
     result = await db.execute(
@@ -684,12 +682,12 @@ async def refresh_token(
         )
     )
     if result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=409, detail="Nonce already used")
+        raise I18nHTTPException(status_code=409, message_key="nonce_already_used")
 
     # 3. Verify signature over the nonce
     pubkey_b64 = signing_key.pubkey[len("ed25519:"):]
     if not verify_challenge_sig(pubkey_b64, req.nonce, req.sig):
-        raise HTTPException(status_code=401, detail="Signature verification failed")
+        raise I18nHTTPException(status_code=401, message_key="signature_verification_failed")
 
     # 4. Record nonce as used (with IntegrityError guard for concurrent requests)
     db.add(UsedNonce(agent_id=agent_id, nonce=req.nonce))
@@ -697,7 +695,7 @@ async def refresh_token(
         await db.flush()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Nonce already used")
+        raise I18nHTTPException(status_code=409, message_key="nonce_already_used")
 
     # 5. Issue new token
     token, expires_at = create_agent_token(agent_id)

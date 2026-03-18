@@ -2,7 +2,9 @@
 
 import { motion } from "framer-motion";
 import GlassCard from "@/components/ui/GlassCard";
-import { primitives } from "@/data/protocol-primitives";
+import { primitives as primitiveData } from "@/data/protocol-primitives";
+import { useLanguage } from "@/lib/i18n";
+import { primitives as primitivesT } from "@/lib/i18n/translations/protocol";
 
 const icons: Record<string, React.ReactNode> = {
   Contact: (
@@ -82,33 +84,39 @@ const icons: Record<string, React.ReactNode> = {
 };
 
 export default function PrimitivesGrid() {
+  const locale = useLanguage();
+  const translatedPrimitives = primitivesT[locale];
+
   return (
     <div className="grid gap-6 md:grid-cols-3">
-      {primitives.map((prim, i) => (
-        <motion.div
-          key={prim.name}
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-50px" }}
-          transition={{ duration: 0.6, delay: i * 0.15 }}
-        >
-          <GlassCard glowColor={prim.color} className="h-full">
-            <div className="mb-4">{icons[prim.name]}</div>
-            <h3 className="mb-2 text-xl font-semibold">{prim.name}</h3>
-            <p className="mb-4 text-sm text-text-secondary">
-              {prim.description}
-            </p>
-            <ul className="space-y-2">
-              {prim.details.map((d) => (
-                <li key={d} className="flex items-start gap-2 text-xs">
-                  <span className="mt-0.5 text-neon-cyan">▹</span>
-                  <span className="text-text-secondary">{d}</span>
-                </li>
-              ))}
-            </ul>
-          </GlassCard>
-        </motion.div>
-      ))}
+      {translatedPrimitives.map((prim, i) => {
+        const color = primitiveData[i].color;
+        return (
+          <motion.div
+            key={prim.name}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ duration: 0.6, delay: i * 0.15 }}
+          >
+            <GlassCard glowColor={color} className="h-full">
+              <div className="mb-4">{icons[primitiveData[i].name]}</div>
+              <h3 className="mb-2 text-xl font-semibold">{prim.name}</h3>
+              <p className="mb-4 text-sm text-text-secondary">
+                {prim.description}
+              </p>
+              <ul className="space-y-2">
+                {prim.details.map((d) => (
+                  <li key={d} className="flex items-start gap-2 text-xs">
+                    <span className="mt-0.5 text-neon-cyan">▹</span>
+                    <span className="text-text-secondary">{d}</span>
+                  </li>
+                ))}
+              </ul>
+            </GlassCard>
+          </motion.div>
+        );
+      })}
     </div>
   );
 }

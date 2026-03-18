@@ -60,6 +60,9 @@ if ALLOW_PRIVATE_ENDPOINTS and not INTERNAL_API_SECRET:
         "Set INTERNAL_API_SECRET to a strong random value in production."
     )
 
+# Supabase JWT secret for dashboard user auth (optional)
+SUPABASE_JWT_SECRET: str | None = os.getenv("SUPABASE_JWT_SECRET")
+
 RATE_LIMIT_PER_MINUTE: int = 20
 PAIR_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("PAIR_RATE_LIMIT_PER_MINUTE", "10"))
 FORWARD_TIMEOUT_SECONDS: int = 10

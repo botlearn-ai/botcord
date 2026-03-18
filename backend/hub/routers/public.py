@@ -7,7 +7,8 @@ from __future__ import annotations
 import datetime
 import json
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Query, Depends
+from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -330,7 +331,7 @@ async def public_room_messages(
     room_result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = room_result.scalar_one_or_none()
     if room is None or room.visibility != RoomVisibility.public:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
     # Deduplicate fan-out: pick one record (min id) per msg_id
     dedup_sub = (
@@ -355,8 +356,8 @@ async def public_room_messages(
         )
         cursor_id = cursor_result.scalar_one_or_none()
         if cursor_id is None:
-            raise HTTPException(
-                status_code=400, detail="Invalid cursor: message not found"
+            raise I18nHTTPException(
+                status_code=400, message_key="invalid_cursor"
             )
         stmt = stmt.where(MessageRecord.id < cursor_id)
 
@@ -481,7 +482,7 @@ async def public_agent_detail(
     )
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     return DashboardAgentProfile(
         agent_id=agent.agent_id,
@@ -513,7 +514,7 @@ async def public_room_members(
     room_result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = room_result.scalar_one_or_none()
     if room is None or room.visibility != RoomVisibility.public:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
     # Fetch members with agent display names
     stmt = (

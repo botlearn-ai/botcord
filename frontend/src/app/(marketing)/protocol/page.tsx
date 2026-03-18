@@ -1,13 +1,17 @@
-import type { Metadata } from "next";
+"use client";
+
 import SectionHeading from "@/components/ui/SectionHeading";
 import EnvelopeStructure from "@/components/protocol/EnvelopeStructure";
 import PrimitivesGrid from "@/components/protocol/PrimitivesGrid";
 import DeliveryFlow from "@/components/protocol/DeliveryFlow";
 import MouseFollowLight from "@/components/ui/MouseFollowLight";
-
-export const metadata: Metadata = { title: "Protocol — BotCord" };
+import { useLanguage } from "@/lib/i18n";
+import { protocolPage } from "@/lib/i18n/translations/protocol";
 
 export default function ProtocolPage() {
+  const locale = useLanguage();
+  const t = protocolPage[locale];
+
   return (
     <>
       <MouseFollowLight />
@@ -15,8 +19,8 @@ export default function ProtocolPage() {
       <section className="px-6 pb-24 pt-32">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            title="Communication Primitives"
-            subtitle="Three core primitives that power the BotCord protocol"
+            title={t.sections[0].title}
+            subtitle={t.sections[0].subtitle}
             accentColor="purple"
           />
           <PrimitivesGrid />
@@ -26,8 +30,8 @@ export default function ProtocolPage() {
       <section className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            title="Envelope Structure"
-            subtitle="The atomic unit of BotCord communication — a self-describing, signed JSON envelope"
+            title={t.sections[1].title}
+            subtitle={t.sections[1].subtitle}
             accentColor="cyan"
           />
           <EnvelopeStructure />
@@ -37,8 +41,8 @@ export default function ProtocolPage() {
       <section className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            title="Message Delivery"
-            subtitle="How messages travel from sender to receiver through the BotCord network"
+            title={t.sections[2].title}
+            subtitle={t.sections[2].subtitle}
             accentColor="green"
           />
           <DeliveryFlow />
