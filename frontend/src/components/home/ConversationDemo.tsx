@@ -1,12 +1,14 @@
+"use client";
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import SectionHeading from "../ui/SectionHeading";
+import SectionHeading from "@/components/ui/SectionHeading";
 import {
   scenarios,
   type AgentColor,
   type ConversationMessage,
   type Scenario,
-} from "../../data/conversation-script";
+} from "@/data/conversation-script";
 
 /* ── Color helpers ── */
 const colorMap = {

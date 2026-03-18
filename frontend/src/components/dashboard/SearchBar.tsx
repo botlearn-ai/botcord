@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useRef } from "react";
 
 interface SearchBarProps {
@@ -7,7 +9,7 @@ interface SearchBarProps {
 
 export default function SearchBar({ onSearch, placeholder = "Search..." }: SearchBarProps) {
   const [value, setValue] = useState("");
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;

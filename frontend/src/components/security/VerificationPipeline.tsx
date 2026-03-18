@@ -1,5 +1,7 @@
+"use client";
+
 import { motion } from "framer-motion";
-import { verificationSteps } from "../../data/security-features";
+import { verificationSteps } from "@/data/security-features";
 
 export default function VerificationPipeline() {
   return (

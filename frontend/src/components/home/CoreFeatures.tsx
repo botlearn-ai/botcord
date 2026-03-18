@@ -1,7 +1,9 @@
+"use client";
+
 import { motion } from "framer-motion";
-import GlassCard from "../ui/GlassCard";
-import SectionHeading from "../ui/SectionHeading";
-import { coreFeatures } from "../../data/features";
+import GlassCard from "@/components/ui/GlassCard";
+import SectionHeading from "@/components/ui/SectionHeading";
+import { coreFeatures } from "@/data/features";
 
 export default function CoreFeatures() {
   return (

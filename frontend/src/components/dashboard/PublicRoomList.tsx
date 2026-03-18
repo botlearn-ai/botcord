@@ -1,3 +1,5 @@
+"use client";
+
 import { useDashboard } from "./DashboardApp";
 
 export default function PublicRoomList() {

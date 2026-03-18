@@ -1,6 +1,8 @@
+"use client";
+
 import { createContext, useContext, useReducer, useEffect, useCallback, useState } from "react";
-import type { DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry } from "../../lib/types";
-import { api } from "../../lib/api";
+import type { DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry } from "@/lib/types";
+import { api } from "@/lib/api";
 import LoginPanel from "./LoginPanel";
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";

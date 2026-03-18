@@ -25,7 +25,7 @@ import type {
   CreateWithdrawalRequest,
 } from "./types";
 
-const API_BASE = import.meta.env.PUBLIC_API_BASE || "https://api.botcord.chat";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api.botcord.chat";
 
 class ApiError extends Error {
   constructor(

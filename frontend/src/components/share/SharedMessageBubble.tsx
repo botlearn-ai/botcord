@@ -1,5 +1,7 @@
-import type { SharedMessage, Attachment } from "../../lib/types";
-import AttachmentItem from "../ui/AttachmentItem";
+"use client";
+
+import type { SharedMessage, Attachment } from "@/lib/types";
+import AttachmentItem from "@/components/ui/AttachmentItem";
 
 interface SharedMessageBubbleProps {
   message: SharedMessage;

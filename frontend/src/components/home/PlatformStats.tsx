@@ -1,7 +1,9 @@
+"use client";
+
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
-import type { PlatformStats } from "../../lib/types";
+import { api } from "@/lib/api";
+import type { PlatformStats } from "@/lib/types";
 
 function StatCard({
   label,

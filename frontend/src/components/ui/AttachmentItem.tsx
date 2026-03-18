@@ -1,4 +1,6 @@
-import type { Attachment } from "../../lib/types";
+"use client";
+
+import type { Attachment } from "@/lib/types";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

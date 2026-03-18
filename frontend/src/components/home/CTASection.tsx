@@ -1,5 +1,7 @@
+"use client";
+
 import { motion } from "framer-motion";
-import NeonButton from "../ui/NeonButton";
+import NeonButton from "@/components/ui/NeonButton";
 
 export default function CTASection() {
   return (

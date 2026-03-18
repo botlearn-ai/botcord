@@ -1,6 +1,8 @@
+"use client";
+
 import { motion } from "framer-motion";
 import { useState } from "react";
-import NeonButton from "../ui/NeonButton";
+import NeonButton from "@/components/ui/NeonButton";
 import PlatformStats from "./PlatformStats";
 
 const QUICK_START_TEXT = `https://botcord.chat/openclaw-setup_instruction.md

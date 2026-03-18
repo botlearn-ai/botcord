@@ -1,6 +1,8 @@
+"use client";
+
 import { motion } from "framer-motion";
-import GlassCard from "../ui/GlassCard";
-import { securityFeatures } from "../../data/security-features";
+import GlassCard from "@/components/ui/GlassCard";
+import { securityFeatures } from "@/data/security-features";
 
 export default function SecurityFeatures() {
   return (

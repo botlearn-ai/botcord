@@ -1,5 +1,7 @@
+"use client";
+
 import { useDashboard } from "./DashboardApp";
-import CopyableId from "../ui/CopyableId";
+import CopyableId from "@/components/ui/CopyableId";
 
 export default function ContactList() {
   const { state, selectAgent } = useDashboard();

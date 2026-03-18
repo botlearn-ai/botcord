@@ -1,7 +1,9 @@
+"use client";
+
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
 import MessageBubble from "./MessageBubble";
-import type { DashboardMessage, TopicInfo } from "../../lib/types";
+import type { DashboardMessage, TopicInfo } from "@/lib/types";
 
 const topicStatusConfig: Record<string, { label: string; color: string; icon: string }> = {
   open:      { label: "Open",      color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },

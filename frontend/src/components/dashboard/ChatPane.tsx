@@ -1,3 +1,5 @@
+"use client";
+
 import { useDashboard } from "./DashboardApp";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";

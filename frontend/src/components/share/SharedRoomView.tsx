@@ -1,17 +1,16 @@
+"use client";
+
 import { useState, useEffect } from "react";
-import { api, ApiError } from "../../lib/api";
-import type { SharedRoomResponse } from "../../lib/types";
+import { api, ApiError } from "@/lib/api";
+import type { SharedRoomResponse } from "@/lib/types";
 import SharedMessageBubble from "./SharedMessageBubble";
 
-export default function SharedRoomView() {
+export default function SharedRoomView({ shareId }: { shareId: string }) {
   const [data, setData] = useState<SharedRoomResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Support both /share/sh_xxx (path) and /share?id=sh_xxx (query)
-    const pathMatch = window.location.pathname.match(/\/share\/(.+)/);
-    const shareId = pathMatch?.[1] || new URLSearchParams(window.location.search).get("id");
     if (!shareId) {
       setError("No share ID provided.");
       setLoading(false);
@@ -28,7 +27,7 @@ export default function SharedRoomView() {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [shareId]);
 
   if (loading) {
     return (

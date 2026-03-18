@@ -1,6 +1,8 @@
+"use client";
+
 import { useState } from "react";
-import { api } from "../../lib/api";
-import type { CreateShareResponse } from "../../lib/types";
+import { api } from "@/lib/api";
+import type { CreateShareResponse } from "@/lib/types";
 
 interface ShareModalProps {
   roomId: string;
