@@ -7,4 +7,12 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.SUPABASE_DB_URL!,
   },
+  tablesFilter: [
+    "users",
+    "user_agents",
+    "roles",
+    "permissions",
+    "role_permissions",
+    "user_roles",
+  ],
 });
