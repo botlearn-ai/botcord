@@ -32,6 +32,7 @@ from hub.routers.room import router as room_router
 from hub.routers.subscriptions import internal_router as subscriptions_internal_router
 from hub.routers.subscriptions import router as subscriptions_router
 from hub.routers.topics import router as topics_router
+from hub.routers.stripe import router as stripe_router
 from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
 
@@ -149,6 +150,7 @@ app.include_router(topics_router)
 app.include_router(files_router)
 app.include_router(wallet_router)
 app.include_router(wallet_internal_router)
+app.include_router(stripe_router)
 app.include_router(subscriptions_router)
 app.include_router(subscriptions_internal_router)
 app.include_router(dashboard_router)

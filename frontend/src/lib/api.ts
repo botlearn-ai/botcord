@@ -23,6 +23,10 @@ import type {
   CreateTransferRequest,
   CreateTopupRequest,
   CreateWithdrawalRequest,
+  StripeCheckoutRequest,
+  StripeCheckoutResponse,
+  StripePackageResponse,
+  StripeSessionStatusResponse,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api.botcord.chat";
@@ -266,6 +270,28 @@ export const api = {
 
   createWithdrawal(token: string, payload: CreateWithdrawalRequest) {
     return postJsonRequest<WithdrawalResponse>("/wallet/withdrawals", token, payload);
+  },
+
+  // --- Stripe Checkout APIs ---
+
+  getStripePackages() {
+    return publicRequest<StripePackageResponse>("/wallet/topups/stripe/packages");
+  },
+
+  createStripeCheckoutSession(token: string, payload: StripeCheckoutRequest) {
+    return postJsonRequest<StripeCheckoutResponse>(
+      "/wallet/topups/stripe/checkout-session",
+      token,
+      payload,
+    );
+  },
+
+  getStripeSessionStatus(token: string, sessionId: string) {
+    return request<StripeSessionStatusResponse>(
+      "/wallet/topups/stripe/session-status",
+      token,
+      { session_id: sessionId },
+    );
   },
 };
 

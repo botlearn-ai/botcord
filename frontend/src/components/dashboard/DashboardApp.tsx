@@ -8,6 +8,7 @@ import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
 import WalletPanel from "./WalletPanel";
+import StripeReturnBanner from "./StripeReturnBanner";
 
 // --- State ---
 
@@ -576,6 +577,8 @@ export default function DashboardApp() {
           </>
         )}
       </div>
+      {/* Stripe return banner */}
+      <StripeReturnBanner />
       {/* Login Modal */}
       {loginModalOpen && (
         <div
