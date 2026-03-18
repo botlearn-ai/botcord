@@ -1,9 +1,11 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import { useDashboard } from "./DashboardApp";
 import ShareModal from "./ShareModal";
-import CopyableId from "../ui/CopyableId";
-import type { PublicRoomMember } from "../../lib/types";
-import { api } from "../../lib/api";
+import CopyableId from "@/components/ui/CopyableId";
+import type { PublicRoomMember } from "@/lib/types";
+import { api } from "@/lib/api";
 
 export default function RoomHeader() {
   const { state, isGuest, selectAgent } = useDashboard();

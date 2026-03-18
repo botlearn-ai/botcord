@@ -1,8 +1,10 @@
-import { motion } from "framer-motion";
-import GlassCard from "../ui/GlassCard";
-import { primitives } from "../../data/protocol-primitives";
+"use client";
 
-const icons: Record<string, JSX.Element> = {
+import { motion } from "framer-motion";
+import GlassCard from "@/components/ui/GlassCard";
+import { primitives } from "@/data/protocol-primitives";
+
+const icons: Record<string, React.ReactNode> = {
   Contact: (
     <svg
       className="h-10 w-10"

@@ -1,5 +1,7 @@
+"use client";
+
 import { motion } from "framer-motion";
-import { milestones } from "../../data/roadmap";
+import { milestones } from "@/data/roadmap";
 
 const statusColors = {
   completed: "#10b981",

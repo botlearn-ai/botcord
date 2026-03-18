@@ -1,7 +1,9 @@
-import type { DashboardMessage, Attachment } from "../../lib/types";
+"use client";
+
+import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useDashboard } from "./DashboardApp";
-import AttachmentItem from "../ui/AttachmentItem";
-import CopyableId from "../ui/CopyableId";
+import AttachmentItem from "@/components/ui/AttachmentItem";
+import CopyableId from "@/components/ui/CopyableId";
 
 interface MessageBubbleProps {
   message: DashboardMessage;

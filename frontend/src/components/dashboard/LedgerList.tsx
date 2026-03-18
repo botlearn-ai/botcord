@@ -1,3 +1,5 @@
+"use client";
+
 import { useDashboard } from "./DashboardApp";
 
 function formatCoinAmount(minorStr: string): string {

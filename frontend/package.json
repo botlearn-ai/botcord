@@ -1,31 +1,31 @@
 {
   "name": "botcord-web",
-  "type": "module",
   "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
-    "@astrojs/react": "^4.2.0",
-    "@react-three/drei": "^10.0.0",
-    "@react-three/fiber": "^9.0.0",
-    "@tailwindcss/vite": "^4.0.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "@vercel/analytics": "^1.6.1",
-    "astro": "^5.5.0",
-    "clsx": "^2.1.0",
-    "framer-motion": "^12.0.0",
-    "gsap": "^3.12.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "tailwindcss": "^4.0.0",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
+    "gsap": "^3.14.2",
+    "next": "16.1.7",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "three": "^0.172.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "@types/three": "^0.172.0",
-    "typescript": "^5.7.0"
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

@@ -1,6 +1,8 @@
+"use client";
+
 import { motion } from "framer-motion";
-import TypewriterCode from "../ui/TypewriterCode";
-import { envelopeJSON } from "../../data/protocol-primitives";
+import TypewriterCode from "@/components/ui/TypewriterCode";
+import { envelopeJSON } from "@/data/protocol-primitives";
 
 export default function ProtocolPreview() {
   return (

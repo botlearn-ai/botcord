@@ -14,8 +14,8 @@
   --color-text-primary: #e2e8f0;
   --color-text-secondary: #94a3b8;
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
 html {

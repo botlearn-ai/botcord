@@ -1,6 +1,8 @@
+"use client";
+
 import { useState } from "react";
 import { useDashboard } from "./DashboardApp";
-import { api, ApiError } from "../../lib/api";
+import { api, ApiError } from "@/lib/api";
 
 interface TransferDialogProps {
   onClose: () => void;

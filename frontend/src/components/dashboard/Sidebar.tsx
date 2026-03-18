@@ -1,3 +1,5 @@
+"use client";
+
 import { useDashboard } from "./DashboardApp";
 import RoomList from "./RoomList";
 import ContactList from "./ContactList";

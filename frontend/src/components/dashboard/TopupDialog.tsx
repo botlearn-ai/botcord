@@ -1,7 +1,9 @@
+"use client";
+
 import { useState } from "react";
 import { useDashboard } from "./DashboardApp";
-import { api, ApiError } from "../../lib/api";
-import type { TopupResponse } from "../../lib/types";
+import { api, ApiError } from "@/lib/api";
+import type { TopupResponse } from "@/lib/types";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);

@@ -1,6 +1,8 @@
+"use client";
+
 import { useDashboard } from "./DashboardApp";
 import SearchBar from "./SearchBar";
-import CopyableId from "../ui/CopyableId";
+import CopyableId from "@/components/ui/CopyableId";
 
 export default function AgentBrowser() {
   const { state, dispatch, searchAgents, selectAgent, loadRoomMessages, isGuest } = useDashboard();
