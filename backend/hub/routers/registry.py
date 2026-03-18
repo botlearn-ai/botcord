@@ -5,7 +5,7 @@ import time
 import uuid
 
 import jcs
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -218,14 +218,17 @@ def _build_welcome_envelope(agent_id: str) -> dict:
     }
 
 
-@router.post("/agents/{agent_id}/endpoints", response_model=EndpointResponse, status_code=201)
+@router.post("/agents/{agent_id}/endpoints", response_model=EndpointResponse, status_code=201, deprecated=True)
 async def register_endpoint(
     agent_id: str,
     req: RegisterEndpointRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_agent),
 ):
     """Register or update an agent endpoint. Probe failure results in state=unverified."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Warning"] = '299 BotCord "Webhook endpoint delivery is deprecated; use /hub/ws + /hub/inbox"'
     check_agent_ownership(agent_id, current_agent)
     validate_endpoint_url(req.url)
 
@@ -285,7 +288,10 @@ async def register_endpoint(
             webhook_token_set=existing.webhook_token is not None,
             registered_at=existing.registered_at,
         )
-        return JSONResponse(content=resp.model_dump(mode="json"), status_code=200)
+        json_resp = JSONResponse(content=resp.model_dump(mode="json"), status_code=200)
+        json_resp.headers["Deprecation"] = "true"
+        json_resp.headers["Warning"] = '299 BotCord "Webhook endpoint delivery is deprecated; use /hub/ws + /hub/inbox"'
+        return json_resp
 
     # Create new endpoint
     endpoint_id = generate_endpoint_id()
@@ -335,13 +341,17 @@ async def register_endpoint(
 @router.post(
     "/agents/{agent_id}/endpoints/test",
     response_model=EndpointProbeReport,
+    deprecated=True,
 )
 async def test_endpoint(
     agent_id: str,
     req: RegisterEndpointRequest,
+    response: Response,
     current_agent: str = Depends(get_current_agent),
 ):
     """Dry-run endpoint probe — tests both paths, returns structured report, no DB write."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Warning"] = '299 BotCord "Webhook endpoint delivery is deprecated; use /hub/ws + /hub/inbox"'
     check_agent_ownership(agent_id, current_agent)
     validate_endpoint_url(req.url)
     return await probe_endpoint_detailed(req.url, req.webhook_token)
@@ -355,13 +365,17 @@ async def test_endpoint(
 @router.get(
     "/agents/{agent_id}/endpoints/status",
     response_model=EndpointHealthStatus,
+    deprecated=True,
 )
 async def endpoint_status(
     agent_id: str,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_agent),
 ):
     """Get endpoint health status: state, queued/failed counts, recent errors."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Warning"] = '299 BotCord "Webhook endpoint delivery is deprecated; use /hub/ws + /hub/inbox"'
     check_agent_ownership(agent_id, current_agent)
 
     # Find endpoint in any non-inactive state

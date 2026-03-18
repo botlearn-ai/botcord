@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""DEPRECATED: Webhook retry loop — no longer started by main.py.
+
+This module is retained for reference during the transition period.
+Message TTL expiry is now handled by hub/expiry.py.
+"""
+
 import asyncio
 import datetime
 import hashlib

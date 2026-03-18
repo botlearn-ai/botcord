@@ -102,3 +102,6 @@ def _parse_stripe_packages() -> list[dict]:
         return []
 
 STRIPE_TOPUP_PACKAGES: list[dict] = _parse_stripe_packages()
+
+# Message expiry settings (replaces retry loop)
+MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS: float = float(os.getenv("MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS", "30"))

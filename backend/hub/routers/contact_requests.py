@@ -4,9 +4,8 @@ import json
 import logging
 import uuid
 
-import httpx
 import jcs
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 from sqlalchemy import select
@@ -45,15 +44,9 @@ async def _create_notification(
     requester_id: str,
     request_id: int,
     status: str,
-    request: Request,
 ) -> None:
     """Push a contact_request_response notification into the requester's inbox."""
-    from hub.routers.hub import (
-        _compute_next_retry_at, _forward_envelope, _is_endpoint_unreachable,
-        _resolve_endpoint, notify_inbox,
-    )
-    from hub.forward import get_sender_display_name
-    from hub.schemas import MessageEnvelope
+    from hub.routers.hub import notify_inbox
 
     now = datetime.datetime.now(datetime.timezone.utc)
     ts = int(now.timestamp())
@@ -90,32 +83,7 @@ async def _create_notification(
     db.add(record)
     await db.commit()
 
-    # Try immediate push delivery to receiver's webhook endpoint
-    endpoint = await _resolve_endpoint(requester_id, db)
-    if endpoint:
-        envelope_obj = MessageEnvelope(**envelope_dict)
-        sender_name = await get_sender_display_name(responder_id, db)
-        http_client: httpx.AsyncClient = request.app.state.http_client
-        err = await _forward_envelope(
-            http_client, endpoint.url, envelope_obj,
-            webhook_token=endpoint.webhook_token,
-            sender_display_name=sender_name,
-        )
-        if err is None:
-            record.state = MessageState.delivered
-            record.delivered_at = datetime.datetime.now(datetime.timezone.utc)
-        else:
-            record.last_error = err
-            record.next_retry_at = _compute_next_retry_at(0, record.created_at, record.ttl_sec)
-        await db.commit()
-    elif await _is_endpoint_unreachable(requester_id, db):
-        record.last_error = "ENDPOINT_UNREACHABLE"
-        record.next_retry_at = None
-        await db.commit()
-
-    # Notify long-polling readers only if message remains queued
-    if record.state == MessageState.queued:
-        await notify_inbox(requester_id)
+    await notify_inbox(requester_id)
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +160,6 @@ async def list_sent_requests(
 async def accept_request(
     agent_id: str,
     request_id: int,
-    request: Request,
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_agent),
 ):
@@ -240,7 +207,7 @@ async def accept_request(
     await db.commit()
     await db.refresh(cr)
 
-    await _create_notification(db, cr.to_agent_id, cr.from_agent_id, cr.id, "accepted", request)
+    await _create_notification(db, cr.to_agent_id, cr.from_agent_id, cr.id, "accepted")
 
     return _request_to_response(cr)
 
@@ -257,7 +224,6 @@ async def accept_request(
 async def reject_request(
     agent_id: str,
     request_id: int,
-    request: Request,
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_agent),
 ):
@@ -285,6 +251,6 @@ async def reject_request(
     await db.commit()
     await db.refresh(cr)
 
-    await _create_notification(db, cr.to_agent_id, cr.from_agent_id, cr.id, "rejected", request)
+    await _create_notification(db, cr.to_agent_id, cr.from_agent_id, cr.id, "rejected")
 
     return _request_to_response(cr)
