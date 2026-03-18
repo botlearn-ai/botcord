@@ -2,8 +2,6 @@
  * Inbound message dispatch — shared by websocket and polling paths.
  * Converts BotCord messages to OpenClaw inbound format.
  */
-import { readFile, readdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
 import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
 import { buildSessionKey } from "./session-key.js";
@@ -245,53 +243,34 @@ type DeliveryContext = {
 };
 
 /**
- * Read deliveryContext for a session key from the session store on disk.
- * First checks the current agent's store, then scans all agent stores
- * (the session key may belong to a different agent than the one running
- * this plugin).
- * Returns undefined when the session has no recorded delivery route.
+ * Parse a session key like "agent:pm:telegram:direct:7904063707" into a
+ * DeliveryContext.  Returns undefined if the key doesn't contain a
+ * recognisable channel segment.
+ *
+ * Supported formats:
+ *   agent:<agentName>:<channel>:direct:<peerId>
+ *   agent:<agentName>:<channel>:group:<groupId>
  */
-async function resolveSessionDeliveryContext(
-  core: ReturnType<typeof getBotCordRuntime>,
-  cfg: any,
-  sessionKey: string,
-): Promise<DeliveryContext | undefined> {
-  const tryStore = async (path: string): Promise<DeliveryContext | undefined> => {
-    try {
-      const raw = await readFile(path, "utf-8");
-      const store: Record<string, { deliveryContext?: DeliveryContext }> =
-        JSON.parse(raw);
-      const entry = store[sessionKey];
-      if (entry?.deliveryContext?.channel && entry.deliveryContext.to) {
-        return entry.deliveryContext;
-      }
-    } catch {
-      // store may not exist yet
-    }
-    return undefined;
+function parseSessionKeyDeliveryContext(sessionKey: string): DeliveryContext | undefined {
+  // e.g. ["agent", "pm", "telegram", "direct", "7904063707"]
+  const parts = sessionKey.split(":");
+  if (parts.length < 5 || parts[0] !== "agent") return undefined;
+
+  const KNOWN_CHANNELS = new Set([
+    "telegram", "discord", "slack", "whatsapp", "signal", "imessage",
+  ]);
+  const agentName = parts[1]; // e.g. "pm"
+  const channel = parts[2];   // e.g. "telegram"
+  if (!KNOWN_CHANNELS.has(channel)) return undefined;
+
+  const peerId = parts.slice(4).join(":"); // handle colons in id
+  if (!peerId) return undefined;
+
+  return {
+    channel,
+    to: `${channel}:${peerId}`,
+    accountId: agentName,
   };
-
-  // 1. Try the current agent's store first (fast path)
-  try {
-    const storePath = core.channel.session.resolveStorePath(cfg.session?.store);
-    const result = await tryStore(storePath);
-    if (result) return result;
-
-    // 2. Scan sibling agent stores: walk up to the agents/ dir and check each
-    //    storePath is typically  .../.openclaw/agents/<name>/sessions/sessions.json
-    const agentsDir = dirname(dirname(dirname(storePath)));
-    const entries = await readdir(agentsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const candidate = join(agentsDir, entry.name, "sessions", "sessions.json");
-      if (candidate === storePath) continue; // already checked
-      const result = await tryStore(candidate);
-      if (result) return result;
-    }
-  } catch {
-    // best-effort
-  }
-  return undefined;
 }
 
 /** Channel name → runtime send function dispatcher. */
@@ -323,10 +302,14 @@ export async function deliverNotification(
   sessionKey: string,
   text: string,
 ): Promise<void> {
-  const delivery = await resolveSessionDeliveryContext(core, cfg, sessionKey);
+  // Derive delivery target directly from the session key.
+  // The session store's deliveryContext is unreliable because it gets
+  // overwritten whenever the user accesses the session from a different
+  // channel (e.g. webchat), losing the original channel/to values.
+  const delivery = parseSessionKeyDeliveryContext(sessionKey);
   if (!delivery) {
     console.warn(
-      `[botcord] notifySession ${sessionKey} has no deliveryContext — skipping notification`,
+      `[botcord] notifySession ${sessionKey}: cannot derive delivery target from session key — skipping notification`,
     );
     return;
   }
