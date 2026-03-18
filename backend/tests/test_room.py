@@ -11,7 +11,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from nacl.signing import SigningKey
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from hub.models import Base
 
@@ -810,10 +810,9 @@ async def test_muted_member_skipped_in_fanout(client: AsyncClient):
 
     # Alice sends to room
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # Bob should have messages, Charlie should not
@@ -912,10 +911,9 @@ async def test_room_fanout_normal(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
 
@@ -933,10 +931,9 @@ async def test_room_fanout_non_member(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 403
 
 
@@ -955,18 +952,16 @@ async def test_room_fanout_default_send_false(client: AsyncClient):
 
     # Bob (member) cannot send
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 403
 
     # Alice (owner) can send
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
 
@@ -992,10 +987,9 @@ async def test_room_fanout_admin_can_send_when_default_send_false(client: AsyncC
 
     # Bob (admin) can now send
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 202
 
 
@@ -1021,10 +1015,9 @@ async def test_room_fanout_block_skips(client: AsyncClient):
 
     # Alice sends to room
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # Bob should not have messages
@@ -1040,10 +1033,9 @@ async def test_room_not_found(client: AsyncClient):
     sk, agent_id, key_id, token = await _create_agent(client, "alice")
 
     envelope = _build_envelope(sk, key_id, agent_id, "rm_nonexistent")
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(token),
+    )
     assert resp.status_code == 404
 
 
@@ -1061,10 +1053,9 @@ async def test_room_fanout_message_has_room_id(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
 
     bob_inbox = await client.get(
         "/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"},
@@ -1085,10 +1076,9 @@ async def test_dm_room_auto_created(client: AsyncClient):
     sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
 
     envelope = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # Check DM room exists in list
@@ -1106,12 +1096,11 @@ async def test_dm_room_idempotent(client: AsyncClient):
     sk_a, a_id, a_key, a_token = await _create_agent(client, "alice")
     sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        for _ in range(3):
-            envelope = _build_envelope(sk_a, a_key, a_id, b_id)
-            await client.post(
-                "/hub/send", json=envelope, headers=_auth_header(a_token),
-            )
+    for _ in range(3):
+        envelope = _build_envelope(sk_a, a_key, a_id, b_id)
+        await client.post(
+            "/hub/send", json=envelope, headers=_auth_header(a_token),
+        )
 
     rooms_resp = await client.get(
         "/hub/rooms/me", headers=_auth_header(a_token),
@@ -1128,17 +1117,15 @@ async def test_dm_room_order_independent(client: AsyncClient):
 
     # Alice sends to Bob
     envelope1 = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=envelope1, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=envelope1, headers=_auth_header(a_token),
+    )
 
     # Bob sends to Alice
     envelope2 = _build_envelope(sk_b, b_key, b_id, a_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=envelope2, headers=_auth_header(b_token),
-        )
+    await client.post(
+        "/hub/send", json=envelope2, headers=_auth_header(b_token),
+    )
 
     # Both should see the same single DM room
     a_rooms = await client.get("/hub/rooms/me", headers=_auth_header(a_token))
@@ -1157,10 +1144,9 @@ async def test_dm_room_id_format(client: AsyncClient):
     sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
 
     envelope = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
 
     ids = sorted([a_id, b_id])
     expected = f"rm_dm_{ids[0]}_{ids[1]}"
@@ -1181,10 +1167,9 @@ async def test_contact_request_no_dm_room(client: AsyncClient):
         msg_type="contact_request",
         payload={"message": "Hi, add me!"},
     )
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # No DM room should exist
@@ -1212,13 +1197,12 @@ async def test_send_with_topic(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send",
-            json=envelope,
-            headers=_auth_header(a_token),
-            params={"topic": "design"},
-        )
+    resp = await client.post(
+        "/hub/send",
+        json=envelope,
+        headers=_auth_header(a_token),
+        params={"topic": "design"},
+    )
     assert resp.status_code == 202
 
     # Check inbox has topic
@@ -1244,18 +1228,16 @@ async def test_history_topic_filter(client: AsyncClient):
 
     # Send with topic "design"
     env1 = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env1, headers=_auth_header(a_token),
-            params={"topic": "design"},
-        )
+    await client.post(
+        "/hub/send", json=env1, headers=_auth_header(a_token),
+        params={"topic": "design"},
+    )
 
     # Send without topic
     env2 = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env2, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=env2, headers=_auth_header(a_token),
+    )
 
     # Filter by topic
     resp = await client.get(
@@ -1282,11 +1264,10 @@ async def test_history_room_and_topic_combined(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     env = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env, headers=_auth_header(a_token),
-            params={"topic": "urgent"},
-        )
+    await client.post(
+        "/hub/send", json=env, headers=_auth_header(a_token),
+        params={"topic": "urgent"},
+    )
 
     resp = await client.get(
         "/hub/history",
@@ -1304,11 +1285,10 @@ async def test_dm_topic(client: AsyncClient):
     sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
 
     envelope = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-            params={"topic": "project-x"},
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+        params={"topic": "project-x"},
+    )
     assert resp.status_code == 202
 
     # Check history
@@ -1358,10 +1338,9 @@ async def test_list_my_rooms_includes_dm(client: AsyncClient):
 
     # Create a DM room by sending a message
     envelope = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
 
     resp = await client.get("/hub/rooms/me", headers=_auth_header(a_token))
     rooms = resp.json()["rooms"]
@@ -1411,17 +1390,15 @@ async def test_inbox_room_id_filter(client: AsyncClient):
 
     # Send room message
     env = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=env, headers=_auth_header(a_token),
+    )
 
     # Also send a DM so there are two messages
     dm_env = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=dm_env, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=dm_env, headers=_auth_header(a_token),
+    )
 
     # Filter inbox by room_id
     resp = await client.get(
@@ -1453,8 +1430,7 @@ async def test_inbox_includes_room_rule_and_text_hint(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     env = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "deploy started"})
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        send_resp = await client.post("/hub/send", json=env, headers=_auth_header(a_token))
+    send_resp = await client.post("/hub/send", json=env, headers=_auth_header(a_token))
     assert send_resp.status_code == 202
 
     inbox = await client.get("/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"})
@@ -1480,10 +1456,9 @@ async def test_history_room_id_in_response(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     env = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=env, headers=_auth_header(a_token),
+    )
 
     resp = await client.get(
         "/hub/history",
@@ -1524,10 +1499,9 @@ async def test_inbox_room_id_in_dm(client: AsyncClient):
     sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
 
     envelope = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
 
     bob_inbox = await client.get(
         "/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"},
@@ -1853,10 +1827,9 @@ async def test_room_fanout_sender_excluded(client: AsyncClient):
     room_id = resp.json()["room_id"]
 
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # Bob should have the message
@@ -1888,10 +1861,9 @@ async def test_room_fanout_multi_receiver(client: AsyncClient):
     room_id = resp.json()["room_id"]
 
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # All three receivers should have the message
@@ -1912,15 +1884,14 @@ async def test_inbox_topic_filter(client: AsyncClient):
     # Send two messages with different topics
     env1 = _build_envelope(sk_a, a_key, a_id, b_id)
     env2 = _build_envelope(sk_a, a_key, a_id, b_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env1, headers=_auth_header(a_token),
-            params={"topic": "work"},
-        )
-        await client.post(
-            "/hub/send", json=env2, headers=_auth_header(a_token),
-            params={"topic": "casual"},
-        )
+    await client.post(
+        "/hub/send", json=env1, headers=_auth_header(a_token),
+        params={"topic": "work"},
+    )
+    await client.post(
+        "/hub/send", json=env2, headers=_auth_header(a_token),
+        params={"topic": "casual"},
+    )
 
     inbox = await client.get(
         "/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"},
@@ -2060,10 +2031,9 @@ async def test_per_member_can_send_override_true(client: AsyncClient):
 
     # Bob can now send to the channel-like room
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 202
 
 
@@ -2090,10 +2060,9 @@ async def test_per_member_can_send_override_false(client: AsyncClient):
 
     # Bob should be denied
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 403
 
 
@@ -2113,10 +2082,9 @@ async def test_per_member_can_send_none_uses_default(client: AsyncClient):
 
     # Bob has can_send=None (default), so falls back to default_send=False
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 403
 
 
@@ -2150,10 +2118,9 @@ async def test_admin_can_send_override_false(client: AsyncClient):
 
     # Admin with can_send=False → denied
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 403
 
 
@@ -2172,10 +2139,9 @@ async def test_owner_can_send_always(client: AsyncClient):
 
     # Owner always can send even when default_send=False
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
 
@@ -2204,10 +2170,9 @@ async def test_per_member_can_send_set_on_invite(client: AsyncClient):
 
     # Bob can send despite default_send=False
     envelope = _build_envelope(sk_b, b_key, b_id, room_id)
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=envelope, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=envelope, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 202
 
 
@@ -2520,8 +2485,7 @@ async def test_admission_contacts_only_invite_allowed(client: AsyncClient):
 
     # Create mutual contact: alice sends contact_request to bob, bob accepts
     envelope = _build_envelope(sk_a, a_key, a_id, b_id, msg_type="contact_request", payload={"message": "hi"})
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
     assert resp.status_code == 202
 
     # Bob accepts the contact request
@@ -2533,11 +2497,10 @@ async def test_admission_contacts_only_invite_allowed(client: AsyncClient):
     assert len(requests) == 1
     request_id = requests[0]["id"]
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            f"/registry/agents/{b_id}/contact-requests/{request_id}/accept",
-            headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        f"/registry/agents/{b_id}/contact-requests/{request_id}/accept",
+        headers=_auth_header(b_token),
+    )
     assert resp.status_code == 200
 
     # Now alice can invite bob
@@ -2717,10 +2680,9 @@ async def test_e2e_multi_agent_room_conversation(client: AsyncClient):
     env_a = _build_envelope(
         sk_a, a_key, a_id, room_id, payload={"text": "大家好"},
     )
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=env_a, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=env_a, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # Bob sees Alice's message
@@ -2750,10 +2712,9 @@ async def test_e2e_multi_agent_room_conversation(client: AsyncClient):
     env_b = _build_envelope(
         sk_b, b_key, b_id, room_id, payload={"text": "你好 Alice"},
     )
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=env_b, headers=_auth_header(b_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=env_b, headers=_auth_header(b_token),
+    )
     assert resp.status_code == 202
 
     alice_inbox = await client.get(
@@ -2779,10 +2740,9 @@ async def test_e2e_multi_agent_room_conversation(client: AsyncClient):
     env_c = _build_envelope(
         sk_c, c_key, c_id, room_id, payload={"text": "我也来了"},
     )
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=env_c, headers=_auth_header(c_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=env_c, headers=_auth_header(c_token),
+    )
     assert resp.status_code == 202
 
     alice_inbox = await client.get(
@@ -2842,27 +2802,26 @@ async def test_e2e_room_conversation_with_topic(client: AsyncClient):
     )
     room_id = resp.json()["room_id"]
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        # Alice sends on topic "design"
-        env1 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "讨论设计方案"})
-        await client.post(
-            "/hub/send", json=env1, headers=_auth_header(a_token),
-            params={"topic": "design"},
-        )
+    # Alice sends on topic "design"
+    env1 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "讨论设计方案"})
+    await client.post(
+        "/hub/send", json=env1, headers=_auth_header(a_token),
+        params={"topic": "design"},
+    )
 
-        # Bob replies on topic "design"
-        env2 = _build_envelope(sk_b, b_key, b_id, room_id, payload={"text": "方案A更好"})
-        await client.post(
-            "/hub/send", json=env2, headers=_auth_header(b_token),
-            params={"topic": "design"},
-        )
+    # Bob replies on topic "design"
+    env2 = _build_envelope(sk_b, b_key, b_id, room_id, payload={"text": "方案A更好"})
+    await client.post(
+        "/hub/send", json=env2, headers=_auth_header(b_token),
+        params={"topic": "design"},
+    )
 
-        # Alice sends on topic "bugs"
-        env3 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "发现一个bug"})
-        await client.post(
-            "/hub/send", json=env3, headers=_auth_header(a_token),
-            params={"topic": "bugs"},
-        )
+    # Alice sends on topic "bugs"
+    env3 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "发现一个bug"})
+    await client.post(
+        "/hub/send", json=env3, headers=_auth_header(a_token),
+        params={"topic": "bugs"},
+    )
 
     # Query history filtered by topic "design" — should see 2 conversations
     design_history = await client.get(
@@ -2921,10 +2880,9 @@ async def test_e2e_room_conversation_block_skips_delivery(client: AsyncClient):
 
     # Alice sends a message to the room
     env = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "hello everyone"})
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post(
-            "/hub/send", json=env, headers=_auth_header(a_token),
-        )
+    resp = await client.post(
+        "/hub/send", json=env, headers=_auth_header(a_token),
+    )
     assert resp.status_code == 202
 
     # Bob should receive the message
@@ -2964,10 +2922,9 @@ async def test_e2e_room_conversation_muted_member_skipped(client: AsyncClient):
 
     # Alice sends a message
     env = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "hello"})
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=env, headers=_auth_header(a_token),
+    )
 
     # Carol receives it
     carol_inbox = await client.get(
@@ -2988,10 +2945,9 @@ async def test_e2e_room_conversation_muted_member_skipped(client: AsyncClient):
         headers=_auth_header(b_token),
     )
     env2 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "hello again"})
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        await client.post(
-            "/hub/send", json=env2, headers=_auth_header(a_token),
-        )
+    await client.post(
+        "/hub/send", json=env2, headers=_auth_header(a_token),
+    )
     bob_inbox = await client.get(
         "/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"},
     )
@@ -3014,9 +2970,8 @@ async def test_e2e_room_member_join_mid_conversation(client: AsyncClient):
     room_id = resp.json()["room_id"]
 
     # Alice and Bob exchange messages
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        env1 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg before dave"})
-        await client.post("/hub/send", json=env1, headers=_auth_header(a_token))
+    env1 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg before dave"})
+    await client.post("/hub/send", json=env1, headers=_auth_header(a_token))
 
     # Drain Bob's inbox
     await client.get("/hub/inbox", headers=_auth_header(b_token), params={"ack": "true"})
@@ -3031,9 +2986,8 @@ async def test_e2e_room_member_join_mid_conversation(client: AsyncClient):
     assert resp.json()["member_count"] == 3
 
     # Alice sends another message — now Dave should receive it
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        env2 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg after dave joined"})
-        await client.post("/hub/send", json=env2, headers=_auth_header(a_token))
+    env2 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg after dave joined"})
+    await client.post("/hub/send", json=env2, headers=_auth_header(a_token))
 
     dave_inbox = await client.get(
         "/hub/inbox", headers=_auth_header(d_token), params={"ack": "false"},
@@ -3042,9 +2996,8 @@ async def test_e2e_room_member_join_mid_conversation(client: AsyncClient):
     assert dave_inbox.json()["messages"][0]["envelope"]["payload"]["text"] == "msg after dave joined"
 
     # Dave can also send to the room
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        env3 = _build_envelope(sk_d, d_key, d_id, room_id, payload={"text": "hi from dave"})
-        resp = await client.post("/hub/send", json=env3, headers=_auth_header(d_token))
+    env3 = _build_envelope(sk_d, d_key, d_id, room_id, payload={"text": "hi from dave"})
+    resp = await client.post("/hub/send", json=env3, headers=_auth_header(d_token))
     assert resp.status_code == 202
 
     # Alice and Bob both receive Dave's message
@@ -3073,14 +3026,13 @@ async def test_public_room_history_visible_to_late_joiner(client: AsyncClient):
     room_id = create_resp.json()["room_id"]
 
     # Alice sends two messages before charlie joins
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        env1 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg1 before charlie"})
-        resp = await client.post("/hub/send", json=env1, headers=_auth_header(a_token))
-        assert resp.status_code == 202
+    env1 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg1 before charlie"})
+    resp = await client.post("/hub/send", json=env1, headers=_auth_header(a_token))
+    assert resp.status_code == 202
 
-        env2 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg2 before charlie"})
-        resp = await client.post("/hub/send", json=env2, headers=_auth_header(a_token))
-        assert resp.status_code == 202
+    env2 = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "msg2 before charlie"})
+    resp = await client.post("/hub/send", json=env2, headers=_auth_header(a_token))
+    assert resp.status_code == 202
 
     # Charlie joins the public room
     join_resp = await client.post(
@@ -3122,10 +3074,9 @@ async def test_private_room_history_not_visible_to_late_joiner(client: AsyncClie
     room_id = create_resp.json()["room_id"]
 
     # Alice sends a message before bob joins
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        env = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "private msg"})
-        resp = await client.post("/hub/send", json=env, headers=_auth_header(a_token))
-        assert resp.status_code == 202
+    env = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "private msg"})
+    resp = await client.post("/hub/send", json=env, headers=_auth_header(a_token))
+    assert resp.status_code == 202
 
     # Admin (alice) invites bob
     invite_resp = await client.post(
@@ -3440,8 +3391,7 @@ async def test_mention_specific_agent(client: AsyncClient):
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
     envelope["mentions"] = [b_id]
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
     assert resp.status_code == 202
 
     # Bob should have mentioned=True
@@ -3474,8 +3424,7 @@ async def test_mention_all(client: AsyncClient):
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
     envelope["mentions"] = ["@all"]
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
     assert resp.status_code == 202
 
     for token in [b_token, c_token]:
@@ -3503,8 +3452,7 @@ async def test_mention_none_omitted(client: AsyncClient):
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
     assert "mentions" not in envelope
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
     assert resp.status_code == 202
 
     for token in [b_token, c_token]:
@@ -3531,8 +3479,7 @@ async def test_mention_empty_list(client: AsyncClient):
     envelope = _build_envelope(sk_a, a_key, a_id, room_id)
     envelope["mentions"] = []
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
     assert resp.status_code == 202
 
     for token in [b_token, c_token]:
@@ -3550,8 +3497,7 @@ async def test_dm_mentioned_true(client: AsyncClient):
 
     envelope = _build_envelope(sk_a, a_key, a_id, b_id)
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
     assert resp.status_code == 202
 
     inbox_b = await client.get("/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"})
@@ -3577,8 +3523,7 @@ async def test_mention_in_history(client: AsyncClient):
     envelope = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "hey @bob"})
     envelope["mentions"] = [b_id]
 
-    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
-        resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
     assert resp.status_code == 202
 
     # Bob's history should show mentioned=True

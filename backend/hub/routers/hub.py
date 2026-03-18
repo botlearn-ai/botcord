@@ -10,7 +10,6 @@ from collections import defaultdict, deque
 
 from cachetools import TTLCache
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -18,8 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from hub.auth import get_current_agent, verify_agent_token
-from hub.config import FORWARD_TIMEOUT_SECONDS, INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
-from hub.constants import BACKOFF_SCHEDULE
+from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.database import get_db
 from hub.enums import TopicStatus
@@ -30,8 +28,6 @@ from hub.models import (
     Contact,
     ContactRequest,
     ContactRequestState,
-    Endpoint,
-    EndpointState,
     KeyState,
     MessagePolicy,
     MessageRecord,
@@ -46,9 +42,6 @@ from hub.models import (
 from hub.forward import (
     RoomContext as _RoomContext,
     build_flat_text as _build_flat_text,
-    build_forward_url as _build_forward_url,
-    convert_payload_for_openclaw as _convert_payload_for_openclaw,
-    get_sender_display_name as _get_sender_display_name,
 )
 from hub.schemas import (
     HistoryMessage,
@@ -187,102 +180,6 @@ async def _verify_envelope(envelope: MessageEnvelope, db: AsyncSession) -> None:
     pubkey_b64 = signing_key.pubkey[len("ed25519:"):]
     if not verify_envelope_sig(envelope, pubkey_b64):
         raise HTTPException(status_code=400, detail="Signature verification failed")
-
-
-async def _resolve_endpoint_url(receiver_id: str, db: AsyncSession) -> str | None:
-    """Return the URL of the receiver's active endpoint, or None."""
-    endpoint = await _resolve_endpoint(receiver_id, db)
-    return endpoint.url if endpoint else None
-
-
-async def _resolve_endpoint(receiver_id: str, db: AsyncSession) -> Endpoint | None:
-    """Return the receiver's active Endpoint object, or None."""
-    result = await db.execute(
-        select(Endpoint).where(
-            Endpoint.agent_id == receiver_id,
-            Endpoint.state == EndpointState.active,
-        )
-    )
-    return result.scalar_one_or_none()
-
-
-async def _is_endpoint_unreachable(agent_id: str, db: AsyncSession) -> bool:
-    """Return True if the agent has an endpoint marked as unreachable or unverified."""
-    result = await db.execute(
-        select(Endpoint).where(
-            Endpoint.agent_id == agent_id,
-            Endpoint.state.in_([EndpointState.unreachable, EndpointState.unverified]),
-        )
-    )
-    return result.scalar_one_or_none() is not None
-
-
-async def _forward_envelope(
-    http_client: httpx.AsyncClient,
-    url: str,
-    envelope: MessageEnvelope,
-    webhook_token: str | None = None,
-    sender_display_name: str | None = None,
-    room_id: str | None = None,
-    topic: str | None = None,
-    room_context: _RoomContext | None = None,
-) -> str | None:
-    """POST envelope to the agent's inbox. Returns None on success, error string on failure."""
-    forward_url = _build_forward_url(url, envelope.type)
-    body = _convert_payload_for_openclaw(forward_url, envelope, sender_display_name, room_id=room_id, topic=topic, room_context=room_context)
-    headers: dict[str, str] = {}
-    if webhook_token:
-        headers["Authorization"] = f"Bearer {webhook_token}"
-    log_ctx = "POST %s to=%s type=%s msg_id=%s"
-    log_args = (forward_url, envelope.to, envelope.type, envelope.msg_id)
-    logger.info("Webhook PAYLOAD: " + log_ctx + " body=%s", *log_args, body)
-    try:
-        resp = await http_client.post(
-            forward_url,
-            json=body,
-            headers=headers,
-            timeout=FORWARD_TIMEOUT_SECONDS,
-        )
-        if 200 <= resp.status_code < 300:
-            logger.info("Webhook OK: " + log_ctx + " -> %d", *log_args, resp.status_code)
-            return None
-        resp_body = resp.text[:500]
-        logger.warning("Webhook FAIL: " + log_ctx + " -> %d body=%s", *log_args, resp.status_code, resp_body)
-        return f"HTTP {resp.status_code}"
-    except httpx.ConnectError as exc:
-        logger.warning("Webhook ERROR: " + log_ctx + " -> ConnectError: %s", *log_args, exc)
-        return "CONNECTION_REFUSED"
-    except httpx.TimeoutException as exc:
-        logger.warning("Webhook ERROR: " + log_ctx + " -> Timeout after %ss: %s", *log_args, FORWARD_TIMEOUT_SECONDS, exc)
-        return "TIMEOUT"
-    except httpx.HTTPError as exc:
-        logger.warning("Webhook ERROR: " + log_ctx + " -> %s: %s", *log_args, type(exc).__name__, exc)
-        return f"HTTP_ERROR: {type(exc).__name__}"
-    except Exception as exc:
-        logger.warning("Webhook ERROR: " + log_ctx + " -> %s: %s", *log_args, type(exc).__name__, exc)
-        return f"ERROR: {type(exc).__name__}"
-
-
-def _compute_next_retry_at(
-    retry_count: int,
-    created_at: datetime.datetime,
-    ttl_sec: int,
-) -> datetime.datetime | None:
-    """Return the next retry time, or None if TTL would be exceeded."""
-    idx = min(retry_count, len(BACKOFF_SCHEDULE) - 1)
-    delay = BACKOFF_SCHEDULE[idx]
-    now = datetime.datetime.now(datetime.timezone.utc)
-    next_at = now + datetime.timedelta(seconds=delay)
-
-    # Ensure created_at is tz-aware
-    ca = created_at
-    if ca.tzinfo is None:
-        ca = ca.replace(tzinfo=datetime.timezone.utc)
-
-    deadline = ca + datetime.timedelta(seconds=ttl_sec)
-    if next_at > deadline:
-        return None
-    return next_at
 
 
 # ---------------------------------------------------------------------------
@@ -547,51 +444,15 @@ async def _send_direct_message(
             topic_id=existing.topic_id,
         )
 
-    # Try immediate delivery
-    endpoint = await _resolve_endpoint(envelope.to, db)
-    http_client: httpx.AsyncClient = request.app.state.http_client
-    err: str | None = "NO_ENDPOINT"
-    if endpoint:
-        sender_name = await _get_sender_display_name(envelope.from_, db)
-        err = await _forward_envelope(
-            http_client, endpoint.url, envelope,
-            webhook_token=endpoint.webhook_token,
-            sender_display_name=sender_name,
-            room_id=room_id,
-            topic=topic,
-        )
-        # Track delivery error on endpoint
-        endpoint.last_delivery_error = err
-    elif await _is_endpoint_unreachable(envelope.to, db):
-        err = "ENDPOINT_UNREACHABLE"
-
-    if err is None:
-        record.state = MessageState.delivered
-        record.delivered_at = datetime.datetime.now(datetime.timezone.utc)
-        logger.info("DIRECT delivered msg_id=%s from=%s to=%s", envelope.msg_id, envelope.from_, envelope.to)
-    elif err == "ENDPOINT_UNREACHABLE":
-        # Park message for inbox polling, no retry
-        record.last_error = err
-        record.next_retry_at = None
-        logger.warning("DIRECT parked msg_id=%s from=%s to=%s err=%s", envelope.msg_id, envelope.from_, envelope.to, err)
-    else:
-        # Queue for retry
-        record.last_error = err
-        record.next_retry_at = _compute_next_retry_at(0, record.created_at, record.ttl_sec)
-        if record.next_retry_at is None:
-            record.last_error = "TTL_EXPIRED"
-        logger.warning("DIRECT queued msg_id=%s from=%s to=%s err=%s", envelope.msg_id, envelope.from_, envelope.to, err)
-
     await db.commit()
 
-    # Notify long-polling readers if the message is queued for the receiver
-    if record.state == MessageState.queued:
-        await notify_inbox(envelope.to)
+    # Notify inbox listeners
+    await notify_inbox(envelope.to)
 
     return SendResponse(
         queued=True,
         hub_msg_id=record.hub_msg_id,
-        status=record.state.value,
+        status="queued",
         topic_id=topic_id,
     )
 
@@ -720,20 +581,6 @@ async def _send_room_message(
         envelope.msg_id, envelope.from_, room_id, topic, receivers,
     )
     envelope_json = json.dumps(envelope.model_dump(by_alias=True))
-    http_client: httpx.AsyncClient = request.app.state.http_client
-    sender_name = await _get_sender_display_name(envelope.from_, db)
-
-    # Build room context for webhook payload
-    member_agent_ids = [m.agent_id for m in room.members]
-    name_result = await db.execute(
-        select(Agent.agent_id, Agent.display_name).where(
-            Agent.agent_id.in_(member_agent_ids)
-        )
-    )
-    agent_name_map = dict(name_result.all())
-    # Build per-member permission lookup for room context
-    member_map = {m.agent_id: m for m in room.members}
-    base_member_names = [agent_name_map.get(aid, aid) for aid in member_agent_ids]
 
     first_hub_msg_id: str | None = None
 
@@ -741,17 +588,6 @@ async def _send_room_message(
     mentioned_set = set(envelope.mentions) if envelope.mentions else set()
 
     for receiver_id in receivers:
-        # Build per-receiver room context with their own permissions
-        recv_member = member_map.get(receiver_id)
-        room_context = _RoomContext(
-            room_id=room_id,
-            name=room.name,
-            member_count=len(room.members),
-            rule=room.rule,
-            member_names=base_member_names,
-            my_role=recv_member.role.value if recv_member else None,
-            my_can_send=_can_send(room, recv_member) if recv_member else None,
-        )
         hub_msg_id = generate_hub_msg_id()
         if first_hub_msg_id is None:
             first_hub_msg_id = hub_msg_id
@@ -790,39 +626,9 @@ async def _send_room_message(
                 first_hub_msg_id = existing.hub_msg_id
             continue
 
-        # Try immediate delivery
-        endpoint = await _resolve_endpoint(receiver_id, db)
-        err: str | None = "NO_ENDPOINT"
-        if endpoint:
-            err = await _forward_envelope(
-                http_client, endpoint.url, envelope,
-                webhook_token=endpoint.webhook_token,
-                sender_display_name=sender_name,
-                room_id=room_id,
-                topic=topic,
-                room_context=room_context,
-            )
-            endpoint.last_delivery_error = err
-        elif await _is_endpoint_unreachable(receiver_id, db):
-            err = "ENDPOINT_UNREACHABLE"
-
-        if err is None:
-            record.state = MessageState.delivered
-            record.delivered_at = datetime.datetime.now(datetime.timezone.utc)
-        elif err == "ENDPOINT_UNREACHABLE":
-            record.last_error = err
-            record.next_retry_at = None
-        else:
-            record.last_error = err
-            record.next_retry_at = _compute_next_retry_at(
-                0, record.created_at, record.ttl_sec
-            )
-            if record.next_retry_at is None:
-                record.last_error = "TTL_EXPIRED"
-
     await db.commit()
 
-    # Notify all receivers who have queued messages
+    # Notify all receivers
     for receiver_id in receivers:
         await notify_inbox(receiver_id)
 
@@ -977,40 +783,10 @@ async def receive_receipt(
     except IntegrityError:
         return ReceiptResponse(received=True)
 
-    # Try immediate delivery
-    sender_endpoint = await _resolve_endpoint(record.sender_id, db)
-    http_client: httpx.AsyncClient = request.app.state.http_client
-    err: str | None = "NO_ENDPOINT"
-    if sender_endpoint:
-        sender_name = await _get_sender_display_name(envelope.from_, db)
-        err = await _forward_envelope(
-            http_client, sender_endpoint.url, envelope,
-            webhook_token=sender_endpoint.webhook_token,
-            sender_display_name=sender_name,
-        )
-        sender_endpoint.last_delivery_error = err
-    elif await _is_endpoint_unreachable(record.sender_id, db):
-        err = "ENDPOINT_UNREACHABLE"
-
-    if err is None:
-        receipt_record.state = MessageState.delivered
-        receipt_record.delivered_at = datetime.datetime.now(datetime.timezone.utc)
-    elif err == "ENDPOINT_UNREACHABLE":
-        receipt_record.last_error = err
-        receipt_record.next_retry_at = None
-    else:
-        receipt_record.last_error = err
-        receipt_record.next_retry_at = _compute_next_retry_at(
-            0, receipt_record.created_at, receipt_record.ttl_sec
-        )
-        if receipt_record.next_retry_at is None:
-            receipt_record.last_error = "TTL_EXPIRED"
-
     await db.commit()
 
-    # Notify long-polling readers if the receipt is queued for the original sender
-    if receipt_record.state == MessageState.queued:
-        await notify_inbox(record.sender_id)
+    # Notify sender that receipt is available in their inbox
+    await notify_inbox(record.sender_id)
 
     return ReceiptResponse(received=True)
 
@@ -1068,22 +844,9 @@ def _build_delivery_note(last_error: str | None) -> str | None:
     if not last_error:
         return None
     notes = {
-        "HTTP 401": "Webhook 认证失败 (HTTP 401)。请检查 webhook_token 是否正确。",
-        "HTTP 403": "Webhook 认证被拒绝 (HTTP 403)。请检查 webhook_token 权限。",
-        "HTTP 404": "Endpoint 返回 404。请检查 endpoint URL 路径是否正确。",
-        "CONNECTION_REFUSED": "无法连接到 endpoint。请检查目标服务是否在运行。",
-        "TIMEOUT": "Webhook 请求超时。请检查目标服务响应速度或网络状况。",
-        "TTL_EXPIRED": "Webhook 投递超时，重试已耗尽。请检查 endpoint 配置。",
-        "NO_ENDPOINT": "未注册 endpoint。请先注册 webhook endpoint。",
-        "ENDPOINT_UNREACHABLE": "Endpoint 已被标记为不可达。请重新注册 endpoint: POST /registry/agents/{agent_id}/endpoints。在此之前只能通过轮询 /hub/inbox 获取消息。",
+        "TTL_EXPIRED": "消息在队列中过期，接收方未及时拉取。",
     }
-    if last_error in notes:
-        return notes[last_error]
-    if last_error.startswith("HTTP 5"):
-        return f"目标服务返回服务器错误 ({last_error})。请检查目标服务运行状态。"
-    if last_error.startswith("HTTP 4"):
-        return f"Webhook 请求被拒绝 ({last_error})。请检查 endpoint 配置。"
-    return f"Webhook 投递失败: {last_error}。请检查 endpoint 配置是否正确。"
+    return notes.get(last_error)
 
 
 async def _fetch_queued_messages(

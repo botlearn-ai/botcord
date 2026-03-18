@@ -1478,3 +1478,64 @@ async def test_reregister_updates_bio(client: AsyncClient):
 
     resolve = await client.get(f"/registry/resolve/{agent_id}")
     assert resolve.json()["bio"] == "updated bio"
+
+
+# ===========================================================================
+# Endpoint deprecation header tests
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_endpoint_register_deprecation_headers(client: AsyncClient, db_session: AsyncSession):
+    """POST /registry/agents/{id}/endpoints should return Deprecation headers."""
+    sk, pubkey_str = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey_str)
+    resp = await client.post(
+        f"/registry/agents/{agent_id}/endpoints",
+        json={"url": "https://example.com/hook", "webhook_token": "tok"},
+        headers=_auth_header(token),
+    )
+    assert resp.status_code in (200, 201)
+    assert resp.headers.get("Deprecation") == "true"
+    assert "deprecated" in resp.headers.get("Warning", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_endpoint_update_deprecation_headers(client: AsyncClient, db_session: AsyncSession):
+    """Re-registering an endpoint (update path) should also return Deprecation headers."""
+    sk, pubkey_str = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey_str)
+    # First registration
+    await client.post(
+        f"/registry/agents/{agent_id}/endpoints",
+        json={"url": "https://example.com/hook", "webhook_token": "tok"},
+        headers=_auth_header(token),
+    )
+    # Second registration (update)
+    resp = await client.post(
+        f"/registry/agents/{agent_id}/endpoints",
+        json={"url": "https://example.com/hook-v2", "webhook_token": "tok2"},
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("Deprecation") == "true"
+    assert "deprecated" in resp.headers.get("Warning", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_endpoint_status_deprecation_headers(client: AsyncClient, db_session: AsyncSession):
+    """GET /registry/agents/{id}/endpoints/status should return Deprecation headers."""
+    sk, pubkey_str = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey_str)
+    # Register an endpoint first so status has something to report
+    await client.post(
+        f"/registry/agents/{agent_id}/endpoints",
+        json={"url": "https://example.com/hook", "webhook_token": "tok"},
+        headers=_auth_header(token),
+    )
+    resp = await client.get(
+        f"/registry/agents/{agent_id}/endpoints/status",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("Deprecation") == "true"

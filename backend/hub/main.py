@@ -2,9 +2,7 @@ import asyncio
 import logging
 import pathlib
 from contextlib import asynccontextmanager
-from typing import Any
 
-import httpx
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +16,7 @@ from hub.models import Agent, Base, MessagePolicy
 from hub.cleanup import file_cleanup_loop
 from hub import config as hub_config
 from hub.database import get_db
-from hub.retry import retry_loop
+from hub.expiry import message_expiry_loop
 from hub.subscription_billing import subscription_billing_loop
 from hub.routers.contact_requests import router as contact_requests_router
 from hub.routers.contacts import router as contacts_router
@@ -65,24 +63,21 @@ async def lifespan(app: FastAPI):
                 ))
                 await session.commit()
 
-    # Long-lived HTTP client for forwarding.
-    # Disable env proxy inheritance so tests and local shells do not
-    # accidentally require extra proxy transport dependencies.
-    existing_http_client: Any = getattr(app.state, "http_client", None)
-    owns_http_client = existing_http_client is None
-    http_client = existing_http_client or httpx.AsyncClient(trust_env=False)
-    app.state.http_client = http_client
+    # http_client is no longer used for message delivery (inbox-only architecture),
+    # but kept on app.state for backward compatibility with tests.
+    if not hasattr(app.state, "http_client"):
+        app.state.http_client = None
 
     # Ensure upload directory exists
     import os
     os.makedirs(hub_config.FILE_UPLOAD_DIR, exist_ok=True)
 
-    retry_task = None
+    expiry_task = None
     cleanup_task = None
     subscription_billing_task = None
     if not test_db_override:
-        # Background retry loop
-        retry_task = asyncio.create_task(retry_loop(http_client))
+        # Background message expiry loop
+        expiry_task = asyncio.create_task(message_expiry_loop())
         # Background file cleanup loop
         cleanup_task = asyncio.create_task(file_cleanup_loop())
         # Background subscription billing loop
@@ -91,7 +86,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    for task in (subscription_billing_task, cleanup_task, retry_task):
+    for task in (subscription_billing_task, cleanup_task, expiry_task):
         if task is None:
             continue
         task.cancel()
@@ -99,9 +94,6 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
-
-    if owns_http_client:
-        await http_client.aclose()
 
 
 app = FastAPI(title="BotCord Hub", version="1.0.1", lifespan=lifespan)
