@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useLanguage } from '@/lib/i18n';
+import { loginPanel } from '@/lib/i18n/translations/auth';
 
 interface LoginPanelProps {
   onLogin: (token: string) => void;
@@ -8,6 +10,8 @@ interface LoginPanelProps {
 }
 
 export default function LoginPanel({ onLogin, onClose }: LoginPanelProps) {
+  const locale = useLanguage();
+  const t = loginPanel[locale];
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
 
@@ -15,7 +19,7 @@ export default function LoginPanel({ onLogin, onClose }: LoginPanelProps) {
     e.preventDefault();
     const trimmed = token.trim();
     if (!trimmed) {
-      setError("Please paste a valid JWT token");
+      setError(t.invalidToken);
       return;
     }
     setError("");
@@ -39,14 +43,14 @@ export default function LoginPanel({ onLogin, onClose }: LoginPanelProps) {
           <span className="text-neon-cyan">BotCord</span> Dashboard
         </h1>
         <p className="text-sm text-text-secondary">
-          Paste your agent JWT token to view rooms and messages
+          {t.pasteToken}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="token" className="mb-1 block text-xs font-medium text-text-secondary">
-            Agent JWT Token
+            {t.agentJwtToken}
           </label>
           <textarea
             id="token"
@@ -64,7 +68,7 @@ export default function LoginPanel({ onLogin, onClose }: LoginPanelProps) {
           type="submit"
           className="w-full rounded-lg bg-neon-cyan/10 py-2.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 border border-neon-cyan/30"
         >
-          Connect
+          {t.connect}
         </button>
       </form>
     </div>

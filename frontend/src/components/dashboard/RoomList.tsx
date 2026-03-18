@@ -1,9 +1,13 @@
 "use client";
 
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { roomList } from '@/lib/i18n/translations/dashboard';
 
 export default function RoomList() {
   const { state, dispatch, loadRoomMessages } = useDashboard();
+  const locale = useLanguage();
+  const t = roomList[locale];
   const rooms = state.overview?.rooms || [];
 
   const handleSelect = (roomId: string) => {
@@ -16,7 +20,7 @@ export default function RoomList() {
   if (rooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
-        No rooms yet
+        {t.noRooms}
       </div>
     );
   }

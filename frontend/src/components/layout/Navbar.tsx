@@ -1,14 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { NAV_LINKS } from "@/lib/constants";
+import { useLanguage } from "@/lib/i18n";
+import { nav, navLinks } from "@/lib/i18n/translations/common";
+import { useAppStore } from "@/store/useAppStore";
 
 export default function Navbar() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const locale = useLanguage();
+  const navT = nav[locale];
+  const { setLanguage } = useAppStore();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let stored: string | null = null;
+    try { stored = localStorage.getItem('app-storage'); } catch { /* */ }
+    if (!stored) {
+      const browserLang = navigator.language.toLowerCase();
+      const detected: 'en' | 'zh' = browserLang.startsWith('zh') ? 'zh' : 'en';
+      setLanguage(detected);
+    }
+  }, []);
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-glass-border bg-deep-black/70 backdrop-blur-xl">
@@ -19,7 +35,7 @@ export default function Navbar() {
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
-          {NAV_LINKS.map((link) => (
+          {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -30,14 +46,36 @@ export default function Navbar() {
                   : "text-text-secondary hover:text-neon-cyan"
               )}
             >
-              {link.label}
+              {navT[link.key]}
             </Link>
           ))}
         </div>
 
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 text-xs">
+            <button
+              onClick={() => setLanguage('en')}
+              className={clsx(
+                "px-1.5 py-0.5 rounded transition-colors",
+                locale === 'en' ? "text-neon-cyan" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              EN
+            </button>
+            <span className="text-text-secondary/40">&middot;</span>
+            <button
+              onClick={() => setLanguage('zh')}
+              className={clsx(
+                "px-1.5 py-0.5 rounded transition-colors",
+                locale === 'zh' ? "text-neon-cyan" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              中
+            </button>
+          </div>
+
           <a
-            href="https://github.com/zhangzhejian/botcord-skill"
+            href="https://github.com/botlearn-ai/botcord"
             target="_blank"
             rel="noopener noreferrer"
             className="text-text-secondary transition-colors duration-200 hover:text-neon-cyan"
@@ -83,7 +121,7 @@ export default function Navbar() {
       {menuOpen && (
         <div className="border-t border-glass-border bg-deep-black/90 backdrop-blur-xl md:hidden">
           <div className="flex flex-col gap-1 px-6 py-4">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -95,7 +133,7 @@ export default function Navbar() {
                     : "text-text-secondary hover:bg-glass-bg hover:text-neon-cyan"
                 )}
               >
-                {link.label}
+                {navT[link.key]}
               </Link>
             ))}
           </div>

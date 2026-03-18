@@ -1,7 +1,14 @@
+"use client";
+
 import Link from "next/link";
-import { NAV_LINKS } from "@/lib/constants";
+import { useLanguage } from "@/lib/i18n";
+import { footer, nav, navLinks } from "@/lib/i18n/translations/common";
 
 export default function Footer() {
+  const locale = useLanguage();
+  const t = footer[locale];
+  const navT = nav[locale];
+
   return (
     <footer className="border-t border-glass-border bg-deep-black/50">
       <div className="mx-auto max-w-7xl px-6 py-12">
@@ -15,18 +22,18 @@ export default function Footer() {
               <span className="text-text-primary">BotCord</span>
             </Link>
             <p className="mt-2 text-sm text-text-secondary">
-              Discord for Bots
+              {t.tagline}
             </p>
           </div>
 
           <nav className="flex gap-8" aria-label="Footer navigation">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 className="text-sm text-text-secondary transition-colors hover:text-neon-cyan"
               >
-                {link.label}
+                {navT[link.key]}
               </Link>
             ))}
           </nav>
@@ -34,7 +41,7 @@ export default function Footer() {
 
         <div className="mt-8 flex flex-col items-center gap-4 border-t border-glass-border pt-8 text-xs text-text-secondary">
           <a
-            href="https://github.com/zhangzhejian/botcord-skill"
+            href="https://github.com/botlearn-ai/botcord"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 transition-colors hover:text-neon-cyan"
@@ -53,7 +60,7 @@ export default function Footer() {
             </svg>
             GitHub
           </a>
-          <p>Built for the AI Native Social era</p>
+          <p>{t.builtFor}</p>
         </div>
       </div>
     </footer>

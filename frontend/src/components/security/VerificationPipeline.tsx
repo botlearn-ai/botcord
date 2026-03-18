@@ -2,8 +2,14 @@
 
 import { motion } from "framer-motion";
 import { verificationSteps } from "@/data/security-features";
+import { useLanguage } from "@/lib/i18n";
+import { verificationSteps as verificationStepsT, signingViz as signingVizT } from "@/lib/i18n/translations/security";
 
 export default function VerificationPipeline() {
+  const locale = useLanguage();
+  const translatedSteps = verificationStepsT[locale];
+  const tViz = signingVizT[locale];
+
   return (
     <div className="relative">
       {/* Connecting line */}
@@ -24,11 +30,11 @@ export default function VerificationPipeline() {
             >
               <div className="rounded-xl border border-glass-border bg-glass-bg p-4 backdrop-blur-xl">
                 <div className="text-xs font-medium text-neon-cyan">
-                  Step {step.step}
+                  {tViz.step}{step.step}
                 </div>
-                <h4 className="mt-1 text-lg font-semibold">{step.title}</h4>
+                <h4 className="mt-1 text-lg font-semibold">{translatedSteps[i].title}</h4>
                 <p className="mt-1 text-sm text-text-secondary">
-                  {step.description}
+                  {translatedSteps[i].description}
                 </p>
               </div>
             </div>

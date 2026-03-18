@@ -1,16 +1,20 @@
 "use client";
 
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { contactList } from '@/lib/i18n/translations/dashboard';
 import CopyableId from "@/components/ui/CopyableId";
 
 export default function ContactList() {
   const { state, selectAgent } = useDashboard();
+  const locale = useLanguage();
+  const t = contactList[locale];
   const contacts = state.overview?.contacts || [];
 
   if (contacts.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
-        No contacts yet
+        {t.noContacts}
       </div>
     );
   }

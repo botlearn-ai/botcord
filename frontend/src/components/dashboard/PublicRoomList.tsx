@@ -1,14 +1,20 @@
 "use client";
 
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { roomList } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 
 export default function PublicRoomList() {
   const { state, dispatch, loadRoomMessages, loadPublicRooms } = useDashboard();
+  const locale = useLanguage();
+  const t = roomList[locale];
+  const tc = common[locale];
 
   if (state.publicRoomsLoading) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
-        Loading rooms...
+        {t.loadingRooms}
       </div>
     );
   }
@@ -16,7 +22,7 @@ export default function PublicRoomList() {
   if (state.publicRooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
-        No public rooms yet
+        {t.noPublicRooms}
       </div>
     );
   }
@@ -73,7 +79,7 @@ export default function PublicRoomList() {
         onClick={loadPublicRooms}
         className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
-        Refresh
+        {tc.refresh}
       </button>
     </div>
   );

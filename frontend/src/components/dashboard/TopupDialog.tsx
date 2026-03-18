@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { topupDialog } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 import { api, ApiError } from "@/lib/api";
 import type { StripePackageItem } from "@/lib/types";
 
@@ -18,6 +21,9 @@ interface TopupDialogProps {
 
 export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
   const { state } = useDashboard();
+  const locale = useLanguage();
+  const t = topupDialog[locale];
+  const tc = common[locale];
   const [packages, setPackages] = useState<StripePackageItem[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [packagesError, setPackagesError] = useState("");
@@ -52,7 +58,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Failed to start checkout");
+        setError(t.rechargeFailed);
       }
       setSubmitting(false);
     }
@@ -77,8 +83,8 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
         </button>
 
         <div className="mb-5">
-          <h3 className="text-lg font-semibold text-text-primary">Recharge</h3>
-          <p className="text-xs text-text-secondary">Select a package to add coins to your wallet</p>
+          <h3 className="text-lg font-semibold text-text-primary">{t.recharge}</h3>
+          <p className="text-xs text-text-secondary">{t.addCoins}</p>
         </div>
 
         {packagesLoading ? (

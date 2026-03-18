@@ -5,7 +5,8 @@ import logging
 import uuid
 
 import jcs
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
+from hub.i18n import I18nHTTPException
 
 logger = logging.getLogger(__name__)
 from sqlalchemy import select
@@ -173,12 +174,13 @@ async def accept_request(
     )
     cr = result.scalar_one_or_none()
     if cr is None:
-        raise HTTPException(status_code=404, detail="Contact request not found")
+        raise I18nHTTPException(status_code=404, message_key="contact_request_not_found")
 
     if cr.state != ContactRequestState.pending:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=400,
-            detail=f"Contact request is already {cr.state.value}",
+            message_key="contact_request_already_resolved",
+            state=cr.state.value,
         )
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -237,12 +239,13 @@ async def reject_request(
     )
     cr = result.scalar_one_or_none()
     if cr is None:
-        raise HTTPException(status_code=404, detail="Contact request not found")
+        raise I18nHTTPException(status_code=404, message_key="contact_request_not_found")
 
     if cr.state != ContactRequestState.pending:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=400,
-            detail=f"Contact request is already {cr.state.value}",
+            message_key="contact_request_already_resolved",
+            state=cr.state.value,
         )
 
     cr.state = ContactRequestState.rejected
