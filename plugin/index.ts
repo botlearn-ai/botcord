@@ -5,7 +5,7 @@
  * - Channel plugin (botcord) with WebSocket + polling gateway
  * - Agent tools: botcord_send, botcord_upload, botcord_rooms, botcord_topics, botcord_contacts, botcord_account, botcord_directory, botcord_wallet
  * - Commands: /botcord_healthcheck, /botcord_token
- * - CLI: openclaw botcord-register, openclaw botcord-import
+ * - CLI: openclaw botcord-register, openclaw botcord-import, openclaw botcord-export
  */
 import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";

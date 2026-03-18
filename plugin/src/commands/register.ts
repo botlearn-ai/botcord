@@ -1,9 +1,12 @@
 /**
- * `openclaw botcord-register` — CLI command for agent registration.
+ * BotCord CLI commands for registration and credentials management.
  *
- * Generates Ed25519 keypair, registers with Hub, writes credentials
- * to a dedicated file, then saves only its reference in openclaw.json.
+ * Supports:
+ * - `openclaw botcord-register`
+ * - `openclaw botcord-import`
+ * - `openclaw botcord-export`
  */
+import { existsSync } from "node:fs";
 import {
   defaultCredentialsFile,
   loadStoredCredentials,
@@ -37,6 +40,14 @@ interface ImportResult {
   keyId: string;
   hub: string;
   sourceFile: string;
+  credentialsFile: string;
+}
+
+interface ExportResult {
+  agentId: string;
+  keyId: string;
+  hub: string;
+  sourceFile?: string;
   credentialsFile: string;
 }
 
@@ -110,6 +121,54 @@ async function persistCredentials(params: {
   return credentialsFile;
 }
 
+function resolveManagedCredentialsFile(accountConfig: Record<string, any>): string | undefined {
+  const credentialsFile = accountConfig.credentialsFile;
+  return typeof credentialsFile === "string" && credentialsFile.trim()
+    ? resolveCredentialsFilePath(credentialsFile)
+    : undefined;
+}
+
+function buildExportableCredentials(config: Record<string, any>): {
+  credentials: StoredBotCordCredentials;
+  sourceFile?: string;
+} {
+  const existingAccount = resolveAccountConfig(config);
+  const sourceFile = resolveManagedCredentialsFile(existingAccount);
+
+  if (sourceFile && !existingAccount.privateKey) {
+    throw new Error(`BotCord credentialsFile is configured but could not be loaded: ${sourceFile}`);
+  }
+
+  if (!existingAccount.hubUrl || !existingAccount.agentId || !existingAccount.keyId || !existingAccount.privateKey) {
+    throw new Error("BotCord is not fully configured (need hubUrl, agentId, keyId, privateKey)");
+  }
+
+  let displayName: string | undefined;
+  if (sourceFile) {
+    try {
+      displayName = loadStoredCredentials(sourceFile).displayName;
+    } catch {
+      displayName = undefined;
+    }
+  }
+
+  const derivedPublicKey = derivePublicKey(existingAccount.privateKey);
+
+  return {
+    sourceFile,
+    credentials: {
+      version: 1,
+      hubUrl: existingAccount.hubUrl,
+      agentId: existingAccount.agentId,
+      keyId: existingAccount.keyId,
+      privateKey: existingAccount.privateKey,
+      publicKey: derivedPublicKey,
+      displayName,
+      savedAt: new Date().toISOString(),
+    },
+  };
+}
+
 export async function registerAgent(opts: {
   name: string;
   bio: string;
@@ -129,11 +188,11 @@ export async function registerAgent(opts: {
     throw new Error(singleAccountError);
   }
 
-  const currentBotcord = ((config.channels as Record<string, any>)?.botcord ?? {}) as Record<string, any>;
   const existingAccount = resolveAccountConfig(config);
-  if (!newIdentity && currentBotcord.credentialsFile && !existingAccount.privateKey) {
+  const managedCredentialsFile = resolveManagedCredentialsFile(existingAccount);
+  if (!newIdentity && managedCredentialsFile && !existingAccount.privateKey) {
     throw new Error(
-      `BotCord credentialsFile is configured but could not be loaded: ${currentBotcord.credentialsFile}`,
+      `BotCord credentialsFile is configured but could not be loaded: ${managedCredentialsFile}`,
     );
   }
 
@@ -241,6 +300,40 @@ export async function importAgentCredentials(opts: {
   };
 }
 
+export async function exportAgentCredentials(opts: {
+  config: Record<string, any>;
+  destinationFile: string;
+  force?: boolean;
+}): Promise<ExportResult> {
+  const {
+    config,
+    destinationFile,
+    force = false,
+  } = opts;
+  const singleAccountError = getSingleAccountModeError(config);
+  if (singleAccountError) {
+    throw new Error(singleAccountError);
+  }
+
+  const resolvedDestinationFile = resolveCredentialsFilePath(destinationFile);
+  if (!force && existsSync(resolvedDestinationFile)) {
+    throw new Error(
+      `Destination credentials file already exists: ${resolvedDestinationFile} (pass --force to overwrite)`,
+    );
+  }
+
+  const { credentials, sourceFile } = buildExportableCredentials(config);
+  const credentialsFile = writeCredentialsFile(resolvedDestinationFile, credentials);
+
+  return {
+    agentId: credentials.agentId,
+    keyId: credentials.keyId,
+    hub: credentials.hubUrl,
+    sourceFile,
+    credentialsFile,
+  };
+}
+
 export function createRegisterCli() {
   return {
     setup: (ctx: any) => {
@@ -296,7 +389,35 @@ export function createRegisterCli() {
             throw err;
           }
         });
+      ctx.program
+        .command("botcord-export")
+        .alias("botcord_export")
+        .description("Export the active BotCord credentials to a file")
+        .requiredOption("--dest <path>", "Destination path for the exported BotCord credentials JSON file")
+        .option("--force", "Overwrite the destination file if it already exists", false)
+        .action(async (options: { dest: string; force?: boolean }) => {
+          try {
+            const result = await exportAgentCredentials({
+              config: ctx.config,
+              destinationFile: options.dest,
+              force: options.force,
+            });
+            ctx.logger.info("BotCord credentials exported successfully!");
+            ctx.logger.info(`  Agent ID:     ${result.agentId}`);
+            ctx.logger.info(`  Key ID:       ${result.keyId}`);
+            ctx.logger.info(`  Hub:          ${result.hub}`);
+            if (result.sourceFile) {
+              ctx.logger.info(`  Source:       ${result.sourceFile}`);
+            } else {
+              ctx.logger.info("  Source:       inline config");
+            }
+            ctx.logger.info(`  Exported to:  ${result.credentialsFile}`);
+          } catch (err: any) {
+            ctx.logger.error(`Export failed: ${err.message}`);
+            throw err;
+          }
+        });
     },
-    commands: ["botcord-register", "botcord-import"],
+    commands: ["botcord-register", "botcord-import", "botcord-export"],
   };
 }
