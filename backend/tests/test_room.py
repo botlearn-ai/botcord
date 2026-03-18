@@ -292,6 +292,51 @@ async def test_update_room(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_room_rule_roundtrip_and_clear(client: AsyncClient):
+    """Room rule is persisted, listed, and can be cleared."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner")
+
+    create_resp = await client.post(
+        "/hub/rooms",
+        json={"name": "Rule Room", "rule": "  Follow the runbook.  ", "visibility": "public"},
+        headers=_auth_header(token),
+    )
+    assert create_resp.status_code == 201
+    created = create_resp.json()
+    room_id = created["room_id"]
+    assert created["rule"] == "Follow the runbook."
+
+    get_resp = await client.get(f"/hub/rooms/{room_id}", headers=_auth_header(token))
+    assert get_resp.status_code == 200
+    assert get_resp.json()["rule"] == "Follow the runbook."
+
+    list_resp = await client.get("/hub/rooms/me", headers=_auth_header(token))
+    assert list_resp.status_code == 200
+    listed = next(r for r in list_resp.json()["rooms"] if r["room_id"] == room_id)
+    assert listed["rule"] == "Follow the runbook."
+
+    discover_resp = await client.get("/hub/rooms", params={"name": "Rule"}, headers=_auth_header(token))
+    assert discover_resp.status_code == 200
+    assert discover_resp.json()["rooms"][0]["rule"] == "Follow the runbook."
+
+    update_resp = await client.patch(
+        f"/hub/rooms/{room_id}",
+        json={"rule": "Only incident updates."},
+        headers=_auth_header(token),
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["rule"] == "Only incident updates."
+
+    clear_resp = await client.patch(
+        f"/hub/rooms/{room_id}",
+        json={"rule": "   "},
+        headers=_auth_header(token),
+    )
+    assert clear_resp.status_code == 200
+    assert clear_resp.json()["rule"] is None
+
+
+@pytest.mark.asyncio
 async def test_dissolve_room(client: AsyncClient):
     """Owner can dissolve a room."""
     sk, agent_id, key_id, token = await _create_agent(client, "owner")
@@ -1387,6 +1432,38 @@ async def test_inbox_room_id_filter(client: AsyncClient):
     assert resp.status_code == 200
     assert resp.json()["count"] == 1
     assert resp.json()["messages"][0]["room_id"] == room_id
+
+
+@pytest.mark.asyncio
+async def test_inbox_includes_room_rule_and_text_hint(client: AsyncClient):
+    """Inbox exposes room_rule and renders a rule hint into flat text."""
+    sk_a, a_id, a_key, a_token = await _create_agent(client, "alice")
+    sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
+
+    create_resp = await client.post(
+        "/hub/rooms",
+        json={
+            "name": "Ops Room",
+            "rule": "Only post deploy status updates.",
+            "member_ids": [b_id],
+        },
+        headers=_auth_header(a_token),
+    )
+    assert create_resp.status_code == 201
+    room_id = create_resp.json()["room_id"]
+
+    env = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "deploy started"})
+    with patch("hub.routers.hub._forward_envelope", new_callable=AsyncMock, return_value=None):
+        send_resp = await client.post("/hub/send", json=env, headers=_auth_header(a_token))
+    assert send_resp.status_code == 202
+
+    inbox = await client.get("/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"})
+    assert inbox.status_code == 200
+    assert inbox.json()["count"] == 1
+    message = inbox.json()["messages"][0]
+    assert message["room_id"] == room_id
+    assert message["room_rule"] == "Only post deploy status updates."
+    assert "[房间规则] Only post deploy status updates." in message["text"]
 
 
 @pytest.mark.asyncio

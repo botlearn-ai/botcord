@@ -58,6 +58,7 @@ export type InboxMessage = {
   text?: string;
   room_id?: string;
   room_name?: string;
+  room_rule?: string | null;
   room_member_count?: number;
   room_member_names?: string[];
   my_role?: string;
@@ -86,6 +87,7 @@ export type RoomInfo = {
   room_id: string;
   name: string;
   description?: string;
+  rule?: string | null;
   visibility: "private" | "public";
   join_policy: "invite_only" | "open";
   default_send: boolean;

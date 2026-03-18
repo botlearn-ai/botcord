@@ -280,6 +280,7 @@ class InboxMessage(BaseModel):
     text: str | None = None
     room_id: str | None = None
     room_name: str | None = None
+    room_rule: str | None = None
     room_member_count: int | None = None
     room_member_names: list[str] | None = None
     my_role: str | None = None
@@ -380,6 +381,7 @@ class ContactRequestListResponse(BaseModel):
 class CreateRoomRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     description: str = ""
+    rule: str | None = Field(default=None, max_length=1000)
     visibility: RoomVisibility = RoomVisibility.private
     join_policy: RoomJoinPolicy = RoomJoinPolicy.invite_only
     max_members: int | None = Field(default=None, ge=1)
@@ -392,6 +394,7 @@ class CreateRoomRequest(BaseModel):
 class UpdateRoomRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
+    rule: str | None = Field(default=None, max_length=1000)
     visibility: RoomVisibility | None = None
     join_policy: RoomJoinPolicy | None = None
     max_members: int | None = None
@@ -438,6 +441,7 @@ class RoomResponse(BaseModel):
     room_id: str
     name: str
     description: str
+    rule: str | None = None
     owner_id: str
     visibility: str
     join_policy: str
@@ -454,6 +458,7 @@ class RoomPublicResponse(BaseModel):
     room_id: str
     name: str
     description: str
+    rule: str | None = None
     owner_id: str
     visibility: str
     join_policy: str
@@ -485,6 +490,7 @@ class DashboardRoom(BaseModel):
     room_id: str
     name: str
     description: str
+    rule: str | None = None
     owner_id: str
     visibility: str
     member_count: int

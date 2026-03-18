@@ -44,6 +44,12 @@ function buildInboundHeader(params: {
   return parts.join(" | ");
 }
 
+function appendRoomRule(content: string, roomRule?: string | null): string {
+  const normalizedRule = roomRule?.trim();
+  if (!normalizedRule) return content;
+  return `${content}\n[Room Rule] ${normalizedRule}`;
+}
+
 export interface InboundParams {
   cfg: any;
   accountId: string;
@@ -93,13 +99,14 @@ export async function handleInboxMessage(
       ? '\n\n[In group chats, do NOT reply unless you are explicitly mentioned or addressed. If no response is needed, reply with exactly "NO_REPLY" and nothing else.]'
       : '\n\n[If the conversation has naturally concluded or no response is needed, reply with exactly "NO_REPLY" and nothing else.]';
   const content = `${header}\n${rawContent}${silentHint}`;
+  const contentWithRule = isGroupRoom ? appendRoomRule(content, msg.room_rule) : content;
 
   await dispatchInbound({
     cfg,
     accountId,
     senderName: senderId,
     senderId,
-    content: content as string,
+    content: contentWithRule,
     messageId: envelope.msg_id,
     messageType: envelope.type,
     chatType,

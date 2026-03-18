@@ -55,11 +55,20 @@ def _check_join_rate_limit(room_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _normalize_room_rule(rule: str | None) -> str | None:
+    """Collapse blank/whitespace-only room rules to None."""
+    if rule is None:
+        return None
+    normalized = rule.strip()
+    return normalized or None
+
+
 def _build_room_response(room: Room) -> RoomResponse:
     return RoomResponse(
         room_id=room.room_id,
         name=room.name,
         description=room.description,
+        rule=room.rule,
         owner_id=room.owner_id,
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
@@ -88,6 +97,7 @@ def _build_room_public_response(room: Room) -> RoomPublicResponse:
         room_id=room.room_id,
         name=room.name,
         description=room.description,
+        rule=room.rule,
         owner_id=room.owner_id,
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
@@ -194,6 +204,7 @@ async def create_room(
         room_id=generate_room_id(),
         name=body.name,
         description=body.description,
+        rule=_normalize_room_rule(body.rule),
         owner_id=current_agent,
         visibility=body.visibility,
         join_policy=body.join_policy,
@@ -303,6 +314,8 @@ async def update_room(
         room.name = body.name
     if "description" in body.model_fields_set:
         room.description = body.description
+    if "rule" in body.model_fields_set:
+        room.rule = _normalize_room_rule(body.rule)
     if "visibility" in body.model_fields_set:
         room.visibility = body.visibility
     if "join_policy" in body.model_fields_set:

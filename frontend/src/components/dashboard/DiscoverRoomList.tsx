@@ -48,6 +48,12 @@ export default function DiscoverRoomList() {
                 {room.description}
               </p>
             )}
+            {room.rule && (
+              <p className="mt-0.5 truncate text-xs text-text-secondary/80">
+                <span className="text-text-secondary/60">Rule: </span>
+                {room.rule}
+              </p>
+            )}
             <button
               onClick={() => joinRoom(room.room_id)}
               disabled={isJoining}

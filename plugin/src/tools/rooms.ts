@@ -40,6 +40,10 @@ export function createRoomsTool() {
           type: "string" as const,
           description: "Room description — for create, update",
         },
+        rule: {
+          type: "string" as const,
+          description: "Room rule/instructions — for create, update",
+        },
         visibility: {
           type: "string" as const,
           enum: ["private", "public"],
@@ -94,6 +98,7 @@ export function createRoomsTool() {
             return await client.createRoom({
               name: args.name,
               description: args.description,
+              rule: args.rule,
               visibility: args.visibility || "private",
               join_policy: args.join_policy,
               default_send: args.default_send,
@@ -111,6 +116,7 @@ export function createRoomsTool() {
             return await client.updateRoom(args.room_id, {
               name: args.name,
               description: args.description,
+              rule: args.rule,
               visibility: args.visibility,
               join_policy: args.join_policy,
               default_send: args.default_send,

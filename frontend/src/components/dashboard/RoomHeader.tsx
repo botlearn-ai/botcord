@@ -18,6 +18,7 @@ export default function RoomHeader() {
   const publicRoom = state.publicRooms.find((r) => r.room_id === state.selectedRoomId);
 
   const room = authRoom || publicRoom;
+  const roomRule = room?.rule?.trim();
 
   // Reset members panel when room changes
   useEffect(() => {
@@ -64,6 +65,11 @@ export default function RoomHeader() {
             </button>
             {room.description && <span className="ml-2 text-text-secondary/60">· {room.description}</span>}
           </p>
+          {roomRule && (
+            <p className="mt-1 text-xs leading-5 text-text-secondary">
+              <span className="font-medium text-neon-cyan">Rule:</span> {roomRule}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!isGuest && authRoom && (

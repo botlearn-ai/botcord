@@ -175,6 +175,7 @@ export function createMockHub() {
         room_id: `rm_${Date.now()}`,
         name: body.name,
         description: body.description || "",
+        rule: body.rule ?? null,
         visibility: body.visibility || "private",
         join_policy: body.join_policy || "invite_only",
         default_send: body.default_send ?? true,
@@ -203,6 +204,26 @@ export function createMockHub() {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "not found" }));
       }
+      return;
+    }
+
+    if (path.startsWith("/hub/rooms/rm_") && method === "PATCH") {
+      const roomId = path.split("/").pop()!;
+      const room = state.rooms.find((r) => r.room_id === roomId);
+      if (!room) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "not found" }));
+        return;
+      }
+      const body = await parseBody(req);
+      if (body.name !== undefined) room.name = body.name;
+      if (body.description !== undefined) room.description = body.description;
+      if (body.rule !== undefined) room.rule = body.rule;
+      if (body.visibility !== undefined) room.visibility = body.visibility;
+      if (body.join_policy !== undefined) room.join_policy = body.join_policy;
+      if (body.default_send !== undefined) room.default_send = body.default_send;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ...room, members: [] }));
       return;
     }
 

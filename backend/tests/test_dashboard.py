@@ -172,10 +172,12 @@ async def _create_room(
     owner_token: str,
     name: str,
     member_ids: list[str],
+    **extra: object,
 ) -> str:
+    payload = {"name": name, "member_ids": member_ids, **extra}
     resp = await client.post(
         "/hub/rooms",
-        json={"name": name, "member_ids": member_ids},
+        json=payload,
         headers=_auth_header(owner_token),
     )
     assert resp.status_code == 201
@@ -263,6 +265,47 @@ async def test_dashboard_overview(client: AsyncClient):
     assert room["my_role"] == "owner"
     assert room["last_message_preview"] == "hello team"
     assert room["last_sender_name"] == "bob"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_room_rule_fields(client: AsyncClient):
+    """Overview, discover, and join responses include room rule."""
+    _, _, _, alice_token = await _register_and_verify(client, "alice")
+    _, _, _, bob_token = await _register_and_verify(client, "bob")
+
+    room_id = await _create_room(
+        client,
+        bob_token,
+        "Ops Lounge",
+        [],
+        description="incident coordination",
+        rule="Only incident updates.",
+        visibility="public",
+        join_policy="open",
+    )
+
+    discover = await client.get(
+        "/dashboard/rooms/discover",
+        headers=_auth_header(alice_token),
+    )
+    assert discover.status_code == 200
+    discovered_room = next(r for r in discover.json()["rooms"] if r["room_id"] == room_id)
+    assert discovered_room["rule"] == "Only incident updates."
+
+    join = await client.post(
+        f"/dashboard/rooms/{room_id}/join",
+        headers=_auth_header(alice_token),
+    )
+    assert join.status_code == 200
+    assert join.json()["rule"] == "Only incident updates."
+
+    overview = await client.get(
+        "/dashboard/overview",
+        headers=_auth_header(alice_token),
+    )
+    assert overview.status_code == 200
+    overview_room = next(r for r in overview.json()["rooms"] if r["room_id"] == room_id)
+    assert overview_room["rule"] == "Only incident updates."
 
 
 @pytest.mark.asyncio

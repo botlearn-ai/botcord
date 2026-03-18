@@ -20,6 +20,7 @@ class RoomContext:
     room_id: str
     name: str
     member_count: int
+    rule: str | None = None
     member_names: list[str] = field(default_factory=list)
     my_role: str | None = None
     my_can_send: bool | None = None
@@ -87,9 +88,15 @@ def build_flat_text(
     webhook delivery (convert_payload_for_openclaw) and inbox polling (/hub/inbox).
     """
     text = envelope.to_text(sender_name=sender_display_name, mentioned=mentioned)
-    # Prepend room context for group rooms (>2 members)
+    prefix_lines: list[str] = []
+    # Prepend room context header for group rooms (>2 members)
     if room_context and room_context.member_count > 2:
-        text = f"{_format_room_header(room_context)}\n{text}"
+        prefix_lines.append(_format_room_header(room_context))
+    if room_context and room_context.rule:
+        prefix_lines.append(f"[房间规则] {room_context.rule}")
+    if prefix_lines:
+        prefix_lines.append(text)
+        text = "\n".join(prefix_lines)
     return text
 
 

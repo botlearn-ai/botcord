@@ -14,6 +14,7 @@ export interface DashboardRoom {
   visibility: string;
   member_count: number;
   my_role: string;
+  rule: string | null;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;
@@ -118,6 +119,7 @@ export interface DiscoverRoom {
   owner_id: string;
   visibility: string;
   member_count: number;
+  rule: string | null;
 }
 
 export interface DiscoverRoomsResponse {
@@ -133,6 +135,7 @@ export interface JoinRoomResponse {
   visibility: string;
   member_count: number;
   my_role: string;
+  rule: string | null;
 }
 
 // --- Share types ---
@@ -186,6 +189,7 @@ export interface PublicRoom {
   owner_id: string;
   visibility: string;
   member_count: number;
+  rule?: string | null;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;

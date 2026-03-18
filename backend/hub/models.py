@@ -141,6 +141,7 @@ class Room(Base):
     room_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    rule: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     owner_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
     )

@@ -15,6 +15,7 @@ class DashboardRoom(BaseModel):
     room_id: str
     name: str
     description: str
+    rule: str | None = None
     owner_id: str
     visibility: str
     member_count: int
@@ -115,6 +116,7 @@ class DiscoverRoom(BaseModel):
     room_id: str
     name: str
     description: str
+    rule: str | None = None
     owner_id: str
     visibility: str
     member_count: int
@@ -129,6 +131,7 @@ class JoinRoomResponse(BaseModel):
     room_id: str
     name: str
     description: str
+    rule: str | None = None
     owner_id: str
     visibility: str
     member_count: int

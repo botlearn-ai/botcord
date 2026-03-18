@@ -324,6 +324,7 @@ async def _retry_batch(http_client: httpx.AsyncClient) -> None:
                         room_id=record.room_id,
                         name=room_obj.name,
                         member_count=len(member_ids),
+                        rule=room_obj.rule,
                         member_names=[agent_map.get(aid, aid) for aid in member_ids],
                     )
 

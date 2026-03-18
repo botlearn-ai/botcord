@@ -747,6 +747,7 @@ async def _send_room_message(
             room_id=room_id,
             name=room.name,
             member_count=len(room.members),
+            rule=room.rule,
             member_names=base_member_names,
             my_role=recv_member.role.value if recv_member else None,
             my_can_send=_can_send(room, recv_member) if recv_member else None,
@@ -1163,6 +1164,7 @@ async def poll_inbox(
                     break
             room_info_map[rm.room_id] = {
                 "name": rm.name,
+                "rule": rm.rule,
                 "member_count": len(rm.members),
                 "member_names": [agent_map.get(aid, aid) for aid in member_ids],
                 "my_role": my_role,
@@ -1195,6 +1197,7 @@ async def poll_inbox(
                 room_id=rec.room_id,
                 name=ri["name"],
                 member_count=ri["member_count"],
+                rule=ri.get("rule"),
                 member_names=ri["member_names"],
                 my_role=ri.get("my_role"),
                 my_can_send=ri.get("my_can_send"),
@@ -1214,6 +1217,7 @@ async def poll_inbox(
                 text=flat_text,
                 room_id=rec.room_id,
                 room_name=ri["name"] if ri else None,
+                room_rule=ri.get("rule") if ri else None,
                 room_member_count=ri["member_count"] if ri else None,
                 room_member_names=ri["member_names"] if ri else None,
                 my_role=ri.get("my_role") if ri else None,

@@ -397,6 +397,7 @@ export class BotCordClient {
   async createRoom(params: {
     name: string;
     description?: string;
+    rule?: string;
     visibility?: "private" | "public";
     join_policy?: "invite_only" | "open";
     default_send?: boolean;
@@ -452,7 +453,14 @@ export class BotCordClient {
 
   async updateRoom(
     roomId: string,
-    params: { name?: string; description?: string; visibility?: string; join_policy?: string; default_send?: boolean },
+    params: {
+      name?: string;
+      description?: string;
+      rule?: string | null;
+      visibility?: string;
+      join_policy?: string;
+      default_send?: boolean;
+    },
   ): Promise<RoomInfo> {
     const resp = await this.hubFetch(`/hub/rooms/${roomId}`, {
       method: "PATCH",

@@ -269,14 +269,20 @@ describe("contacts", () => {
 describe("rooms", () => {
   it("creates a room and lists it", async () => {
     const client = makeClient();
-    const room = await client.createRoom({ name: "Test Room", visibility: "public" });
+    const room = await client.createRoom({
+      name: "Test Room",
+      visibility: "public",
+      rule: "Keep it short",
+    });
 
     expect(room.room_id).toMatch(/^rm_/);
     expect(room.name).toBe("Test Room");
+    expect(room.rule).toBe("Keep it short");
 
     const myRooms = await client.listMyRooms();
     expect(myRooms).toHaveLength(1);
     expect(myRooms[0].name).toBe("Test Room");
+    expect(myRooms[0].rule).toBe("Keep it short");
   });
 
   it("gets room info by ID", async () => {
@@ -284,6 +290,30 @@ describe("rooms", () => {
     const room = await client.createRoom({ name: "Info Room" });
     const info = await client.getRoomInfo(room.room_id);
     expect(info.name).toBe("Info Room");
+  });
+
+  it("updates room rule", async () => {
+    const client = makeClient();
+    const room = await client.createRoom({ name: "Rule Room", rule: "Initial rule" });
+
+    const updated = await client.updateRoom(room.room_id, {
+      rule: "Updated rule",
+    });
+
+    expect(updated.rule).toBe("Updated rule");
+    expect(hub.state.rooms[0].rule).toBe("Updated rule");
+  });
+
+  it("clears room rule when update sends null", async () => {
+    const client = makeClient();
+    const room = await client.createRoom({ name: "Clear Rule Room", rule: "Temp rule" });
+
+    const updated = await client.updateRoom(room.room_id, {
+      rule: null,
+    });
+
+    expect(updated.rule).toBeNull();
+    expect(hub.state.rooms[0].rule).toBeNull();
   });
 
   it("returns 404 for unknown room", async () => {
