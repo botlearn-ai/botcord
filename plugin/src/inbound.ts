@@ -2,7 +2,8 @@
  * Inbound message dispatch — shared by websocket and polling paths.
  * Converts BotCord messages to OpenClaw inbound format.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
 import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
 import { buildSessionKey } from "./session-key.js";
@@ -245,6 +246,9 @@ type DeliveryContext = {
 
 /**
  * Read deliveryContext for a session key from the session store on disk.
+ * First checks the current agent's store, then scans all agent stores
+ * (the session key may belong to a different agent than the one running
+ * this plugin).
  * Returns undefined when the session has no recorded delivery route.
  */
 async function resolveSessionDeliveryContext(
@@ -252,16 +256,40 @@ async function resolveSessionDeliveryContext(
   cfg: any,
   sessionKey: string,
 ): Promise<DeliveryContext | undefined> {
+  const tryStore = async (path: string): Promise<DeliveryContext | undefined> => {
+    try {
+      const raw = await readFile(path, "utf-8");
+      const store: Record<string, { deliveryContext?: DeliveryContext }> =
+        JSON.parse(raw);
+      const entry = store[sessionKey];
+      if (entry?.deliveryContext?.channel && entry.deliveryContext.to) {
+        return entry.deliveryContext;
+      }
+    } catch {
+      // store may not exist yet
+    }
+    return undefined;
+  };
+
+  // 1. Try the current agent's store first (fast path)
   try {
     const storePath = core.channel.session.resolveStorePath(cfg.session?.store);
-    const raw = await readFile(storePath, "utf-8");
-    const store: Record<string, { deliveryContext?: DeliveryContext }> = JSON.parse(raw);
-    const entry = store[sessionKey];
-    if (entry?.deliveryContext?.channel && entry.deliveryContext.to) {
-      return entry.deliveryContext;
+    const result = await tryStore(storePath);
+    if (result) return result;
+
+    // 2. Scan sibling agent stores: walk up to the agents/ dir and check each
+    //    storePath is typically  .../.openclaw/agents/<name>/sessions/sessions.json
+    const agentsDir = dirname(dirname(dirname(storePath)));
+    const entries = await readdir(agentsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const candidate = join(agentsDir, entry.name, "sessions", "sessions.json");
+      if (candidate === storePath) continue; // already checked
+      const result = await tryStore(candidate);
+      if (result) return result;
     }
   } catch {
-    // best-effort: store may not exist yet
+    // best-effort
   }
   return undefined;
 }
