@@ -4,6 +4,38 @@ import { db } from "@/../db";
 import { userAgents, userRoles, roles } from "@/../db/schema";
 import { eq } from "drizzle-orm";
 
+const HUB_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api.botcord.chat";
+
+async function verifyAgentControl(agentId: string, agentToken: string): Promise<boolean> {
+  try {
+    const statusUrl = new URL(`/registry/agents/${agentId}/endpoints/status`, HUB_API_BASE);
+    const response = await fetch(statusUrl.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${agentToken}`,
+      },
+      cache: "no-store",
+    });
+
+    // 401/403 means token is invalid or does not control this agent.
+    if (response.status === 401 || response.status === 403) {
+      return false;
+    }
+
+    // 200 means endpoint exists and auth passed.
+    // 404 means auth passed but endpoint is not registered yet.
+    if (response.status === 200 || response.status === 404) {
+      return true;
+    }
+
+    // Treat upstream errors as verification failure to fail closed.
+    return false;
+  } catch {
+    // Network or upstream failure: fail closed.
+    return false;
+  }
+}
+
 export async function GET() {
   const { user, error } = await requireAuth();
   if (error) {
@@ -27,7 +59,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { agent_id, display_name } = body;
+  const { agent_id, display_name, agent_token } = body;
 
   if (!agent_id || typeof agent_id !== "string") {
     return NextResponse.json({ error: "agent_id is required" }, { status: 400 });
@@ -39,6 +71,19 @@ export async function POST(request: NextRequest) {
 
   if (!display_name || typeof display_name !== "string") {
     return NextResponse.json({ error: "display_name is required" }, { status: 400 });
+  }
+
+  if (!agent_token || typeof agent_token !== "string") {
+    return NextResponse.json({ error: "agent_token is required" }, { status: 400 });
+  }
+
+  // Verify caller controls this agent before allowing bind.
+  const canControlAgent = await verifyAgentControl(agent_id, agent_token);
+  if (!canControlAgent) {
+    return NextResponse.json(
+      { error: "agent_token does not prove control of this agent_id" },
+      { status: 403 },
+    );
   }
 
   // Check quota
@@ -69,6 +114,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       agentId: agent_id,
       displayName: display_name,
+      agentToken: agent_token,
       isDefault,
     })
     .returning();
