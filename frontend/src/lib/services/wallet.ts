@@ -6,7 +6,7 @@ import {
   topupRequests,
   withdrawalRequests,
 } from "@/../db/backend-schema";
-import { eq, and, sql, desc, lt } from "drizzle-orm";
+import { eq, and, sql, desc, lt, inArray } from "drizzle-orm";
 import {
   generateTxId,
   generateWalletEntryId,
@@ -108,7 +108,7 @@ export async function listWalletLedger(
         .where(
           and(
             eq(walletTransactions.type, opts.type),
-            sql`${walletTransactions.txId} = ANY(${txIds})`,
+            inArray(walletTransactions.txId, txIds),
           ),
         );
       const validTxIds = new Set(txRows.map((t) => t.txId));

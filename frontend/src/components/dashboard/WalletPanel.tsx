@@ -385,7 +385,6 @@ function RecentWithdrawals({
                     </button>
                   </div>
                 ) : null}
-
                 {item.review_note ? (
                   <div className="mt-3 rounded-lg border border-glass-border bg-black/20 p-3 text-xs text-text-secondary">
                     {item.review_note}

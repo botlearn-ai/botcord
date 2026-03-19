@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
 import { roomMembers } from "@/../db/backend-schema";
-import { sql } from "drizzle-orm";
+import { sql, inArray } from "drizzle-orm";
 import { requireAgent } from "@/lib/require-agent";
 
 export async function GET(
@@ -41,7 +41,7 @@ export async function GET(
         count: sql<number>`count(*)`.as("count"),
       })
       .from(roomMembers)
-      .where(sql`${roomMembers.roomId} = ANY(${roomIds})`)
+      .where(inArray(roomMembers.roomId, roomIds))
       .groupBy(roomMembers.roomId);
 
     for (const c of counts) {
