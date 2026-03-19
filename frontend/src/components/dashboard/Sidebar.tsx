@@ -115,6 +115,9 @@ export default function Sidebar() {
   const dmRooms = state.overview?.rooms.filter(r => r.room_id.startsWith("rm_dm_")) || [];
   const groupRooms = state.overview?.rooms.filter(r => !r.room_id.startsWith("rm_dm_")) || [];
   const recentGuestRooms = state.recentVisitedRooms;
+  const showOverviewSkeleton =
+    state.token && state.loading && !state.overview &&
+    (state.sidebarTab === "dm" || state.sidebarTab === "rooms" || state.sidebarTab === "contacts");
 
   const openRecentGuestRoom = (roomId: string) => {
     state.setSelectedRoomId(roomId);
@@ -314,7 +317,20 @@ export default function Sidebar() {
 
         {/* Panel content */}
         <div className="flex-1 overflow-y-auto">
-          {state.sidebarTab === "dm" && (
+          {showOverviewSkeleton && (
+            <div className="p-3">
+              <div className="space-y-2">
+                {Array.from({ length: 7 }).map((_, idx) => (
+                  <div key={idx} className="rounded-lg border border-glass-border bg-deep-black-light p-3">
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-glass-border/60" />
+                    <div className="mt-2 h-2.5 w-1/2 animate-pulse rounded bg-glass-border/50" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!showOverviewSkeleton && state.sidebarTab === "dm" && (
             <div className="py-1">
               {dmRooms.length === 0 ? (
                 <p className="p-4 text-center text-xs text-text-secondary">{t.noDirectMessages}</p>
@@ -324,7 +340,7 @@ export default function Sidebar() {
             </div>
           )}
 
-          {state.sidebarTab === "rooms" && (
+          {!showOverviewSkeleton && state.sidebarTab === "rooms" && (
             <div className="py-1">
               {isGuest ? (
                 recentGuestRooms.length === 0 ? (

@@ -3,9 +3,6 @@
 import { useEffect, createContext, useContext } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { usePathname, useRouter } from "next/navigation";
-import { useLanguage } from '@/lib/i18n';
-import { dashboardApp } from '@/lib/i18n/translations/dashboard';
-import { common } from '@/lib/i18n/translations/common';
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
@@ -54,9 +51,6 @@ export default function DashboardApp() {
   const store = useDashboardStore();
   const pathname = usePathname();
   const supabase = createClient();
-  const locale = useLanguage();
-  const tDash = dashboardApp[locale];
-  const tc = common[locale];
 
   // Auth sync
   useEffect(() => {
@@ -108,33 +102,10 @@ export default function DashboardApp() {
     }
   }, [pathname]);
 
-  // Handle Loading & Error States
-  if (store.token && store.loading && !store.overview) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-neon-cyan animate-pulse text-lg">{tc.loading}</div>
-      </div>
-    );
-  }
-
-  if (store.token && store.error && !store.overview) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <div className="text-red-400">{store.error}</div>
-        <button
-          onClick={store.logout}
-          className="rounded border border-glass-border px-4 py-2 text-text-secondary hover:text-text-primary"
-        >
-          {tDash.backToLogin}
-        </button>
-      </div>
-    );
-  }
-
   const showClaimPanel = store.token && store.user && store.ownedAgents.length === 0 && !store.loading;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="relative flex h-screen overflow-hidden">
       <Sidebar />
       {showClaimPanel ? (
         <ClaimAgentPanel onClaimed={store.refreshUserProfile} />
@@ -147,6 +118,11 @@ export default function DashboardApp() {
         </>
       )}
       <StripeReturnBanner />
+      {store.error && (
+        <div className="pointer-events-none absolute right-4 top-4 rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs text-red-200">
+          {store.error}
+        </div>
+      )}
     </div>
   );
 }

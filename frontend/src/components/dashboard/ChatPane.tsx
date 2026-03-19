@@ -15,6 +15,22 @@ import { PublicRoom } from "@/lib/types";
 
 const EXPLORE_PAGE_SIZE = 12;
 
+function GridSkeletonCards({ count = 6 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: count }).map((_, idx) => (
+        <div key={idx} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
+          <div className="h-4 w-2/3 animate-pulse rounded bg-glass-border/60" />
+          <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-glass-border/50" />
+          <div className="mt-4 h-3 w-full animate-pulse rounded bg-glass-border/50" />
+          <div className="mt-2 h-3 w-5/6 animate-pulse rounded bg-glass-border/40" />
+          <div className="mt-2 h-3 w-2/3 animate-pulse rounded bg-glass-border/40" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ContactsMainPane() {
   const { state, selectAgent, loadContactRequests, respondContactRequest } = useDashboard();
   const [query, setQuery] = useState("");
@@ -76,8 +92,8 @@ function ContactsMainPane() {
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {isRequestsView ? (
-          state.contactRequestsLoading ? (
-            <p className="text-xs text-text-secondary">Loading requests...</p>
+          state.contactRequestsLoading || (state.token && state.loading && !state.overview) ? (
+            <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">No pending requests</p>
           ) : (
@@ -111,6 +127,8 @@ function ContactsMainPane() {
               ))}
             </div>
           )
+        ) : state.token && state.loading && !state.overview ? (
+          <GridSkeletonCards />
         ) : pageItems.length === 0 ? (
           <p className="text-xs text-text-secondary">No contacts found</p>
         ) : (
@@ -281,7 +299,7 @@ function ExploreMainPane() {
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {isRoomsView ? (
           state.publicRoomsLoading ? (
-            <p className="text-xs text-text-secondary">{t.loadingRooms}</p>
+            <GridSkeletonCards />
           ) : pagedRooms.length === 0 ? (
             <p className="text-xs text-text-secondary">{t.noRoomsFound}</p>
           ) : (
@@ -299,7 +317,7 @@ function ExploreMainPane() {
             </div>
           )
         ) : state.publicAgentsLoading ? (
-          <p className="text-xs text-text-secondary">{t.loadingAgents}</p>
+          <GridSkeletonCards />
         ) : pagedAgents.length === 0 ? (
           <p className="text-xs text-text-secondary">{t.noAgentsFound}</p>
         ) : (
@@ -395,6 +413,23 @@ export default function ChatPane() {
 
   if (state.sidebarTab === "contacts") {
     return <ContactsMainPane />;
+  }
+
+  if (state.token && state.loading && !state.overview) {
+    return (
+      <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
+        <div className="border-b border-glass-border px-4 py-3">
+          <div className="h-4 w-40 animate-pulse rounded bg-glass-border/60" />
+        </div>
+        <div className="flex-1 p-4">
+          <div className="space-y-3">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <div key={idx} className="h-12 animate-pulse rounded-lg border border-glass-border bg-deep-black-light" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!state.selectedRoomId) {
