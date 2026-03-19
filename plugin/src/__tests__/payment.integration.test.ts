@@ -105,7 +105,8 @@ describe("payment tool integration", () => {
     expect(transfer.data.tx.to_agent_id).toBe("ag_receiver");
     expect(transfer.data.tx.reference_type).toBe("invoice");
     expect(transfer.data.tx.reference_id).toBe("inv_123");
-    expect(JSON.parse(transfer.data.tx.metadata_json)).toEqual({
+    expect(transfer.data.tx.metadata_json).toBeUndefined();
+    expect(transfer.data.tx.metadata).toEqual({
       order_id: "ord_456",
       memo: "invoice settlement",
     });
@@ -150,6 +151,8 @@ describe("payment tool integration", () => {
       tx_id: transfer.data.tx.tx_id,
     });
     expect(txStatus.data.tx_id).toBe(transfer.data.tx.tx_id);
+    expect(txStatus.data.amount_minor).toBeUndefined();
+    expect(txStatus.data.amount).toBe("70.00 COIN");
     expect(txStatus.result).toContain("Amount: 70.00 COIN");
 
     const ledger: any = await tool.execute("tool-4", {
@@ -157,12 +160,15 @@ describe("payment tool integration", () => {
       type: "transfer",
     });
     expect(ledger.data.entries).toHaveLength(1);
+    expect(ledger.data.entries[0].amount_minor).toBeUndefined();
+    expect(ledger.data.entries[0].amount).toBe("70.00 COIN");
     expect(ledger.result).toContain("-70.00 COIN");
 
     const balance: any = await tool.execute("tool-5", {
       action: "balance",
     });
-    expect(balance.data.available_balance_minor).toBe("18000");
+    expect(balance.data.available_balance_minor).toBeUndefined();
+    expect(balance.data.available_balance).toBe("180.00 COIN");
     expect(balance.result).toContain("Available: 180.00 COIN");
   });
 
@@ -213,7 +219,8 @@ describe("payment tool integration", () => {
     const balance: any = await tool.execute("tool-followup-fail-balance", {
       action: "balance",
     });
-    expect(balance.data.available_balance_minor).toBe("18000");
+    expect(balance.data.available_balance_minor).toBeUndefined();
+    expect(balance.data.available_balance).toBe("180.00 COIN");
   });
 
   it("creates and cancels withdrawals through the unified payment tool", async () => {
@@ -231,6 +238,8 @@ describe("payment tool integration", () => {
       idempotency_key: "wd-1",
     });
     expect(withdrawal.data.status).toBe("pending");
+    expect(withdrawal.data.amount_minor).toBeUndefined();
+    expect(withdrawal.data.amount).toBe("30.00 COIN");
     expect(withdrawal.result).toContain("Amount: 30.00 COIN");
 
     const cancelled: any = await tool.execute("tool-7", {
@@ -238,13 +247,16 @@ describe("payment tool integration", () => {
       withdrawal_id: withdrawal.data.withdrawal_id,
     });
     expect(cancelled.data.status).toBe("cancelled");
+    expect(cancelled.data.amount_minor).toBeUndefined();
     expect(cancelled.result).toContain("Amount: 30.00 COIN");
 
     const balance: any = await tool.execute("tool-8", {
       action: "balance",
     });
-    expect(balance.data.available_balance_minor).toBe("10000");
-    expect(balance.data.locked_balance_minor).toBe("0");
+    expect(balance.data.available_balance_minor).toBeUndefined();
+    expect(balance.data.locked_balance_minor).toBeUndefined();
+    expect(balance.data.available_balance).toBe("100.00 COIN");
+    expect(balance.data.locked_balance).toBe("0.00 COIN");
     expect(balance.result).toContain("Available: 100.00 COIN");
   });
 });
@@ -267,7 +279,8 @@ describe("wallet tool integration", () => {
       memo: "legacy wallet",
     });
 
-    expect(transfer.data.tx.amount_minor).toBe("5000");
+    expect(transfer.data.tx.amount_minor).toBeUndefined();
+    expect(transfer.data.tx.amount).toBe("50.00 COIN");
     expect(transfer.data.transfer_record_message.sent).toBe(true);
     expect(transfer.data.notifications.payer.sent).toBe(true);
     expect(transfer.data.notifications.payee.sent).toBe(true);
