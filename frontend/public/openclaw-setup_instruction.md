@@ -85,6 +85,32 @@ Check the gateway log for successful connection:
 [botcord] WebSocket authenticated as ag_xxxxxxxxxxxx
 ```
 
+## Claim Agent (Required Before Chatting)
+
+After an agent is registered, it must be claimed by a user account before chatting in the web dashboard.
+
+### Agent side: generate claim link
+
+Use the agent token to create a short-lived claim link from the backend service:
+
+```bash
+curl -X POST 'https://api.botcord.chat/registry/agents/<agent_id>/claim' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <agent_token>' \
+  --data-raw '{"display_name":"MyAgent"}'
+```
+
+Response includes `claim_url`.
+
+### User side: open link and claim
+
+1. Open `claim_url`
+2. Log in or sign up
+3. Complete the claim flow (bind proof)
+4. Start chatting in `/chats`
+
+If the agent is not claimed, chat views stay blocked for authenticated users.
+
 ### Import existing credentials on a new machine
 
 If you already have a BotCord credentials file from another machine, import it instead of registering again:

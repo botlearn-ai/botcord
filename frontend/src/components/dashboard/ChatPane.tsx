@@ -474,6 +474,7 @@ export default function ChatPane() {
   const { state, isGuest, needsAgent, isAuthedReady, showLoginModal } = useDashboard();
   const locale = useLanguage();
   const t = chatPane[locale];
+  const tAS = agentRequiredState[locale];
 
   if (state.sidebarTab === "explore") {
     return <ExploreMainPane />;
@@ -496,6 +497,21 @@ export default function ChatPane() {
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (needsAgent && !isGuest) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
+        <AgentRequiredState
+          title={state.ownedAgents.length > 0 ? tAS.selectAgentToStartChat : tAS.linkAgentToStartChat}
+          description={
+            state.ownedAgents.length > 0
+              ? tAS.chatScopedToAgent
+              : tAS.chatAttachedToIdentity
+          }
+        />
       </div>
     );
   }

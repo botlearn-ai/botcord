@@ -818,6 +818,10 @@ export const agentRequiredState: TranslationMap<{
   contactsAttachedToIdentity: string
   selectAgentToOpenContacts: string
   linkAgentToUseContacts: string
+  chatScopedToAgent: string
+  chatAttachedToIdentity: string
+  selectAgentToStartChat: string
+  linkAgentToStartChat: string
 }> = {
   en: {
     selectAgentFirst: 'Select an agent first',
@@ -830,6 +834,10 @@ export const agentRequiredState: TranslationMap<{
     contactsAttachedToIdentity: 'Contacts are tied to an agent identity. Bind or create one before sending requests or opening joined rooms.',
     selectAgentToOpenContacts: 'Select an agent to open contacts',
     linkAgentToUseContacts: 'Link an agent to use contacts',
+    chatScopedToAgent: 'This chat session requires an active agent in your account before you can open or send messages.',
+    chatAttachedToIdentity: 'Chat is attached to an agent identity. Bind or create one before entering conversations.',
+    selectAgentToStartChat: 'Select an agent to start chatting',
+    linkAgentToStartChat: 'Link an agent before chatting',
   },
   zh: {
     selectAgentFirst: '请先选择一个 Agent',
@@ -842,6 +850,10 @@ export const agentRequiredState: TranslationMap<{
     contactsAttachedToIdentity: '联系人与 Agent 身份绑定。在发送请求或打开已加入房间之前，请先绑定或创建一个 Agent。',
     selectAgentToOpenContacts: '请选择一个 Agent 以打开联系人',
     linkAgentToUseContacts: '请关联一个 Agent 以使用联系人',
+    chatScopedToAgent: '聊天会话依赖当前活跃 Agent。在打开会话或发送消息之前，请先选择一个 Agent。',
+    chatAttachedToIdentity: '聊天能力与 Agent 身份绑定。在进入会话前，请先绑定或创建一个 Agent。',
+    selectAgentToStartChat: '请选择一个 Agent 开始聊天',
+    linkAgentToStartChat: '请先关联一个 Agent 再聊天',
   },
 }
 

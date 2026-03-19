@@ -418,6 +418,53 @@ const userApi = {
     return res.json();
   },
 
+  async issueClaimLink(agentId: string, displayName: string, agentToken?: string): Promise<{
+    claim_url: string;
+    expires_at: number;
+    agent_id: string;
+    display_name: string;
+  }> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (agentToken && agentToken.trim()) {
+      headers.Authorization = `Bearer ${agentToken.trim()}`;
+    }
+
+    const res = await fetch("/api/users/me/agents/claim", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        agent_id: agentId,
+        display_name: displayName,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+    return res.json();
+  },
+
+  async resolveClaimLink(token: string): Promise<{
+    agent_id: string;
+    display_name: string;
+    bind_ticket: string;
+    nonce: string;
+    expires_at: number;
+  }> {
+    const res = await fetch("/api/users/me/agents/claim/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+    return res.json();
+  },
+
   async unbindAgent(agentId: string): Promise<void> {
     const res = await fetch(`/api/users/me/agents/${agentId}`, { method: "DELETE" });
     if (!res.ok) {
