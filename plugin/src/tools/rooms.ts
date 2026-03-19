@@ -54,6 +54,10 @@ export function createRoomsTool() {
           enum: ["invite_only", "open"],
           description: "Join policy — for create, update",
         },
+        required_subscription_product_id: {
+          type: "string" as const,
+          description: "Subscription product ID to gate room access — for create, update",
+        },
         default_send: {
           type: "boolean" as const,
           description: "Whether all members can post — for create, update",
@@ -101,6 +105,7 @@ export function createRoomsTool() {
               rule: args.rule,
               visibility: args.visibility || "private",
               join_policy: args.join_policy,
+              required_subscription_product_id: args.required_subscription_product_id,
               default_send: args.default_send,
             });
 
@@ -119,6 +124,7 @@ export function createRoomsTool() {
               rule: args.rule,
               visibility: args.visibility,
               join_policy: args.join_policy,
+              required_subscription_product_id: args.required_subscription_product_id,
               default_send: args.default_send,
             });
 

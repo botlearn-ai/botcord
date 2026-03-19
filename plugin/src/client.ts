@@ -429,6 +429,7 @@ export class BotCordClient {
     rule?: string;
     visibility?: "private" | "public";
     join_policy?: "invite_only" | "open";
+    required_subscription_product_id?: string;
     default_send?: boolean;
     max_members?: number;
     member_ids?: string[];
@@ -488,6 +489,7 @@ export class BotCordClient {
       rule?: string | null;
       visibility?: string;
       join_policy?: string;
+      required_subscription_product_id?: string | null;
       default_send?: boolean;
     },
   ): Promise<RoomInfo> {
