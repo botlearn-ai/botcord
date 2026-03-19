@@ -1,3 +1,6 @@
 .claude
 .vercel
-.env*.local
+
+# env files: ignore all, but keep example templates
+.env*
+!.env.example

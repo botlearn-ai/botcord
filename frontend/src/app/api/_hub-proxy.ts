@@ -4,9 +4,8 @@ import { db } from "@/../db";
 import { userAgents } from "@/../db/schema";
 import { and, eq } from "drizzle-orm";
 
-const HUB_API_BASE =
-  process.env.HUB_API_BASE ||
-  process.env.NEXT_PUBLIC_API_BASE ||
+const API_BASE =
+  process.env.NEXT_PUBLIC_HUB_BASE_URL ||
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
 
 export async function getBoundAgentToken(): Promise<
@@ -48,7 +47,7 @@ export async function proxyHubGet(
   query: URLSearchParams,
   agentToken: string,
 ): Promise<NextResponse> {
-  const upstreamUrl = new URL(hubPath, HUB_API_BASE);
+  const upstreamUrl = new URL(hubPath, API_BASE);
   query.forEach((value, key) => upstreamUrl.searchParams.set(key, value));
 
   const upstream = await fetch(upstreamUrl.toString(), {
@@ -63,4 +62,3 @@ export async function proxyHubGet(
     headers: { "content-type": upstream.headers.get("content-type") || "application/json" },
   });
 }
-

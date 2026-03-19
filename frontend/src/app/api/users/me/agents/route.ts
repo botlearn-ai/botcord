@@ -12,7 +12,7 @@ import { verifyBindTicket } from "@/lib/bind-ticket";
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-const HUB_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api.botcord.chat";
+const API_BASE = process.env.NEXT_PUBLIC_HUB_BASE_URL || "https://api.botcord.chat";
 
 interface BindProofPayload {
   key_id: string;
@@ -22,7 +22,7 @@ interface BindProofPayload {
 
 async function verifyAgentControl(agentId: string, agentToken: string): Promise<boolean> {
   try {
-    const statusUrl = new URL(`/registry/agents/${agentId}/endpoints/status`, HUB_API_BASE);
+    const statusUrl = new URL(`/registry/agents/${agentId}/endpoints/status`, API_BASE);
     const response = await fetch(statusUrl.toString(), {
       method: "GET",
       headers: {
@@ -55,7 +55,7 @@ async function refreshAgentTokenWithProof(
   bindProof: BindProofPayload,
 ): Promise<string | null> {
   try {
-    const refreshUrl = new URL(`/registry/agents/${agentId}/token/refresh`, HUB_API_BASE);
+    const refreshUrl = new URL(`/registry/agents/${agentId}/token/refresh`, API_BASE);
     const response = await fetch(refreshUrl.toString(), {
       method: "POST",
       headers: {
