@@ -235,6 +235,10 @@ export const api = {
     return apiGet<DashboardMessageResponse>(`/api/public/rooms/${roomId}/messages`, params);
   },
 
+  getPublicTopics(roomId: string) {
+    return apiGet<TopicListResponse>(`/api/public/rooms/${roomId}/topics`);
+  },
+
   getPublicAgents(opts?: { q?: string; limit?: number; offset?: number }) {
     const params: Record<string, string> = {};
     if (opts?.q) params.q = opts.q;

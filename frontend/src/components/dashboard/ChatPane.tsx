@@ -19,6 +19,7 @@ import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import AgentCardModal from "./AgentCardModal";
 import { PublicRoom } from "@/lib/types";
+import RoomZeroState from "./RoomZeroState";
 
 const EXPLORE_PAGE_SIZE = 12;
 
@@ -138,7 +139,7 @@ function ContactsMainPane() {
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {isRequestsView ? (
-          state.contactRequestsLoading || (isAuthedReady && state.loading && !state.overview) ? (
+          state.contactRequestsLoading ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">{t.noPendingRequests}</p>
@@ -174,7 +175,7 @@ function ContactsMainPane() {
             </div>
           )
         ) : isRoomsView ? (
-          isAuthedReady && state.loading && !state.overview ? (
+          !state.overview ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">{t.noJoinedRoomsFound}</p>
@@ -205,7 +206,7 @@ function ContactsMainPane() {
               ))}
             </div>
           )
-        ) : isAuthedReady && state.loading && !state.overview ? (
+        ) : !state.overview ? (
           <GridSkeletonCards />
         ) : pageItems.length === 0 ? (
           <p className="text-xs text-text-secondary">{t.noContactsFound}</p>
@@ -458,6 +459,7 @@ export default function ChatPane() {
   const { state, isGuest, isAuthedReady, showLoginModal } = useDashboard();
   const locale = useLanguage();
   const t = chatPane[locale];
+  const visibleMessageRooms = state.getVisibleMessageRooms();
 
   if (state.sidebarTab === "explore") {
     return <ExploreMainPane />;
@@ -467,7 +469,7 @@ export default function ChatPane() {
     return <ContactsMainPane />;
   }
 
-  if (isAuthedReady && state.loading && !state.overview) {
+  if (isAuthedReady && !state.overview) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
         <div className="border-b border-glass-border px-4 py-3">
@@ -485,6 +487,14 @@ export default function ChatPane() {
   }
 
   if (!state.focusedRoomId) {
+    if (visibleMessageRooms.length === 0) {
+      return (
+        <div className="flex flex-1 items-center justify-center bg-deep-black px-6">
+          <RoomZeroState />
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black">
         <div className="text-center">

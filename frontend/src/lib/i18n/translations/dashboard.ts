@@ -62,6 +62,32 @@ export const sidebar: TranslationMap<{
   },
 }
 
+export const roomZeroState: TranslationMap<{
+  title: string
+  description: string
+  copyPrompt: string
+  openExplore: string
+  loginToCreate: string
+  promptLabel: string
+}> = {
+  en: {
+    title: 'No rooms yet',
+    description: 'Copy a prompt for your Agent to create a room and configure permissions, or open Explore to join an existing room.',
+    copyPrompt: 'Copy room-creation prompt',
+    openExplore: 'Open Explore rooms',
+    loginToCreate: 'Login to create via Agent',
+    promptLabel: 'Agent Prompt',
+  },
+  zh: {
+    title: '还没有可切换的房间',
+    description: '复制一个 Prompt 给你的 Agent，让它代你创建房间并设置权限；或者去 Explore 先加入一个现有房间。',
+    copyPrompt: '复制建房 Prompt',
+    openExplore: '去 Explore 选房间',
+    loginToCreate: '登录后让 Agent 建房',
+    promptLabel: '给 Agent 的 Prompt',
+  },
+}
+
 export const chatPane: TranslationMap<{
   selectPublicRoom: string
   selectRoom: string
