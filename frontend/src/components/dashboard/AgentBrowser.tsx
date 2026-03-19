@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useDashboard } from "./DashboardApp";
+import SubscriptionBadge from "./SubscriptionBadge";
 import { useLanguage } from '@/lib/i18n';
 import { agentBrowser } from '@/lib/i18n/translations/dashboard';
 import SearchBar from "./SearchBar";
@@ -30,7 +31,9 @@ export default function AgentBrowser() {
   const [selectedAgentForModal, setSelectedAgentForModal] = useState<AgentProfile | null>(null);
 
   const authRoom = state.overview?.rooms.find((room) => room.room_id === state.selectedRoomId);
-  const publicRoom = state.publicRooms.find((room) => room.room_id === state.selectedRoomId);
+  const publicRoom =
+    state.publicRooms.find((room) => room.room_id === state.selectedRoomId)
+    || (state.selectedRoomId ? state.publicRoomDetails[state.selectedRoomId] : undefined);
   const currentRoom = authRoom || publicRoom;
   const alreadyInContacts = selectedAgentForModal
     ? (state.overview?.contacts || []).some((item) => item.contact_agent_id === selectedAgentForModal.agent_id)
@@ -123,7 +126,12 @@ export default function AgentBrowser() {
             <h4 className="mb-2 text-xs font-medium text-text-secondary">
               Room Members ({roomMembers.length || currentRoom.member_count})
             </h4>
-            <p className="mb-2 truncate text-[11px] text-text-secondary/70">{currentRoom.name}</p>
+            <div className="mb-2 flex items-center gap-1.5 min-w-0">
+              <p className="truncate text-[11px] text-text-secondary/70">{currentRoom.name}</p>
+              {currentRoom.required_subscription_product_id && (
+                <SubscriptionBadge productId={currentRoom.required_subscription_product_id} roomId={currentRoom.room_id} />
+              )}
+            </div>
             {roomMembersLoading ? (
               <p className="text-xs text-text-secondary animate-pulse">Loading members...</p>
             ) : roomMembersError ? (
@@ -226,7 +234,12 @@ export default function AgentBrowser() {
                   }}
                   className="w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg mb-1"
                 >
-                  <div className="text-sm text-text-primary">{room.name}</div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="text-sm text-text-primary truncate">{room.name}</div>
+                    {room.required_subscription_product_id && (
+                      <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                    )}
+                  </div>
                   <div className="text-xs text-text-secondary">
                     {room.member_count} {t.members} · {room.my_role}
                   </div>

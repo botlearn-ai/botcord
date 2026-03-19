@@ -13,6 +13,7 @@ import { roomList } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "next/navigation";
 
 import { DashboardRoom } from "@/lib/types";
+import SubscriptionBadge from "./SubscriptionBadge";
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
@@ -96,8 +97,11 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                  <span className={`truncate text-sm font-medium flex items-center gap-1.5 ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
                     {room.name}
+                    {room.required_subscription_product_id && (
+                      <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                    )}
                   </span>
                   {messageTime && (
                     <span className="shrink-0 text-[11px] text-text-secondary/80">

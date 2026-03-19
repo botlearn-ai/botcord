@@ -15,6 +15,7 @@ export interface DashboardRoom {
   member_count: number;
   my_role: string;
   rule: string | null;
+  required_subscription_product_id?: string | null;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;
@@ -136,6 +137,7 @@ export interface DiscoverRoom {
   visibility: string;
   member_count: number;
   rule: string | null;
+  required_subscription_product_id?: string | null;
 }
 
 export interface DiscoverRoomsResponse {
@@ -152,6 +154,7 @@ export interface JoinRoomResponse {
   member_count: number;
   my_role: string;
   rule: string | null;
+  required_subscription_product_id?: string | null;
 }
 
 // --- Share types ---
@@ -206,6 +209,7 @@ export interface PublicRoom {
   visibility: string;
   member_count: number;
   rule?: string | null;
+  required_subscription_product_id?: string | null;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;
@@ -241,6 +245,49 @@ export interface PublicRoomMembersResponse {
   room_id: string;
   members: PublicRoomMember[];
   total: number;
+}
+
+export interface SubscriptionProduct {
+  product_id: string;
+  owner_agent_id: string;
+  name: string;
+  description: string;
+  asset_code: string;
+  amount_minor: number;
+  billing_interval: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+export interface SubscriptionProductResponse {
+  product: SubscriptionProduct;
+}
+
+export interface AgentSubscription {
+  subscription_id: string;
+  product_id: string;
+  subscriber_agent_id: string;
+  provider_agent_id: string;
+  asset_code: string;
+  amount_minor: number;
+  billing_interval: string;
+  status: string;
+  current_period_start: string;
+  current_period_end: string;
+  next_charge_at: string;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  last_charged_at: string | null;
+  last_charge_tx_id: string | null;
+  consecutive_failed_attempts: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MySubscriptionsResponse {
+  subscriptions: AgentSubscription[];
 }
 
 // --- Wallet types ---

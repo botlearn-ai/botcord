@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
-import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
+import { chatPane, exploreUi, agentRequiredState } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "next/navigation";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
@@ -42,6 +42,9 @@ function GridSkeletonCards({ count = 6 }: { count?: number }) {
 function ContactsMainPane() {
   const router = useRouter();
   const { state, selectAgent, loadContactRequests, respondContactRequest, loadRoomMessages, isAuthedReady } = useDashboard();
+  const locale = useLanguage();
+  const t = chatPane[locale];
+  const tAS = agentRequiredState[locale];
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const isRequestsView = state.contactsView === "requests";
@@ -117,11 +120,11 @@ function ContactsMainPane() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
         <AgentRequiredState
-          title={state.ownedAgents.length > 0 ? "Select an agent to open contacts" : "Link an agent to use contacts"}
+          title={state.ownedAgents.length > 0 ? tAS.selectAgentToOpenContacts : tAS.linkAgentToUseContacts}
           description={
             state.ownedAgents.length > 0
-              ? "Contacts, requests, and joined rooms are all scoped to the current agent."
-              : "Contacts are tied to an agent identity. Bind or create one before sending requests or opening joined rooms."
+              ? tAS.contactsScopedToAgent
+              : tAS.contactsAttachedToIdentity
           }
         />
       </div>
@@ -132,19 +135,19 @@ function ContactsMainPane() {
     <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
       <div className="border-b border-glass-border px-5 py-4">
         <h2 className="text-base font-semibold text-text-primary">
-          {isRequestsView ? "Contact Requests" : isRoomsView ? "Joined Rooms" : "Contacts"}
+          {isRequestsView ? t.contactRequests : isRoomsView ? t.joinedRooms : t.contacts}
         </h2>
         <p className="mt-1 text-xs text-text-secondary">
           {isRequestsView
-            ? "Review and process incoming requests"
+            ? t.reviewRequests
             : isRoomsView
-              ? "Rooms you joined manually. Notifications only apply here."
-              : "Your agent contacts"}
+              ? t.roomsJoinedManually
+              : t.yourAgentContacts}
         </p>
         <div className="mt-3 max-w-xl">
           <SearchBar
             onSearch={setQuery}
-            placeholder={isRequestsView ? "Search requests..." : isRoomsView ? "Search joined rooms..." : "Search contacts..."}
+            placeholder={isRequestsView ? t.searchRequests : isRoomsView ? t.searchJoinedRooms : t.searchContacts}
           />
         </div>
       </div>
@@ -154,7 +157,7 @@ function ContactsMainPane() {
           state.contactRequestsLoading || (isAuthedReady && state.loading && !state.overview) ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
-            <p className="text-xs text-text-secondary">No pending requests</p>
+            <p className="text-xs text-text-secondary">{t.noPendingRequests}</p>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {(pageItems as typeof filteredRequests).map((request) => (
@@ -164,7 +167,7 @@ function ContactsMainPane() {
                   </p>
                   <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{request.from_agent_id}</p>
                   <p className="mt-2 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
-                    {request.message || "No request message"}
+                    {request.message || t.noRequestMessage}
                   </p>
                   <div className="mt-4 flex items-center gap-2">
                     <button
@@ -172,14 +175,14 @@ function ContactsMainPane() {
                       disabled={state.processingContactRequestId === request.id}
                       className="rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
                     >
-                      Accept
+                      {t.accept}
                     </button>
                     <button
                       onClick={() => respondContactRequest(request.id, "reject")}
                       disabled={state.processingContactRequestId === request.id}
                       className="rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
                     >
-                      Reject
+                      {t.reject}
                     </button>
                   </div>
                 </div>
@@ -190,7 +193,7 @@ function ContactsMainPane() {
           isAuthedReady && state.loading && !state.overview ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
-            <p className="text-xs text-text-secondary">No joined rooms found</p>
+            <p className="text-xs text-text-secondary">{t.noJoinedRoomsFound}</p>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {(pageItems as typeof filteredJoinedRooms).map((room) => (
@@ -202,7 +205,7 @@ function ContactsMainPane() {
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
                     <span className="rounded border border-neon-green/40 bg-neon-green/10 px-1.5 py-0.5 text-[10px] text-neon-green">
-                      Joined
+                      {t.joinedBadge}
                     </span>
                   </div>
                   <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>
@@ -211,7 +214,7 @@ function ContactsMainPane() {
                   )}
                   {room.last_message_at && (
                     <p className="mt-2 text-[11px] text-text-secondary/70">
-                      Active at {new Date(room.last_message_at).toLocaleString()}
+                      {t.activeAt} {new Date(room.last_message_at).toLocaleString()}
                     </p>
                   )}
                 </button>
@@ -221,7 +224,7 @@ function ContactsMainPane() {
         ) : isAuthedReady && state.loading && !state.overview ? (
           <GridSkeletonCards />
         ) : pageItems.length === 0 ? (
-          <p className="text-xs text-text-secondary">No contacts found</p>
+          <p className="text-xs text-text-secondary">{t.noContactsFound}</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {(pageItems as typeof filteredContacts).map((contact) => (
@@ -235,10 +238,10 @@ function ContactsMainPane() {
                 </p>
                 <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{contact.contact_agent_id}</p>
                 {contact.alias && (
-                  <p className="mt-2 text-xs text-text-secondary">Display: {contact.display_name}</p>
+                  <p className="mt-2 text-xs text-text-secondary">{t.display}: {contact.display_name}</p>
                 )}
                 <p className="mt-2 text-[11px] text-text-secondary/70">
-                  Added at {new Date(contact.created_at).toLocaleDateString()}
+                  {t.addedAt} {new Date(contact.created_at).toLocaleDateString()}
                 </p>
               </button>
             ))}
@@ -247,21 +250,21 @@ function ContactsMainPane() {
       </div>
 
       <div className="flex items-center justify-between border-t border-glass-border px-5 py-3">
-        <p className="text-xs text-text-secondary">Page {currentPage} / {totalPages}</p>
+        <p className="text-xs text-text-secondary">{exploreUi[locale].page} {currentPage} / {totalPages}</p>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={currentPage <= 1}
             className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary disabled:opacity-40"
           >
-            Prev
+            {exploreUi[locale].prev}
           </button>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage >= totalPages}
             className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary disabled:opacity-40"
           >
-            Next
+            {exploreUi[locale].next}
           </button>
         </div>
       </div>
@@ -502,7 +505,7 @@ export default function ChatPane() {
           <div className="mb-2 text-4xl opacity-20">💬</div>
           <p className="text-sm text-text-secondary">
             {needsAgent
-              ? "No agent is linked yet. Open bottom-left avatar menu to bind or create one."
+              ? t.noAgentLinked
               : isGuest
                 ? t.selectPublicRoom
                 : t.selectRoom}

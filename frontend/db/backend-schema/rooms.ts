@@ -10,6 +10,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents";
+import { subscriptionProducts } from "./subscriptions";
 
 export const rooms = pgTable("rooms", {
   id: serial("id").primaryKey(),
@@ -26,6 +27,8 @@ export const rooms = pgTable("rooms", {
   defaultSend: boolean("default_send").default(true).notNull(),
   defaultInvite: boolean("default_invite").default(false).notNull(),
   slowModeSeconds: integer("slow_mode_seconds"),
+  requiredSubscriptionProductId: varchar("required_subscription_product_id", { length: 64 })
+    .references(() => subscriptionProducts.productId),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

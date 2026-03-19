@@ -59,6 +59,7 @@ interface DashboardState {
   joiningRoomId: string | null;
   topics: Record<string, TopicInfo[]>;
   publicRooms: PublicRoom[];
+  publicRoomDetails: Record<string, PublicRoom>;
   publicRoomsLoading: boolean;
   publicAgents: AgentProfile[];
   publicAgentsLoading: boolean;
@@ -107,6 +108,7 @@ interface DashboardState {
   loadDiscoverRooms: () => Promise<void>;
   joinRoom: (roomId: string) => Promise<void>;
   loadPublicRooms: () => Promise<void>;
+  loadPublicRoomDetail: (roomId: string) => Promise<PublicRoom | null>;
   loadPublicAgents: () => Promise<void>;
   loadTopics: (roomId: string) => Promise<void>;
   loadWallet: () => Promise<void>;
@@ -145,6 +147,7 @@ const initialState = {
   discoverLoading: false,
   joiningRoomId: null,
   publicRooms: [],
+  publicRoomDetails: {},
   publicRoomsLoading: false,
   publicAgents: [],
   publicAgentsLoading: false,
@@ -501,9 +504,43 @@ export const useDashboardStore = create<DashboardState>()(
     set({ publicRoomsLoading: true });
     try {
       const result = await api.getPublicRooms({ limit: 50 });
-      set({ publicRooms: result.rooms, publicRoomsLoading: false });
+      set((state) => ({
+        publicRooms: result.rooms,
+        publicRoomDetails: {
+          ...state.publicRoomDetails,
+          ...Object.fromEntries(result.rooms.map((room) => [room.room_id, room])),
+        },
+        publicRoomsLoading: false,
+      }));
     } catch (err) {
       set({ publicRoomsLoading: false });
+    }
+  },
+
+  loadPublicRoomDetail: async (roomId: string) => {
+    const cached = get().publicRoomDetails[roomId];
+    if (cached) {
+      return cached;
+    }
+    try {
+      const result = await api.getPublicRoom(roomId);
+      const room = result.rooms[0] || null;
+      if (!room) {
+        return null;
+      }
+      set((state) => ({
+        publicRoomDetails: {
+          ...state.publicRoomDetails,
+          [room.room_id]: room,
+        },
+        recentVisitedRooms: [
+          room,
+          ...state.recentVisitedRooms.filter((item) => item.room_id !== room.room_id),
+        ].slice(0, 20),
+      }));
+      return room;
+    } catch {
+      return null;
     }
   },
 

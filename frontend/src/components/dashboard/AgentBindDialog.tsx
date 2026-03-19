@@ -7,8 +7,12 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { userApi } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
+import { bindDialog } from "@/lib/i18n/translations/dashboard";
+import { common } from "@/lib/i18n/translations/common";
+import { X, Copy, Check, Loader2 } from "lucide-react";
 
 interface AgentBindDialogProps {
   onClose: () => void;
@@ -114,6 +118,10 @@ function parseBindPayload(raw: string): ParsedBindPayload | null {
 }
 
 export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogProps) {
+  const locale = useLanguage();
+  const t = bindDialog[locale];
+  const tc = common[locale];
+
   const [copied, setCopied] = useState(false);
   const [resultText, setResultText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -122,9 +130,20 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
   const [nonce, setNonce] = useState("");
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [loadingTicket, setLoadingTicket] = useState(true);
+  const [isWaitingForAgent, setIsWaitingForAgent] = useState(false);
+
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const initialAgentsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let mounted = true;
+
+    // First, get current agents to know if a new one is added
+    userApi.getMyAgents().then(resp => {
+      if (!mounted) return;
+      initialAgentsRef.current = new Set(resp.agents.map(a => a.agent_id));
+    });
+
     userApi
       .issueBindTicket()
       .then((resp) => {
@@ -139,13 +158,45 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
         setError(err?.message || "Failed to issue bind ticket");
         setLoadingTicket(false);
       });
+
     return () => {
       mounted = false;
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
   }, []);
 
+  // Polling for new agents (linked by agent itself using bind_ticket)
+  useEffect(() => {
+    if (!bindTicket || !isWaitingForAgent) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const resp = await userApi.getMyAgents();
+        const newAgent = resp.agents.find(a => !initialAgentsRef.current.has(a.agent_id));
+        
+        if (newAgent) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          onSuccess(newAgent.agent_id);
+          onClose();
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+    }, 3000);
+
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [bindTicket, isWaitingForAgent, onSuccess, onClose]);
+
   const promptText = useMemo(() => {
-    if (!nonce) return "";
+    if (!nonce || !bindTicket) return "";
 
     return [
       "You are my BotCord setup assistant.",
@@ -154,7 +205,7 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
       "2) Prepare proof for linking this agent to my web account.",
       "",
       "Return JSON only (no markdown, no explanation):",
-      '{"agent_id":"ag_xxx","display_name":"My Agent","bind_proof":{"key_id":"k_xxx","nonce":"<nonce_from_prompt>","sig":"<base64>"}}',
+      '{"agent_id":"ag_xxx","display_name":"My Agent","bind_proof":{"key_id":"k_xxx","nonce":"' + nonce + '","sig":"<base64>"}}',
       "",
       "Rules:",
       "1) agent_id must start with ag_",
@@ -164,12 +215,13 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
       "4) If bind_proof is unavailable, provide agent_token as fallback",
       "5) If display_name is unknown, still provide a reasonable name",
     ].join("\n");
-  }, [nonce]);
+  }, [nonce, bindTicket]);
 
   async function handleCopyPrompt() {
     try {
       await navigator.clipboard.writeText(promptText);
       setCopied(true);
+      setIsWaitingForAgent(true); // Start polling after copy
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
       setError("Failed to copy prompt. Please copy manually.");
@@ -205,92 +257,116 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-xl rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-semibold text-text-primary">
-              Link Agent with AI
-            </h3>
-            <p className="mt-1 text-xs text-text-secondary">
-              One flow for both bind/create. AI decides automatically and returns proof.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
-          >
-            Close
-          </button>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="relative w-full max-w-xl rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="mb-6 pr-8">
+          <h3 className="text-xl font-bold text-text-primary">
+            {t.linkAgentWithAi}
+          </h3>
+          <p className="mt-1 text-sm text-text-secondary">
+            {t.bindDesc}
+          </p>
         </div>
 
-        <div className="rounded-xl border border-glass-border bg-deep-black p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">Prompt</p>
+        <div className="rounded-xl border border-glass-border bg-deep-black p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-text-secondary opacity-60">
+              {t.prompt}
+            </p>
             <button
               onClick={handleCopyPrompt}
               disabled={!promptText}
-              className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-2 py-1 text-[11px] font-medium text-neon-cyan hover:bg-neon-cyan/20"
+              className="flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-semibold text-neon-cyan transition-all hover:bg-neon-cyan/20"
             >
-              {copied ? "Copied" : "Copy Prompt"}
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5" />
+                  {t.copied}
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" />
+                  {t.copyPrompt}
+                </>
+              )}
             </button>
           </div>
           {loadingTicket ? (
-            <div className="w-full rounded border border-glass-border bg-deep-black-light p-2">
-              <div className="space-y-1.5 animate-pulse">
+            <div className="w-full rounded-lg border border-glass-border bg-deep-black-light p-4">
+              <div className="space-y-2 animate-pulse">
                 <div className="h-3 w-[82%] rounded bg-glass-border/70" />
                 <div className="h-3 w-[95%] rounded bg-glass-border/60" />
                 <div className="h-3 w-[76%] rounded bg-glass-border/70" />
-                <div className="h-3 w-[90%] rounded bg-glass-border/60" />
-                <div className="h-3 w-[68%] rounded bg-glass-border/70" />
-                <div className="h-3 w-[88%] rounded bg-glass-border/60" />
-                <div className="h-3 w-[72%] rounded bg-glass-border/70" />
-                <div className="h-3 w-[85%] rounded bg-glass-border/60" />
+                <div className="h-3 w-[68%] rounded bg-glass-border/60" />
               </div>
             </div>
           ) : (
-            <textarea
-              readOnly
-              value={promptText}
-              rows={10}
-              className="w-full resize-none rounded border border-glass-border bg-deep-black-light p-2 font-mono text-[11px] text-text-primary outline-none"
-            />
+            <div className="relative">
+              <textarea
+                readOnly
+                value={promptText}
+                rows={8}
+                className="w-full resize-none rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-[11px] leading-relaxed text-text-primary outline-none"
+              />
+              {isWaitingForAgent && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-deep-black/60 backdrop-blur-[2px]">
+                  <Loader2 className="h-8 w-8 animate-spin text-neon-cyan" />
+                  <p className="mt-3 text-xs font-medium text-neon-cyan">
+                    {t.waitingForAgent}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
           {expiresAt && (
-            <p className="mt-2 text-[10px] text-text-secondary">
-              Ticket expires at: {new Date(expiresAt * 1000).toLocaleString()}
+            <p className="mt-2 text-[10px] text-text-secondary/50">
+              {t.ticketExpiresAt}{new Date(expiresAt * 1000).toLocaleString()}
             </p>
           )}
         </div>
 
-        <div className="mt-4 rounded-xl border border-glass-border bg-deep-black p-3">
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-            Paste AI Result
-          </p>
-          <textarea
-            value={resultText}
-            onChange={(e) => setResultText(e.target.value)}
-            rows={8}
-            placeholder='{"agent_id":"ag_xxx","display_name":"My Agent","bind_proof":{"key_id":"k_xxx","nonce":"...","sig":"..."}}'
-            className="w-full rounded border border-glass-border bg-deep-black-light p-2 font-mono text-[11px] text-text-primary outline-none focus:border-neon-cyan/50"
-          />
+        <div className="mt-6">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-text-secondary opacity-60 hover:opacity-100 transition-opacity">
+              <span className="group-open:rotate-90 transition-transform">▶</span>
+              {t.orPasteManual}
+            </summary>
+            <div className="mt-3 rounded-xl border border-glass-border bg-deep-black p-4">
+              <textarea
+                value={resultText}
+                onChange={(e) => setResultText(e.target.value)}
+                rows={5}
+                placeholder='{"agent_id":"ag_xxx","display_name":"My Agent",...}'
+                className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-[11px] text-text-primary outline-none focus:border-neon-cyan/50"
+              />
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={handleBind}
+                  disabled={loadingTicket || submitting || !resultText.trim()}
+                  className="rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-6 py-2 text-xs font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-40"
+                >
+                  {submitting ? t.linking : t.linkAgent}
+                </button>
+              </div>
+            </div>
+          </details>
         </div>
 
-        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-4 text-xs text-red-400 bg-red-400/10 border border-red-400/20 p-2 rounded-lg">{error}</p>}
 
-        <div className="mt-4 flex items-center justify-end gap-2">
+        <div className="mt-6 flex items-center justify-end">
           <button
             onClick={onClose}
-            className="rounded border border-glass-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
+            className="rounded-lg px-4 py-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
           >
-            Cancel
-          </button>
-          <button
-            onClick={handleBind}
-            disabled={loadingTicket || submitting || !resultText.trim()}
-            className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-40"
-          >
-            {loadingTicket ? "Preparing..." : submitting ? "Linking..." : "Link Agent"}
+            {tc.cancel}
           </button>
         </div>
       </div>

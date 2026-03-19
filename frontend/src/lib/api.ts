@@ -32,6 +32,8 @@ import type {
   UserAgent,
   ContactRequestItem,
   ContactRequestListResponse,
+  SubscriptionProductResponse,
+  MySubscriptionsResponse,
 } from "./types";
 
 /**
@@ -215,6 +217,14 @@ export const api = {
     return apiGet<PublicRoomsResponse>("/api/public/rooms", params);
   },
 
+  getPublicRoom(roomId: string) {
+    return apiGet<PublicRoomsResponse>("/api/public/rooms", {
+      room_id: roomId,
+      limit: "1",
+      offset: "0",
+    });
+  },
+
   getPublicRoomMessages(roomId: string, opts?: { before?: string; limit?: number }) {
     const params: Record<string, string> = {};
     if (opts?.before) {
@@ -324,6 +334,17 @@ export const api = {
     return apiGet<StripeSessionStatusResponse>("/api/wallet/stripe/session-status", {
       session_id: sessionId,
     });
+  },
+
+  // --- Subscriptions ---
+  getSubscriptionProduct(productId: string) {
+    return apiGet<SubscriptionProductResponse>(`/api/subscriptions/products/${productId}`);
+  },
+  subscribeToProduct(productId: string) {
+    return apiPost<any>(`/api/subscriptions/products/${productId}/subscribe`);
+  },
+  getMySubscriptions() {
+    return apiGet<MySubscriptionsResponse>("/api/subscriptions/me");
   },
 };
 

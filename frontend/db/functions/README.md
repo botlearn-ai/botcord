@@ -3,7 +3,8 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/frontend/db/
 
 成员清单
-001_get_agent_room_previews.sql: 创建 `public.get_agent_room_previews(agent_id)`，一次性返回房间成员计数与最近消息预览（含发送者展示名），用于消息列表高效查询。
+001_get_agent_room_previews.sql: 创建 `public.get_agent_room_previews(agent_id)`，一次性返回已加入房间的成员数、订阅门槛与最近消息预览，供登录态会话概览复用。
+002_get_public_room_previews.sql: 创建 `public.get_public_room_previews(limit, offset, search, room_id, sort)`，一次性返回公开房间摘要与最近消息预览，供公开列表、精选卡片与单房间详情复用。
 
 部署方式
 - 在 `/Users/chenxuejia/ws/2026/botcord/frontend` 执行 `pnpm db:functions`，脚本会按文件名顺序执行 `db/functions/*.sql`。

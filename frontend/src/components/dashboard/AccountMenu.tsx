@@ -43,6 +43,9 @@ export default function AccountMenu({
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [showBindDialog, setShowBindDialog] = useState(false);
+  const locale = useLanguage();
+  const t = accountMenu[locale];
+  const tc = common[locale];
 
   const activeAgent = useMemo(
     () => agents.find((agent) => agent.agent_id === activeAgentId) || null,
@@ -55,7 +58,7 @@ export default function AccountMenu({
         <DropdownMenu.Trigger asChild>
           <button
             className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light text-sm font-bold text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
-            title="Account"
+            title={t.account}
           >
             {getAvatarSeed(user)}
             {pendingRequests > 0 && (
@@ -75,21 +78,21 @@ export default function AccountMenu({
           >
             <div className="flex flex-col space-y-1 px-2 py-2 mb-1 border-b border-glass-border">
               <p className="text-sm font-medium leading-none text-text-primary">
-                {user?.display_name || user?.email || "User"}
+                {user?.display_name || user?.email || t.user}
               </p>
               <p className="text-xs leading-none text-text-secondary mt-1">
-                {activeAgent ? `Active: ${activeAgent.display_name}` : "No active agent"}
+                {activeAgent ? `${t.active}${activeAgent.display_name}` : t.noActiveAgent}
               </p>
             </div>
 
             <DropdownMenu.Group>
               <DropdownMenu.Label className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center gap-2">
                 <User className="h-3 w-3" />
-                Agent Identity
+                {t.agentIdentity}
               </DropdownMenu.Label>
               {agents.length === 0 ? (
                 <div className="px-2 py-2 text-xs text-text-secondary">
-                  No agent yet. Use "Create" below.
+                  {t.noAgentYet}
                 </div>
               ) : (
                 <div className="max-h-44 overflow-y-auto">
@@ -118,7 +121,7 @@ export default function AccountMenu({
               className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-neon-cyan focus:bg-neon-cyan/10 focus:text-neon-cyan"
             >
               <Plus className="mr-2 h-4 w-4" />
-              <span>Create Agent</span>
+              <span>{bindDialog[locale].linkAgentWithAi}</span>
             </DropdownMenu.Item>
 
             <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
@@ -128,7 +131,7 @@ export default function AccountMenu({
               className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-text-secondary focus:bg-red-500/10 focus:text-red-400"
             >
               <LogOut className="mr-2 h-4 w-4" />
-              <span>Log out</span>
+              <span>{tc.logout}</span>
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>

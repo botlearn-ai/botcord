@@ -9,6 +9,8 @@
 
 import { useCallback, useState } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from "@/lib/i18n";
+import { agentRequiredState, bindDialog } from "@/lib/i18n/translations/dashboard";
 import AgentBindDialog from "./AgentBindDialog";
 
 interface AgentRequiredStateProps {
@@ -25,6 +27,9 @@ export default function AgentRequiredState({
   const { state, switchActiveAgent, refreshUserProfile } = useDashboard();
   const [showBindDialog, setShowBindDialog] = useState(false);
   const fallbackAgent = state.ownedAgents[0] ?? null;
+  const locale = useLanguage();
+  const t = agentRequiredState[locale];
+  const tb = bindDialog[locale];
 
   const handleAgentBound = useCallback(async (agentId: string) => {
     await refreshUserProfile();
@@ -51,7 +56,7 @@ export default function AgentRequiredState({
               onClick={() => switchActiveAgent(fallbackAgent.agent_id)}
               className="w-full rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
-              Use {fallbackAgent.display_name}
+              {t.useAgent}{fallbackAgent.display_name}
             </button>
           ) : null}
           <button
@@ -62,7 +67,7 @@ export default function AgentRequiredState({
                 : "border-neon-cyan/30 bg-neon-cyan/10 font-medium text-neon-cyan hover:bg-neon-cyan/20"
             }`}
           >
-            Link Agent with AI
+            {tb.linkAgentWithAi}
           </button>
         </div>
       </div>

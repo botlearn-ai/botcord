@@ -1,6 +1,12 @@
-drop function if exists public.get_agent_room_previews(varchar);
+drop function if exists public.get_public_room_previews(integer, integer, text, varchar, varchar);
 
-create or replace function public.get_agent_room_previews(p_agent_id varchar)
+create or replace function public.get_public_room_previews(
+  p_limit integer default 20,
+  p_offset integer default 0,
+  p_search text default null,
+  p_room_id varchar default null,
+  p_sort varchar default 'recent'
+)
 returns table (
   room_id varchar,
   room_name varchar,
@@ -9,7 +15,9 @@ returns table (
   required_subscription_product_id varchar,
   owner_id varchar,
   visibility varchar,
-  my_role varchar,
+  join_policy varchar,
+  max_members integer,
+  created_at timestamptz,
   member_count bigint,
   last_message_preview text,
   last_message_at timestamptz,
@@ -19,30 +27,36 @@ returns table (
 language sql
 stable
 as $$
-  with member_rooms as (
+  with filtered_rooms as (
     select
-      rm.room_id,
-      rm.role as my_role,
+      r.room_id,
       r.name as room_name,
       r.description as room_description,
       r.rule as room_rule,
       r.required_subscription_product_id,
       r.owner_id,
-      r.visibility
-    from room_members rm
-    inner join rooms r on r.room_id = rm.room_id
-    where rm.agent_id = p_agent_id
+      r.visibility,
+      r.join_policy,
+      r.max_members,
+      r.created_at
+    from rooms r
+    where r.visibility = 'public'
+      and (p_room_id is null or r.room_id = p_room_id)
+      and (
+        coalesce(trim(p_search), '') = ''
+        or r.name ilike '%' || replace(replace(trim(p_search), '%', '\%'), '_', '\_') || '%' escape '\'
+      )
   ),
   member_counts as (
     select room_id, count(*)::bigint as member_count
     from room_members
-    where room_id in (select room_id from member_rooms)
+    where room_id in (select room_id from filtered_rooms)
     group by room_id
   ),
   latest_message_time as (
     select room_id, max(created_at) as last_created_at
     from message_records
-    where room_id in (select room_id from member_rooms)
+    where room_id in (select room_id from filtered_rooms)
     group by room_id
   ),
   latest_message as (
@@ -66,20 +80,28 @@ as $$
     left join agents a on a.agent_id = mr.sender_id
   )
   select
-    m.room_id,
-    m.room_name,
-    m.room_description,
-    m.room_rule,
-    m.required_subscription_product_id,
-    m.owner_id,
-    m.visibility,
-    m.my_role,
+    fr.room_id,
+    fr.room_name,
+    fr.room_description,
+    fr.room_rule,
+    fr.required_subscription_product_id,
+    fr.owner_id,
+    fr.visibility,
+    fr.join_policy,
+    fr.max_members,
+    fr.created_at,
     coalesce(mc.member_count, 0) as member_count,
     lm.last_message_preview,
     lm.last_message_at,
     lm.last_sender_id,
     lm.last_sender_name
-  from member_rooms m
-  left join member_counts mc on mc.room_id = m.room_id
-  left join latest_message lm on lm.room_id = m.room_id;
+  from filtered_rooms fr
+  left join member_counts mc on mc.room_id = fr.room_id
+  left join latest_message lm on lm.room_id = fr.room_id
+  order by
+    case when p_sort = 'members' then coalesce(mc.member_count, 0) end desc,
+    case when p_sort = 'activity' then lm.last_message_at end desc nulls last,
+    fr.created_at desc
+  limit greatest(coalesce(p_limit, 20), 1)
+  offset greatest(coalesce(p_offset, 0), 0);
 $$;

@@ -47,6 +47,7 @@ export function useDashboard() {
     loadDiscoverRooms: store.loadDiscoverRooms,
     joinRoom: store.joinRoom,
     loadPublicRooms: store.loadPublicRooms,
+    loadPublicRoomDetail: store.loadPublicRoomDetail,
     loadPublicAgents: store.loadPublicAgents,
     loadTopics: store.loadTopics,
     loadWallet: store.loadWallet,
@@ -130,6 +131,15 @@ export default function DashboardApp() {
           if (store.selectedRoomId !== roomIdFromPath) {
             store.setSelectedRoomId(roomIdFromPath);
           }
+          const knownRoom =
+            store.overview?.rooms.some((room) => room.room_id === roomIdFromPath)
+            || Boolean(store.publicRoomDetails[roomIdFromPath])
+            || store.publicRooms.some((room) => room.room_id === roomIdFromPath)
+            || store.recentVisitedRooms.some((room) => room.room_id === roomIdFromPath)
+            || store.discoverRooms.some((room) => room.room_id === roomIdFromPath);
+          if (!knownRoom) {
+            store.loadPublicRoomDetail(roomIdFromPath);
+          }
           if (!store.messages[roomIdFromPath]) {
             store.loadRoomMessages(roomIdFromPath);
           }
@@ -138,7 +148,7 @@ export default function DashboardApp() {
     } else if (store.sidebarTab !== "messages") {
       store.setSidebarTab("messages");
     }
-  }, [pathnameParts, store.selectedRoomId]);
+  }, [pathnameParts, store.selectedRoomId, store.overview?.rooms, store.publicRoomDetails, store.publicRooms, store.recentVisitedRooms, store.discoverRooms]);
 
   // Default focus for message list: if messages tab has room candidates but no selected room,
   // pick the first one and sync URL for precise location.

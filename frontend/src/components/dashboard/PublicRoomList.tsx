@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 dashboard store 的公开房间列表与消息加载动作，依赖 SubscriptionBadge 呈现付费房间标记
+ * [OUTPUT]: 对外提供 PublicRoomList 组件，渲染游客可浏览的公开房间列表
+ * [POS]: dashboard 左侧公开房间列表视图，被游客模式与 explore 相关入口复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 "use client";
 
 import { useDashboard } from "./DashboardApp";
@@ -5,6 +11,7 @@ import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import { useRouter } from "next/navigation";
+import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function PublicRoomList() {
   const router = useRouter();
@@ -57,9 +64,14 @@ export default function PublicRoomList() {
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                {room.name}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                  {room.name}
+                </span>
+                {room.required_subscription_product_id && (
+                  <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                )}
+              </div>
               <span className="ml-2 shrink-0 text-xs text-text-secondary">
                 {room.member_count}
               </span>

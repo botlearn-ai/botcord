@@ -1,6 +1,12 @@
+/**
+ * [INPUT]: 依赖 requireAgent 校验当前身份，依赖 backendDb 校验公开房间规则、人数上限与订阅资格
+ * [OUTPUT]: 对外提供房间加入 POST 路由，成功时创建 room_members 记录
+ * [POS]: dashboard rooms BFF 写入口，承接 explore/public 视图中的加入动作
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { rooms, roomMembers, agents } from "@/../db/backend-schema";
+import { rooms, roomMembers, agents, agentSubscriptions } from "@/../db/backend-schema";
 import { eq, and, count } from "drizzle-orm";
 import { requireAgent } from "@/lib/require-agent";
 
@@ -38,6 +44,7 @@ export async function POST(
       maxMembers: rooms.maxMembers,
       defaultSend: rooms.defaultSend,
       defaultInvite: rooms.defaultInvite,
+      requiredSubscriptionProductId: rooms.requiredSubscriptionProductId,
     })
     .from(rooms)
     .where(eq(rooms.roomId, roomId))
@@ -53,6 +60,27 @@ export async function POST(
 
   if (room.joinPolicy !== "open") {
     return NextResponse.json({ error: "Room does not allow open join" }, { status: 403 });
+  }
+
+  if (room.requiredSubscriptionProductId) {
+    const [subscription] = await backendDb
+      .select({ id: agentSubscriptions.id })
+      .from(agentSubscriptions)
+      .where(
+        and(
+          eq(agentSubscriptions.productId, room.requiredSubscriptionProductId),
+          eq(agentSubscriptions.subscriberAgentId, agentId),
+          eq(agentSubscriptions.status, "active"),
+        ),
+      )
+      .limit(1);
+
+    if (!subscription) {
+      return NextResponse.json(
+        { error: "Active subscription required before joining this room" },
+        { status: 403 },
+      );
+    }
   }
 
   // Check if already a member

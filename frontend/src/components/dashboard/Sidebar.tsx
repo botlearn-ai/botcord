@@ -11,11 +11,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
-import { sidebar } from '@/lib/i18n/translations/dashboard';
+import { sidebar, agentRequiredState } from '@/lib/i18n/translations/dashboard';
 import { common, nav } from '@/lib/i18n/translations/common';
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
 import AgentRequiredState from "./AgentRequiredState";
+import SubscriptionBadge from "./SubscriptionBadge";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -109,6 +110,7 @@ export default function Sidebar() {
   const t = sidebar[locale];
   const tc = common[locale];
   const tNav = nav[locale];
+  const tAS = agentRequiredState[locale];
 
   const tabTitles: Record<string, string> = {
     messages: t.messages,
@@ -135,6 +137,7 @@ export default function Sidebar() {
       last_message_preview: room.last_message_preview,
       last_message_at: room.last_message_at,
       last_sender_name: room.last_sender_name,
+      required_subscription_product_id: room.required_subscription_product_id,
     }));
   const mergedRecentRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
     const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
@@ -276,7 +279,7 @@ export default function Sidebar() {
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
             >
-              Public Rooms
+              {t.publicRooms}
             </button>
             <button
               onClick={() => {
@@ -289,7 +292,7 @@ export default function Sidebar() {
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
             >
-              Agents
+              {t.agents}
             </button>
           </div>
         )}
@@ -307,7 +310,7 @@ export default function Sidebar() {
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
             >
-              Agents
+              {t.agents}
             </button>
             <button
               onClick={() => {
@@ -320,7 +323,7 @@ export default function Sidebar() {
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
             >
-              Requests
+              {t.requests}
             </button>
             <button
               onClick={() => {
@@ -333,7 +336,7 @@ export default function Sidebar() {
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
             >
-              Joined Rooms
+              {t.joinedRooms}
             </button>
           </div>
         )}
@@ -375,9 +378,14 @@ export default function Sidebar() {
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                            {room.name}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                              {room.name}
+                            </span>
+                            {room.required_subscription_product_id && (
+                              <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                            )}
+                          </div>
                           <span className="ml-2 shrink-0 text-xs text-text-secondary">
                             {room.member_count}
                           </span>
@@ -421,15 +429,15 @@ export default function Sidebar() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
                     </svg>
                   </div>
-                  <h3 className="mb-2 text-sm font-semibold text-text-primary">Wallet Support</h3>
+                  <h3 className="mb-2 text-sm font-semibold text-text-primary">{t.walletSupportTitle}</h3>
                   <p className="mb-6 text-xs text-text-secondary leading-relaxed">
-                    Log in to access your wallet, manage balances, and perform transactions.
+                    {t.walletSupportDesc}
                   </p>
                   <button
                     onClick={showLoginModal}
                     className="w-full rounded-lg bg-neon-cyan/10 py-2.5 text-xs font-semibold text-neon-cyan transition-all hover:bg-neon-cyan/20 border border-neon-cyan/20"
                   >
-                    Log In to Use Wallet
+                    {t.loginToUseWallet}
                   </button>
                 </div>
               ) : (
@@ -456,11 +464,11 @@ export default function Sidebar() {
                   ) : state.sessionMode === "authed-no-agent" ? (
                     <AgentRequiredState
                       compact
-                      title={state.ownedAgents.length > 0 ? "Select an agent first" : "Link an agent first"}
+                      title={state.ownedAgents.length > 0 ? tAS.selectAgentFirst : tAS.linkAgentFirst}
                       description={
                         state.ownedAgents.length > 0
-                          ? "This wallet summary belongs to the current agent. No active agent is selected in this session."
-                          : "Wallet data is attached to an agent identity. Bind or create one before loading balances."
+                          ? tAS.walletScopedToAgent
+                          : tAS.walletAttachedToIdentity
                       }
                     />
                   ) : (
