@@ -70,6 +70,7 @@ async def create_stripe_checkout_session(
             agent_id=current_agent,
             package_code=req.package_code,
             idempotency_key=req.idempotency_key,
+            quantity=req.quantity,
         )
         await db.commit()
     except ValueError as e:

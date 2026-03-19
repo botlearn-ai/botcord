@@ -36,6 +36,7 @@ async def create_checkout_session(
     agent_id: str,
     package_code: str,
     idempotency_key: str,
+    quantity: int = 1,
 ) -> dict:
     """Create a Stripe Checkout Session and a local pending topup.
 
@@ -55,9 +56,12 @@ async def create_checkout_session(
     pkg = _get_package(package_code)
     if pkg is None:
         raise ValueError(f"Unknown package_code: {package_code}")
+    if quantity <= 0:
+        raise ValueError("quantity must be positive")
 
     stripe_price_id = pkg["stripe_price_id"]
-    coin_amount_minor = int(pkg["coin_amount_minor"])
+    unit_coin_amount_minor = int(pkg["coin_amount_minor"])
+    coin_amount_minor = unit_coin_amount_minor * quantity
 
     # --- Idempotency: look for an existing topup with the same key ----------
     existing = await session.execute(
@@ -116,6 +120,7 @@ async def create_checkout_session(
         "package_code": package_code,
         "stripe_price_id": stripe_price_id,
         "idempotency_key": idempotency_key,
+        "quantity": quantity,
     }
     topup, tx = await wallet_svc.create_topup_request(
         session,
@@ -138,13 +143,14 @@ async def create_checkout_session(
     try:
         checkout_session = stripe.checkout.Session.create(
             mode="payment",
-            line_items=[{"price": stripe_price_id, "quantity": 1}],
+            line_items=[{"price": stripe_price_id, "quantity": quantity}],
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={
                 "topup_id": topup.topup_id,
                 "agent_id": agent_id,
                 "package_code": package_code,
+                "quantity": str(quantity),
                 "coin_amount_minor": str(coin_amount_minor),
             },
             payment_intent_data={
@@ -152,6 +158,7 @@ async def create_checkout_session(
                     "topup_id": topup.topup_id,
                     "agent_id": agent_id,
                     "package_code": package_code,
+                    "quantity": str(quantity),
                     "coin_amount_minor": str(coin_amount_minor),
                 },
             },

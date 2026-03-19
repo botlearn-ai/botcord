@@ -191,11 +191,22 @@ export const topupDialog: TranslationMap<{
   processingNote: string
   recharge: string
   addCoins: string
+  description: string
   amountCoin: string
   amountMustBePositive: string
   rechargeFailed: string
   submitting: string
   submitRecharge: string
+  loadingPackages: string
+  noPackages: string
+  unitPrice: string
+  quantity: string
+  quantityRange: string
+  perUnit: string
+  total: string
+  redirectingToStripe: string
+  continueToPayment: string
+  securePayment: string
 }> = {
   en: {
     rechargeSubmitted: 'Recharge Submitted',
@@ -204,12 +215,23 @@ export const topupDialog: TranslationMap<{
     channel: 'Channel',
     processingNote: 'Your recharge request is being processed. The balance will update once it completes.',
     recharge: 'Recharge',
-    addCoins: 'Add coins to your wallet (mock channel)',
+    addCoins: 'Add coins to your wallet',
+    description: 'Use one Stripe product and adjust quantity to control the total recharge.',
     amountCoin: 'Amount (COIN)',
     amountMustBePositive: 'Amount must be greater than 0',
     rechargeFailed: 'Recharge request failed',
     submitting: 'Submitting...',
     submitRecharge: 'Submit Recharge',
+    loadingPackages: 'Loading packages...',
+    noPackages: 'No packages available at this time.',
+    unitPrice: 'Unit Price',
+    quantity: 'Quantity',
+    quantityRange: '1 to 100',
+    perUnit: 'Per unit',
+    total: 'Total',
+    redirectingToStripe: 'Redirecting to Stripe...',
+    continueToPayment: 'Continue to Payment',
+    securePayment: 'Secure payment powered by Stripe',
   },
   zh: {
     rechargeSubmitted: '充值已提交',
@@ -218,12 +240,23 @@ export const topupDialog: TranslationMap<{
     channel: '渠道',
     processingNote: '您的充值请求正在处理中。余额将在完成后更新。',
     recharge: '充值',
-    addCoins: '向钱包添加代币（模拟渠道）',
+    addCoins: '向钱包充值代币',
+    description: '使用单个 Stripe 商品，通过数量控制本次充值总额。',
     amountCoin: '金额 (COIN)',
     amountMustBePositive: '金额必须大于 0',
     rechargeFailed: '充值请求失败',
     submitting: '提交中...',
     submitRecharge: '提交充值',
+    loadingPackages: '加载套餐中...',
+    noPackages: '当前没有可用的充值套餐。',
+    unitPrice: '单价',
+    quantity: '数量',
+    quantityRange: '1 到 100',
+    perUnit: '每份',
+    total: '合计',
+    redirectingToStripe: '正在跳转到 Stripe...',
+    continueToPayment: '继续支付',
+    securePayment: 'Stripe 安全支付',
   },
 }
 

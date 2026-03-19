@@ -117,6 +117,7 @@ class WithdrawalRejectRequest(BaseModel):
 class StripeCheckoutRequest(BaseModel):
     package_code: str = Field(..., min_length=1)
     idempotency_key: str = Field(..., min_length=1)
+    quantity: int = Field(default=1, ge=1, le=100)
 
 
 class StripeCheckoutResponse(BaseModel):
