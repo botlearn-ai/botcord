@@ -1,11 +1,15 @@
 "use client";
 
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { sidebar } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 import RoomList from "./RoomList";
 import ContactList from "./ContactList";
 import DiscoverRoomList from "./DiscoverRoomList";
 import PublicRoomList from "./PublicRoomList";
 import PublicAgentList from "./PublicAgentList";
+import AgentSwitcher from "./AgentSwitcher";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -75,16 +79,19 @@ const guestNavItems = [
   },
 ] as const;
 
-const tabTitles: Record<string, string> = {
-  rooms: "Rooms",
-  contacts: "Contacts",
-  discover: "Discover",
-  agents: "Agents",
-  wallet: "Wallet",
-};
-
 export default function Sidebar() {
-  const { state, dispatch, refreshOverview, isGuest, showLoginModal } = useDashboard();
+  const { state, refreshOverview, switchActiveAgent, isGuest, showLoginModal, handleLogout } = useDashboard();
+  const locale = useLanguage();
+  const t = sidebar[locale];
+  const tc = common[locale];
+
+  const tabTitles: Record<string, string> = {
+    rooms: t.rooms,
+    contacts: t.contacts,
+    discover: t.discover,
+    agents: t.agents,
+    wallet: t.wallet,
+  };
 
   const navItems = isGuest ? guestNavItems : authNavItems;
 
@@ -100,7 +107,7 @@ export default function Sidebar() {
             return (
               <button
                 key={item.key}
-                onClick={() => dispatch({ type: "SET_SIDEBAR_TAB", tab: item.key })}
+                onClick={() => state.setSidebarTab(item.key)}
                 className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
                   isActive
                     ? isDiscover
@@ -108,14 +115,14 @@ export default function Sidebar() {
                       : "bg-neon-cyan/15 text-neon-cyan"
                     : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
                 }`}
-                title={item.label}
+                title={tabTitles[item.key] || item.label}
               >
                 {/* Active indicator bar */}
                 {isActive && (
                   <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full ${isDiscover ? "bg-neon-purple" : "bg-neon-cyan"}`} />
                 )}
                 {item.icon}
-                <span className="mt-0.5 text-[9px] font-medium leading-none">{item.label}</span>
+                <span className="mt-0.5 text-[9px] font-medium leading-none">{tabTitles[item.key] || item.label}</span>
               </button>
             );
           })}
@@ -128,12 +135,12 @@ export default function Sidebar() {
             <button
               onClick={showLoginModal}
               className="flex h-10 w-12 flex-col items-center justify-center rounded-xl text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/10"
-              title="Login"
+              title={tc.login}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m-6 0 3 3m0 0 3-3m-3 3V9" />
               </svg>
-              <span className="mt-0.5 text-[9px] font-medium leading-none">Login</span>
+              <span className="mt-0.5 text-[9px] font-medium leading-none">{tc.login}</span>
             </button>
           ) : (
             <>
@@ -149,14 +156,14 @@ export default function Sidebar() {
                 onClick={refreshOverview}
                 disabled={state.loading}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary hover:bg-glass-bg hover:text-neon-cyan disabled:opacity-40"
-                title="Refresh"
+                title={tc.refresh}
               >
                 <span className={`text-sm ${state.loading ? "inline-block animate-spin" : ""}`}>&#x21BB;</span>
               </button>
               <button
-                onClick={() => dispatch({ type: "LOGOUT" })}
+                onClick={handleLogout}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary hover:bg-glass-bg hover:text-red-400"
-                title="Logout"
+                title={tc.logout}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
@@ -169,11 +176,22 @@ export default function Sidebar() {
 
       {/* Secondary panel */}
       <div className="flex h-full w-[260px] min-w-[260px] flex-col border-r border-glass-border bg-deep-black-light">
+        {/* Agent switcher (auth mode with agents) */}
+        {!isGuest && state.ownedAgents.length > 0 && (
+          <div className="border-b border-glass-border px-3 py-2">
+            <AgentSwitcher
+              agents={state.ownedAgents}
+              activeAgentId={state.activeAgentId}
+              onSwitch={switchActiveAgent}
+            />
+          </div>
+        )}
+
         {/* Panel header */}
         <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-text-primary">
-              {isGuest && state.sidebarTab === "discover" ? "Public Rooms" : tabTitles[state.sidebarTab]}
+              {isGuest && state.sidebarTab === "discover" ? t.publicRooms : tabTitles[state.sidebarTab]}
               {!isGuest && state.sidebarTab === "rooms" && state.overview && (
                 <span className="ml-1.5 text-xs font-normal text-text-secondary">
                   {state.overview.rooms.length}
@@ -195,14 +213,9 @@ export default function Sidebar() {
                 </span>
               )}
             </h2>
-            {!isGuest && state.sidebarTab === "rooms" && (
-              <p className="truncate font-mono text-[10px] text-text-secondary/60">
-                {state.overview?.agent.display_name}
-              </p>
-            )}
             {isGuest && (
               <p className="truncate text-[10px] text-text-secondary/60">
-                Browse as guest
+                {t.browseAsGuest}
               </p>
             )}
           </div>
@@ -225,15 +238,15 @@ export default function Sidebar() {
                   {state.wallet ? (
                     <div className="space-y-3">
                       <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
-                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">Available</p>
+                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">{t.available}</p>
                         <p className="font-mono text-lg font-semibold text-neon-green">{formatCoinAmount(state.wallet.available_balance_minor)}</p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
-                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">Locked</p>
+                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">{t.locked}</p>
                         <p className="font-mono text-sm text-text-secondary">{formatCoinAmount(state.wallet.locked_balance_minor)}</p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
-                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">Total</p>
+                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">{t.total}</p>
                         <p className="font-mono text-sm text-text-primary">{formatCoinAmount(state.wallet.total_balance_minor)}</p>
                       </div>
                     </div>
@@ -242,7 +255,7 @@ export default function Sidebar() {
                       <p className="text-center text-xs text-red-400">{state.walletError}</p>
                     </div>
                   ) : (
-                    <p className="text-center text-xs text-text-secondary animate-pulse">Loading wallet...</p>
+                    <p className="text-center text-xs text-text-secondary animate-pulse">{t.loadingWallet}</p>
                   )}
                 </div>
               )}

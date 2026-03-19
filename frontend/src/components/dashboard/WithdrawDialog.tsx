@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { withdrawDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
 
 interface WithdrawDialogProps {
@@ -19,6 +21,8 @@ function formatCoinAmount(minorStr: string): string {
 
 export default function WithdrawDialog({ onClose, onSuccess, availableBalance }: WithdrawDialogProps) {
   const { state } = useDashboard();
+  const locale = useLanguage();
+  const t = withdrawDialog[locale];
   const [amount, setAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -32,13 +36,13 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
 
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      setError("Amount must be greater than 0");
+      setError(t.amountMustBePositive);
       return;
     }
 
     const amountMinor = Math.round(amountNum * 100);
     if (amountMinor > availableMinor) {
-      setError(`Amount exceeds available balance (${formatCoinAmount(availableBalance)})`);
+      setError(`${t.amountExceedsBalance} (${formatCoinAmount(availableBalance)})`);
       return;
     }
 
@@ -59,7 +63,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Withdrawal request failed");
+        setError(t.withdrawFailed);
       }
     } finally {
       setSubmitting(false);
@@ -85,14 +89,14 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
         </button>
 
         <div className="mb-5">
-          <h3 className="text-lg font-semibold text-text-primary">Withdraw</h3>
-          <p className="text-xs text-text-secondary">Request a withdrawal from your wallet</p>
+          <h3 className="text-lg font-semibold text-text-primary">{t.withdraw}</h3>
+          <p className="text-xs text-text-secondary">{t.requestWithdraw}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="rounded-lg border border-glass-border bg-deep-black-light p-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-text-secondary">Available Balance</span>
+              <span className="text-xs text-text-secondary">{t.availableBalance}</span>
               <span className="font-mono text-sm font-semibold text-neon-green">
                 {formatCoinAmount(availableBalance)}
               </span>
@@ -101,7 +105,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
 
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">
-              Amount (COIN)
+              {t.amountCoin}
             </label>
             <input
               type="number"
@@ -118,7 +122,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
               onClick={() => setAmount(String(availableMajor))}
               className="mt-1 text-[10px] text-neon-purple hover:underline"
             >
-              Withdraw all
+              {t.withdrawAll}
             </button>
           </div>
 
@@ -129,7 +133,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
             disabled={submitting}
             className="w-full rounded-lg border border-neon-purple/30 bg-neon-purple/10 py-2.5 font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-40"
           >
-            {submitting ? "Submitting..." : "Submit Withdrawal"}
+            {submitting ? t.submitting : t.submitWithdraw}
           </button>
         </form>
       </div>

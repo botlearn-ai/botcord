@@ -1,6 +1,7 @@
 """Subscription product and billing API router."""
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, Query
+from hub.i18n import I18nHTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub import config as hub_config
@@ -23,15 +24,15 @@ internal_router = APIRouter(prefix="/internal/subscriptions", tags=["subscriptio
 
 def _require_internal(authorization: str | None = None):
     if not hub_config.ALLOW_PRIVATE_ENDPOINTS:
-        raise HTTPException(status_code=403, detail="Internal endpoints are disabled")
+        raise I18nHTTPException(status_code=403, message_key="internal_endpoints_disabled")
 
     expected = hub_config.INTERNAL_API_SECRET
     if expected:
         if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing internal API secret")
+            raise I18nHTTPException(status_code=401, message_key="missing_internal_api_secret")
         provided = authorization.removeprefix("Bearer ").strip()
         if provided != expected:
-            raise HTTPException(status_code=401, detail="Invalid internal API secret")
+            raise I18nHTTPException(status_code=401, message_key="invalid_internal_api_secret")
 
 
 def _product_response(product) -> SubscriptionProductResponse:
@@ -82,12 +83,12 @@ async def create_product(
     try:
         amount = int(req.amount_minor)
     except ValueError:
-        raise HTTPException(status_code=400, detail="amount_minor must be a numeric string")
+        raise I18nHTTPException(status_code=400, message_key="amount_minor_must_be_numeric")
 
     try:
         billing_interval = subscription_svc.BillingInterval(req.billing_interval)
     except ValueError:
-        raise HTTPException(status_code=400, detail="billing_interval must be week or month")
+        raise I18nHTTPException(status_code=400, message_key="billing_interval_invalid")
 
     try:
         product = await subscription_svc.create_subscription_product(
@@ -101,7 +102,7 @@ async def create_product(
         await db.commit()
         await db.refresh(product)
     except ValueError as err:
-        raise HTTPException(status_code=400, detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
 
     return _product_response(product)
 
@@ -140,7 +141,7 @@ async def archive_product(
         await db.commit()
         await db.refresh(product)
     except ValueError as err:
-        raise HTTPException(status_code=400, detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
     return _product_response(product)
 
 
@@ -160,7 +161,7 @@ async def subscribe(
         )
         await db.commit()
     except ValueError as err:
-        raise HTTPException(status_code=400, detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
     return _subscription_response(subscription)
 
 
@@ -183,9 +184,9 @@ async def list_subscribers(
 ):
     product = await subscription_svc.get_subscription_product(db, product_id)
     if product is None:
-        raise HTTPException(status_code=404, detail="Subscription product not found")
+        raise I18nHTTPException(status_code=404, message_key="subscription_product_not_found")
     if product.owner_agent_id != current_agent:
-        raise HTTPException(status_code=403, detail="Not authorized")
+        raise I18nHTTPException(status_code=403, message_key="not_authorized")
 
     subscriptions = await subscription_svc.list_product_subscribers(db, product_id)
     return SubscriptionListResponse(
@@ -206,7 +207,7 @@ async def cancel_subscription(
         await db.commit()
         await db.refresh(subscription)
     except ValueError as err:
-        raise HTTPException(status_code=400, detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
     return _subscription_response(subscription)
 
 
@@ -221,6 +222,6 @@ async def run_billing(
         result = await subscription_svc.process_due_subscription_billings(db, limit=limit)
         await db.commit()
     except ValueError as err:
-        raise HTTPException(status_code=400, detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
 
     return SubscriptionBillingResponse(**result)

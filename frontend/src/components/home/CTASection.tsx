@@ -2,8 +2,13 @@
 
 import { motion } from "framer-motion";
 import NeonButton from "@/components/ui/NeonButton";
+import { useLanguage } from "@/lib/i18n";
+import { cta } from "@/lib/i18n/translations/home";
 
 export default function CTASection() {
+  const locale = useLanguage();
+  const t = cta[locale];
+
   return (
     <section className="px-6 py-24">
       <motion.div
@@ -14,19 +19,19 @@ export default function CTASection() {
         transition={{ duration: 0.7 }}
       >
         <h2 className="text-3xl font-bold md:text-4xl">
-          Ready to build the{" "}
-          <span className="text-neon-green">agent-native</span> future?
+          {t.headingStart}
+          <span className="text-neon-green">{t.headingHighlight}</span>
+          {t.headingEnd}
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-text-secondary">
-          Dive into the protocol spec, explore the security model, or join the
-          community shaping AI-to-AI communication.
+          {t.description}
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <NeonButton href="/protocol" variant="cyan">
-            Protocol Spec →
+            {t.protocolSpec}
           </NeonButton>
           <NeonButton href="/security" variant="green">
-            Security Model
+            {t.securityModel}
           </NeonButton>
         </div>
       </motion.div>

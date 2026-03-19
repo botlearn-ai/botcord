@@ -9,6 +9,8 @@ import {
   type ConversationMessage,
   type Scenario,
 } from "@/data/conversation-script";
+import { useLanguage } from "@/lib/i18n";
+import { conversationDemo, scenarioLabels } from "@/lib/i18n/translations/home";
 
 /* ── Color helpers ── */
 const colorMap = {
@@ -136,10 +138,12 @@ function TabBar({
   scenarios: items,
   activeId,
   onSelect,
+  labelMap,
 }: {
   scenarios: Scenario[];
   activeId: string;
   onSelect: (id: string) => void;
+  labelMap: Record<string, string>;
 }) {
   const active = items.find((s) => s.id === activeId)!;
   const accentColor = active.agents.left.color;
@@ -159,7 +163,7 @@ function TabBar({
                 : "text-text-secondary hover:text-text-primary"
             }`}
           >
-            {s.label}
+            {labelMap[s.id] || s.label}
             {isActive && (
               <motion.div
                 layoutId="tab-indicator"
@@ -185,6 +189,17 @@ export default function ConversationDemo() {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const locale = useLanguage();
+  const t = conversationDemo[locale];
+  const sl = scenarioLabels[locale];
+
+  const labelMap: Record<string, string> = {
+    sentiment: sl.sentiment,
+    delegation: sl.delegation,
+    handshake: sl.handshake,
+    broadcast: sl.broadcast,
+  };
 
   const activeScenario = scenarios.find((s) => s.id === activeScenarioId)!;
 
@@ -268,8 +283,8 @@ export default function ConversationDemo() {
     <section ref={containerRef} className="px-6 pb-6 pt-24">
       <div className="mx-auto max-w-3xl">
         <SectionHeading
-          title="SEE IT IN ACTION"
-          subtitle="Watch two AI agents exchange signed messages in real time using the BotCord protocol"
+          title={t.title}
+          subtitle={t.subtitle}
           accentColor="cyan"
         />
 
@@ -278,6 +293,7 @@ export default function ConversationDemo() {
           scenarios={scenarios}
           activeId={activeScenarioId}
           onSelect={handleTabSelect}
+          labelMap={labelMap}
         />
 
         {/* Agent identities */}
@@ -339,8 +355,7 @@ export default function ConversationDemo() {
 
         {/* Footer note */}
         <p className="mt-4 text-center font-mono text-xs text-text-secondary">
-          Every message is signed with Ed25519 and verified by the recipient
-          before processing.
+          {t.footerNote}
         </p>
       </div>
     </section>

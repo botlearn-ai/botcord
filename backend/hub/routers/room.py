@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
+from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,7 +59,7 @@ def _check_join_rate_limit(room_id: str) -> None:
     while window and window[0] <= now - 60:
         window.popleft()
     if len(window) >= JOIN_RATE_LIMIT_PER_MINUTE:
-        raise HTTPException(status_code=429, detail="Join rate limit exceeded for this room")
+        raise I18nHTTPException(status_code=429, message_key="join_rate_limit_exceeded")
     window.append(now)
 
 
@@ -132,7 +133,7 @@ async def _load_room(db: AsyncSession, room_id: str, *, fresh: bool = False) -> 
     )
     room = result.scalar_one_or_none()
     if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
     return room
 
 
@@ -141,14 +142,14 @@ def _require_membership(room: Room, agent_id: str) -> RoomMember:
     for m in room.members:
         if m.agent_id == agent_id:
             return m
-    raise HTTPException(status_code=403, detail="Not a member of this room")
+    raise I18nHTTPException(status_code=403, message_key="not_a_member")
 
 
 def _require_admin_or_owner(room: Room, agent_id: str) -> RoomMember:
     """Return the member record if owner/admin, else raise 403."""
     member = _require_membership(room, agent_id)
     if member.role not in (RoomRole.owner, RoomRole.admin):
-        raise HTTPException(status_code=403, detail="Admin or owner role required")
+        raise I18nHTTPException(status_code=403, message_key="admin_or_owner_required")
     return member
 
 
@@ -263,7 +264,7 @@ async def create_room(
         )
         agents = list(result.scalars().all())
         if len(agents) != len(unique_member_ids):
-            raise HTTPException(status_code=400, detail="One or more member_ids not found")
+            raise I18nHTTPException(status_code=400, message_key="member_ids_not_found")
 
         # Admission policy: contacts_only agents require creator to be in their contacts
         contacts_only_ids = [
@@ -279,13 +280,14 @@ async def create_room(
             has_contact = {row[0] for row in contact_result.all()}
             denied = set(contacts_only_ids) - has_contact
             if denied:
-                raise HTTPException(
+                raise I18nHTTPException(
                     status_code=403,
-                    detail=f"Admission denied: agents {sorted(denied)} have contacts_only policy and you are not in their contacts",
+                    message_key="admission_denied_contacts_only",
+                    denied=str(sorted(denied)),
                 )
 
     if body.max_members is not None and len(unique_member_ids) + 1 > body.max_members:
-        raise HTTPException(status_code=400, detail="Initial members exceed max_members")
+        raise I18nHTTPException(status_code=400, message_key="initial_members_exceed_max")
 
     if body.required_subscription_product_id:
         for member_id in unique_member_ids:
@@ -456,7 +458,7 @@ async def dissolve_room(
     room = await _load_room(db, room_id)
     member = _require_membership(room, current_agent)
     if member.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can dissolve the room")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_dissolve")
 
     await db.delete(room)
     await db.commit()
@@ -484,16 +486,16 @@ async def add_member(
     if is_self_join:
         target_agent_id = current_agent
         if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
-            raise HTTPException(
+            raise I18nHTTPException(
                 status_code=403,
-                detail="Self-join only allowed for public rooms with open join policy",
+                message_key="self_join_public_open_only",
             )
         _check_join_rate_limit(room_id)
     else:
         # Permission check: use _can_invite instead of _require_admin_or_owner
         inviter = _require_membership(room, current_agent)
         if not _can_invite(room, inviter):
-            raise HTTPException(status_code=403, detail="You do not have invite permission")
+            raise I18nHTTPException(status_code=403, message_key="no_invite_permission")
 
         # Check target agent exists and load for admission policy
         result = await db.execute(
@@ -501,7 +503,7 @@ async def add_member(
         )
         target_agent = result.scalar_one_or_none()
         if target_agent is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
+            raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
         # Admission policy: contacts_only agents require inviter to be in their contacts
         if target_agent.message_policy == MessagePolicy.contacts_only:
@@ -512,14 +514,14 @@ async def add_member(
                 )
             )
             if contact_result.scalar_one_or_none() is None:
-                raise HTTPException(
+                raise I18nHTTPException(
                     status_code=403,
-                    detail="Admission denied: target agent has contacts_only policy and you are not in their contacts",
+                    message_key="admission_denied_target_contacts_only",
                 )
 
     # Check max_members
     if room.max_members is not None and len(room.members) >= room.max_members:
-        raise HTTPException(status_code=400, detail="Room is full")
+        raise I18nHTTPException(status_code=400, message_key="room_is_full")
 
     await _ensure_subscription_room_access(db, room, target_agent_id)
 
@@ -535,9 +537,9 @@ async def add_member(
             db.add(new_member)
             await db.flush()
     except IntegrityError:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=409,
-            detail="Agent is already a member or does not exist",
+            message_key="agent_already_member_or_not_exist",
         )
 
     await db.commit()
@@ -562,13 +564,13 @@ async def remove_member(
             target = m
             break
     if target is None:
-        raise HTTPException(status_code=404, detail="Member not found in room")
+        raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
     if target.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Cannot remove the room owner")
+        raise I18nHTTPException(status_code=400, message_key="cannot_remove_room_owner")
 
     if target.role == RoomRole.admin and caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can remove admins")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_remove_admins")
 
     await db.delete(target)
     await db.commit()
@@ -588,7 +590,7 @@ async def leave_room(
     member = _require_membership(room, current_agent)
 
     if member.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Owner cannot leave the room")
+        raise I18nHTTPException(status_code=400, message_key="owner_cannot_leave")
 
     await db.delete(member)
     await db.commit()
@@ -606,10 +608,10 @@ async def transfer_ownership(
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can transfer ownership")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_transfer")
 
     if body.new_owner_id == current_agent:
-        raise HTTPException(status_code=400, detail="Cannot transfer ownership to yourself")
+        raise I18nHTTPException(status_code=400, message_key="cannot_transfer_to_self")
 
     new_owner_member = None
     for m in room.members:
@@ -617,7 +619,7 @@ async def transfer_ownership(
             new_owner_member = m
             break
     if new_owner_member is None:
-        raise HTTPException(status_code=404, detail="New owner is not a member of this room")
+        raise I18nHTTPException(status_code=404, message_key="new_owner_not_member")
 
     if room.required_subscription_product_id:
         await _ensure_room_subscription_product(
@@ -644,7 +646,7 @@ async def promote_demote(
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can promote/demote")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_promote")
 
     target = None
     for m in room.members:
@@ -652,10 +654,10 @@ async def promote_demote(
             target = m
             break
     if target is None:
-        raise HTTPException(status_code=404, detail="Member not found in room")
+        raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
     if target.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Cannot change owner role via promote/demote")
+        raise I18nHTTPException(status_code=400, message_key="cannot_change_owner_role")
 
     target.role = RoomRole(body.role)
     await db.commit()
@@ -700,13 +702,13 @@ async def set_member_permissions(
             target = m
             break
     if target is None:
-        raise HTTPException(status_code=404, detail="Member not found in room")
+        raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
     if target.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Cannot modify owner permissions")
+        raise I18nHTTPException(status_code=400, message_key="cannot_modify_owner_permissions")
 
     if target.role == RoomRole.admin and caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can modify admin permissions")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_modify_admin_permissions")
 
     # Apply permission overrides (None = use defaults)
     target.can_send = body.can_send

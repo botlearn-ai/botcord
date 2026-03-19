@@ -27,9 +27,27 @@ import type {
   StripeCheckoutResponse,
   StripePackageResponse,
   StripeSessionStatusResponse,
+  UserProfile,
+  UserAgent,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://api.botcord.chat";
+
+const ACTIVE_AGENT_KEY = "botcord_active_agent_id";
+
+export function getActiveAgentId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ACTIVE_AGENT_KEY);
+}
+
+export function setActiveAgentId(agentId: string | null) {
+  if (typeof window === "undefined") return;
+  if (agentId) {
+    localStorage.setItem(ACTIVE_AGENT_KEY, agentId);
+  } else {
+    localStorage.removeItem(ACTIVE_AGENT_KEY);
+  }
+}
 
 class ApiError extends Error {
   constructor(
@@ -39,6 +57,15 @@ class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+function buildHeaders(token: string): Record<string, string> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  const activeAgentId = getActiveAgentId();
+  if (activeAgentId) {
+    headers["X-Active-Agent"] = activeAgentId;
+  }
+  return headers;
 }
 
 async function request<T>(path: string, token: string, params?: Record<string, string>): Promise<T> {
@@ -52,7 +79,7 @@ async function request<T>(path: string, token: string, params?: Record<string, s
   console.log(`[API] → ${path}`, fullUrl);
   try {
     const res = await fetch(fullUrl, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: buildHeaders(token),
     });
     console.log(`[API] ← ${path} status=${res.status}`);
     if (!res.ok) {
@@ -77,7 +104,7 @@ async function postRequest<T>(path: string, token: string): Promise<T> {
   try {
     const res = await fetch(fullUrl, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: buildHeaders(token),
     });
     console.log(`[API] ← POST ${path} status=${res.status}`);
     if (!res.ok) {
@@ -103,7 +130,7 @@ async function postJsonRequest<T>(path: string, token: string, body: unknown): P
     const res = await fetch(fullUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...buildHeaders(token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -295,4 +322,64 @@ export const api = {
   },
 };
 
-export { ApiError };
+// --- User API (Next.js API Routes) ---
+
+const userApi = {
+  async getMe(): Promise<UserProfile> {
+    const res = await fetch("/api/users/me");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+    return res.json();
+  },
+
+  async getMyAgents(): Promise<{ agents: UserAgent[] }> {
+    const res = await fetch("/api/users/me/agents");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+    return res.json();
+  },
+
+  async claimAgent(agentId: string, displayName: string, agentToken: string): Promise<UserAgent> {
+    const res = await fetch("/api/users/me/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent_id: agentId,
+        display_name: displayName,
+        agent_token: agentToken,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+    return res.json();
+  },
+
+  async unbindAgent(agentId: string): Promise<void> {
+    const res = await fetch(`/api/users/me/agents/${agentId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+  },
+
+  async setDefaultAgent(agentId: string): Promise<UserAgent> {
+    const res = await fetch(`/api/users/me/agents/${agentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_default: true }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+    return res.json();
+  },
+};
+
+export { ApiError, userApi };

@@ -2,15 +2,33 @@
 
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { messageList } from '@/lib/i18n/translations/dashboard';
 import MessageBubble from "./MessageBubble";
 import type { DashboardMessage, TopicInfo } from "@/lib/types";
 
-const topicStatusConfig: Record<string, { label: string; color: string; icon: string }> = {
-  open:      { label: "Open",      color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
-  completed: { label: "Completed", color: "text-green-400 bg-green-400/10 border-green-400/30",       icon: "✔" },
-  failed:    { label: "Failed",    color: "text-red-400 bg-red-400/10 border-red-400/30",             icon: "✗" },
-  expired:   { label: "Expired",   color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30",    icon: "⏱" },
+const topicStatusColors: Record<string, { color: string; icon: string }> = {
+  open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
+  completed: { color: "text-green-400 bg-green-400/10 border-green-400/30",       icon: "✔" },
+  failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",             icon: "✗" },
+  expired:   { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30",    icon: "⏱" },
 };
+
+function useTopicStatusConfig() {
+  const locale = useLanguage();
+  const t = messageList[locale];
+  const labels: Record<string, string> = {
+    open: t.open,
+    completed: t.completed,
+    failed: t.failed,
+    expired: t.expired,
+  };
+  const config: Record<string, { label: string; color: string; icon: string }> = {};
+  for (const [key, val] of Object.entries(topicStatusColors)) {
+    config[key] = { label: labels[key] || key, ...val };
+  }
+  return config;
+}
 
 interface TopicGroup {
   topicId: string | null;
@@ -51,6 +69,9 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
   isCollapsed: boolean;
   onToggle: () => void;
 }) {
+  const topicStatusConfig = useTopicStatusConfig();
+  const locale = useLanguage();
+  const t = messageList[locale];
   const sc = group.topicInfo ? topicStatusConfig[group.topicInfo.status] : null;
 
   return (
@@ -61,7 +82,7 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
       <span className="text-xs text-text-secondary/60">{isCollapsed ? "▶" : "▼"}</span>
 
       <span className="text-sm font-medium text-text-primary truncate">
-        {group.topicName || "General"}
+        {group.topicName || t.general}
       </span>
 
       {sc && (
@@ -87,6 +108,8 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
 
 export default function MessageList() {
   const { state, loadMoreMessages, loadTopics } = useDashboard();
+  const locale = useLanguage();
+  const t = messageList[locale];
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
@@ -152,7 +175,7 @@ export default function MessageList() {
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-text-secondary">
-        No messages yet
+        {t.noMessages}
       </div>
     );
   }
@@ -167,7 +190,7 @@ export default function MessageList() {
       >
         {hasMore && (
           <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
-            Scroll up for older messages...
+            {t.scrollUp}
           </div>
         )}
         {messages.map((msg) => (

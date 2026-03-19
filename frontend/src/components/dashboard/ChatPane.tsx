@@ -1,11 +1,18 @@
 "use client";
 
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { chatPane } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
+import JoinGuidePrompt from "./JoinGuidePrompt";
 
 export default function ChatPane() {
   const { state, isGuest, showLoginModal } = useDashboard();
+  const locale = useLanguage();
+  const t = chatPane[locale];
+  const tc = common[locale];
 
   if (!state.selectedRoomId) {
     return (
@@ -13,14 +20,14 @@ export default function ChatPane() {
         <div className="text-center">
           <div className="mb-2 text-4xl opacity-20">💬</div>
           <p className="text-sm text-text-secondary">
-            {isGuest ? "Select a public room to browse messages" : "Select a room to view messages"}
+            {isGuest ? t.selectPublicRoom : t.selectRoom}
           </p>
           {isGuest && (
             <button
               onClick={showLoginModal}
               className="mt-3 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-4 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
-              Login to see your rooms
+              {t.loginToSee}
             </button>
           )}
         </div>
@@ -29,22 +36,27 @@ export default function ChatPane() {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-deep-black">
+    <div className="flex flex-1 flex-col bg-deep-black overflow-hidden">
       <RoomHeader />
-      <MessageList />
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <MessageList />
+      </div>
+      <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
+        <JoinGuidePrompt roomId={state.selectedRoomId} />
+      </div>
       <div className="border-t border-glass-border px-4 py-2">
         {isGuest ? (
           <div className="flex items-center justify-center gap-2">
-            <p className="text-center text-xs text-text-secondary/50">Read-only guest view</p>
+            <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
             <button
               onClick={showLoginModal}
               className="rounded border border-neon-cyan/30 px-2 py-0.5 text-[10px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
             >
-              Login to participate
+              {t.loginToParticipate}
             </button>
           </div>
         ) : (
-          <p className="text-center text-xs text-text-secondary/50">Read-only view</p>
+          <p className="text-center text-xs text-text-secondary/50">{t.readOnlyView}</p>
         )}
       </div>
     </div>

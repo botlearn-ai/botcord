@@ -2,6 +2,8 @@
 
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 
@@ -10,15 +12,33 @@ interface MessageBubbleProps {
   isOwn: boolean;
 }
 
-const stateConfig: Record<string, { label: string; color: string; icon: string }> = {
-  queued:    { label: "Queued",    color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30", icon: "⏳" },
-  delivered: { label: "Delivered", color: "text-blue-400 bg-blue-400/10 border-blue-400/30",     icon: "✓" },
-  acked:     { label: "Acked",    color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/30", icon: "✓✓" },
-  done:      { label: "Done",     color: "text-green-400 bg-green-400/10 border-green-400/30",   icon: "✔" },
-  failed:    { label: "Failed",   color: "text-red-400 bg-red-400/10 border-red-400/30",         icon: "✗" },
+const stateColors: Record<string, { color: string; icon: string }> = {
+  queued:    { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30", icon: "⏳" },
+  delivered: { color: "text-blue-400 bg-blue-400/10 border-blue-400/30",     icon: "✓" },
+  acked:     { color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/30", icon: "✓✓" },
+  done:      { color: "text-green-400 bg-green-400/10 border-green-400/30",   icon: "✔" },
+  failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",         icon: "✗" },
 };
 
+function useStateConfig() {
+  const locale = useLanguage();
+  const t = messageBubble[locale];
+  const labels: Record<string, string> = {
+    queued: t.queued,
+    delivered: t.delivered,
+    acked: t.acked,
+    done: t.done,
+    failed: t.failed,
+  };
+  const config: Record<string, { label: string; color: string; icon: string }> = {};
+  for (const [key, val] of Object.entries(stateColors)) {
+    config[key] = { label: labels[key] || key, ...val };
+  }
+  return config;
+}
+
 function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
+  const stateConfig = useStateConfig();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const order = ["done", "acked", "delivered", "queued", "failed"];
   const entries = order
@@ -46,6 +66,7 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
 
 export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
   const { selectAgent } = useDashboard();
+  const stateConfig = useStateConfig();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
 

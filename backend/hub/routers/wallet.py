@@ -3,7 +3,8 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, Query
+from hub.i18n import I18nHTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import get_current_agent
@@ -91,7 +92,7 @@ async def create_transfer(
     try:
         amount = int(req.amount_minor)
     except ValueError:
-        raise HTTPException(status_code=400, detail="amount_minor must be a numeric string")
+        raise I18nHTTPException(status_code=400, message_key="amount_minor_must_be_numeric")
 
     try:
         tx = await wallet_svc.create_transfer(
@@ -107,7 +108,7 @@ async def create_transfer(
         )
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
 
     return _tx_response(tx)
 
@@ -122,7 +123,7 @@ async def create_topup(
     try:
         amount = int(req.amount_minor)
     except ValueError:
-        raise HTTPException(status_code=400, detail="amount_minor must be a numeric string")
+        raise I18nHTTPException(status_code=400, message_key="amount_minor_must_be_numeric")
 
     try:
         topup, tx = await wallet_svc.create_topup_request(
@@ -131,7 +132,7 @@ async def create_topup(
         )
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
 
     return TopupResponse(
         topup_id=topup.topup_id,
@@ -157,10 +158,10 @@ async def create_withdrawal(
         amount = int(req.amount_minor)
         fee = int(req.fee_minor)
     except ValueError:
-        raise HTTPException(status_code=400, detail="amount/fee must be numeric strings")
+        raise I18nHTTPException(status_code=400, message_key="amount_fee_must_be_numeric")
 
     if fee < 0:
-        raise HTTPException(status_code=400, detail="fee_minor must be >= 0")
+        raise I18nHTTPException(status_code=400, message_key="fee_must_be_non_negative")
 
     dest_json = json.dumps(req.destination) if req.destination else None
 
@@ -176,7 +177,7 @@ async def create_withdrawal(
         )
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
 
     return _wd_response(wd)
 
@@ -190,10 +191,10 @@ async def get_transaction(
     """Get a single transaction detail."""
     tx = await wallet_svc.get_transaction(db, tx_id)
     if tx is None:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+        raise I18nHTTPException(status_code=404, message_key="transaction_not_found")
     # Authorization: agent must be sender or receiver
     if tx.from_agent_id != current_agent and tx.to_agent_id != current_agent:
-        raise HTTPException(status_code=403, detail="Not authorized")
+        raise I18nHTTPException(status_code=403, message_key="not_authorized")
     return _tx_response(tx)
 
 
@@ -208,7 +209,7 @@ async def cancel_withdrawal(
         wd = await wallet_svc.cancel_withdrawal_request(db, withdrawal_id, current_agent)
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
     return _wd_response(wd)
 
 
@@ -228,15 +229,15 @@ def _require_internal(authorization: str | None = None):
     tests keep working.
     """
     if not hub_config.ALLOW_PRIVATE_ENDPOINTS:
-        raise HTTPException(status_code=403, detail="Internal endpoints are disabled")
+        raise I18nHTTPException(status_code=403, message_key="internal_endpoints_disabled")
 
     expected = hub_config.INTERNAL_API_SECRET
     if expected:
         if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing internal API secret")
+            raise I18nHTTPException(status_code=401, message_key="missing_internal_api_secret")
         provided = authorization.removeprefix("Bearer ").strip()
         if provided != expected:
-            raise HTTPException(status_code=401, detail="Invalid internal API secret")
+            raise I18nHTTPException(status_code=401, message_key="invalid_internal_api_secret")
 
 
 @internal_router.post("/topups/{topup_id}/complete", response_model=TopupResponse)
@@ -251,7 +252,7 @@ async def internal_complete_topup(
         topup, tx = await wallet_svc.complete_topup_request(db, topup_id)
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
     return TopupResponse(
         topup_id=topup.topup_id,
         tx_id=topup.tx_id,
@@ -277,7 +278,7 @@ async def internal_fail_topup(
         topup = await wallet_svc.fail_topup_request(db, topup_id)
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
     return TopupResponse(
         topup_id=topup.topup_id,
         tx_id=topup.tx_id,
@@ -303,7 +304,7 @@ async def internal_approve_withdrawal(
         wd = await wallet_svc.approve_withdrawal_request(db, withdrawal_id)
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
     return _wd_response(wd)
 
 
@@ -321,7 +322,7 @@ async def internal_reject_withdrawal(
         wd = await wallet_svc.reject_withdrawal_request(db, withdrawal_id, note)
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
     return _wd_response(wd)
 
 
@@ -337,7 +338,7 @@ async def internal_complete_withdrawal(
         wd, tx = await wallet_svc.complete_withdrawal_request(db, withdrawal_id)
         await db.commit()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
     return _wd_response(wd)
 
 

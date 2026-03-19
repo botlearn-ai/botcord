@@ -1,1 +1,3 @@
 .claude
+.vercel
+.env*.local

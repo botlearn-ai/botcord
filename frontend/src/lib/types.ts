@@ -345,3 +345,23 @@ export interface CreateWithdrawalRequest {
   destination?: Record<string, string>;
   idempotency_key?: string;
 }
+
+// --- User & Agent binding types ---
+
+export interface UserProfile {
+  id: string;
+  display_name: string;
+  email: string | null;
+  avatar_url: string | null;
+  status: string;
+  max_agents: number;
+  roles: string[];
+  agents: UserAgent[];
+}
+
+export interface UserAgent {
+  agent_id: string;
+  display_name: string;
+  is_default: boolean;
+  claimed_at: string;
+}

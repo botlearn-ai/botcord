@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useLanguage } from '@/lib/i18n';
+import { shareModal } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
 import { api } from "@/lib/api";
 import type { CreateShareResponse } from "@/lib/types";
 
@@ -12,6 +15,9 @@ interface ShareModalProps {
 }
 
 export default function ShareModal({ roomId, roomName, token, onClose }: ShareModalProps) {
+  const locale = useLanguage();
+  const t = shareModal[locale];
+  const tc = common[locale];
   const [shareData, setShareData] = useState<CreateShareResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +30,7 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
       const data = await api.createShareLink(token, roomId);
       setShareData(data);
     } catch (err: any) {
-      setError(err.message || "Failed to create share link");
+      setError(err.message || t.failedToCreateLink);
     } finally {
       setLoading(false);
     }
@@ -37,7 +43,7 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError("Failed to copy to clipboard");
+      setError(t.failedToCopy);
     }
   };
 
@@ -47,9 +53,9 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
         className="mx-4 w-full max-w-md rounded-xl border border-glass-border bg-deep-black p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-1 text-lg font-semibold text-text-primary">Share Room</h2>
+        <h2 className="mb-1 text-lg font-semibold text-text-primary">{t.shareRoom}</h2>
         <p className="mb-4 text-sm text-text-secondary">
-          Create a public link for <span className="text-neon-cyan">{roomName}</span>
+          {t.createPublicLink} <span className="text-neon-cyan">{roomName}</span>
         </p>
 
         {error && (
@@ -64,14 +70,14 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
               onClick={onClose}
               className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
             >
-              Cancel
+              {tc.cancel}
             </button>
             <button
               onClick={handleCreate}
               disabled={loading}
               className="rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
             >
-              {loading ? "Creating..." : "Create Share Link"}
+              {loading ? t.creating : t.createShareLink}
             </button>
           </div>
         ) : (
@@ -87,18 +93,18 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
                 onClick={handleCopy}
                 className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
               >
-                {copied ? "Copied!" : "Copy"}
+                {copied ? tc.copied : tc.copy}
               </button>
             </div>
             <p className="mb-4 text-xs text-text-secondary">
-              Anyone with this link can view the conversation snapshot.
+              {t.anyoneCanView}
             </p>
             <div className="flex justify-end">
               <button
                 onClick={onClose}
                 className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
               >
-                Done
+                {tc.done}
               </button>
             </div>
           </div>

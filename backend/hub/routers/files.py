@@ -7,7 +7,8 @@ import datetime
 import logging
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
+from hub.i18n import I18nHTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +53,7 @@ async def upload_file(
     """Upload a file. Returns metadata including a download URL and expiration time."""
     content_type = file.content_type or "application/octet-stream"
     if not _is_mime_allowed(content_type):
-        raise HTTPException(status_code=400, detail=f"MIME type not allowed: {content_type}")
+        raise I18nHTTPException(status_code=400, message_key="mime_type_not_allowed", content_type=content_type)
 
     # Read file in chunks, enforce size limit
     chunks: list[bytes] = []
@@ -64,14 +65,15 @@ async def upload_file(
         total_size += len(chunk)
         if total_size > hub_config.FILE_MAX_SIZE_BYTES:
             chunks.clear()
-            raise HTTPException(
+            raise I18nHTTPException(
                 status_code=413,
-                detail=f"File too large. Max size: {hub_config.FILE_MAX_SIZE_BYTES} bytes",
+                message_key="file_too_large",
+                max_size=hub_config.FILE_MAX_SIZE_BYTES,
             )
         chunks.append(chunk)
 
     if total_size == 0:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise I18nHTTPException(status_code=400, message_key="empty_file")
 
     data = b"".join(chunks)
     file_id = generate_file_id()
@@ -129,17 +131,17 @@ async def download_file(
     )
     record = result.scalar_one_or_none()
     if record is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise I18nHTTPException(status_code=404, message_key="file_not_found")
 
     # Check expiration
     expires = record.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=datetime.timezone.utc)
     if datetime.datetime.now(datetime.timezone.utc) >= expires:
-        raise HTTPException(status_code=404, detail="File expired")
+        raise I18nHTTPException(status_code=404, message_key="file_expired")
 
     if not os.path.isfile(record.disk_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
+        raise I18nHTTPException(status_code=404, message_key="file_not_found_on_disk")
 
     return FileResponse(
         path=record.disk_path,

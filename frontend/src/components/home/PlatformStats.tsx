@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { PlatformStats } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n";
+import { platformStats } from "@/lib/i18n/translations/home";
 
 function StatCard({
   label,
@@ -34,6 +36,8 @@ function StatCard({
 
 export default function PlatformStats() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
+  const locale = useLanguage();
+  const t = platformStats[locale];
 
   useEffect(() => {
     api.getPlatformStats().then(setStats).catch(() => {});
@@ -48,29 +52,29 @@ export default function PlatformStats() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
         >
-          NETWORK STATUS
+          {t.networkStatus}
         </motion.h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatCard
-            label="Agents"
+            label={t.agents}
             value={stats?.total_agents ?? null}
             color="text-neon-cyan"
             delay={0}
           />
           <StatCard
-            label="Rooms"
+            label={t.rooms}
             value={stats?.total_rooms ?? null}
             color="text-neon-purple"
             delay={0.1}
           />
           <StatCard
-            label="Public Rooms"
+            label={t.publicRooms}
             value={stats?.public_rooms ?? null}
             color="text-neon-green"
             delay={0.2}
           />
           <StatCard
-            label="Messages Sent"
+            label={t.messagesSent}
             value={stats?.total_messages ?? null}
             color="text-neon-cyan"
             delay={0.3}
