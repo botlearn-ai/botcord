@@ -3,7 +3,7 @@
 /**
  * [INPUT]: 依赖 react 的 useEffect/useMemo/useState，依赖 @/lib/api 的 userApi 进行票据签发与 agent 轮询
  * [OUTPUT]: 对外提供 AgentBindDialog 组件，支持 auto/create/link 三种 Prompt 驱动流程
- * [POS]: dashboard 账户菜单与 agent 门禁的统一身份执行器，负责复制 Prompt 后等待 Agent 完成关联
+ * [POS]: dashboard 账户菜单与 agent 门禁的统一身份执行器，负责发放 bind_ticket、复制 Prompt，并等待 Agent 自动绑定完成
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -32,7 +32,6 @@ export default function AgentBindDialog({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bindTicket, setBindTicket] = useState("");
-  const [nonce, setNonce] = useState("");
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [loadingTicket, setLoadingTicket] = useState(true);
   const [isWaitingForAgent, setIsWaitingForAgent] = useState(false);
@@ -54,7 +53,6 @@ export default function AgentBindDialog({
       .then((resp) => {
         if (!mounted) return;
         setBindTicket(resp.bind_ticket);
-        setNonce(resp.nonce);
         setExpiresAt(resp.expires_at);
         setLoadingTicket(false);
       })
@@ -101,40 +99,54 @@ export default function AgentBindDialog({
   }, [bindTicket, isWaitingForAgent, onSuccess, onClose]);
 
   const promptText = useMemo(() => {
-    if (!nonce || !bindTicket) return "";
+    if (!bindTicket) return "";
+
+    const appBase =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://botcord.chat";
+    const setupUrl = `${appBase}/openclaw-setup_instruction.md`;
 
     const taskLinesByMode: Record<AgentBindMode, string[]> = {
       auto: [
-        "1) Decide automatically: if I already have a usable BotCord agent, use it; otherwise create one.",
-        "2) Prepare proof for linking this agent to my web account.",
+        "1) If I already have a usable BotCord agent, use it; otherwise create one.",
+        "2) Use the bind_ticket below to call the BotCord bind API and complete the binding automatically.",
       ],
       create: [
         "1) Create a brand new BotCord agent for me. Do not reuse or switch to an existing agent.",
-        "2) Prepare proof for linking the newly created agent to my web account.",
+        "2) Use the bind_ticket below to call the BotCord bind API and complete the binding automatically.",
       ],
       link: [
         "1) Use one existing BotCord agent that I already control. Do not create a new agent.",
-        "2) Prepare proof for linking that existing agent to my web account.",
+        "2) Use the bind_ticket below to call the BotCord bind API and complete the binding automatically.",
       ],
     };
 
     return [
       "You are my BotCord setup assistant.",
+      "If BotCord skill/plugin is missing in this environment, install it first using this guide:",
+      setupUrl,
+      "After install, continue automatically and do not ask me to do manual CLI steps unless installation fails.",
+      "",
       "Task:",
       ...taskLinesByMode[mode],
       "",
-      "Return JSON only (no markdown, no explanation):",
-      '{"agent_id":"ag_xxx","display_name":"My Agent","bind_proof":{"key_id":"k_xxx","nonce":"' + nonce + '","sig":"<base64>"}}',
+      "Bind API:",
+      `${appBase}/api/users/me/agents/bind`,
+      "",
+      "Request JSON:",
+      '{"agent_id":"ag_xxx","display_name":"My Agent","agent_token":"<agent_token>","bind_ticket":"' + bindTicket + '"}',
       "",
       "Rules:",
       "1) agent_id must start with ag_",
-      "2) Use this exact nonce (base64) when signing proof:",
-      nonce,
-      "3) Prefer bind_proof using key_id + nonce + sig",
-      "4) If bind_proof is unavailable, provide agent_token as fallback",
+      "2) Use this exact bind_ticket when calling the bind API:",
+      bindTicket,
+      "3) The bind API must be called by the Agent automatically; do not ask me to paste agent_token back into the website",
+      "4) Return JSON only after the bind API succeeds:",
+      '{"status":"bound","agent_id":"ag_xxx","display_name":"My Agent"}',
       "5) If display_name is unknown, still provide a reasonable name",
     ].join("\n");
-  }, [mode, nonce, bindTicket]);
+  }, [mode, bindTicket]);
 
   const dialogTitle = mode === "create"
     ? t.createAgentWithAi

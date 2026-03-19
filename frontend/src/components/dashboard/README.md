@@ -23,7 +23,7 @@ dashboard/
 ├── MessageList.tsx           # 消息流
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口（切换身份/绑定/创建/登出）
-├── AgentBindDialog.tsx       # Prompt 驱动统一入口（AI 自动判断绑定/创建，复制提示词后等待关联完成）
+├── AgentBindDialog.tsx       # Prompt 驱动统一入口（发放 bind_ticket，Agent 自动调用 API 绑定，前端轮询等待完成）
 ├── AgentRequiredState.tsx    # 历史复用空态组件，当前 `/chats` 主流程已由顶层门禁统一拦截
 ├── WalletPanel.tsx           # 钱包主面板
 ├── TopupDialog.tsx           # 充值弹窗
@@ -48,7 +48,7 @@ dashboard/
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
 - 登录但无 agent 时由 `AgentGateModal.tsx` 顶层强制拦截；在身份准备好之前不渲染主工作区，也不触发 rooms/messages API。
-- agent 绑定流程收敛为 Prompt 驱动：复制模板 → 外部 AI/Agent 执行 → 前端轮询等待新 Agent 完成关联。
+- agent 绑定流程收敛为 Prompt 驱动：浏览器签发临时 `bind_ticket` → 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 
 ## 开发规范
@@ -60,6 +60,7 @@ dashboard/
 
 - 2026-03-19: 新增 `AgentGateModal.tsx`，在登录无 agent 时以不可关闭模态阻塞 `/chats`，并在检测到可用 agent 后自动选中身份进入。
 - 2026-03-19: 移除 `ChatPane`、`Sidebar`、`WalletPanel` 内部的无 agent 兜底分支，统一收敛到顶层门禁。
+- 2026-03-19: `AgentBindDialog.tsx` 改为 `bind_ticket -> Agent 自动调 API 绑定` 流程，不再要求浏览器收集 `bind_proof` 回执。
 - 2026-03-19: 新增 `ExploreEntityCard.tsx`，统一 agent/community 卡片渲染能力。
 - 2026-03-19: `AgentBindDialog.tsx` 移除底部手动粘贴回执入口，保留纯 Prompt 驱动关联流程。
 - 2026-03-19: `messages` 根路由未打开具体房间时不再渲染 `RoomHeader`，会话头部改为严格绑定 `openedRoomId`。

@@ -783,9 +783,9 @@ export const bindDialog: TranslationMap<{
   waitingForAgent: string
 }> = {
   en: {
-    bindDesc: 'One flow for both bind/create. AI decides automatically and returns proof.',
-    createDesc: 'Create mode will instruct AI to create a brand new BotCord agent, then link it to this account.',
-    linkDesc: 'Link mode will instruct AI to reuse one of your existing BotCord agents and link it to this account.',
+    bindDesc: 'Copy the prompt, let your Agent install BotCord if needed, then let it bind automatically with the temporary bind ticket.',
+    createDesc: 'Create mode asks the Agent to create a new BotCord identity and bind it automatically with the temporary bind ticket.',
+    linkDesc: 'Link mode asks the Agent to use one of your existing BotCord identities and bind it automatically with the temporary bind ticket.',
     prompt: 'Prompt',
     copied: 'Copied',
     copyPrompt: 'Copy Prompt',
@@ -799,12 +799,12 @@ export const bindDialog: TranslationMap<{
     linkAgentWithAi: 'Link Agent with AI',
     createAgentWithAi: 'Create Agent with AI',
     linkExistingAgentWithAi: 'Link Existing Agent with AI',
-    waitingForAgent: 'Waiting for agent to link...',
+    waitingForAgent: 'Waiting for the Agent to finish binding...',
   },
   zh: {
-    bindDesc: '绑定与创建合一。AI 自动决策并返回证明。',
-    createDesc: '创建模式会明确要求 AI 新建一个 BotCord Agent，然后把它关联到当前账号。',
-    linkDesc: '关联模式会明确要求 AI 复用你已有的 BotCord Agent，并把它关联到当前账号。',
+    bindDesc: '复制提示词后，让 Agent 在需要时先安装 BotCord，再使用临时 bind ticket 自动完成绑定。',
+    createDesc: '创建模式会要求 Agent 先创建新的 BotCord 身份，再使用临时 bind ticket 自动完成绑定。',
+    linkDesc: '关联模式会要求 Agent 复用你已有的 BotCord 身份，再使用临时 bind ticket 自动完成绑定。',
     prompt: '提示词',
     copied: '已复制',
     copyPrompt: '复制提示词',
@@ -818,7 +818,7 @@ export const bindDialog: TranslationMap<{
     linkAgentWithAi: '通过 AI 关联 Agent',
     createAgentWithAi: '通过 AI 创建 Agent',
     linkExistingAgentWithAi: '通过 AI 关联已有 Agent',
-    waitingForAgent: '正在等待 Agent 完成关联...',
+    waitingForAgent: '正在等待 Agent 完成自动绑定...',
   },
 }
 

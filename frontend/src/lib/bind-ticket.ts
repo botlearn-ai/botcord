@@ -84,6 +84,22 @@ export function verifyBindTicket(
   userId: string,
   nonce: string,
 ): { ok: true } | { ok: false; reason: string } {
+  const parsed = parseBindTicket(bindTicket);
+  if (!parsed.ok) {
+    return parsed;
+  }
+  if (parsed.payload.uid !== userId) {
+    return { ok: false, reason: "ticket_user_mismatch" };
+  }
+  if (parsed.payload.nonce !== nonce) {
+    return { ok: false, reason: "ticket_nonce_mismatch" };
+  }
+  return { ok: true };
+}
+
+export function parseBindTicket(
+  bindTicket: string,
+): { ok: true; payload: BindTicketPayload } | { ok: false; reason: string } {
   const parts = bindTicket.split(".");
   if (parts.length !== 2) {
     return { ok: false, reason: "invalid_ticket_format" };
@@ -101,15 +117,9 @@ export function verifyBindTicket(
     return { ok: false, reason: "invalid_ticket_payload" };
   }
 
-  if (payload.uid !== userId) {
-    return { ok: false, reason: "ticket_user_mismatch" };
-  }
-  if (payload.nonce !== nonce) {
-    return { ok: false, reason: "ticket_nonce_mismatch" };
-  }
   if (!payload.exp || Math.floor(Date.now() / 1000) > payload.exp) {
     return { ok: false, reason: "ticket_expired" };
   }
 
-  return { ok: true };
+  return { ok: true, payload };
 }
