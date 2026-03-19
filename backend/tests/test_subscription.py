@@ -213,7 +213,7 @@ async def test_create_product_and_list(client: AsyncClient):
 async def test_subscribe_charges_first_period_immediately(client: AsyncClient):
     sk_provider, pub_provider = _make_keypair()
     sk_subscriber, pub_subscriber = _make_keypair()
-    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
     subscriber_id, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
 
     product = await _create_product(
@@ -569,6 +569,49 @@ async def test_subscription_gated_room_blocks_unsubscribed_invite(client: AsyncC
 
     resp = await client.get(f"/hub/rooms/{room['room_id']}", headers=_auth(subscriber_token))
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_update_room_rejects_enabling_subscription_gate_with_unsubscribed_members(
+    client: AsyncClient,
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_member, pub_member = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    member_id, member_token = await _register_and_verify(client, sk_member, pub_member, "Member")
+    await _set_open_policy(client, member_id, member_token)
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Retroactive Gate",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Initially Open Access Room",
+    )
+
+    resp = await client.post(
+        f"/hub/rooms/{room['room_id']}/members",
+        json={"agent_id": member_id},
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.patch(
+        f"/hub/rooms/{room['room_id']}",
+        json={"required_subscription_product_id": product["product_id"]},
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 400, resp.text
+    assert "All existing members must have an active subscription" in resp.json()["detail"]
+
+    resp = await client.get(f"/hub/rooms/{room['room_id']}", headers=_auth(member_token))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["required_subscription_product_id"] is None
 
 
 @pytest.mark.asyncio

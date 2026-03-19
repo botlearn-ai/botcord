@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.exc import IntegrityError
@@ -237,6 +237,38 @@ async def _ensure_subscription_room_access(
         )
 
 
+async def _ensure_existing_members_match_subscription_requirement(
+    db: AsyncSession,
+    room: Room,
+    required_subscription_product_id: str | None,
+) -> None:
+    if not required_subscription_product_id:
+        return
+
+    member_ids = {
+        member.agent_id
+        for member in room.members
+        if member.agent_id != room.owner_id
+    }
+    if not member_ids:
+        return
+
+    result = await db.execute(
+        select(AgentSubscription.subscriber_agent_id).where(
+            AgentSubscription.product_id == required_subscription_product_id,
+            AgentSubscription.subscriber_agent_id.in_(member_ids),
+            AgentSubscription.status == SubscriptionStatus.active,
+        )
+    )
+    subscribed_member_ids = set(result.scalars().all())
+    missing_member_ids = member_ids - subscribed_member_ids
+    if missing_member_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="All existing members must have an active subscription for this room",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Routes — ordered so /me comes before /{room_id}
 # ---------------------------------------------------------------------------
@@ -412,38 +444,51 @@ async def update_room(
     """Update room info. Owner/admin only."""
     room = await _load_room(db, room_id)
     _require_admin_or_owner(room, current_agent)
+    previous_required_subscription_product_id = room.required_subscription_product_id
 
-    # Use model_fields_set to distinguish "field omitted" from "field set to None"
-    # This allows setting max_members/description back to None.
-    if "name" in body.model_fields_set:
-        room.name = body.name
-    if "description" in body.model_fields_set:
-        room.description = body.description
-    if "rule" in body.model_fields_set:
-        room.rule = _normalize_room_rule(body.rule)
-    if "visibility" in body.model_fields_set:
-        room.visibility = body.visibility
-    if "join_policy" in body.model_fields_set:
-        room.join_policy = body.join_policy
-    if "required_subscription_product_id" in body.model_fields_set:
-        room.required_subscription_product_id = body.required_subscription_product_id
-    if "max_members" in body.model_fields_set:
-        room.max_members = body.max_members
-    if "default_send" in body.model_fields_set:
-        room.default_send = body.default_send
-    if "default_invite" in body.model_fields_set:
-        room.default_invite = body.default_invite
-    if "slow_mode_seconds" in body.model_fields_set:
-        room.slow_mode_seconds = body.slow_mode_seconds
+    try:
+        # Use model_fields_set to distinguish "field omitted" from "field set to None"
+        # This allows setting max_members/description back to None.
+        if "name" in body.model_fields_set:
+            room.name = body.name
+        if "description" in body.model_fields_set:
+            room.description = body.description
+        if "rule" in body.model_fields_set:
+            room.rule = _normalize_room_rule(body.rule)
+        if "visibility" in body.model_fields_set:
+            room.visibility = body.visibility
+        if "join_policy" in body.model_fields_set:
+            room.join_policy = body.join_policy
+        if "required_subscription_product_id" in body.model_fields_set:
+            room.required_subscription_product_id = body.required_subscription_product_id
+        if "max_members" in body.model_fields_set:
+            room.max_members = body.max_members
+        if "default_send" in body.model_fields_set:
+            room.default_send = body.default_send
+        if "default_invite" in body.model_fields_set:
+            room.default_invite = body.default_invite
+        if "slow_mode_seconds" in body.model_fields_set:
+            room.slow_mode_seconds = body.slow_mode_seconds
 
-    _validate_subscription_room_config(
-        room.visibility, room.join_policy, room.required_subscription_product_id
-    )
-    await _ensure_room_subscription_product(
-        db, room.owner_id, room.required_subscription_product_id
-    )
+        _validate_subscription_room_config(
+            room.visibility, room.join_policy, room.required_subscription_product_id
+        )
+        await _ensure_room_subscription_product(
+            db, room.owner_id, room.required_subscription_product_id
+        )
+        if (
+            room.required_subscription_product_id
+            and room.required_subscription_product_id != previous_required_subscription_product_id
+        ):
+            await _ensure_existing_members_match_subscription_requirement(
+                db, room, room.required_subscription_product_id
+            )
 
-    await db.commit()
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+
     room = await _load_room(db, room.room_id, fresh=True)
     return _build_room_response(room)
 
