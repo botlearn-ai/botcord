@@ -1539,3 +1539,59 @@ async def test_endpoint_status_deprecation_headers(client: AsyncClient, db_sessi
     )
     assert resp.status_code == 200
     assert resp.headers.get("Deprecation") == "true"
+
+
+# ===========================================================================
+# Claim tests
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_create_claim_link_success(client: AsyncClient):
+    sk, pubkey_str = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey_str, display_name="claimable")
+
+    resp = await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        json={"display_name": "Claim Agent"},
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent_id"] == agent_id
+    assert data["display_name"] == "Claim Agent"
+    assert data["claim_token"]
+    assert data["claim_url"].endswith(f"/agents/claim?token={data['claim_token']}")
+
+    resolve = await client.post(
+        "/registry/claims/resolve",
+        json={"token": data["claim_token"]},
+    )
+    assert resolve.status_code == 200
+    resolved = resolve.json()
+    assert resolved["agent_id"] == agent_id
+    assert resolved["display_name"] == "Claim Agent"
+
+
+@pytest.mark.asyncio
+async def test_create_claim_link_wrong_agent_forbidden(client: AsyncClient):
+    sk1, pub1 = _make_keypair()
+    sk2, pub2 = _make_keypair()
+    agent_id_1, _, _ = await _register_and_verify(client, sk1, pub1)
+    _, _, token_2 = await _register_and_verify(client, sk2, pub2)
+
+    resp = await client.post(
+        f"/registry/agents/{agent_id_1}/claim",
+        json={},
+        headers=_auth_header(token_2),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_resolve_claim_link_rejects_invalid_token(client: AsyncClient):
+    resp = await client.post(
+        "/registry/claims/resolve",
+        json={"token": "bad.token.value"},
+    )
+    assert resp.status_code == 403

@@ -10,6 +10,7 @@ import { AgentProfile, PublicRoom } from "@/lib/types";
 import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
+import SubscriptionBadge from "./SubscriptionBadge";
 
 type ExploreEntityCardProps =
   | {
@@ -78,7 +79,12 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-base font-semibold text-text-primary">{room.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="truncate text-base font-semibold text-text-primary">{room.name}</p>
+              {room.required_subscription_product_id && (
+                <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+              )}
+            </div>
             <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>
           </div>
           <span className="shrink-0 rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary">

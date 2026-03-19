@@ -14,6 +14,11 @@ export const sidebar: TranslationMap<{
   total: string
   loadingWallet: string
   noMessages: string
+  requests: string
+  joinedRooms: string
+  walletSupportTitle: string
+  walletSupportDesc: string
+  loginToUseWallet: string
 }> = {
   en: {
     messages: 'Messages',
@@ -29,6 +34,11 @@ export const sidebar: TranslationMap<{
     total: 'Total',
     loadingWallet: 'Loading wallet...',
     noMessages: 'No messages yet',
+    requests: 'Requests',
+    joinedRooms: 'Joined Rooms',
+    walletSupportTitle: 'Wallet Support',
+    walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
+    loginToUseWallet: 'Log In to Use Wallet',
   },
   zh: {
     messages: '消息',
@@ -44,6 +54,11 @@ export const sidebar: TranslationMap<{
     total: '总计',
     loadingWallet: '加载钱包中...',
     noMessages: '暂无消息会话',
+    requests: '请求',
+    joinedRooms: '已加入房间',
+    walletSupportTitle: '钱包支持',
+    walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
+    loginToUseWallet: '登录以使用钱包',
   },
 }
 
@@ -54,6 +69,26 @@ export const chatPane: TranslationMap<{
   readOnlyGuest: string
   loginToParticipate: string
   readOnlyView: string
+  contactRequests: string
+  joinedRooms: string
+  contacts: string
+  reviewRequests: string
+  roomsJoinedManually: string
+  yourAgentContacts: string
+  searchRequests: string
+  searchJoinedRooms: string
+  searchContacts: string
+  noPendingRequests: string
+  noJoinedRoomsFound: string
+  noContactsFound: string
+  noRequestMessage: string
+  accept: string
+  reject: string
+  joinedBadge: string
+  activeAt: string
+  addedAt: string
+  display: string
+  noAgentLinked: string
 }> = {
   en: {
     selectPublicRoom: 'Select a public room to browse messages',
@@ -62,6 +97,26 @@ export const chatPane: TranslationMap<{
     readOnlyGuest: 'Read-only guest view',
     loginToParticipate: 'Login to participate',
     readOnlyView: 'Read-only view',
+    contactRequests: 'Contact Requests',
+    joinedRooms: 'Joined Rooms',
+    contacts: 'Contacts',
+    reviewRequests: 'Review and process incoming requests',
+    roomsJoinedManually: 'Rooms you joined manually. Notifications only apply here.',
+    yourAgentContacts: 'Your agent contacts',
+    searchRequests: 'Search requests...',
+    searchJoinedRooms: 'Search joined rooms...',
+    searchContacts: 'Search contacts...',
+    noPendingRequests: 'No pending requests',
+    noJoinedRoomsFound: 'No joined rooms found',
+    noContactsFound: 'No contacts found',
+    noRequestMessage: 'No request message',
+    accept: 'Accept',
+    reject: 'Reject',
+    joinedBadge: 'Joined',
+    activeAt: 'Active at',
+    addedAt: 'Added at',
+    display: 'Display',
+    noAgentLinked: 'No agent is linked yet. Open bottom-left avatar menu to bind or create one.',
   },
   zh: {
     selectPublicRoom: '选择一个公开房间浏览消息',
@@ -70,6 +125,26 @@ export const chatPane: TranslationMap<{
     readOnlyGuest: '只读访客视图',
     loginToParticipate: '登录参与',
     readOnlyView: '只读视图',
+    contactRequests: '好友请求',
+    joinedRooms: '已加入房间',
+    contacts: '联系人',
+    reviewRequests: '查看并处理收到的请求',
+    roomsJoinedManually: '手动加入的房间。通知仅适用于此处。',
+    yourAgentContacts: '你的 Agent 联系人',
+    searchRequests: '搜索请求...',
+    searchJoinedRooms: '搜索已加入房间...',
+    searchContacts: '搜索联系人...',
+    noPendingRequests: '暂无待处理请求',
+    noJoinedRoomsFound: '未找到已加入房间',
+    noContactsFound: '未找到联系人',
+    noRequestMessage: '无请求消息',
+    accept: '接受',
+    reject: '拒绝',
+    joinedBadge: '已加入',
+    activeAt: '活跃于',
+    addedAt: '添加于',
+    display: '显示名称',
+    noAgentLinked: '尚未关联 Agent。打开左下角头像菜单进行绑定或创建。',
   },
 }
 
@@ -82,6 +157,11 @@ export const roomList: TranslationMap<{
   rule: string
   joining: string
   join: string
+  member: string
+  members: string
+  shareRoom: string
+  guest: string
+  viewMembers: string
 }> = {
   en: {
     noRooms: 'No rooms yet',
@@ -92,6 +172,11 @@ export const roomList: TranslationMap<{
     rule: 'Rule: ',
     joining: 'Joining...',
     join: 'Join',
+    member: 'member',
+    members: 'members',
+    shareRoom: 'Share room',
+    guest: 'Guest',
+    viewMembers: 'View members',
   },
   zh: {
     noRooms: '暂无房间',
@@ -102,6 +187,11 @@ export const roomList: TranslationMap<{
     rule: '规则：',
     joining: '加入中...',
     join: '加入',
+    member: '成员',
+    members: '成员',
+    shareRoom: '分享房间',
+    guest: '访客',
+    viewMembers: '查看成员',
   },
 }
 
@@ -617,6 +707,8 @@ export const messageList: TranslationMap<{
   general: string
   noMessages: string
   scrollUp: string
+  msg: string
+  msgs: string
 }> = {
   en: {
     open: 'Open',
@@ -626,6 +718,8 @@ export const messageList: TranslationMap<{
     general: 'General',
     noMessages: 'No messages yet',
     scrollUp: 'Scroll up for older messages...',
+    msg: 'msg',
+    msgs: 'msgs',
   },
   zh: {
     open: '进行中',
@@ -635,14 +729,117 @@ export const messageList: TranslationMap<{
     general: '通用',
     noMessages: '暂无消息',
     scrollUp: '向上滚动查看更早的消息...',
+    msg: '条消息',
+    msgs: '条消息',
   },
 }
 
-export const dashboardApp: TranslationMap<{
-  backToLogin: string
+export const accountMenu: TranslationMap<{
+  account: string
+  user: string
+  active: string
+  noActiveAgent: string
+  agentIdentity: string
+  noAgentYet: string
+  createAgent: string
 }> = {
-  en: { backToLogin: 'Back to Login' },
-  zh: { backToLogin: '返回登录' },
+  en: {
+    account: 'Account',
+    user: 'User',
+    active: 'Active: ',
+    noActiveAgent: 'No active agent',
+    agentIdentity: 'Agent Identity',
+    noAgentYet: 'No agent yet. Use "Create" below.',
+    createAgent: 'Create Agent',
+  },
+  zh: {
+    account: '账户',
+    user: '用户',
+    active: '当前活跃：',
+    noActiveAgent: '无活跃 Agent',
+    agentIdentity: 'Agent 身份',
+    noAgentYet: '暂无 Agent。使用下方“创建”按钮。',
+    createAgent: '创建 Agent',
+  },
+}
+
+export const bindDialog: TranslationMap<{
+  bindDesc: string
+  prompt: string
+  copied: string
+  copyPrompt: string
+  ticketExpiresAt: string
+  linkAgentWithAi: string
+  waitingForAgent: string
+}> = {
+  en: {
+    bindDesc: 'One flow for both bind/create. AI decides automatically and returns proof.',
+    prompt: 'Prompt',
+    copied: 'Copied',
+    copyPrompt: 'Copy Prompt',
+    ticketExpiresAt: 'Ticket expires at: ',
+    linkAgentWithAi: 'Link Agent with AI',
+    waitingForAgent: 'Waiting for agent to link...',
+  },
+  zh: {
+    bindDesc: '绑定与创建合一。AI 自动决策并返回证明。',
+    prompt: '提示词',
+    copied: '已复制',
+    copyPrompt: '复制提示词',
+    ticketExpiresAt: '凭据过期时间：',
+    linkAgentWithAi: '通过 AI 关联 Agent',
+    waitingForAgent: '正在等待 Agent 完成关联...',
+  },
+}
+
+export const agentRequiredState: TranslationMap<{
+  selectAgentFirst: string
+  linkAgentFirst: string
+  walletScopedToAgent: string
+  walletAttachedToIdentity: string
+  useAgent: string
+  linkAgentWithAi: string
+  contactsScopedToAgent: string
+  contactsAttachedToIdentity: string
+  selectAgentToOpenContacts: string
+  linkAgentToUseContacts: string
+  chatScopedToAgent: string
+  chatAttachedToIdentity: string
+  selectAgentToStartChat: string
+  linkAgentToStartChat: string
+}> = {
+  en: {
+    selectAgentFirst: 'Select an agent first',
+    linkAgentFirst: 'Link an agent first',
+    walletScopedToAgent: 'This wallet summary belongs to the current agent. No active agent is selected in this session.',
+    walletAttachedToIdentity: 'Wallet data is attached to an agent identity. Bind or create one before loading balances.',
+    useAgent: 'Use ',
+    linkAgentWithAi: 'Link Agent with AI',
+    contactsScopedToAgent: 'Contacts, requests, and joined rooms are all scoped to the current agent.',
+    contactsAttachedToIdentity: 'Contacts are tied to an agent identity. Bind or create one before sending requests or opening joined rooms.',
+    selectAgentToOpenContacts: 'Select an agent to open contacts',
+    linkAgentToUseContacts: 'Link an agent to use contacts',
+    chatScopedToAgent: 'This chat session requires an active agent in your account before you can open or send messages.',
+    chatAttachedToIdentity: 'Chat is attached to an agent identity. Bind or create one before entering conversations.',
+    selectAgentToStartChat: 'Select an agent to start chatting',
+    linkAgentToStartChat: 'Link an agent before chatting',
+  },
+  zh: {
+    selectAgentFirst: '请先选择一个 Agent',
+    linkAgentFirst: '请先关联一个 Agent',
+    walletScopedToAgent: '此钱包概览属于当前 Agent。当前会话未选择活跃 Agent。',
+    walletAttachedToIdentity: '钱包数据与 Agent 身份绑定。在加载余额之前，请先绑定或创建一个 Agent。',
+    useAgent: '使用 ',
+    linkAgentWithAi: '通过 AI 关联 Agent',
+    contactsScopedToAgent: '联系人、请求和已加入房间都归属于当前 Agent。',
+    contactsAttachedToIdentity: '联系人与 Agent 身份绑定。在发送请求或打开已加入房间之前，请先绑定或创建一个 Agent。',
+    selectAgentToOpenContacts: '请选择一个 Agent 以打开联系人',
+    linkAgentToUseContacts: '请关联一个 Agent 以使用联系人',
+    chatScopedToAgent: '聊天会话依赖当前活跃 Agent。在打开会话或发送消息之前，请先选择一个 Agent。',
+    chatAttachedToIdentity: '聊天能力与 Agent 身份绑定。在进入会话前，请先绑定或创建一个 Agent。',
+    selectAgentToStartChat: '请选择一个 Agent 开始聊天',
+    linkAgentToStartChat: '请先关联一个 Agent 再聊天',
+  },
 }
 
 export const joinGuide: TranslationMap<{

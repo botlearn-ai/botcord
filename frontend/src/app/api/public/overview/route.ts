@@ -1,13 +1,17 @@
+/**
+ * [INPUT]: 依赖 backendDb + db/functions 汇总平台统计与精选公开房间，依赖 agents 表查询最近加入的 agent
+ * [OUTPUT]: 对外提供公开 overview GET 路由，返回首页统计、精选房间与最近 agent
+ * [POS]: public overview BFF 聚合入口，服务游客首页与 explore 首屏
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 import { NextResponse } from "next/server";
 import { backendDb, isBackendDbConfigured, backendDbConfigError } from "@/../db/backend";
 import {
   agents,
   rooms,
-  roomMembers,
   messageRecords,
 } from "@/../db/backend-schema";
-import { eq, ne, count, desc } from "drizzle-orm";
-import { extractTextFromEnvelope } from "@/app/api/_helpers";
+import { eq, ne, count, desc, sql } from "drizzle-orm";
 
 export async function GET() {
   if (!isBackendDbConfigured) {
@@ -28,69 +32,22 @@ export async function GET() {
     .select({ count: count() })
     .from(messageRecords);
 
-  // Featured public rooms (top 10 by member count)
-  const featuredRooms = await backendDb
-    .select({
-      roomId: rooms.roomId,
-      name: rooms.name,
-      description: rooms.description,
-      ownerId: rooms.ownerId,
-      visibility: rooms.visibility,
-      joinPolicy: rooms.joinPolicy,
-      createdAt: rooms.createdAt,
-      memberCount: count(roomMembers.id),
-    })
-    .from(rooms)
-    .leftJoin(roomMembers, eq(rooms.roomId, roomMembers.roomId))
-    .where(eq(rooms.visibility, "public"))
-    .groupBy(rooms.id)
-    .orderBy(desc(count(roomMembers.id)))
-    .limit(10);
-
-  // Add last message preview to each room
-  const featuredWithPreview = await Promise.all(
-    featuredRooms.map(async (room) => {
-      const [lastMsg] = await backendDb
-        .select({
-          msgId: messageRecords.msgId,
-          senderId: messageRecords.senderId,
-          envelopeJson: messageRecords.envelopeJson,
-          createdAt: messageRecords.createdAt,
-        })
-        .from(messageRecords)
-        .where(eq(messageRecords.roomId, room.roomId))
-        .orderBy(desc(messageRecords.createdAt))
-        .limit(1);
-
-      let lastMessage = null;
-      if (lastMsg) {
-        try {
-          const envelope = JSON.parse(lastMsg.envelopeJson) as Record<string, unknown>;
-          const { text } = extractTextFromEnvelope(envelope);
-          lastMessage = {
-            msg_id: lastMsg.msgId,
-            sender_id: lastMsg.senderId,
-            text: text.slice(0, 200),
-            created_at: lastMsg.createdAt.toISOString(),
-          };
-        } catch {
-          // ignore parse errors
-        }
-      }
-
-      return {
-        room_id: room.roomId,
-        name: room.name,
-        description: room.description,
-        owner_id: room.ownerId,
-        visibility: room.visibility,
-        join_policy: room.joinPolicy,
-        created_at: room.createdAt.toISOString(),
-        member_count: room.memberCount,
-        last_message: lastMessage,
-      };
-    }),
-  );
+  const featuredRooms = await backendDb.execute<{
+    room_id: string;
+    room_name: string;
+    room_description: string;
+    room_rule: string | null;
+    required_subscription_product_id: string | null;
+    owner_id: string;
+    visibility: string;
+    member_count: number;
+    last_message_preview: string | null;
+    last_message_at: string | null;
+    last_sender_name: string | null;
+  }>(sql`
+    select *
+    from public.get_public_room_previews(10, 0, null, null, ${"members"})
+  `);
 
   // Recent agents (top 10 excluding hub)
   const recentAgents = await backendDb
@@ -111,7 +68,19 @@ export async function GET() {
       total_public_rooms: roomCount.count,
       total_messages: messageCount.count,
     },
-    featured_rooms: featuredWithPreview,
+    featured_rooms: featuredRooms.map((room) => ({
+      room_id: room.room_id,
+      name: room.room_name,
+      description: room.room_description,
+      rule: room.room_rule,
+      required_subscription_product_id: room.required_subscription_product_id,
+      owner_id: room.owner_id,
+      visibility: room.visibility,
+      member_count: Number(room.member_count ?? 0),
+      last_message_preview: room.last_message_preview,
+      last_message_at: room.last_message_at,
+      last_sender_name: room.last_sender_name,
+    })),
     recent_agents: recentAgents.map((a) => ({
       agent_id: a.agentId,
       display_name: a.displayName,

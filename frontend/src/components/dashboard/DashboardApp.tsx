@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 useDashboardStore 管理 dashboard 全局状态，依赖 Sidebar/ChatPane/WalletPanel 组织主界面
- * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化与三栏布局编排
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态与 UI 面板渲染
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -57,6 +57,7 @@ export function useDashboard() {
     loadDiscoverRooms: store.loadDiscoverRooms,
     joinRoom: store.joinRoom,
     loadPublicRooms: store.loadPublicRooms,
+    loadPublicRoomDetail: store.loadPublicRoomDetail,
     loadPublicAgents: store.loadPublicAgents,
     loadTopics: store.loadTopics,
     loadWallet: store.loadWallet,
@@ -68,6 +69,7 @@ export function useDashboard() {
     switchActiveAgent: store.switchActiveAgent,
     refreshUserProfile: store.refreshUserProfile,
     sessionMode: store.sessionMode,
+    isAuthResolved: store.authResolved,
     isGuest: store.sessionMode === "guest",
     needsAgent: store.sessionMode === "authed-no-agent",
     isAuthedReady: store.sessionMode === "authed-ready",
@@ -79,17 +81,26 @@ export function useDashboard() {
 export default function DashboardApp() {
   const store = useDashboardStore();
   const pathname = usePathname();
-  const router = useRouter();
   const supabase = createClient();
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
 
   // Auth sync
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.access_token) {
-        store.initAuth(session.access_token);
+    let cancelled = false;
+
+    const resolveSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) {
+        return;
       }
-    });
+      if (session?.access_token) {
+        await store.initAuth(session.access_token);
+      } else {
+        store.setToken(null);
+      }
+    };
+
+    resolveSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
@@ -101,19 +112,17 @@ export default function DashboardApp() {
       },
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
-
-  // Guest mode initial load
-  useEffect(() => {
-    if (store.sessionMode === "guest") {
-      store.loadPublicRooms();
-      store.loadPublicAgents();
-    }
-  }, [store.sessionMode]);
 
   // Route sync: /chats/{tab}/{subtab?}
   useEffect(() => {
+    if (!store.authResolved) {
+      return;
+    }
     const parts = pathnameParts;
     // ["chats", tab?, subtab?]
     const tab = parts[1];
@@ -137,55 +146,34 @@ export default function DashboardApp() {
       if (normalizedTab === "messages") {
         const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
         if (roomIdFromPath) {
-          if (store.selectedRoomId !== roomIdFromPath) {
-            store.setSelectedRoomId(roomIdFromPath);
+          if (store.focusedRoomId !== roomIdFromPath) {
+            store.setFocusedRoomId(roomIdFromPath);
+          }
+          if (store.openedRoomId !== roomIdFromPath) {
+            store.setOpenedRoomId(roomIdFromPath);
+          }
+          const knownRoom =
+            Boolean(store.getRoomSummary(roomIdFromPath))
+            || store.discoverRooms.some((room) => room.room_id === roomIdFromPath);
+          if (!knownRoom) {
+            store.loadPublicRoomDetail(roomIdFromPath);
           }
           if (!store.messages[roomIdFromPath]) {
             store.loadRoomMessages(roomIdFromPath);
+          }
+        } else {
+          if (store.focusedRoomId !== null) {
+            store.setFocusedRoomId(null);
+          }
+          if (store.openedRoomId !== null) {
+            store.setOpenedRoomId(null);
           }
         }
       }
     } else if (store.sidebarTab !== "messages") {
       store.setSidebarTab("messages");
     }
-  }, [pathnameParts, store.selectedRoomId]);
-
-  // Default focus for message list: if messages tab has room candidates but no selected room,
-  // pick the first one and sync URL for precise location.
-  useEffect(() => {
-    if (store.sidebarTab !== "messages" || store.selectedRoomId) {
-      return;
-    }
-    const joinedRooms = store.overview?.rooms || [];
-    const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
-    const recentUnjoinedRooms = store.recentVisitedRooms.filter((room) => !joinedRoomIds.has(room.room_id));
-    const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
-      const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
-      const bTs = b.last_message_at ? Date.parse(b.last_message_at) : 0;
-      return bTs - aTs;
-    });
-    const candidateRoomId = (store.token ? mergedRooms : store.recentVisitedRooms)[0]?.room_id;
-    if (!candidateRoomId) {
-      return;
-    }
-    store.setSelectedRoomId(candidateRoomId);
-    const nextPath = `/chats/messages/${encodeURIComponent(candidateRoomId)}`;
-    if (pathname !== nextPath) {
-      router.replace(nextPath);
-    }
-    if (!store.messages[candidateRoomId]) {
-      store.loadRoomMessages(candidateRoomId);
-    }
-  }, [
-    store.sidebarTab,
-    store.selectedRoomId,
-    store.token,
-    store.overview?.rooms,
-    store.recentVisitedRooms,
-    store.messages,
-    pathname,
-    router,
-  ]);
+  }, [store.authResolved, pathnameParts, store.focusedRoomId, store.openedRoomId, store.overview?.rooms, store.publicRoomDetails, store.publicRooms, store.recentVisitedRooms, store.discoverRooms]);
 
   return (
     <div className="relative flex h-screen overflow-hidden">

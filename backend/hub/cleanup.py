@@ -5,13 +5,13 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
-import os
 
 from sqlalchemy import select
 
 from hub import config as hub_config
 from hub.database import async_session
 from hub.models import FileRecord
+from hub.storage import delete_file
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +40,12 @@ async def _cleanup_expired_files() -> int:
         )
         records = list(result.scalars().all())
         for record in records:
-            # Delete disk file first (non-blocking)
             try:
-                await asyncio.to_thread(os.remove, record.disk_path)
+                await delete_file(record)
             except FileNotFoundError:
                 pass
             except OSError as exc:
-                logger.warning("Failed to delete file %s: %s", record.disk_path, exc)
+                logger.warning("Failed to delete file for %s: %s", record.file_id, exc)
             await session.delete(record)
             deleted += 1
         if records:

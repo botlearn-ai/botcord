@@ -1,9 +1,12 @@
+drop function if exists public.get_agent_room_previews(varchar);
+
 create or replace function public.get_agent_room_previews(p_agent_id varchar)
 returns table (
   room_id varchar,
   room_name varchar,
   room_description text,
   room_rule text,
+  required_subscription_product_id varchar,
   owner_id varchar,
   visibility varchar,
   my_role varchar,
@@ -23,6 +26,7 @@ as $$
       r.name as room_name,
       r.description as room_description,
       r.rule as room_rule,
+      r.required_subscription_product_id,
       r.owner_id,
       r.visibility
     from room_members rm
@@ -66,6 +70,7 @@ as $$
     m.room_name,
     m.room_description,
     m.room_rule,
+    m.required_subscription_product_id,
     m.owner_id,
     m.visibility,
     m.my_role,

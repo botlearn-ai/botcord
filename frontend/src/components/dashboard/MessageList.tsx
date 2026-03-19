@@ -100,7 +100,7 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
       )}
 
       <span className="ml-auto text-[10px] text-text-secondary/50">
-        {group.messages.length} msg{group.messages.length !== 1 ? "s" : ""}
+        {group.messages.length} {group.messages.length !== 1 ? t.msgs : t.msg}
       </span>
     </button>
   );
@@ -116,7 +116,7 @@ export default function MessageList() {
   const isLoadingMore = useRef(false);
   const [collapsedTopics, setCollapsedTopics] = useState<Set<string>>(new Set());
 
-  const roomId = state.selectedRoomId;
+  const roomId = state.openedRoomId;
   const messages = roomId ? state.messages[roomId] || [] : [];
   const hasMore = roomId ? state.messagesHasMore[roomId] ?? false : false;
   const currentAgentId = state.overview?.agent?.agent_id;
@@ -214,7 +214,7 @@ export default function MessageList() {
     >
       {hasMore && (
         <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
-          Scroll up for older messages...
+          {t.scrollUp}
         </div>
       )}
       {groups.map((group) => {
