@@ -9,7 +9,7 @@ export default defineConfig({
   },
   tablesFilter: [
     "users",
-    "user_agents",
+    "agents",
     "roles",
     "permissions",
     "role_permissions",

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/../db";
-import { userAgents, userRoles, roles } from "@/../db/schema";
-import { eq } from "drizzle-orm";
+import { agents, userRoles, roles } from "@/../db/schema";
+import { and, count, eq, isNull } from "drizzle-orm";
 import { verifyBindTicket } from "@/lib/bind-ticket";
 
 /**
- * [INPUT]: 依赖 requireAuth 获取当前用户，依赖 Hub Registry 校验 agent 控制权，依赖 user_agents 表持久化绑定关系
+ * [INPUT]: 依赖 requireAuth 获取当前用户，依赖 Hub Registry 校验 agent 控制权，依赖 agents 表持久化认领关系
  * [OUTPUT]: 对外提供 GET/POST 用户 agent 管理接口，支持 agent_token 或 bind_proof 绑定
  * [POS]: 前端会话层的用户-agent 绑定 BFF，负责配额、归属、角色授予与安全校验
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -179,7 +179,38 @@ export async function POST(request: NextRequest) {
     verifiedAgentToken = trimmedToken;
   }
 
-  // Check quota
+  // Check if agent is already claimed
+  let [existing] = await db
+    .select()
+    .from(agents)
+    .where(eq(agents.agentId, agent_id))
+    .limit(1);
+
+  // Fallback for valid Hub agents not yet mirrored into local DB.
+  if (!existing) {
+    await db
+      .insert(agents)
+      .values({
+        agentId: agent_id,
+        displayName: display_name,
+      })
+      .onConflictDoNothing();
+
+    [existing] = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.agentId, agent_id))
+      .limit(1);
+  }
+
+  if (!existing) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+  if (existing.userId) {
+    return NextResponse.json({ error: "Agent already claimed" }, { status: 409 });
+  }
+
+  // Check quota only when this is a fresh claim for current user.
   if (user.agents.length >= user.maxAgents) {
     return NextResponse.json(
       { error: `Agent limit reached (max ${user.maxAgents})` },
@@ -187,30 +218,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check if agent is already claimed
-  const [existing] = await db
-    .select()
-    .from(userAgents)
-    .where(eq(userAgents.agentId, agent_id))
-    .limit(1);
+  const [{ value: ownedAgentCount }] = await db
+    .select({ value: count() })
+    .from(agents)
+    .where(eq(agents.userId, user.id));
+  const isDefault = ownedAgentCount === 0;
 
-  if (existing) {
-    return NextResponse.json({ error: "Agent already claimed" }, { status: 409 });
-  }
-
-  // Set as default if this is the first agent
-  const isDefault = user.agents.length === 0;
-
-  const [newAgent] = await db
-    .insert(userAgents)
-    .values({
+  const claimedRows = await db
+    .update(agents)
+    .set({
       userId: user.id,
-      agentId: agent_id,
       displayName: display_name,
       agentToken: verifiedAgentToken,
       isDefault,
+      claimedAt: new Date(),
     })
+    .where(and(eq(agents.id, existing.id), isNull(agents.userId)))
     .returning();
+
+  const claimedAgent = claimedRows[0];
+  if (!claimedAgent) {
+    // Concurrent claim raced after read-check.
+    return NextResponse.json({ error: "Agent already claimed" }, { status: 409 });
+  }
 
   // Assign agent_owner role if not already assigned
   if (!user.roles.includes("agent_owner")) {
@@ -230,10 +260,10 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json(
     {
-      agent_id: newAgent.agentId,
-      display_name: newAgent.displayName,
-      is_default: newAgent.isDefault,
-      claimed_at: newAgent.claimedAt.toISOString(),
+      agent_id: claimedAgent.agentId,
+      display_name: claimedAgent.displayName,
+      is_default: claimedAgent.isDefault,
+      claimed_at: (claimedAgent.claimedAt || claimedAgent.createdAt).toISOString(),
     },
     { status: 201 },
   );

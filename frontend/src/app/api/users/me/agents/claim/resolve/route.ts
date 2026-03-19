@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { issueBindTicket } from "@/lib/bind-ticket";
+import { db } from "@/../db";
+import { agents, roles, userRoles } from "@/../db/schema";
+import { and, count, eq, isNull } from "drizzle-orm";
 
 /**
- * [INPUT]: 依赖 requireAuth 获取用户身份，依赖 Backend Registry 校验 token，并签发当前用户 bind_ticket
- * [OUTPUT]: 对外提供 POST /api/users/me/agents/claim/resolve 返回认领上下文
- * [POS]: 认领链接落地页的安全解析器，解包 agent_id 并绑定到当前登录用户的一次性 bind_ticket
+ * [INPUT]: 依赖 requireAuth 获取用户身份，依赖 claim_code 在 agents 表定位可认领 agent
+ * [OUTPUT]: 对外提供 POST /api/users/me/agents/claim/resolve，登录后凭 claim_code 直接完成认领
+ * [POS]: 固定认领码落地页的最终认领入口，不要求 agent_token 或与 Agent 二次交互
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
-
-const API_BASE = process.env.NEXT_PUBLIC_HUB_BASE_URL || "https://api.botcord.chat";
 
 export async function POST(request: NextRequest) {
   const { user, error } = await requireAuth();
@@ -18,43 +18,72 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const token = typeof body?.token === "string" ? body.token.trim() : "";
-  if (!token) {
-    return NextResponse.json({ error: "token is required" }, { status: 400 });
+  const claimCode = typeof body?.claim_code === "string" ? body.claim_code.trim() : "";
+  if (!claimCode) {
+    return NextResponse.json({ error: "claim_code is required" }, { status: 400 });
   }
 
-  try {
-    const upstream = new URL("/registry/claims/resolve", API_BASE);
-    const resp = await fetch(upstream.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ token }),
-      cache: "no-store",
-    });
-    const data = await resp.json().catch(() => null);
-    if (!resp.ok) {
-      const error = data?.detail || data?.error || "invalid claim token";
-      return NextResponse.json({ error }, { status: resp.status });
-    }
+  const [existing] = await db
+    .select()
+    .from(agents)
+    .where(eq(agents.claimCode, claimCode))
+    .limit(1);
 
-    const agentId = typeof data?.agent_id === "string" ? data.agent_id : "";
-    const displayName = typeof data?.display_name === "string" ? data.display_name : "";
-    const claimExpiresAt = Number(data?.expires_at || 0);
-    if (!agentId || !displayName || !Number.isFinite(claimExpiresAt) || claimExpiresAt <= 0) {
-      return NextResponse.json({ error: "invalid claim resolve response" }, { status: 502 });
-    }
+  if (!existing) {
+    return NextResponse.json({ error: "Invalid claim code" }, { status: 404 });
+  }
 
-    const bindIssued = issueBindTicket(user.id, 300);
+  if (existing.userId) {
+    return NextResponse.json({ error: "Agent already claimed" }, { status: 409 });
+  }
+
+  if (user.agents.length >= user.maxAgents) {
+    return NextResponse.json(
+      { error: `Agent limit reached (max ${user.maxAgents})` },
+      { status: 400 },
+    );
+  }
+
+  const [{ value: ownedAgentCount }] = await db
+    .select({ value: count() })
+    .from(agents)
+    .where(eq(agents.userId, user.id));
+  const isDefault = ownedAgentCount === 0;
+
+  const claimedRows = await db
+    .update(agents)
+    .set({
+      userId: user.id,
+      isDefault,
+      claimedAt: new Date(),
+    })
+    .where(and(eq(agents.id, existing.id), isNull(agents.userId)))
+    .returning();
+
+  const claimed = claimedRows[0];
+  if (!claimed) {
+    return NextResponse.json({ error: "Agent already claimed" }, { status: 409 });
+  }
+
+  if (!user.roles.includes("agent_owner")) {
+    const [agentOwnerRole] = await db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(eq(roles.name, "agent_owner"))
+      .limit(1);
+
+    if (agentOwnerRole) {
+      await db
+        .insert(userRoles)
+        .values({ userId: user.id, roleId: agentOwnerRole.id })
+        .onConflictDoNothing();
+    }
+  }
+
     return NextResponse.json({
-      agent_id: agentId,
-      display_name: displayName,
-      bind_ticket: bindIssued.bindTicket,
-      nonce: bindIssued.nonce,
-      expires_at: Math.min(claimExpiresAt, bindIssued.expiresAt),
+      agent_id: claimed.agentId,
+      display_name: claimed.displayName,
+      is_default: claimed.isDefault,
+      claimed_at: (claimed.claimedAt || claimed.createdAt).toISOString(),
     });
-  } catch {
-    return NextResponse.json({ error: "Failed to resolve claim token" }, { status: 502 });
-  }
 }

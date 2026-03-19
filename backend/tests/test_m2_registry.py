@@ -1542,56 +1542,61 @@ async def test_endpoint_status_deprecation_headers(client: AsyncClient, db_sessi
 
 
 # ===========================================================================
-# Claim tests
+# Claim context tests
 # ===========================================================================
 
 
 @pytest.mark.asyncio
-async def test_create_claim_link_success(client: AsyncClient):
+async def test_get_claim_context_success(client: AsyncClient):
     sk, pubkey_str = _make_keypair()
-    agent_id, _, token = await _register_and_verify(client, sk, pubkey_str, display_name="claimable")
+    agent_id, _, _ = await _register_and_verify(client, sk, pubkey_str, display_name="Claim Agent")
 
-    resp = await client.post(
-        f"/registry/agents/{agent_id}/claim",
-        json={"display_name": "Claim Agent"},
+    resp = await client.get(f"/registry/agents/{agent_id}/claim-context")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent_id"] == agent_id
+    assert data["display_name"] == "Claim Agent"
+
+
+@pytest.mark.asyncio
+async def test_get_claim_context_not_found(client: AsyncClient):
+    resp = await client.get("/registry/agents/ag_missing/claim-context")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_claim_context_invalid_agent_id(client: AsyncClient):
+    resp = await client.get("/registry/agents/not_agent_id/claim-context")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_claim_link_success(client: AsyncClient):
+    sk, pubkey_str = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey_str, display_name="Claim Link Agent")
+
+    resp = await client.get(
+        f"/registry/agents/{agent_id}/claim-link",
         headers=_auth_header(token),
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["agent_id"] == agent_id
-    assert data["display_name"] == "Claim Agent"
-    assert data["claim_token"]
-    assert data["claim_url"].endswith(f"/agents/claim?token={data['claim_token']}")
-
-    resolve = await client.post(
-        "/registry/claims/resolve",
-        json={"token": data["claim_token"]},
-    )
-    assert resolve.status_code == 200
-    resolved = resolve.json()
-    assert resolved["agent_id"] == agent_id
-    assert resolved["display_name"] == "Claim Agent"
+    assert data["display_name"] == "Claim Link Agent"
+    assert data["claim_code"].startswith("clm_")
+    assert data["claim_url"].endswith(f"/agents/claim/{data['claim_code']}")
 
 
 @pytest.mark.asyncio
-async def test_create_claim_link_wrong_agent_forbidden(client: AsyncClient):
-    sk1, pub1 = _make_keypair()
-    sk2, pub2 = _make_keypair()
-    agent_id_1, _, _ = await _register_and_verify(client, sk1, pub1)
-    _, _, token_2 = await _register_and_verify(client, sk2, pub2)
+async def test_get_claim_link_forbidden_when_not_owner(client: AsyncClient):
+    sk1, pubkey1 = _make_keypair()
+    agent_id_1, _, token_1 = await _register_and_verify(client, sk1, pubkey1)
 
-    resp = await client.post(
-        f"/registry/agents/{agent_id_1}/claim",
-        json={},
+    sk2, pubkey2 = _make_keypair()
+    _, _, token_2 = await _register_and_verify(client, sk2, pubkey2)
+
+    resp = await client.get(
+        f"/registry/agents/{agent_id_1}/claim-link",
         headers=_auth_header(token_2),
-    )
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_resolve_claim_link_rejects_invalid_token(client: AsyncClient):
-    resp = await client.post(
-        "/registry/claims/resolve",
-        json={"token": "bad.token.value"},
     )
     assert resp.status_code == 403

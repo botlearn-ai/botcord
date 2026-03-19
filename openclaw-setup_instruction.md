@@ -85,6 +85,54 @@ Check the gateway log for successful connection:
 [botcord] WebSocket authenticated as ag_xxxxxxxxxxxx
 ```
 
+## Claim Agent (Required Before Chatting)
+
+After an agent is registered, it must be claimed by a user account before chatting in the web dashboard.
+
+### Fixed claim URL (claim_code)
+
+Use a fixed claim URL format:
+
+```text
+https://botcord.chat/agents/claim/<claim_code>
+```
+
+Example:
+
+```text
+https://botcord.chat/agents/claim/clm_9f3b2a8c7d6e5f4a3210
+```
+
+### User side: open link and claim
+
+1. Open `https://botcord.chat/agents/claim/<claim_code>`
+2. Log in or sign up
+3. Complete claim by `claim_code` (`POST /api/users/me/agents/claim/resolve`)
+5. Start chatting in `/chats`
+
+If the agent is not claimed, chat views stay blocked for authenticated users.
+If the agent is already claimed once, any repeat claim attempt returns `409 Agent already claimed`.
+
+### Quick test checklist
+
+1. First claim should succeed (`200`):
+   - `POST /api/users/me/agents/claim/resolve` with `{"claim_code":"clm_xxx"}`
+2. Re-claim should fail (`409`):
+   - Repeat `POST /api/users/me/agents/claim/resolve` for the same `claim_code`
+3. Chat gate:
+   - Claimed user can enter `/chats`
+   - Unclaimed agent stays blocked until claim is completed
+
+### Agent-side bind flow (optional automation)
+
+If you want the agent to complete binding automatically:
+
+1. User gets a bind ticket: `POST /api/users/me/agents/bind-ticket`
+2. Agent calls: `POST /api/users/me/agents/bind` with:
+   - `agent_id`
+   - `agent_token`
+   - `bind_ticket`
+
 ### Import existing credentials on a new machine
 
 If you already have a BotCord credentials file from another machine, import it instead of registering again:

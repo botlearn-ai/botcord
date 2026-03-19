@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/../db";
-import { userAgents } from "@/../db/schema";
+import { agents } from "@/../db/schema";
 import { and, eq } from "drizzle-orm";
 
 export async function requireAgent(): Promise<
@@ -25,9 +25,9 @@ export async function requireAgent(): Promise<
   }
 
   const [agent] = await db
-    .select({ agentId: userAgents.agentId })
-    .from(userAgents)
-    .where(and(eq(userAgents.userId, auth.user.id), eq(userAgents.agentId, activeAgentId)))
+    .select({ agentId: agents.agentId })
+    .from(agents)
+    .where(and(eq(agents.userId, auth.user.id), eq(agents.agentId, activeAgentId)))
     .limit(1);
 
   if (!agent) {

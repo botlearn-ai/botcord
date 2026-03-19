@@ -13,7 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import create_agent_token, get_current_agent
-from hub.config import CHALLENGE_EXPIRE_MINUTES, FRONTEND_BASE_URL
+from hub.config import CHALLENGE_EXPIRE_MINUTES
+from hub import config as hub_config
 from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
 from hub.crypto import generate_challenge, verify_challenge_sig
 from hub.database import get_db
@@ -24,8 +25,8 @@ from hub.schemas import (
     AddKeyResponse,
     AgentDiscoveryResponse,
     AgentSummary,
-    CreateClaimLinkRequest,
-    CreateClaimLinkResponse,
+    ClaimContextResponse,
+    ClaimLinkResponse,
     EndpointHealthStatus,
     EndpointProbeReport,
     EndpointResponse,
@@ -34,8 +35,6 @@ from hub.schemas import (
     RegisterAgentResponse,
     RegisterEndpointRequest,
     ResolveEndpointInfo,
-    ResolveClaimLinkRequest,
-    ResolveClaimLinkResponse,
     ResolveResponse,
     RevokeKeyResponse,
     TokenRefreshRequest,
@@ -43,11 +42,14 @@ from hub.schemas import (
     VerifyRequest,
     VerifyResponse,
 )
-from hub.services.claim_link import issue_claim_link_token, verify_claim_link_token
 from hub.services.wallet import get_or_create_wallet
 from hub.validators import check_agent_ownership, parse_pubkey, probe_endpoint, probe_endpoint_detailed, validate_endpoint_url
 
 router = APIRouter(prefix="/registry", tags=["registry"])
+
+
+def _generate_claim_code() -> str:
+    return f"clm_{uuid.uuid4().hex}"
 
 
 @router.post("/agents", response_model=RegisterAgentResponse, status_code=201)
@@ -567,17 +569,36 @@ async def update_profile(
     )
 
 
-@router.post(
-    "/agents/{agent_id}/claim",
-    response_model=CreateClaimLinkResponse,
+@router.get(
+    "/agents/{agent_id}/claim-context",
+    response_model=ClaimContextResponse,
 )
-async def create_claim_link(
+async def get_claim_context(
     agent_id: str,
-    req: CreateClaimLinkRequest,
-    current_agent: str = Depends(get_current_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a short-lived claim link for a registered agent (agent-auth only)."""
+    """Resolve static claim context from agent_id."""
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+
+    return ClaimContextResponse(
+        agent_id=agent.agent_id,
+        display_name=agent.display_name,
+    )
+
+
+@router.get(
+    "/agents/{agent_id}/claim-link",
+    response_model=ClaimLinkResponse,
+)
+async def get_claim_link(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_agent),
+):
+    """Get (or create) claim_code and claim URL for agent-owned claiming flow."""
     check_agent_ownership(agent_id, current_agent)
 
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
@@ -585,40 +606,22 @@ async def create_claim_link(
     if agent is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
-    display_name = (req.display_name or "").strip() or agent.display_name
-    claim_token, expires_at = issue_claim_link_token(
-        agent_id=agent_id,
-        display_name=display_name,
-        ttl_seconds=300,
-    )
-    claim_url = f"{FRONTEND_BASE_URL.rstrip('/')}/agents/claim?token={claim_token}"
+    if not agent.claim_code:
+        agent.claim_code = _generate_claim_code()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            # Extremely unlikely random collision: retry once.
+            agent.claim_code = _generate_claim_code()
+            await db.commit()
+        await db.refresh(agent)
 
-    return CreateClaimLinkResponse(
-        claim_url=claim_url,
-        claim_token=claim_token,
-        expires_at=expires_at,
-        agent_id=agent_id,
-        display_name=display_name,
-    )
-
-
-@router.post(
-    "/claims/resolve",
-    response_model=ResolveClaimLinkResponse,
-)
-async def resolve_claim_link(
-    req: ResolveClaimLinkRequest,
-):
-    """Resolve claim token to agent context (no user auth; user binding is handled by frontend BFF)."""
-    try:
-        payload = verify_claim_link_token(req.token)
-    except ValueError as exc:
-        raise HTTPException(status_code=403, detail=f"invalid claim token: {str(exc)}")
-
-    return ResolveClaimLinkResponse(
-        agent_id=payload["aid"],
-        display_name=payload["dn"],
-        expires_at=int(payload["exp"]),
+    return ClaimLinkResponse(
+        agent_id=agent.agent_id,
+        display_name=agent.display_name,
+        claim_code=agent.claim_code,
+        claim_url=f"{hub_config.FRONTEND_BASE_URL.rstrip('/')}/agents/claim/{agent.claim_code}",
     )
 
 

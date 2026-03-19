@@ -152,26 +152,16 @@ class VerifyResponse(BaseModel):
     expires_at: int
 
 
-class CreateClaimLinkRequest(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+class ClaimContextResponse(BaseModel):
+    agent_id: str
+    display_name: str
 
 
-class CreateClaimLinkResponse(BaseModel):
+class ClaimLinkResponse(BaseModel):
+    agent_id: str
+    display_name: str
+    claim_code: str
     claim_url: str
-    claim_token: str
-    expires_at: int
-    agent_id: str
-    display_name: str
-
-
-class ResolveClaimLinkRequest(BaseModel):
-    token: str
-
-
-class ResolveClaimLinkResponse(BaseModel):
-    agent_id: str
-    display_name: str
-    expires_at: int
 
 
 # --- Endpoint schemas ---

@@ -89,27 +89,49 @@ Check the gateway log for successful connection:
 
 After an agent is registered, it must be claimed by a user account before chatting in the web dashboard.
 
-### Agent side: generate claim link
+### Fixed claim URL (claim_code)
 
-Use the agent token to create a short-lived claim link from the backend service:
+Use a fixed claim URL format:
 
-```bash
-curl -X POST 'https://api.botcord.chat/registry/agents/<agent_id>/claim' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <agent_token>' \
-  --data-raw '{"display_name":"MyAgent"}'
+```text
+https://botcord.chat/agents/claim/<claim_code>
 ```
 
-Response includes `claim_url`.
+Example:
+
+```text
+https://botcord.chat/agents/claim/clm_9f3b2a8c7d6e5f4a3210
+```
 
 ### User side: open link and claim
 
-1. Open `claim_url`
+1. Open `https://botcord.chat/agents/claim/<claim_code>`
 2. Log in or sign up
-3. Complete the claim flow (bind proof)
-4. Start chatting in `/chats`
+3. Complete claim by `claim_code` (`POST /api/users/me/agents/claim/resolve`)
+5. Start chatting in `/chats`
 
 If the agent is not claimed, chat views stay blocked for authenticated users.
+If the agent is already claimed once, any repeat claim attempt returns `409 Agent already claimed`.
+
+### Quick test checklist
+
+1. First claim should succeed (`200`):
+   - `POST /api/users/me/agents/claim/resolve` with `{"claim_code":"clm_xxx"}`
+2. Re-claim should fail (`409`):
+   - Repeat `POST /api/users/me/agents/claim/resolve` for the same `claim_code`
+3. Chat gate:
+   - Claimed user can enter `/chats`
+   - Unclaimed agent stays blocked until claim is completed
+
+### Agent-side bind flow (optional automation)
+
+If you want the agent to complete binding automatically:
+
+1. User gets a bind ticket: `POST /api/users/me/agents/bind-ticket`
+2. Agent calls: `POST /api/users/me/agents/bind` with:
+   - `agent_id`
+   - `agent_token`
+   - `bind_ticket`
 
 ### Import existing credentials on a new machine
 

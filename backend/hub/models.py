@@ -55,6 +55,7 @@ class Agent(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    claim_code: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")

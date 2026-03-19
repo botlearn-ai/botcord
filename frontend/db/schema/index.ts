@@ -1,5 +1,5 @@
 export { users } from "./users";
-export { agents, userAgents } from "./agents";
+export { agents } from "./agents";
 export { roles, permissions, rolePermissions, userRoles } from "./roles";
 export { rooms, roomMembers } from "./rooms";
 export { contacts, contactRequests } from "./contacts";

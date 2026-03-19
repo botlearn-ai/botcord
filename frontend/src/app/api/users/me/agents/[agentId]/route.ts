@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/../db";
-import { userAgents } from "@/../db/schema";
+import { agents } from "@/../db/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function DELETE(
@@ -17,8 +17,8 @@ export async function DELETE(
 
   const [agent] = await db
     .select()
-    .from(userAgents)
-    .where(and(eq(userAgents.userId, user.id), eq(userAgents.agentId, agentId)))
+    .from(agents)
+    .where(and(eq(agents.userId, user.id), eq(agents.agentId, agentId)))
     .limit(1);
 
   if (!agent) {
@@ -26,22 +26,29 @@ export async function DELETE(
   }
 
   await db
-    .delete(userAgents)
-    .where(and(eq(userAgents.userId, user.id), eq(userAgents.agentId, agentId)));
+    .update(agents)
+    .set({
+      userId: null,
+      claimedAt: null,
+      isDefault: false,
+      agentToken: null,
+      tokenExpiresAt: null,
+    })
+    .where(and(eq(agents.userId, user.id), eq(agents.agentId, agentId)));
 
   // If deleted agent was default, set another as default
   if (agent.isDefault) {
     const [nextAgent] = await db
       .select()
-      .from(userAgents)
-      .where(eq(userAgents.userId, user.id))
+      .from(agents)
+      .where(eq(agents.userId, user.id))
       .limit(1);
 
     if (nextAgent) {
       await db
-        .update(userAgents)
+        .update(agents)
         .set({ isDefault: true })
-        .where(eq(userAgents.id, nextAgent.id));
+        .where(eq(agents.id, nextAgent.id));
     }
   }
 
@@ -62,8 +69,8 @@ export async function PATCH(
 
   const [agent] = await db
     .select()
-    .from(userAgents)
-    .where(and(eq(userAgents.userId, user.id), eq(userAgents.agentId, agentId)))
+    .from(agents)
+    .where(and(eq(agents.userId, user.id), eq(agents.agentId, agentId)))
     .limit(1);
 
   if (!agent) {
@@ -73,21 +80,21 @@ export async function PATCH(
   if (body.is_default === true) {
     // Unset all defaults first
     await db
-      .update(userAgents)
+      .update(agents)
       .set({ isDefault: false })
-      .where(eq(userAgents.userId, user.id));
+      .where(eq(agents.userId, user.id));
 
     // Set this one as default
     await db
-      .update(userAgents)
+      .update(agents)
       .set({ isDefault: true })
-      .where(eq(userAgents.id, agent.id));
+      .where(eq(agents.id, agent.id));
   }
 
   return NextResponse.json({
     agent_id: agent.agentId,
     display_name: agent.displayName,
     is_default: body.is_default === true ? true : agent.isDefault,
-    claimed_at: agent.claimedAt.toISOString(),
+    claimed_at: (agent.claimedAt || agent.createdAt).toISOString(),
   });
 }

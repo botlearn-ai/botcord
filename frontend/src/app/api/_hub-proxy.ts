@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAgent } from "@/lib/require-agent";
 import { db } from "@/../db";
-import { userAgents } from "@/../db/schema";
+import { agents } from "@/../db/schema";
 import { and, eq } from "drizzle-orm";
 
 const API_BASE =
@@ -24,9 +24,9 @@ export async function getBoundAgentToken(): Promise<
   }
 
   const [boundAgent] = await db
-    .select({ agentToken: userAgents.agentToken })
-    .from(userAgents)
-    .where(and(eq(userAgents.userId, auth.userId), eq(userAgents.agentId, auth.agentId)))
+    .select({ agentToken: agents.agentToken })
+    .from(agents)
+    .where(and(eq(agents.userId, auth.userId), eq(agents.agentId, auth.agentId)))
     .limit(1);
 
   if (!boundAgent?.agentToken) {

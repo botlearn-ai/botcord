@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/../db";
-import { users, userAgents, userRoles, roles, rolePermissions, permissions } from "@/../db/schema";
+import { users, agents, userRoles, roles, rolePermissions, permissions } from "@/../db/schema";
 import { eq, and } from "drizzle-orm";
 
 export interface AuthenticatedUser {
@@ -50,8 +50,8 @@ export async function getAuthUser(): Promise<AuthenticatedUser | null> {
   // Load agents
   const agentRows = await db
     .select()
-    .from(userAgents)
-    .where(eq(userAgents.userId, dbUser.id));
+    .from(agents)
+    .where(eq(agents.userId, dbUser.id));
 
   return {
     id: dbUser.id,
@@ -66,7 +66,7 @@ export async function getAuthUser(): Promise<AuthenticatedUser | null> {
       agentId: a.agentId,
       displayName: a.displayName,
       isDefault: a.isDefault,
-      claimedAt: a.claimedAt,
+      claimedAt: a.claimedAt || a.createdAt,
     })),
   };
 }
