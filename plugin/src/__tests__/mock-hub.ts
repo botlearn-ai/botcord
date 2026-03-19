@@ -443,6 +443,7 @@ export function createMockHub() {
         rule: body.rule ?? null,
         visibility: body.visibility || "private",
         join_policy: body.join_policy || "invite_only",
+        required_subscription_product_id: body.required_subscription_product_id ?? null,
         default_send: body.default_send ?? true,
         member_count: 1,
         created_at: new Date().toISOString(),
@@ -486,6 +487,9 @@ export function createMockHub() {
       if (body.rule !== undefined) room.rule = body.rule;
       if (body.visibility !== undefined) room.visibility = body.visibility;
       if (body.join_policy !== undefined) room.join_policy = body.join_policy;
+      if (body.required_subscription_product_id !== undefined) {
+        room.required_subscription_product_id = body.required_subscription_product_id;
+      }
       if (body.default_send !== undefined) room.default_send = body.default_send;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...room, members: [] }));
