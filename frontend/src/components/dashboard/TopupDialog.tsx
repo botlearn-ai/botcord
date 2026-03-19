@@ -68,6 +68,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
       const res = await api.createStripeCheckoutSession({
         package_code: activePackage.package_code,
         idempotency_key: crypto.randomUUID(),
+        quantity,
       });
       window.location.assign(res.checkout_url);
     } catch (err) {
