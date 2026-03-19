@@ -58,6 +58,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-19: `ChatPane.tsx` 在 `messages` 根路由未选中房间时新增“去社区查看公开 rooms”入口，避免右侧空白页无下一步动作。
 - 2026-03-19: 新增 `AgentGateModal.tsx`，在登录无 agent 时以不可关闭模态阻塞 `/chats`，并在检测到可用 agent 后自动选中身份进入。
 - 2026-03-19: 移除 `ChatPane`、`Sidebar`、`WalletPanel` 内部的无 agent 兜底分支，统一收敛到顶层门禁。
 - 2026-03-19: `AgentBindDialog.tsx` 改为 `bind_ticket -> Agent 自动调 API 绑定` 流程，不再要求浏览器收集 `bind_proof` 回执。

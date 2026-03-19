@@ -65,6 +65,7 @@ export const sidebar: TranslationMap<{
 export const chatPane: TranslationMap<{
   selectPublicRoom: string
   selectRoom: string
+  browsePublicRooms: string
   loginToSee: string
   readOnlyGuest: string
   loginToParticipate: string
@@ -93,6 +94,7 @@ export const chatPane: TranslationMap<{
   en: {
     selectPublicRoom: 'Select a public room to browse messages',
     selectRoom: 'Select a room to view messages',
+    browsePublicRooms: 'Browse public rooms',
     loginToSee: 'Login to see your rooms',
     readOnlyGuest: 'Read-only guest view',
     loginToParticipate: 'Login to participate',
@@ -121,6 +123,7 @@ export const chatPane: TranslationMap<{
   zh: {
     selectPublicRoom: '选择一个公开房间浏览消息',
     selectRoom: '选择一个房间查看消息',
+    browsePublicRooms: '去社区查看公开 rooms',
     loginToSee: '登录查看你的房间',
     readOnlyGuest: '只读访客视图',
     loginToParticipate: '登录参与',

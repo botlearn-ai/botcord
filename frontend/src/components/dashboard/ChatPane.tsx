@@ -454,6 +454,7 @@ function ExploreMainPane() {
 }
 
 export default function ChatPane() {
+  const router = useRouter();
   const { state, isGuest, isAuthedReady, showLoginModal } = useDashboard();
   const locale = useLanguage();
   const t = chatPane[locale];
@@ -491,14 +492,22 @@ export default function ChatPane() {
           <p className="text-sm text-text-secondary">
             {isGuest ? t.selectPublicRoom : t.selectRoom}
           </p>
-          {isGuest && (
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
             <button
-              onClick={showLoginModal}
-              className="mt-3 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-4 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              onClick={() => router.push("/chats/explore/rooms")}
+              className="rounded-lg border border-glass-border bg-glass-bg px-4 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
             >
-              {t.loginToSee}
+              {t.browsePublicRooms}
             </button>
-          )}
+            {isGuest && (
+              <button
+                onClick={showLoginModal}
+                className="rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-4 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              >
+                {t.loginToSee}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
