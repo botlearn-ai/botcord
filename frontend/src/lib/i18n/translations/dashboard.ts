@@ -378,6 +378,11 @@ export const walletPanel: TranslationMap<{
   completed: string
   rejected: string
   cancelled: string
+  cancelWithdrawal: string
+  cancelling: string
+  cancelWithdrawalConfirm: string
+  cancelWithdrawalSuccess: string
+  cancelWithdrawalFailed: string
 }> = {
   en: {
     wallet: 'Wallet',
@@ -400,6 +405,11 @@ export const walletPanel: TranslationMap<{
     completed: 'Completed',
     rejected: 'Rejected',
     cancelled: 'Cancelled',
+    cancelWithdrawal: 'Cancel withdrawal',
+    cancelling: 'Cancelling...',
+    cancelWithdrawalConfirm: 'Cancel this pending withdrawal request?',
+    cancelWithdrawalSuccess: 'Withdrawal request cancelled.',
+    cancelWithdrawalFailed: 'Failed to cancel withdrawal request',
   },
   zh: {
     wallet: '钱包',
@@ -422,6 +432,11 @@ export const walletPanel: TranslationMap<{
     completed: '已完成',
     rejected: '已拒绝',
     cancelled: '已取消',
+    cancelWithdrawal: '撤销提现',
+    cancelling: '撤销中...',
+    cancelWithdrawalConfirm: '确认撤销这笔待审核提现吗？',
+    cancelWithdrawalSuccess: '提现申请已撤销。',
+    cancelWithdrawalFailed: '撤销提现申请失败',
   },
 }
 
@@ -458,7 +473,7 @@ export const topupDialog: TranslationMap<{
     processingNote: 'Your recharge request is being processed. The balance will update once it completes.',
     recharge: 'Recharge',
     addCoins: 'Add coins to your wallet',
-    description: 'Use one Stripe product and adjust quantity to control the total recharge.',
+    description: 'Recharge at the configured Stripe rate. Quantity controls the total dollar amount and COIN received.',
     amountCoin: 'Amount (COIN)',
     amountMustBePositive: 'Amount must be greater than 0',
     rechargeFailed: 'Recharge request failed',
@@ -466,10 +481,10 @@ export const topupDialog: TranslationMap<{
     submitRecharge: 'Submit Recharge',
     loadingPackages: 'Loading packages...',
     noPackages: 'No packages available at this time.',
-    unitPrice: 'Unit Price',
+    unitPrice: 'Exchange Rate',
     quantity: 'Quantity',
     quantityRange: '1 to 100',
-    perUnit: 'Per unit',
+    perUnit: 'Rate',
     total: 'Total',
     redirectingToStripe: 'Redirecting to Stripe...',
     continueToPayment: 'Continue to Payment',
@@ -483,7 +498,7 @@ export const topupDialog: TranslationMap<{
     processingNote: '您的充值请求正在处理中。余额将在完成后更新。',
     recharge: '充值',
     addCoins: '向钱包充值代币',
-    description: '使用单个 Stripe 商品，通过数量控制本次充值总额。',
+    description: '按当前 Stripe 汇率充值，数量会同时影响支付美元总额和到账 COIN 数量。',
     amountCoin: '金额 (COIN)',
     amountMustBePositive: '金额必须大于 0',
     rechargeFailed: '充值请求失败',
@@ -491,10 +506,10 @@ export const topupDialog: TranslationMap<{
     submitRecharge: '提交充值',
     loadingPackages: '加载套餐中...',
     noPackages: '当前没有可用的充值套餐。',
-    unitPrice: '单价',
+    unitPrice: '兑换比例',
     quantity: '数量',
     quantityRange: '1 到 100',
-    perUnit: '每份',
+    perUnit: '汇率',
     total: '合计',
     redirectingToStripe: '正在跳转到 Stripe...',
     continueToPayment: '继续支付',
@@ -571,6 +586,7 @@ export const withdrawDialog: TranslationMap<{
   withdrawAll: string
   amountMustBePositive: string
   amountExceedsBalance: string
+  minimumWithdrawAmount: string
   withdrawFailed: string
   submitting: string
   submitWithdraw: string
@@ -597,6 +613,7 @@ export const withdrawDialog: TranslationMap<{
     withdrawAll: 'Withdraw all',
     amountMustBePositive: 'Amount must be greater than 0',
     amountExceedsBalance: 'Amount exceeds available balance',
+    minimumWithdrawAmount: 'Minimum withdrawal amount is 1000 COIN',
     withdrawFailed: 'Withdrawal request failed',
     submitting: 'Submitting...',
     submitWithdraw: 'Submit Withdrawal',
@@ -623,6 +640,7 @@ export const withdrawDialog: TranslationMap<{
     withdrawAll: '全部提现',
     amountMustBePositive: '金额必须大于 0',
     amountExceedsBalance: '金额超过可用余额',
+    minimumWithdrawAmount: '最低提现金额为 1000 COIN',
     withdrawFailed: '提现请求失败',
     submitting: '提交中...',
     submitWithdraw: '提交提现',

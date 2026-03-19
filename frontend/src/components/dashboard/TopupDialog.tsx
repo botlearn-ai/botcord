@@ -130,7 +130,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-sm font-semibold text-text-primary">
-                        {formatCoin(pkg.coin_amount_minor)} COIN / unit
+                        {formatCoin(pkg.coin_amount_minor)} COIN / ${pkg.fiat_amount || formatFiat(0)}
                       </span>
                       <span className="rounded bg-neon-cyan/10 px-2 py-0.5 text-xs font-medium text-neon-cyan">
                         {pkg.fiat_amount ? `$${pkg.fiat_amount}` : pkg.currency.toUpperCase()}
@@ -150,7 +150,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
                   </span>
                 </div>
                 <div className="mt-2 font-mono text-lg font-semibold text-text-primary">
-                  {formatCoin(activePackage.coin_amount_minor)} COIN per unit
+                  {formatCoin(activePackage.coin_amount_minor)} COIN / ${activePackage.fiat_amount || formatFiat(0)}
                 </div>
               </div>
             ) : null}

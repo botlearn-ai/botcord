@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, createContext, useContext, useMemo } from "react";
+import { useEffect, createContext, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
@@ -35,6 +35,16 @@ function decodeRoomIdFromPath(segment: string | undefined): string | null {
 export function useDashboard() {
   const store = useDashboardStore();
   const router = useRouter();
+  const supabase = createClient();
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.warn("[Dashboard] Supabase signOut failed:", error.message);
+    }
+    store.logout();
+    router.push("/login");
+  };
   
   // Add legacy properties/methods that child components expect
   return {
@@ -63,7 +73,7 @@ export function useDashboard() {
     needsAgent: store.sessionMode === "authed-no-agent",
     isAuthedReady: store.sessionMode === "authed-ready",
     showLoginModal: () => router.push("/login"),
-    handleLogout: store.logout,
+    handleLogout,
   };
 }
 
