@@ -7,9 +7,11 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import AgentBindDialog from "./AgentBindDialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Check, LogOut, Plus, User } from "lucide-react";
 
 interface AccountMenuProps {
   user: UserProfile | null;
@@ -35,23 +37,12 @@ export default function AccountMenu({
   pendingRequests,
   loading,
   onSwitchAgent,
-  onRefresh,
+  onRefresh, // Kept for compatibility, though refresh button is removed
   onLogout,
   onAgentBound,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [showBindDialog, setShowBindDialog] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
 
   const activeAgent = useMemo(
     () => agents.find((agent) => agent.agent_id === activeAgentId) || null,
@@ -60,89 +51,88 @@ export default function AccountMenu({
 
   return (
     <>
-      <div ref={ref} className="relative">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light text-sm font-bold text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg"
-          title="Account"
-        >
-          {getAvatarSeed(user)}
-          {pendingRequests > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-purple px-1 text-[9px] font-bold text-black">
-              {pendingRequests > 9 ? "9+" : pendingRequests}
-            </span>
-          )}
-        </button>
+      <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+        <DropdownMenu.Trigger asChild>
+          <button
+            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light text-sm font-bold text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+            title="Account"
+          >
+            {getAvatarSeed(user)}
+            {pendingRequests > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-purple px-1 text-[9px] font-bold text-black">
+                {pendingRequests > 9 ? "9+" : pendingRequests}
+              </span>
+            )}
+          </button>
+        </DropdownMenu.Trigger>
 
-        {open && (
-          <div className="absolute bottom-12 left-0 z-[70] w-72 rounded-xl border border-glass-border bg-deep-black p-3 shadow-2xl">
-            <div className="border-b border-glass-border pb-2">
-              <p className="truncate text-xs font-semibold text-text-primary">
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            sideOffset={12}
+            side="top"
+            align="start"
+            className="z-[70] min-w-[280px] rounded-xl border border-glass-border bg-deep-black/95 backdrop-blur p-1.5 shadow-2xl animate-in fade-in-80 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-100 data-[state=closed]:zoom-out-95"
+          >
+            <div className="flex flex-col space-y-1 px-2 py-2 mb-1 border-b border-glass-border">
+              <p className="text-sm font-medium leading-none text-text-primary">
                 {user?.display_name || user?.email || "User"}
               </p>
-              <p className="truncate text-[10px] text-text-secondary">
+              <p className="text-xs leading-none text-text-secondary mt-1">
                 {activeAgent ? `Active: ${activeAgent.display_name}` : "No active agent"}
               </p>
             </div>
 
-            <div className="mt-2">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+            <DropdownMenu.Group>
+              <DropdownMenu.Label className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center gap-2">
+                <User className="h-3 w-3" />
                 Agent Identity
-              </p>
+              </DropdownMenu.Label>
               {agents.length === 0 ? (
-                <p className="rounded border border-glass-border bg-deep-black-light px-2 py-1.5 text-[11px] text-text-secondary">
-                  No agent yet. Use "Bind" or "Create" below.
-                </p>
+                <div className="px-2 py-2 text-xs text-text-secondary">
+                  No agent yet. Use "Create" below.
+                </div>
               ) : (
-                <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
+                <div className="max-h-44 overflow-y-auto">
                   {agents.map((agent) => (
-                    <button
+                    <DropdownMenu.Item
                       key={agent.agent_id}
-                      onClick={() => {
-                        onSwitchAgent(agent.agent_id);
-                        setOpen(false);
-                      }}
-                      className={`w-full rounded-lg border px-2 py-1.5 text-left transition-colors ${
-                        agent.agent_id === activeAgentId
-                          ? "border-neon-cyan/50 bg-neon-cyan/10"
-                          : "border-glass-border hover:bg-glass-bg"
-                      }`}
+                      onClick={() => onSwitchAgent(agent.agent_id)}
+                      className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus:bg-glass-bg data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
                     >
-                      <p className="truncate text-xs font-medium text-text-primary">{agent.display_name}</p>
-                      <p className="truncate font-mono text-[10px] text-text-secondary">{agent.agent_id}</p>
-                    </button>
+                      <span className="flex-1 truncate text-text-primary">
+                        {agent.display_name}
+                      </span>
+                      {agent.agent_id === activeAgentId && (
+                        <Check className="h-4 w-4 text-neon-cyan ml-2" />
+                      )}
+                    </DropdownMenu.Item>
                   ))}
                 </div>
               )}
-            </div>
+            </DropdownMenu.Group>
 
-            <div className="mt-3 space-y-2">
-              <button
-                onClick={() => setShowBindDialog(true)}
-                className="w-full rounded border border-neon-cyan/40 bg-neon-cyan/10 px-2 py-1.5 text-[11px] font-semibold text-neon-cyan hover:bg-neon-cyan/20"
-              >
-                Create Agent
-              </button>
-              <button
-                onClick={() => {
-                  onRefresh();
-                  setOpen(false);
-                }}
-                disabled={loading}
-                className="w-full rounded border border-glass-border px-2 py-1.5 text-[11px] text-text-secondary hover:text-text-primary disabled:opacity-40"
-              >
-                {loading ? "Refreshing..." : "Refresh"}
-              </button>
-              <button
-                onClick={onLogout}
-                className="w-full rounded border border-red-400/40 bg-red-400/10 px-2 py-1.5 text-[11px] text-red-300 hover:bg-red-400/20"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+            <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
+
+            <DropdownMenu.Item
+              onClick={() => setShowBindDialog(true)}
+              className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-neon-cyan focus:bg-neon-cyan/10 focus:text-neon-cyan"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              <span>Create Agent</span>
+            </DropdownMenu.Item>
+
+            <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
+
+            <DropdownMenu.Item
+              onClick={onLogout}
+              className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-text-secondary focus:bg-red-500/10 focus:text-red-400"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Log out</span>
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
 
       {showBindDialog && (
         <AgentBindDialog
