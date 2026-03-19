@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 react 的 useEffect/useMemo/useRef/useState，依赖 AgentBindDialog 完成绑定流程
+ * [INPUT]: 依赖 react 的 useMemo/useState，依赖 i18n 文案与 AgentBindDialog 完成账户菜单和绑定流程
  * [OUTPUT]: 对外提供 AccountMenu 组件，承载用户头像菜单与 agent 管理操作
  * [POS]: dashboard 左下角统一用户入口，集中切换身份/绑定/创建/账户动作
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -12,15 +12,16 @@ import type { UserAgent, UserProfile } from "@/lib/types";
 import AgentBindDialog from "./AgentBindDialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check, LogOut, Plus, User } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
+import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
+import { common } from "@/lib/i18n/translations/common";
 
 interface AccountMenuProps {
   user: UserProfile | null;
   agents: UserAgent[];
   activeAgentId: string | null;
   pendingRequests: number;
-  loading: boolean;
   onSwitchAgent: (agentId: string) => Promise<void> | void;
-  onRefresh: () => Promise<void> | void;
   onLogout: () => void;
   onAgentBound: (agentId: string) => Promise<void> | void;
 }
@@ -35,9 +36,7 @@ export default function AccountMenu({
   agents,
   activeAgentId,
   pendingRequests,
-  loading,
   onSwitchAgent,
-  onRefresh, // Kept for compatibility, though refresh button is removed
   onLogout,
   onAgentBound,
 }: AccountMenuProps) {

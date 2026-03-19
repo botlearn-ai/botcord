@@ -97,7 +97,6 @@ const guestNavItems = [
 export default function Sidebar() {
   const {
     state,
-    refreshOverview,
     switchActiveAgent,
     refreshUserProfile,
     loadRoomMessages,
@@ -230,15 +229,7 @@ export default function Sidebar() {
               agents={state.ownedAgents}
               activeAgentId={state.activeAgentId}
               pendingRequests={state.overview?.pending_requests || 0}
-              loading={state.loading}
               onSwitchAgent={switchActiveAgent}
-              onRefresh={async () => {
-                if (state.ownedAgents.length === 0) {
-                  await refreshUserProfile();
-                  return;
-                }
-                await refreshOverview();
-              }}
               onLogout={handleLogout}
               onAgentBound={async (agentId) => {
                 await refreshUserProfile();
