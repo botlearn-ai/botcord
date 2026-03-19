@@ -1,5 +1,6 @@
 "use client";
 
+import type { KeyboardEvent } from "react";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
@@ -75,6 +76,16 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
     : [];
 
   const sc = stateConfig[message.state];
+  const handleSelectSender = () => {
+    selectAgent(message.sender_id);
+  };
+
+  const handleSelectSenderByKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleSelectSender();
+    }
+  };
 
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-2`}>
@@ -86,13 +97,16 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
         }`}
       >
         {!isOwn && (
-          <button
-            onClick={(e) => { e.stopPropagation(); selectAgent(message.sender_id); }}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); handleSelectSender(); }}
+            onKeyDown={handleSelectSenderByKey}
             className="mb-0.5 flex items-center gap-1.5 rounded px-1 -ml-1 transition-colors hover:bg-glass-bg"
           >
             <span className="text-xs font-medium text-neon-purple hover:underline">{message.sender_name}</span>
             <CopyableId value={message.sender_id} />
-          </button>
+          </div>
         )}
 
         {/* Goal badge */}
