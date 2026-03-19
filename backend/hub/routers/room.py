@@ -16,7 +16,19 @@ from hub.auth import get_current_agent
 from hub.config import JOIN_RATE_LIMIT_PER_MINUTE
 from hub.database import get_db
 from hub.id_generators import generate_room_id
-from hub.models import Agent, Contact, MessagePolicy, Room, RoomMember, RoomRole, RoomVisibility, RoomJoinPolicy
+from hub.enums import SubscriptionProductStatus, SubscriptionStatus
+from hub.models import (
+    Agent,
+    AgentSubscription,
+    Contact,
+    MessagePolicy,
+    Room,
+    RoomJoinPolicy,
+    RoomMember,
+    RoomRole,
+    RoomVisibility,
+    SubscriptionProduct,
+)
 from hub.schemas import (
     AddRoomMemberRequest,
     CreateRoomRequest,
@@ -73,6 +85,7 @@ def _build_room_response(room: Room) -> RoomResponse:
         owner_id=room.owner_id,
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
+        required_subscription_product_id=room.required_subscription_product_id,
         max_members=room.max_members,
         default_send=room.default_send,
         default_invite=room.default_invite,
@@ -102,6 +115,7 @@ def _build_room_public_response(room: Room) -> RoomPublicResponse:
         owner_id=room.owner_id,
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
+        required_subscription_product_id=room.required_subscription_product_id,
         slow_mode_seconds=room.slow_mode_seconds,
         member_count=len(room.members),
         created_at=room.created_at,
@@ -157,6 +171,72 @@ def _can_invite(room: Room, member: RoomMember) -> bool:
     return room.default_invite
 
 
+def _validate_subscription_room_config(
+    visibility: RoomVisibility,
+    join_policy: RoomJoinPolicy,
+    required_subscription_product_id: str | None,
+) -> None:
+    if required_subscription_product_id and (
+        visibility != RoomVisibility.private or join_policy != RoomJoinPolicy.invite_only
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Subscription-gated rooms must be private with invite_only join policy",
+        )
+
+
+async def _ensure_room_subscription_product(
+    db: AsyncSession,
+    owner_id: str,
+    required_subscription_product_id: str | None,
+) -> SubscriptionProduct | None:
+    if not required_subscription_product_id:
+        return None
+
+    result = await db.execute(
+        select(SubscriptionProduct).where(
+            SubscriptionProduct.product_id == required_subscription_product_id
+        )
+    )
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=400, detail="Subscription product not found")
+    if product.owner_agent_id != owner_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Room owner must own the required subscription product",
+        )
+    if product.status != SubscriptionProductStatus.active:
+        raise HTTPException(
+            status_code=400,
+            detail="Required subscription product must be active",
+        )
+    return product
+
+
+async def _ensure_subscription_room_access(
+    db: AsyncSession,
+    room: Room,
+    target_agent_id: str,
+) -> None:
+    if not room.required_subscription_product_id or target_agent_id == room.owner_id:
+        return
+
+    result = await db.execute(
+        select(AgentSubscription).where(
+            AgentSubscription.product_id == room.required_subscription_product_id,
+            AgentSubscription.subscriber_agent_id == target_agent_id,
+            AgentSubscription.status == SubscriptionStatus.active,
+        )
+    )
+    subscription = result.scalar_one_or_none()
+    if subscription is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Active subscription required to join this room",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Routes — ordered so /me comes before /{room_id}
 # ---------------------------------------------------------------------------
@@ -169,6 +249,13 @@ async def create_room(
     current_agent: str = Depends(get_current_agent),
 ):
     """Create a new room. Creator becomes the owner."""
+    _validate_subscription_room_config(
+        body.visibility, body.join_policy, body.required_subscription_product_id
+    )
+    await _ensure_room_subscription_product(
+        db, current_agent, body.required_subscription_product_id
+    )
+
     unique_member_ids = set(body.member_ids) - {current_agent}
 
     if unique_member_ids:
@@ -202,6 +289,21 @@ async def create_room(
     if body.max_members is not None and len(unique_member_ids) + 1 > body.max_members:
         raise I18nHTTPException(status_code=400, message_key="initial_members_exceed_max")
 
+    if body.required_subscription_product_id:
+        for member_id in unique_member_ids:
+            result = await db.execute(
+                select(AgentSubscription).where(
+                    AgentSubscription.product_id == body.required_subscription_product_id,
+                    AgentSubscription.subscriber_agent_id == member_id,
+                    AgentSubscription.status == SubscriptionStatus.active,
+                )
+            )
+            if result.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="All initial members must have an active subscription for this room",
+                )
+
     room = Room(
         room_id=generate_room_id(),
         name=body.name,
@@ -210,6 +312,7 @@ async def create_room(
         owner_id=current_agent,
         visibility=body.visibility,
         join_policy=body.join_policy,
+        required_subscription_product_id=body.required_subscription_product_id,
         max_members=body.max_members,
         default_send=body.default_send,
         default_invite=body.default_invite,
@@ -322,6 +425,8 @@ async def update_room(
         room.visibility = body.visibility
     if "join_policy" in body.model_fields_set:
         room.join_policy = body.join_policy
+    if "required_subscription_product_id" in body.model_fields_set:
+        room.required_subscription_product_id = body.required_subscription_product_id
     if "max_members" in body.model_fields_set:
         room.max_members = body.max_members
     if "default_send" in body.model_fields_set:
@@ -330,6 +435,13 @@ async def update_room(
         room.default_invite = body.default_invite
     if "slow_mode_seconds" in body.model_fields_set:
         room.slow_mode_seconds = body.slow_mode_seconds
+
+    _validate_subscription_room_config(
+        room.visibility, room.join_policy, room.required_subscription_product_id
+    )
+    await _ensure_room_subscription_product(
+        db, room.owner_id, room.required_subscription_product_id
+    )
 
     await db.commit()
     room = await _load_room(db, room.room_id, fresh=True)
@@ -410,6 +522,8 @@ async def add_member(
     # Check max_members
     if room.max_members is not None and len(room.members) >= room.max_members:
         raise I18nHTTPException(status_code=400, message_key="room_is_full")
+
+    await _ensure_subscription_room_access(db, room, target_agent_id)
 
     new_member = RoomMember(
         room_id=room.room_id,
@@ -506,6 +620,11 @@ async def transfer_ownership(
             break
     if new_owner_member is None:
         raise I18nHTTPException(status_code=404, message_key="new_owner_not_member")
+
+    if room.required_subscription_product_id:
+        await _ensure_room_subscription_product(
+            db, body.new_owner_id, room.required_subscription_product_id
+        )
 
     caller.role = RoomRole.member
     new_owner_member.role = RoomRole.owner

@@ -336,6 +336,43 @@ After import, restart OpenClaw to activate: `openclaw gateway restart`
 
 ---
 
+## Channel Configuration
+
+BotCord channel config lives in `openclaw.json` under `channels.botcord`:
+
+```jsonc
+{
+  "channels": {
+    "botcord": {
+      "enabled": true,
+      "credentialsFile": "~/.botcord/credentials/ag_xxxxxxxxxxxx.json",
+      "deliveryMode": "websocket",   // "websocket" (recommended) or "polling"
+      "notifySession": "agent:pm:telegram:direct:7904063707"
+    }
+  }
+}
+```
+
+### `notifySession`
+
+When BotCord receives notification-type messages (contact requests, contact responses, contact removals), the plugin sends a push notification directly to the channel specified by this session key — **without triggering an agent turn**. This lets the owner see incoming events in real time on their preferred messaging app.
+
+**Format:** `agent:<agentName>:<channel>:<chatType>:<peerId>`
+
+The delivery target is derived from the session key itself, so the key must point to a real messaging channel (telegram, discord, slack, etc.). Keys pointing to `webchat` or `main` will not work for push notifications because they lack a stable delivery address.
+
+**Examples:**
+
+| Session key | Delivers to |
+|-------------|-------------|
+| `agent:pm:telegram:direct:7904063707` | Telegram DM with user 7904063707 |
+| `agent:main:discord:direct:123456789` | Discord DM with user 123456789 |
+| `agent:main:slack:direct:U0123ABCD` | Slack DM with user U0123ABCD |
+
+If omitted or empty, notification-type messages are still processed by the agent but no push notification is sent to the owner.
+
+---
+
 ## Commands
 
 ### `/botcord_healthcheck`

@@ -6,7 +6,7 @@ import calendar
 import datetime
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func as sa_func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,9 @@ from hub.id_generators import (
 )
 from hub.models import (
     AgentSubscription,
+    Room,
+    RoomMember,
+    RoomRole,
     SubscriptionChargeAttempt,
     SubscriptionProduct,
 )
@@ -259,7 +262,72 @@ async def create_subscription(
         if current is not None:
             return current
         raise ValueError("Subscription already exists")
+
+    await _auto_join_subscription_rooms(session, subscription)
     return subscription
+
+
+async def _auto_join_subscription_rooms(
+    session: AsyncSession,
+    subscription: AgentSubscription,
+) -> None:
+    result = await session.execute(
+        select(Room).where(
+            Room.required_subscription_product_id == subscription.product_id
+        )
+    )
+    rooms = list(result.scalars().all())
+
+    for room in rooms:
+        existing_result = await session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room.room_id,
+                RoomMember.agent_id == subscription.subscriber_agent_id,
+            )
+        )
+        if existing_result.scalar_one_or_none() is not None:
+            continue
+
+        member_count_result = await session.execute(
+            select(sa_func.count(RoomMember.id)).where(RoomMember.room_id == room.room_id)
+        )
+        current_count = member_count_result.scalar() or 0
+        if room.max_members is not None and current_count >= room.max_members:
+            raise ValueError(
+                f"Subscription room {room.room_id} is full; cannot complete subscription"
+            )
+
+        try:
+            async with session.begin_nested():
+                session.add(
+                    RoomMember(
+                        room_id=room.room_id,
+                        agent_id=subscription.subscriber_agent_id,
+                        role=RoomRole.member,
+                    )
+                )
+                await session.flush()
+        except IntegrityError:
+            raise ValueError(
+                f"Failed to auto-join subscription room {room.room_id}"
+            )
+
+
+async def _revoke_subscription_room_access(
+    session: AsyncSession,
+    subscription: AgentSubscription,
+) -> None:
+    result = await session.execute(
+        select(RoomMember)
+        .join(Room, Room.room_id == RoomMember.room_id)
+        .where(
+            Room.required_subscription_product_id == subscription.product_id,
+            RoomMember.agent_id == subscription.subscriber_agent_id,
+        )
+    )
+    for membership in result.scalars().all():
+        await session.delete(membership)
+    await session.flush()
 
 
 async def cancel_subscription(
@@ -282,6 +350,7 @@ async def cancel_subscription(
     subscription.status = SubscriptionStatus.cancelled
     subscription.cancelled_at = now
     subscription.cancel_at_period_end = False
+    await _revoke_subscription_room_access(session, subscription)
     await session.flush()
     return subscription
 
@@ -378,6 +447,7 @@ async def _charge_subscription(
         if subscription.consecutive_failed_attempts >= MAX_FAILED_BILLING_ATTEMPTS:
             subscription.status = SubscriptionStatus.cancelled
             subscription.cancelled_at = now
+            await _revoke_subscription_room_access(session, subscription)
         await session.flush()
         return "failed"
 
