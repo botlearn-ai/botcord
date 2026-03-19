@@ -106,7 +106,14 @@ def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _mock_stripe_session(topup_id, session_id="cs_test_123"):
+def _mock_stripe_session(
+    topup_id,
+    session_id="cs_test_123",
+    *,
+    package_code="coin_500",
+    coin_amount_minor="50000",
+    quantity="1",
+):
     """Create a mock Stripe Checkout Session object."""
     session = MagicMock()
     session.id = session_id
@@ -117,8 +124,9 @@ def _mock_stripe_session(topup_id, session_id="cs_test_123"):
     session.metadata = {
         "topup_id": topup_id,
         "agent_id": "ag_test",
-        "package_code": "coin_500",
-        "coin_amount_minor": "50000",
+        "package_code": package_code,
+        "quantity": quantity,
+        "coin_amount_minor": coin_amount_minor,
     }
     return session
 
@@ -155,6 +163,48 @@ async def test_create_checkout_session(client):
     assert data["checkout_session_id"] == "cs_test_new"
     assert data["checkout_url"].startswith("https://checkout.stripe.com/")
     assert data["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_create_checkout_session_with_quantity(client, db_session):
+    """Quantity should scale both Stripe line items and local topup amount."""
+    from sqlalchemy import select
+
+    from hub.models import TopupRequest as TopupRequestModel
+
+    sk, pubkey = _make_keypair()
+    _, token = await _register_and_verify(client, sk, pubkey)
+
+    with patch("hub.services.stripe_topup.stripe") as mock_stripe:
+        mock_session = MagicMock()
+        mock_session.id = "cs_test_qty"
+        mock_session.url = "https://checkout.stripe.com/c/pay/cs_test_qty"
+        mock_session.expires_at = 1742308496
+        mock_stripe.checkout.Session.create.return_value = mock_session
+
+        resp = await client.post(
+            "/wallet/topups/stripe/checkout-session",
+            headers=_auth(token),
+            json={
+                "package_code": "coin_500",
+                "quantity": 3,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+        )
+
+    assert resp.status_code == 201
+    create_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+    assert create_kwargs["line_items"] == [{"price": "price_test_500", "quantity": 3}]
+    assert create_kwargs["metadata"]["quantity"] == "3"
+    assert create_kwargs["metadata"]["coin_amount_minor"] == "150000"
+
+    result = await db_session.execute(
+        select(TopupRequestModel).where(
+            TopupRequestModel.topup_id == resp.json()["topup_id"]
+        )
+    )
+    topup = result.scalar_one()
+    assert topup.amount_minor == 150000
 
 
 @pytest.mark.asyncio
@@ -480,6 +530,7 @@ async def test_session_status_after_fulfillment(client):
             headers=_auth(token),
             json={
                 "package_code": "coin_1200",
+                "quantity": 2,
                 "idempotency_key": str(uuid.uuid4()),
             },
         )
@@ -487,9 +538,13 @@ async def test_session_status_after_fulfillment(client):
 
     # Fulfill via session-status endpoint (compensation path)
     with patch("hub.services.stripe_topup.stripe") as mock_stripe:
-        paid_session = _mock_stripe_session(topup_id, "cs_test_fulfilled")
-        paid_session.metadata["coin_amount_minor"] = "120000"
-        paid_session.metadata["package_code"] = "coin_1200"
+        paid_session = _mock_stripe_session(
+            topup_id,
+            "cs_test_fulfilled",
+            package_code="coin_1200",
+            coin_amount_minor="240000",
+            quantity="2",
+        )
         mock_stripe.checkout.Session.retrieve.return_value = paid_session
         mock_stripe.StripeError = Exception
 
@@ -503,11 +558,11 @@ async def test_session_status_after_fulfillment(client):
     data = resp.json()
     assert data["topup_status"] == "completed"
     assert data["wallet_credited"] is True
-    assert data["amount_minor"] == "120000"
+    assert data["amount_minor"] == "240000"
 
     # Verify wallet balance
     wallet_resp = await client.get("/wallet/me", headers=_auth(token))
-    assert wallet_resp.json()["available_balance_minor"] == "120000"
+    assert wallet_resp.json()["available_balance_minor"] == "240000"
 
 
 @pytest.mark.asyncio
