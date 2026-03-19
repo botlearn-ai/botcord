@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from hub.auth import get_current_agent
+from hub import config as hub_config
 from hub.config import JOIN_RATE_LIMIT_PER_MINUTE
 from hub.database import get_db
 from hub.id_generators import generate_room_id
@@ -27,6 +28,7 @@ from hub.models import (
     RoomMember,
     RoomRole,
     RoomVisibility,
+    SubscriptionRoomCreatorPolicy,
     SubscriptionProduct,
 )
 from hub.schemas import (
@@ -39,12 +41,16 @@ from hub.schemas import (
     RoomMemberResponse,
     RoomPublicResponse,
     RoomResponse,
+    SubscriptionRoomCreatorPolicyListResponse,
+    SubscriptionRoomCreatorPolicyResponse,
+    SubscriptionRoomCreatorPolicyUpsertRequest,
     SetMemberPermissionsRequest,
     TransferRoomOwnerRequest,
     UpdateRoomRequest,
 )
 
 router = APIRouter(prefix="/hub/rooms", tags=["rooms"])
+internal_router = APIRouter(prefix="/internal/rooms", tags=["rooms-internal"])
 
 # ---------------------------------------------------------------------------
 # In-memory join rate-limit state: room_id → deque of timestamps
@@ -61,6 +67,19 @@ def _check_join_rate_limit(room_id: str) -> None:
     if len(window) >= JOIN_RATE_LIMIT_PER_MINUTE:
         raise I18nHTTPException(status_code=429, message_key="join_rate_limit_exceeded")
     window.append(now)
+
+
+def _require_internal(authorization: str | None = None):
+    if not hub_config.ALLOW_PRIVATE_ENDPOINTS:
+        raise HTTPException(status_code=403, detail="Internal endpoints are disabled")
+
+    expected = hub_config.INTERNAL_API_SECRET
+    if expected:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing internal API secret")
+        provided = authorization.removeprefix("Bearer ").strip()
+        if provided != expected:
+            raise HTTPException(status_code=401, detail="Invalid internal API secret")
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +256,56 @@ async def _ensure_subscription_room_access(
         )
 
 
+def _subscription_room_creator_policy_response(
+    policy: SubscriptionRoomCreatorPolicy,
+) -> SubscriptionRoomCreatorPolicyResponse:
+    return SubscriptionRoomCreatorPolicyResponse(
+        agent_id=policy.agent_id,
+        allowed_to_create=policy.allowed_to_create,
+        max_active_rooms=policy.max_active_rooms,
+        note=policy.note,
+        created_at=policy.created_at,
+        updated_at=policy.updated_at,
+    )
+
+
+async def _enforce_subscription_room_creator_policy(
+    db: AsyncSession,
+    agent_id: str,
+    required_subscription_product_id: str | None,
+    *,
+    exclude_room_id: str | None = None,
+) -> None:
+    if not required_subscription_product_id:
+        return
+
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).where(
+            SubscriptionRoomCreatorPolicy.agent_id == agent_id
+        )
+    )
+    policy = result.scalar_one_or_none()
+    if policy is None or not policy.allowed_to_create:
+        raise HTTPException(
+            status_code=403,
+            detail="Agent is not allowed to create subscription-gated rooms",
+        )
+
+    stmt = select(sa_func.count(Room.id)).where(
+        Room.owner_id == agent_id,
+        Room.required_subscription_product_id.is_not(None),
+    )
+    if exclude_room_id is not None:
+        stmt = stmt.where(Room.room_id != exclude_room_id)
+    room_count_result = await db.execute(stmt)
+    active_room_count = room_count_result.scalar() or 0
+    if active_room_count >= policy.max_active_rooms:
+        raise HTTPException(
+            status_code=403,
+            detail="Subscription-gated room quota exceeded",
+        )
+
+
 async def _ensure_existing_members_match_subscription_requirement(
     db: AsyncSession,
     room: Room,
@@ -283,6 +352,9 @@ async def create_room(
     """Create a new room. Creator becomes the owner."""
     _validate_subscription_room_config(
         body.visibility, body.join_policy, body.required_subscription_product_id
+    )
+    await _enforce_subscription_room_creator_policy(
+        db, current_agent, body.required_subscription_product_id
     )
     await _ensure_room_subscription_product(
         db, current_agent, body.required_subscription_product_id
@@ -371,6 +443,92 @@ async def create_room(
 
     room = await _load_room(db, room.room_id, fresh=True)
     return _build_room_response(room)
+
+
+@internal_router.put(
+    "/subscription-room-policies/{agent_id}",
+    response_model=SubscriptionRoomCreatorPolicyResponse,
+)
+async def upsert_subscription_room_creator_policy(
+    agent_id: str,
+    body: SubscriptionRoomCreatorPolicyUpsertRequest,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _require_internal(authorization)
+
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).where(
+            SubscriptionRoomCreatorPolicy.agent_id == agent_id
+        )
+    )
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        policy = SubscriptionRoomCreatorPolicy(
+            agent_id=agent_id,
+            allowed_to_create=body.allowed_to_create,
+            max_active_rooms=body.max_active_rooms,
+            note=body.note,
+        )
+        db.add(policy)
+    else:
+        policy.allowed_to_create = body.allowed_to_create
+        policy.max_active_rooms = body.max_active_rooms
+        policy.note = body.note
+
+    await db.commit()
+    await db.refresh(policy)
+    return _subscription_room_creator_policy_response(policy)
+
+
+@internal_router.get(
+    "/subscription-room-policies/{agent_id}",
+    response_model=SubscriptionRoomCreatorPolicyResponse,
+)
+async def get_subscription_room_creator_policy(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _require_internal(authorization)
+
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).where(
+            SubscriptionRoomCreatorPolicy.agent_id == agent_id
+        )
+    )
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Subscription room creator policy not found")
+    return _subscription_room_creator_policy_response(policy)
+
+
+@internal_router.get(
+    "/subscription-room-policies",
+    response_model=SubscriptionRoomCreatorPolicyListResponse,
+)
+async def list_subscription_room_creator_policies(
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _require_internal(authorization)
+
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).order_by(
+            SubscriptionRoomCreatorPolicy.created_at.desc()
+        )
+    )
+    policies = list(result.scalars().all())
+    return SubscriptionRoomCreatorPolicyListResponse(
+        policies=[
+            _subscription_room_creator_policy_response(policy)
+            for policy in policies
+        ]
+    )
 
 
 @router.get("", response_model=RoomDiscoveryResponse)
@@ -472,6 +630,12 @@ async def update_room(
 
         _validate_subscription_room_config(
             room.visibility, room.join_policy, room.required_subscription_product_id
+        )
+        await _enforce_subscription_room_creator_policy(
+            db,
+            room.owner_id,
+            room.required_subscription_product_id,
+            exclude_room_id=room.room_id,
         )
         await _ensure_room_subscription_product(
             db, room.owner_id, room.required_subscription_product_id
