@@ -3,7 +3,7 @@
 /**
  * [INPUT]: 依赖 useDashboard 提供导航状态与业务动作，依赖 AccountMenu 承载账号与 agent 入口
  * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表与左下角账户菜单
- * [POS]: dashboard 左侧导航骨架，负责频道切换与全局入口编排
+ * [POS]: dashboard 左侧导航骨架，负责频道切换与全局入口编排；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -11,11 +11,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
-import { sidebar, agentRequiredState } from '@/lib/i18n/translations/dashboard';
+import { sidebar } from '@/lib/i18n/translations/dashboard';
 import { common, nav } from '@/lib/i18n/translations/common';
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
-import AgentRequiredState from "./AgentRequiredState";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -77,7 +76,6 @@ export default function Sidebar() {
   const t = sidebar[locale];
   const tc = common[locale];
   const tNav = nav[locale];
-  const tAS = agentRequiredState[locale];
 
   const tabTitles: Record<string, string> = {
     messages: t.messages,
@@ -342,16 +340,6 @@ export default function Sidebar() {
                     <div className="flex flex-col items-center gap-2 py-4">
                       <p className="text-center text-xs text-red-400">{state.walletError}</p>
                     </div>
-                  ) : state.sessionMode === "authed-no-agent" ? (
-                    <AgentRequiredState
-                      compact
-                      title={state.ownedAgents.length > 0 ? tAS.selectAgentFirst : tAS.linkAgentFirst}
-                      description={
-                        state.ownedAgents.length > 0
-                          ? tAS.walletScopedToAgent
-                          : tAS.walletAttachedToIdentity
-                      }
-                    />
                   ) : (
                     <p className="text-center text-xs text-text-secondary animate-pulse">{t.loadingWallet}</p>
                   )}

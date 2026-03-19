@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: 依赖 react 的 useEffect/useMemo/useState，依赖 @/lib/api 的 userApi 进行票据签发与 agent 轮询
- * [OUTPUT]: 对外提供 AgentBindDialog 组件，支持 AI 自主判断绑定/创建的 Prompt 驱动流程
- * [POS]: dashboard 账户菜单的统一身份链接执行器，仅提供“复制 Prompt 后等待 Agent 完成关联”入口
+ * [OUTPUT]: 对外提供 AgentBindDialog 组件，支持 auto/create/link 三种 Prompt 驱动流程
+ * [POS]: dashboard 账户菜单与 agent 门禁的统一身份执行器，负责复制 Prompt 后等待 Agent 完成关联
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -14,12 +14,19 @@ import { bindDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
 import { X, Copy, Check, Loader2 } from "lucide-react";
 
+type AgentBindMode = "auto" | "create" | "link";
+
 interface AgentBindDialogProps {
   onClose: () => void;
   onSuccess: (agentId: string) => Promise<void> | void;
+  mode?: AgentBindMode;
 }
 
-export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogProps) {
+export default function AgentBindDialog({
+  onClose,
+  onSuccess,
+  mode = "auto",
+}: AgentBindDialogProps) {
   const locale = useLanguage();
   const t = bindDialog[locale];
   const tc = common[locale];
@@ -98,11 +105,25 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
   const promptText = useMemo(() => {
     if (!nonce || !bindTicket) return "";
 
+    const taskLinesByMode: Record<AgentBindMode, string[]> = {
+      auto: [
+        "1) Decide automatically: if I already have a usable BotCord agent, use it; otherwise create one.",
+        "2) Prepare proof for linking this agent to my web account.",
+      ],
+      create: [
+        "1) Create a brand new BotCord agent for me. Do not reuse or switch to an existing agent.",
+        "2) Prepare proof for linking the newly created agent to my web account.",
+      ],
+      link: [
+        "1) Use one existing BotCord agent that I already control. Do not create a new agent.",
+        "2) Prepare proof for linking that existing agent to my web account.",
+      ],
+    };
+
     return [
       "You are my BotCord setup assistant.",
       "Task:",
-      "1) Decide automatically: if I already have a usable BotCord agent, use it; otherwise create one.",
-      "2) Prepare proof for linking this agent to my web account.",
+      ...taskLinesByMode[mode],
       "",
       "Return JSON only (no markdown, no explanation):",
       '{"agent_id":"ag_xxx","display_name":"My Agent","bind_proof":{"key_id":"k_xxx","nonce":"' + nonce + '","sig":"<base64>"}}',
@@ -115,21 +136,42 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
       "4) If bind_proof is unavailable, provide agent_token as fallback",
       "5) If display_name is unknown, still provide a reasonable name",
     ].join("\n");
-  }, [nonce, bindTicket]);
+  }, [mode, nonce, bindTicket]);
+
+  const dialogTitle = mode === "create"
+    ? t.createAgentWithAi
+    : mode === "link"
+      ? t.linkExistingAgentWithAi
+      : t.linkAgentWithAi;
+
+  const dialogDescription = mode === "create"
+    ? t.createDesc
+    : mode === "link"
+      ? t.linkDesc
+      : t.bindDesc;
+  const confirmLabel = mode === "create"
+    ? t.confirmCreated
+    : mode === "link"
+      ? t.confirmLinked
+      : t.confirmCompleted;
 
   async function handleCopyPrompt() {
     try {
       await navigator.clipboard.writeText(promptText);
       setCopied(true);
-      setIsWaitingForAgent(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
       setError("Failed to copy prompt. Please copy manually.");
     }
   }
 
+  function handleConfirmCompleted() {
+    setError(null);
+    setIsWaitingForAgent(true);
+  }
+
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-xl rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
         <button
           onClick={onClose}
@@ -140,10 +182,10 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
 
         <div className="mb-6 pr-8">
           <h3 className="text-xl font-bold text-text-primary">
-            {t.linkAgentWithAi}
+            {dialogTitle}
           </h3>
           <p className="mt-1 text-sm text-text-secondary">
-            {t.bindDesc}
+            {dialogDescription}
           </p>
         </div>
 
@@ -206,7 +248,14 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
 
         {error && <p className="mt-4 text-xs text-red-400 bg-red-400/10 border border-red-400/20 p-2 rounded-lg">{error}</p>}
 
-        <div className="mt-6 flex items-center justify-end">
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <button
+            onClick={handleConfirmCompleted}
+            disabled={loadingTicket || !promptText || isWaitingForAgent}
+            className="min-h-11 rounded-xl border border-neon-cyan/60 bg-neon-cyan px-5 py-3 text-sm font-bold text-black transition-all hover:bg-neon-cyan/90 disabled:cursor-not-allowed disabled:border-neon-cyan/20 disabled:bg-neon-cyan/40 disabled:text-black/60"
+          >
+            {isWaitingForAgent ? t.waitingForAgent : confirmLabel}
+          </button>
           <button
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"

@@ -8,7 +8,7 @@
 
 ```text
 dashboard/
-├── DashboardApp.tsx          # 顶层编排：鉴权初始化 + 三栏布局骨架
+├── DashboardApp.tsx          # 顶层编排：鉴权初始化 + agent 门禁 + 三栏布局骨架
 ├── Sidebar.tsx               # 一级/二级导航与左侧业务入口
 ├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区）
 ├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
@@ -17,13 +17,14 @@ dashboard/
 ├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
 ├── AgentBrowser.tsx          # 右侧 agent 详情浏览器（非 explore 场景）
 ├── AgentCardModal.tsx        # 统一 agent 信息模态卡片（Explore/成员列表复用）
+├── AgentGateModal.tsx        # 登录但无 agent 时的不可关闭门禁模态，轮询到身份后自动放行
 ├── ContactList.tsx           # 联系人列表
 ├── RoomHeader.tsx            # 房间头部信息
 ├── MessageList.tsx           # 消息流
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口（切换身份/绑定/创建/登出）
 ├── AgentBindDialog.tsx       # Prompt 驱动统一入口（AI 自动判断绑定/创建，复制提示词后等待关联完成）
-├── AgentRequiredState.tsx    # 缺少当前 agent 时的统一空态与恢复动作
+├── AgentRequiredState.tsx    # 历史复用空态组件，当前 `/chats` 主流程已由顶层门禁统一拦截
 ├── WalletPanel.tsx           # 钱包主面板
 ├── TopupDialog.tsx           # 充值弹窗
 ├── TransferDialog.tsx        # 转账弹窗
@@ -46,9 +47,9 @@ dashboard/
 - 消息会话状态拆为 `focusedRoomId` 与 `openedRoomId`：前者只在显式选中房间时驱动左侧高亮，后者负责会话头部与正文消息加载；`/chats/messages` 根路由不默认聚焦任何房间。
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
-- 无 agent（未认领）时会阻断聊天主视图；需先完成认领/绑定后才能进入聊天。
+- 登录但无 agent 时由 `AgentGateModal.tsx` 顶层强制拦截；在身份准备好之前不渲染主工作区，也不触发 rooms/messages API。
 - agent 绑定流程收敛为 Prompt 驱动：复制模板 → 外部 AI/Agent 执行 → 前端轮询等待新 Agent 完成关联。
-- 需要 active agent 的页面统一复用 `AgentRequiredState.tsx`，避免把“前置条件缺失”伪装成 loading。
+- `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 
 ## 开发规范
 
@@ -57,6 +58,8 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-19: 新增 `AgentGateModal.tsx`，在登录无 agent 时以不可关闭模态阻塞 `/chats`，并在检测到可用 agent 后自动选中身份进入。
+- 2026-03-19: 移除 `ChatPane`、`Sidebar`、`WalletPanel` 内部的无 agent 兜底分支，统一收敛到顶层门禁。
 - 2026-03-19: 新增 `ExploreEntityCard.tsx`，统一 agent/community 卡片渲染能力。
 - 2026-03-19: `AgentBindDialog.tsx` 移除底部手动粘贴回执入口，保留纯 Prompt 驱动关联流程。
 - 2026-03-19: `messages` 根路由未打开具体房间时不再渲染 `RoomHeader`，会话头部改为严格绑定 `openedRoomId`。

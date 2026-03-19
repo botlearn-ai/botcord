@@ -15,7 +15,9 @@ import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
 import WalletPanel from "./WalletPanel";
 import StripeReturnBanner from "./StripeReturnBanner";
+import AgentGateModal from "./AgentGateModal";
 import { useDashboardStore } from "@/store/useDashboardStore";
+import { Loader2 } from "lucide-react";
 
 // --- Legacy Context Proxy for Compatibility ---
 // We keep the context but make it a proxy to the Zustand store 
@@ -83,6 +85,8 @@ export default function DashboardApp() {
   const pathname = usePathname();
   const supabase = createClient();
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
+  const isAuthPending = !store.authResolved;
+  const shouldBlockForAgent = store.authResolved && store.sessionMode === "authed-no-agent";
 
   // Auth sync
   useEffect(() => {
@@ -121,6 +125,15 @@ export default function DashboardApp() {
   // Route sync: /chats/{tab}/{subtab?}
   useEffect(() => {
     if (!store.authResolved) {
+      return;
+    }
+    if (store.sessionMode === "authed-no-agent") {
+      if (store.focusedRoomId !== null) {
+        store.setFocusedRoomId(null);
+      }
+      if (store.openedRoomId !== null) {
+        store.setOpenedRoomId(null);
+      }
       return;
     }
     const parts = pathnameParts;
@@ -173,20 +186,40 @@ export default function DashboardApp() {
     } else if (store.sidebarTab !== "messages") {
       store.setSidebarTab("messages");
     }
-  }, [store.authResolved, pathnameParts, store.focusedRoomId, store.openedRoomId, store.overview?.rooms, store.publicRoomDetails, store.publicRooms, store.recentVisitedRooms, store.discoverRooms]);
+  }, [store.authResolved, store.sessionMode, pathnameParts, store.focusedRoomId, store.openedRoomId, store.overview?.rooms, store.publicRoomDetails, store.publicRooms, store.recentVisitedRooms, store.discoverRooms]);
 
   return (
     <div className="relative flex h-screen overflow-hidden">
-      <Sidebar />
-      {store.sidebarTab === "wallet" ? (
-        <WalletPanel />
-      ) : (
+      {isAuthPending ? (
+        <div className="flex flex-1 items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_42%),linear-gradient(180deg,_rgba(6,11,19,0.98),_rgba(2,6,12,1))]">
+          <div className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-neon-cyan">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        </div>
+      ) : !shouldBlockForAgent ? (
         <>
-          <ChatPane />
-          {store.sidebarTab !== "explore" && store.rightPanelOpen && <AgentBrowser />}
+          <Sidebar />
+          {store.sidebarTab === "wallet" ? (
+            <WalletPanel />
+          ) : (
+            <>
+              <ChatPane />
+              {store.sidebarTab !== "explore" && store.rightPanelOpen && <AgentBrowser />}
+            </>
+          )}
         </>
+      ) : (
+        <div className="flex flex-1 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_42%),linear-gradient(180deg,_rgba(6,11,19,0.98),_rgba(2,6,12,1))]" />
       )}
       <StripeReturnBanner />
+      {shouldBlockForAgent ? (
+        <AgentGateModal
+          onAgentReady={async (agentId) => {
+            await store.refreshUserProfile();
+            await store.switchActiveAgent(agentId);
+          }}
+        />
+      ) : null}
       {store.error && (
         <div className="pointer-events-none absolute right-4 top-4 rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs text-red-200">
           {store.error}

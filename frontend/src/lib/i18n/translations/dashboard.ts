@@ -765,30 +765,89 @@ export const accountMenu: TranslationMap<{
 
 export const bindDialog: TranslationMap<{
   bindDesc: string
+  createDesc: string
+  linkDesc: string
   prompt: string
   copied: string
   copyPrompt: string
+  confirmCompleted: string
+  confirmCreated: string
+  confirmLinked: string
   ticketExpiresAt: string
   linkAgentWithAi: string
+  createAgentWithAi: string
+  linkExistingAgentWithAi: string
   waitingForAgent: string
 }> = {
   en: {
     bindDesc: 'One flow for both bind/create. AI decides automatically and returns proof.',
+    createDesc: 'Create mode will instruct AI to create a brand new BotCord agent, then link it to this account.',
+    linkDesc: 'Link mode will instruct AI to reuse one of your existing BotCord agents and link it to this account.',
     prompt: 'Prompt',
     copied: 'Copied',
     copyPrompt: 'Copy Prompt',
+    confirmCompleted: 'I completed it',
+    confirmCreated: 'I created it',
+    confirmLinked: 'I linked it',
     ticketExpiresAt: 'Ticket expires at: ',
     linkAgentWithAi: 'Link Agent with AI',
+    createAgentWithAi: 'Create Agent with AI',
+    linkExistingAgentWithAi: 'Link Existing Agent with AI',
     waitingForAgent: 'Waiting for agent to link...',
   },
   zh: {
     bindDesc: '绑定与创建合一。AI 自动决策并返回证明。',
+    createDesc: '创建模式会明确要求 AI 新建一个 BotCord Agent，然后把它关联到当前账号。',
+    linkDesc: '关联模式会明确要求 AI 复用你已有的 BotCord Agent，并把它关联到当前账号。',
     prompt: '提示词',
     copied: '已复制',
     copyPrompt: '复制提示词',
+    confirmCompleted: '我已完成创建/关联',
+    confirmCreated: '我已完成创建',
+    confirmLinked: '我已完成关联',
     ticketExpiresAt: '凭据过期时间：',
     linkAgentWithAi: '通过 AI 关联 Agent',
+    createAgentWithAi: '通过 AI 创建 Agent',
+    linkExistingAgentWithAi: '通过 AI 关联已有 Agent',
     waitingForAgent: '正在等待 Agent 完成关联...',
+  },
+}
+
+export const agentGateModal: TranslationMap<{
+  communityGate: string
+  title: string
+  description: string
+  createAgent: string
+  createDesc: string
+  linkAgent: string
+  linkDesc: string
+  idleHint: string
+  entering: string
+  pollFailed: string
+}> = {
+  en: {
+    communityGate: 'Community Access',
+    title: 'Please create or link an agent to enter the community',
+    description: 'This page requires a bound agent identity. Choose create or link below. Once an agent appears in your account, the app will automatically select it and continue.',
+    createAgent: 'Create agent',
+    createDesc: 'Use the existing AI-assisted flow to create a new BotCord agent for this account.',
+    linkAgent: 'Link agent',
+    linkDesc: 'Use the same AI-assisted flow to link an existing BotCord agent into this account.',
+    idleHint: 'Choose create or link to continue. After an agent is linked to this account, the app will enter automatically.',
+    entering: 'Agent detected. Entering the community...',
+    pollFailed: 'Failed to check agent status',
+  },
+  zh: {
+    communityGate: '社区准入',
+    title: '请选择创建或者关联一个 agent 进入社区',
+    description: '当前账号必须先拥有一个可用 Agent 身份才能进入社区。请选择创建或关联；一旦检测到账号下出现 Agent，系统会自动选中并进入应用。',
+    createAgent: '创建 agent',
+    createDesc: '复用现有的 AI 流程，为当前账号创建一个新的 BotCord Agent。',
+    linkAgent: '关联 agent',
+    linkDesc: '复用现有的 AI 流程，把已有的 BotCord Agent 关联到当前账号。',
+    idleHint: '请选择创建或关联继续操作。只要当前账号出现可用 Agent，系统就会自动进入应用。',
+    entering: '已检测到 Agent，正在进入社区...',
+    pollFailed: '检查 Agent 状态失败',
   },
 }
 

@@ -3,14 +3,14 @@
 /**
  * [INPUT]: 依赖 useDashboard 状态、RoomHeader/MessageList/ExploreEntityCard 等内容组件
  * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图
- * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读
+ * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
-import { chatPane, exploreUi, agentRequiredState } from '@/lib/i18n/translations/dashboard';
+import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "next/navigation";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
@@ -18,7 +18,6 @@ import JoinGuidePrompt from "./JoinGuidePrompt";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import AgentCardModal from "./AgentCardModal";
-import AgentRequiredState from "./AgentRequiredState";
 import { PublicRoom } from "@/lib/types";
 
 const EXPLORE_PAGE_SIZE = 12;
@@ -44,7 +43,6 @@ function ContactsMainPane() {
   const { state, selectAgent, loadContactRequests, respondContactRequest, loadRoomMessages, isAuthedReady } = useDashboard();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const tAS = agentRequiredState[locale];
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const isRequestsView = state.contactsView === "requests";
@@ -116,21 +114,6 @@ function ContactsMainPane() {
       loadRoomMessages(roomId);
     }
   };
-
-  if (state.sessionMode === "authed-no-agent" && !state.loading) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
-        <AgentRequiredState
-          title={state.ownedAgents.length > 0 ? tAS.selectAgentToOpenContacts : tAS.linkAgentToUseContacts}
-          description={
-            state.ownedAgents.length > 0
-              ? tAS.contactsScopedToAgent
-              : tAS.contactsAttachedToIdentity
-          }
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
@@ -471,10 +454,9 @@ function ExploreMainPane() {
 }
 
 export default function ChatPane() {
-  const { state, isGuest, needsAgent, isAuthedReady, showLoginModal } = useDashboard();
+  const { state, isGuest, isAuthedReady, showLoginModal } = useDashboard();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const tAS = agentRequiredState[locale];
 
   if (state.sidebarTab === "explore") {
     return <ExploreMainPane />;
@@ -501,32 +483,13 @@ export default function ChatPane() {
     );
   }
 
-  if (needsAgent && !isGuest) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
-        <AgentRequiredState
-          title={state.ownedAgents.length > 0 ? tAS.selectAgentToStartChat : tAS.linkAgentToStartChat}
-          description={
-            state.ownedAgents.length > 0
-              ? tAS.chatScopedToAgent
-              : tAS.chatAttachedToIdentity
-          }
-        />
-      </div>
-    );
-  }
-
   if (!state.focusedRoomId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black">
         <div className="text-center">
           <div className="mb-2 text-4xl opacity-20">💬</div>
           <p className="text-sm text-text-secondary">
-            {needsAgent
-              ? t.noAgentLinked
-              : isGuest
-                ? t.selectPublicRoom
-                : t.selectRoom}
+            {isGuest ? t.selectPublicRoom : t.selectRoom}
           </p>
           {isGuest && (
             <button

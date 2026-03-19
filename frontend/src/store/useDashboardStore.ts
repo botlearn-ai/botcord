@@ -352,50 +352,26 @@ export const useDashboardStore = create<DashboardState>()(
         set({ authResolved: true, loading: false });
       }
     } catch (err: any) {
-      console.warn("[Store] User profile unavailable, falling back to direct mode:", err.message);
-      const activeId = getActiveAgentId();
-      if (!activeId) {
-        set({
-          authResolved: true,
-          activeAgentId: null,
-          sessionMode: "authed-no-agent",
-          overview: null,
-          wallet: null,
-          walletLedger: [],
-          walletLedgerCursor: null,
-          walletLedgerHasMore: false,
-          walletError: null,
-          walletLedgerError: null,
-          loading: false,
-        });
-        return;
-      }
-      try {
-        const [overview, wallet, withdrawalsResult] = await Promise.all([
-          api.getOverview(),
-          api.getWallet().catch(() => null),
-          api.getWithdrawals()
-            .then((result) => ({ withdrawals: result.withdrawals, error: null }))
-            .catch((err: any) => ({
-              withdrawals: [],
-              error: err.message || "Failed to load withdrawals",
-            }))
-        ]);
-        set({
-          authResolved: true,
-          activeAgentId: activeId,
-          sessionMode: resolveSessionMode(token, activeId),
-          overview,
-          wallet,
-          withdrawalRequests: withdrawalsResult.withdrawals,
-          withdrawalRequestsError: withdrawalsResult.error,
-          withdrawalRequestsLoaded: true,
-          loading: false,
-        });
-        await get().loadContactRequests();
-      } catch (innerErr: any) {
-        set({ authResolved: true, error: innerErr.message || "Failed to load overview", loading: false });
-      }
+      console.warn("[Store] User profile unavailable, forcing agent gate:", err.message);
+      setActiveAgentId(null);
+      set({
+        authResolved: true,
+        user: null,
+        ownedAgents: [],
+        activeAgentId: null,
+        sessionMode: "authed-no-agent",
+        overview: null,
+        wallet: null,
+        walletLedger: [],
+        walletLedgerCursor: null,
+        walletLedgerHasMore: false,
+        walletError: null,
+        walletLedgerError: null,
+        withdrawalRequests: [],
+        withdrawalRequestsLoaded: false,
+        loading: false,
+        error: null,
+      });
     }
   },
 

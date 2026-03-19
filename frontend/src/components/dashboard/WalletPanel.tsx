@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 提供钱包状态，依赖 AgentRequiredState 提供缺少 agent 时的统一引导
- * [OUTPUT]: 对外提供 WalletPanel 组件，负责余额概览、流水视图与无 agent 空态引导
- * [POS]: dashboard 钱包主面板，在已登录上下文中渲染资金信息并处理 agent 缺失场景
+ * [INPUT]: 依赖 useDashboard 提供钱包状态，依赖钱包子组件完成资金操作
+ * [OUTPUT]: 对外提供 WalletPanel 组件，负责余额概览与流水视图
+ * [POS]: dashboard 钱包主面板，在已登录且已通过 agent 准入的上下文中渲染资金信息
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -18,7 +18,6 @@ import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
 import WithdrawDialog from "./WithdrawDialog";
-import AgentRequiredState from "./AgentRequiredState";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -65,21 +64,6 @@ export default function WalletPanel() {
     loadWalletLedger();
     loadWithdrawalRequests();
   }, [loadWallet, loadWalletLedger, loadWithdrawalRequests]);
-
-  if (state.sessionMode === "authed-no-agent" && !state.loading) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
-        <AgentRequiredState
-          title={state.ownedAgents.length > 0 ? "Select an agent to open this wallet" : "Link an agent to open your wallet"}
-          description={
-            state.ownedAgents.length > 0
-              ? "Your account already has linked agents, but no current agent is active in this session."
-              : "Wallet data belongs to an agent identity. Bind or create one first, then the wallet can load normally."
-          }
-        />
-      </div>
-    );
-  }
 
   if (!wallet) {
     return (
