@@ -49,7 +49,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
     if (!state.token) return;
     setSubmitting(true);
     try {
-      await api.createWithdrawal(state.token, {
+      await api.createWithdrawal({
         amount_minor: String(amountMinor),
         destination_type: "mock_bank",
         destination: {
