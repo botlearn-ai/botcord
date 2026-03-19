@@ -6,13 +6,15 @@ import io
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 import pytest
 import pytest_asyncio
+import httpx
 from httpx import ASGITransport, AsyncClient
 from nacl.signing import SigningKey
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from hub.models import Base, FileRecord
 
@@ -36,9 +38,17 @@ async def db_session():
 async def client(db_session: AsyncSession, tmp_path):
     from hub import config
 
-    # Override upload dir BEFORE importing app (lifespan uses it)
+    # Override upload settings BEFORE importing app (lifespan uses them)
     original_dir = config.FILE_UPLOAD_DIR
+    original_backend = config.FILE_STORAGE_BACKEND
+    original_supabase_url = config.SUPABASE_URL
+    original_supabase_service_role_key = config.SUPABASE_SERVICE_ROLE_KEY
+    original_supabase_bucket = config.SUPABASE_STORAGE_BUCKET
     config.FILE_UPLOAD_DIR = str(tmp_path / "uploads")
+    config.FILE_STORAGE_BACKEND = "disk"
+    config.SUPABASE_URL = None
+    config.SUPABASE_SERVICE_ROLE_KEY = None
+    config.SUPABASE_STORAGE_BUCKET = None
     os.makedirs(config.FILE_UPLOAD_DIR, exist_ok=True)
 
     from hub.main import app
@@ -55,6 +65,10 @@ async def client(db_session: AsyncSession, tmp_path):
         yield c
     app.dependency_overrides.clear()
     config.FILE_UPLOAD_DIR = original_dir
+    config.FILE_STORAGE_BACKEND = original_backend
+    config.SUPABASE_URL = original_supabase_url
+    config.SUPABASE_SERVICE_ROLE_KEY = original_supabase_service_role_key
+    config.SUPABASE_STORAGE_BUCKET = original_supabase_bucket
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +109,25 @@ async def _register_and_verify(
 
 def _auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _enable_supabase_storage():
+    from hub import config
+
+    config.FILE_STORAGE_BACKEND = "supabase"
+    config.SUPABASE_URL = "https://project.supabase.co"
+    config.SUPABASE_SERVICE_ROLE_KEY = "service-role-key"
+    config.SUPABASE_STORAGE_BUCKET = "botcord-files"
+
+
+def _supabase_response(
+    status_code: int = 200,
+    *,
+    content: bytes = b"",
+    text: str = "",
+) -> httpx.Response:
+    request = httpx.Request("GET", "https://project.supabase.co/storage/v1/object")
+    return httpx.Response(status_code, request=request, content=content or text.encode())
 
 
 # ===========================================================================
@@ -230,6 +263,36 @@ async def test_upload_sanitizes_filename(client: AsyncClient):
     assert resp.json()["original_filename"] == "passwd"
 
 
+@pytest.mark.asyncio
+async def test_upload_success_supabase(client: AsyncClient, db_session: AsyncSession):
+    from sqlalchemy import select as sa_select
+
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+
+    with patch("hub.storage._supabase_request", new=AsyncMock(return_value=_supabase_response())) as mock_request:
+        resp = await client.post(
+            "/hub/upload",
+            headers=_auth_header(token),
+            files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["original_filename"] == "report.pdf"
+    mock_request.assert_awaited_once()
+
+    result = await db_session.execute(
+        sa_select(FileRecord).where(FileRecord.file_id == data["file_id"])
+    )
+    record = result.scalar_one()
+    assert record.storage_backend == "supabase"
+    assert record.disk_path is None
+    assert record.storage_bucket == "botcord-files"
+    assert record.storage_object_key == f"{data['file_id']}/report.pdf"
+
+
 # ===========================================================================
 # Download tests
 # ===========================================================================
@@ -337,6 +400,37 @@ async def test_download_disk_file_missing(client: AsyncClient, db_session: Async
     assert "disk" in dl_resp.json()["detail"].lower()
 
 
+@pytest.mark.asyncio
+async def test_download_success_supabase(client: AsyncClient):
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+
+    with patch(
+        "hub.storage._supabase_request",
+        new=AsyncMock(
+            side_effect=[
+                _supabase_response(),
+                _supabase_response(content=b"supabase bytes"),
+            ]
+        ),
+    ):
+        upload_resp = await client.post(
+            "/hub/upload",
+            headers=_auth_header(token),
+            files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+        )
+        assert upload_resp.status_code == 200
+        file_id = upload_resp.json()["file_id"]
+
+        dl_resp = await client.get(f"/hub/files/{file_id}")
+
+    assert dl_resp.status_code == 200
+    assert dl_resp.content == b"supabase bytes"
+    assert "application/pdf" in dl_resp.headers.get("content-type", "")
+    assert "report.pdf" in dl_resp.headers.get("content-disposition", "")
+
+
 # ===========================================================================
 # Cleanup tests
 # ===========================================================================
@@ -398,6 +492,47 @@ async def test_cleanup_removes_expired_files(client: AsyncClient, db_session: As
 
     # Verify disk file and DB record are gone
     assert not os.path.isfile(disk_path)
+    result = await db_session.execute(
+        sa_select(FileRecord).where(FileRecord.file_id == file_id)
+    )
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_removes_expired_supabase_files(client: AsyncClient, db_session: AsyncSession):
+    from sqlalchemy import select as sa_select
+    from sqlalchemy import update
+    from hub import cleanup as hub_cleanup
+
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+
+    @asynccontextmanager
+    async def _test_async_session():
+        yield db_session
+
+    with patch("hub.storage._supabase_request", new=AsyncMock(return_value=_supabase_response())) as mock_request:
+        with patch.object(hub_cleanup, "async_session", _test_async_session):
+            upload_resp = await client.post(
+                "/hub/upload",
+                headers=_auth_header(token),
+                files={"file": ("cleanup.txt", io.BytesIO(b"cleanup"), "text/plain")},
+            )
+            assert upload_resp.status_code == 200
+            file_id = upload_resp.json()["file_id"]
+
+            await db_session.execute(
+                update(FileRecord)
+                .where(FileRecord.file_id == file_id)
+                .values(expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc))
+            )
+            await db_session.commit()
+
+            deleted = await hub_cleanup._cleanup_expired_files()
+
+    assert deleted == 1
+    assert mock_request.await_count == 2
     result = await db_session.execute(
         sa_select(FileRecord).where(FileRecord.file_id == file_id)
     )

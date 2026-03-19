@@ -37,6 +37,7 @@ from hub.routers.topics import router as topics_router
 from hub.routers.stripe import router as stripe_router
 from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
+from hub.storage import storage_requires_local_disk
 
 logging.basicConfig(level=logging.INFO)
 
@@ -73,9 +74,10 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "http_client"):
         app.state.http_client = None
 
-    # Ensure upload directory exists
-    import os
-    os.makedirs(hub_config.FILE_UPLOAD_DIR, exist_ok=True)
+    if storage_requires_local_disk():
+        # Ensure upload directory exists for local-disk storage mode.
+        import os
+        os.makedirs(hub_config.FILE_UPLOAD_DIR, exist_ok=True)
 
     expiry_task = None
     cleanup_task = None
