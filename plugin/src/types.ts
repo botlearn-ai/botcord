@@ -90,7 +90,11 @@ export type RoomInfo = {
   rule?: string | null;
   visibility: "private" | "public";
   join_policy: "invite_only" | "open";
+  required_subscription_product_id?: string | null;
+  max_members?: number | null;
   default_send: boolean;
+  default_invite?: boolean;
+  slow_mode_seconds?: number | null;
   member_count: number;
   created_at: string;
 };

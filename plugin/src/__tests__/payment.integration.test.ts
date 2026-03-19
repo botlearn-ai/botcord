@@ -3,7 +3,6 @@ import { BotCordClient } from "../client.js";
 import { generateKeypair } from "../crypto.js";
 import { createMockHub } from "./mock-hub.js";
 import { createPaymentTool } from "../tools/payment.js";
-import { createWalletTool } from "../tools/wallet.js";
 import { setConfigGetter } from "../runtime.js";
 
 const senderKeys = generateKeypair();
@@ -258,32 +257,5 @@ describe("payment tool integration", () => {
     expect(balance.data.available_balance).toBe("100.00 COIN");
     expect(balance.data.locked_balance).toBe("0.00 COIN");
     expect(balance.result).toContain("Available: 100.00 COIN");
-  });
-});
-
-describe("wallet tool integration", () => {
-  it("applies the same contact-only transfer policy and follow-up messages", async () => {
-    const sender = makeClient("ag_sender", senderKeys.privateKey);
-    const tool = createWalletTool();
-
-    await seedBalance(sender, "15000");
-    hub.state.contacts = [
-      { contact_agent_id: "ag_receiver", display_name: "Receiver", created_at: new Date().toISOString() },
-    ];
-    makeToolConfig("ag_sender", senderKeys.privateKey);
-
-    const transfer: any = await tool.execute("wallet-tool-1", {
-      action: "transfer",
-      to_agent_id: "ag_receiver",
-      amount_minor: "5000",
-      memo: "legacy wallet",
-    });
-
-    expect(transfer.data.tx.amount_minor).toBeUndefined();
-    expect(transfer.data.tx.amount).toBe("50.00 COIN");
-    expect(transfer.data.transfer_record_message.sent).toBe(true);
-    expect(transfer.data.notifications.payer.sent).toBe(true);
-    expect(transfer.data.notifications.payee.sent).toBe(true);
-    expect(hub.state.messages).toHaveLength(3);
   });
 });

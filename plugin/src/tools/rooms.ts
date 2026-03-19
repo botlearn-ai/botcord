@@ -24,7 +24,7 @@ export function createRoomsTool() {
             "create", "list", "info", "update", "discover",
             "join", "leave", "dissolve",
             "members", "invite", "remove_member",
-            "promote", "transfer", "permissions",
+            "promote", "transfer", "permissions", "mute",
           ],
           description: "Room action to perform",
         },
@@ -58,6 +58,27 @@ export function createRoomsTool() {
           type: "boolean" as const,
           description: "Whether all members can post — for create, update",
         },
+        default_invite: {
+          type: "boolean" as const,
+          description: "Whether members can invite by default — for create, update",
+        },
+        max_members: {
+          type: "number" as const,
+          description: "Maximum room members — for create, update",
+        },
+        slow_mode_seconds: {
+          type: "number" as const,
+          description: "Slow mode interval in seconds — for create, update",
+        },
+        required_subscription_product_id: {
+          type: "string" as const,
+          description: "Subscription product required to access this room — for create, update",
+        },
+        member_ids: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Initial member agent IDs — for create",
+        },
         agent_id: {
           type: "string" as const,
           description: "Agent ID — for invite, remove_member, promote, transfer, permissions",
@@ -74,6 +95,10 @@ export function createRoomsTool() {
         can_invite: {
           type: "boolean" as const,
           description: "Invite permission override — for permissions",
+        },
+        muted: {
+          type: "boolean" as const,
+          description: "Mute or unmute the current member in a room — for mute",
         },
       },
       required: ["action"],
@@ -101,7 +126,12 @@ export function createRoomsTool() {
               rule: args.rule,
               visibility: args.visibility || "private",
               join_policy: args.join_policy,
+              required_subscription_product_id: args.required_subscription_product_id,
+              max_members: args.max_members,
               default_send: args.default_send,
+              default_invite: args.default_invite,
+              slow_mode_seconds: args.slow_mode_seconds,
+              member_ids: args.member_ids,
             });
 
           case "list":
@@ -119,7 +149,11 @@ export function createRoomsTool() {
               rule: args.rule,
               visibility: args.visibility,
               join_policy: args.join_policy,
+              required_subscription_product_id: args.required_subscription_product_id,
+              max_members: args.max_members,
               default_send: args.default_send,
+              default_invite: args.default_invite,
+              slow_mode_seconds: args.slow_mode_seconds,
             });
 
           case "discover":
@@ -127,7 +161,10 @@ export function createRoomsTool() {
 
           case "join":
             if (!args.room_id) return { error: "room_id is required" };
-            await client.joinRoom(args.room_id);
+            await client.joinRoom(args.room_id, {
+              can_send: args.can_send,
+              can_invite: args.can_invite,
+            });
             return { ok: true, joined: args.room_id };
 
           case "leave":
@@ -146,7 +183,10 @@ export function createRoomsTool() {
 
           case "invite":
             if (!args.room_id || !args.agent_id) return { error: "room_id and agent_id are required" };
-            await client.inviteToRoom(args.room_id, args.agent_id);
+            await client.inviteToRoom(args.room_id, args.agent_id, {
+              can_send: args.can_send,
+              can_invite: args.can_invite,
+            });
             return { ok: true, invited: args.agent_id, room: args.room_id };
 
           case "remove_member":
@@ -171,6 +211,11 @@ export function createRoomsTool() {
               can_invite: args.can_invite,
             });
             return { ok: true, agent: args.agent_id, room: args.room_id };
+
+          case "mute":
+            if (!args.room_id) return { error: "room_id is required" };
+            await client.muteRoom(args.room_id, args.muted ?? true);
+            return { ok: true, room: args.room_id, muted: args.muted ?? true };
 
           default:
             return { error: `Unknown action: ${args.action}` };
