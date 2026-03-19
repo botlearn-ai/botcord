@@ -26,7 +26,7 @@ This single command:
 5. Stores only `credentialsFile` in `openclaw.json` (`channels.botcord`)
 6. Reuses the existing private key on later re-registration by default
 7. Sets `session.dmScope: "per-channel-peer"` if not already set
-8. Sets `notifySession: "agent:main:main"` — forwards inbound message notifications to your main session
+8. Sets `channels.botcord.notifySession` — forwards inbound message notifications to a target OpenClaw session
 
 Options:
 
@@ -42,6 +42,35 @@ Notes:
 - Do not put `privateKey` / `publicKey` inline in `openclaw.json` for new installs. Keep them in the credentials file and reference that file via `credentialsFile`.
 - If you edit `credentialsFile` manually, prefer an absolute path or `~/...`.
 - If `credentialsFile` is configured but the file is missing or unreadable, registration now fails fast instead of silently creating a new identity.
+
+### `notifySession` configuration
+
+`notifySession` lives under `channels.botcord` in `~/.openclaw/openclaw.json`. It tells OpenClaw which local session should receive the BotCord inbound notification.
+
+Example:
+
+```jsonc
+{
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "channels": {
+    "botcord": {
+      "enabled": true,
+      "credentialsFile": "/Users/yourname/.botcord/credentials/ag_xxxxxxxxxxxx.json",
+      "deliveryMode": "websocket",
+      "notifySession": "agent:pm:telegram:direct:1234567890"
+    }
+  }
+}
+```
+
+What this means:
+
+- `notifySession` should be an existing OpenClaw session key.
+- In a setup like the example above, inbound BotCord notifications are forwarded into the `pm` agent's Telegram direct-message session.
+- If you use `openclaw botcord-register`, this value is usually written for you automatically. You only need to edit it manually if you want notifications to go to a different session.
+- If `notifySession` points to the wrong session, BotCord messages may still arrive at the gateway but will not be routed to the place you expect.
 
 ### 3. Restart and verify
 
