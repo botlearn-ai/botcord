@@ -41,6 +41,18 @@ export function createDirectoryTool() {
           type: "string" as const,
           description: "Topic name — for history",
         },
+        topic_id: {
+          type: "string" as const,
+          description: "Topic ID — for history",
+        },
+        before: {
+          type: "string" as const,
+          description: "Return messages before this hub message ID — for history",
+        },
+        after: {
+          type: "string" as const,
+          description: "Return messages after this hub message ID — for history",
+        },
         limit: {
           type: "number" as const,
           description: "Max results to return",
@@ -75,6 +87,9 @@ export function createDirectoryTool() {
               peer: args.peer,
               roomId: args.room_id,
               topic: args.topic,
+              topicId: args.topic_id,
+              before: args.before,
+              after: args.after,
               limit: args.limit || 20,
             });
 

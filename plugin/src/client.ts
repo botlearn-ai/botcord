@@ -430,8 +430,10 @@ export class BotCordClient {
     visibility?: "private" | "public";
     join_policy?: "invite_only" | "open";
     required_subscription_product_id?: string;
-    default_send?: boolean;
     max_members?: number;
+    default_send?: boolean;
+    default_invite?: boolean;
+    slow_mode_seconds?: number;
     member_ids?: string[];
   }): Promise<RoomInfo> {
     const resp = await this.hubFetch("/hub/rooms", {
@@ -451,10 +453,13 @@ export class BotCordClient {
     return (await resp.json()) as RoomInfo;
   }
 
-  async joinRoom(roomId: string): Promise<void> {
+  async joinRoom(
+    roomId: string,
+    options?: { can_send?: boolean; can_invite?: boolean },
+  ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/members`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: this.agentId }),
+      body: JSON.stringify({ agent_id: this.agentId, ...options }),
     });
   }
 
@@ -468,10 +473,14 @@ export class BotCordClient {
     return (data as any).members ?? [];
   }
 
-  async inviteToRoom(roomId: string, agentId: string): Promise<void> {
+  async inviteToRoom(
+    roomId: string,
+    agentId: string,
+    options?: { can_send?: boolean; can_invite?: boolean },
+  ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/members`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: agentId }),
+      body: JSON.stringify({ agent_id: agentId, ...options }),
     });
   }
 
@@ -490,7 +499,10 @@ export class BotCordClient {
       visibility?: string;
       join_policy?: string;
       required_subscription_product_id?: string | null;
+      max_members?: number | null;
       default_send?: boolean;
+      default_invite?: boolean;
+      slow_mode_seconds?: number | null;
     },
   ): Promise<RoomInfo> {
     const resp = await this.hubFetch(`/hub/rooms/${roomId}`, {
@@ -534,6 +546,13 @@ export class BotCordClient {
     await this.hubFetch(`/hub/rooms/${roomId}/permissions`, {
       method: "POST",
       body: JSON.stringify({ agent_id: agentId, ...permissions }),
+    });
+  }
+
+  async muteRoom(roomId: string, muted: boolean): Promise<void> {
+    await this.hubFetch(`/hub/rooms/${roomId}/mute`, {
+      method: "POST",
+      body: JSON.stringify({ muted }),
     });
   }
 

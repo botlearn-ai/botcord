@@ -59,6 +59,8 @@ export function createSubscriptionTool() {
             "list_my_products",
             "list_products",
             "archive_product",
+            "create_subscription_room",
+            "bind_room_to_product",
             "subscribe",
             "list_my_subscriptions",
             "list_subscribers",
@@ -68,19 +70,27 @@ export function createSubscriptionTool() {
         },
         product_id: {
           type: "string" as const,
-          description: "Product ID — for archive_product, subscribe, list_subscribers",
+          description: "Product ID — for archive_product, create_subscription_room, bind_room_to_product, subscribe, list_subscribers",
         },
         subscription_id: {
           type: "string" as const,
           description: "Subscription ID — for cancel",
         },
+        room_id: {
+          type: "string" as const,
+          description: "Room ID — for bind_room_to_product",
+        },
         name: {
           type: "string" as const,
-          description: "Product name — for create_product",
+          description: "Product name — for create_product, or room name — for create_subscription_room",
         },
         description: {
           type: "string" as const,
-          description: "Product description — for create_product",
+          description: "Product description — for create_product, or room description — for create_subscription_room",
+        },
+        rule: {
+          type: "string" as const,
+          description: "Room rule/instructions — for create_subscription_room or bind_room_to_product",
         },
         amount_minor: {
           type: "string" as const,
@@ -94,6 +104,22 @@ export function createSubscriptionTool() {
         asset_code: {
           type: "string" as const,
           description: "Asset code — for create_product",
+        },
+        max_members: {
+          type: "number" as const,
+          description: "Maximum room members — for create_subscription_room or bind_room_to_product",
+        },
+        default_send: {
+          type: "boolean" as const,
+          description: "Whether members can post by default — for create_subscription_room or bind_room_to_product",
+        },
+        default_invite: {
+          type: "boolean" as const,
+          description: "Whether members can invite by default — for create_subscription_room or bind_room_to_product",
+        },
+        slow_mode_seconds: {
+          type: "number" as const,
+          description: "Slow mode interval in seconds — for create_subscription_room or bind_room_to_product",
         },
       },
       required: ["action"],
@@ -141,6 +167,48 @@ export function createSubscriptionTool() {
             if (!args.product_id) return { error: "product_id is required" };
             const product = await client.archiveSubscriptionProduct(args.product_id);
             return { result: formatProduct(product), data: product };
+          }
+
+          case "create_subscription_room": {
+            if (!args.product_id) return { error: "product_id is required" };
+            if (!args.name) return { error: "name is required" };
+            const room = await client.createRoom({
+              name: args.name,
+              description: args.description,
+              rule: args.rule,
+              visibility: "private",
+              join_policy: "invite_only",
+              required_subscription_product_id: args.product_id,
+              max_members: args.max_members,
+              default_send: args.default_send,
+              default_invite: args.default_invite,
+              slow_mode_seconds: args.slow_mode_seconds,
+            });
+            return {
+              result: `Subscription room created: ${room.room_id} bound to ${args.product_id}`,
+              data: room,
+            };
+          }
+
+          case "bind_room_to_product": {
+            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.product_id) return { error: "product_id is required" };
+            const room = await client.updateRoom(args.room_id, {
+              name: args.name,
+              description: args.description,
+              rule: args.rule,
+              visibility: "private",
+              join_policy: "invite_only",
+              required_subscription_product_id: args.product_id,
+              max_members: args.max_members,
+              default_send: args.default_send,
+              default_invite: args.default_invite,
+              slow_mode_seconds: args.slow_mode_seconds,
+            });
+            return {
+              result: `Room ${room.room_id} bound to subscription product ${args.product_id}`,
+              data: room,
+            };
           }
 
           case "subscribe": {

@@ -91,6 +91,8 @@ export interface MockHubState {
   knownAgents: Set<string>;
   /** JWT token to agent mapping */
   tokens: Map<string, string>;
+  /** Last observed history query params */
+  lastHistoryQuery?: Record<string, string>;
 }
 
 function parseBody(req: IncomingMessage): Promise<any> {
@@ -332,6 +334,7 @@ export function createMockHub() {
     idempotencyKeys: new Map(),
     knownAgents: new Set(["ag_testclient00"]),
     tokens: new Map(),
+    lastHistoryQuery: undefined,
   };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -398,6 +401,7 @@ export function createMockHub() {
 
     // ── History ────────────────────────────────────────────────
     if (path === "/hub/history" && method === "GET") {
+      state.lastHistoryQuery = Object.fromEntries(url.searchParams.entries());
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ messages: state.messages.map((m) => m.envelope) }));
       return;
@@ -444,7 +448,10 @@ export function createMockHub() {
         visibility: body.visibility || "private",
         join_policy: body.join_policy || "invite_only",
         required_subscription_product_id: body.required_subscription_product_id ?? null,
+        max_members: body.max_members ?? null,
         default_send: body.default_send ?? true,
+        default_invite: body.default_invite ?? false,
+        slow_mode_seconds: body.slow_mode_seconds ?? null,
         member_count: 1,
         created_at: new Date().toISOString(),
       };
@@ -490,9 +497,18 @@ export function createMockHub() {
       if (body.required_subscription_product_id !== undefined) {
         room.required_subscription_product_id = body.required_subscription_product_id;
       }
+      if (body.max_members !== undefined) room.max_members = body.max_members;
       if (body.default_send !== undefined) room.default_send = body.default_send;
+      if (body.default_invite !== undefined) room.default_invite = body.default_invite;
+      if (body.slow_mode_seconds !== undefined) room.slow_mode_seconds = body.slow_mode_seconds;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...room, members: [] }));
+      return;
+    }
+
+    if (path.match(/^\/hub\/rooms\/rm_[^/]+\/mute$/) && method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
