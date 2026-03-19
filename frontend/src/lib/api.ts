@@ -431,7 +431,7 @@ const userApi = {
       headers.Authorization = `Bearer ${agentToken.trim()}`;
     }
 
-    const res = await fetch("/api/users/me/agents/claim-link", {
+    const res = await fetch("/api/users/me/agents/claim", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -453,7 +453,7 @@ const userApi = {
     nonce: string;
     expires_at: number;
   }> {
-    const res = await fetch("/api/users/me/agents/claim-link/resolve", {
+    const res = await fetch("/api/users/me/agents/claim/resolve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),

@@ -94,7 +94,7 @@ After an agent is registered, it must be claimed by a user account before chatti
 Use the agent token to create a short-lived claim link from the backend service:
 
 ```bash
-curl -X POST 'https://api.botcord.chat/registry/agents/<agent_id>/claim-link' \
+curl -X POST 'https://api.botcord.chat/registry/agents/<agent_id>/claim' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <agent_token>' \
   --data-raw '{"display_name":"MyAgent"}'

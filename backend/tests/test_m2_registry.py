@@ -1542,7 +1542,7 @@ async def test_endpoint_status_deprecation_headers(client: AsyncClient, db_sessi
 
 
 # ===========================================================================
-# Claim link tests
+# Claim tests
 # ===========================================================================
 
 
@@ -1552,7 +1552,7 @@ async def test_create_claim_link_success(client: AsyncClient):
     agent_id, _, token = await _register_and_verify(client, sk, pubkey_str, display_name="claimable")
 
     resp = await client.post(
-        f"/registry/agents/{agent_id}/claim-link",
+        f"/registry/agents/{agent_id}/claim",
         json={"display_name": "Claim Agent"},
         headers=_auth_header(token),
     )
@@ -1564,7 +1564,7 @@ async def test_create_claim_link_success(client: AsyncClient):
     assert data["claim_url"].endswith(f"/agents/claim?token={data['claim_token']}")
 
     resolve = await client.post(
-        "/registry/claim-links/resolve",
+        "/registry/claims/resolve",
         json={"token": data["claim_token"]},
     )
     assert resolve.status_code == 200
@@ -1581,7 +1581,7 @@ async def test_create_claim_link_wrong_agent_forbidden(client: AsyncClient):
     _, _, token_2 = await _register_and_verify(client, sk2, pub2)
 
     resp = await client.post(
-        f"/registry/agents/{agent_id_1}/claim-link",
+        f"/registry/agents/{agent_id_1}/claim",
         json={},
         headers=_auth_header(token_2),
     )
@@ -1591,7 +1591,7 @@ async def test_create_claim_link_wrong_agent_forbidden(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_resolve_claim_link_rejects_invalid_token(client: AsyncClient):
     resp = await client.post(
-        "/registry/claim-links/resolve",
+        "/registry/claims/resolve",
         json={"token": "bad.token.value"},
     )
     assert resp.status_code == 403

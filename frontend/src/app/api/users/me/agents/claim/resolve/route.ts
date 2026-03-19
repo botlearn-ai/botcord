@@ -4,7 +4,7 @@ import { issueBindTicket } from "@/lib/bind-ticket";
 
 /**
  * [INPUT]: 依赖 requireAuth 获取用户身份，依赖 Backend Registry 校验 token，并签发当前用户 bind_ticket
- * [OUTPUT]: 对外提供 POST /api/users/me/agents/claim-link/resolve 返回认领上下文
+ * [OUTPUT]: 对外提供 POST /api/users/me/agents/claim/resolve 返回认领上下文
  * [POS]: 认领链接落地页的安全解析器，解包 agent_id 并绑定到当前登录用户的一次性 bind_ticket
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const upstream = new URL("/registry/claim-links/resolve", API_BASE);
+    const upstream = new URL("/registry/claims/resolve", API_BASE);
     const resp = await fetch(upstream.toString(), {
       method: "POST",
       headers: {

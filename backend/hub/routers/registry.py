@@ -568,7 +568,7 @@ async def update_profile(
 
 
 @router.post(
-    "/agents/{agent_id}/claim-link",
+    "/agents/{agent_id}/claim",
     response_model=CreateClaimLinkResponse,
 )
 async def create_claim_link(
@@ -603,7 +603,7 @@ async def create_claim_link(
 
 
 @router.post(
-    "/claim-links/resolve",
+    "/claims/resolve",
     response_model=ResolveClaimLinkResponse,
 )
 async def resolve_claim_link(
