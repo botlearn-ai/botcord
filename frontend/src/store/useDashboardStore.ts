@@ -16,6 +16,49 @@ import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
 const roomMessagesInFlight = new Set<string>();
 
+type ReadableRoomResourceOptions<T> = {
+  canUseMemberView: boolean;
+  loadMember: () => Promise<T>;
+  loadPublic: () => Promise<T>;
+  onSuccess: (value: T) => void;
+  onPublicError?: (error: unknown) => void;
+  onMemberError?: (error: unknown) => void;
+};
+
+async function loadReadableRoomResource<T>({
+  canUseMemberView,
+  loadMember,
+  loadPublic,
+  onSuccess,
+  onPublicError,
+  onMemberError,
+}: ReadableRoomResourceOptions<T>): Promise<void> {
+  if (!canUseMemberView) {
+    try {
+      onSuccess(await loadPublic());
+    } catch (error) {
+      onPublicError?.(error);
+    }
+    return;
+  }
+
+  try {
+    onSuccess(await loadMember());
+    return;
+  } catch (error: any) {
+    if (error?.status !== 403) {
+      onMemberError?.(error);
+      return;
+    }
+  }
+
+  try {
+    onSuccess(await loadPublic());
+  } catch (error) {
+    onPublicError?.(error);
+  }
+}
+
 function toRoomSummary(room: PublicRoom): DashboardRoom {
   return {
     room_id: room.room_id,
@@ -69,6 +112,8 @@ function resolveSessionMode(token: string | null, activeAgentId: string | null):
 
 interface DashboardState {
   authResolved: boolean;
+  authBootstrapping: boolean;
+  overviewRefreshing: boolean;
   sessionMode: DashboardSessionMode;
   token: string | null;
   user: UserProfile | null;
@@ -79,7 +124,6 @@ interface DashboardState {
   openedRoomId: string | null;
   messages: Record<string, DashboardMessage[]>;
   messagesHasMore: Record<string, boolean>;
-  loading: boolean;
   error: string | null;
   rightPanelOpen: boolean;
   selectedAgentId: string | null;
@@ -133,7 +177,6 @@ interface DashboardState {
   addRecentPublicRoom: (room: PublicRoom) => void;
   markFriendRequestPending: (agentId: string) => void;
   setError: (error: string | null) => void;
-  setLoading: (loading: boolean) => void;
   logout: () => void;
   getRoomSummary: (roomId: string) => DashboardRoom | null;
   getVisibleMessageRooms: () => DashboardRoom[];
@@ -163,6 +206,8 @@ interface DashboardState {
 
 const initialState = {
   authResolved: false,
+  authBootstrapping: false,
+  overviewRefreshing: false,
   token: null,
   sessionMode: "guest" as const,
   user: null,
@@ -174,7 +219,6 @@ const initialState = {
   messages: {},
   messagesHasMore: {},
   topics: {},
-  loading: false,
   error: null,
   rightPanelOpen: false,
   selectedAgentId: null,
@@ -224,6 +268,8 @@ export const useDashboardStore = create<DashboardState>()(
         const activeAgentId = token ? get().activeAgentId : null;
         set({
           authResolved: true,
+          authBootstrapping: false,
+          overviewRefreshing: false,
           token,
           activeAgentId,
           sessionMode: resolveSessionMode(token, activeAgentId),
@@ -269,9 +315,7 @@ export const useDashboardStore = create<DashboardState>()(
             : [...state.pendingFriendRequests, agentId],
         })),
 
-      setError: (error) => set({ error, loading: false }),
-
-      setLoading: (loading) => set({ loading }),
+      setError: (error) => set({ error }),
 
       logout: () => {
         setActiveAgentId(null);
@@ -305,7 +349,15 @@ export const useDashboardStore = create<DashboardState>()(
 
   // Async Actions
       initAuth: async (token: string) => {
-    set({ authResolved: false, loading: true, token, error: null });
+    const current = get();
+    const shouldShowBootstrap = !current.authResolved;
+
+    set({
+      authResolved: shouldShowBootstrap ? false : current.authResolved,
+      authBootstrapping: shouldShowBootstrap,
+      token,
+      error: null,
+    });
     
     try {
       const user = await userApi.getMe();
@@ -323,6 +375,7 @@ export const useDashboardStore = create<DashboardState>()(
         walletLedgerHasMore: activeId ? get().walletLedgerHasMore : false,
         walletError: null,
         walletLedgerError: null,
+        overviewRefreshing: false,
       });
 
       setActiveAgentId(activeId);
@@ -340,22 +393,23 @@ export const useDashboardStore = create<DashboardState>()(
         ]);
         set({
           authResolved: true,
+          authBootstrapping: false,
           overview,
           wallet,
           withdrawalRequests: withdrawalsResult.withdrawals,
           withdrawalRequestsError: withdrawalsResult.error,
           withdrawalRequestsLoaded: true,
-          loading: false,
         });
         await get().loadContactRequests();
       } else {
-        set({ authResolved: true, loading: false });
+        set({ authResolved: true, authBootstrapping: false });
       }
     } catch (err: any) {
       console.warn("[Store] User profile unavailable, forcing agent gate:", err.message);
       setActiveAgentId(null);
       set({
         authResolved: true,
+        authBootstrapping: false,
         user: null,
         ownedAgents: [],
         activeAgentId: null,
@@ -369,7 +423,6 @@ export const useDashboardStore = create<DashboardState>()(
         walletLedgerError: null,
         withdrawalRequests: [],
         withdrawalRequestsLoaded: false,
-        loading: false,
         error: null,
       });
     }
@@ -383,26 +436,23 @@ export const useDashboardStore = create<DashboardState>()(
     const { token, activeAgentId } = get();
     const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
     try {
-      let result;
-      if (canUseAuthedMessages) {
-        try {
-          result = await api.getRoomMessages(roomId, { limit: 50 });
-        } catch (err: any) {
-          // Logged-in but not joined: fallback to public room history for read-only browsing.
-          if (err?.status === 403) {
-            result = await api.getPublicRoomMessages(roomId, { limit: 50 });
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        result = await api.getPublicRoomMessages(roomId, { limit: 50 });
-      }
-      
-      set((state) => ({
-        messages: { ...state.messages, [roomId]: result.messages.reverse() },
-        messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
-      }));
+      await loadReadableRoomResource({
+        canUseMemberView: canUseAuthedMessages,
+        loadMember: () => api.getRoomMessages(roomId, { limit: 50 }),
+        loadPublic: () => api.getPublicRoomMessages(roomId, { limit: 50 }),
+        onSuccess: (result) => {
+          set((state) => ({
+            messages: { ...state.messages, [roomId]: result.messages.reverse() },
+            messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
+          }));
+        },
+        onMemberError: (error) => {
+          console.error("[Store] Failed to load messages:", error);
+        },
+        onPublicError: (error) => {
+          console.error("[Store] Failed to load messages:", error);
+        },
+      });
     } catch (err) {
       console.error("[Store] Failed to load messages:", err);
     } finally {
@@ -418,25 +468,23 @@ export const useDashboardStore = create<DashboardState>()(
     
     const oldest = existing[0];
     try {
-      let result;
-      if (canUseAuthedMessages) {
-        try {
-          result = await api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
-        } catch (err: any) {
-          if (err?.status === 403) {
-            result = await api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        result = await api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
-      }
-      
-      set((state) => ({
-        messages: { ...state.messages, [roomId]: [...result.messages.reverse(), ...existing] },
-        messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
-      }));
+      await loadReadableRoomResource({
+        canUseMemberView: canUseAuthedMessages,
+        loadMember: () => api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 }),
+        loadPublic: () => api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 }),
+        onSuccess: (result) => {
+          set((state) => ({
+            messages: { ...state.messages, [roomId]: [...result.messages.reverse(), ...existing] },
+            messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
+          }));
+        },
+        onMemberError: (error) => {
+          console.error("[Store] Failed to load more messages:", error);
+        },
+        onPublicError: (error) => {
+          console.error("[Store] Failed to load more messages:", error);
+        },
+      });
     } catch (err) {
       console.error("[Store] Failed to load more messages:", err);
     }
@@ -504,21 +552,21 @@ export const useDashboardStore = create<DashboardState>()(
         walletLedgerHasMore: false,
         walletError: null,
         walletLedgerError: null,
-        loading: false,
+        overviewRefreshing: false,
       });
       return;
     }
-    
-    set({ loading: true });
+
+    set({ overviewRefreshing: true });
     try {
       const overview = await api.getOverview();
-      set({ overview, loading: false });
+      set({ overview, overviewRefreshing: false });
       await get().loadContactRequests();
       if (openedRoomId) {
         get().loadRoomMessages(openedRoomId);
       }
     } catch (err: any) {
-      set({ error: err.message || "Failed to refresh", loading: false });
+      set({ error: err.message || "Failed to refresh", overviewRefreshing: false });
     }
   },
 
@@ -607,21 +655,28 @@ export const useDashboardStore = create<DashboardState>()(
 
   loadTopics: async (roomId: string) => {
     const { token, activeAgentId } = get();
-    if (!token) return;
     const resolvedAgentId = activeAgentId || getActiveAgentId();
-    if (!resolvedAgentId) {
-      set((state) => ({ topics: { ...state.topics, [roomId]: [] } }));
-      return;
-    }
-    if (!activeAgentId) {
+    const canUseMemberView = Boolean(token && resolvedAgentId);
+
+    if (token && resolvedAgentId && !activeAgentId) {
       set({ activeAgentId: resolvedAgentId });
     }
-    try {
-      const result = await api.getTopics(token, roomId);
-      set((state) => ({ topics: { ...state.topics, [roomId]: result.topics } }));
-    } catch (err) {
-      console.error("[Store] Failed to load topics:", err);
-    }
+
+    await loadReadableRoomResource({
+      canUseMemberView,
+      loadMember: () => api.getTopics(token!, roomId),
+      loadPublic: () => api.getPublicTopics(roomId),
+      onSuccess: (result) => {
+        set((state) => ({ topics: { ...state.topics, [roomId]: result.topics } }));
+      },
+      onMemberError: (error) => {
+        console.error("[Store] Failed to load topics:", error);
+      },
+      onPublicError: (error) => {
+        console.error("[Store] Failed to load public topics:", error);
+        set((state) => ({ topics: { ...state.topics, [roomId]: [] } }));
+      },
+    });
   },
 
   loadWallet: async () => {
@@ -710,7 +765,7 @@ export const useDashboardStore = create<DashboardState>()(
     setActiveAgentId(agentId);
     set({ activeAgentId: agentId, sessionMode: resolveSessionMode(token, agentId) });
     if (token) {
-      set({ loading: true });
+      set({ overviewRefreshing: true });
       try {
         const [overview, wallet, withdrawalsResult] = await Promise.all([
           api.getOverview(),
@@ -728,11 +783,11 @@ export const useDashboardStore = create<DashboardState>()(
           withdrawalRequests: withdrawalsResult.withdrawals,
           withdrawalRequestsError: withdrawalsResult.error,
           withdrawalRequestsLoaded: true,
-          loading: false,
+          overviewRefreshing: false,
         });
         await get().loadContactRequests();
       } catch (err: any) {
-        set({ error: err.message, loading: false });
+        set({ error: err.message, overviewRefreshing: false });
       }
     }
   },

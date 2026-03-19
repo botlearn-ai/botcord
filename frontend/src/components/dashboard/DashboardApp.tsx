@@ -16,8 +16,8 @@ import AgentBrowser from "./AgentBrowser";
 import WalletPanel from "./WalletPanel";
 import StripeReturnBanner from "./StripeReturnBanner";
 import AgentGateModal from "./AgentGateModal";
+import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import { useDashboardStore } from "@/store/useDashboardStore";
-import { Loader2 } from "lucide-react";
 
 // --- Legacy Context Proxy for Compatibility ---
 // We keep the context but make it a proxy to the Zustand store 
@@ -85,7 +85,12 @@ export default function DashboardApp() {
   const pathname = usePathname();
   const supabase = createClient();
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
-  const isAuthPending = !store.authResolved;
+  const shouldShowBootstrapSkeleton =
+    !store.authResolved
+    && !store.user
+    && !store.activeAgentId
+    && !store.overview
+    && !store.token;
   const shouldBlockForAgent = store.authResolved && store.sessionMode === "authed-no-agent";
 
   // Auth sync
@@ -190,12 +195,8 @@ export default function DashboardApp() {
 
   return (
     <div className="relative flex h-screen overflow-hidden">
-      {isAuthPending ? (
-        <div className="flex flex-1 items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_42%),linear-gradient(180deg,_rgba(6,11,19,0.98),_rgba(2,6,12,1))]">
-          <div className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-neon-cyan">
-            <Loader2 className="h-5 w-5 animate-spin" />
-          </div>
-        </div>
+      {shouldShowBootstrapSkeleton ? (
+        <DashboardShellSkeleton />
       ) : !shouldBlockForAgent ? (
         <>
           <Sidebar />

@@ -59,12 +59,6 @@ as $$
     where room_id in (select room_id from filtered_rooms)
     group by room_id
   ),
-  latest_message_time as (
-    select room_id, max(created_at) as last_created_at
-    from message_records
-    where room_id in (select room_id from filtered_rooms)
-    group by room_id
-  ),
   ranked_messages as (
     select
       mr.room_id,
@@ -86,9 +80,8 @@ as $$
         order by mr.created_at desc, mr.id desc
       ) as rn
     from message_records mr
-    inner join latest_message_time lmt
-      on lmt.room_id = mr.room_id and lmt.last_created_at = mr.created_at
     left join agents a on a.agent_id = mr.sender_id
+    where mr.room_id in (select room_id from filtered_rooms)
   ),
   latest_message as (
     select
