@@ -46,7 +46,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
       return;
     }
 
-    if (!isAuthedReady || !state.token) return;
+    if (!isAuthedReady) return;
     setSubmitting(true);
     try {
       await api.createWithdrawal({

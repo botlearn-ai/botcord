@@ -41,7 +41,7 @@ function GridSkeletonCards({ count = 6 }: { count?: number }) {
 
 function ContactsMainPane() {
   const router = useRouter();
-  const { state, selectAgent, loadContactRequests, respondContactRequest, loadRoomMessages } = useDashboard();
+  const { state, selectAgent, loadContactRequests, respondContactRequest, loadRoomMessages, isAuthedReady } = useDashboard();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const isRequestsView = state.contactsView === "requests";
@@ -151,7 +151,7 @@ function ContactsMainPane() {
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {isRequestsView ? (
-          state.contactRequestsLoading || (state.token && state.loading && !state.overview) ? (
+          state.contactRequestsLoading || (isAuthedReady && state.loading && !state.overview) ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">No pending requests</p>
@@ -187,7 +187,7 @@ function ContactsMainPane() {
             </div>
           )
         ) : isRoomsView ? (
-          state.token && state.loading && !state.overview ? (
+          isAuthedReady && state.loading && !state.overview ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">No joined rooms found</p>
@@ -218,7 +218,7 @@ function ContactsMainPane() {
               ))}
             </div>
           )
-        ) : state.token && state.loading && !state.overview ? (
+        ) : isAuthedReady && state.loading && !state.overview ? (
           <GridSkeletonCards />
         ) : pageItems.length === 0 ? (
           <p className="text-xs text-text-secondary">No contacts found</p>

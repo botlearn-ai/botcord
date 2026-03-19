@@ -60,7 +60,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
   };
 
   const handleCheckout = async () => {
-    if (!activePackage || !isAuthedReady || !state.token) return;
+    if (!activePackage || !isAuthedReady) return;
     setError("");
     setSubmitting(true);
 

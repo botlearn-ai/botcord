@@ -14,7 +14,7 @@ export default function StripeReturnBanner() {
   const [polling, setPolling] = useState(false);
 
   useEffect(() => {
-    if (!isAuthedReady || !state.token) return;
+    if (!isAuthedReady) return;
 
     const params = new URLSearchParams(window.location.search);
     const walletTopup = params.get("wallet_topup");

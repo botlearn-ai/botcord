@@ -45,7 +45,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
 
     const amountMinor = Math.round(amountNum * 100);
 
-    if (!isAuthedReady || !state.token) return;
+    if (!isAuthedReady) return;
     setSubmitting(true);
     try {
       await api.createTransfer({
