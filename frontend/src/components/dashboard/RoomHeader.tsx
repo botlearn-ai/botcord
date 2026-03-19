@@ -19,8 +19,9 @@ export default function RoomHeader() {
   const [showShareModal, setShowShareModal] = useState(false);
   const locale = useLanguage();
   const t = roomList[locale];
-  const authRoom = state.overview?.rooms.find((r) => r.room_id === state.focusedRoomId);
-  const room = state.focusedRoomId ? state.getRoomSummary(state.focusedRoomId) : null;
+  const currentRoomId = state.openedRoomId;
+  const authRoom = state.overview?.rooms.find((r) => r.room_id === currentRoomId);
+  const room = currentRoomId ? state.getRoomSummary(currentRoomId) : null;
   const roomRule = room?.rule?.trim();
 
   const handleOpenMembersPanel = () => {

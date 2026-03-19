@@ -161,34 +161,19 @@ export default function DashboardApp() {
           if (!store.messages[roomIdFromPath]) {
             store.loadRoomMessages(roomIdFromPath);
           }
-        } else if (store.openedRoomId !== null) {
-          store.setOpenedRoomId(null);
+        } else {
+          if (store.focusedRoomId !== null) {
+            store.setFocusedRoomId(null);
+          }
+          if (store.openedRoomId !== null) {
+            store.setOpenedRoomId(null);
+          }
         }
       }
     } else if (store.sidebarTab !== "messages") {
       store.setSidebarTab("messages");
     }
   }, [store.authResolved, pathnameParts, store.focusedRoomId, store.openedRoomId, store.overview?.rooms, store.publicRoomDetails, store.publicRooms, store.recentVisitedRooms, store.discoverRooms]);
-
-  // Messages root keeps a lightweight room context for header/list highlight,
-  // but does not auto-open the conversation or fetch message history.
-  useEffect(() => {
-    if (!store.authResolved || store.sidebarTab !== "messages" || store.focusedRoomId) {
-      return;
-    }
-    const candidateRoomId = store.getVisibleMessageRooms()[0]?.room_id;
-    if (!candidateRoomId) {
-      return;
-    }
-    store.setFocusedRoomId(candidateRoomId);
-  }, [
-    store.authResolved,
-    store.sidebarTab,
-    store.focusedRoomId,
-    store.token,
-    store.overview?.rooms,
-    store.recentVisitedRooms,
-  ]);
 
   return (
     <div className="relative flex h-screen overflow-hidden">

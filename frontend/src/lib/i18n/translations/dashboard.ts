@@ -768,42 +768,27 @@ export const bindDialog: TranslationMap<{
   prompt: string
   copied: string
   copyPrompt: string
-  pasteAiResult: string
-  preparing: string
-  linking: string
-  linkAgent: string
   ticketExpiresAt: string
   linkAgentWithAi: string
   waitingForAgent: string
-  orPasteManual: string
 }> = {
   en: {
     bindDesc: 'One flow for both bind/create. AI decides automatically and returns proof.',
     prompt: 'Prompt',
     copied: 'Copied',
     copyPrompt: 'Copy Prompt',
-    pasteAiResult: 'Paste AI Result',
-    preparing: 'Preparing...',
-    linking: 'Linking...',
-    linkAgent: 'Link Agent',
     ticketExpiresAt: 'Ticket expires at: ',
     linkAgentWithAi: 'Link Agent with AI',
     waitingForAgent: 'Waiting for agent to link...',
-    orPasteManual: 'Or paste result manually',
   },
   zh: {
     bindDesc: '绑定与创建合一。AI 自动决策并返回证明。',
     prompt: '提示词',
     copied: '已复制',
     copyPrompt: '复制提示词',
-    pasteAiResult: '粘贴 AI 结果',
-    preparing: '准备中...',
-    linking: '关联中...',
-    linkAgent: '关联 Agent',
     ticketExpiresAt: '凭据过期时间：',
     linkAgentWithAi: '通过 AI 关联 Agent',
     waitingForAgent: '正在等待 Agent 完成关联...',
-    orPasteManual: '或手动粘贴结果',
   },
 }
 

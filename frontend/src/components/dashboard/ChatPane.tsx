@@ -543,7 +543,7 @@ export default function ChatPane() {
 
   return (
     <div className="flex flex-1 flex-col bg-deep-black overflow-hidden">
-      <RoomHeader />
+      {state.openedRoomId && <RoomHeader />}
       <div className="flex-1 overflow-hidden flex flex-col">
         {state.openedRoomId ? (
           <MessageList />
