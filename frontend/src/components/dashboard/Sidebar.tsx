@@ -142,8 +142,7 @@ export default function Sidebar() {
   });
   const recentGuestRooms = state.recentVisitedRooms;
   const showOverviewSkeleton =
-    state.token && state.loading && !state.overview &&
-    (state.sidebarTab === "messages" || state.sidebarTab === "contacts");
+    state.token && state.loading && !state.overview && state.sidebarTab === "messages";
 
   const openRecentGuestRoom = (roomId: string) => {
     state.setSelectedRoomId(roomId);
