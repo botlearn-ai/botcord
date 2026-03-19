@@ -111,17 +111,20 @@ describe("payment tool integration", () => {
       tx_id: transfer.data.tx_id,
     });
     expect(txStatus.data.tx_id).toBe(transfer.data.tx_id);
+    expect(txStatus.result).toContain("Amount: 70.00 COIN");
 
     const ledger = await tool.execute("tool-4", {
       action: "ledger",
       type: "transfer",
     });
     expect(ledger.data.entries).toHaveLength(1);
+    expect(ledger.result).toContain("-70.00 COIN");
 
     const balance = await tool.execute("tool-5", {
       action: "balance",
     });
     expect(balance.data.available_balance_minor).toBe("18000");
+    expect(balance.result).toContain("Available: 180.00 COIN");
   });
 
   it("creates and cancels withdrawals through the unified payment tool", async () => {
@@ -139,17 +142,20 @@ describe("payment tool integration", () => {
       idempotency_key: "wd-1",
     });
     expect(withdrawal.data.status).toBe("pending");
+    expect(withdrawal.result).toContain("Amount: 30.00 COIN");
 
     const cancelled = await tool.execute("tool-7", {
       action: "cancel_withdrawal",
       withdrawal_id: withdrawal.data.withdrawal_id,
     });
     expect(cancelled.data.status).toBe("cancelled");
+    expect(cancelled.result).toContain("Amount: 30.00 COIN");
 
     const balance = await tool.execute("tool-8", {
       action: "balance",
     });
     expect(balance.data.available_balance_minor).toBe("10000");
     expect(balance.data.locked_balance_minor).toBe("0");
+    expect(balance.result).toContain("Available: 100.00 COIN");
   });
 });
