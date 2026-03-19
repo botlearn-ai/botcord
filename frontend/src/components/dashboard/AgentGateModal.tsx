@@ -95,7 +95,6 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
             >
               <Plus className="h-5 w-5 text-neon-cyan" />
               <p className="mt-4 text-base font-semibold text-text-primary">{t.createAgent}</p>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">{t.createDesc}</p>
             </button>
 
             <button
@@ -105,7 +104,6 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
             >
               <Link2 className="h-5 w-5 text-text-primary" />
               <p className="mt-4 text-base font-semibold text-text-primary">{t.linkAgent}</p>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">{t.linkDesc}</p>
             </button>
           </div>
 

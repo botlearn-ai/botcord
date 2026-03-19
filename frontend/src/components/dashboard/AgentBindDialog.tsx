@@ -60,7 +60,7 @@ export default function AgentBindDialog({
       })
       .catch((err: any) => {
         if (!mounted) return;
-        setError(err?.message || "Failed to issue bind ticket");
+        setError(err?.message || t.issueBindTicketFailed);
         setLoadingTicket(false);
       });
 
@@ -159,7 +159,7 @@ export default function AgentBindDialog({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
-      setError("Failed to copy prompt. Please copy manually.");
+      setError(t.copyPromptFailed);
     }
   }
 

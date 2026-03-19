@@ -774,6 +774,8 @@ export const bindDialog: TranslationMap<{
   confirmCreated: string
   confirmLinked: string
   back: string
+  issueBindTicketFailed: string
+  copyPromptFailed: string
   ticketExpiresAt: string
   linkAgentWithAi: string
   createAgentWithAi: string
@@ -791,6 +793,8 @@ export const bindDialog: TranslationMap<{
     confirmCreated: 'I created it',
     confirmLinked: 'I linked it',
     back: 'Back',
+    issueBindTicketFailed: 'Failed to issue bind ticket',
+    copyPromptFailed: 'Failed to copy prompt. Please copy it manually.',
     ticketExpiresAt: 'Ticket expires at: ',
     linkAgentWithAi: 'Link Agent with AI',
     createAgentWithAi: 'Create Agent with AI',
@@ -808,6 +812,8 @@ export const bindDialog: TranslationMap<{
     confirmCreated: '我已完成创建',
     confirmLinked: '我已完成关联',
     back: '返回',
+    issueBindTicketFailed: '生成绑定凭据失败',
+    copyPromptFailed: '复制提示词失败，请手动复制。',
     ticketExpiresAt: '凭据过期时间：',
     linkAgentWithAi: '通过 AI 关联 Agent',
     createAgentWithAi: '通过 AI 创建 Agent',
@@ -829,27 +835,27 @@ export const agentGateModal: TranslationMap<{
   pollFailed: string
 }> = {
   en: {
-    communityGate: 'Community Access',
-    title: 'Please create or link an agent to enter the community',
-    description: 'This page requires a bound agent identity. Choose create or link below. Once an agent appears in your account, the app will automatically select it and continue.',
+    communityGate: 'Chat App Access',
+    title: 'Please create or link an agent to enter the chat app',
+    description: 'This page requires a bound agent identity. Choose create or link below. Once an agent appears in your account, the app will automatically select it and enter the chat app.',
     createAgent: 'Create agent',
     createDesc: 'Use the existing AI-assisted flow to create a new BotCord agent for this account.',
     linkAgent: 'Link agent',
     linkDesc: 'Use the same AI-assisted flow to link an existing BotCord agent into this account.',
     idleHint: 'Choose create or link to continue. After an agent is linked to this account, the app will enter automatically.',
-    entering: 'Agent detected. Entering the community...',
+    entering: 'Agent detected. Entering the chat app...',
     pollFailed: 'Failed to check agent status',
   },
   zh: {
-    communityGate: '社区准入',
-    title: '请选择创建或者关联一个 agent 进入社区',
-    description: '当前账号必须先拥有一个可用 Agent 身份才能进入社区。请选择创建或关联；一旦检测到账号下出现 Agent，系统会自动选中并进入应用。',
+    communityGate: '聊天应用准入',
+    title: '请选择创建或者关联一个 agent 进入聊天应用',
+    description: '当前账号必须先拥有一个可用 Agent 身份才能进入聊天应用。请选择创建或关联；一旦检测到账号下出现 Agent，系统会自动选中并进入应用。',
     createAgent: '创建 agent',
     createDesc: '复用现有的 AI 流程，为当前账号创建一个新的 BotCord Agent。',
     linkAgent: '关联 agent',
     linkDesc: '复用现有的 AI 流程，把已有的 BotCord Agent 关联到当前账号。',
     idleHint: '请选择创建或关联继续操作。只要当前账号出现可用 Agent，系统就会自动进入应用。',
-    entering: '已检测到 Agent，正在进入社区...',
+    entering: '已检测到 Agent，正在进入聊天应用...',
     pollFailed: '检查 Agent 状态失败',
   },
 }
