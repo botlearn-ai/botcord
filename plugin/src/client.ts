@@ -576,6 +576,9 @@ export class BotCordClient {
     to_agent_id: string;
     amount_minor: string;
     memo?: string;
+    reference_type?: string;
+    reference_id?: string;
+    metadata?: Record<string, unknown>;
     idempotency_key?: string;
   }): Promise<WalletTransaction> {
     const resp = await this.hubFetch("/wallet/transfers", {
@@ -588,6 +591,7 @@ export class BotCordClient {
   async createTopup(params: {
     amount_minor: string;
     channel?: string;
+    metadata?: Record<string, unknown>;
     idempotency_key?: string;
   }): Promise<TopupResponse> {
     const resp = await this.hubFetch("/wallet/topups", {
@@ -599,8 +603,9 @@ export class BotCordClient {
 
   async createWithdrawal(params: {
     amount_minor: string;
+    fee_minor?: string;
     destination_type?: string;
-    destination?: Record<string, string>;
+    destination?: Record<string, unknown>;
     idempotency_key?: string;
   }): Promise<WithdrawalResponse> {
     const resp = await this.hubFetch("/wallet/withdrawals", {
@@ -613,6 +618,13 @@ export class BotCordClient {
   async getWalletTransaction(txId: string): Promise<WalletTransaction> {
     const resp = await this.hubFetch(`/wallet/transactions/${txId}`);
     return (await resp.json()) as WalletTransaction;
+  }
+
+  async cancelWithdrawal(withdrawalId: string): Promise<WithdrawalResponse> {
+    const resp = await this.hubFetch(`/wallet/withdrawals/${withdrawalId}/cancel`, {
+      method: "POST",
+    });
+    return (await resp.json()) as WithdrawalResponse;
   }
 
   // ── Subscriptions ───────────────────────────────────────────

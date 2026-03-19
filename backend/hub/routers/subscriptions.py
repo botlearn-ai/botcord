@@ -205,6 +205,7 @@ async def cancel_subscription(
             db, subscription_id, current_agent
         )
         await db.commit()
+        await db.refresh(subscription)
     except ValueError as err:
         raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
     return _subscription_response(subscription)

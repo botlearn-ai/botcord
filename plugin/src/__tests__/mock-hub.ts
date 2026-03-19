@@ -570,7 +570,11 @@ export function createMockHub() {
 
       const txId = uniqueId("tx_");
       const now = nowIso();
-      const metadataJson = body.memo ? JSON.stringify({ memo: body.memo }) : null;
+      const metadata = {
+        ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+        ...(body.memo ? { memo: body.memo } : {}),
+      };
+      const metadataJson = Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
       const tx = {
         tx_id: txId,
         type: "transfer",
@@ -754,10 +758,16 @@ export function createMockHub() {
       const result = {
         withdrawal_id: wdId,
         tx_id: txId,
+        agent_id: agentId,
+        asset_code: "COIN",
         status: "pending",
         amount_minor: String(amount),
-        fee_minor: "0",
+        fee_minor: String(body.fee_minor ?? "0"),
+        destination_type: body.destination_type ?? null,
+        review_note: null,
         created_at: now,
+        reviewed_at: null,
+        completed_at: null,
       };
       state.walletTransactions.push({
         tx_id: txId,
@@ -781,8 +791,51 @@ export function createMockHub() {
         state.idempotencyKeys.set(body.idempotency_key, result);
       }
 
+      (state as any)._withdrawals = (state as any)._withdrawals || new Map();
+      (state as any)._withdrawals.set(wdId, { ...result, _amount: amount, _agentId: agentId, _txId: txId });
+
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
+      return;
+    }
+
+    // ── Wallet: cancel withdrawal ─────────────────────────────
+    if (path.match(/^\/wallet\/withdrawals\/wd_[^/]+\/cancel$/) && method === "POST") {
+      const withdrawalId = path.split("/")[3];
+      const currentAgent = getAgentIdFromRequest(req, state);
+      const withdrawals = (state as any)._withdrawals as Map<string, any> | undefined;
+      const withdrawal = withdrawals?.get(withdrawalId);
+      const tx = state.walletTransactions.find((item: any) => item.tx_id === withdrawal?._txId);
+      const wallet = ensureWallet(state, currentAgent);
+      const amount = withdrawal?._amount ?? 0;
+
+      if (!withdrawal || withdrawal.agent_id !== currentAgent || !tx || tx.status !== "pending") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Withdrawal not found or cannot be cancelled" }));
+        return;
+      }
+
+      wallet.available_balance_minor += amount;
+      wallet.locked_balance_minor -= amount;
+      tx.status = "cancelled";
+      tx.updated_at = nowIso();
+      withdrawal.status = "cancelled";
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        withdrawal_id: withdrawalId,
+        tx_id: tx.tx_id,
+        agent_id: currentAgent,
+        asset_code: "COIN",
+        amount_minor: tx.amount_minor,
+        fee_minor: tx.fee_minor,
+        status: "cancelled",
+        destination_type: withdrawal.destination_type,
+        review_note: withdrawal.review_note,
+        created_at: tx.created_at,
+        reviewed_at: withdrawal.reviewed_at,
+        completed_at: withdrawal.completed_at,
+      }));
       return;
     }
 

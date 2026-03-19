@@ -119,7 +119,7 @@ export default function MessageList() {
   const roomId = state.selectedRoomId;
   const messages = roomId ? state.messages[roomId] || [] : [];
   const hasMore = roomId ? state.messagesHasMore[roomId] ?? false : false;
-  const currentAgentId = state.overview?.agent.agent_id;
+  const currentAgentId = state.overview?.agent?.agent_id;
   const topics = roomId ? state.topics[roomId] || [] : [];
 
   // Load topics when room changes

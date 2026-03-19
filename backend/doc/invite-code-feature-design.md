@@ -19,19 +19,22 @@
 
 - `backend/`
   - `invite_codes` 数据模型
-  - 邀请码生成、解析、兑换 API
+  - 邀请码生成、解析、兑换、撤销、列表 API（5 个端点）
   - 兑换时直接创建双向联系人关系（跳过 contact_request 流程）
 - `plugin/`
-  - `botcord_contacts` 工具新增 `create_invite` / `use_invite` action
+  - `botcord_contacts` 工具新增 `create_invite` / `use_invite` 两个 action（精简，不含管理类操作）
   - `botcord_account` 工具新增 `register` action（从 CLI 命令提升为工具调用）
   - SKILL.md 更新：邀请消息识别规则 + 新 action 文档
+- `frontend/`
+  - Dashboard 新增「邀请码」管理面板，支持完整 4 个功能：生成、使用（兑换）、撤销、列表查看
+  - 新增 sidebar tab + InvitePanel 组件
+  - api.ts 新增对应 API 方法
 
 ### 2.2 Out of Scope for V1
 
-- 不做前端 UI（交互全在 OpenClaw 对话中完成）
-- 不做邀请码统计/分析面板
 - 不做推荐奖励/裂变机制
 - 不做邀请码批量生成
+- 不做邀请码统计/分析面板
 - 不做 OpenClaw 插件自动安装（SDK 不支持，需用户手动执行一次 CLI）
 
 ---
@@ -267,14 +270,28 @@ Response 200:
 
 ## 7. Plugin Changes
 
+Plugin 侧只暴露两个核心 action（`create_invite` + `use_invite`），管理类操作（撤销、列表）通过 Web Dashboard 完成。
+
 ### 7.1 botcord_contacts — 新增 action
 
 | Action | 参数 | 说明 |
 |--------|------|------|
 | `create_invite` | `expires_hours?`, `max_uses?` | 生成邀请码，返回包含预渲染邀请消息的结果 |
 | `use_invite` | `code` | 解析 + 兑换邀请码，一步完成加好友 |
-| `revoke_invite` | `code` | 撤销自己的邀请码 |
-| `list_invites` | (none) | 查看自己生成的所有邀请码 |
+
+#### create_invite 执行逻辑
+
+```typescript
+case "create_invite": {
+  const result = await client.createInviteCode(args.expires_hours, args.max_uses);
+  return {
+    ok: true,
+    code: result.code,
+    expires_at: result.expires_at,
+    invite_message: result.invite_message,
+  };
+}
+```
 
 #### use_invite 执行逻辑
 
@@ -328,14 +345,6 @@ async resolveInviteCode(code: string): Promise<InviteCodeInfo>
 // 兑换邀请码
 async redeemInviteCode(code: string): Promise<RedeemResult>
   // POST /registry/invite-codes/{code}/redeem
-
-// 撤销邀请码
-async revokeInviteCode(code: string): Promise<void>
-  // DELETE /registry/agents/{agentId}/invite-codes/{code}
-
-// 查看我的邀请码
-async listInviteCodes(): Promise<InviteCodeListResponse>
-  // GET /registry/agents/{agentId}/invite-codes
 ```
 
 ### 7.4 SKILL.md 更新
@@ -362,7 +371,78 @@ async listInviteCodes(): Promise<InviteCodeListResponse>
 
 ---
 
-## 8. 通知机制
+## 8. Frontend Dashboard — 邀请码管理面板
+
+Web 端登录后提供邀请码的完整管理功能，覆盖 4 个操作：生成、使用（兑换）、撤销、列表查看。
+
+### 8.1 UI 结构
+
+在 Sidebar 的 `authNavItems` 中新增一个 tab `invites`，点击后在主区域渲染 `<InvitePanel />`。
+
+```
+Sidebar Rail                    Main Area
+┌──────────┐                   ┌──────────────────────────────┐
+│ 💬 Rooms │                   │                              │
+│ 👥 Contacts│                  │   InvitePanel                │
+│ 🔍 Discover│                  │                              │
+│ 💰 Wallet │                  │   [生成邀请码]  expires / max_uses │
+│ ✉️ Invites │ ◀── 新增         │                              │
+│           │                   │   我的邀请码列表              │
+│           │                   │   ┌────────────────────────┐ │
+│           │                   │   │ Xk9mZ2  3/∞ used      │ │
+│           │                   │   │ expires: 2026-03-19    │ │
+│           │                   │   │ [复制邀请消息] [撤销]    │ │
+│           │                   │   ├────────────────────────┤ │
+│           │                   │   │ Ab3kQ9  1/5 used       │ │
+│           │                   │   │ expires: 2026-03-20    │ │
+│           │                   │   │ [复制邀请消息] [撤销]    │ │
+│           │                   │   └────────────────────────┘ │
+│           │                   │                              │
+│           │                   │   使用邀请码                  │
+│           │                   │   [输入邀请码] [加好友]       │
+│           │                   │                              │
+└──────────┘                   └──────────────────────────────┘
+```
+
+### 8.2 功能详细
+
+#### 生成邀请码
+
+- 点击「生成邀请码」按钮，可选设置有效期（默认 24h）和最大使用次数（默认无限）
+- 调用 `POST /registry/agents/{agent_id}/invite-codes`
+- 生成后显示邀请码卡片 + 「复制邀请消息」按钮（一键复制预渲染的邀请文本到剪贴板）
+
+#### 邀请码列表
+
+- 登录后自动加载 `GET /registry/agents/{agent_id}/invite-codes`
+- 每个邀请码卡片展示：code、已使用次数/最大次数、过期时间、创建时间
+- 过期的码灰显标记
+
+#### 撤销邀请码
+
+- 每个邀请码卡片上的「撤销」按钮
+- 调用 `DELETE /registry/agents/{agent_id}/invite-codes/{code}`
+- 撤销后从列表中移除
+
+#### 使用邀请码（兑换）
+
+- 底部输入框 + 「加好友」按钮
+- 输入邀请码后调用 `POST /registry/invite-codes/{code}/redeem`
+- 成功后显示新好友的 display_name，并刷新联系人列表
+
+### 8.3 前端文件改动
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/lib/types.ts` | 新增 `InviteCode`、`CreateInviteCodeRequest`、`RedeemInviteResult` 类型 |
+| `frontend/src/lib/api.ts` | 新增 `createInviteCode`、`listInviteCodes`、`revokeInviteCode`、`redeemInviteCode` 4 个方法；新增 `deleteRequest` helper（现有只有 GET/POST） |
+| `frontend/src/components/dashboard/DashboardApp.tsx` | state 新增 `inviteCodes` 字段；reducer 新增 `SET_INVITE_CODES` action；context 暴露 `loadInviteCodes`、`createInvite`、`revokeInvite`、`redeemInvite` 方法 |
+| `frontend/src/components/dashboard/Sidebar.tsx` | `authNavItems` 新增 `invites` tab |
+| `frontend/src/components/dashboard/InvitePanel.tsx` | **新文件**，邀请码管理面板组件 |
+
+---
+
+## 9. 通知机制
 
 当邀请码被兑换时，邀请码创建者（Agent A）应收到系统通知。复用现有消息队列：
 
@@ -380,7 +460,7 @@ Payload: {
 
 ---
 
-## 9. 安全考虑
+## 10. 安全考虑
 
 | 风险 | 缓解措施 |
 |------|----------|
@@ -391,7 +471,7 @@ Payload: {
 
 ---
 
-## 10. 清理策略
+## 11. 清理策略
 
 复用 `hub/cleanup.py` 的后台清理循环，增加过期邀请码清理：
 
@@ -400,13 +480,14 @@ Payload: {
 
 ---
 
-## 11. 实现顺序
+## 12. 实现顺序
 
 | Phase | 内容 | 依赖 |
 |-------|------|------|
 | **P1: Backend Model + API** | `invite_codes` / `invite_redemptions` 模型 + migration + 5 个端点 | 无 |
-| **P2: Plugin Client** | `BotCordClient` 新增 4 个方法 | P1 |
-| **P3: Plugin Tool — invite actions** | `botcord_contacts` 新增 4 个 action | P2 |
+| **P2: Plugin Client** | `BotCordClient` 新增 3 个方法（create / resolve / redeem） | P1 |
+| **P3: Plugin Tool** | `botcord_contacts` 新增 `create_invite` + `use_invite` 两个 action | P2 |
 | **P4: Plugin Tool — register action** | `botcord_account` 新增 `register` action | 无（可与 P1 并行） |
 | **P5: SKILL.md + 邀请消息模板** | 更新技能提示 + 邀请码识别规则 | P3 + P4 |
-| **P6: Tests** | Backend 端点测试 + Plugin 工具测试 | P3 |
+| **P6: Frontend Dashboard** | `InvitePanel` 组件 + api 方法 + sidebar tab + state 管理 | P1 |
+| **P7: Tests** | Backend 端点测试 + Plugin 工具测试 | P3 + P6 |

@@ -155,6 +155,12 @@ class Room(Base):
     join_policy: Mapped[RoomJoinPolicy] = mapped_column(
         Enum(RoomJoinPolicy), nullable=False, default=RoomJoinPolicy.invite_only
     )
+    required_subscription_product_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("subscription_products.product_id"),
+        nullable=True,
+        index=True,
+    )
     max_members: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_send: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_invite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

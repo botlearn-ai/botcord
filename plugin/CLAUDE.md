@@ -27,7 +27,7 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 `index.ts` is the entry point. On `register(api)`, it:
 1. Stores the OpenClaw `PluginRuntime` reference in `src/runtime.ts` (module-level singleton)
 2. Registers the channel plugin (`src/channel.ts`)
-3. Registers 9 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_wallet`, `botcord_notify`
+3. Registers 10 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_wallet`, `botcord_payment`, `botcord_notify`
 4. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection)
 5. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials)
 

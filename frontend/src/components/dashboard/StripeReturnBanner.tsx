@@ -40,7 +40,7 @@ export default function StripeReturnBanner() {
       const poll = async () => {
         for (let i = 0; i < 10; i++) {
           try {
-            const res = await api.getStripeSessionStatus(state.token!, sessionId);
+            const res = await api.getStripeSessionStatus(sessionId);
             setStatus(res);
             if (res.wallet_credited) {
               setPolling(false);

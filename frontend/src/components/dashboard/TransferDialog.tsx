@@ -48,7 +48,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
     if (!state.token) return;
     setSubmitting(true);
     try {
-      await api.createTransfer(state.token, {
+      await api.createTransfer({
         to_agent_id: trimmedRecipient,
         amount_minor: String(amountMinor),
         memo: memo.trim() || undefined,
