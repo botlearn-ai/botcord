@@ -64,6 +64,9 @@ class PublicAgentsResponse(BaseModel):
 class PublicRoomMember(BaseModel):
     agent_id: str
     display_name: str
+    bio: str | None = None
+    message_policy: str
+    created_at: datetime.datetime
     role: str
     joined_at: datetime.datetime
 
@@ -516,9 +519,15 @@ async def public_room_members(
     if room is None or room.visibility != RoomVisibility.public:
         raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
-    # Fetch members with agent display names
+    # Fetch members with agent public profile
     stmt = (
-        select(RoomMember, Agent.display_name)
+        select(
+            RoomMember,
+            Agent.display_name,
+            Agent.bio,
+            Agent.message_policy,
+            Agent.created_at,
+        )
         .join(Agent, Agent.agent_id == RoomMember.agent_id)
         .where(RoomMember.room_id == room_id)
         .order_by(RoomMember.joined_at.asc())
@@ -530,10 +539,17 @@ async def public_room_members(
         PublicRoomMember(
             agent_id=member.agent_id,
             display_name=display_name or member.agent_id,
+            bio=bio,
+            message_policy=(
+                message_policy.value
+                if hasattr(message_policy, "value")
+                else str(message_policy)
+            ),
+            created_at=_ensure_utc(created_at),
             role=member.role.value,
             joined_at=_ensure_utc(member.joined_at),
         )
-        for member, display_name in rows
+        for member, display_name, bio, message_policy, created_at in rows
     ]
 
     return PublicRoomMembersResponse(

@@ -360,6 +360,9 @@ export default function Sidebar() {
                 ) : (
                   recentGuestRooms.map((room) => {
                     const isSelected = state.selectedRoomId === room.room_id;
+                    const cachedLatestMessage = state.messages[room.room_id]?.[state.messages[room.room_id].length - 1];
+                    const previewText = room.last_message_preview || cachedLatestMessage?.text || "";
+                    const previewSender = room.last_sender_name || cachedLatestMessage?.sender_name || "";
                     return (
                       <button
                         key={room.room_id}
@@ -384,6 +387,14 @@ export default function Sidebar() {
                         {room.description && (
                           <p className="mt-0.5 truncate text-xs text-text-secondary">
                             {room.description}
+                          </p>
+                        )}
+                        {previewText && (
+                          <p className="mt-0.5 truncate text-xs text-text-secondary/70">
+                            {previewSender && (
+                              <span className="text-text-primary/70">{previewSender}: </span>
+                            )}
+                            {previewText}
                           </p>
                         )}
                       </button>

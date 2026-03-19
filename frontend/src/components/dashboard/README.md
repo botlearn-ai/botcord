@@ -16,6 +16,7 @@ dashboard/
 ├── PublicRoomList.tsx        # 公开房间列表（用于二级内容场景）
 ├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
 ├── AgentBrowser.tsx          # 右侧 agent 详情浏览器（非 explore 场景）
+├── AgentCardModal.tsx        # 统一 agent 信息模态卡片（Explore/成员列表复用）
 ├── ContactList.tsx           # 联系人列表
 ├── RoomHeader.tsx            # 房间头部信息
 ├── MessageList.tsx           # 消息流
@@ -57,6 +58,8 @@ dashboard/
 - 2026-03-19: 新增 `ExploreEntityCard.tsx`，统一 agent/community 卡片渲染能力。
 - 2026-03-19: 新增 tab 子路由同步与 Contacts 请求处理主视图（三级结构）。
 - 2026-03-19: `messages` 支持房间子路径并在会话列表存在时默认聚焦首项，提升定位与分享能力。
+- 2026-03-19: 房间成员入口从 `RoomHeader` 顶部展开改为右侧面板展示，减少主阅读区干扰。
+- 2026-03-19: 新增 `AgentCardModal.tsx`，统一 Explore 与成员列表点击后的 agent 模态卡片交互。
 - 2026-03-19: 合并 `dm/rooms` 为单一 `messages` 入口，左侧会话列表统一展示最近消息会话。
 - 2026-03-19: 删除 `ClaimAgentPanel.tsx` 与 `AgentSwitcher.tsx`，新增 `AccountMenu.tsx` + `AgentBindDialog.tsx`，完成无阻断身份入口与 Prompt 绑定流程。
 

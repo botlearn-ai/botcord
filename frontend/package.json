@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "db:functions": "node ./scripts/deploy-db-functions.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

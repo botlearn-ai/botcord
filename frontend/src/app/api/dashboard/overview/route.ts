@@ -8,7 +8,7 @@ import {
   contactRequests,
   messageRecords,
 } from "@/../db/backend-schema";
-import { eq, and, count, desc } from "drizzle-orm";
+import { eq, and, count, desc, inArray, sql } from "drizzle-orm";
 import { requireAgent } from "@/lib/require-agent";
 import { extractTextFromEnvelope } from "@/app/api/_helpers";
 
@@ -53,55 +53,86 @@ export async function GET() {
     .where(eq(roomMembers.agentId, agentId))
     .orderBy(desc(roomMembers.joinedAt));
 
-  // Add last message preview
-  const roomsWithPreview = await Promise.all(
-    memberRooms.map(async (room) => {
-      const [memberCountRow] = await backendDb
-        .select({ count: count() })
-        .from(roomMembers)
-        .where(eq(roomMembers.roomId, room.roomId));
-
-      const [lastMsg] = await backendDb
+  const roomIds = memberRooms.map((room) => room.roomId);
+  const memberCounts = roomIds.length
+    ? await backendDb
         .select({
-          msgId: messageRecords.msgId,
-          hubMsgId: messageRecords.hubMsgId,
+          roomId: roomMembers.roomId,
+          count: count(),
+        })
+        .from(roomMembers)
+        .where(inArray(roomMembers.roomId, roomIds))
+        .groupBy(roomMembers.roomId)
+    : [];
+  const memberCountByRoomId = new Map(memberCounts.map((row) => [row.roomId, row.count]));
+
+  const lastMessageTime = backendDb
+    .select({
+      roomId: messageRecords.roomId,
+      lastCreatedAt: sql<Date>`max(${messageRecords.createdAt})`.as("last_created_at"),
+    })
+    .from(messageRecords)
+    .where(
+      roomIds.length
+        ? and(sql`${messageRecords.roomId} is not null`, inArray(messageRecords.roomId, roomIds))
+        : sql`false`,
+    )
+    .groupBy(messageRecords.roomId)
+    .as("last_message_time");
+
+  const lastMessages = roomIds.length
+    ? await backendDb
+        .select({
+          roomId: messageRecords.roomId,
           senderId: messageRecords.senderId,
+          senderDisplayName: agents.displayName,
           envelopeJson: messageRecords.envelopeJson,
           createdAt: messageRecords.createdAt,
         })
         .from(messageRecords)
-        .where(eq(messageRecords.roomId, room.roomId))
-        .orderBy(desc(messageRecords.createdAt))
-        .limit(1);
-
-      let lastMessagePreview: string | null = null;
-      let lastMessageAt: string | null = null;
-      if (lastMsg) {
-        try {
-          const envelope = JSON.parse(lastMsg.envelopeJson) as Record<string, unknown>;
-          const { text } = extractTextFromEnvelope(envelope);
-          lastMessagePreview = text.slice(0, 200);
-          lastMessageAt = lastMsg.createdAt.toISOString();
-        } catch {
-          // ignore
-        }
-      }
-
-      return {
-        room_id: room.roomId,
-        name: room.name,
-        description: room.description,
-        rule: room.rule,
-        owner_id: room.ownerId,
-        visibility: room.visibility,
-        member_count: memberCountRow.count,
-        my_role: room.role,
-        last_message_preview: lastMessagePreview,
-        last_message_at: lastMessageAt,
-        last_sender_name: lastMsg?.senderId ?? null,
-      };
-    }),
+        .innerJoin(
+          lastMessageTime,
+          and(
+            eq(messageRecords.roomId, lastMessageTime.roomId),
+            eq(messageRecords.createdAt, lastMessageTime.lastCreatedAt),
+          ),
+        )
+        .leftJoin(agents, eq(messageRecords.senderId, agents.agentId))
+    : [];
+  const lastMessageByRoomId = new Map(
+    lastMessages
+      .filter((row) => Boolean(row.roomId))
+      .map((row) => [row.roomId as string, row]),
   );
+
+  const roomsWithPreview = memberRooms.map((room) => {
+    const lastMsg = lastMessageByRoomId.get(room.roomId);
+    let lastMessagePreview: string | null = null;
+    let lastMessageAt: string | null = null;
+    if (lastMsg) {
+      try {
+        const envelope = JSON.parse(lastMsg.envelopeJson) as Record<string, unknown>;
+        const { text } = extractTextFromEnvelope(envelope);
+        lastMessagePreview = text.slice(0, 200);
+        lastMessageAt = lastMsg.createdAt.toISOString();
+      } catch {
+        // ignore malformed envelope
+      }
+    }
+    return {
+      room_id: room.roomId,
+      name: room.name,
+      description: room.description,
+      rule: room.rule,
+      owner_id: room.ownerId,
+      visibility: room.visibility,
+      member_count: memberCountByRoomId.get(room.roomId) ?? 0,
+      my_role: room.role,
+      last_message_preview: lastMessagePreview,
+      last_message_at: lastMessageAt,
+      last_sender_name: lastMsg?.senderDisplayName || lastMsg?.senderId || null,
+    };
+  });
   const joinedAtByRoomId = new Map(memberRooms.map((room) => [room.roomId, room.joinedAt.toISOString()]));
   roomsWithPreview.sort((a, b) => {
     const aTime = a.last_message_at ? Date.parse(a.last_message_at) : 0;

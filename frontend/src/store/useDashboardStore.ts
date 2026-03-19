@@ -412,8 +412,16 @@ export const useDashboardStore = create<DashboardState>()(
   },
 
   loadTopics: async (roomId: string) => {
-    const { token } = get();
+    const { token, activeAgentId } = get();
     if (!token) return;
+    const resolvedAgentId = activeAgentId || getActiveAgentId();
+    if (!resolvedAgentId) {
+      set((state) => ({ topics: { ...state.topics, [roomId]: [] } }));
+      return;
+    }
+    if (!activeAgentId) {
+      set({ activeAgentId: resolvedAgentId });
+    }
     try {
       const result = await api.getTopics(token, roomId);
       set((state) => ({ topics: { ...state.topics, [roomId]: result.topics } }));

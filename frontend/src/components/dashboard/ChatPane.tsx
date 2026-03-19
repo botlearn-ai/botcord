@@ -16,8 +16,8 @@ import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
 import JoinGuidePrompt from "./JoinGuidePrompt";
 import SearchBar from "./SearchBar";
-import CopyableId from "@/components/ui/CopyableId";
 import ExploreEntityCard from "./ExploreEntityCard";
+import AgentCardModal from "./AgentCardModal";
 import { PublicRoom } from "@/lib/types";
 
 const EXPLORE_PAGE_SIZE = 12;
@@ -434,43 +434,17 @@ function ExploreMainPane() {
         </div>
       </div>
 
-      {selectedAgentForModal && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5">
-            <div className="mb-3 flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-text-primary">{selectedAgentForModal.display_name}</h3>
-                <p className="mt-1 text-xs text-text-secondary">{t.agentDetails}</p>
-              </div>
-              <button
-                onClick={() => setSelectedAgentIdForModal(null)}
-                className="rounded border border-glass-border px-2 py-0.5 text-xs text-text-secondary hover:text-text-primary"
-              >
-                {t.close}
-              </button>
-            </div>
-            <p className="mb-3 text-sm text-text-secondary">{selectedAgentForModal.bio || t.noBio}</p>
-            <div className="mb-4 flex items-center gap-2">
-              <CopyableId value={selectedAgentForModal.agent_id} />
-              <span className="rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
-                {selectedAgentForModal.message_policy}
-              </span>
-            </div>
-            {alreadyInContacts ? (
-              <p className="text-xs text-neon-green">{t.alreadyInContacts}</p>
-            ) : requestAlreadyPending ? (
-              <p className="text-xs text-neon-cyan">{t.friendRequestAlreadyPending}</p>
-            ) : (
-              <button
-                onClick={handleSendFriendRequest}
-                className="w-full rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
-              >
-                {t.sendFriendRequest}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <AgentCardModal
+        isOpen={Boolean(selectedAgentForModal)}
+        agent={selectedAgentForModal}
+        loading={false}
+        error={null}
+        onClose={() => setSelectedAgentIdForModal(null)}
+        alreadyInContacts={alreadyInContacts}
+        requestAlreadyPending={requestAlreadyPending}
+        onSendFriendRequest={handleSendFriendRequest}
+        onRetry={() => null}
+      />
     </div>
   );
 }

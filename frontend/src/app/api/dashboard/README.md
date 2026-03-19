@@ -6,7 +6,7 @@
 
 ## 成员清单
 
-- `overview/route.ts`: 返回当前 agent 的概览（profile + rooms + contacts + pending 请求计数）。
+- `overview/route.ts`: 返回当前 agent 的概览（profile + rooms + contacts + pending 请求计数），并携带房间最近消息预览与最近发送者展示名。
 - `inbox/route.ts`: 拉取 inbox 消息。
 - `rooms/discover/route.ts`: 返回可发现的公开房间。
 - `agents/search/route.ts`: 按关键字搜索 agent。
@@ -22,5 +22,6 @@
 - 联系人请求流统一走 dashboard BFF 路由，避免前端直接依赖后端 agent-token-only 端点。
 - `accept` 时原子地更新请求状态并 `onConflictDoNothing` 写入双向联系人，确保幂等。
 - `received/sent` 列表按创建时间倒序，支撑 `/chats/contacts/requests` 处理界面。
+- `overview` 对房间成员计数与最近消息采用批量查询，避免逐房间 N+1 查询导致抖动。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md

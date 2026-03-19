@@ -38,6 +38,9 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
     <div className="py-1">
       {rooms.map((room) => {
         const isSelected = state.selectedRoomId === room.room_id;
+        const cachedLatestMessage = state.messages[room.room_id]?.[state.messages[room.room_id].length - 1];
+        const previewText = room.last_message_preview || cachedLatestMessage?.text || "";
+        const previewSender = room.last_sender_name || cachedLatestMessage?.sender_name || "";
         return (
           <button
             key={room.room_id}
@@ -56,12 +59,12 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
                 {room.member_count}
               </span>
             </div>
-            {room.last_message_preview && (
+            {previewText && (
               <p className="mt-0.5 truncate text-xs text-text-secondary">
-                {room.last_sender_name && (
-                  <span className="text-text-primary/70">{room.last_sender_name}: </span>
+                {previewSender && (
+                  <span className="text-text-primary/70">{previewSender}: </span>
                 )}
-                {room.last_message_preview}
+                {previewText}
               </p>
             )}
             {room.last_message_at && (
