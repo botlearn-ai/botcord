@@ -49,6 +49,14 @@ export default function Navbar() {
               {navT[link.key]}
             </Link>
           ))}
+          <a
+            href="https://botlearn.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-text-secondary transition-colors duration-200 hover:text-neon-cyan"
+          >
+            botlearn
+          </a>
         </div>
 
         <div className="flex items-center gap-4">
@@ -136,6 +144,15 @@ export default function Navbar() {
                 {navT[link.key]}
               </Link>
             ))}
+            <a
+              href="https://botlearn.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setMenuOpen(false)}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
+            >
+              botlearn
+            </a>
           </div>
         </div>
       )}

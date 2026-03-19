@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 node:crypto 生成随机 nonce 与 HMAC 签名，依赖环境变量 BIND_PROOF_SECRET
+ * [INPUT]: 依赖 node:crypto 生成随机 nonce 与 HMAC 签名，依赖服务端 secret 环境变量
  * [OUTPUT]: 对外提供 bind_ticket 的签发与校验能力（issueBindTicket/verifyBindTicket）
  * [POS]: Next.js BFF 的一次性绑定凭证模块，约束 bind_proof 的时效与归属
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -15,12 +15,34 @@ interface BindTicketPayload {
   jti: string;
 }
 
-function getSecret(): string {
-  const secret = process.env.BIND_PROOF_SECRET || process.env.JWT_SECRET;
-  if (!secret || !secret.trim()) {
-    throw new Error("BIND_PROOF_SECRET is not configured");
+const SECRET_ENV_KEYS = [
+  "BIND_PROOF_SECRET",
+  "BOTCORD_BIND_PROOF_SECRET",
+  "JWT_SECRET",
+  "AUTH_SECRET",
+  "NEXTAUTH_SECRET",
+] as const;
+
+function normalizeSecret(raw: string | undefined): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  // Accept common copy-paste style: KEY="value"
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1).trim();
   }
-  return secret;
+  return trimmed;
+}
+
+function getSecret(): string {
+  for (const key of SECRET_ENV_KEYS) {
+    const value = normalizeSecret(process.env[key]);
+    if (value) return value;
+  }
+  throw new Error(`Bind proof secret is not configured. Set one of: ${SECRET_ENV_KEYS.join(", ")}`);
 }
 
 function signPart(payloadPart: string): string {

@@ -235,12 +235,27 @@ export default function AgentBindDialog({ onClose, onSuccess }: AgentBindDialogP
               {copied ? "Copied" : "Copy Prompt"}
             </button>
           </div>
-          <textarea
-            readOnly
-            value={promptText}
-            rows={10}
-            className="w-full resize-none rounded border border-glass-border bg-deep-black-light p-2 font-mono text-[11px] text-text-primary outline-none"
-          />
+          {loadingTicket ? (
+            <div className="w-full rounded border border-glass-border bg-deep-black-light p-2">
+              <div className="space-y-1.5 animate-pulse">
+                <div className="h-3 w-[82%] rounded bg-glass-border/70" />
+                <div className="h-3 w-[95%] rounded bg-glass-border/60" />
+                <div className="h-3 w-[76%] rounded bg-glass-border/70" />
+                <div className="h-3 w-[90%] rounded bg-glass-border/60" />
+                <div className="h-3 w-[68%] rounded bg-glass-border/70" />
+                <div className="h-3 w-[88%] rounded bg-glass-border/60" />
+                <div className="h-3 w-[72%] rounded bg-glass-border/70" />
+                <div className="h-3 w-[85%] rounded bg-glass-border/60" />
+              </div>
+            </div>
+          ) : (
+            <textarea
+              readOnly
+              value={promptText}
+              rows={10}
+              className="w-full resize-none rounded border border-glass-border bg-deep-black-light p-2 font-mono text-[11px] text-text-primary outline-none"
+            />
+          )}
           {expiresAt && (
             <p className="mt-2 text-[10px] text-text-secondary">
               Ticket expires at: {new Date(expiresAt * 1000).toLocaleString()}
