@@ -9,6 +9,7 @@ import {
 import { BotCordClient } from "../client.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import { formatCoinAmount } from "./coin-format.js";
+import { executeContactOnlyTransfer, formatFollowUpDeliverySummary } from "./payment-transfer.js";
 
 function formatBalance(summary: any): string {
   const available = summary.available_balance_minor ?? "0";
@@ -233,7 +234,7 @@ export function createPaymentTool() {
           case "transfer": {
             if (!args.to_agent_id) return { error: "to_agent_id is required" };
             if (!args.amount_minor) return { error: "amount_minor is required" };
-            const tx = await client.createTransfer({
+            const transfer = await executeContactOnlyTransfer(client, {
               to_agent_id: args.to_agent_id,
               amount_minor: args.amount_minor,
               memo: args.memo,
@@ -242,7 +243,10 @@ export function createPaymentTool() {
               metadata: args.metadata,
               idempotency_key: args.idempotency_key,
             });
-            return { result: formatTransaction(tx), data: tx };
+            return {
+              result: `${formatTransaction(transfer.tx)}\n${formatFollowUpDeliverySummary(transfer)}`,
+              data: transfer,
+            };
           }
 
           case "topup": {

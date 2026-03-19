@@ -3,6 +3,7 @@ import { BotCordClient } from "../client.js";
 import { generateKeypair } from "../crypto.js";
 import { createMockHub } from "./mock-hub.js";
 import { createPaymentTool } from "../tools/payment.js";
+import { createWalletTool } from "../tools/wallet.js";
 import { setConfigGetter } from "../runtime.js";
 
 const senderKeys = generateKeypair();
@@ -78,15 +79,18 @@ describe("payment tool integration", () => {
     const tool = createPaymentTool();
 
     await seedBalance(sender, "25000");
+    hub.state.contacts = [
+      { contact_agent_id: "ag_receiver", display_name: "Receiver", created_at: new Date().toISOString() },
+    ];
     makeToolConfig("ag_sender", senderKeys.privateKey);
 
-    const recipient = await tool.execute("tool-1", {
+    const recipient: any = await tool.execute("tool-1", {
       action: "recipient_verify",
       agent_id: "ag_receiver",
     });
     expect(recipient.data.agent_id).toBe("ag_receiver");
 
-    const transfer = await tool.execute("tool-2", {
+    const transfer: any = await tool.execute("tool-2", {
       action: "transfer",
       to_agent_id: "ag_receiver",
       amount_minor: "7000",
@@ -97,34 +101,119 @@ describe("payment tool integration", () => {
       idempotency_key: "pay-1",
     });
 
-    expect(transfer.data.type).toBe("transfer");
-    expect(transfer.data.to_agent_id).toBe("ag_receiver");
-    expect(transfer.data.reference_type).toBe("invoice");
-    expect(transfer.data.reference_id).toBe("inv_123");
-    expect(JSON.parse(transfer.data.metadata_json)).toEqual({
+    expect(transfer.data.tx.type).toBe("transfer");
+    expect(transfer.data.tx.to_agent_id).toBe("ag_receiver");
+    expect(transfer.data.tx.reference_type).toBe("invoice");
+    expect(transfer.data.tx.reference_id).toBe("inv_123");
+    expect(JSON.parse(transfer.data.tx.metadata_json)).toEqual({
       order_id: "ord_456",
       memo: "invoice settlement",
     });
+    expect(transfer.data.transfer_record_message.sent).toBe(true);
+    expect(transfer.data.notifications.payer.sent).toBe(true);
+    expect(transfer.data.notifications.payee.sent).toBe(true);
+    expect(transfer.result).toContain("Transfer record message: sent");
+    expect(transfer.result).toContain("Payer notification: sent");
+    expect(transfer.result).toContain("Payee notification: sent");
+    expect(hub.state.messages).toHaveLength(3);
 
-    const txStatus = await tool.execute("tool-3", {
+    const envelopes = hub.state.messages.map((entry) => entry.envelope);
+    const recordMessage = envelopes.find((envelope) =>
+      envelope.type === "message" &&
+      envelope.to === "ag_receiver" &&
+      typeof envelope.payload?.text === "string" &&
+      envelope.payload.text.includes("[BotCord Transfer]"),
+    );
+    const payerNotice = envelopes.find((envelope) =>
+      envelope.type === "system" &&
+      envelope.to === "ag_sender" &&
+      typeof envelope.payload?.text === "string" &&
+      envelope.payload.text.includes("[BotCord Notice] Transfer sent"),
+    );
+    const payeeNotice = envelopes.find((envelope) =>
+      envelope.type === "system" &&
+      envelope.to === "ag_receiver" &&
+      typeof envelope.payload?.text === "string" &&
+      envelope.payload.text.includes("[BotCord Notice] Payment received"),
+    );
+
+    expect(recordMessage).toBeTruthy();
+    expect(payerNotice).toBeTruthy();
+    expect(payeeNotice).toBeTruthy();
+    if (!recordMessage || !payerNotice || !payeeNotice) {
+      throw new Error("expected transfer follow-up messages to be present");
+    }
+    expect(recordMessage.payload.text).toContain(transfer.data.tx.tx_id);
+
+    const txStatus: any = await tool.execute("tool-3", {
       action: "tx_status",
-      tx_id: transfer.data.tx_id,
+      tx_id: transfer.data.tx.tx_id,
     });
-    expect(txStatus.data.tx_id).toBe(transfer.data.tx_id);
+    expect(txStatus.data.tx_id).toBe(transfer.data.tx.tx_id);
     expect(txStatus.result).toContain("Amount: 70.00 COIN");
 
-    const ledger = await tool.execute("tool-4", {
+    const ledger: any = await tool.execute("tool-4", {
       action: "ledger",
       type: "transfer",
     });
     expect(ledger.data.entries).toHaveLength(1);
     expect(ledger.result).toContain("-70.00 COIN");
 
-    const balance = await tool.execute("tool-5", {
+    const balance: any = await tool.execute("tool-5", {
       action: "balance",
     });
     expect(balance.data.available_balance_minor).toBe("18000");
     expect(balance.result).toContain("Available: 180.00 COIN");
+  });
+
+  it("rejects transfers to non-contacts", async () => {
+    const sender = makeClient("ag_sender", senderKeys.privateKey);
+    const tool = createPaymentTool();
+
+    await seedBalance(sender, "25000");
+    makeToolConfig("ag_sender", senderKeys.privateKey);
+
+    const transfer: any = await tool.execute("tool-non-contact", {
+      action: "transfer",
+      to_agent_id: "ag_receiver",
+      amount_minor: "7000",
+    });
+
+    expect(transfer.error).toContain("only allowed between contacts");
+    expect(hub.state.walletTransactions).toHaveLength(1);
+    expect(hub.state.messages).toHaveLength(0);
+  });
+
+  it("keeps transfer successful when follow-up messages fail", async () => {
+    const sender = makeClient("ag_sender", senderKeys.privateKey);
+    const tool = createPaymentTool();
+
+    await seedBalance(sender, "25000");
+    hub.state.contacts = [
+      { contact_agent_id: "ag_receiver", display_name: "Receiver", created_at: new Date().toISOString() },
+    ];
+    hub.state.overrides.set("/hub/send", {
+      status: 500,
+      body: { error: "send failed" },
+    });
+    makeToolConfig("ag_sender", senderKeys.privateKey);
+
+    const transfer: any = await tool.execute("tool-followup-fail", {
+      action: "transfer",
+      to_agent_id: "ag_receiver",
+      amount_minor: "7000",
+    });
+
+    expect(transfer.data.tx.type).toBe("transfer");
+    expect(transfer.data.transfer_record_message.sent).toBe(false);
+    expect(transfer.data.notifications.payer.sent).toBe(false);
+    expect(transfer.data.notifications.payee.sent).toBe(false);
+    expect(transfer.result).toContain("Warning: some follow-up messages failed to send.");
+
+    const balance: any = await tool.execute("tool-followup-fail-balance", {
+      action: "balance",
+    });
+    expect(balance.data.available_balance_minor).toBe("18000");
   });
 
   it("creates and cancels withdrawals through the unified payment tool", async () => {
@@ -134,7 +223,7 @@ describe("payment tool integration", () => {
     await seedBalance(sender, "10000");
     makeToolConfig("ag_sender", senderKeys.privateKey);
 
-    const withdrawal = await tool.execute("tool-6", {
+    const withdrawal: any = await tool.execute("tool-6", {
       action: "withdraw",
       amount_minor: "3000",
       destination_type: "mock_bank",
@@ -144,18 +233,44 @@ describe("payment tool integration", () => {
     expect(withdrawal.data.status).toBe("pending");
     expect(withdrawal.result).toContain("Amount: 30.00 COIN");
 
-    const cancelled = await tool.execute("tool-7", {
+    const cancelled: any = await tool.execute("tool-7", {
       action: "cancel_withdrawal",
       withdrawal_id: withdrawal.data.withdrawal_id,
     });
     expect(cancelled.data.status).toBe("cancelled");
     expect(cancelled.result).toContain("Amount: 30.00 COIN");
 
-    const balance = await tool.execute("tool-8", {
+    const balance: any = await tool.execute("tool-8", {
       action: "balance",
     });
     expect(balance.data.available_balance_minor).toBe("10000");
     expect(balance.data.locked_balance_minor).toBe("0");
     expect(balance.result).toContain("Available: 100.00 COIN");
+  });
+});
+
+describe("wallet tool integration", () => {
+  it("applies the same contact-only transfer policy and follow-up messages", async () => {
+    const sender = makeClient("ag_sender", senderKeys.privateKey);
+    const tool = createWalletTool();
+
+    await seedBalance(sender, "15000");
+    hub.state.contacts = [
+      { contact_agent_id: "ag_receiver", display_name: "Receiver", created_at: new Date().toISOString() },
+    ];
+    makeToolConfig("ag_sender", senderKeys.privateKey);
+
+    const transfer: any = await tool.execute("wallet-tool-1", {
+      action: "transfer",
+      to_agent_id: "ag_receiver",
+      amount_minor: "5000",
+      memo: "legacy wallet",
+    });
+
+    expect(transfer.data.tx.amount_minor).toBe("5000");
+    expect(transfer.data.transfer_record_message.sent).toBe(true);
+    expect(transfer.data.notifications.payer.sent).toBe(true);
+    expect(transfer.data.notifications.payee.sent).toBe(true);
+    expect(hub.state.messages).toHaveLength(3);
   });
 });
