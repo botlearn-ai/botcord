@@ -479,6 +479,25 @@ class RoomListResponse(BaseModel):
     rooms: list[RoomResponse]
 
 
+class SubscriptionRoomCreatorPolicyUpsertRequest(BaseModel):
+    allowed_to_create: bool = False
+    max_active_rooms: int = Field(..., ge=0)
+    note: str | None = None
+
+
+class SubscriptionRoomCreatorPolicyResponse(BaseModel):
+    agent_id: str
+    allowed_to_create: bool
+    max_active_rooms: int
+    note: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class SubscriptionRoomCreatorPolicyListResponse(BaseModel):
+    policies: list[SubscriptionRoomCreatorPolicyResponse]
+
+
 # --- Dashboard schemas ---
 
 
