@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, createContext, useContext } from "react";
+import { useEffect, createContext, useContext, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
@@ -22,6 +22,15 @@ import { useDashboardStore } from "@/store/useDashboardStore";
 // so we don't have to refactor all child components at once.
 
 const DashboardContext = createContext<ReturnType<typeof useDashboardStore> | null>(null);
+
+function decodeRoomIdFromPath(segment: string | undefined): string | null {
+  if (!segment) return null;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
 
 export function useDashboard() {
   const store = useDashboardStore();
@@ -56,7 +65,9 @@ export function useDashboard() {
 export default function DashboardApp() {
   const store = useDashboardStore();
   const pathname = usePathname();
+  const router = useRouter();
   const supabase = createClient();
+  const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
 
   // Auth sync
   useEffect(() => {
@@ -89,7 +100,7 @@ export default function DashboardApp() {
 
   // Route sync: /chats/{tab}/{subtab?}
   useEffect(() => {
-    const parts = pathname.split("/").filter(Boolean);
+    const parts = pathnameParts;
     // ["chats", tab?, subtab?]
     const tab = parts[1];
     const subtab = parts[2];
@@ -109,10 +120,58 @@ export default function DashboardApp() {
       if (tab === "contacts" && (subtab === "agents" || subtab === "requests" || subtab === "rooms")) {
         store.setContactsView(subtab);
       }
+      if (normalizedTab === "messages") {
+        const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
+        if (roomIdFromPath) {
+          if (store.selectedRoomId !== roomIdFromPath) {
+            store.setSelectedRoomId(roomIdFromPath);
+          }
+          if (!store.messages[roomIdFromPath]) {
+            store.loadRoomMessages(roomIdFromPath);
+          }
+        }
+      }
     } else if (store.sidebarTab !== "messages") {
       store.setSidebarTab("messages");
     }
-  }, [pathname]);
+  }, [pathnameParts, store.selectedRoomId]);
+
+  // Default focus for message list: if messages tab has room candidates but no selected room,
+  // pick the first one and sync URL for precise location.
+  useEffect(() => {
+    if (store.sidebarTab !== "messages" || store.selectedRoomId) {
+      return;
+    }
+    const joinedRooms = store.overview?.rooms || [];
+    const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
+    const recentUnjoinedRooms = store.recentVisitedRooms.filter((room) => !joinedRoomIds.has(room.room_id));
+    const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
+      const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+      const bTs = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+      return bTs - aTs;
+    });
+    const candidateRoomId = (store.token ? mergedRooms : store.recentVisitedRooms)[0]?.room_id;
+    if (!candidateRoomId) {
+      return;
+    }
+    store.setSelectedRoomId(candidateRoomId);
+    const nextPath = `/chats/messages/${encodeURIComponent(candidateRoomId)}`;
+    if (pathname !== nextPath) {
+      router.replace(nextPath);
+    }
+    if (!store.messages[candidateRoomId]) {
+      store.loadRoomMessages(candidateRoomId);
+    }
+  }, [
+    store.sidebarTab,
+    store.selectedRoomId,
+    store.token,
+    store.overview?.rooms,
+    store.recentVisitedRooms,
+    store.messages,
+    pathname,
+    router,
+  ]);
 
   return (
     <div className="relative flex h-screen overflow-hidden">

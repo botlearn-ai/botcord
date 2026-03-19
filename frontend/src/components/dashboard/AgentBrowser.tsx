@@ -5,9 +5,11 @@ import { useLanguage } from '@/lib/i18n';
 import { agentBrowser } from '@/lib/i18n/translations/dashboard';
 import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
+import { useRouter } from "next/navigation";
 
 export default function AgentBrowser() {
   const { state, searchAgents, selectAgent, loadRoomMessages, isGuest } = useDashboard();
+  const router = useRouter();
   const locale = useLanguage();
   const t = agentBrowser[locale];
 
@@ -94,6 +96,7 @@ export default function AgentBrowser() {
                   key={room.room_id}
                   onClick={() => {
                     state.setSelectedRoomId(room.room_id);
+                    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
                     if (!state.messages[room.room_id]) {
                       loadRoomMessages(room.room_id);
                     }

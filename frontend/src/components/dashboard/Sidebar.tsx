@@ -146,15 +146,18 @@ export default function Sidebar() {
 
   const openRecentGuestRoom = (roomId: string) => {
     state.setSelectedRoomId(roomId);
-    router.push("/chats/messages");
+    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
     }
   };
 
   const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet") => {
+    const selectedRoomPath = state.selectedRoomId
+      ? `/chats/messages/${encodeURIComponent(state.selectedRoomId)}`
+      : "/chats/messages";
     const pathByTab: Record<typeof tab, string> = {
-      messages: "/chats/messages",
+      messages: selectedRoomPath,
       contacts: `/chats/contacts/${state.contactsView}`,
       explore: `/chats/explore/${state.exploreView}`,
       wallet: "/chats/wallet",

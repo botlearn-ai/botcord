@@ -41,6 +41,7 @@ dashboard/
 - 社区（room）卡片比 agent 卡片承载更多运营信息：成员数、活跃时间、最近消息预览、可见性。
 - agent 卡片强调拟人化表达：头像首字母、persona 文案、沟通风格提示。
 - 导航状态与地址同构：一级 tab 使用 `/chats/{tab}`（消息统一为 `messages`），二级导航使用 `/chats/{tab}/{subtab}`。
+- 消息会话支持可定位子路径：`/chats/messages/{roomId}` 与 `selectedRoomId` 双向同步，支持直达与刷新恢复。
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
 - 无 agent 时不再阻断 `/chats` 主界面；绑定和创建统一收敛到左下角 `AccountMenu`。
@@ -55,6 +56,7 @@ dashboard/
 
 - 2026-03-19: 新增 `ExploreEntityCard.tsx`，统一 agent/community 卡片渲染能力。
 - 2026-03-19: 新增 tab 子路由同步与 Contacts 请求处理主视图（三级结构）。
+- 2026-03-19: `messages` 支持房间子路径并在会话列表存在时默认聚焦首项，提升定位与分享能力。
 - 2026-03-19: 合并 `dm/rooms` 为单一 `messages` 入口，左侧会话列表统一展示最近消息会话。
 - 2026-03-19: 删除 `ClaimAgentPanel.tsx` 与 `AgentSwitcher.tsx`，新增 `AccountMenu.tsx` + `AgentBindDialog.tsx`，完成无阻断身份入口与 Prompt 绑定流程。
 

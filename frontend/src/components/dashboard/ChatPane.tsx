@@ -106,7 +106,7 @@ function ContactsMainPane() {
   const openJoinedRoom = (roomId: string) => {
     state.setSelectedRoomId(roomId);
     state.setSidebarTab("messages");
-    router.push("/chats/messages");
+    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
     }
@@ -313,7 +313,7 @@ function ExploreMainPane() {
   const openRoomFromExplore = (room: PublicRoom) => {
     state.setSelectedRoomId(room.room_id);
     state.setSidebarTab("messages");
-    router.push("/chats/messages");
+    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
     state.addRecentPublicRoom(room);
     if (!state.messages[room.room_id]) {
       loadRoomMessages(room.room_id);

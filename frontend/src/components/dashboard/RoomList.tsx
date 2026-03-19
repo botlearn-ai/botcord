@@ -3,6 +3,7 @@
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
+import { useRouter } from "next/navigation";
 
 import { DashboardRoom } from "@/lib/types";
 
@@ -12,12 +13,14 @@ interface RoomListProps {
 
 export default function RoomList({ rooms: propsRooms }: RoomListProps) {
   const { state, loadRoomMessages } = useDashboard();
+  const router = useRouter();
   const locale = useLanguage();
   const t = roomList[locale];
   const rooms = propsRooms || state.overview?.rooms || [];
 
   const handleSelect = (roomId: string) => {
     state.setSelectedRoomId(roomId);
+    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
     }
