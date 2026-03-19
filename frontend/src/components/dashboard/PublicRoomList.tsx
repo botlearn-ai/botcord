@@ -32,9 +32,9 @@ export default function PublicRoomList() {
   const handleSelect = (roomId: string) => {
     const room = state.publicRooms.find((item) => item.room_id === roomId);
     state.setSelectedRoomId(roomId);
-    state.setSidebarTab("rooms");
-    router.push("/chats/rooms");
-    if (room && !state.token) {
+    state.setSidebarTab("messages");
+    router.push("/chats/messages");
+    if (room) {
       state.addRecentPublicRoom(room);
     }
     if (!state.messages[roomId]) {

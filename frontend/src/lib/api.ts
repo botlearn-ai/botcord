@@ -33,6 +33,13 @@ import type {
   ContactRequestListResponse,
 } from "./types";
 
+/**
+ * [INPUT]: 依赖浏览器 fetch 与本地 active-agent 状态，依赖 /api/* BFF 路由与公开 Hub API
+ * [OUTPUT]: 对外提供 api/userApi 请求封装、错误类型 ApiError 与 active-agent 工具函数
+ * [POS]: frontend 数据访问层入口，统一 Dashboard 与用户绑定相关网络调用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ||
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
@@ -336,15 +343,44 @@ const userApi = {
     return res.json();
   },
 
-  async claimAgent(agentId: string, displayName: string, agentToken: string): Promise<UserAgent> {
+  async claimAgent(
+    agentId: string,
+    displayName: string,
+    credentials: {
+      agentToken?: string;
+      bindProof?: { key_id: string; nonce: string; sig: string };
+      bindTicket?: string;
+    },
+  ): Promise<UserAgent> {
+    const payload: Record<string, unknown> = {
+      agent_id: agentId,
+      display_name: displayName,
+    };
+    if (credentials.bindProof) {
+      payload.bind_proof = credentials.bindProof;
+    }
+    if (credentials.bindTicket) {
+      payload.bind_ticket = credentials.bindTicket;
+    }
+    if (credentials.agentToken) {
+      payload.agent_token = credentials.agentToken;
+    }
+
     const res = await fetch("/api/users/me/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agent_id: agentId,
-        display_name: displayName,
-        agent_token: agentToken,
-      }),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, data.error || res.statusText);
+    }
+    return res.json();
+  },
+
+  async issueBindTicket(): Promise<{ bind_ticket: string; nonce: string; expires_at: number }> {
+    const res = await fetch("/api/users/me/agents/bind-ticket", {
+      method: "POST",
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({ error: res.statusText }));

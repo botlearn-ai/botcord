@@ -4,17 +4,21 @@ import React, { useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { common } from '@/lib/i18n/translations/common';
 import { joinGuide } from '@/lib/i18n/translations/dashboard';
+import { useDashboard } from "./DashboardApp";
 
 interface JoinGuidePromptProps {
   roomId: string;
 }
 
 export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
+  const { state, isGuest, joinRoom } = useDashboard();
   const locale = useLanguage();
   const tc = common[locale];
   const t = joinGuide[locale];
   
   const [copied, setCopied] = useState(false);
+  const isJoined = !!state.overview?.rooms.find((room) => room.room_id === roomId);
+  const isJoining = state.joiningRoomId === roomId;
 
   // Combined prompt: "Please join this room: ID. If not installed, read xxx to install."
   const combinedPrompt = `${t.joinPrompt}${roomId}\n\n${t.installHint}${t.installPrompt}`;
@@ -59,6 +63,19 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
           )}
         </button>
       </div>
+
+      {!isGuest && !isJoined && (
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={() => joinRoom(roomId)}
+            disabled={isJoining}
+            className="rounded-md border border-neon-green/40 bg-neon-green/10 px-2 py-1 text-[10px] font-medium text-neon-green transition-all hover:bg-neon-green/20 disabled:opacity-50"
+          >
+            {isJoining ? "Joining..." : "Join room (enable notifications)"}
+          </button>
+        </div>
+      )}
       
       <div className="group relative overflow-hidden rounded border border-glass-border/50 bg-deep-black-light/50">
         <div className="p-2.5 font-mono text-[10px] leading-relaxed text-text-secondary/80 bg-deep-black/30 whitespace-pre-wrap break-all">

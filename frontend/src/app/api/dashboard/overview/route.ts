@@ -102,6 +102,16 @@ export async function GET() {
       };
     }),
   );
+  const joinedAtByRoomId = new Map(memberRooms.map((room) => [room.roomId, room.joinedAt.toISOString()]));
+  roomsWithPreview.sort((a, b) => {
+    const aTime = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+    const bTime = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+    if (aTime !== bTime) return bTime - aTime;
+    // Fallback: latest join first when both rooms have no message yet.
+    const aJoin = Date.parse(joinedAtByRoomId.get(a.room_id) ?? "0");
+    const bJoin = Date.parse(joinedAtByRoomId.get(b.room_id) ?? "0");
+    return bJoin - aJoin;
+  });
 
   // Contacts
   const contactList = await backendDb

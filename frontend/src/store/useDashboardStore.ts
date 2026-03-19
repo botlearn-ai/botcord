@@ -23,9 +23,9 @@ interface DashboardState {
   selectedAgentProfile: AgentProfile | null;
   selectedAgentConversations: DashboardRoom[] | null;
   searchResults: AgentProfile[] | null;
-  sidebarTab: "dm" | "rooms" | "contacts" | "explore" | "wallet";
+  sidebarTab: "messages" | "contacts" | "explore" | "wallet";
   exploreView: "rooms" | "agents";
-  contactsView: "agents" | "requests";
+  contactsView: "agents" | "requests" | "rooms";
   discoverRooms: DiscoverRoom[];
   discoverLoading: boolean;
   joiningRoomId: string | null;
@@ -104,7 +104,7 @@ const initialState = {
   selectedAgentProfile: null,
   selectedAgentConversations: null,
   searchResults: null,
-  sidebarTab: "explore" as const,
+  sidebarTab: "messages" as const,
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
   discoverRooms: [],
@@ -139,7 +139,7 @@ export const useDashboardStore = create<DashboardState>()(
       setToken: (token) => {
         set({ token, error: null });
         if (token) {
-          set({ sidebarTab: 'dm' });
+          set({ sidebarTab: 'messages' });
         }
       },
 
@@ -186,7 +186,7 @@ export const useDashboardStore = create<DashboardState>()(
           pendingFriendRequests: get().pendingFriendRequests,
           publicRooms: get().publicRooms,
           publicAgents: get().publicAgents,
-          sidebarTab: "explore",
+          sidebarTab: "messages",
         });
       },
 
@@ -241,9 +241,21 @@ export const useDashboardStore = create<DashboardState>()(
   loadRoomMessages: async (roomId: string) => {
     const { token } = get();
     try {
-      const result = token 
-        ? await api.getRoomMessages(roomId, { limit: 50 })
-        : await api.getPublicRoomMessages(roomId, { limit: 50 });
+      let result;
+      if (token) {
+        try {
+          result = await api.getRoomMessages(roomId, { limit: 50 });
+        } catch (err: any) {
+          // Logged-in but not joined: fallback to public room history for read-only browsing.
+          if (err?.status === 403) {
+            result = await api.getPublicRoomMessages(roomId, { limit: 50 });
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        result = await api.getPublicRoomMessages(roomId, { limit: 50 });
+      }
       
       set((state) => ({
         messages: { ...state.messages, [roomId]: result.messages.reverse() },
@@ -261,9 +273,20 @@ export const useDashboardStore = create<DashboardState>()(
     
     const oldest = existing[0];
     try {
-      const result = token
-        ? await api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 })
-        : await api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
+      let result;
+      if (token) {
+        try {
+          result = await api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
+        } catch (err: any) {
+          if (err?.status === 403) {
+            result = await api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        result = await api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
+      }
       
       set((state) => ({
         messages: { ...state.messages, [roomId]: [...result.messages.reverse(), ...existing] },

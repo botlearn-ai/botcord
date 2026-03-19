@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖 useDashboardStore 管理 dashboard 全局状态，依赖 Sidebar/ChatPane/WalletPanel 组织主界面
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化与三栏布局编排
+ * [POS]: /chats 页面的顶层容器，连接路由状态与 UI 面板渲染
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useEffect, createContext, useContext } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { usePathname, useRouter } from "next/navigation";
@@ -8,7 +15,6 @@ import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
 import WalletPanel from "./WalletPanel";
 import StripeReturnBanner from "./StripeReturnBanner";
-import ClaimAgentPanel from "./ClaimAgentPanel";
 import { useDashboardStore } from "@/store/useDashboardStore";
 
 // --- Legacy Context Proxy for Compatibility ---
@@ -87,29 +93,31 @@ export default function DashboardApp() {
     // ["chats", tab?, subtab?]
     const tab = parts[1];
     const subtab = parts[2];
-    if (tab === "dm" || tab === "rooms" || tab === "contacts" || tab === "explore" || tab === "wallet") {
-      if (store.sidebarTab !== tab) {
-        store.setSidebarTab(tab);
+    const normalizedTab =
+      tab === "dm" || tab === "rooms"
+        ? "messages"
+        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet"
+          ? tab
+          : null;
+    if (normalizedTab) {
+      if (store.sidebarTab !== normalizedTab) {
+        store.setSidebarTab(normalizedTab);
       }
       if (tab === "explore" && (subtab === "rooms" || subtab === "agents")) {
         store.setExploreView(subtab);
       }
-      if (tab === "contacts" && (subtab === "agents" || subtab === "requests")) {
+      if (tab === "contacts" && (subtab === "agents" || subtab === "requests" || subtab === "rooms")) {
         store.setContactsView(subtab);
       }
-    } else if (store.sidebarTab !== "explore") {
-      store.setSidebarTab("explore");
+    } else if (store.sidebarTab !== "messages") {
+      store.setSidebarTab("messages");
     }
   }, [pathname]);
-
-  const showClaimPanel = store.token && store.user && store.ownedAgents.length === 0 && !store.loading;
 
   return (
     <div className="relative flex h-screen overflow-hidden">
       <Sidebar />
-      {showClaimPanel ? (
-        <ClaimAgentPanel onClaimed={store.refreshUserProfile} />
-      ) : store.sidebarTab === "wallet" ? (
+      {store.sidebarTab === "wallet" ? (
         <WalletPanel />
       ) : (
         <>

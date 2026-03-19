@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖 useDashboard 状态、RoomHeader/MessageList/ExploreEntityCard 等内容组件
+ * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图
+ * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
@@ -32,11 +39,22 @@ function GridSkeletonCards({ count = 6 }: { count?: number }) {
 }
 
 function ContactsMainPane() {
-  const { state, selectAgent, loadContactRequests, respondContactRequest } = useDashboard();
+  const router = useRouter();
+  const { state, selectAgent, loadContactRequests, respondContactRequest, loadRoomMessages } = useDashboard();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const isRequestsView = state.contactsView === "requests";
+  const isRoomsView = state.contactsView === "rooms";
   const contacts = state.overview?.contacts || [];
+  const joinedRooms = useMemo(
+    () =>
+      [...(state.overview?.rooms || [])].sort((a, b) => {
+        const aTime = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+        const bTime = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+        return bTime - aTime;
+      }),
+    [state.overview?.rooms],
+  );
   const pendingReceived = state.contactRequestsReceived.filter((item) => item.state === "pending");
 
   useEffect(() => {
@@ -47,7 +65,7 @@ function ContactsMainPane() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, state.contactsView, contacts.length, pendingReceived.length]);
+  }, [query, state.contactsView, contacts.length, pendingReceived.length, joinedRooms.length]);
 
   const normalized = query.trim().toLowerCase();
   const filteredContacts = contacts.filter((item) => {
@@ -66,26 +84,51 @@ function ContactsMainPane() {
       (item.message || "").toLowerCase().includes(normalized)
     );
   });
+  const filteredJoinedRooms = joinedRooms.filter((room) => {
+    if (!normalized) return true;
+    return (
+      room.name.toLowerCase().includes(normalized) ||
+      room.room_id.toLowerCase().includes(normalized) ||
+      (room.description || "").toLowerCase().includes(normalized)
+    );
+  });
 
-  const list = isRequestsView ? filteredRequests : filteredContacts;
+  const list = isRequestsView
+    ? filteredRequests
+    : isRoomsView
+      ? filteredJoinedRooms
+      : filteredContacts;
   const totalPages = Math.max(1, Math.ceil(list.length / EXPLORE_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * EXPLORE_PAGE_SIZE;
   const pageItems = list.slice(start, start + EXPLORE_PAGE_SIZE);
 
+  const openJoinedRoom = (roomId: string) => {
+    state.setSelectedRoomId(roomId);
+    state.setSidebarTab("messages");
+    router.push("/chats/messages");
+    if (!state.messages[roomId]) {
+      loadRoomMessages(roomId);
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
       <div className="border-b border-glass-border px-5 py-4">
         <h2 className="text-base font-semibold text-text-primary">
-          {isRequestsView ? "Contact Requests" : "Contacts"}
+          {isRequestsView ? "Contact Requests" : isRoomsView ? "Joined Rooms" : "Contacts"}
         </h2>
         <p className="mt-1 text-xs text-text-secondary">
-          {isRequestsView ? "Review and process incoming requests" : "Your agent contacts"}
+          {isRequestsView
+            ? "Review and process incoming requests"
+            : isRoomsView
+              ? "Rooms you joined manually. Notifications only apply here."
+              : "Your agent contacts"}
         </p>
         <div className="mt-3 max-w-xl">
           <SearchBar
             onSearch={setQuery}
-            placeholder={isRequestsView ? "Search requests..." : "Search contacts..."}
+            placeholder={isRequestsView ? "Search requests..." : isRoomsView ? "Search joined rooms..." : "Search contacts..."}
           />
         </div>
       </div>
@@ -124,6 +167,38 @@ function ContactsMainPane() {
                     </button>
                   </div>
                 </div>
+              ))}
+            </div>
+          )
+        ) : isRoomsView ? (
+          state.token && state.loading && !state.overview ? (
+            <GridSkeletonCards />
+          ) : pageItems.length === 0 ? (
+            <p className="text-xs text-text-secondary">No joined rooms found</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {(pageItems as typeof filteredJoinedRooms).map((room) => (
+                <button
+                  key={room.room_id}
+                  onClick={() => openJoinedRoom(room.room_id)}
+                  className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
+                    <span className="rounded border border-neon-green/40 bg-neon-green/10 px-1.5 py-0.5 text-[10px] text-neon-green">
+                      Joined
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>
+                  {room.last_message_preview && (
+                    <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
+                  )}
+                  {room.last_message_at && (
+                    <p className="mt-2 text-[11px] text-text-secondary/70">
+                      Active at {new Date(room.last_message_at).toLocaleString()}
+                    </p>
+                  )}
+                </button>
               ))}
             </div>
           )
@@ -237,11 +312,9 @@ function ExploreMainPane() {
 
   const openRoomFromExplore = (room: PublicRoom) => {
     state.setSelectedRoomId(room.room_id);
-    state.setSidebarTab("rooms");
-    router.push("/chats/rooms");
-    if (isGuest) {
-      state.addRecentPublicRoom(room);
-    }
+    state.setSidebarTab("messages");
+    router.push("/chats/messages");
+    state.addRecentPublicRoom(room);
     if (!state.messages[room.room_id]) {
       loadRoomMessages(room.room_id);
     }
@@ -433,12 +506,17 @@ export default function ChatPane() {
   }
 
   if (!state.selectedRoomId) {
+    const needsAgentSetup = !isGuest && state.ownedAgents.length === 0;
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black">
         <div className="text-center">
           <div className="mb-2 text-4xl opacity-20">💬</div>
           <p className="text-sm text-text-secondary">
-            {isGuest ? t.selectPublicRoom : t.selectRoom}
+            {needsAgentSetup
+              ? "No agent is linked yet. Open bottom-left avatar menu to bind or create one."
+              : isGuest
+                ? t.selectPublicRoom
+                : t.selectRoom}
           </p>
           {isGuest && (
             <button
