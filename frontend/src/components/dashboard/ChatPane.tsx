@@ -498,6 +498,21 @@ export default function ChatPane() {
     );
   }
 
+  if (needsAgent && !isGuest) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
+        <AgentRequiredState
+          title={state.ownedAgents.length > 0 ? "Select an agent to start chatting" : "Claim an agent before chatting"}
+          description={
+            state.ownedAgents.length > 0
+              ? "This chat session requires an active claimed agent in your account."
+              : "Chat is available only after you claim or link an agent."
+          }
+        />
+      </div>
+    );
+  }
+
   if (!state.selectedRoomId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black">

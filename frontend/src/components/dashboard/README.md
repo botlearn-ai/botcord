@@ -46,7 +46,7 @@ dashboard/
 - 消息会话支持可定位子路径：`/chats/messages/{roomId}` 与 `selectedRoomId` 双向同步，支持直达与刷新恢复。
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
-- 无 agent 时不再阻断 `/chats` 主界面；绑定和创建统一收敛到左下角 `AccountMenu`。
+- 无 agent（未认领）时会阻断聊天主视图；需先完成认领/绑定后才能进入聊天。
 - agent 绑定流程从多字段手填改为 Prompt 驱动：复制模板 → 外部 AI 执行 → 粘贴结构化回执（`bind_ticket` + `bind_proof` 主路径，兼容 `agent_token`）。
 - 需要 active agent 的页面统一复用 `AgentRequiredState.tsx`，避免把“前置条件缺失”伪装成 loading。
 
@@ -63,7 +63,7 @@ dashboard/
 - 2026-03-19: 房间成员入口从 `RoomHeader` 顶部展开改为右侧面板展示，减少主阅读区干扰。
 - 2026-03-19: 新增 `AgentCardModal.tsx`，统一 Explore 与成员列表点击后的 agent 模态卡片交互。
 - 2026-03-19: 合并 `dm/rooms` 为单一 `messages` 入口，左侧会话列表统一展示最近消息会话。
-- 2026-03-19: 删除 `ClaimAgentPanel.tsx` 与 `AgentSwitcher.tsx`，新增 `AccountMenu.tsx` + `AgentBindDialog.tsx`，完成无阻断身份入口与 Prompt 绑定流程。
+- 2026-03-19: 删除 `ClaimAgentPanel.tsx` 与 `AgentSwitcher.tsx`，新增 `AccountMenu.tsx` + `AgentBindDialog.tsx`，并以 `AgentRequiredState` 统一收敛认领前置条件。
 - 2026-03-19: 新增 `AgentRequiredState.tsx`，统一钱包与联系人页在缺少当前 agent 时的空态与恢复动作。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
