@@ -773,6 +773,7 @@ export const bindDialog: TranslationMap<{
   confirmCompleted: string
   confirmCreated: string
   confirmLinked: string
+  back: string
   ticketExpiresAt: string
   linkAgentWithAi: string
   createAgentWithAi: string
@@ -789,6 +790,7 @@ export const bindDialog: TranslationMap<{
     confirmCompleted: 'I completed it',
     confirmCreated: 'I created it',
     confirmLinked: 'I linked it',
+    back: 'Back',
     ticketExpiresAt: 'Ticket expires at: ',
     linkAgentWithAi: 'Link Agent with AI',
     createAgentWithAi: 'Create Agent with AI',
@@ -805,6 +807,7 @@ export const bindDialog: TranslationMap<{
     confirmCompleted: '我已完成创建/关联',
     confirmCreated: '我已完成创建',
     confirmLinked: '我已完成关联',
+    back: '返回',
     ticketExpiresAt: '凭据过期时间：',
     linkAgentWithAi: '通过 AI 关联 Agent',
     createAgentWithAi: '通过 AI 创建 Agent',

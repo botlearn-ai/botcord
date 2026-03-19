@@ -11,7 +11,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { bindDialog } from "@/lib/i18n/translations/dashboard";
-import { common } from "@/lib/i18n/translations/common";
 import { X, Copy, Check, Loader2 } from "lucide-react";
 
 type AgentBindMode = "auto" | "create" | "link";
@@ -29,7 +28,6 @@ export default function AgentBindDialog({
 }: AgentBindDialogProps) {
   const locale = useLanguage();
   const t = bindDialog[locale];
-  const tc = common[locale];
 
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,19 +246,19 @@ export default function AgentBindDialog({
 
         {error && <p className="mt-4 text-xs text-red-400 bg-red-400/10 border border-red-400/20 p-2 rounded-lg">{error}</p>}
 
-        <div className="mt-6 flex items-center justify-between gap-3">
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary"
+          >
+            {t.back}
+          </button>
           <button
             onClick={handleConfirmCompleted}
             disabled={loadingTicket || !promptText || isWaitingForAgent}
             className="min-h-11 rounded-xl border border-neon-cyan/60 bg-neon-cyan px-5 py-3 text-sm font-bold text-black transition-all hover:bg-neon-cyan/90 disabled:cursor-not-allowed disabled:border-neon-cyan/20 disabled:bg-neon-cyan/40 disabled:text-black/60"
           >
             {isWaitingForAgent ? t.waitingForAgent : confirmLabel}
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-lg px-4 py-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
-          >
-            {tc.cancel}
           </button>
         </div>
       </div>
