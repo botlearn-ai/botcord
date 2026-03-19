@@ -8,13 +8,14 @@ import {
 } from "../config.js";
 import { BotCordClient } from "../client.js";
 import { getConfig as getAppConfig } from "../runtime.js";
+import { formatCoinAmount } from "./coin-format.js";
 
 function formatProduct(product: any): string {
   return [
     `Product: ${product.product_id}`,
     `Owner: ${product.owner_agent_id}`,
     `Name: ${product.name}`,
-    `Amount: ${product.amount_minor} minor units`,
+    `Amount: ${formatCoinAmount(product.amount_minor)}`,
     `Interval: ${product.billing_interval}`,
     `Status: ${product.status}`,
   ].join("\n");
@@ -26,7 +27,7 @@ function formatSubscription(subscription: any): string {
     `Product: ${subscription.product_id}`,
     `Subscriber: ${subscription.subscriber_agent_id}`,
     `Provider: ${subscription.provider_agent_id}`,
-    `Amount: ${subscription.amount_minor} minor units`,
+    `Amount: ${formatCoinAmount(subscription.amount_minor)}`,
     `Interval: ${subscription.billing_interval}`,
     `Status: ${subscription.status}`,
     `Next charge: ${subscription.next_charge_at}`,

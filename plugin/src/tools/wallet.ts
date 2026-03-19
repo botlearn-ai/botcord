@@ -8,6 +8,7 @@ import {
 } from "../config.js";
 import { BotCordClient } from "../client.js";
 import { getConfig as getAppConfig } from "../runtime.js";
+import { formatCoinAmount } from "./coin-format.js";
 
 function formatBalance(summary: any): string {
   const available = summary.available_balance_minor ?? "0";
@@ -15,9 +16,9 @@ function formatBalance(summary: any): string {
   const total = summary.total_balance_minor ?? "0";
   return [
     `Asset: ${summary.asset_code}`,
-    `Available: ${available} minor units`,
-    `Locked:    ${locked} minor units`,
-    `Total:     ${total} minor units`,
+    `Available: ${formatCoinAmount(available)}`,
+    `Locked:    ${formatCoinAmount(locked)}`,
+    `Total:     ${formatCoinAmount(total)}`,
     `Updated:   ${summary.updated_at}`,
   ].join("\n");
 }
@@ -39,8 +40,8 @@ function formatTransaction(tx: any): string {
     `Transaction: ${tx.tx_id}`,
     `Type:   ${tx.type}`,
     `Status: ${tx.status}`,
-    `Amount: ${tx.amount_minor} minor units`,
-    `Fee:    ${tx.fee_minor} minor units`,
+    `Amount: ${formatCoinAmount(tx.amount_minor)}`,
+    `Fee:    ${formatCoinAmount(tx.fee_minor)}`,
   ];
   if (tx.from_agent_id) lines.push(`From: ${tx.from_agent_id}`);
   if (tx.to_agent_id) lines.push(`To:   ${tx.to_agent_id}`);
@@ -57,7 +58,7 @@ function formatLedger(data: any): string {
 
   const lines = entries.map((e: any) => {
     const dir = e.direction === "credit" ? "+" : "-";
-    return `${e.created_at} | ${dir}${e.amount_minor} | bal=${e.balance_after_minor} | tx=${e.tx_id}`;
+    return `${e.created_at} | ${dir}${formatCoinAmount(e.amount_minor)} | bal=${formatCoinAmount(e.balance_after_minor)} | tx=${e.tx_id}`;
   });
 
   if (data.has_more) {
