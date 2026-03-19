@@ -305,6 +305,7 @@ export interface CreateTopupRequest {
 export interface StripeCheckoutRequest {
   package_code: string;
   idempotency_key: string;
+  quantity: number;
 }
 
 export interface StripeCheckoutResponse {
