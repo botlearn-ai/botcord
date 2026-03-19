@@ -15,6 +15,7 @@ import { sidebar } from '@/lib/i18n/translations/dashboard';
 import { common, nav } from '@/lib/i18n/translations/common';
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
+import AgentRequiredState from "./AgentRequiredState";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -142,7 +143,7 @@ export default function Sidebar() {
   });
   const recentGuestRooms = state.recentVisitedRooms;
   const showOverviewSkeleton =
-    state.token && state.loading && !state.overview && state.sidebarTab === "messages";
+    state.sessionMode === "authed-ready" && state.loading && !state.overview && state.sidebarTab === "messages";
 
   const openRecentGuestRoom = (roomId: string) => {
     state.setSelectedRoomId(roomId);
@@ -452,6 +453,16 @@ export default function Sidebar() {
                     <div className="flex flex-col items-center gap-2 py-4">
                       <p className="text-center text-xs text-red-400">{state.walletError}</p>
                     </div>
+                  ) : state.sessionMode === "authed-no-agent" ? (
+                    <AgentRequiredState
+                      compact
+                      title={state.ownedAgents.length > 0 ? "Select an agent first" : "Link an agent first"}
+                      description={
+                        state.ownedAgents.length > 0
+                          ? "This wallet summary belongs to the current agent. No active agent is selected in this session."
+                          : "Wallet data is attached to an agent identity. Bind or create one before loading balances."
+                      }
+                    />
                   ) : (
                     <p className="text-center text-xs text-text-secondary animate-pulse">{t.loadingWallet}</p>
                   )}

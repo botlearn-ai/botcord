@@ -57,7 +57,10 @@ export function useDashboard() {
     respondContactRequest: store.respondContactRequest,
     switchActiveAgent: store.switchActiveAgent,
     refreshUserProfile: store.refreshUserProfile,
-    isGuest: !store.token,
+    sessionMode: store.sessionMode,
+    isGuest: store.sessionMode === "guest",
+    needsAgent: store.sessionMode === "authed-no-agent",
+    isAuthedReady: store.sessionMode === "authed-ready",
     showLoginModal: () => router.push("/login"),
     handleLogout: store.logout,
   };
@@ -93,11 +96,11 @@ export default function DashboardApp() {
 
   // Guest mode initial load
   useEffect(() => {
-    if (!store.token) {
+    if (store.sessionMode === "guest") {
       store.loadPublicRooms();
       store.loadPublicAgents();
     }
-  }, [store.token]);
+  }, [store.sessionMode]);
 
   // Route sync: /chats/{tab}/{subtab?}
   useEffect(() => {

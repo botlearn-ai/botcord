@@ -20,7 +20,7 @@ function formatCoinAmount(minorStr: string): string {
 }
 
 export default function WithdrawDialog({ onClose, onSuccess, availableBalance }: WithdrawDialogProps) {
-  const { state } = useDashboard();
+  const { state, isAuthedReady } = useDashboard();
   const locale = useLanguage();
   const t = withdrawDialog[locale];
   const [amount, setAmount] = useState("");
@@ -69,7 +69,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
       return;
     }
 
-    if (!state.token) return;
+    if (!isAuthedReady) return;
     setSubmitting(true);
     try {
       await api.createWithdrawal({

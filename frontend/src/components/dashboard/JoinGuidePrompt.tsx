@@ -11,7 +11,7 @@ interface JoinGuidePromptProps {
 }
 
 export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
-  const { state, isGuest, joinRoom } = useDashboard();
+  const { state, isAuthedReady, joinRoom } = useDashboard();
   const locale = useLanguage();
   const tc = common[locale];
   const t = joinGuide[locale];
@@ -64,7 +64,7 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
         </button>
       </div>
 
-      {!isGuest && !isJoined && (
+      {isAuthedReady && !isJoined && (
         <div className="mb-2">
           <button
             type="button"

@@ -233,6 +233,32 @@ export class BotCordClient {
     return (await resp.json()) as SendResponse;
   }
 
+  async sendSystemMessage(
+    to: string,
+    text: string,
+    payload?: Record<string, unknown>,
+    options?: { topic?: string },
+  ): Promise<SendResponse> {
+    const envelope = buildSignedEnvelope({
+      from: this.agentId,
+      to,
+      type: "system",
+      payload: {
+        text,
+        ...(payload || {}),
+      },
+      privateKey: this.privateKey,
+      keyId: this.keyId,
+      topic: options?.topic,
+    });
+    const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
+    const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
+      method: "POST",
+      body: JSON.stringify(envelope),
+    });
+    return (await resp.json()) as SendResponse;
+  }
+
   async sendEnvelope(envelope: BotCordMessageEnvelope, topic?: string): Promise<SendResponse> {
     const topicQuery = topic ? `?topic=${encodeURIComponent(topic)}` : "";
     const resp = await this.hubFetch(`/hub/send${topicQuery}`, {

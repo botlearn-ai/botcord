@@ -18,6 +18,7 @@ import JoinGuidePrompt from "./JoinGuidePrompt";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import AgentCardModal from "./AgentCardModal";
+import AgentRequiredState from "./AgentRequiredState";
 import { PublicRoom } from "@/lib/types";
 
 const EXPLORE_PAGE_SIZE = 12;
@@ -40,7 +41,7 @@ function GridSkeletonCards({ count = 6 }: { count?: number }) {
 
 function ContactsMainPane() {
   const router = useRouter();
-  const { state, selectAgent, loadContactRequests, respondContactRequest, loadRoomMessages } = useDashboard();
+  const { state, selectAgent, loadContactRequests, respondContactRequest, loadRoomMessages, isAuthedReady } = useDashboard();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const isRequestsView = state.contactsView === "requests";
@@ -58,10 +59,10 @@ function ContactsMainPane() {
   const pendingReceived = state.contactRequestsReceived.filter((item) => item.state === "pending");
 
   useEffect(() => {
-    if (state.token) {
+    if (state.sessionMode === "authed-ready") {
       loadContactRequests();
     }
-  }, [state.token]);
+  }, [state.sessionMode, loadContactRequests]);
 
   useEffect(() => {
     setPage(1);
@@ -112,6 +113,21 @@ function ContactsMainPane() {
     }
   };
 
+  if (state.sessionMode === "authed-no-agent" && !state.loading) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
+        <AgentRequiredState
+          title={state.ownedAgents.length > 0 ? "Select an agent to open contacts" : "Link an agent to use contacts"}
+          description={
+            state.ownedAgents.length > 0
+              ? "Contacts, requests, and joined rooms are all scoped to the current agent."
+              : "Contacts are tied to an agent identity. Bind or create one before sending requests or opening joined rooms."
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
       <div className="border-b border-glass-border px-5 py-4">
@@ -135,7 +151,7 @@ function ContactsMainPane() {
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {isRequestsView ? (
-          state.contactRequestsLoading || (state.token && state.loading && !state.overview) ? (
+          state.contactRequestsLoading || (isAuthedReady && state.loading && !state.overview) ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">No pending requests</p>
@@ -171,7 +187,7 @@ function ContactsMainPane() {
             </div>
           )
         ) : isRoomsView ? (
-          state.token && state.loading && !state.overview ? (
+          isAuthedReady && state.loading && !state.overview ? (
             <GridSkeletonCards />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">No joined rooms found</p>
@@ -202,7 +218,7 @@ function ContactsMainPane() {
               ))}
             </div>
           )
-        ) : state.token && state.loading && !state.overview ? (
+        ) : isAuthedReady && state.loading && !state.overview ? (
           <GridSkeletonCards />
         ) : pageItems.length === 0 ? (
           <p className="text-xs text-text-secondary">No contacts found</p>
@@ -257,7 +273,7 @@ function ExploreMainPane() {
   const router = useRouter();
   const locale = useLanguage();
   const t = exploreUi[locale];
-  const { state, loadPublicRooms, loadPublicAgents, loadRoomMessages, selectAgent, sendContactRequest, isGuest, showLoginModal } = useDashboard();
+  const { state, loadPublicRooms, loadPublicAgents, loadRoomMessages, selectAgent, sendContactRequest, isGuest, isAuthedReady, showLoginModal } = useDashboard();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [selectedAgentIdForModal, setSelectedAgentIdForModal] = useState<string | null>(null);
@@ -337,7 +353,7 @@ function ExploreMainPane() {
 
   const handleSendFriendRequest = () => {
     if (!selectedAgentForModal) return;
-    if (!state.token) {
+    if (!isAuthedReady) {
       showLoginModal();
       return;
     }
@@ -450,7 +466,7 @@ function ExploreMainPane() {
 }
 
 export default function ChatPane() {
-  const { state, isGuest, showLoginModal } = useDashboard();
+  const { state, isGuest, needsAgent, isAuthedReady, showLoginModal } = useDashboard();
   const locale = useLanguage();
   const t = chatPane[locale];
 
@@ -462,7 +478,7 @@ export default function ChatPane() {
     return <ContactsMainPane />;
   }
 
-  if (state.token && state.loading && !state.overview) {
+  if (isAuthedReady && state.loading && !state.overview) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
         <div className="border-b border-glass-border px-4 py-3">
@@ -480,13 +496,12 @@ export default function ChatPane() {
   }
 
   if (!state.selectedRoomId) {
-    const needsAgentSetup = !isGuest && state.ownedAgents.length === 0;
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black">
         <div className="text-center">
           <div className="mb-2 text-4xl opacity-20">💬</div>
           <p className="text-sm text-text-secondary">
-            {needsAgentSetup
+            {needsAgent
               ? "No agent is linked yet. Open bottom-left avatar menu to bind or create one."
               : isGuest
                 ? t.selectPublicRoom

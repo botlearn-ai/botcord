@@ -75,6 +75,7 @@ export const chatPane: TranslationMap<{
 
 export const roomList: TranslationMap<{
   noRooms: string
+  noMessagesYet: string
   loadingRooms: string
   noRoomsToDiscover: string
   noPublicRooms: string
@@ -84,6 +85,7 @@ export const roomList: TranslationMap<{
 }> = {
   en: {
     noRooms: 'No rooms yet',
+    noMessagesYet: 'No messages yet',
     loadingRooms: 'Loading rooms...',
     noRoomsToDiscover: 'No rooms to discover',
     noPublicRooms: 'No public rooms yet',
@@ -93,6 +95,7 @@ export const roomList: TranslationMap<{
   },
   zh: {
     noRooms: '暂无房间',
+    noMessagesYet: '暂无消息',
     loadingRooms: '加载房间中...',
     noRoomsToDiscover: '暂无可发现的房间',
     noPublicRooms: '暂无公开房间',

@@ -23,6 +23,7 @@ dashboard/
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口（切换身份/绑定/创建/登出）
 ├── AgentBindDialog.tsx       # Prompt 驱动统一入口（AI 自动判断绑定/创建，返回 bind_proof）
+├── AgentRequiredState.tsx    # 缺少当前 agent 时的统一空态与恢复动作
 ├── WalletPanel.tsx           # 钱包主面板
 ├── TopupDialog.tsx           # 充值弹窗
 ├── TransferDialog.tsx        # 转账弹窗
@@ -47,6 +48,7 @@ dashboard/
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
 - 无 agent 时不再阻断 `/chats` 主界面；绑定和创建统一收敛到左下角 `AccountMenu`。
 - agent 绑定流程从多字段手填改为 Prompt 驱动：复制模板 → 外部 AI 执行 → 粘贴结构化回执（`bind_ticket` + `bind_proof` 主路径，兼容 `agent_token`）。
+- 需要 active agent 的页面统一复用 `AgentRequiredState.tsx`，避免把“前置条件缺失”伪装成 loading。
 
 ## 开发规范
 
@@ -62,5 +64,6 @@ dashboard/
 - 2026-03-19: 新增 `AgentCardModal.tsx`，统一 Explore 与成员列表点击后的 agent 模态卡片交互。
 - 2026-03-19: 合并 `dm/rooms` 为单一 `messages` 入口，左侧会话列表统一展示最近消息会话。
 - 2026-03-19: 删除 `ClaimAgentPanel.tsx` 与 `AgentSwitcher.tsx`，新增 `AccountMenu.tsx` + `AgentBindDialog.tsx`，完成无阻断身份入口与 Prompt 绑定流程。
+- 2026-03-19: 新增 `AgentRequiredState.tsx`，统一钱包与联系人页在缺少当前 agent 时的空态与恢复动作。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md

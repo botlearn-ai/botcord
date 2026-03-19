@@ -23,7 +23,7 @@ interface TopupDialogProps {
 }
 
 export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
-  const { state } = useDashboard();
+  const { state, isAuthedReady } = useDashboard();
   const locale = useLanguage();
   const t = topupDialog[locale];
   const [packages, setPackages] = useState<StripePackageItem[]>([]);
@@ -60,7 +60,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
   };
 
   const handleCheckout = async () => {
-    if (!activePackage || !state.token) return;
+    if (!activePackage || !isAuthedReady) return;
     setError("");
     setSubmitting(true);
 

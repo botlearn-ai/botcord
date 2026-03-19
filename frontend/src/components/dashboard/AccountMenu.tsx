@@ -121,7 +121,7 @@ export default function AccountMenu({
                 onClick={() => setShowBindDialog(true)}
                 className="w-full rounded border border-neon-cyan/40 bg-neon-cyan/10 px-2 py-1.5 text-[11px] font-semibold text-neon-cyan hover:bg-neon-cyan/20"
               >
-                Link with AI
+                Create Agent
               </button>
               <button
                 onClick={() => {
