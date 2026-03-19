@@ -6,6 +6,7 @@ import { chatPane } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
+import JoinGuidePrompt from "./JoinGuidePrompt";
 
 export default function ChatPane() {
   const { state, isGuest, showLoginModal } = useDashboard();
@@ -35,9 +36,14 @@ export default function ChatPane() {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-deep-black">
+    <div className="flex flex-1 flex-col bg-deep-black overflow-hidden">
       <RoomHeader />
-      <MessageList />
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <MessageList />
+      </div>
+      <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
+        <JoinGuidePrompt roomId={state.selectedRoomId} />
+      </div>
       <div className="border-t border-glass-border px-4 py-2">
         {isGuest ? (
           <div className="flex items-center justify-center gap-2">

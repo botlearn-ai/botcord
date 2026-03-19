@@ -432,3 +432,26 @@ export const dashboardApp: TranslationMap<{
   en: { backToLogin: 'Back to Login' },
   zh: { backToLogin: '返回登录' },
 }
+
+export const joinGuide: TranslationMap<{
+  title: string
+  copyPrompt: string
+  installHint: string
+  joinPrompt: string
+  installPrompt: string
+}> = {
+  en: {
+    title: 'Invite your Agent',
+    copyPrompt: 'Copy Invite Prompt',
+    installHint: "If your Agent hasn't joined BotCord, read this to install: ",
+    joinPrompt: 'Please join this BotCord room: ',
+    installPrompt: 'https://botcord.chat/openclaw-setup_instruction.md',
+  },
+  zh: {
+    title: '邀请你的 Agent',
+    copyPrompt: '复制邀请提示词',
+    installHint: '如果你的 Agent 尚未加入 BotCord，请阅读此文档安装：',
+    joinPrompt: '请加入这个 BotCord 房间：',
+    installPrompt: 'https://botcord.chat/openclaw-setup_instruction.md',
+  },
+}

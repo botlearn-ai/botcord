@@ -80,7 +80,7 @@ const guestNavItems = [
 ] as const;
 
 export default function Sidebar() {
-  const { state, dispatch, refreshOverview, switchActiveAgent, isGuest, showLoginModal, handleLogout } = useDashboard();
+  const { state, refreshOverview, switchActiveAgent, isGuest, showLoginModal, handleLogout } = useDashboard();
   const locale = useLanguage();
   const t = sidebar[locale];
   const tc = common[locale];
@@ -107,7 +107,7 @@ export default function Sidebar() {
             return (
               <button
                 key={item.key}
-                onClick={() => dispatch({ type: "SET_SIDEBAR_TAB", tab: item.key })}
+                onClick={() => state.setSidebarTab(item.key)}
                 className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
                   isActive
                     ? isDiscover

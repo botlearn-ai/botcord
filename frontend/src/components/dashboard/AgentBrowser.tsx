@@ -7,7 +7,7 @@ import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
 
 export default function AgentBrowser() {
-  const { state, dispatch, searchAgents, selectAgent, loadRoomMessages, isGuest } = useDashboard();
+  const { state, searchAgents, selectAgent, loadRoomMessages, isGuest } = useDashboard();
   const locale = useLanguage();
   const t = agentBrowser[locale];
 
@@ -17,7 +17,7 @@ export default function AgentBrowser() {
       <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
         <h3 className="text-sm font-semibold text-text-primary">{t.agents}</h3>
         <button
-          onClick={() => dispatch({ type: "TOGGLE_RIGHT_PANEL" })}
+          onClick={() => state.toggleRightPanel()}
           className="rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -93,7 +93,7 @@ export default function AgentBrowser() {
                 <button
                   key={room.room_id}
                   onClick={() => {
-                    dispatch({ type: "SELECT_ROOM", roomId: room.room_id });
+                    state.setSelectedRoomId(room.room_id);
                     if (!state.messages[room.room_id]) {
                       loadRoomMessages(room.room_id);
                     }

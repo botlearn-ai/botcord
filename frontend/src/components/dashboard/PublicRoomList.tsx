@@ -6,7 +6,7 @@ import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 
 export default function PublicRoomList() {
-  const { state, dispatch, loadRoomMessages, loadPublicRooms } = useDashboard();
+  const { state, loadRoomMessages, loadPublicRooms } = useDashboard();
   const locale = useLanguage();
   const t = roomList[locale];
   const tc = common[locale];
@@ -28,7 +28,7 @@ export default function PublicRoomList() {
   }
 
   const handleSelect = (roomId: string) => {
-    dispatch({ type: "SELECT_ROOM", roomId });
+    state.setSelectedRoomId(roomId);
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
     }

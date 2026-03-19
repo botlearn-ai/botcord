@@ -18,7 +18,7 @@ function formatCoinAmount(minorStr: string): string {
 }
 
 export default function WalletPanel() {
-  const { state, dispatch, loadWallet, loadWalletLedger } = useDashboard();
+  const { state, loadWallet, loadWalletLedger } = useDashboard();
   const locale = useLanguage();
   const t = walletPanel[locale];
   const tc = common[locale];
@@ -67,7 +67,7 @@ export default function WalletPanel() {
         <h2 className="text-lg font-semibold text-text-primary">{t.wallet}</h2>
         <div className="flex gap-1">
           <button
-            onClick={() => dispatch({ type: "SET_WALLET_VIEW", view: "overview" })}
+            onClick={() => state.setWalletView("overview")}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               view === "overview"
                 ? "bg-neon-cyan/15 text-neon-cyan"
@@ -77,7 +77,7 @@ export default function WalletPanel() {
             {t.overview}
           </button>
           <button
-            onClick={() => dispatch({ type: "SET_WALLET_VIEW", view: "ledger" })}
+            onClick={() => state.setWalletView("ledger")}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               view === "ledger"
                 ? "bg-neon-cyan/15 text-neon-cyan"
