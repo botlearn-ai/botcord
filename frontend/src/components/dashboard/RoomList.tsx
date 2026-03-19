@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 的会话状态与缓存消息，依赖 next/navigation 做路由跳转
+ * [INPUT]: 依赖 useDashboard 的会话状态与缓存消息，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
  * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项（头像 + 最后一条消息预览）
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -10,7 +10,7 @@
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
-import { useRouter } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 
 import { DashboardRoom } from "@/lib/types";
 import SubscriptionBadge from "./SubscriptionBadge";

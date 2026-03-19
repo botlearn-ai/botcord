@@ -9,7 +9,8 @@
 
 import { useEffect, createContext, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";

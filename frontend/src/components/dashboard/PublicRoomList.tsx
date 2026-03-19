@@ -10,7 +10,7 @@ import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
-import { useRouter } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function PublicRoomList() {

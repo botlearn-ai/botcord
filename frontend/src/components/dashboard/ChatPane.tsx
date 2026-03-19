@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
-import { useRouter } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
 import JoinGuidePrompt from "./JoinGuidePrompt";

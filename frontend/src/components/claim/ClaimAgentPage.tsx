@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 next/navigation 提供 token 读取与跳转，依赖 userApi 完成链接解析与绑定提交
+ * [INPUT]: 依赖 next/navigation 提供 token 读取，依赖 nextjs-toploader/app 提供带进度反馈的跳转，依赖 userApi 完成链接解析与绑定提交
  * [OUTPUT]: 对外提供 ClaimAgentPage 组件，支持从激活认领链接完成 agent 绑定
  * [POS]: /agents/claim 落地页的执行器，复用 bind_proof + bind_ticket 链路
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import { userApi } from "@/lib/api";
 
 interface ParsedBindPayload {
