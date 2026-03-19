@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, createContext, useMemo } from "react";
+import { useEffect, createContext, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
@@ -84,6 +84,7 @@ export default function DashboardApp() {
   const store = useDashboardStore();
   const pathname = usePathname();
   const supabase = createClient();
+  const recoveredAgentRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const shouldShowBootstrapSkeleton =
     !store.authResolved
@@ -91,7 +92,12 @@ export default function DashboardApp() {
     && !store.activeAgentId
     && !store.overview
     && !store.token;
-  const shouldBlockForAgent = store.authResolved && store.sessionMode === "authed-no-agent";
+  const fallbackAgent =
+    store.ownedAgents.find((agent) => agent.is_default) ?? store.ownedAgents[0] ?? null;
+  const shouldShowAgentGate =
+    store.authResolved
+    && store.sessionMode === "authed-no-agent"
+    && store.ownedAgents.length === 0;
 
   // Auth sync
   useEffect(() => {
@@ -193,11 +199,30 @@ export default function DashboardApp() {
     }
   }, [store.authResolved, store.sessionMode, pathnameParts, store.focusedRoomId, store.openedRoomId, store.overview?.rooms, store.publicRoomDetails, store.publicRooms, store.recentVisitedRooms, store.discoverRooms]);
 
+  useEffect(() => {
+    if (
+      !store.authResolved
+      || store.sessionMode !== "authed-no-agent"
+      || store.activeAgentId
+      || !fallbackAgent
+    ) {
+      if (store.sessionMode !== "authed-no-agent") {
+        recoveredAgentRef.current = null;
+      }
+      return;
+    }
+    if (recoveredAgentRef.current === fallbackAgent.agent_id) {
+      return;
+    }
+    recoveredAgentRef.current = fallbackAgent.agent_id;
+    void store.switchActiveAgent(fallbackAgent.agent_id);
+  }, [store.authResolved, store.sessionMode, store.activeAgentId, fallbackAgent, store.switchActiveAgent]);
+
   return (
     <div className="relative flex h-screen overflow-hidden">
       {shouldShowBootstrapSkeleton ? (
         <DashboardShellSkeleton />
-      ) : !shouldBlockForAgent ? (
+      ) : (
         <>
           <Sidebar />
           {store.sidebarTab === "wallet" ? (
@@ -209,11 +234,9 @@ export default function DashboardApp() {
             </>
           )}
         </>
-      ) : (
-        <div className="flex flex-1 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_42%),linear-gradient(180deg,_rgba(6,11,19,0.98),_rgba(2,6,12,1))]" />
       )}
       <StripeReturnBanner />
-      {shouldBlockForAgent ? (
+      {shouldShowAgentGate ? (
         <AgentGateModal
           onAgentReady={async (agentId) => {
             await store.refreshUserProfile();

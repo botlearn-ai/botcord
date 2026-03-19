@@ -15,6 +15,7 @@ import { sidebar } from '@/lib/i18n/translations/dashboard';
 import { common, nav } from '@/lib/i18n/translations/common';
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
+import RoomZeroState from "./RoomZeroState";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -88,7 +89,7 @@ export default function Sidebar() {
 
   const visibleMessageRooms = state.getVisibleMessageRooms();
   const showOverviewSkeleton =
-    state.sessionMode === "authed-ready" && state.loading && !state.overview && state.sidebarTab === "messages";
+    state.sessionMode === "authed-ready" && !state.overview && state.sidebarTab === "messages";
 
   const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet") => {
     if (isGuest && tab === "contacts") {
@@ -185,7 +186,7 @@ export default function Sidebar() {
       {/* Secondary panel */}
       <div className="flex h-full w-[260px] min-w-[260px] flex-col border-r border-glass-border bg-deep-black-light">
         {/* Panel header */}
-        <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
+        <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-text-primary">
               {tabTitles[state.sidebarTab]}
@@ -292,7 +293,7 @@ export default function Sidebar() {
           {!showOverviewSkeleton && state.sidebarTab === "messages" && (
             <div className="py-1">
               {visibleMessageRooms.length === 0 ? (
-                <p className="p-4 text-center text-xs text-text-secondary">{t.noMessages}</p>
+                <RoomZeroState compact />
               ) : (
                 <RoomList rooms={visibleMessageRooms} />
               )}

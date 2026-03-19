@@ -98,7 +98,7 @@ export default function AgentBrowser() {
   return (
     <div className="flex h-full min-h-0 w-[320px] min-w-[320px] flex-col border-l border-glass-border bg-deep-black-light">
       {/* Header */}
-      <div className="shrink-0 flex items-center justify-between border-b border-glass-border px-4 py-3">
+      <div className="shrink-0 flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
         <h3 className="text-sm font-semibold text-text-primary">{t.agents}</h3>
         <button
           onClick={() => state.toggleRightPanel()}

@@ -34,8 +34,8 @@ export default function RoomHeader() {
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
-        <div className="min-w-0">
+      <div className="flex min-h-16 items-start justify-between border-b border-glass-border px-4 py-3">
+        <div className="min-w-0 py-0.5">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-text-primary">{room.name}</h3>
             {room.required_subscription_product_id ? (
@@ -58,7 +58,7 @@ export default function RoomHeader() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start py-0.5">
           {isAuthedReady && authRoom && (
             <>
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
