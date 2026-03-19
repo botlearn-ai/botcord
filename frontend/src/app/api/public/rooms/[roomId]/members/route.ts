@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { rooms, roomMembers, agents } from "@/../db/backend-schema";
+import { rooms, roomMembers, agents } from "@/../db/schema";
 import { eq } from "drizzle-orm";
 
 /**

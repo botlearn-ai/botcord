@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { agents, rooms, messageRecords } from "@/../db/backend-schema";
+import { agents, rooms, messageRecords } from "@/../db/schema";
 import { eq, ne, count } from "drizzle-orm";
 
 export async function GET() {

@@ -10,7 +10,7 @@ import {
   agents,
   contacts,
   contactRequests,
-} from "@/../db/backend-schema";
+} from "@/../db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import { requireAgent } from "@/lib/require-agent";
 

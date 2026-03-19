@@ -5,10 +5,7 @@ import { NextResponse } from 'next/server';
 const { mockResults, createMockChain } = vi.hoisted(() => {
   const mockResults = {
     profile: [] as any[],
-    memberRooms: [] as any[],
-    memberCounts: [] as any[],
-    lastMessageTime: [] as any[],
-    lastMessages: [] as any[],
+    roomRows: [] as any[],
     contactList: [] as any[],
     pendingCount: [] as any[],
   };
@@ -28,12 +25,9 @@ const { mockResults, createMockChain } = vi.hoisted(() => {
         return Promise.resolve([]);
       }),
       then: function(resolve: any) {
-        if (type === 'memberRooms') resolve(mockResults.memberRooms);
-        else if (type === 'memberCounts') resolve(mockResults.memberCounts);
-        else if (type === 'lastMessages') resolve(mockResults.lastMessages);
+        if (type === 'memberRooms') resolve(mockResults.roomRows);
         else if (type === 'contactList') resolve(mockResults.contactList);
         else if (type === 'pendingCount') resolve(mockResults.pendingCount);
-        else if (type === 'lastMessageTime') resolve(mockResults.lastMessageTime);
         else resolve([]);
       }
     };
@@ -79,7 +73,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 // Mock schema
-vi.mock('@/../db/backend-schema', () => ({
+vi.mock('@/../db/schema', () => ({
   agents: { agentId: 'agentId', displayName: 'displayName', bio: 'bio', messagePolicy: 'messagePolicy', createdAt: 'createdAt' },
   rooms: { roomId: 'roomId', name: 'name', description: 'description', rule: 'rule', ownerId: 'ownerId', visibility: 'visibility' },
   roomMembers: { roomId: 'roomId', role: 'role', joinedAt: 'joinedAt', agentId: 'agentId' },
@@ -91,13 +85,10 @@ vi.mock('@/../db/backend-schema', () => ({
 vi.mock('@/../db/backend', () => {
   return {
     backendDb: {
+      execute: vi.fn(() => Promise.resolve(mockResults.roomRows)),
       select: vi.fn((fields) => {
         if ('agentId' in fields && 'bio' in fields) return createMockChain('profile');
-        if ('role' in fields && 'joinedAt' in fields && 'name' in fields) return createMockChain('memberRooms');
         if ('count' in fields && !('roomId' in fields)) return createMockChain('pendingCount');
-        if ('count' in fields && 'roomId' in fields) return createMockChain('memberCounts');
-        if ('lastCreatedAt' in fields) return createMockChain('lastMessageTime');
-        if ('envelopeJson' in fields) return createMockChain('lastMessages');
         if ('contactAgentId' in fields) return createMockChain('contactList');
         return createMockChain('unknown');
       }),
@@ -111,10 +102,7 @@ describe('GET /api/dashboard/overview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockResults.profile = [];
-    mockResults.memberRooms = [];
-    mockResults.memberCounts = [];
-    mockResults.lastMessageTime = [];
-    mockResults.lastMessages = [];
+    mockResults.roomRows = [];
     mockResults.contactList = [];
     mockResults.pendingCount = [];
   });
@@ -145,23 +133,19 @@ describe('GET /api/dashboard/overview', () => {
       messagePolicy: 'everyone',
       createdAt: new Date('2026-01-01T00:00:00Z'),
     }];
-    mockResults.memberRooms = [{
-      roomId: 'room-1',
-      name: 'Test Room',
-      description: 'Room description',
-      rule: 'rule1',
-      ownerId: 'owner-1',
+    mockResults.roomRows = [{
+      room_id: 'room-1',
+      room_name: 'Test Room',
+      room_description: 'Room description',
+      room_rule: 'rule1',
+      required_subscription_product_id: null,
+      owner_id: 'owner-1',
       visibility: 'public',
-      role: 'member',
-      joinedAt: new Date('2026-01-02T00:00:00Z'),
-    }];
-    mockResults.memberCounts = [{ roomId: 'room-1', count: 5 }];
-    mockResults.lastMessages = [{
-      roomId: 'room-1',
-      senderId: 'agent-2',
-      senderDisplayName: 'Sender Agent',
-      envelopeJson: '{"text":"hello world"}',
-      createdAt: new Date('2026-01-03T00:00:00Z'),
+      my_role: 'member',
+      member_count: 5,
+      last_message_preview: 'hello',
+      last_message_at: '2026-01-03T00:00:00.000Z',
+      last_sender_name: 'Sender Agent',
     }];
     mockResults.contactList = [{
       contactAgentId: 'agent-2',

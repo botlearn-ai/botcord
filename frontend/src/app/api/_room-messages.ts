@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { messageRecords, roomMembers, rooms } from "@/../db/backend-schema";
+import { messageRecords, roomMembers, rooms } from "@/../db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { extractTextFromEnvelope } from "@/app/api/_helpers";
 

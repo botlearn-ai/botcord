@@ -5,7 +5,7 @@ import {
   walletAccounts,
   walletTransactions,
   walletEntries,
-} from "@/../db/backend-schema";
+} from "@/../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import {
   generateTopupId,

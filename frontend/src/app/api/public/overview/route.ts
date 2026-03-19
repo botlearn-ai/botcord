@@ -10,7 +10,7 @@ import {
   agents,
   rooms,
   messageRecords,
-} from "@/../db/backend-schema";
+} from "@/../db/schema";
 import { eq, ne, count, desc, sql } from "drizzle-orm";
 
 export async function GET() {

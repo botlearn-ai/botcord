@@ -39,7 +39,7 @@ vi.mock("@/../db/backend", () => ({
   },
 }));
 
-vi.mock("@/../db/backend-schema", () => ({
+vi.mock("@/../db/schema", () => ({
   rooms: {
     visibility: "visibility",
     roomId: "room_id",

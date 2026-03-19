@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { rooms, topics } from "@/../db/backend-schema";
+import { rooms, topics } from "@/../db/schema";
 import { and, desc, eq } from "drizzle-orm";
 
 export async function GET(

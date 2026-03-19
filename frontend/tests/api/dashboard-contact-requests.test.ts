@@ -54,7 +54,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 // Mock schema
-vi.mock('@/../db/backend-schema', () => ({
+vi.mock('@/../db/schema', () => ({
   agents: { agentId: 'agentId', displayName: 'displayName' },
   contacts: { id: 'id', ownerId: 'ownerId', contactAgentId: 'contactAgentId' },
   contactRequests: { id: 'id', fromAgentId: 'fromAgentId', toAgentId: 'toAgentId', state: 'state', message: 'message', createdAt: 'createdAt', resolvedAt: 'resolvedAt' },

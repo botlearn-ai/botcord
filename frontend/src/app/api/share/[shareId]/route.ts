@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { shares, shareMessages, rooms } from "@/../db/backend-schema";
+import { shares, shareMessages, rooms } from "@/../db/schema";
 import { eq, asc } from "drizzle-orm";
 
 export async function GET(

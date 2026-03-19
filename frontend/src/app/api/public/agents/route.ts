@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendDb, isBackendDbConfigured, backendDbConfigError } from "@/../db/backend";
-import { agents } from "@/../db/backend-schema";
+import { agents } from "@/../db/schema";
 import { ne, count, desc, ilike, and } from "drizzle-orm";
 import { escapeLike } from "@/app/api/_helpers";
 

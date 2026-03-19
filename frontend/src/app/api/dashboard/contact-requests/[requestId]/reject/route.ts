@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { contactRequests } from "@/../db/backend-schema";
+import { contactRequests } from "@/../db/schema";
 import { and, eq } from "drizzle-orm";
 import { requireAgent } from "@/lib/require-agent";
 

@@ -1,14 +1,12 @@
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as backendSchema from "./backend-schema";
+import { getSharedSqlClient, dbConfigError, isDbConfigured } from "./client";
+import * as schema from "./schema";
 
-const connectionString = process.env.SUPABASE_DB_URL;
-export const backendDbConfigError =
-  "SUPABASE_DB_URL is not set. Add it to .env.local for Drizzle ORM to connect to PostgreSQL.";
-export const isBackendDbConfigured = Boolean(connectionString);
+export const backendDbConfigError = dbConfigError;
+export const isBackendDbConfigured = isDbConfigured;
 
 export const backendDb = isBackendDbConfigured
-  ? drizzle(postgres(connectionString as string), { schema: backendSchema })
+  ? drizzle(getSharedSqlClient(), { schema })
   : (new Proxy(
       {},
       {

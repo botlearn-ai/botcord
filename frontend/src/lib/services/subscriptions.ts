@@ -3,7 +3,7 @@ import {
   subscriptionProducts,
   agentSubscriptions,
   subscriptionChargeAttempts,
-} from "@/../db/backend-schema";
+} from "@/../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
   generateSubscriptionProductId,

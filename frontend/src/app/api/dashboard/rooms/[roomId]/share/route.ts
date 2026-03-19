@@ -7,7 +7,7 @@ import {
   roomMembers,
   shares,
   shareMessages,
-} from "@/../db/backend-schema";
+} from "@/../db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { requireAgent } from "@/lib/require-agent";
 import { extractTextFromEnvelope } from "@/app/api/_helpers";

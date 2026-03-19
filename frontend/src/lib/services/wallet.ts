@@ -5,7 +5,7 @@ import {
   walletEntries,
   topupRequests,
   withdrawalRequests,
-} from "@/../db/backend-schema";
+} from "@/../db/schema";
 import { eq, and, sql, desc, lt, inArray } from "drizzle-orm";
 import {
   generateTxId,

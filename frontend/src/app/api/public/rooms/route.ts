@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { backendDb, isBackendDbConfigured, backendDbConfigError } from "@/../db/backend";
-import { rooms } from "@/../db/backend-schema";
+import { rooms } from "@/../db/schema";
 import { eq, count, ilike, and, sql } from "drizzle-orm";
 import { escapeLike } from "@/app/api/_helpers";
 
