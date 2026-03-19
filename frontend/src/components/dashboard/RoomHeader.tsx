@@ -19,15 +19,8 @@ export default function RoomHeader() {
   const [showShareModal, setShowShareModal] = useState(false);
   const locale = useLanguage();
   const t = roomList[locale];
-
-  // Auth mode: find room from overview
-  const authRoom = state.overview?.rooms.find((r) => r.room_id === state.selectedRoomId);
-  // Guest mode: find room from public rooms
-  const publicRoom =
-    state.publicRooms.find((r) => r.room_id === state.selectedRoomId)
-    || (state.selectedRoomId ? state.publicRoomDetails[state.selectedRoomId] : undefined);
-
-  const room = authRoom || publicRoom;
+  const authRoom = state.overview?.rooms.find((r) => r.room_id === state.focusedRoomId);
+  const room = state.focusedRoomId ? state.getRoomSummary(state.focusedRoomId) : null;
   const roomRule = room?.rule?.trim();
 
   const handleOpenMembersPanel = () => {

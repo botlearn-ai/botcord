@@ -54,7 +54,8 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
   const rooms = propsRooms || state.overview?.rooms || [];
 
   const handleSelect = (roomId: string) => {
-    state.setSelectedRoomId(roomId);
+    state.setFocusedRoomId(roomId);
+    state.setOpenedRoomId(roomId);
     router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
@@ -72,7 +73,7 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
   return (
     <div className="py-1">
       {rooms.map((room) => {
-        const isSelected = state.selectedRoomId === room.room_id;
+        const isSelected = state.focusedRoomId === room.room_id;
         const cachedLatestMessage = state.messages[room.room_id]?.[state.messages[room.room_id].length - 1];
         const previewText = room.last_message_preview || cachedLatestMessage?.text || t.noMessagesYet;
         const previewSender = room.last_sender_name || cachedLatestMessage?.sender_name || "";

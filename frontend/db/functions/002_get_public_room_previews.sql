@@ -1,3 +1,9 @@
+/*
+ * [INPUT]: 依赖 rooms/room_members/message_records/agents 表，按公开房间筛选并计算最近消息摘要
+ * [OUTPUT]: 对外提供 public.get_public_room_previews(limit, offset, search, room_id, sort) SQL 函数
+ * [POS]: frontend public room 预览聚合层，为公开房间列表、精选房间和单房间回退读取提供单一数据源
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 drop function if exists public.get_public_room_previews(integer, integer, text, varchar, varchar);
 
 create or replace function public.get_public_room_previews(
@@ -59,9 +65,10 @@ as $$
     where room_id in (select room_id from filtered_rooms)
     group by room_id
   ),
-  latest_message as (
+  ranked_messages as (
     select
       mr.room_id,
+      mr.id,
       mr.sender_id as last_sender_id,
       a.display_name as last_sender_name,
       mr.created_at as last_message_at,
@@ -73,11 +80,25 @@ as $$
           ''
         ),
         200
-      ) as last_message_preview
+      ) as last_message_preview,
+      row_number() over (
+        partition by mr.room_id
+        order by mr.created_at desc, mr.id desc
+      ) as rn
     from message_records mr
     inner join latest_message_time lmt
       on lmt.room_id = mr.room_id and lmt.last_created_at = mr.created_at
     left join agents a on a.agent_id = mr.sender_id
+  ),
+  latest_message as (
+    select
+      room_id,
+      last_sender_id,
+      last_sender_name,
+      last_message_at,
+      last_message_preview
+    from ranked_messages
+    where rn = 1
   )
   select
     fr.room_id,

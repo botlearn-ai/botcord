@@ -14,6 +14,39 @@ import type {
 } from "@/lib/types";
 import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
+const roomMessagesInFlight = new Set<string>();
+
+function toRoomSummary(room: PublicRoom): DashboardRoom {
+  return {
+    room_id: room.room_id,
+    name: room.name,
+    description: room.description,
+    owner_id: room.owner_id,
+    visibility: room.visibility,
+    member_count: room.member_count,
+    my_role: "viewer",
+    rule: room.rule ?? null,
+    required_subscription_product_id: room.required_subscription_product_id,
+    last_message_preview: room.last_message_preview,
+    last_message_at: room.last_message_at,
+    last_sender_name: room.last_sender_name,
+  };
+}
+
+function buildVisibleMessageRooms(state: Pick<DashboardState, "overview" | "recentVisitedRooms" | "token">): DashboardRoom[] {
+  const joinedRooms = state.overview?.rooms || [];
+  const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
+  const recentUnjoinedRooms = state.recentVisitedRooms
+    .filter((room) => !joinedRoomIds.has(room.room_id))
+    .map(toRoomSummary);
+  const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
+    const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+    const bTs = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+    return bTs - aTs;
+  });
+  return state.token ? mergedRooms : state.recentVisitedRooms.map(toRoomSummary);
+}
+
 export type DashboardSessionMode = "guest" | "authed-no-agent" | "authed-ready";
 
 function resolveStoredActiveAgentId(user: UserProfile): string | null {
@@ -35,13 +68,15 @@ function resolveSessionMode(token: string | null, activeAgentId: string | null):
 }
 
 interface DashboardState {
+  authResolved: boolean;
   sessionMode: DashboardSessionMode;
   token: string | null;
   user: UserProfile | null;
   ownedAgents: UserAgent[];
   activeAgentId: string | null;
   overview: DashboardOverview | null;
-  selectedRoomId: string | null;
+  focusedRoomId: string | null;
+  openedRoomId: string | null;
   messages: Record<string, DashboardMessage[]>;
   messagesHasMore: Record<string, boolean>;
   loading: boolean;
@@ -84,10 +119,12 @@ interface DashboardState {
   sendingContactRequest: boolean;
 
   // Actions
+  setAuthResolved: (resolved: boolean) => void;
   setToken: (token: string | null) => void;
   setUser: (user: UserProfile) => void;
   setActiveAgentId: (agentId: string | null) => void;
-  setSelectedRoomId: (roomId: string | null) => void;
+  setFocusedRoomId: (roomId: string | null) => void;
+  setOpenedRoomId: (roomId: string | null) => void;
   setSidebarTab: (tab: DashboardState['sidebarTab']) => void;
   setExploreView: (view: DashboardState['exploreView']) => void;
   setContactsView: (view: DashboardState['contactsView']) => void;
@@ -98,6 +135,8 @@ interface DashboardState {
   setError: (error: string | null) => void;
   setLoading: (loading: boolean) => void;
   logout: () => void;
+  getRoomSummary: (roomId: string) => DashboardRoom | null;
+  getVisibleMessageRooms: () => DashboardRoom[];
 
   // Async Actions
   loadRoomMessages: (roomId: string) => Promise<void>;
@@ -123,13 +162,15 @@ interface DashboardState {
 }
 
 const initialState = {
+  authResolved: false,
   token: null,
   sessionMode: "guest" as const,
   user: null,
   ownedAgents: [],
   activeAgentId: null,
   overview: null,
-  selectedRoomId: null,
+  focusedRoomId: null,
+  openedRoomId: null,
   messages: {},
   messagesHasMore: {},
   topics: {},
@@ -177,9 +218,12 @@ export const useDashboardStore = create<DashboardState>()(
     (set, get) => ({
       ...initialState,
 
+      setAuthResolved: (authResolved) => set({ authResolved }),
+
       setToken: (token) => {
         const activeAgentId = token ? get().activeAgentId : null;
         set({
+          authResolved: true,
           token,
           activeAgentId,
           sessionMode: resolveSessionMode(token, activeAgentId),
@@ -197,7 +241,8 @@ export const useDashboardStore = create<DashboardState>()(
         sessionMode: resolveSessionMode(state.token, agentId),
       })),
 
-      setSelectedRoomId: (roomId) => set({ selectedRoomId: roomId }),
+      setFocusedRoomId: (roomId) => set({ focusedRoomId: roomId }),
+      setOpenedRoomId: (roomId) => set({ openedRoomId: roomId }),
 
       setSidebarTab: (tab) => set({ sidebarTab: tab }),
 
@@ -232,6 +277,7 @@ export const useDashboardStore = create<DashboardState>()(
         setActiveAgentId(null);
         set({
           ...initialState,
+          authResolved: true,
           recentVisitedRooms: get().recentVisitedRooms,
           pendingFriendRequests: get().pendingFriendRequests,
           publicRooms: get().publicRooms,
@@ -240,14 +286,32 @@ export const useDashboardStore = create<DashboardState>()(
         });
       },
 
+      getRoomSummary: (roomId) => {
+        const state = get();
+        const joinedRoom = state.overview?.rooms.find((room) => room.room_id === roomId);
+        if (joinedRoom) {
+          return joinedRoom;
+        }
+        const publicRoom = state.publicRooms.find((room) => room.room_id === roomId)
+          || state.publicRoomDetails[roomId];
+        if (publicRoom) {
+          return toRoomSummary(publicRoom);
+        }
+        const recentRoom = state.recentVisitedRooms.find((room) => room.room_id === roomId);
+        return recentRoom ? toRoomSummary(recentRoom) : null;
+      },
+
+      getVisibleMessageRooms: () => buildVisibleMessageRooms(get()),
+
   // Async Actions
       initAuth: async (token: string) => {
-    set({ loading: true, token, error: null });
+    set({ authResolved: false, loading: true, token, error: null });
     
     try {
       const user = await userApi.getMe();
       const activeId = resolveStoredActiveAgentId(user);
       set({
+        authResolved: true,
         user,
         ownedAgents: user.agents,
         activeAgentId: activeId,
@@ -275,6 +339,7 @@ export const useDashboardStore = create<DashboardState>()(
             }))
         ]);
         set({
+          authResolved: true,
           overview,
           wallet,
           withdrawalRequests: withdrawalsResult.withdrawals,
@@ -284,13 +349,14 @@ export const useDashboardStore = create<DashboardState>()(
         });
         await get().loadContactRequests();
       } else {
-        set({ loading: false });
+        set({ authResolved: true, loading: false });
       }
     } catch (err: any) {
       console.warn("[Store] User profile unavailable, falling back to direct mode:", err.message);
       const activeId = getActiveAgentId();
       if (!activeId) {
         set({
+          authResolved: true,
           activeAgentId: null,
           sessionMode: "authed-no-agent",
           overview: null,
@@ -316,6 +382,7 @@ export const useDashboardStore = create<DashboardState>()(
             }))
         ]);
         set({
+          authResolved: true,
           activeAgentId: activeId,
           sessionMode: resolveSessionMode(token, activeId),
           overview,
@@ -327,16 +394,21 @@ export const useDashboardStore = create<DashboardState>()(
         });
         await get().loadContactRequests();
       } catch (innerErr: any) {
-        set({ error: innerErr.message || "Failed to load overview", loading: false });
+        set({ authResolved: true, error: innerErr.message || "Failed to load overview", loading: false });
       }
     }
   },
 
   loadRoomMessages: async (roomId: string) => {
-    const { token } = get();
+    if (roomMessagesInFlight.has(roomId)) {
+      return;
+    }
+    roomMessagesInFlight.add(roomId);
+    const { token, activeAgentId } = get();
+    const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
     try {
       let result;
-      if (token) {
+      if (canUseAuthedMessages) {
         try {
           result = await api.getRoomMessages(roomId, { limit: 50 });
         } catch (err: any) {
@@ -357,18 +429,21 @@ export const useDashboardStore = create<DashboardState>()(
       }));
     } catch (err) {
       console.error("[Store] Failed to load messages:", err);
+    } finally {
+      roomMessagesInFlight.delete(roomId);
     }
   },
 
   loadMoreMessages: async (roomId: string) => {
-    const { token, messages } = get();
+    const { token, activeAgentId, messages } = get();
+    const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
     const existing = messages[roomId];
     if (!existing || existing.length === 0) return;
     
     const oldest = existing[0];
     try {
       let result;
-      if (token) {
+      if (canUseAuthedMessages) {
         try {
           result = await api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
         } catch (err: any) {
@@ -436,7 +511,7 @@ export const useDashboardStore = create<DashboardState>()(
   },
 
   refreshOverview: async () => {
-    const { token, selectedRoomId, activeAgentId } = get();
+    const { token, openedRoomId, activeAgentId } = get();
     if (!token) {
       const store = get();
       await Promise.all([store.loadPublicRooms(), store.loadPublicAgents()]);
@@ -463,8 +538,8 @@ export const useDashboardStore = create<DashboardState>()(
       const overview = await api.getOverview();
       set({ overview, loading: false });
       await get().loadContactRequests();
-      if (selectedRoomId) {
-        get().loadRoomMessages(selectedRoomId);
+      if (openedRoomId) {
+        get().loadRoomMessages(openedRoomId);
       }
     } catch (err: any) {
       set({ error: err.message || "Failed to refresh", loading: false });

@@ -108,7 +108,8 @@ function ContactsMainPane() {
   const pageItems = list.slice(start, start + EXPLORE_PAGE_SIZE);
 
   const openJoinedRoom = (roomId: string) => {
-    state.setSelectedRoomId(roomId);
+    state.setFocusedRoomId(roomId);
+    state.setOpenedRoomId(roomId);
     state.setSidebarTab("messages");
     router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (!state.messages[roomId]) {
@@ -283,13 +284,13 @@ function ExploreMainPane() {
   const isRoomsView = state.exploreView === "rooms";
 
   useEffect(() => {
-    if (!state.publicRooms.length && !state.publicRoomsLoading) {
+    if (isRoomsView && !state.publicRooms.length && !state.publicRoomsLoading) {
       loadPublicRooms();
     }
-    if (!state.publicAgents.length && !state.publicAgentsLoading) {
+    if (!isRoomsView && !state.publicAgents.length && !state.publicAgentsLoading) {
       loadPublicAgents();
     }
-  }, []);
+  }, [isRoomsView, loadPublicAgents, loadPublicRooms, state.publicAgents.length, state.publicAgentsLoading, state.publicRooms.length, state.publicRoomsLoading]);
 
   useEffect(() => {
     setPage(1);
@@ -330,7 +331,8 @@ function ExploreMainPane() {
   );
 
   const openRoomFromExplore = (room: PublicRoom) => {
-    state.setSelectedRoomId(room.room_id);
+    state.setFocusedRoomId(room.room_id);
+    state.setOpenedRoomId(room.room_id);
     state.setSidebarTab("messages");
     router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
     state.addRecentPublicRoom(room);
@@ -498,7 +500,7 @@ export default function ChatPane() {
     );
   }
 
-  if (!state.selectedRoomId) {
+  if (!state.focusedRoomId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black">
         <div className="text-center">
@@ -527,26 +529,36 @@ export default function ChatPane() {
     <div className="flex flex-1 flex-col bg-deep-black overflow-hidden">
       <RoomHeader />
       <div className="flex-1 overflow-hidden flex flex-col">
-        <MessageList />
-      </div>
-      <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
-        <JoinGuidePrompt roomId={state.selectedRoomId} />
-      </div>
-      <div className="border-t border-glass-border px-4 py-2">
-        {isGuest ? (
-          <div className="flex items-center justify-center gap-2">
-            <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
-            <button
-              onClick={showLoginModal}
-              className="rounded border border-neon-cyan/30 px-2 py-0.5 text-[10px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
-            >
-              {t.loginToParticipate}
-            </button>
-          </div>
+        {state.openedRoomId ? (
+          <MessageList />
         ) : (
-          <p className="text-center text-xs text-text-secondary/50">{t.readOnlyView}</p>
+          <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-text-secondary">
+            {t.selectRoom}
+          </div>
         )}
       </div>
+      {state.openedRoomId && (
+        <>
+          <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
+            <JoinGuidePrompt roomId={state.openedRoomId} />
+          </div>
+          <div className="border-t border-glass-border px-4 py-2">
+            {isGuest ? (
+              <div className="flex items-center justify-center gap-2">
+                <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
+                <button
+                  onClick={showLoginModal}
+                  className="rounded border border-neon-cyan/30 px-2 py-0.5 text-[10px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                >
+                  {t.loginToParticipate}
+                </button>
+              </div>
+            ) : (
+              <p className="text-center text-xs text-text-secondary/50">{t.readOnlyView}</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

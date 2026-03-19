@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 useDashboard 提供导航状态与业务动作，依赖 AccountMenu 承载账号与 agent 入口
- * [OUTPUT]: 对外提供 Sidebar 组件，渲染一级/二级导航与左下角统一账户菜单
+ * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表与左下角账户菜单
  * [POS]: dashboard 左侧导航骨架，负责频道切换与全局入口编排
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -16,7 +16,6 @@ import { common, nav } from '@/lib/i18n/translations/common';
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
 import AgentRequiredState from "./AgentRequiredState";
-import SubscriptionBadge from "./SubscriptionBadge";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -64,42 +63,11 @@ const authNavItems = [
   },
 ] as const;
 
-const guestNavItems = [
-  {
-    key: "messages" as const,
-    label: "Messages",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
-      </svg>
-    ),
-  },
-  {
-    key: "explore" as const,
-    label: "Explore",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607Z" />
-      </svg>
-    ),
-  },
-  {
-    key: "wallet" as const,
-    label: "Wallet",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
-      </svg>
-    ),
-  },
-] as const;
-
 export default function Sidebar() {
   const {
     state,
     switchActiveAgent,
     refreshUserProfile,
-    loadRoomMessages,
     isGuest,
     showLoginModal,
     handleLogout,
@@ -118,49 +86,22 @@ export default function Sidebar() {
     wallet: t.wallet,
   };
 
-  const navItems = isGuest ? guestNavItems : authNavItems;
+  const navItems = authNavItems;
 
-  const joinedRooms = state.overview?.rooms || [];
-  const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
-  const recentUnjoinedRooms = state.recentVisitedRooms
-    .filter((room) => !joinedRoomIds.has(room.room_id))
-    .map((room) => ({
-      room_id: room.room_id,
-      name: room.name,
-      description: room.description,
-      owner_id: room.owner_id,
-      visibility: room.visibility,
-      member_count: room.member_count,
-      my_role: "viewer",
-      rule: room.rule ?? null,
-      last_message_preview: room.last_message_preview,
-      last_message_at: room.last_message_at,
-      last_sender_name: room.last_sender_name,
-      required_subscription_product_id: room.required_subscription_product_id,
-    }));
-  const mergedRecentRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
-    const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
-    const bTs = b.last_message_at ? Date.parse(b.last_message_at) : 0;
-    return bTs - aTs;
-  });
-  const recentGuestRooms = state.recentVisitedRooms;
+  const visibleMessageRooms = state.getVisibleMessageRooms();
   const showOverviewSkeleton =
     state.sessionMode === "authed-ready" && state.loading && !state.overview && state.sidebarTab === "messages";
 
-  const openRecentGuestRoom = (roomId: string) => {
-    state.setSelectedRoomId(roomId);
-    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    if (!state.messages[roomId]) {
-      loadRoomMessages(roomId);
-    }
-  };
-
   const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet") => {
-    const selectedRoomPath = state.selectedRoomId
-      ? `/chats/messages/${encodeURIComponent(state.selectedRoomId)}`
+    if (isGuest && tab === "contacts") {
+      showLoginModal();
+      return;
+    }
+    const openedRoomPath = state.openedRoomId
+      ? `/chats/messages/${encodeURIComponent(state.openedRoomId)}`
       : "/chats/messages";
     const pathByTab: Record<typeof tab, string> = {
-      messages: selectedRoomPath,
+      messages: openedRoomPath,
       contacts: `/chats/contacts/${state.contactsView}`,
       explore: `/chats/explore/${state.exploreView}`,
       wallet: "/chats/wallet",
@@ -185,21 +126,24 @@ export default function Sidebar() {
           {navItems.map((item) => {
             const isActive = state.sidebarTab === item.key;
             const isExplore = item.key === "explore";
+            const requiresLogin = isGuest && item.key === "contacts";
             return (
               <button
                 key={item.key}
                 onClick={() => navigatePrimaryTab(item.key)}
                 className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
-                  isActive
+                  requiresLogin
+                    ? "text-text-secondary/45 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+                    : isActive
                     ? isExplore
                       ? "bg-neon-purple/15 text-neon-purple"
                       : "bg-neon-cyan/15 text-neon-cyan"
                     : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
                 }`}
-                title={tabTitles[item.key] || item.label}
+                title={requiresLogin ? tc.login : tabTitles[item.key] || item.label}
               >
                 {/* Active indicator bar */}
-                {isActive && (
+                {isActive && !requiresLogin && (
                   <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full ${isExplore ? "bg-neon-purple" : "bg-neon-cyan"}`} />
                 )}
                 {item.icon}
@@ -349,64 +293,10 @@ export default function Sidebar() {
 
           {!showOverviewSkeleton && state.sidebarTab === "messages" && (
             <div className="py-1">
-              {isGuest ? (
-                recentGuestRooms.length === 0 ? (
-                  <p className="p-4 text-center text-xs text-text-secondary">{t.noMessages}</p>
-                ) : (
-                  recentGuestRooms.map((room) => {
-                    const isSelected = state.selectedRoomId === room.room_id;
-                    const cachedLatestMessage = state.messages[room.room_id]?.[state.messages[room.room_id].length - 1];
-                    const previewText = room.last_message_preview || cachedLatestMessage?.text || "";
-                    const previewSender = room.last_sender_name || cachedLatestMessage?.sender_name || "";
-                    return (
-                      <button
-                        key={room.room_id}
-                        onClick={() => openRecentGuestRoom(room.room_id)}
-                        className={`w-full border-l-2 px-4 py-2.5 text-left transition-colors ${
-                          isSelected
-                            ? "border-neon-cyan bg-neon-cyan/10"
-                            : "border-transparent hover:bg-glass-bg"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                              {room.name}
-                            </span>
-                            {room.required_subscription_product_id && (
-                              <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
-                            )}
-                          </div>
-                          <span className="ml-2 shrink-0 text-xs text-text-secondary">
-                            {room.member_count}
-                          </span>
-                        </div>
-                        <p className="mt-0.5 truncate font-mono text-[10px] text-text-secondary/50">
-                          {room.room_id}
-                        </p>
-                        {room.description && (
-                          <p className="mt-0.5 truncate text-xs text-text-secondary">
-                            {room.description}
-                          </p>
-                        )}
-                        {previewText && (
-                          <p className="mt-0.5 truncate text-xs text-text-secondary/70">
-                            {previewSender && (
-                              <span className="text-text-primary/70">{previewSender}: </span>
-                            )}
-                            {previewText}
-                          </p>
-                        )}
-                      </button>
-                    );
-                  })
-                )
+              {visibleMessageRooms.length === 0 ? (
+                <p className="p-4 text-center text-xs text-text-secondary">{t.noMessages}</p>
               ) : (
-                mergedRecentRooms.length === 0 ? (
-                  <p className="p-4 text-center text-xs text-text-secondary">{t.noMessages}</p>
-                ) : (
-                  <RoomList rooms={mergedRecentRooms} />
-                )
+                <RoomList rooms={visibleMessageRooms} />
               )}
             </div>
           )}

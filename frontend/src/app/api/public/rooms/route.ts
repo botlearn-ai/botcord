@@ -10,6 +10,17 @@ import { rooms } from "@/../db/backend-schema";
 import { eq, count, ilike, and, sql } from "drizzle-orm";
 import { escapeLike } from "@/app/api/_helpers";
 
+function dedupeRoomsById<T extends { room_id: string }>(rooms: T[]): T[] {
+  const seen = new Set<string>();
+  return rooms.filter((room) => {
+    if (seen.has(room.room_id)) {
+      return false;
+    }
+    seen.add(room.room_id);
+    return true;
+  });
+}
+
 export async function GET(request: NextRequest) {
   if (!isBackendDbConfigured) {
     return NextResponse.json({ error: backendDbConfigError }, { status: 503 });
@@ -63,11 +74,8 @@ export async function GET(request: NextRequest) {
     )
   `);
 
-  return NextResponse.json({
-    total: totalResult.count,
-    limit,
-    offset,
-    rooms: roomRows.map((room) => ({
+  const normalizedRooms = dedupeRoomsById(
+    roomRows.map((room) => ({
       room_id: room.room_id,
       name: room.room_name,
       description: room.room_description,
@@ -80,5 +88,12 @@ export async function GET(request: NextRequest) {
       last_message_at: room.last_message_at,
       last_sender_name: room.last_sender_name,
     })),
+  );
+
+  return NextResponse.json({
+    total: totalResult.count,
+    limit,
+    offset,
+    rooms: normalizedRooms,
   });
 }

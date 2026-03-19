@@ -116,7 +116,7 @@ export default function MessageList() {
   const isLoadingMore = useRef(false);
   const [collapsedTopics, setCollapsedTopics] = useState<Set<string>>(new Set());
 
-  const roomId = state.selectedRoomId;
+  const roomId = state.openedRoomId;
   const messages = roomId ? state.messages[roomId] || [] : [];
   const hasMore = roomId ? state.messagesHasMore[roomId] ?? false : false;
   const currentAgentId = state.overview?.agent?.agent_id;

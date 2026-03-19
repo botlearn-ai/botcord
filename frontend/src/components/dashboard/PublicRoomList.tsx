@@ -38,7 +38,8 @@ export default function PublicRoomList() {
 
   const handleSelect = (roomId: string) => {
     const room = state.publicRooms.find((item) => item.room_id === roomId);
-    state.setSelectedRoomId(roomId);
+    state.setFocusedRoomId(roomId);
+    state.setOpenedRoomId(roomId);
     state.setSidebarTab("messages");
     router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (room) {
@@ -52,7 +53,7 @@ export default function PublicRoomList() {
   return (
     <div className="py-1">
       {state.publicRooms.map((room) => {
-        const isSelected = state.selectedRoomId === room.room_id;
+        const isSelected = state.focusedRoomId === room.room_id;
         return (
           <button
             key={room.room_id}
