@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
+import { useRouter } from "next/navigation";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
 import JoinGuidePrompt from "./JoinGuidePrompt";
@@ -14,10 +15,156 @@ import { PublicRoom } from "@/lib/types";
 
 const EXPLORE_PAGE_SIZE = 12;
 
+function ContactsMainPane() {
+  const { state, selectAgent, loadContactRequests, respondContactRequest } = useDashboard();
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const isRequestsView = state.contactsView === "requests";
+  const contacts = state.overview?.contacts || [];
+  const pendingReceived = state.contactRequestsReceived.filter((item) => item.state === "pending");
+
+  useEffect(() => {
+    if (state.token) {
+      loadContactRequests();
+    }
+  }, [state.token]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, state.contactsView, contacts.length, pendingReceived.length]);
+
+  const normalized = query.trim().toLowerCase();
+  const filteredContacts = contacts.filter((item) => {
+    if (!normalized) return true;
+    return (
+      item.display_name.toLowerCase().includes(normalized) ||
+      item.contact_agent_id.toLowerCase().includes(normalized) ||
+      (item.alias || "").toLowerCase().includes(normalized)
+    );
+  });
+  const filteredRequests = pendingReceived.filter((item) => {
+    if (!normalized) return true;
+    return (
+      (item.from_display_name || "").toLowerCase().includes(normalized) ||
+      item.from_agent_id.toLowerCase().includes(normalized) ||
+      (item.message || "").toLowerCase().includes(normalized)
+    );
+  });
+
+  const list = isRequestsView ? filteredRequests : filteredContacts;
+  const totalPages = Math.max(1, Math.ceil(list.length / EXPLORE_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const start = (currentPage - 1) * EXPLORE_PAGE_SIZE;
+  const pageItems = list.slice(start, start + EXPLORE_PAGE_SIZE);
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
+      <div className="border-b border-glass-border px-5 py-4">
+        <h2 className="text-base font-semibold text-text-primary">
+          {isRequestsView ? "Contact Requests" : "Contacts"}
+        </h2>
+        <p className="mt-1 text-xs text-text-secondary">
+          {isRequestsView ? "Review and process incoming requests" : "Your agent contacts"}
+        </p>
+        <div className="mt-3 max-w-xl">
+          <SearchBar
+            onSearch={setQuery}
+            placeholder={isRequestsView ? "Search requests..." : "Search contacts..."}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        {isRequestsView ? (
+          state.contactRequestsLoading ? (
+            <p className="text-xs text-text-secondary">Loading requests...</p>
+          ) : pageItems.length === 0 ? (
+            <p className="text-xs text-text-secondary">No pending requests</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {(pageItems as typeof filteredRequests).map((request) => (
+                <div key={request.id} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
+                  <p className="truncate text-sm font-semibold text-text-primary">
+                    {request.from_display_name || request.from_agent_id}
+                  </p>
+                  <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{request.from_agent_id}</p>
+                  <p className="mt-2 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
+                    {request.message || "No request message"}
+                  </p>
+                  <div className="mt-4 flex items-center gap-2">
+                    <button
+                      onClick={() => respondContactRequest(request.id, "accept")}
+                      disabled={state.processingContactRequestId === request.id}
+                      className="rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => respondContactRequest(request.id, "reject")}
+                      disabled={state.processingContactRequestId === request.id}
+                      className="rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : pageItems.length === 0 ? (
+          <p className="text-xs text-text-secondary">No contacts found</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {(pageItems as typeof filteredContacts).map((contact) => (
+              <button
+                key={contact.contact_agent_id}
+                onClick={() => selectAgent(contact.contact_agent_id)}
+                className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+              >
+                <p className="truncate text-sm font-semibold text-text-primary">
+                  {contact.alias || contact.display_name}
+                </p>
+                <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{contact.contact_agent_id}</p>
+                {contact.alias && (
+                  <p className="mt-2 text-xs text-text-secondary">Display: {contact.display_name}</p>
+                )}
+                <p className="mt-2 text-[11px] text-text-secondary/70">
+                  Added at {new Date(contact.created_at).toLocaleDateString()}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-glass-border px-5 py-3">
+        <p className="text-xs text-text-secondary">Page {currentPage} / {totalPages}</p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+            className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+            className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ExploreMainPane() {
+  const router = useRouter();
   const locale = useLanguage();
   const t = exploreUi[locale];
-  const { state, loadPublicRooms, loadPublicAgents, loadRoomMessages, selectAgent, isGuest, showLoginModal } = useDashboard();
+  const { state, loadPublicRooms, loadPublicAgents, loadRoomMessages, selectAgent, sendContactRequest, isGuest, showLoginModal } = useDashboard();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [selectedAgentIdForModal, setSelectedAgentIdForModal] = useState<string | null>(null);
@@ -73,6 +220,7 @@ function ExploreMainPane() {
   const openRoomFromExplore = (room: PublicRoom) => {
     state.setSelectedRoomId(room.room_id);
     state.setSidebarTab("rooms");
+    router.push("/chats/rooms");
     if (isGuest) {
       state.addRecentPublicRoom(room);
     }
@@ -91,6 +239,9 @@ function ExploreMainPane() {
     : false;
   const requestAlreadyPending = selectedAgentForModal
     ? state.pendingFriendRequests.includes(selectedAgentForModal.agent_id)
+      || state.contactRequestsSent.some(
+        (item) => item.to_agent_id === selectedAgentForModal.agent_id && item.state === "pending",
+      )
     : false;
 
   const handleSendFriendRequest = () => {
@@ -99,7 +250,7 @@ function ExploreMainPane() {
       showLoginModal();
       return;
     }
-    state.markFriendRequestPending(selectedAgentForModal.agent_id);
+    sendContactRequest(selectedAgentForModal.agent_id).catch(() => null);
   };
 
   const totalCount = isRoomsView ? filteredRooms.length : filteredAgents.length;
@@ -240,6 +391,10 @@ export default function ChatPane() {
 
   if (state.sidebarTab === "explore") {
     return <ExploreMainPane />;
+  }
+
+  if (state.sidebarTab === "contacts") {
+    return <ContactsMainPane />;
   }
 
   if (!state.selectedRoomId) {

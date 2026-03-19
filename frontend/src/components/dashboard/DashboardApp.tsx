@@ -2,7 +2,7 @@
 
 import { useEffect, createContext, useContext } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from '@/lib/i18n';
 import { dashboardApp } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
@@ -39,6 +39,9 @@ export function useDashboard() {
     loadTopics: store.loadTopics,
     loadWallet: store.loadWallet,
     loadWalletLedger: store.loadWalletLedger,
+    loadContactRequests: store.loadContactRequests,
+    sendContactRequest: store.sendContactRequest,
+    respondContactRequest: store.respondContactRequest,
     switchActiveAgent: store.switchActiveAgent,
     refreshUserProfile: store.refreshUserProfile,
     isGuest: !store.token,
@@ -49,6 +52,7 @@ export function useDashboard() {
 
 export default function DashboardApp() {
   const store = useDashboardStore();
+  const pathname = usePathname();
   const supabase = createClient();
   const locale = useLanguage();
   const tDash = dashboardApp[locale];
@@ -82,6 +86,27 @@ export default function DashboardApp() {
       store.loadPublicAgents();
     }
   }, [store.token]);
+
+  // Route sync: /chats/{tab}/{subtab?}
+  useEffect(() => {
+    const parts = pathname.split("/").filter(Boolean);
+    // ["chats", tab?, subtab?]
+    const tab = parts[1];
+    const subtab = parts[2];
+    if (tab === "dm" || tab === "rooms" || tab === "contacts" || tab === "explore" || tab === "wallet") {
+      if (store.sidebarTab !== tab) {
+        store.setSidebarTab(tab);
+      }
+      if (tab === "explore" && (subtab === "rooms" || subtab === "agents")) {
+        store.setExploreView(subtab);
+      }
+      if (tab === "contacts" && (subtab === "agents" || subtab === "requests")) {
+        store.setContactsView(subtab);
+      }
+    } else if (store.sidebarTab !== "explore") {
+      store.setSidebarTab("explore");
+    }
+  }, [pathname]);
 
   // Handle Loading & Error States
   if (store.token && store.loading && !store.overview) {

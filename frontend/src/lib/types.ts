@@ -27,6 +27,22 @@ export interface ContactInfo {
   created_at: string;
 }
 
+export interface ContactRequestItem {
+  id: number;
+  from_agent_id: string;
+  to_agent_id: string;
+  state: "pending" | "accepted" | "rejected";
+  message: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  from_display_name: string | null;
+  to_display_name: string | null;
+}
+
+export interface ContactRequestListResponse {
+  requests: ContactRequestItem[];
+}
+
 export interface DashboardOverview {
   agent: AgentProfile;
   rooms: DashboardRoom[];

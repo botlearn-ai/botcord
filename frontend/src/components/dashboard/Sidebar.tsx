@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { sidebar } from '@/lib/i18n/translations/dashboard';
-import { common } from '@/lib/i18n/translations/common';
+import { common, nav } from '@/lib/i18n/translations/common';
 import RoomList from "./RoomList";
-import ContactList from "./ContactList";
 import AgentSwitcher from "./AgentSwitcher";
 
 function formatCoinAmount(minorStr: string): string {
@@ -96,19 +96,19 @@ const guestNavItems = [
 
 export default function Sidebar() {
   const { state, refreshOverview, switchActiveAgent, loadRoomMessages, isGuest, showLoginModal, handleLogout } = useDashboard();
+  const router = useRouter();
   const locale = useLanguage();
   const t = sidebar[locale];
   const tc = common[locale];
+  const tNav = nav[locale];
 
   const tabTitles: Record<string, string> = {
-    dm: "Direct Message",
+    dm: t.directMessage,
     rooms: t.rooms,
     contacts: t.contacts,
-    explore: "Explore",
+    explore: t.discover,
     wallet: t.wallet,
   };
-
-  const [contactsSubTab, setContactsSubTab] = useState<"agents" | "rooms">("agents");
 
   const navItems = isGuest ? guestNavItems : authNavItems;
 
@@ -118,15 +118,35 @@ export default function Sidebar() {
 
   const openRecentGuestRoom = (roomId: string) => {
     state.setSelectedRoomId(roomId);
+    router.push("/chats/rooms");
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
     }
+  };
+
+  const navigatePrimaryTab = (tab: "dm" | "rooms" | "contacts" | "explore" | "wallet") => {
+    const pathByTab: Record<typeof tab, string> = {
+      dm: "/chats/dm",
+      rooms: "/chats/rooms",
+      contacts: `/chats/contacts/${state.contactsView}`,
+      explore: `/chats/explore/${state.exploreView}`,
+      wallet: "/chats/wallet",
+    };
+    state.setSidebarTab(tab);
+    router.push(pathByTab[tab]);
   };
 
   return (
     <div className="flex h-full">
       {/* Primary rail */}
       <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3">
+        <Link
+          href="/"
+          className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg"
+          title={tNav.home}
+        >
+          <img src="/logo.svg" alt="BotCord" className="h-6 w-6" />
+        </Link>
         {/* Nav icons */}
         <div className="flex flex-1 flex-col items-center gap-1 pt-1">
           {navItems.map((item) => {
@@ -135,7 +155,7 @@ export default function Sidebar() {
             return (
               <button
                 key={item.key}
-                onClick={() => state.setSidebarTab(item.key)}
+                onClick={() => navigatePrimaryTab(item.key)}
                 className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
                   isActive
                     ? isExplore
@@ -233,7 +253,10 @@ export default function Sidebar() {
         {state.sidebarTab === "explore" && (
           <div className="border-b border-glass-border p-3">
             <button
-              onClick={() => state.setExploreView("rooms")}
+              onClick={() => {
+                state.setExploreView("rooms");
+                router.push("/chats/explore/rooms");
+              }}
               className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
                 state.exploreView === "rooms"
                   ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
@@ -243,7 +266,10 @@ export default function Sidebar() {
               Public Rooms
             </button>
             <button
-              onClick={() => state.setExploreView("agents")}
+              onClick={() => {
+                state.setExploreView("agents");
+                router.push("/chats/explore/agents");
+              }}
               className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
                 state.exploreView === "agents"
                   ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
@@ -256,18 +282,32 @@ export default function Sidebar() {
         )}
 
         {state.sidebarTab === "contacts" && (
-          <div className="flex border-b border-glass-border px-4 py-2 gap-4">
-            <button 
-              onClick={() => setContactsSubTab("agents")}
-              className={`text-xs font-medium transition-colors ${contactsSubTab === "agents" ? "text-neon-cyan" : "text-text-secondary hover:text-text-primary"}`}
+          <div className="border-b border-glass-border p-3">
+            <button
+              onClick={() => {
+                state.setContactsView("agents");
+                router.push("/chats/contacts/agents");
+              }}
+              className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
+                state.contactsView === "agents"
+                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
+                  : "border-glass-border text-text-secondary hover:text-text-primary"
+              }`}
             >
               Agents
             </button>
-            <button 
-              onClick={() => setContactsSubTab("rooms")}
-              className={`text-xs font-medium transition-colors ${contactsSubTab === "rooms" ? "text-neon-cyan" : "text-text-secondary hover:text-text-primary"}`}
+            <button
+              onClick={() => {
+                state.setContactsView("requests");
+                router.push("/chats/contacts/requests");
+              }}
+              className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
+                state.contactsView === "requests"
+                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
+                  : "border-glass-border text-text-secondary hover:text-text-primary"
+              }`}
             >
-              Rooms
+              Requests
             </button>
           </div>
         )}
@@ -277,7 +317,7 @@ export default function Sidebar() {
           {state.sidebarTab === "dm" && (
             <div className="py-1">
               {dmRooms.length === 0 ? (
-                <p className="p-4 text-center text-xs text-text-secondary">No direct messages</p>
+                <p className="p-4 text-center text-xs text-text-secondary">{t.noDirectMessages}</p>
               ) : (
                 <RoomList rooms={dmRooms} />
               )}
@@ -326,13 +366,6 @@ export default function Sidebar() {
                 <RoomList rooms={groupRooms} />
               )}
             </div>
-          )}
-
-          {state.sidebarTab === "contacts" && (
-            <>
-              {contactsSubTab === "agents" && <ContactList />}
-              {contactsSubTab === "rooms" && <RoomList rooms={groupRooms} />}
-            </>
           )}
 
           {state.sidebarTab === "wallet" && (

@@ -29,6 +29,8 @@ import type {
   StripeSessionStatusResponse,
   UserProfile,
   UserAgent,
+  ContactRequestItem,
+  ContactRequestListResponse,
 } from "./types";
 
 const API_BASE =
@@ -243,6 +245,32 @@ export const api = {
 
   getTopics(_token: string, roomId: string) {
     return apiGet<TopicListResponse>(`/api/dashboard/rooms/${roomId}/topics`);
+  },
+
+  // --- Contact request APIs ---
+
+  getContactRequestsReceived(opts?: { state?: "pending" | "accepted" | "rejected" }) {
+    const params: Record<string, string> = {};
+    if (opts?.state) params.state = opts.state;
+    return apiGet<ContactRequestListResponse>("/api/dashboard/contact-requests/received", params);
+  },
+
+  getContactRequestsSent(opts?: { state?: "pending" | "accepted" | "rejected" }) {
+    const params: Record<string, string> = {};
+    if (opts?.state) params.state = opts.state;
+    return apiGet<ContactRequestListResponse>("/api/dashboard/contact-requests/sent", params);
+  },
+
+  createContactRequest(payload: { to_agent_id: string; message?: string }) {
+    return apiPost<ContactRequestItem>("/api/dashboard/contact-requests", payload);
+  },
+
+  acceptContactRequest(requestId: number) {
+    return apiPost<ContactRequestItem>(`/api/dashboard/contact-requests/${requestId}/accept`);
+  },
+
+  rejectContactRequest(requestId: number) {
+    return apiPost<ContactRequestItem>(`/api/dashboard/contact-requests/${requestId}/reject`);
   },
 
   // --- Wallet APIs (migrated to frontend /api/*) ---

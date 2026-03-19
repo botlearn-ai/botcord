@@ -40,6 +40,8 @@ dashboard/
 - 统一卡片组件支持两种入参：`id`（通过映射查数据）或 `data`（直接渲染），便于跨页复用。
 - 社区（room）卡片比 agent 卡片承载更多运营信息：成员数、活跃时间、最近消息预览、可见性。
 - agent 卡片强调拟人化表达：头像首字母、persona 文案、沟通风格提示。
+- 导航状态与地址同构：一级 tab 使用 `/chats/{tab}`，二级导航使用 `/chats/{tab}/{subtab}`。
+- Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 
 ## 开发规范
 
@@ -49,5 +51,6 @@ dashboard/
 ## 变更日志
 
 - 2026-03-19: 新增 `ExploreEntityCard.tsx`，统一 agent/community 卡片渲染能力。
+- 2026-03-19: 新增 tab 子路由同步与 Contacts 请求处理主视图（三级结构）。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md

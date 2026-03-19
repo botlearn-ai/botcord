@@ -4,8 +4,10 @@ import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
+import { useRouter } from "next/navigation";
 
 export default function PublicRoomList() {
+  const router = useRouter();
   const { state, loadRoomMessages, loadPublicRooms } = useDashboard();
   const locale = useLanguage();
   const t = roomList[locale];
@@ -31,6 +33,7 @@ export default function PublicRoomList() {
     const room = state.publicRooms.find((item) => item.room_id === roomId);
     state.setSelectedRoomId(roomId);
     state.setSidebarTab("rooms");
+    router.push("/chats/rooms");
     if (room && !state.token) {
       state.addRecentPublicRoom(room);
     }

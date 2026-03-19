@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { 
   DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, 
   DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry,
-  UserProfile, UserAgent 
+  UserProfile, UserAgent, ContactRequestItem
 } from "@/lib/types";
 import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
@@ -25,6 +25,7 @@ interface DashboardState {
   searchResults: AgentProfile[] | null;
   sidebarTab: "dm" | "rooms" | "contacts" | "explore" | "wallet";
   exploreView: "rooms" | "agents";
+  contactsView: "agents" | "requests";
   discoverRooms: DiscoverRoom[];
   discoverLoading: boolean;
   joiningRoomId: string | null;
@@ -43,6 +44,11 @@ interface DashboardState {
   walletView: 'overview' | 'ledger';
   recentVisitedRooms: PublicRoom[];
   pendingFriendRequests: string[];
+  contactRequestsReceived: ContactRequestItem[];
+  contactRequestsSent: ContactRequestItem[];
+  contactRequestsLoading: boolean;
+  processingContactRequestId: number | null;
+  sendingContactRequest: boolean;
 
   // Actions
   setToken: (token: string | null) => void;
@@ -51,6 +57,7 @@ interface DashboardState {
   setSelectedRoomId: (roomId: string | null) => void;
   setSidebarTab: (tab: DashboardState['sidebarTab']) => void;
   setExploreView: (view: DashboardState['exploreView']) => void;
+  setContactsView: (view: DashboardState['contactsView']) => void;
   toggleRightPanel: () => void;
   setWalletView: (view: DashboardState['walletView']) => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
@@ -75,6 +82,9 @@ interface DashboardState {
   switchActiveAgent: (agentId: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
   initAuth: (token: string) => Promise<void>;
+  loadContactRequests: () => Promise<void>;
+  sendContactRequest: (toAgentId: string, message?: string) => Promise<void>;
+  respondContactRequest: (requestId: number, action: 'accept' | 'reject') => Promise<void>;
 }
 
 const initialState = {
@@ -96,6 +106,7 @@ const initialState = {
   searchResults: null,
   sidebarTab: "explore" as const,
   exploreView: "rooms" as const,
+  contactsView: "agents" as const,
   discoverRooms: [],
   discoverLoading: false,
   joiningRoomId: null,
@@ -113,6 +124,11 @@ const initialState = {
   walletView: 'overview' as const,
   recentVisitedRooms: [],
   pendingFriendRequests: [],
+  contactRequestsReceived: [],
+  contactRequestsSent: [],
+  contactRequestsLoading: false,
+  processingContactRequestId: null,
+  sendingContactRequest: false,
 };
 
 export const useDashboardStore = create<DashboardState>()(
@@ -136,6 +152,7 @@ export const useDashboardStore = create<DashboardState>()(
       setSidebarTab: (tab) => set({ sidebarTab: tab }),
 
       setExploreView: (view) => set({ exploreView: view }),
+      setContactsView: (view) => set({ contactsView: view }),
 
       toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
 
@@ -174,7 +191,7 @@ export const useDashboardStore = create<DashboardState>()(
       },
 
   // Async Actions
-  initAuth: async (token: string) => {
+      initAuth: async (token: string) => {
     set({ loading: true, token });
     
     try {
@@ -198,10 +215,11 @@ export const useDashboardStore = create<DashboardState>()(
 
       if (activeId) {
         const [overview, wallet] = await Promise.all([
-          api.getOverview(token),
-          api.getWallet(token).catch(() => null)
+          api.getOverview(),
+          api.getWallet().catch(() => null)
         ]);
         set({ overview, wallet, loading: false });
+        await get().loadContactRequests();
       } else {
         set({ loading: false });
       }
@@ -209,10 +227,11 @@ export const useDashboardStore = create<DashboardState>()(
       console.warn("[Store] User profile unavailable, falling back to direct mode:", err.message);
       try {
         const [overview, wallet] = await Promise.all([
-          api.getOverview(token),
-          api.getWallet(token).catch(() => null)
+          api.getOverview(),
+          api.getWallet().catch(() => null)
         ]);
         set({ overview, wallet, loading: false });
+        await get().loadContactRequests();
       } catch (innerErr: any) {
         set({ error: innerErr.message || "Failed to load overview", loading: false });
       }
@@ -223,7 +242,7 @@ export const useDashboardStore = create<DashboardState>()(
     const { token } = get();
     try {
       const result = token 
-        ? await api.getRoomMessages(token, roomId, { limit: 50 })
+        ? await api.getRoomMessages(roomId, { limit: 50 })
         : await api.getPublicRoomMessages(roomId, { limit: 50 });
       
       set((state) => ({
@@ -243,7 +262,7 @@ export const useDashboardStore = create<DashboardState>()(
     const oldest = existing[0];
     try {
       const result = token
-        ? await api.getRoomMessages(token, roomId, { before: oldest.hub_msg_id, limit: 50 })
+        ? await api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 })
         : await api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
       
       set((state) => ({
@@ -260,8 +279,8 @@ export const useDashboardStore = create<DashboardState>()(
     try {
       if (token) {
         const [profile, convos] = await Promise.all([
-          api.getAgentProfile(token, agentId),
-          api.getConversations(token, agentId),
+          api.getAgentProfile(agentId),
+          api.getConversations(agentId),
         ]);
         set({
           selectedAgentId: agentId,
@@ -291,7 +310,7 @@ export const useDashboardStore = create<DashboardState>()(
     const { token } = get();
     try {
       const result = token
-        ? await api.searchAgents(token, q)
+        ? await api.searchAgents(q)
         : await api.getPublicAgents({ q });
       set({ searchResults: result.agents });
     } catch (err) {
@@ -309,8 +328,9 @@ export const useDashboardStore = create<DashboardState>()(
     
     set({ loading: true });
     try {
-      const overview = await api.getOverview(token);
+      const overview = await api.getOverview();
       set({ overview, loading: false });
+      await get().loadContactRequests();
       if (selectedRoomId) {
         get().loadRoomMessages(selectedRoomId);
       }
@@ -324,7 +344,7 @@ export const useDashboardStore = create<DashboardState>()(
     if (!token) return;
     set({ discoverLoading: true });
     try {
-      const result = await api.discoverRooms(token);
+      const result = await api.discoverRooms();
       set({ discoverRooms: result.rooms, discoverLoading: false });
     } catch (err) {
       set({ discoverLoading: false });
@@ -336,8 +356,8 @@ export const useDashboardStore = create<DashboardState>()(
     if (!token) return;
     set({ joiningRoomId: roomId });
     try {
-      await api.joinRoom(token, roomId);
-      const overview = await api.getOverview(token);
+      await api.joinRoom(roomId);
+      const overview = await api.getOverview();
       set({ 
         overview, 
         joiningRoomId: null,
@@ -383,7 +403,7 @@ export const useDashboardStore = create<DashboardState>()(
     const { token } = get();
     if (!token) return;
     try {
-      const wallet = await api.getWallet(token);
+      const wallet = await api.getWallet();
       set({ wallet, walletError: null });
     } catch (err: any) {
       set({ walletError: err.message || "Failed to load wallet" });
@@ -396,7 +416,7 @@ export const useDashboardStore = create<DashboardState>()(
     set({ walletLoading: true });
     try {
       const cursor = loadMore ? walletLedgerCursor : undefined;
-      const result = await api.getWalletLedger(token, { cursor: cursor ?? undefined, limit: 20 });
+      const result = await api.getWalletLedger({ cursor: cursor ?? undefined, limit: 20 });
       if (loadMore) {
         set({ 
           walletLedger: [...walletLedger, ...result.entries], 
@@ -425,10 +445,11 @@ export const useDashboardStore = create<DashboardState>()(
       set({ loading: true });
       try {
         const [overview, wallet] = await Promise.all([
-          api.getOverview(token),
-          api.getWallet(token).catch(() => null)
+          api.getOverview(),
+          api.getWallet().catch(() => null)
         ]);
         set({ overview, wallet, loading: false });
+        await get().loadContactRequests();
       } catch (err: any) {
         set({ error: err.message, loading: false });
       }
@@ -441,6 +462,69 @@ export const useDashboardStore = create<DashboardState>()(
       set({ user, ownedAgents: user.agents });
     } catch (err) {
       console.error("[Store] Failed to refresh user profile:", err);
+    }
+  },
+
+  loadContactRequests: async () => {
+    const { token } = get();
+    if (!token) {
+      set({ contactRequestsReceived: [], contactRequestsSent: [] });
+      return;
+    }
+    set({ contactRequestsLoading: true });
+    try {
+      const [received, sent] = await Promise.all([
+        api.getContactRequestsReceived(),
+        api.getContactRequestsSent(),
+      ]);
+      const pendingSentTargets = sent.requests
+        .filter((item) => item.state === "pending")
+        .map((item) => item.to_agent_id);
+      set({
+        contactRequestsReceived: received.requests,
+        contactRequestsSent: sent.requests,
+        pendingFriendRequests: Array.from(new Set([...get().pendingFriendRequests, ...pendingSentTargets])),
+        contactRequestsLoading: false,
+      });
+    } catch (err) {
+      set({ contactRequestsLoading: false });
+    }
+  },
+
+  sendContactRequest: async (toAgentId: string, message?: string) => {
+    const { token } = get();
+    if (!token) return;
+    set({ sendingContactRequest: true });
+    try {
+      await api.createContactRequest({ to_agent_id: toAgentId, message });
+      await get().loadContactRequests();
+      set((state) => ({
+        pendingFriendRequests: state.pendingFriendRequests.includes(toAgentId)
+          ? state.pendingFriendRequests
+          : [...state.pendingFriendRequests, toAgentId],
+        sendingContactRequest: false,
+      }));
+    } catch (err) {
+      set({ sendingContactRequest: false });
+      throw err;
+    }
+  },
+
+  respondContactRequest: async (requestId: number, action: 'accept' | 'reject') => {
+    const { token } = get();
+    if (!token) return;
+    set({ processingContactRequestId: requestId });
+    try {
+      if (action === 'accept') {
+        await api.acceptContactRequest(requestId);
+      } else {
+        await api.rejectContactRequest(requestId);
+      }
+      await Promise.all([get().refreshOverview(), get().loadContactRequests()]);
+      set({ processingContactRequestId: null });
+    } catch (err) {
+      set({ processingContactRequestId: null });
+      throw err;
     }
   },
     }),

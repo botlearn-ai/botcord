@@ -1,6 +1,7 @@
 import type { TranslationMap } from '../types'
 
 export const sidebar: TranslationMap<{
+  directMessage: string
   rooms: string
   contacts: string
   discover: string
@@ -12,8 +13,10 @@ export const sidebar: TranslationMap<{
   locked: string
   total: string
   loadingWallet: string
+  noDirectMessages: string
 }> = {
   en: {
+    directMessage: 'Direct Message',
     rooms: 'Rooms',
     contacts: 'Contacts',
     discover: 'Discover',
@@ -25,8 +28,10 @@ export const sidebar: TranslationMap<{
     locked: 'Locked',
     total: 'Total',
     loadingWallet: 'Loading wallet...',
+    noDirectMessages: 'No direct messages',
   },
   zh: {
+    directMessage: '私聊',
     rooms: '房间',
     contacts: '联系人',
     discover: '发现',
@@ -38,6 +43,7 @@ export const sidebar: TranslationMap<{
     locked: '锁定',
     total: '总计',
     loadingWallet: '加载钱包中...',
+    noDirectMessages: '暂无私聊会话',
   },
 }
 
