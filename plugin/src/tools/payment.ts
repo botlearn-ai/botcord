@@ -11,6 +11,17 @@ import { getConfig as getAppConfig } from "../runtime.js";
 import { formatCoinAmount } from "./coin-format.js";
 import { executeContactOnlyTransfer, formatFollowUpDeliverySummary } from "./payment-transfer.js";
 
+function sanitizeBalance(summary: any): any {
+  return {
+    agent_id: summary.agent_id,
+    asset_code: summary.asset_code,
+    available_balance: formatCoinAmount(summary.available_balance_minor),
+    locked_balance: formatCoinAmount(summary.locked_balance_minor),
+    total_balance: formatCoinAmount(summary.total_balance_minor),
+    updated_at: summary.updated_at,
+  };
+}
+
 function formatBalance(summary: any): string {
   const available = summary.available_balance_minor ?? "0";
   const locked = summary.locked_balance_minor ?? "0";
@@ -44,6 +55,35 @@ function extractMetadata(tx: any): Record<string, unknown> | null {
   }
 }
 
+function sanitizeTransaction(tx: any): any {
+  const metadata = extractMetadata(tx);
+  return {
+    tx_id: tx.tx_id,
+    type: tx.type,
+    status: tx.status,
+    asset_code: tx.asset_code,
+    amount: formatCoinAmount(tx.amount_minor),
+    fee: formatCoinAmount(tx.fee_minor),
+    from_agent_id: tx.from_agent_id,
+    to_agent_id: tx.to_agent_id,
+    reference_type: tx.reference_type,
+    reference_id: tx.reference_id,
+    idempotency_key: tx.idempotency_key,
+    metadata: metadata ?? undefined,
+    created_at: tx.created_at,
+    updated_at: tx.updated_at,
+    completed_at: tx.completed_at,
+  };
+}
+
+function sanitizeTransferResult(transfer: any): any {
+  return {
+    tx: sanitizeTransaction(transfer.tx),
+    transfer_record_message: transfer.transfer_record_message,
+    notifications: transfer.notifications,
+  };
+}
+
 function formatTransaction(tx: any): string {
   const lines = [
     `Transaction: ${tx.tx_id}`,
@@ -75,6 +115,20 @@ function formatTopup(topup: any): string {
   ].filter(Boolean).join("\n");
 }
 
+function sanitizeTopup(topup: any): any {
+  return {
+    topup_id: topup.topup_id,
+    status: topup.status,
+    asset_code: topup.asset_code,
+    amount: formatCoinAmount(topup.amount_minor),
+    channel: topup.channel,
+    idempotency_key: topup.idempotency_key,
+    created_at: topup.created_at,
+    updated_at: topup.updated_at,
+    completed_at: topup.completed_at,
+  };
+}
+
 function formatWithdrawal(withdrawal: any): string {
   return [
     `Withdrawal: ${withdrawal.withdrawal_id}`,
@@ -86,6 +140,23 @@ function formatWithdrawal(withdrawal: any): string {
     withdrawal.reviewed_at ? `Reviewed: ${withdrawal.reviewed_at}` : null,
     withdrawal.completed_at ? `Completed: ${withdrawal.completed_at}` : null,
   ].filter(Boolean).join("\n");
+}
+
+function sanitizeWithdrawal(withdrawal: any): any {
+  return {
+    withdrawal_id: withdrawal.withdrawal_id,
+    status: withdrawal.status,
+    asset_code: withdrawal.asset_code,
+    amount: formatCoinAmount(withdrawal.amount_minor),
+    fee: formatCoinAmount(withdrawal.fee_minor),
+    destination_type: withdrawal.destination_type,
+    destination: withdrawal.destination,
+    idempotency_key: withdrawal.idempotency_key,
+    created_at: withdrawal.created_at,
+    updated_at: withdrawal.updated_at,
+    reviewed_at: withdrawal.reviewed_at,
+    completed_at: withdrawal.completed_at,
+  };
 }
 
 function formatLedger(data: any): string {
@@ -101,6 +172,23 @@ function formatLedger(data: any): string {
     lines.push(`\n(More entries available — use cursor: "${data.next_cursor}")`);
   }
   return lines.join("\n");
+}
+
+function sanitizeLedger(data: any): any {
+  const entries = (data.entries ?? []).map((entry: any) => ({
+    entry_id: entry.entry_id,
+    tx_id: entry.tx_id,
+    direction: entry.direction,
+    amount: formatCoinAmount(entry.amount_minor),
+    balance_after: formatCoinAmount(entry.balance_after_minor),
+    created_at: entry.created_at,
+  }));
+
+  return {
+    entries,
+    next_cursor: data.next_cursor,
+    has_more: data.has_more,
+  };
 }
 
 export function createPaymentTool() {
@@ -219,7 +307,7 @@ export function createPaymentTool() {
 
           case "balance": {
             const summary = await client.getWallet();
-            return { result: formatBalance(summary), data: summary };
+            return { result: formatBalance(summary), data: sanitizeBalance(summary) };
           }
 
           case "ledger": {
@@ -228,7 +316,7 @@ export function createPaymentTool() {
             if (args.limit) opts.limit = args.limit;
             if (args.type) opts.type = args.type;
             const ledger = await client.getWalletLedger(opts);
-            return { result: formatLedger(ledger), data: ledger };
+            return { result: formatLedger(ledger), data: sanitizeLedger(ledger) };
           }
 
           case "transfer": {
@@ -245,7 +333,7 @@ export function createPaymentTool() {
             });
             return {
               result: `${formatTransaction(transfer.tx)}\n${formatFollowUpDeliverySummary(transfer)}`,
-              data: transfer,
+              data: sanitizeTransferResult(transfer),
             };
           }
 
@@ -257,7 +345,7 @@ export function createPaymentTool() {
               metadata: args.metadata,
               idempotency_key: args.idempotency_key,
             });
-            return { result: formatTopup(topup), data: topup };
+            return { result: formatTopup(topup), data: sanitizeTopup(topup) };
           }
 
           case "withdraw": {
@@ -269,19 +357,19 @@ export function createPaymentTool() {
               destination: args.destination,
               idempotency_key: args.idempotency_key,
             });
-            return { result: formatWithdrawal(withdrawal), data: withdrawal };
+            return { result: formatWithdrawal(withdrawal), data: sanitizeWithdrawal(withdrawal) };
           }
 
           case "cancel_withdrawal": {
             if (!args.withdrawal_id) return { error: "withdrawal_id is required" };
             const withdrawal = await client.cancelWithdrawal(args.withdrawal_id);
-            return { result: formatWithdrawal(withdrawal), data: withdrawal };
+            return { result: formatWithdrawal(withdrawal), data: sanitizeWithdrawal(withdrawal) };
           }
 
           case "tx_status": {
             if (!args.tx_id) return { error: "tx_id is required" };
             const tx = await client.getWalletTransaction(args.tx_id);
-            return { result: formatTransaction(tx), data: tx };
+            return { result: formatTransaction(tx), data: sanitizeTransaction(tx) };
           }
 
           default:

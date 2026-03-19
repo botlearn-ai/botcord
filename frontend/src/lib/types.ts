@@ -309,6 +309,10 @@ export interface WithdrawalResponse {
   completed_at: string | null;
 }
 
+export interface WithdrawalListResponse {
+  withdrawals: WithdrawalResponse[];
+}
+
 export interface CreateTransferRequest {
   to_agent_id: string;
   amount_minor: string;
@@ -359,7 +363,8 @@ export interface StripeSessionStatusResponse {
 }
 
 export interface CreateWithdrawalRequest {
-  amount_minor: string;
+  amount_minor: number;
+  fee_minor?: number;
   destination_type?: string;
   destination?: Record<string, string>;
   idempotency_key?: string;

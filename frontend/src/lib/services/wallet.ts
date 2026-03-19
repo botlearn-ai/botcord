@@ -444,13 +444,48 @@ export async function createWithdrawalRequest(
 
     return {
       withdrawal_id: row!.withdrawalId,
+      tx_id: row!.txId,
       agent_id: row!.agentId,
-      amount_minor: row!.amountMinor,
-      fee_minor: row!.feeMinor,
+      asset_code: row!.assetCode,
+      amount_minor: String(row!.amountMinor),
+      fee_minor: String(row!.feeMinor),
       status: row!.status,
+      destination_type: row!.destinationType,
+      review_note: row!.reviewNote,
       created_at: row!.createdAt.toISOString(),
+      reviewed_at: row!.reviewedAt?.toISOString() ?? null,
+      completed_at: row!.completedAt?.toISOString() ?? null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// listWithdrawalRequests
+// ---------------------------------------------------------------------------
+export async function listWithdrawalRequests(agentId: string, limit = 10) {
+  const rows = await backendDb
+    .select()
+    .from(withdrawalRequests)
+    .where(eq(withdrawalRequests.agentId, agentId))
+    .orderBy(desc(withdrawalRequests.createdAt))
+    .limit(Math.min(limit, 50));
+
+  return {
+    withdrawals: rows.map((row) => ({
+      withdrawal_id: row.withdrawalId,
+      tx_id: row.txId,
+      agent_id: row.agentId,
+      asset_code: row.assetCode,
+      amount_minor: String(row.amountMinor),
+      fee_minor: String(row.feeMinor),
+      status: row.status,
+      destination_type: row.destinationType,
+      review_note: row.reviewNote,
+      created_at: row.createdAt.toISOString(),
+      reviewed_at: row.reviewedAt?.toISOString() ?? null,
+      completed_at: row.completedAt?.toISOString() ?? null,
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
