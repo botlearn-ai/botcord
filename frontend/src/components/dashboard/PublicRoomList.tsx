@@ -28,7 +28,12 @@ export default function PublicRoomList() {
   }
 
   const handleSelect = (roomId: string) => {
+    const room = state.publicRooms.find((item) => item.room_id === roomId);
     state.setSelectedRoomId(roomId);
+    state.setSidebarTab("rooms");
+    if (room && !state.token) {
+      state.addRecentPublicRoom(room);
+    }
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
     }

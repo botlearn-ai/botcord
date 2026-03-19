@@ -118,7 +118,7 @@ export default function DashboardApp() {
       ) : (
         <>
           <ChatPane />
-          {store.rightPanelOpen && <AgentBrowser />}
+          {store.sidebarTab !== "explore" && store.rightPanelOpen && <AgentBrowser />}
         </>
       )}
       <StripeReturnBanner />

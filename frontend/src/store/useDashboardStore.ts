@@ -1,7 +1,8 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { 
   DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, 
-  DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry, 
+  DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry,
   UserProfile, UserAgent 
 } from "@/lib/types";
 import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
@@ -22,7 +23,8 @@ interface DashboardState {
   selectedAgentProfile: AgentProfile | null;
   selectedAgentConversations: DashboardRoom[] | null;
   searchResults: AgentProfile[] | null;
-  sidebarTab: "rooms" | "contacts" | "discover" | "agents" | "wallet";
+  sidebarTab: "dm" | "rooms" | "contacts" | "explore" | "wallet";
+  exploreView: "rooms" | "agents";
   discoverRooms: DiscoverRoom[];
   discoverLoading: boolean;
   joiningRoomId: string | null;
@@ -39,6 +41,8 @@ interface DashboardState {
   walletError: string | null;
   walletLedgerError: string | null;
   walletView: 'overview' | 'ledger';
+  recentVisitedRooms: PublicRoom[];
+  pendingFriendRequests: string[];
 
   // Actions
   setToken: (token: string | null) => void;
@@ -46,8 +50,11 @@ interface DashboardState {
   setActiveAgentId: (agentId: string | null) => void;
   setSelectedRoomId: (roomId: string | null) => void;
   setSidebarTab: (tab: DashboardState['sidebarTab']) => void;
+  setExploreView: (view: DashboardState['exploreView']) => void;
   toggleRightPanel: () => void;
   setWalletView: (view: DashboardState['walletView']) => void;
+  addRecentPublicRoom: (room: PublicRoom) => void;
+  markFriendRequestPending: (agentId: string) => void;
   setError: (error: string | null) => void;
   setLoading: (loading: boolean) => void;
   logout: () => void;
@@ -87,7 +94,8 @@ const initialState = {
   selectedAgentProfile: null,
   selectedAgentConversations: null,
   searchResults: null,
-  sidebarTab: "discover" as const,
+  sidebarTab: "explore" as const,
+  exploreView: "rooms" as const,
   discoverRooms: [],
   discoverLoading: false,
   joiningRoomId: null,
@@ -103,38 +111,67 @@ const initialState = {
   walletError: null,
   walletLedgerError: null,
   walletView: 'overview' as const,
+  recentVisitedRooms: [],
+  pendingFriendRequests: [],
 };
 
-export const useDashboardStore = create<DashboardState>((set, get) => ({
-  ...initialState,
+export const useDashboardStore = create<DashboardState>()(
+  persist(
+    (set, get) => ({
+      ...initialState,
 
-  setToken: (token) => {
-    set({ token, error: null });
-    if (token) {
-      set({ sidebarTab: 'rooms' });
-    }
-  },
+      setToken: (token) => {
+        set({ token, error: null });
+        if (token) {
+          set({ sidebarTab: 'dm' });
+        }
+      },
 
-  setUser: (user) => set({ user, ownedAgents: user.agents }),
+      setUser: (user) => set({ user, ownedAgents: user.agents }),
 
-  setActiveAgentId: (agentId) => set({ activeAgentId: agentId }),
+      setActiveAgentId: (agentId) => set({ activeAgentId: agentId }),
 
-  setSelectedRoomId: (roomId) => set({ selectedRoomId: roomId }),
+      setSelectedRoomId: (roomId) => set({ selectedRoomId: roomId }),
 
-  setSidebarTab: (tab) => set({ sidebarTab: tab }),
+      setSidebarTab: (tab) => set({ sidebarTab: tab }),
 
-  toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
+      setExploreView: (view) => set({ exploreView: view }),
 
-  setWalletView: (view) => set({ walletView: view }),
+      toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
 
-  setError: (error) => set({ error, loading: false }),
+      setWalletView: (view) => set({ walletView: view }),
 
-  setLoading: (loading) => set({ loading }),
+      addRecentPublicRoom: (room) =>
+        set((state) => {
+          const next = [
+            room,
+            ...state.recentVisitedRooms.filter((item) => item.room_id !== room.room_id),
+          ].slice(0, 20);
+          return { recentVisitedRooms: next };
+        }),
 
-  logout: () => {
-    setActiveAgentId(null);
-    set({ ...initialState, publicRooms: get().publicRooms, publicAgents: get().publicAgents, sidebarTab: "discover" });
-  },
+      markFriendRequestPending: (agentId) =>
+        set((state) => ({
+          pendingFriendRequests: state.pendingFriendRequests.includes(agentId)
+            ? state.pendingFriendRequests
+            : [...state.pendingFriendRequests, agentId],
+        })),
+
+      setError: (error) => set({ error, loading: false }),
+
+      setLoading: (loading) => set({ loading }),
+
+      logout: () => {
+        setActiveAgentId(null);
+        set({
+          ...initialState,
+          recentVisitedRooms: get().recentVisitedRooms,
+          pendingFriendRequests: get().pendingFriendRequests,
+          publicRooms: get().publicRooms,
+          publicAgents: get().publicAgents,
+          sidebarTab: "explore",
+        });
+      },
 
   // Async Actions
   initAuth: async (token: string) => {
@@ -406,4 +443,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       console.error("[Store] Failed to refresh user profile:", err);
     }
   },
-}));
+    }),
+    {
+      name: "dashboard-storage",
+      partialize: (state) => ({
+        recentVisitedRooms: state.recentVisitedRooms,
+        pendingFriendRequests: state.pendingFriendRequests,
+      }),
+    },
+  ),
+);

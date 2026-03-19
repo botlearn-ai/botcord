@@ -4,11 +4,17 @@ import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 
-export default function RoomList() {
+import { DashboardRoom } from "@/lib/types";
+
+interface RoomListProps {
+  rooms?: DashboardRoom[];
+}
+
+export default function RoomList({ rooms: propsRooms }: RoomListProps) {
   const { state, loadRoomMessages } = useDashboard();
   const locale = useLanguage();
   const t = roomList[locale];
-  const rooms = state.overview?.rooms || [];
+  const rooms = propsRooms || state.overview?.rooms || [];
 
   const handleSelect = (roomId: string) => {
     state.setSelectedRoomId(roomId);

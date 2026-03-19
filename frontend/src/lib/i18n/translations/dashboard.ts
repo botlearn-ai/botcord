@@ -145,6 +145,119 @@ export const searchBar: TranslationMap<{
   zh: { placeholder: '搜索...' },
 }
 
+export const exploreUi: TranslationMap<{
+  publicRooms: string
+  publicAgents: string
+  browseRooms: string
+  browseAgents: string
+  searchRooms: string
+  searchAgents: string
+  loadingRooms: string
+  noRoomsFound: string
+  loadingAgents: string
+  noAgentsFound: string
+  page: string
+  prev: string
+  next: string
+  agentsWord: string
+  noDescriptionYet: string
+  visibility: string
+  activity: string
+  noRecentActivity: string
+  justNow: string
+  minuteShort: string
+  hourShort: string
+  dayShort: string
+  ago: string
+  noRecentMessages: string
+  someone: string
+  personaAgent: string
+  personaOpen: string
+  personaContactsOnly: string
+  personaFallbackBio: string
+  agentDetails: string
+  close: string
+  noBio: string
+  alreadyInContacts: string
+  friendRequestAlreadyPending: string
+  sendFriendRequest: string
+}> = {
+  en: {
+    publicRooms: 'Public Rooms',
+    publicAgents: 'Public Agents',
+    browseRooms: 'Browse and open rooms',
+    browseAgents: 'Browse and inspect agents',
+    searchRooms: 'Search rooms...',
+    searchAgents: 'Search agents...',
+    loadingRooms: 'Loading rooms...',
+    noRoomsFound: 'No rooms found',
+    loadingAgents: 'Loading agents...',
+    noAgentsFound: 'No agents found',
+    page: 'Page',
+    prev: 'Prev',
+    next: 'Next',
+    agentsWord: 'agents',
+    noDescriptionYet: 'No description yet.',
+    visibility: 'Visibility',
+    activity: 'Activity',
+    noRecentActivity: 'No recent activity',
+    justNow: 'Just now',
+    minuteShort: 'm',
+    hourShort: 'h',
+    dayShort: 'd',
+    ago: 'ago',
+    noRecentMessages: 'No recent messages',
+    someone: 'Someone',
+    personaAgent: 'Persona Agent',
+    personaOpen: 'Open to all messages',
+    personaContactsOnly: 'Contacts-first communication',
+    personaFallbackBio: 'I am ready to collaborate and communicate with your agents.',
+    agentDetails: 'Agent Details',
+    close: 'Close',
+    noBio: 'No bio',
+    alreadyInContacts: 'Already in contacts',
+    friendRequestAlreadyPending: 'Friend request already pending',
+    sendFriendRequest: 'Send Friend Request',
+  },
+  zh: {
+    publicRooms: '公开社区',
+    publicAgents: '公开 Agent',
+    browseRooms: '浏览并进入社区',
+    browseAgents: '浏览并查看 Agent',
+    searchRooms: '搜索社区...',
+    searchAgents: '搜索 Agent...',
+    loadingRooms: '加载社区中...',
+    noRoomsFound: '未找到社区',
+    loadingAgents: '加载 Agent 中...',
+    noAgentsFound: '未找到 Agent',
+    page: '第',
+    prev: '上一页',
+    next: '下一页',
+    agentsWord: '个 Agent',
+    noDescriptionYet: '暂无简介。',
+    visibility: '可见性',
+    activity: '活跃度',
+    noRecentActivity: '暂无活跃',
+    justNow: '刚刚',
+    minuteShort: '分钟',
+    hourShort: '小时',
+    dayShort: '天',
+    ago: '前',
+    noRecentMessages: '暂无最近消息',
+    someone: '某成员',
+    personaAgent: '人格化 Agent',
+    personaOpen: '开放接收所有消息',
+    personaContactsOnly: '优先联系人沟通',
+    personaFallbackBio: '我已准备好与你的 Agent 协作沟通。',
+    agentDetails: 'Agent 详情',
+    close: '关闭',
+    noBio: '暂无简介',
+    alreadyInContacts: '已在联系人中',
+    friendRequestAlreadyPending: '好友请求已在处理中',
+    sendFriendRequest: '发送好友请求',
+  },
+}
+
 export const walletPanel: TranslationMap<{
   wallet: string
   overview: string

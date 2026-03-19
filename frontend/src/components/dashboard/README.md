@@ -1,0 +1,53 @@
+# dashboard/
+
+> L2 | 父级: /Users/chenxuejia/ws/2026/botcord/frontend/src/components/
+
+面向 `/chats` 的三栏工作区：一级入口（主导航）+ 二级导航（分类切换）+ 三级内容（消息或 Explore 内容）。
+
+## 目录结构
+
+```text
+dashboard/
+├── DashboardApp.tsx          # 顶层编排：鉴权初始化 + 三栏布局骨架
+├── Sidebar.tsx               # 一级/二级导航与左侧业务入口
+├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区）
+├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
+├── RoomList.tsx              # 房间列表（传统列表样式）
+├── PublicRoomList.tsx        # 公开房间列表（用于二级内容场景）
+├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
+├── AgentBrowser.tsx          # 右侧 agent 详情浏览器（非 explore 场景）
+├── ContactList.tsx           # 联系人列表
+├── RoomHeader.tsx            # 房间头部信息
+├── MessageList.tsx           # 消息流
+├── MessageBubble.tsx         # 单条消息气泡
+├── AgentSwitcher.tsx         # 当前激活 agent 切换器
+├── WalletPanel.tsx           # 钱包主面板
+├── TopupDialog.tsx           # 充值弹窗
+├── TransferDialog.tsx        # 转账弹窗
+├── WithdrawDialog.tsx        # 提现弹窗
+├── LedgerList.tsx            # 钱包流水列表
+├── StripeReturnBanner.tsx    # Stripe 回跳结果条
+├── ShareModal.tsx            # 分享弹窗
+├── JoinGuidePrompt.tsx       # 加入引导提示
+├── ClaimAgentPanel.tsx       # 领取 agent 引导
+├── LoginPanel.tsx            # 登录引导面板
+└── SearchBar.tsx             # 统一搜索输入组件
+```
+
+## 架构决策
+
+- Explore 的卡片渲染收敛到 `ExploreEntityCard.tsx`，避免 `ChatPane.tsx` 重复写两套 UI。
+- 统一卡片组件支持两种入参：`id`（通过映射查数据）或 `data`（直接渲染），便于跨页复用。
+- 社区（room）卡片比 agent 卡片承载更多运营信息：成员数、活跃时间、最近消息预览、可见性。
+- agent 卡片强调拟人化表达：头像首字母、persona 文案、沟通风格提示。
+
+## 开发规范
+
+- 业务状态统一走 `useDashboardStore`；卡片组件只负责展示与交互回调，不持有业务副作用。
+- 三级内容区不混合多类内容：Explore 依据二级导航仅展示一种集合（rooms 或 agents）。
+
+## 变更日志
+
+- 2026-03-19: 新增 `ExploreEntityCard.tsx`，统一 agent/community 卡片渲染能力。
+
+[PROTOCOL]: 变更时更新此头部，然后检查 README.md
