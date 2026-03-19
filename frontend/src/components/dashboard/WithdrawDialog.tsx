@@ -6,6 +6,8 @@ import { useLanguage } from '@/lib/i18n';
 import { withdrawDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
 
+const MIN_WITHDRAWAL_MINOR = 1000 * 100;
+
 interface WithdrawDialogProps {
   onClose: () => void;
   onSuccess: () => void;
@@ -49,6 +51,11 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
     }
 
     const amountMinor = Math.round(amountNum * 100);
+    if (amountMinor < MIN_WITHDRAWAL_MINOR) {
+      window.alert(t.minimumWithdrawAmount);
+      return;
+    }
+
     if (amountMinor > availableMinor) {
       setError(`${t.amountExceedsBalance} (${formatCoinAmount(availableBalance)})`);
       return;

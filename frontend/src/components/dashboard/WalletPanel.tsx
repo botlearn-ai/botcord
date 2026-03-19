@@ -12,6 +12,7 @@ import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { walletPanel } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
+import { api, ApiError } from "@/lib/api";
 import type { WithdrawalResponse } from "@/lib/types";
 import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
@@ -137,6 +138,7 @@ export default function WalletPanel() {
             withdrawalsLoading={state.withdrawalRequestsLoading}
             withdrawalsError={state.withdrawalRequestsError}
             onRefreshWithdrawals={loadWithdrawalRequests}
+            onWithdrawalUpdated={handleDialogSuccess}
             onTransfer={() => setActiveDialog("transfer")}
             onTopup={() => setActiveDialog("topup")}
             onWithdraw={() => setActiveDialog("withdraw")}
@@ -176,6 +178,7 @@ function WalletOverview({
   withdrawalsLoading,
   withdrawalsError,
   onRefreshWithdrawals,
+  onWithdrawalUpdated,
   onTransfer,
   onTopup,
   onWithdraw,
@@ -185,6 +188,7 @@ function WalletOverview({
   withdrawalsLoading: boolean;
   withdrawalsError: string | null;
   onRefreshWithdrawals: () => void;
+  onWithdrawalUpdated: () => void;
   onTransfer: () => void;
   onTopup: () => void;
   onWithdraw: () => void;
@@ -268,6 +272,7 @@ function WalletOverview({
         loading={withdrawalsLoading}
         error={withdrawalsError}
         onRefresh={onRefreshWithdrawals}
+        onCancelled={onWithdrawalUpdated}
       />
     </div>
   );
@@ -278,14 +283,38 @@ function RecentWithdrawals({
   loading,
   error,
   onRefresh,
+  onCancelled,
 }: {
   items: WithdrawalResponse[];
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  onCancelled: () => void;
 }) {
   const locale = useLanguage();
   const t = walletPanel[locale];
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const handleCancel = useCallback(async (withdrawalId: string) => {
+    if (!window.confirm(t.cancelWithdrawalConfirm)) {
+      return;
+    }
+
+    setCancellingId(withdrawalId);
+    try {
+      await api.cancelWithdrawal(withdrawalId);
+      window.alert(t.cancelWithdrawalSuccess);
+      onCancelled();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        window.alert(err.message);
+      } else {
+        window.alert(t.cancelWithdrawalFailed);
+      }
+    } finally {
+      setCancellingId(null);
+    }
+  }, [onCancelled, t]);
 
   return (
     <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl">
@@ -343,6 +372,19 @@ function RecentWithdrawals({
                     #{item.withdrawal_id}
                   </span>
                 </div>
+
+                {item.status === "pending" ? (
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleCancel(item.withdrawal_id)}
+                      disabled={cancellingId === item.withdrawal_id}
+                      className="rounded-lg border border-red-400/30 px-3 py-1.5 text-[11px] text-red-300 transition-colors hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {cancellingId === item.withdrawal_id ? t.cancelling : t.cancelWithdrawal}
+                    </button>
+                  </div>
+                ) : null}
 
                 {item.review_note ? (
                   <div className="mt-3 rounded-lg border border-glass-border bg-black/20 p-3 text-xs text-text-secondary">
