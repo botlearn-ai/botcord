@@ -12,5 +12,7 @@
 部署方式
 - 在 `/Users/chenxuejia/ws/2026/botcord/frontend` 执行 `pnpm db:functions`，脚本会按文件名顺序执行 `db/functions/*.sql`。
 - 依赖环境变量：`SUPABASE_DB_URL`。
+- 生产建议优先使用 Supabase Session Pooler 连接串；若使用 Pooler，设置 `SUPABASE_DB_PREPARE=false`。
+- 建议设置 `SUPABASE_DB_POOL_MAX=1`，避免 serverless 并发时打满数据库连接数。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md

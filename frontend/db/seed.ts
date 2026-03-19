@@ -3,12 +3,14 @@ import postgres from "postgres";
 import { roles, permissions, rolePermissions } from "./schema";
 
 const connectionString = process.env.SUPABASE_DB_URL!;
+const prepareRaw = process.env.SUPABASE_DB_PREPARE?.toLowerCase();
+const usePreparedStatements = prepareRaw === "true";
 if (!connectionString) {
   console.error("SUPABASE_DB_URL is required");
   process.exit(1);
 }
 
-const client = postgres(connectionString);
+const client = postgres(connectionString, { max: 1, prepare: usePreparedStatements });
 const db = drizzle(client);
 
 const ROLES = [

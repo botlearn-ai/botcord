@@ -47,6 +47,8 @@ async function main() {
   await loadEnvFile(path.resolve(cwd, ".env"));
 
   const connectionString = process.env.SUPABASE_DB_URL;
+  const prepareRaw = process.env.SUPABASE_DB_PREPARE?.toLowerCase();
+  const usePreparedStatements = prepareRaw === "true";
   if (!connectionString) {
     console.error("SUPABASE_DB_URL is not set. Checked process env, .env.local, and .env.");
     process.exit(1);
@@ -64,7 +66,7 @@ async function main() {
     return;
   }
 
-  const sql = postgres(connectionString, { max: 1 });
+  const sql = postgres(connectionString, { max: 1, prepare: usePreparedStatements });
   try {
     for (const fileName of sqlFiles) {
       const filePath = path.join(functionsDir, fileName);
