@@ -177,6 +177,28 @@ class Room(Base):
     )
 
 
+class SubscriptionRoomCreatorPolicy(Base):
+    __tablename__ = "subscription_room_creator_policies"
+    __table_args__ = (
+        UniqueConstraint("agent_id", name="uq_subscription_room_creator_policy_agent"),
+        CheckConstraint("max_active_rooms >= 0", name="ck_subscription_room_creator_policy_nonneg"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    allowed_to_create: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    max_active_rooms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class RoomMember(Base):
     __tablename__ = "room_members"
     __table_args__ = (UniqueConstraint("room_id", "agent_id"),)
