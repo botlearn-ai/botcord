@@ -6,7 +6,7 @@ import ShareModal from "./ShareModal";
 import CopyableId from "@/components/ui/CopyableId";
 
 export default function RoomHeader() {
-  const { state, isGuest } = useDashboard();
+  const { state, isGuest, isAuthedReady } = useDashboard();
   const [showShareModal, setShowShareModal] = useState(false);
 
   // Auth mode: find room from overview
@@ -49,7 +49,7 @@ export default function RoomHeader() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!isGuest && authRoom && (
+          {isAuthedReady && authRoom && (
             <>
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
                 {authRoom.my_role}
@@ -88,7 +88,7 @@ export default function RoomHeader() {
         </div>
       </div>
 
-      {showShareModal && state.token && (
+      {showShareModal && isAuthedReady && state.token && (
         <ShareModal
           roomId={room.room_id}
           roomName={room.name}

@@ -8,13 +8,13 @@ import type { StripeSessionStatusResponse } from "@/lib/types";
 type BannerMode = "success_polling" | "cancelled";
 
 export default function StripeReturnBanner() {
-  const { state, loadWallet, loadWalletLedger } = useDashboard();
+  const { state, isAuthedReady, loadWallet, loadWalletLedger } = useDashboard();
   const [status, setStatus] = useState<StripeSessionStatusResponse | null>(null);
   const [mode, setMode] = useState<BannerMode | null>(null);
   const [polling, setPolling] = useState(false);
 
   useEffect(() => {
-    if (!state.token) return;
+    if (!isAuthedReady || !state.token) return;
 
     const params = new URLSearchParams(window.location.search);
     const walletTopup = params.get("wallet_topup");
@@ -57,7 +57,7 @@ export default function StripeReturnBanner() {
       };
       poll();
     }
-  }, [state.token]);
+  }, [isAuthedReady, state.token]);
 
   if (!mode) return null;
 

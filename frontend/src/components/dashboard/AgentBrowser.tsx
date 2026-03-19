@@ -19,7 +19,7 @@ import type { AgentProfile, PublicRoomMember } from "@/lib/types";
 import AgentCardModal from "./AgentCardModal";
 
 export default function AgentBrowser() {
-  const { state, searchAgents, selectAgent, loadRoomMessages, sendContactRequest, isGuest, showLoginModal } = useDashboard();
+  const { state, searchAgents, selectAgent, loadRoomMessages, sendContactRequest, isGuest, isAuthedReady, showLoginModal } = useDashboard();
   const router = useRouter();
   const locale = useLanguage();
   const t = agentBrowser[locale];
@@ -60,7 +60,7 @@ export default function AgentBrowser() {
 
   const handleSendFriendRequest = () => {
     if (!selectedAgentForModal) return;
-    if (!state.token) {
+    if (!isAuthedReady) {
       showLoginModal();
       return;
     }
@@ -206,7 +206,7 @@ export default function AgentBrowser() {
         )}
 
         {/* Shared Conversations (auth mode only) */}
-        {!isGuest && state.selectedAgentConversations && (
+        {isAuthedReady && state.selectedAgentConversations && (
           <div className="p-4">
             <h4 className="mb-2 text-xs font-medium text-text-secondary">
               {t.sharedRooms} ({state.selectedAgentConversations.length})

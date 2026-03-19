@@ -12,7 +12,7 @@ interface TransferDialogProps {
 }
 
 export default function TransferDialog({ onClose, onSuccess }: TransferDialogProps) {
-  const { state } = useDashboard();
+  const { state, isAuthedReady } = useDashboard();
   const locale = useLanguage();
   const t = transferDialog[locale];
   const [recipientId, setRecipientId] = useState("");
@@ -45,7 +45,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
 
     const amountMinor = Math.round(amountNum * 100);
 
-    if (!state.token) return;
+    if (!isAuthedReady || !state.token) return;
     setSubmitting(true);
     try {
       await api.createTransfer({

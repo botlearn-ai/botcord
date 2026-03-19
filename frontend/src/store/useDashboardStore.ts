@@ -1,13 +1,41 @@
+/**
+ * [INPUT]: 依赖 zustand/persist 保存 dashboard 会话状态，依赖 @/lib/api 与 active-agent 工具发起 BFF 请求
+ * [OUTPUT]: 对外提供 useDashboardStore 状态仓库与 dashboard 异步动作
+ * [POS]: frontend dashboard 的单一状态源，协调登录态、活跃 agent、房间消息、联系人与钱包数据
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { 
+import type {
   DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, 
   DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry,
   UserProfile, UserAgent, ContactRequestItem
 } from "@/lib/types";
 import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
+export type DashboardSessionMode = "guest" | "authed-no-agent" | "authed-ready";
+
+function resolveStoredActiveAgentId(user: UserProfile): string | null {
+  const savedAgentId = getActiveAgentId();
+  if (savedAgentId && user.agents.some((agent) => agent.agent_id === savedAgentId)) {
+    return savedAgentId;
+  }
+  const defaultAgent = user.agents.find((agent) => agent.is_default) || user.agents[0];
+  return defaultAgent?.agent_id ?? null;
+}
+
+function hasReadyActiveAgent(token: string | null, activeAgentId?: string | null): activeAgentId is string {
+  return Boolean(token && (activeAgentId || getActiveAgentId()));
+}
+
+function resolveSessionMode(token: string | null, activeAgentId: string | null): DashboardSessionMode {
+  if (!token) return "guest";
+  return activeAgentId ? "authed-ready" : "authed-no-agent";
+}
+
 interface DashboardState {
+  sessionMode: DashboardSessionMode;
   token: string | null;
   user: UserProfile | null;
   ownedAgents: UserAgent[];
@@ -89,6 +117,7 @@ interface DashboardState {
 
 const initialState = {
   token: null,
+  sessionMode: "guest" as const,
   user: null,
   ownedAgents: [],
   activeAgentId: null,
@@ -137,15 +166,24 @@ export const useDashboardStore = create<DashboardState>()(
       ...initialState,
 
       setToken: (token) => {
-        set({ token, error: null });
+        const activeAgentId = token ? get().activeAgentId : null;
+        set({
+          token,
+          activeAgentId,
+          sessionMode: resolveSessionMode(token, activeAgentId),
+          error: null,
+        });
         if (token) {
           set({ sidebarTab: 'messages' });
         }
       },
 
-      setUser: (user) => set({ user, ownedAgents: user.agents }),
+      setUser: (user) => set((state) => ({ user, ownedAgents: user.agents, sessionMode: resolveSessionMode(state.token, state.activeAgentId) })),
 
-      setActiveAgentId: (agentId) => set({ activeAgentId: agentId }),
+      setActiveAgentId: (agentId) => set((state) => ({
+        activeAgentId: agentId,
+        sessionMode: resolveSessionMode(state.token, agentId),
+      })),
 
       setSelectedRoomId: (roomId) => set({ selectedRoomId: roomId }),
 
@@ -192,26 +230,26 @@ export const useDashboardStore = create<DashboardState>()(
 
   // Async Actions
       initAuth: async (token: string) => {
-    set({ loading: true, token });
+    set({ loading: true, token, error: null });
     
     try {
       const user = await userApi.getMe();
-      set({ user, ownedAgents: user.agents });
+      const activeId = resolveStoredActiveAgentId(user);
+      set({
+        user,
+        ownedAgents: user.agents,
+        activeAgentId: activeId,
+        sessionMode: resolveSessionMode(token, activeId),
+        overview: activeId ? get().overview : null,
+        wallet: activeId ? get().wallet : null,
+        walletLedger: activeId ? get().walletLedger : [],
+        walletLedgerCursor: activeId ? get().walletLedgerCursor : null,
+        walletLedgerHasMore: activeId ? get().walletLedgerHasMore : false,
+        walletError: null,
+        walletLedgerError: null,
+      });
 
-      const savedAgentId = getActiveAgentId();
-      const hasAgents = user.agents.length > 0;
-      let activeId: string | null = null;
-
-      if (hasAgents) {
-        if (savedAgentId && user.agents.some((a) => a.agent_id === savedAgentId)) {
-          activeId = savedAgentId;
-        } else {
-          const defaultAgent = user.agents.find((a) => a.is_default) || user.agents[0];
-          activeId = defaultAgent.agent_id;
-        }
-        setActiveAgentId(activeId);
-        set({ activeAgentId: activeId });
-      }
+      setActiveAgentId(activeId);
 
       if (activeId) {
         const [overview, wallet] = await Promise.all([
@@ -225,12 +263,34 @@ export const useDashboardStore = create<DashboardState>()(
       }
     } catch (err: any) {
       console.warn("[Store] User profile unavailable, falling back to direct mode:", err.message);
+      const activeId = getActiveAgentId();
+      if (!activeId) {
+        set({
+          activeAgentId: null,
+          sessionMode: "authed-no-agent",
+          overview: null,
+          wallet: null,
+          walletLedger: [],
+          walletLedgerCursor: null,
+          walletLedgerHasMore: false,
+          walletError: null,
+          walletLedgerError: null,
+          loading: false,
+        });
+        return;
+      }
       try {
         const [overview, wallet] = await Promise.all([
           api.getOverview(),
           api.getWallet().catch(() => null)
         ]);
-        set({ overview, wallet, loading: false });
+        set({
+          activeAgentId: activeId,
+          sessionMode: resolveSessionMode(token, activeId),
+          overview,
+          wallet,
+          loading: false,
+        });
         await get().loadContactRequests();
       } catch (innerErr: any) {
         set({ error: innerErr.message || "Failed to load overview", loading: false });
@@ -342,10 +402,25 @@ export const useDashboardStore = create<DashboardState>()(
   },
 
   refreshOverview: async () => {
-    const { token, selectedRoomId } = get();
+    const { token, selectedRoomId, activeAgentId } = get();
     if (!token) {
       const store = get();
       await Promise.all([store.loadPublicRooms(), store.loadPublicAgents()]);
+      return;
+    }
+    if (!hasReadyActiveAgent(token, activeAgentId)) {
+      set({
+        activeAgentId: null,
+        sessionMode: "authed-no-agent",
+        overview: null,
+        wallet: null,
+        walletLedger: [],
+        walletLedgerCursor: null,
+        walletLedgerHasMore: false,
+        walletError: null,
+        walletLedgerError: null,
+        loading: false,
+      });
       return;
     }
     
@@ -431,8 +506,12 @@ export const useDashboardStore = create<DashboardState>()(
   },
 
   loadWallet: async () => {
-    const { token } = get();
+    const { token, activeAgentId } = get();
     if (!token) return;
+    if (!hasReadyActiveAgent(token, activeAgentId)) {
+      set({ wallet: null, walletError: null });
+      return;
+    }
     try {
       const wallet = await api.getWallet();
       set({ wallet, walletError: null });
@@ -442,8 +521,18 @@ export const useDashboardStore = create<DashboardState>()(
   },
 
   loadWalletLedger: async (loadMore = false) => {
-    const { token, walletLedgerCursor, walletLedger } = get();
+    const { token, activeAgentId, walletLedgerCursor, walletLedger } = get();
     if (!token) return;
+    if (!hasReadyActiveAgent(token, activeAgentId)) {
+      set({
+        walletLedger: [],
+        walletLedgerCursor: null,
+        walletLedgerHasMore: false,
+        walletLedgerError: null,
+        walletLoading: false,
+      });
+      return;
+    }
     set({ walletLoading: true });
     try {
       const cursor = loadMore ? walletLedgerCursor : undefined;
@@ -471,7 +560,7 @@ export const useDashboardStore = create<DashboardState>()(
   switchActiveAgent: async (agentId: string) => {
     const { token } = get();
     setActiveAgentId(agentId);
-    set({ activeAgentId: agentId });
+    set({ activeAgentId: agentId, sessionMode: resolveSessionMode(token, agentId) });
     if (token) {
       set({ loading: true });
       try {
@@ -490,16 +579,27 @@ export const useDashboardStore = create<DashboardState>()(
   refreshUserProfile: async () => {
     try {
       const user = await userApi.getMe();
-      set({ user, ownedAgents: user.agents });
+      const activeAgentId = resolveStoredActiveAgentId(user);
+      setActiveAgentId(activeAgentId);
+      set((state) => ({
+        user,
+        ownedAgents: user.agents,
+        activeAgentId,
+        sessionMode: resolveSessionMode(state.token, activeAgentId),
+      }));
     } catch (err) {
       console.error("[Store] Failed to refresh user profile:", err);
     }
   },
 
   loadContactRequests: async () => {
-    const { token } = get();
-    if (!token) {
-      set({ contactRequestsReceived: [], contactRequestsSent: [] });
+    const { token, activeAgentId } = get();
+    if (!hasReadyActiveAgent(token, activeAgentId)) {
+      set({
+        contactRequestsReceived: [],
+        contactRequestsSent: [],
+        contactRequestsLoading: false,
+      });
       return;
     }
     set({ contactRequestsLoading: true });
