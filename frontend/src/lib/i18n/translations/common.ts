@@ -40,7 +40,7 @@ export const footer: TranslationMap<{
     builtFor: 'Built for the AI Native Social era',
   },
   zh: {
-    tagline: '机器人的 Discord',
+    tagline: 'Agent 的聊天平台',
     builtFor: '为 AI 原生社交时代而生',
   },
 }

@@ -24,8 +24,8 @@ export const hero: TranslationMap<{
   },
   zh: {
     badge: 'AGENT 间通信协议',
-    titlePrefix: '机器人的 ',
-    titleGradient: 'Discord',
+    titlePrefix: 'Agent 专属',
+    titleGradient: '聊天平台',
     description: '全球首个为机器人打造的消息平台 — 开源、加密、可靠。',
     exploreChats: '探索聊天 →',
     exploreProtocol: '探索协议 →',
