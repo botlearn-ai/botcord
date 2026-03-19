@@ -24,6 +24,14 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
   const locale = useLanguage();
   const t = withdrawDialog[locale];
   const [amount, setAmount] = useState("");
+  const [destinationType, setDestinationType] = useState<"bank" | "usdt_trc20" | "paypal">("bank");
+  const [accountName, setAccountName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const [paypalEmail, setPaypalEmail] = useState("");
+  const [contactNote, setContactNote] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -46,16 +54,28 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
       return;
     }
 
+    const destination = buildDestinationPayload({
+      destinationType,
+      accountName,
+      accountNumber,
+      bankName,
+      walletAddress,
+      paypalEmail,
+      contactNote,
+    });
+
+    if (!destination || !confirmed) {
+      setError(!confirmed ? t.confirmReview : t.requiredField);
+      return;
+    }
+
     if (!state.token) return;
     setSubmitting(true);
     try {
       await api.createWithdrawal({
-        amount_minor: String(amountMinor),
-        destination_type: "mock_bank",
-        destination: {
-          account_name: "Mock Account",
-          account_no: "****0000",
-        },
+        amount_minor: amountMinor,
+        destination_type: destinationType,
+        destination,
         idempotency_key: crypto.randomUUID(),
       });
       onSuccess();
@@ -126,6 +146,105 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
             </button>
           </div>
 
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">
+              {t.destinationType}
+            </label>
+            <select
+              value={destinationType}
+              onChange={(e) => setDestinationType(e.target.value as "bank" | "usdt_trc20" | "paypal")}
+              className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary outline-none focus:border-neon-purple/50"
+            >
+              <option value="bank">{t.destinationTypeBank}</option>
+              <option value="usdt_trc20">{t.destinationTypeUsdt}</option>
+              <option value="paypal">{t.destinationTypePaypal}</option>
+            </select>
+          </div>
+
+          {destinationType === "bank" && (
+            <>
+              <FormField
+                label={t.accountName}
+                value={accountName}
+                onChange={setAccountName}
+                placeholder="Jane Doe"
+              />
+              <FormField
+                label={t.bankName}
+                value={bankName}
+                onChange={setBankName}
+                placeholder="Bank of China"
+              />
+              <FormField
+                label={t.accountNumber}
+                value={accountNumber}
+                onChange={setAccountNumber}
+                placeholder="6222 8888 1234"
+              />
+            </>
+          )}
+
+          {destinationType === "usdt_trc20" && (
+            <>
+              <FormField
+                label={t.accountName}
+                value={accountName}
+                onChange={setAccountName}
+                placeholder="Jane Doe"
+              />
+              <FormField
+                label={t.walletAddress}
+                value={walletAddress}
+                onChange={setWalletAddress}
+                placeholder="TR..."
+              />
+              <FormField
+                label={t.network}
+                value="TRC20"
+                onChange={() => {}}
+                placeholder="TRC20"
+                disabled
+              />
+            </>
+          )}
+
+          {destinationType === "paypal" && (
+            <>
+              <FormField
+                label={t.accountName}
+                value={accountName}
+                onChange={setAccountName}
+                placeholder="Jane Doe"
+              />
+              <FormField
+                label={t.paypalEmail}
+                value={paypalEmail}
+                onChange={setPaypalEmail}
+                placeholder="name@example.com"
+              />
+            </>
+          )}
+
+          <FormField
+            label={t.contactNote}
+            value={contactNote}
+            onChange={setContactNote}
+            placeholder="Telegram / email / memo"
+          />
+
+          <div className="rounded-lg border border-glass-border bg-deep-black-light p-3">
+            <p className="text-xs text-text-secondary">{t.reviewNotice}</p>
+            <label className="mt-3 flex items-start gap-2 text-xs text-text-primary">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>{t.confirmReview}</span>
+            </label>
+          </div>
+
           {error && <p className="text-sm text-red-400">{error}</p>}
 
           <button
@@ -139,4 +258,89 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
       </div>
     </div>
   );
+}
+
+function FormField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-text-secondary">{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-purple/50 disabled:opacity-60"
+      />
+    </div>
+  );
+}
+
+function buildDestinationPayload({
+  destinationType,
+  accountName,
+  accountNumber,
+  bankName,
+  walletAddress,
+  paypalEmail,
+  contactNote,
+}: {
+  destinationType: "bank" | "usdt_trc20" | "paypal";
+  accountName: string;
+  accountNumber: string;
+  bankName: string;
+  walletAddress: string;
+  paypalEmail: string;
+  contactNote: string;
+}): Record<string, string> | null {
+  const note = contactNote.trim();
+
+  if (destinationType === "bank") {
+    if (!accountName.trim() || !bankName.trim() || !accountNumber.trim()) {
+      return null;
+    }
+    const payload: Record<string, string> = {
+      account_name: accountName.trim(),
+      bank_name: bankName.trim(),
+      account_no: accountNumber.trim(),
+      contact_note: note,
+    };
+    return payload;
+  }
+
+  if (destinationType === "usdt_trc20") {
+    if (!accountName.trim() || !walletAddress.trim()) {
+      return null;
+    }
+    const payload: Record<string, string> = {
+      account_name: accountName.trim(),
+      wallet_address: walletAddress.trim(),
+      network: "TRC20",
+      contact_note: note,
+    };
+    return payload;
+  }
+
+  if (!accountName.trim() || !paypalEmail.trim()) {
+    return null;
+  }
+
+  const payload: Record<string, string> = {
+    account_name: accountName.trim(),
+    paypal_email: paypalEmail.trim(),
+    contact_note: note,
+  };
+  return payload;
 }

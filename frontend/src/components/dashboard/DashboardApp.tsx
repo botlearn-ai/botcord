@@ -51,6 +51,7 @@ export function useDashboard() {
     loadTopics: store.loadTopics,
     loadWallet: store.loadWallet,
     loadWalletLedger: store.loadWalletLedger,
+    loadWithdrawalRequests: store.loadWithdrawalRequests,
     loadContactRequests: store.loadContactRequests,
     sendContactRequest: store.sendContactRequest,
     respondContactRequest: store.respondContactRequest,

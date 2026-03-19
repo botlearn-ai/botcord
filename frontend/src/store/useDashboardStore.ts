@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { 
   DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, 
   DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry,
-  UserProfile, UserAgent, ContactRequestItem
+  WithdrawalResponse, UserProfile, UserAgent, ContactRequestItem
 } from "@/lib/types";
 import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
@@ -41,6 +41,10 @@ interface DashboardState {
   walletLoading: boolean;
   walletError: string | null;
   walletLedgerError: string | null;
+  withdrawalRequests: WithdrawalResponse[];
+  withdrawalRequestsLoading: boolean;
+  withdrawalRequestsError: string | null;
+  withdrawalRequestsLoaded: boolean;
   walletView: 'overview' | 'ledger';
   recentVisitedRooms: PublicRoom[];
   pendingFriendRequests: string[];
@@ -79,6 +83,7 @@ interface DashboardState {
   loadTopics: (roomId: string) => Promise<void>;
   loadWallet: () => Promise<void>;
   loadWalletLedger: (loadMore?: boolean) => Promise<void>;
+  loadWithdrawalRequests: () => Promise<void>;
   switchActiveAgent: (agentId: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
   initAuth: (token: string) => Promise<void>;
@@ -121,6 +126,10 @@ const initialState = {
   walletLoading: false,
   walletError: null,
   walletLedgerError: null,
+  withdrawalRequests: [],
+  withdrawalRequestsLoading: false,
+  withdrawalRequestsError: null,
+  withdrawalRequestsLoaded: false,
   walletView: 'overview' as const,
   recentVisitedRooms: [],
   pendingFriendRequests: [],
@@ -214,11 +223,24 @@ export const useDashboardStore = create<DashboardState>()(
       }
 
       if (activeId) {
-        const [overview, wallet] = await Promise.all([
+        const [overview, wallet, withdrawalsResult] = await Promise.all([
           api.getOverview(),
-          api.getWallet().catch(() => null)
+          api.getWallet().catch(() => null),
+          api.getWithdrawals()
+            .then((result) => ({ withdrawals: result.withdrawals, error: null }))
+            .catch((err: any) => ({
+              withdrawals: [],
+              error: err.message || "Failed to load withdrawals",
+            }))
         ]);
-        set({ overview, wallet, loading: false });
+        set({
+          overview,
+          wallet,
+          withdrawalRequests: withdrawalsResult.withdrawals,
+          withdrawalRequestsError: withdrawalsResult.error,
+          withdrawalRequestsLoaded: true,
+          loading: false,
+        });
         await get().loadContactRequests();
       } else {
         set({ loading: false });
@@ -226,11 +248,24 @@ export const useDashboardStore = create<DashboardState>()(
     } catch (err: any) {
       console.warn("[Store] User profile unavailable, falling back to direct mode:", err.message);
       try {
-        const [overview, wallet] = await Promise.all([
+        const [overview, wallet, withdrawalsResult] = await Promise.all([
           api.getOverview(),
-          api.getWallet().catch(() => null)
+          api.getWallet().catch(() => null),
+          api.getWithdrawals()
+            .then((result) => ({ withdrawals: result.withdrawals, error: null }))
+            .catch((err: any) => ({
+              withdrawals: [],
+              error: err.message || "Failed to load withdrawals",
+            }))
         ]);
-        set({ overview, wallet, loading: false });
+        set({
+          overview,
+          wallet,
+          withdrawalRequests: withdrawalsResult.withdrawals,
+          withdrawalRequestsError: withdrawalsResult.error,
+          withdrawalRequestsLoaded: true,
+          loading: false,
+        });
         await get().loadContactRequests();
       } catch (innerErr: any) {
         set({ error: innerErr.message || "Failed to load overview", loading: false });
@@ -468,6 +503,26 @@ export const useDashboardStore = create<DashboardState>()(
     }
   },
 
+  loadWithdrawalRequests: async () => {
+    const { token } = get();
+    if (!token) return;
+    set({ withdrawalRequestsLoading: true, withdrawalRequestsError: null });
+    try {
+      const result = await api.getWithdrawals();
+      set({
+        withdrawalRequests: result.withdrawals,
+        withdrawalRequestsLoaded: true,
+        withdrawalRequestsLoading: false,
+      });
+    } catch (err: any) {
+      set({
+        withdrawalRequestsError: err.message || "Failed to load withdrawals",
+        withdrawalRequestsLoaded: true,
+        withdrawalRequestsLoading: false,
+      });
+    }
+  },
+
   switchActiveAgent: async (agentId: string) => {
     const { token } = get();
     setActiveAgentId(agentId);
@@ -475,11 +530,24 @@ export const useDashboardStore = create<DashboardState>()(
     if (token) {
       set({ loading: true });
       try {
-        const [overview, wallet] = await Promise.all([
+        const [overview, wallet, withdrawalsResult] = await Promise.all([
           api.getOverview(),
-          api.getWallet().catch(() => null)
+          api.getWallet().catch(() => null),
+          api.getWithdrawals()
+            .then((result) => ({ withdrawals: result.withdrawals, error: null }))
+            .catch((err: any) => ({
+              withdrawals: [],
+              error: err.message || "Failed to load withdrawals",
+            }))
         ]);
-        set({ overview, wallet, loading: false });
+        set({
+          overview,
+          wallet,
+          withdrawalRequests: withdrawalsResult.withdrawals,
+          withdrawalRequestsError: withdrawalsResult.error,
+          withdrawalRequestsLoaded: true,
+          loading: false,
+        });
         await get().loadContactRequests();
       } catch (err: any) {
         set({ error: err.message, loading: false });

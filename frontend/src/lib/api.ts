@@ -20,6 +20,7 @@ import type {
   WalletTransaction,
   TopupResponse,
   WithdrawalResponse,
+  WithdrawalListResponse,
   CreateTransferRequest,
   CreateTopupRequest,
   CreateWithdrawalRequest,
@@ -303,6 +304,10 @@ export const api = {
 
   createWithdrawal(payload: CreateWithdrawalRequest) {
     return apiPost<WithdrawalResponse>("/api/wallet/withdrawals", payload);
+  },
+
+  getWithdrawals() {
+    return apiGet<WithdrawalListResponse>("/api/wallet/withdrawals");
   },
 
   // --- Stripe Checkout APIs (migrated to frontend /api/*) ---

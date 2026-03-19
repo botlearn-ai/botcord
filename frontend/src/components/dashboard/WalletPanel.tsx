@@ -5,6 +5,7 @@ import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { walletPanel } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
+import type { WithdrawalResponse } from "@/lib/types";
 import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
@@ -18,7 +19,7 @@ function formatCoinAmount(minorStr: string): string {
 }
 
 export default function WalletPanel() {
-  const { state, loadWallet, loadWalletLedger } = useDashboard();
+  const { state, loadWallet, loadWalletLedger, loadWithdrawalRequests } = useDashboard();
   const locale = useLanguage();
   const t = walletPanel[locale];
   const tc = common[locale];
@@ -32,13 +33,29 @@ export default function WalletPanel() {
     if (view === "ledger" && state.walletLedger.length === 0) {
       loadWalletLedger();
     }
-  }, [view]);
+  }, [view, state.walletLedger.length, loadWalletLedger]);
+
+  useEffect(() => {
+    if (
+      !state.withdrawalRequestsLoaded &&
+      !state.withdrawalRequestsLoading &&
+      !state.withdrawalRequestsError
+    ) {
+      loadWithdrawalRequests();
+    }
+  }, [
+    state.withdrawalRequestsLoaded,
+    state.withdrawalRequestsLoading,
+    state.withdrawalRequestsError,
+    loadWithdrawalRequests,
+  ]);
 
   const handleDialogSuccess = useCallback(() => {
     setActiveDialog(null);
     loadWallet();
     loadWalletLedger();
-  }, [loadWallet, loadWalletLedger]);
+    loadWithdrawalRequests();
+  }, [loadWallet, loadWalletLedger, loadWithdrawalRequests]);
 
   if (!wallet) {
     return (
@@ -93,6 +110,10 @@ export default function WalletPanel() {
         {view === "overview" ? (
           <WalletOverview
             wallet={wallet}
+            withdrawalRequests={state.withdrawalRequests}
+            withdrawalsLoading={state.withdrawalRequestsLoading}
+            withdrawalsError={state.withdrawalRequestsError}
+            onRefreshWithdrawals={loadWithdrawalRequests}
             onTransfer={() => setActiveDialog("transfer")}
             onTopup={() => setActiveDialog("topup")}
             onWithdraw={() => setActiveDialog("withdraw")}
@@ -128,11 +149,19 @@ export default function WalletPanel() {
 
 function WalletOverview({
   wallet,
+  withdrawalRequests,
+  withdrawalsLoading,
+  withdrawalsError,
+  onRefreshWithdrawals,
   onTransfer,
   onTopup,
   onWithdraw,
 }: {
   wallet: { available_balance_minor: string; locked_balance_minor: string; total_balance_minor: string; asset_code: string; updated_at: string };
+  withdrawalRequests: WithdrawalResponse[];
+  withdrawalsLoading: boolean;
+  withdrawalsError: string | null;
+  onRefreshWithdrawals: () => void;
   onTransfer: () => void;
   onTopup: () => void;
   onWithdraw: () => void;
@@ -210,6 +239,134 @@ function WalletOverview({
           <span className="text-xs font-medium text-text-primary">{t.withdraw}</span>
         </button>
       </div>
+
+      <RecentWithdrawals
+        items={withdrawalRequests}
+        loading={withdrawalsLoading}
+        error={withdrawalsError}
+        onRefresh={onRefreshWithdrawals}
+      />
     </div>
   );
+}
+
+function RecentWithdrawals({
+  items,
+  loading,
+  error,
+  onRefresh,
+}: {
+  items: WithdrawalResponse[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  const locale = useLanguage();
+  const t = walletPanel[locale];
+
+  return (
+    <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">{t.recentWithdrawals}</h3>
+          <p className="text-xs text-text-secondary">{t.recentWithdrawalsHint}</p>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="rounded-lg border border-glass-border px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary"
+        >
+          {t.refresh}
+        </button>
+      </div>
+
+      {loading && items.length === 0 ? (
+        <div className="text-sm text-text-secondary">{t.loadingWithdrawals}</div>
+      ) : error && items.length === 0 ? (
+        <div className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">
+          {error}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-glass-border bg-deep-black-light p-4 text-sm text-text-secondary">
+          {t.noWithdrawals}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => {
+            const status = getWithdrawalStatusMeta(item.status, t);
+            return (
+              <div
+                key={item.withdrawal_id}
+                className="rounded-xl border border-glass-border bg-deep-black-light p-4"
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-sm font-semibold text-text-primary">
+                      {formatCoinAmount(item.amount_minor)} COIN
+                    </div>
+                    <div className="mt-1 text-[11px] text-text-secondary">
+                      {new Date(item.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${status.className}`}>
+                    {status.label}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-[11px] text-text-secondary">
+                  <span className="rounded bg-black/20 px-2 py-1">
+                    {item.destination_type || "manual_review"}
+                  </span>
+                  <span className="rounded bg-black/20 px-2 py-1">
+                    #{item.withdrawal_id}
+                  </span>
+                </div>
+
+                {item.review_note ? (
+                  <div className="mt-3 rounded-lg border border-glass-border bg-black/20 p-3 text-xs text-text-secondary">
+                    {item.review_note}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getWithdrawalStatusMeta(status: string, t: (typeof walletPanel)["en"]) {
+  switch (status) {
+    case "pending":
+      return {
+        label: t.pendingReview,
+        className: "bg-amber-500/15 text-amber-300",
+      };
+    case "approved":
+    case "processing":
+      return {
+        label: t.approved,
+        className: "bg-sky-500/15 text-sky-300",
+      };
+    case "completed":
+      return {
+        label: t.completed,
+        className: "bg-emerald-500/15 text-emerald-300",
+      };
+    case "rejected":
+      return {
+        label: t.rejected,
+        className: "bg-red-500/15 text-red-300",
+      };
+    case "cancelled":
+      return {
+        label: t.cancelled,
+        className: "bg-white/10 text-text-secondary",
+      };
+    default:
+      return {
+        label: status,
+        className: "bg-white/10 text-text-secondary",
+      };
+  }
 }

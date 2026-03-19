@@ -275,6 +275,16 @@ export const walletPanel: TranslationMap<{
   recharge: string
   transfer: string
   withdraw: string
+  recentWithdrawals: string
+  recentWithdrawalsHint: string
+  refresh: string
+  loadingWithdrawals: string
+  noWithdrawals: string
+  pendingReview: string
+  approved: string
+  completed: string
+  rejected: string
+  cancelled: string
 }> = {
   en: {
     wallet: 'Wallet',
@@ -287,6 +297,16 @@ export const walletPanel: TranslationMap<{
     recharge: 'Recharge',
     transfer: 'Transfer',
     withdraw: 'Withdraw',
+    recentWithdrawals: 'Recent withdrawal requests',
+    recentWithdrawalsHint: 'Track manual review status after you submit.',
+    refresh: 'Refresh',
+    loadingWithdrawals: 'Loading withdrawal requests...',
+    noWithdrawals: 'No withdrawal requests yet.',
+    pendingReview: 'Pending review',
+    approved: 'Approved',
+    completed: 'Completed',
+    rejected: 'Rejected',
+    cancelled: 'Cancelled',
   },
   zh: {
     wallet: '钱包',
@@ -299,6 +319,16 @@ export const walletPanel: TranslationMap<{
     recharge: '充值',
     transfer: '转账',
     withdraw: '提现',
+    recentWithdrawals: '最近提现申请',
+    recentWithdrawalsHint: '提交后可在这里查看人工审核状态。',
+    refresh: '刷新',
+    loadingWithdrawals: '正在加载提现申请...',
+    noWithdrawals: '暂无提现申请。',
+    pendingReview: '待审核',
+    approved: '已通过',
+    completed: '已完成',
+    rejected: '已拒绝',
+    cancelled: '已取消',
   },
 }
 
@@ -431,6 +461,20 @@ export const withdrawDialog: TranslationMap<{
   requestWithdraw: string
   availableBalance: string
   amountCoin: string
+  destinationType: string
+  destinationTypeBank: string
+  destinationTypeUsdt: string
+  destinationTypePaypal: string
+  accountName: string
+  accountNumber: string
+  bankName: string
+  walletAddress: string
+  network: string
+  paypalEmail: string
+  contactNote: string
+  requiredField: string
+  reviewNotice: string
+  confirmReview: string
   withdrawAll: string
   amountMustBePositive: string
   amountExceedsBalance: string
@@ -443,6 +487,20 @@ export const withdrawDialog: TranslationMap<{
     requestWithdraw: 'Request a withdrawal from your wallet',
     availableBalance: 'Available Balance',
     amountCoin: 'Amount (COIN)',
+    destinationType: 'Payout Method',
+    destinationTypeBank: 'Bank transfer',
+    destinationTypeUsdt: 'USDT (TRC20)',
+    destinationTypePaypal: 'PayPal',
+    accountName: 'Account holder',
+    accountNumber: 'Account number',
+    bankName: 'Bank name',
+    walletAddress: 'Wallet address',
+    network: 'Network',
+    paypalEmail: 'PayPal email',
+    contactNote: 'Contact / note',
+    requiredField: 'Please complete all required fields',
+    reviewNotice: 'Your request will be submitted for manual review. Balance will be locked until reviewed or cancelled.',
+    confirmReview: 'I confirm the payout details are correct.',
     withdrawAll: 'Withdraw all',
     amountMustBePositive: 'Amount must be greater than 0',
     amountExceedsBalance: 'Amount exceeds available balance',
@@ -455,6 +513,20 @@ export const withdrawDialog: TranslationMap<{
     requestWithdraw: '从钱包请求提现',
     availableBalance: '可用余额',
     amountCoin: '金额 (COIN)',
+    destinationType: '提现方式',
+    destinationTypeBank: '银行卡',
+    destinationTypeUsdt: 'USDT (TRC20)',
+    destinationTypePaypal: 'PayPal',
+    accountName: '收款人姓名',
+    accountNumber: '收款账号',
+    bankName: '银行名称',
+    walletAddress: '钱包地址',
+    network: '网络',
+    paypalEmail: 'PayPal 邮箱',
+    contactNote: '联系方式 / 备注',
+    requiredField: '请填写完整必填信息',
+    reviewNotice: '提交后将进入人工审核，审核期间对应余额会被冻结，拒绝或取消后会恢复。',
+    confirmReview: '我确认收款信息填写无误。',
     withdrawAll: '全部提现',
     amountMustBePositive: '金额必须大于 0',
     amountExceedsBalance: '金额超过可用余额',

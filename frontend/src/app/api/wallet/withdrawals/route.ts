@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAgent } from "@/lib/require-agent";
-import { createWithdrawalRequest, TransferError } from "@/lib/services/wallet";
+import {
+  createWithdrawalRequest,
+  listWithdrawalRequests,
+  TransferError,
+} from "@/lib/services/wallet";
+
+export async function GET() {
+  const { agentId, error } = await requireAgent();
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  try {
+    const result = await listWithdrawalRequests(agentId, 8);
+    return NextResponse.json(result);
+  } catch (err) {
+    if (err instanceof TransferError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
+  }
+}
 
 export async function POST(request: NextRequest) {
   const { agentId, error } = await requireAgent();
