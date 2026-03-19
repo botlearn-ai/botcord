@@ -204,6 +204,7 @@ async def cancel_subscription(
             db, subscription_id, current_agent
         )
         await db.commit()
+        await db.refresh(subscription)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
     return _subscription_response(subscription)

@@ -384,6 +384,7 @@ class CreateRoomRequest(BaseModel):
     rule: str | None = Field(default=None, max_length=1000)
     visibility: RoomVisibility = RoomVisibility.private
     join_policy: RoomJoinPolicy = RoomJoinPolicy.invite_only
+    required_subscription_product_id: str | None = None
     max_members: int | None = Field(default=None, ge=1)
     default_send: bool = True
     default_invite: bool = False
@@ -397,6 +398,7 @@ class UpdateRoomRequest(BaseModel):
     rule: str | None = Field(default=None, max_length=1000)
     visibility: RoomVisibility | None = None
     join_policy: RoomJoinPolicy | None = None
+    required_subscription_product_id: str | None = None
     max_members: int | None = None
     default_send: bool | None = None
     default_invite: bool | None = None
@@ -445,6 +447,7 @@ class RoomResponse(BaseModel):
     owner_id: str
     visibility: str
     join_policy: str
+    required_subscription_product_id: str | None = None
     max_members: int | None = None
     default_send: bool
     default_invite: bool
@@ -462,6 +465,7 @@ class RoomPublicResponse(BaseModel):
     owner_id: str
     visibility: str
     join_policy: str
+    required_subscription_product_id: str | None = None
     slow_mode_seconds: int | None = None
     member_count: int
     created_at: datetime.datetime
