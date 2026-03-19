@@ -310,6 +310,9 @@ export const api = {
     return apiGet<WithdrawalListResponse>("/api/wallet/withdrawals");
   },
 
+  cancelWithdrawal(withdrawalId: string) {
+    return apiPost<{ withdrawal_id: string; status: string }>(`/api/wallet/withdrawals/${withdrawalId}/cancel`);
+  },
   // --- Stripe Checkout APIs (migrated to frontend /api/*) ---
 
   getStripePackages() {
