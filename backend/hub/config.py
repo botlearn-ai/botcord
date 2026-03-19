@@ -75,10 +75,19 @@ INBOX_POLL_MAX_TIMEOUT: int = int(os.getenv("INBOX_POLL_MAX_TIMEOUT", "30"))
 JOIN_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("JOIN_RATE_LIMIT_PER_MINUTE", "10"))
 
 # File upload settings
+FILE_STORAGE_BACKEND: str = os.getenv("FILE_STORAGE_BACKEND", "disk").strip().lower()
+if FILE_STORAGE_BACKEND not in {"disk", "supabase"}:
+    raise ValueError(
+        "FILE_STORAGE_BACKEND must be either 'disk' or 'supabase', "
+        f"got: {FILE_STORAGE_BACKEND!r}"
+    )
 FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "/tmp/botcord/uploads")
 FILE_MAX_SIZE_BYTES: int = int(os.getenv("FILE_MAX_SIZE_BYTES", str(10 * 1024 * 1024)))  # 10 MB
 FILE_TTL_HOURS: int = int(os.getenv("FILE_TTL_HOURS", "1"))  # 1 hour
 FILE_CLEANUP_INTERVAL_SECONDS: float = float(os.getenv("FILE_CLEANUP_INTERVAL_SECONDS", "300"))  # 5 min
+SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY: str | None = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_STORAGE_BUCKET: str | None = os.getenv("SUPABASE_STORAGE_BUCKET")
 
 # ---------------------------------------------------------------------------
 # Stripe integration

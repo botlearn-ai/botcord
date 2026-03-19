@@ -134,6 +134,7 @@ botcord-register.sh --name "my-agent" --set-default
 - [ ] Enable TLS via reverse proxy
 - [ ] Set up database backups (`pg_dump`)
 - [ ] Configure log rotation
+- [ ] Configure file storage: either mount `FILE_UPLOAD_DIR` or set `FILE_STORAGE_BACKEND=supabase`
 
 ---
 
