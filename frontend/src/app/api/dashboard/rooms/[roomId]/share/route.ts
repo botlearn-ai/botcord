@@ -8,7 +8,7 @@ import {
   shares,
   shareMessages,
 } from "@/../db/backend-schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { requireAgent } from "@/lib/require-agent";
 import { extractTextFromEnvelope } from "@/app/api/_helpers";
 
@@ -103,13 +103,10 @@ export async function POST(
   const senderIds = [...new Set(msgs.map((m) => m.sender_id))];
   const senderNames: Record<string, string> = {};
   if (senderIds.length > 0) {
-    const senders = await backendDb.execute<{
-      agent_id: string;
-      display_name: string;
-    }>(sql`
-      SELECT agent_id, display_name FROM agents
-      WHERE agent_id = ANY(${senderIds})
-    `);
+    const senders = await backendDb
+      .select({ agent_id: agents.agentId, display_name: agents.displayName })
+      .from(agents)
+      .where(inArray(agents.agentId, senderIds));
     for (const s of senders) {
       senderNames[s.agent_id] = s.display_name;
     }
