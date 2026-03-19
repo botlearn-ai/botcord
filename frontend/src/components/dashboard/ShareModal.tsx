@@ -27,7 +27,7 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
     setLoading(true);
     setError(null);
     try {
-      const data = await api.createShareLink(token, roomId);
+      const data = await api.createShareLink(roomId);
       setShareData(data);
     } catch (err: any) {
       setError(err.message || t.failedToCreateLink);
