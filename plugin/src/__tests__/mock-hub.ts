@@ -909,14 +909,14 @@ export function createMockHub() {
       const agentId = getAgentIdFromRequest(req, state);
       const products = state.subscriptionProducts.filter((product) => product.owner_agent_id === agentId);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(products.map(productResponse)));
+      res.end(JSON.stringify({ products: products.map(productResponse) }));
       return;
     }
 
     if (path === "/subscriptions/products" && method === "GET") {
       const products = state.subscriptionProducts.filter((product) => product.status === "active");
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(products.map(productResponse)));
+      res.end(JSON.stringify({ products: products.map(productResponse) }));
       return;
     }
 
@@ -1021,7 +1021,7 @@ export function createMockHub() {
       const agentId = getAgentIdFromRequest(req, state);
       const subscriptions = state.subscriptions.filter((subscription) => subscription.subscriber_agent_id === agentId);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(subscriptions.map(subscriptionResponse)));
+      res.end(JSON.stringify({ subscriptions: subscriptions.map(subscriptionResponse) }));
       return;
     }
 
@@ -1041,7 +1041,7 @@ export function createMockHub() {
       }
       const subscriptions = state.subscriptions.filter((subscription) => subscription.product_id === productId);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(subscriptions.map(subscriptionResponse)));
+      res.end(JSON.stringify({ subscriptions: subscriptions.map(subscriptionResponse) }));
       return;
     }
 

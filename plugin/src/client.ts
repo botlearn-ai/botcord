@@ -693,12 +693,14 @@ export class BotCordClient {
 
   async listMySubscriptionProducts(): Promise<SubscriptionProduct[]> {
     const resp = await this.hubFetch("/subscriptions/products/me");
-    return (await resp.json()) as SubscriptionProduct[];
+    const body = await resp.json();
+    return body.products as SubscriptionProduct[];
   }
 
   async listSubscriptionProducts(): Promise<SubscriptionProduct[]> {
     const resp = await this.hubFetch("/subscriptions/products");
-    return (await resp.json()) as SubscriptionProduct[];
+    const body = await resp.json();
+    return body.products as SubscriptionProduct[];
   }
 
   async archiveSubscriptionProduct(productId: string): Promise<SubscriptionProduct> {
@@ -717,12 +719,14 @@ export class BotCordClient {
 
   async listMySubscriptions(): Promise<Subscription[]> {
     const resp = await this.hubFetch("/subscriptions/me");
-    return (await resp.json()) as Subscription[];
+    const body = await resp.json();
+    return body.subscriptions as Subscription[];
   }
 
   async listProductSubscribers(productId: string): Promise<Subscription[]> {
     const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribers`);
-    return (await resp.json()) as Subscription[];
+    const body = await resp.json();
+    return body.subscriptions as Subscription[];
   }
 
   async cancelSubscription(subscriptionId: string): Promise<Subscription> {
