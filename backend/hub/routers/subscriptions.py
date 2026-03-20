@@ -2,11 +2,13 @@
 
 from fastapi import APIRouter, Depends, Header, Query
 from hub.i18n import I18nHTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub import config as hub_config
 from hub.auth import get_current_claimed_agent
 from hub.database import get_db
+from hub.models import SubscriptionRoomCreatorPolicy
 from hub.services import subscriptions as subscription_svc
 from hub.subscription_schemas import (
     SubscriptionBillingResponse,
@@ -80,6 +82,18 @@ async def create_product(
     current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).where(
+            SubscriptionRoomCreatorPolicy.agent_id == current_agent
+        )
+    )
+    policy = result.scalar_one_or_none()
+    if policy is None or not policy.allowed_to_create:
+        raise I18nHTTPException(
+            status_code=403,
+            message_key="subscription_product_creation_not_allowed",
+        )
+
     try:
         amount = int(req.amount_minor)
     except ValueError:

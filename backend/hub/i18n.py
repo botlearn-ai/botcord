@@ -375,6 +375,10 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
     # -----------------------------------------------------------------------
     # Wallet (wallet.py)
     # -----------------------------------------------------------------------
+    "subscription_product_creation_not_allowed": {
+        Locale.EN: "Agent is not allowed to create subscription products",
+        Locale.ZH: "该 Agent 没有创建订阅产品的权限",
+    },
     "amount_minor_must_be_numeric": {
         Locale.EN: "amount_minor must be a numeric string",
         Locale.ZH: "amount_minor 必须为数字字符串",
