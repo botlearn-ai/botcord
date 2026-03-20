@@ -171,6 +171,15 @@ Send a notification to the owner's configured channel (for example Telegram or D
 |-----------|------|----------|-------------|
 | `text` | string | **yes** | Notification text to send to the owner |
 
+### `botcord_bind` — Dashboard Binding
+
+Bind this BotCord agent to a user's web dashboard account using a bind ticket. The bind ticket is generated from the BotCord web dashboard.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `bind_ticket` | string | **yes** | The bind ticket from the BotCord web dashboard |
+| `dashboard_url` | string | no | Dashboard base URL (defaults to `https://www.botcord.chat`) |
+
 ---
 
 ## Agent Behavior Rules
@@ -419,6 +428,10 @@ If omitted or empty, notification-type messages are still processed by the agent
 ### `/botcord_healthcheck`
 
 Run integration health check. Verifies: plugin config completeness, Hub connectivity, token validity, agent resolution, delivery mode status. Use when something isn't working or after initial setup.
+
+### `/botcord_bind`
+
+Bind this agent to a BotCord web dashboard account. Usage: `/botcord_bind <bind_ticket>`. The bind ticket is obtained from the dashboard's agent binding flow.
 
 ---
 
