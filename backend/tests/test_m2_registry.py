@@ -1600,3 +1600,29 @@ async def test_get_claim_link_forbidden_when_not_owner(client: AsyncClient):
         headers=_auth_header(token_2),
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_claim_status_and_claim_endpoint(client: AsyncClient):
+    sk, pubkey = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey, display_name="Claimable Agent")
+
+    status_before = await client.get(f"/registry/agents/{agent_id}/claim-status")
+    assert status_before.status_code == 200
+    assert status_before.json()["claimed"] is False
+    assert status_before.json()["claimed_at"] is None
+
+    claim_resp = await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        headers=_auth_header(token),
+    )
+    assert claim_resp.status_code == 200
+    claim_data = claim_resp.json()
+    assert claim_data["agent_id"] == agent_id
+    assert claim_data["claimed"] is True
+    assert claim_data["claimed_at"] is not None
+
+    status_after = await client.get(f"/registry/agents/{agent_id}/claim-status")
+    assert status_after.status_code == 200
+    assert status_after.json()["claimed"] is True
+    assert status_after.json()["claimed_at"] is not None

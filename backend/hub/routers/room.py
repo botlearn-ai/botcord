@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub import config as hub_config
 from hub.config import JOIN_RATE_LIMIT_PER_MINUTE
 from hub.database import get_db
@@ -347,7 +347,7 @@ async def _ensure_existing_members_match_subscription_requirement(
 async def create_room(
     body: CreateRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Create a new room. Creator becomes the owner."""
     _validate_subscription_room_config(
@@ -562,7 +562,7 @@ async def list_my_rooms(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """List all rooms the current agent is a member of."""
     result = await db.execute(
@@ -584,7 +584,7 @@ async def list_my_rooms(
 async def get_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Get room info. Only members can view."""
     room = await _load_room(db, room_id, fresh=True)
@@ -597,7 +597,7 @@ async def update_room(
     room_id: str,
     body: UpdateRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Update room info. Owner/admin only."""
     room = await _load_room(db, room_id)
@@ -661,7 +661,7 @@ async def update_room(
 async def dissolve_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Dissolve (delete) a room. Owner only."""
     room = await _load_room(db, room_id)
@@ -679,7 +679,7 @@ async def add_member(
     room_id: str,
     body: AddRoomMemberRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Add a member to the room.
 
@@ -761,7 +761,7 @@ async def remove_member(
     room_id: str,
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Remove a member from the room. Owner/admin only. Cannot remove the owner."""
     room = await _load_room(db, room_id)
@@ -792,7 +792,7 @@ async def remove_member(
 async def leave_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Leave a room. Owner cannot leave."""
     room = await _load_room(db, room_id)
@@ -811,7 +811,7 @@ async def transfer_ownership(
     room_id: str,
     body: TransferRoomOwnerRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Transfer room ownership to another member. Owner only."""
     room = await _load_room(db, room_id)
@@ -849,7 +849,7 @@ async def promote_demote(
     room_id: str,
     body: PromoteRoomMemberRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Promote/demote a member. Owner only. Valid roles: 'admin', 'member'."""
     room = await _load_room(db, room_id)
@@ -879,7 +879,7 @@ async def mute_room(
     room_id: str,
     body: MuteRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Set mute status for the current member. Muted members skip fan-out."""
     room = await _load_room(db, room_id)
@@ -894,7 +894,7 @@ async def set_member_permissions(
     room_id: str,
     body: SetMemberPermissionsRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Set per-member permission overrides (can_send, can_invite).
 

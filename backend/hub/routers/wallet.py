@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, Query
 from hub.i18n import I18nHTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub import config as hub_config
 from hub.database import get_db
 from hub.services import wallet as wallet_svc
@@ -35,7 +35,7 @@ router = APIRouter(prefix="/wallet", tags=["wallet"])
 
 @router.get("/me", response_model=WalletSummaryResponse)
 async def wallet_summary(
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Return current agent's wallet summary."""
@@ -56,7 +56,7 @@ async def wallet_ledger(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     type: str | None = Query(default=None),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Return paginated ledger entries for the current agent."""
@@ -85,7 +85,7 @@ async def wallet_ledger(
 @router.post("/transfers", response_model=TransactionResponse, status_code=201)
 async def create_transfer(
     req: TransferRequest,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Transfer coins to another agent."""
@@ -116,7 +116,7 @@ async def create_transfer(
 @router.post("/topups", response_model=TopupResponse, status_code=201)
 async def create_topup(
     req: TopupCreateRequest,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a topup request."""
@@ -150,7 +150,7 @@ async def create_topup(
 @router.post("/withdrawals", response_model=WithdrawalResponse, status_code=201)
 async def create_withdrawal(
     req: WithdrawalCreateRequest,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a withdrawal request — locks balance."""
@@ -185,7 +185,7 @@ async def create_withdrawal(
 @router.get("/transactions/{tx_id}", response_model=TransactionResponse)
 async def get_transaction(
     tx_id: str,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single transaction detail."""
@@ -201,7 +201,7 @@ async def get_transaction(
 @router.post("/withdrawals/{withdrawal_id}/cancel", response_model=WithdrawalResponse)
 async def cancel_withdrawal(
     withdrawal_id: str,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Cancel a pending withdrawal request."""

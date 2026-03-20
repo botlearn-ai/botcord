@@ -55,7 +55,12 @@ class Agent(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    agent_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     claim_code: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")

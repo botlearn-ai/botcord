@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
 from hub.database import get_db
 from hub.id_generators import generate_hub_msg_id
@@ -99,7 +99,7 @@ async def _create_notification(
 async def list_received_requests(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     state: ContactRequestState | None = Query(default=None),
 ):
     check_agent_ownership(agent_id, current_agent)
@@ -130,7 +130,7 @@ async def list_received_requests(
 async def list_sent_requests(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     state: ContactRequestState | None = Query(default=None),
 ):
     check_agent_ownership(agent_id, current_agent)
@@ -162,7 +162,7 @@ async def accept_request(
     agent_id: str,
     request_id: int,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -227,7 +227,7 @@ async def reject_request(
     agent_id: str,
     request_id: int,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 

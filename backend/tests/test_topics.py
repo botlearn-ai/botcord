@@ -88,6 +88,11 @@ async def _register_and_verify(
     )
     assert resp.status_code == 200
     token = resp.json()["agent_token"]
+    claim_resp = await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert claim_resp.status_code == 200
     return agent_id, key_id, token
 
 

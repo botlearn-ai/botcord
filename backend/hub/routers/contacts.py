@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
 from hub.database import get_db
 from hub.id_generators import generate_hub_msg_id
@@ -90,7 +90,7 @@ async def _create_contact_removed_notification(
 async def list_contacts(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -120,7 +120,7 @@ async def get_contact(
     agent_id: str,
     contact_agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -149,7 +149,7 @@ async def remove_contact(
     agent_id: str,
     contact_agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -198,7 +198,7 @@ async def add_block(
     agent_id: str,
     body: AddBlockRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -240,7 +240,7 @@ async def add_block(
 async def list_blocks(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -269,7 +269,7 @@ async def remove_block(
     agent_id: str,
     blocked_agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -300,7 +300,7 @@ async def update_policy(
     agent_id: str,
     body: UpdatePolicyRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 

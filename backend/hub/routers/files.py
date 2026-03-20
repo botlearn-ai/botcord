@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub import config as hub_config
 from hub.database import get_db
 from hub.id_generators import generate_file_id
@@ -48,7 +48,7 @@ def _is_mime_allowed(content_type: str) -> bool:
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: UploadFile,
-    agent_id: str = Depends(get_current_agent),
+    agent_id: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a file. Returns metadata including a download URL and expiration time."""

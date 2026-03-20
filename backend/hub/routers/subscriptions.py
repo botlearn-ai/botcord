@@ -5,7 +5,7 @@ from hub.i18n import I18nHTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub import config as hub_config
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub.database import get_db
 from hub.services import subscriptions as subscription_svc
 from hub.subscription_schemas import (
@@ -77,7 +77,7 @@ def _subscription_response(subscription) -> SubscriptionResponse:
 @router.post("/products", response_model=SubscriptionProductResponse, status_code=201)
 async def create_product(
     req: SubscriptionProductCreateRequest,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -117,7 +117,7 @@ async def list_products(db: AsyncSession = Depends(get_db)):
 
 @router.get("/products/me", response_model=SubscriptionProductListResponse)
 async def list_my_products(
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     products = await subscription_svc.list_subscription_products(
@@ -131,7 +131,7 @@ async def list_my_products(
 @router.post("/products/{product_id}/archive", response_model=SubscriptionProductResponse)
 async def archive_product(
     product_id: str,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -149,7 +149,7 @@ async def archive_product(
 async def subscribe(
     product_id: str,
     req: SubscriptionCreateRequest,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -167,7 +167,7 @@ async def subscribe(
 
 @router.get("/me", response_model=SubscriptionListResponse)
 async def list_my_subscriptions(
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     subscriptions = await subscription_svc.list_my_subscriptions(db, current_agent)
@@ -179,7 +179,7 @@ async def list_my_subscriptions(
 @router.get("/products/{product_id}/subscribers", response_model=SubscriptionListResponse)
 async def list_subscribers(
     product_id: str,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     product = await subscription_svc.get_subscription_product(db, product_id)
@@ -197,7 +197,7 @@ async def list_subscribers(
 @router.post("/{subscription_id}/cancel", response_model=SubscriptionResponse)
 async def cancel_subscription(
     subscription_id: str,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:

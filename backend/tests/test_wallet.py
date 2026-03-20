@@ -84,6 +84,11 @@ async def _register_and_verify(client: AsyncClient, sk: SigningKey, pubkey_str: 
     )
     assert resp.status_code == 200
     token = resp.json()["agent_token"]
+    claim_resp = await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert claim_resp.status_code == 200
     return agent_id, token
 
 
@@ -119,6 +124,29 @@ async def test_wallet_created_on_verify(client: AsyncClient):
     assert data["available_balance_minor"] == "0"
     assert data["locked_balance_minor"] == "0"
     assert data["total_balance_minor"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_wallet_requires_claim_first(client: AsyncClient):
+    sk, pubkey = _make_keypair()
+    resp = await client.post(
+        "/registry/agents",
+        json={"display_name": "agent", "pubkey": pubkey, "bio": "test"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    challenge = data["challenge"]
+    sig_b64 = base64.b64encode(sk.sign(base64.b64decode(challenge)).signature).decode()
+    verify = await client.post(
+        f"/registry/agents/{data['agent_id']}/verify",
+        json={"key_id": data["key_id"], "challenge": challenge, "sig": sig_b64},
+    )
+    assert verify.status_code == 200
+    token = verify.json()["agent_token"]
+
+    wallet_resp = await client.get("/wallet/me", headers=_auth(token))
+    assert wallet_resp.status_code == 403
+    assert "claim" in wallet_resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

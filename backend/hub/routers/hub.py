@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_agent, verify_agent_token
+from hub.auth import get_current_claimed_agent, verify_agent_token
 from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.database import get_db
@@ -656,7 +656,7 @@ async def send_message(
     envelope: MessageEnvelope,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     topic: str | None = Query(default=None),
 ):
     """Accept a message, verify it, attempt delivery or queue."""
@@ -799,7 +799,7 @@ async def receive_receipt(
 async def get_message_status(
     msg_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Query delivery status. Only the sender may query."""
     # Check message exists first (404), then check authorization (403)
@@ -875,7 +875,7 @@ async def _fetch_queued_messages(
 @router.get("/inbox", response_model=InboxPollResponse)
 async def poll_inbox(
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     limit: int = Query(default=10, ge=1, le=50),
     timeout: int = Query(default=0, ge=0, le=INBOX_POLL_MAX_TIMEOUT),
     ack: bool = Query(default=True),
@@ -1019,7 +1019,7 @@ async def poll_inbox(
 @router.get("/history", response_model=HistoryResponse)
 async def query_history(
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     room_id: str | None = Query(default=None),
     topic: str | None = Query(default=None),
     topic_id: str | None = Query(default=None),

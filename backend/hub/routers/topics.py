@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub.database import get_db
 from hub.enums import TopicStatus
 from hub.id_generators import generate_topic_id
@@ -88,7 +88,7 @@ async def create_topic(
     room_id: str,
     body: CreateTopicRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Create a topic in a room. Room membership required."""
     room = await _load_room_with_members(db, room_id)
@@ -123,7 +123,7 @@ async def list_topics(
     room_id: str,
     status: TopicStatus | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """List topics in a room. Room membership required."""
     room = await _load_room_with_members(db, room_id)
@@ -147,7 +147,7 @@ async def get_topic(
     room_id: str,
     topic_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Get topic details. Room membership required."""
     room = await _load_room_with_members(db, room_id)
@@ -172,7 +172,7 @@ async def update_topic(
     topic_id: str,
     body: UpdateTopicRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Update a topic.
 
@@ -260,7 +260,7 @@ async def delete_topic(
     room_id: str,
     topic_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Delete a topic. Owner or admin only."""
     room = await _load_room_with_members(db, room_id)

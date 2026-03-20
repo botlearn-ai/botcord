@@ -1,10 +1,14 @@
 import datetime
 
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.config import JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET
+from hub.database import get_db
 from hub.i18n import I18nHTTPException
+from hub.models import Agent
 
 
 def create_agent_token(agent_id: str) -> tuple[str, int]:
@@ -57,6 +61,20 @@ def get_current_agent(authorization: str = Header(...)) -> str:
         raise I18nHTTPException(status_code=401, message_key="token_expired")
     except jwt.InvalidTokenError:
         raise I18nHTTPException(status_code=401, message_key="invalid_token")
+
+
+async def get_current_claimed_agent(
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    agent_id = get_current_agent(authorization)
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    if agent.claimed_at is None:
+        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
+    return agent_id
 
 
 def get_dashboard_agent(

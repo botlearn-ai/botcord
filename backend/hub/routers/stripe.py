@@ -6,7 +6,7 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub import config as hub_config
 from hub.database import get_db
 from hub.services.stripe_topup import FulfillmentError
@@ -60,7 +60,7 @@ async def list_stripe_packages():
 )
 async def create_stripe_checkout_session(
     req: StripeCheckoutRequest,
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a Stripe Checkout Session for a coin topup package."""
@@ -90,7 +90,7 @@ async def create_stripe_checkout_session(
 )
 async def get_stripe_session_status(
     session_id: str = Query(..., min_length=1),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Query the status of a Stripe checkout session."""

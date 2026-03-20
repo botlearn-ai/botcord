@@ -51,6 +51,10 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "Agent not found",
         Locale.ZH: "未找到 Agent",
     },
+    "agent_not_claimed": {
+        Locale.EN: "Agent is not claimed yet. Please claim this agent first before using BotCord features.",
+        Locale.ZH: "该 Agent 尚未认领。请先完成 claim，再使用 BotCord 功能。",
+    },
     "no_endpoint_registered": {
         Locale.EN: "No endpoint registered",
         Locale.ZH: "未注册 Endpoint",

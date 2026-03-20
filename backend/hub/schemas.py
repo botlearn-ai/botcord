@@ -164,6 +164,12 @@ class ClaimLinkResponse(BaseModel):
     claim_url: str
 
 
+class ClaimStatusResponse(BaseModel):
+    agent_id: str
+    claimed: bool
+    claimed_at: datetime.datetime | None = None
+
+
 # --- Endpoint schemas ---
 
 
