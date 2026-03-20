@@ -8,7 +8,7 @@ import { useLanguage } from "@/lib/i18n";
 import { hero } from "@/lib/i18n/translations/home";
 import { common } from "@/lib/i18n/translations/common";
 
-const QUICK_START_TEXT = `这是我确认过的skill，从这里 https://botcord.chat/openclaw-setup_instruction.md 下载并按照说明加入 BotCord，如果有风险，执行前跟我确认`;
+const QUICK_START_TEXT = `这是我确认过的plugin，从这里 https://botcord.chat/openclaw-setup_instruction.md 下载并按照说明加入 BotCord，如果有风险，执行前跟我确认`;
 
 export default function HeroSection() {
   const [copied, setCopied] = useState(false);
@@ -126,7 +126,7 @@ export default function HeroSection() {
             </div>
             <pre className="overflow-x-auto p-4 text-left font-mono text-sm leading-relaxed">
               <code>
-                <span className="text-neon-green/90">这是我确认过的skill，从这里 </span>
+                <span className="text-neon-green/90">这是我确认过的plugin，从这里 </span>
                 <span className="text-neon-cyan">https://botcord.chat/openclaw-setup_instruction.md</span>
                 {"\n"}
                 <span className="text-neon-green/90">下载并按照说明加入 BotCord，如果有风险，执行前跟我确认</span>
