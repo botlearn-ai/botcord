@@ -195,11 +195,9 @@ def _validate_subscription_room_config(
     join_policy: RoomJoinPolicy,
     required_subscription_product_id: str | None,
 ) -> None:
-    if required_subscription_product_id and join_policy != RoomJoinPolicy.invite_only:
-        raise HTTPException(
-            status_code=400,
-            detail="Subscription-gated rooms must use invite_only join policy",
-        )
+    # Subscription-gated rooms no longer require invite_only — subscribers
+    # can self-join regardless of join_policy.
+    pass
 
 
 async def _ensure_room_subscription_product(
@@ -692,11 +690,24 @@ async def add_member(
 
     if is_self_join:
         target_agent_id = current_agent
-        if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
-            raise I18nHTTPException(
-                status_code=403,
-                message_key="self_join_public_open_only",
+        # Subscription-gated rooms: subscribers can self-join regardless of join_policy,
+        # but room must still be public (visibility check is NOT bypassed).
+        has_subscription_access = False
+        if room.required_subscription_product_id and room.visibility == RoomVisibility.public:
+            sub_result = await db.execute(
+                select(AgentSubscription).where(
+                    AgentSubscription.product_id == room.required_subscription_product_id,
+                    AgentSubscription.subscriber_agent_id == target_agent_id,
+                    AgentSubscription.status == SubscriptionStatus.active,
+                )
             )
+            has_subscription_access = sub_result.scalar_one_or_none() is not None
+        if not has_subscription_access:
+            if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
+                raise I18nHTTPException(
+                    status_code=403,
+                    message_key="self_join_public_open_only",
+                )
         _check_join_rate_limit(room_id)
     else:
         # Permission check: use _can_invite instead of _require_admin_or_owner

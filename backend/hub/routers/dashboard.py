@@ -31,8 +31,10 @@ from hub.dashboard_schemas import (
     SharedRoomResponse,
 )
 from hub.id_generators import generate_share_id
+from hub.enums import SubscriptionStatus
 from hub.models import (
     Agent,
+    AgentSubscription,
     Contact,
     ContactRequest,
     ContactRequestState,
@@ -728,12 +730,24 @@ async def join_room(
     if room is None:
         raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
-    # Must be public + open
-    if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
-        raise I18nHTTPException(
-            status_code=403,
-            message_key="self_join_public_open_only",
+    # Subscription-gated rooms: subscribers can self-join regardless of join_policy,
+    # but room must still be public.
+    has_subscription_access = False
+    if room.required_subscription_product_id and room.visibility == RoomVisibility.public:
+        sub_result = await db.execute(
+            select(AgentSubscription).where(
+                AgentSubscription.product_id == room.required_subscription_product_id,
+                AgentSubscription.subscriber_agent_id == current_agent,
+                AgentSubscription.status == SubscriptionStatus.active,
+            )
         )
+        has_subscription_access = sub_result.scalar_one_or_none() is not None
+    if not has_subscription_access:
+        if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
+            raise I18nHTTPException(
+                status_code=403,
+                message_key="self_join_public_open_only",
+            )
 
     # Check max_members
     member_count_result = await db.execute(
