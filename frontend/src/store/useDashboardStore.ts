@@ -15,6 +15,7 @@ import type {
 import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
 const roomMessagesInFlight = new Set<string>();
+const roomPollInFlight = new Set<string>();
 
 type ReadableRoomResourceOptions<T> = {
   canUseMemberView: boolean;
@@ -183,6 +184,7 @@ interface DashboardState {
 
   // Async Actions
   loadRoomMessages: (roomId: string) => Promise<void>;
+  pollNewMessages: (roomId: string) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
   selectAgent: (agentId: string) => Promise<void>;
   searchAgents: (q: string) => Promise<void>;
@@ -457,6 +459,62 @@ export const useDashboardStore = create<DashboardState>()(
       console.error("[Store] Failed to load messages:", err);
     } finally {
       roomMessagesInFlight.delete(roomId);
+    }
+  },
+
+  pollNewMessages: async (roomId: string) => {
+    if (roomPollInFlight.has(roomId)) return;
+    roomPollInFlight.add(roomId);
+
+    const { token, activeAgentId, messages } = get();
+    const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
+    const existing = messages[roomId];
+
+    // Empty room: reload from scratch to pick up the first message
+    if (!existing || existing.length === 0) {
+      try {
+        await get().loadRoomMessages(roomId);
+      } finally {
+        roomPollInFlight.delete(roomId);
+      }
+      return;
+    }
+
+    const newest = existing[existing.length - 1];
+    try {
+      await loadReadableRoomResource({
+        canUseMemberView: canUseAuthedMessages,
+        loadMember: () => api.getRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 }),
+        loadPublic: () => api.getPublicRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 }),
+        onSuccess: (result) => {
+          if (result.messages.length === 0) return;
+          // API returns descending order; reverse to chronological
+          const newMsgs = result.messages.reverse();
+          set((state) => {
+            const current = state.messages[roomId] || [];
+            const existingIds = new Set(current.map((m) => m.hub_msg_id));
+            const deduped = newMsgs.filter((m) => !existingIds.has(m.hub_msg_id));
+            if (deduped.length === 0) return state;
+            return {
+              messages: { ...state.messages, [roomId]: [...current, ...deduped] },
+            };
+          });
+          // Refresh topics if any new message has a topic
+          if (newMsgs.some((m) => m.topic_id)) {
+            get().loadTopics(roomId);
+          }
+        },
+        onMemberError: (error) => {
+          console.error("[Store] Failed to poll new messages:", error);
+        },
+        onPublicError: (error) => {
+          console.error("[Store] Failed to poll new messages:", error);
+        },
+      });
+    } catch (err) {
+      console.error("[Store] Failed to poll new messages:", err);
+    } finally {
+      roomPollInFlight.delete(roomId);
     }
   },
 

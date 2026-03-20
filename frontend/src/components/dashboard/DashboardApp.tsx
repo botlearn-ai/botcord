@@ -54,6 +54,7 @@ export function useDashboard() {
     state: store,
     loadRoomMessages: store.loadRoomMessages,
     loadMoreMessages: store.loadMoreMessages,
+    pollNewMessages: store.pollNewMessages,
     selectAgent: store.selectAgent,
     searchAgents: store.searchAgents,
     refreshOverview: store.refreshOverview,

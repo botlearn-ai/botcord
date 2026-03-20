@@ -225,12 +225,13 @@ export const api = {
     });
   },
 
-  getPublicRoomMessages(roomId: string, opts?: { before?: string; limit?: number }) {
+  getPublicRoomMessages(roomId: string, opts?: { before?: string; after?: string; limit?: number }) {
     const params: Record<string, string> = {};
     if (opts?.before) {
       params.before = opts.before;
       params.cursor = opts.before;
     }
+    if (opts?.after) params.after = opts.after;
     if (opts?.limit) params.limit = String(opts.limit);
     return apiGet<DashboardMessageResponse>(`/api/public/rooms/${roomId}/messages`, params);
   },

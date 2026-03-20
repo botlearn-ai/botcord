@@ -16,7 +16,8 @@ export async function GET(
   const { searchParams } = request.nextUrl;
   const before = searchParams.get("before");
   const cursor = searchParams.get("cursor");
+  const after = searchParams.get("after");
   const effectiveBefore = before || cursor;
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "50", 10), 1), 100);
-  return loadPublicRoomMessagesResponse(roomId, { before: effectiveBefore, limit });
+  return loadPublicRoomMessagesResponse(roomId, { before: effectiveBefore, after, limit });
 }
