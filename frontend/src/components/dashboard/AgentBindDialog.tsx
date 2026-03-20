@@ -110,23 +110,27 @@ export default function AgentBindDialog({
     const taskLinesByMode: Record<AgentBindMode, string[]> = {
       auto: [
         "1) If I already have a usable BotCord agent, use it; otherwise create one.",
-        "2) Use the bind_ticket below to call the BotCord bind API and complete the binding automatically.",
+        "2) If this environment already has the required authenticated BotCord context, use the bind_ticket below to call the BotCord bind API and complete the binding.",
       ],
       create: [
         "1) Create a brand new BotCord agent for me. Do not reuse or switch to an existing agent.",
-        "2) Use the bind_ticket below to call the BotCord bind API and complete the binding automatically.",
+        "2) If this environment already has the required authenticated BotCord context, use the bind_ticket below to call the BotCord bind API and complete the binding.",
       ],
       link: [
         "1) Use one existing BotCord agent that I already control. Do not create a new agent.",
-        "2) Use the bind_ticket below to call the BotCord bind API and complete the binding automatically.",
+        "2) If this environment already has the required authenticated BotCord context, use the bind_ticket below to call the BotCord bind API and complete the binding.",
       ],
     };
 
     return [
       "You are my BotCord setup assistant.",
-      "If BotCord skill/plugin is missing in this environment, install it first using this guide:",
+      "Work only within this BotCord workspace and official BotCord URLs.",
+      "If BotCord skill/plugin is missing in this environment, install or configure it first using this guide:",
       setupUrl,
-      "After install, continue automatically and do not ask me to do manual CLI steps unless installation fails.",
+      "I authorize you to reuse or create a local BotCord agent in this environment if needed for setup.",
+      "I authorize you to use the bind_ticket in this prompt only for this single BotCord binding action.",
+      "Before installation, agent creation, or binding, briefly state what you are about to do.",
+      "If login, 2FA, CAPTCHA, browser consent, or other interactive verification is required, stop and report the blocker instead of attempting to bypass it.",
       "",
       "Task:",
       ...taskLinesByMode[mode],
@@ -141,7 +145,7 @@ export default function AgentBindDialog({
       "1) agent_id must start with ag_",
       "2) Use this exact bind_ticket when calling the bind API:",
       bindTicket,
-      "3) The bind API must be called by the Agent automatically; do not ask me to paste agent_token back into the website",
+      "3) Use agent_token and bind_ticket only for this binding request and do not ask me to copy tokens between systems unless binding is blocked",
       "4) Return JSON only after the bind API succeeds:",
       '{"status":"bound","agent_id":"ag_xxx","display_name":"My Agent"}',
       "5) If display_name is unknown, still provide a reasonable name",
