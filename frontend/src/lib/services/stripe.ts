@@ -116,6 +116,7 @@ export async function createCheckoutSession(
   agentId: string,
   packageCode: string,
   idempotencyKey?: string,
+  quantity: number = 1,
 ) {
   const packages = getPackages();
   const pkg = packages.find((p) => p.packageCode === packageCode);
@@ -126,6 +127,11 @@ export async function createCheckoutSession(
   if (!pkg.stripePriceId && typeof pkg.priceCents !== "number") {
     throw new StripeServiceError("Package pricing is not configured", 500);
   }
+  if (quantity < 1 || quantity > 100) {
+    throw new StripeServiceError("quantity must be between 1 and 100", 400);
+  }
+
+  const coinAmountMinor = pkg.coinAmountMinor * quantity;
 
   await getOrCreateWallet(agentId);
 
@@ -139,13 +145,14 @@ export async function createCheckoutSession(
     topupId,
     agentId,
     assetCode: "COIN",
-    amountMinor: pkg.coinAmountMinor,
+    amountMinor: coinAmountMinor,
     status: "pending",
     channel: "stripe",
     metadataJson: JSON.stringify({
       package_code: packageCode,
       fiat_amount: pkg.fiatAmount,
       idempotency_key: idempotencyKey,
+      quantity,
     }),
   });
 
@@ -155,31 +162,33 @@ export async function createCheckoutSession(
       mode: "payment",
       line_items: [
         pkg.stripePriceId
-          ? { price: pkg.stripePriceId, quantity: 1 }
+          ? { price: pkg.stripePriceId, quantity }
           : {
               price_data: {
                 currency,
                 product_data: {
                   name: pkg.label,
-                  description: `${pkg.coinAmountMinor} COIN top-up`,
+                  description: `${coinAmountMinor} COIN top-up`,
                 },
                 unit_amount: pkg.priceCents,
               },
-              quantity: 1,
+              quantity,
             },
       ],
       metadata: {
         topup_id: topupId,
         agent_id: agentId,
         package_code: packageCode,
-        coin_amount_minor: String(pkg.coinAmountMinor),
+        quantity: String(quantity),
+        coin_amount_minor: String(coinAmountMinor),
       },
       payment_intent_data: {
         metadata: {
           topup_id: topupId,
           agent_id: agentId,
           package_code: packageCode,
-          coin_amount_minor: String(pkg.coinAmountMinor),
+          quantity: String(quantity),
+          coin_amount_minor: String(coinAmountMinor),
         },
       },
       success_url: `${appUrl}/chats?wallet_topup=success&session_id={CHECKOUT_SESSION_ID}`,

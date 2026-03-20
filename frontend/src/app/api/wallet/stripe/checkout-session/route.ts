@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { package_code, idempotency_key } = body;
+  const { package_code, idempotency_key, quantity } = body;
 
   if (!package_code || typeof package_code !== "string") {
     return NextResponse.json(
@@ -21,11 +21,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const qty = typeof quantity === "number" ? Math.max(1, Math.min(100, Math.trunc(quantity))) : 1;
+
   try {
     const result = await createCheckoutSession(
       agentId,
       package_code,
       idempotency_key,
+      qty,
     );
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
