@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/channel/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 Sidebar/ChatPane/WalletPanel 组织主界面
+ * [INPUT]: 依赖 session/channel/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 react effect 在后台预热跨 tab 数据，依赖 Sidebar/ChatPane/WalletPanel 组织主界面
  * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态与 UI 面板渲染
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -202,10 +202,14 @@ export default function DashboardApp() {
         channelStore.setSidebarTab(normalizedTab);
       }
       if (tab === "explore" && (subtab === "rooms" || subtab === "agents")) {
-        channelStore.setExploreView(subtab);
+        if (channelStore.exploreView !== subtab) {
+          channelStore.setExploreView(subtab);
+        }
       }
       if (tab === "contacts" && (subtab === "agents" || subtab === "requests" || subtab === "rooms")) {
-        channelStore.setContactsView(subtab);
+        if (channelStore.contactsView !== subtab) {
+          channelStore.setContactsView(subtab);
+        }
       }
       if (normalizedTab === "messages") {
         const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
@@ -308,6 +312,57 @@ export default function DashboardApp() {
     channelStore.overview,
     channelStore.overviewRefreshing,
     channelStore.refreshOverview,
+  ]);
+
+  useEffect(() => {
+    if (!sessionStore.authResolved) {
+      return;
+    }
+
+    if (channelStore.publicRooms.length === 0 && !channelStore.publicRoomsLoading) {
+      void channelStore.loadPublicRooms();
+    }
+
+    if (channelStore.publicAgents.length === 0 && !channelStore.publicAgentsLoading) {
+      void channelStore.loadPublicAgents();
+    }
+  }, [
+    sessionStore.authResolved,
+    channelStore.publicRooms.length,
+    channelStore.publicRoomsLoading,
+    channelStore.publicAgents.length,
+    channelStore.publicAgentsLoading,
+    channelStore.loadPublicRooms,
+    channelStore.loadPublicAgents,
+  ]);
+
+  useEffect(() => {
+    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
+      return;
+    }
+
+    if (!walletStore.wallet && !walletStore.walletLoading && !walletStore.walletError) {
+      void walletStore.loadWallet();
+    }
+
+    if (
+      !walletStore.withdrawalRequestsLoaded
+      && !walletStore.withdrawalRequestsLoading
+      && !walletStore.withdrawalRequestsError
+    ) {
+      void walletStore.loadWithdrawalRequests();
+    }
+  }, [
+    sessionStore.sessionMode,
+    sessionStore.activeAgentId,
+    walletStore.wallet,
+    walletStore.walletLoading,
+    walletStore.walletError,
+    walletStore.withdrawalRequestsLoaded,
+    walletStore.withdrawalRequestsLoading,
+    walletStore.withdrawalRequestsError,
+    walletStore.loadWallet,
+    walletStore.loadWithdrawalRequests,
   ]);
 
   if (shouldShowBootstrapSkeleton) {

@@ -189,11 +189,16 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
     (set, get) => ({
       ...initialState,
 
-      setFocusedRoomId: (roomId) => set({ focusedRoomId: roomId }),
-      setOpenedRoomId: (roomId) => set({ openedRoomId: roomId }),
-      setSidebarTab: (tab) => set({ sidebarTab: tab }),
-      setExploreView: (view) => set({ exploreView: view }),
-      setContactsView: (view) => set({ contactsView: view }),
+      setFocusedRoomId: (roomId) =>
+        set((state) => (state.focusedRoomId === roomId ? state : { focusedRoomId: roomId })),
+      setOpenedRoomId: (roomId) =>
+        set((state) => (state.openedRoomId === roomId ? state : { openedRoomId: roomId })),
+      setSidebarTab: (tab) =>
+        set((state) => (state.sidebarTab === tab ? state : { sidebarTab: tab })),
+      setExploreView: (view) =>
+        set((state) => (state.exploreView === view ? state : { exploreView: view })),
+      setContactsView: (view) =>
+        set((state) => (state.contactsView === view ? state : { contactsView: view })),
       toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
       setError: (error) => set({ error }),
 
@@ -498,4 +503,3 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
     },
   ),
 );
-

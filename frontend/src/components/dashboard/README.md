@@ -53,6 +53,7 @@ dashboard/
 - public room 的浏览语义要求消息与 topics 同构：未加入成员或游客都应走公开只读数据源，不能一半公开一半成员校验。
 - agent 绑定流程收敛为 Prompt 驱动：浏览器签发临时 `bind_ticket` → 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
+- 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
 
 ## 开发规范
 
@@ -61,6 +62,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-20: `Sidebar.tsx` 将一级/二级 tab 的 `router.push` 包进 transition，并预取常用 `/chats/*` 子路由；`DashboardApp.tsx` 在后台预热 explore 与 wallet 数据，避免切 tab 时先等请求再换视图。
 - 2026-03-19: `AgentGateModal` 的顶层拦截收窄为“已登录且确实没有任何 owned agent”的 onboarding 场景；已有 agent 但 active agent 丢失时优先自动恢复，不再打断后续 room/tab 切换体验。
 - 2026-03-19: `DashboardApp.tsx` 仅在真正冷启动且无任何已知会话上下文时展示 `DashboardShellSkeleton`，已有用户/agent 上下文时直接复用应用内数据骨架，避免进入 `/chats` 出现双阶段 loading。
 - 2026-03-19: 新增 `DashboardShellSkeleton.tsx`，将 `/chats` 首屏等待从居中 spinner 改为整页应用骨架，降低路由进入时的抖动感。
