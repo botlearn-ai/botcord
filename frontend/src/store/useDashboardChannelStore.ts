@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 zustand/persist 保存频道域状态，依赖 @/lib/api 发起房间、消息、探索相关请求，依赖 session/contact store 提供鉴权上下文与联系人刷新
  * [OUTPUT]: 对外提供 useDashboardChannelStore 状态仓库与频道域异步动作
- * [POS]: frontend dashboard 的 channel 主域状态源，负责房间、消息、探索、公开频道与右侧资料面板
+ * [POS]: frontend dashboard 的 channel 主域状态源，负责房间、消息、探索、公开频道与 agent 资料展示状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -112,7 +112,10 @@ interface DashboardChannelState {
   topics: Record<string, TopicInfo[]>;
   error: string | null;
   rightPanelOpen: boolean;
+  agentCardOpen: boolean;
   selectedAgentId: string | null;
+  selectedAgentLoading: boolean;
+  selectedAgentError: string | null;
   selectedAgentProfile: AgentProfile | null;
   selectedAgentConversations: DashboardRoom[] | null;
   searchResults: AgentProfile[] | null;
@@ -135,6 +138,7 @@ interface DashboardChannelState {
   setExploreView: (view: DashboardChannelState["exploreView"]) => void;
   setContactsView: (view: DashboardChannelState["contactsView"]) => void;
   toggleRightPanel: () => void;
+  closeAgentCard: () => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
   setError: (error: string | null) => void;
   resetChannelState: () => void;
@@ -168,7 +172,10 @@ const initialState = {
   topics: {},
   error: null,
   rightPanelOpen: false,
+  agentCardOpen: false,
   selectedAgentId: null,
+  selectedAgentLoading: false,
+  selectedAgentError: null,
   selectedAgentProfile: null,
   selectedAgentConversations: null,
   searchResults: null,
@@ -198,7 +205,10 @@ function hasTransientChannelState(state: DashboardChannelState): boolean {
     || Object.keys(state.topics).length > 0
     || state.error !== null
     || state.rightPanelOpen
+    || state.agentCardOpen
     || state.selectedAgentId !== null
+    || state.selectedAgentLoading
+    || state.selectedAgentError !== null
     || state.selectedAgentProfile !== null
     || state.selectedAgentConversations !== null
     || state.searchResults !== null
@@ -226,6 +236,14 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
       setContactsView: (view) =>
         set((state) => (state.contactsView === view ? state : { contactsView: view })),
       toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
+      closeAgentCard: () =>
+        set((state) => (state.agentCardOpen
+          ? {
+            agentCardOpen: false,
+            selectedAgentLoading: false,
+            selectedAgentError: null,
+          }
+          : state)),
       setError: (error) => set({ error }),
 
       addRecentPublicRoom: (room) =>
@@ -404,6 +422,14 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
 
       selectAgent: async (agentId: string) => {
         const { token } = useDashboardSessionStore.getState();
+        set({
+          selectedAgentId: agentId,
+          selectedAgentLoading: true,
+          selectedAgentError: null,
+          selectedAgentProfile: null,
+          selectedAgentConversations: null,
+          agentCardOpen: true,
+        });
         try {
           if (token) {
             const [profile, convos] = await Promise.all([
@@ -412,21 +438,30 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
             ]);
             set({
               selectedAgentId: agentId,
+              selectedAgentLoading: false,
+              selectedAgentError: null,
               selectedAgentProfile: profile,
               selectedAgentConversations: convos.conversations,
-              rightPanelOpen: true,
+              agentCardOpen: true,
             });
           } else {
             const profile = await api.getPublicAgentProfile(agentId);
             set({
               selectedAgentId: agentId,
+              selectedAgentLoading: false,
+              selectedAgentError: null,
               selectedAgentProfile: profile,
               selectedAgentConversations: null,
-              rightPanelOpen: true,
+              agentCardOpen: true,
             });
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("[ChannelStore] Failed to select agent:", err);
+          set({
+            selectedAgentLoading: false,
+            selectedAgentError: err?.message || "Failed to load agent profile",
+            agentCardOpen: true,
+          });
         }
       },
 

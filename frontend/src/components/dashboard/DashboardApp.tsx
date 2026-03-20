@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/channel/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 react effect 在后台预热跨 tab 数据，依赖 Sidebar/ChatPane/WalletPanel 组织主界面
+ * [INPUT]: 依赖 session/channel/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 react effect 在后台预热跨 tab 数据，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
  * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态与 UI 面板渲染
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -14,6 +14,7 @@ import { useRouter } from "nextjs-toploader/app";
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
+import AgentCardModal from "./AgentCardModal";
 import WalletPanel from "./WalletPanel";
 import StripeReturnBanner from "./StripeReturnBanner";
 import AgentGateModal from "./AgentGateModal";
@@ -97,6 +98,7 @@ export default function DashboardApp() {
   const channelStore = useDashboardChannelStore();
   const walletStore = useDashboardWalletStore();
   const contactStore = useDashboardContactStore();
+  const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
   const recoveredAgentRef = useRef<string | null>(null);
@@ -370,6 +372,28 @@ export default function DashboardApp() {
     return <DashboardShellSkeleton />;
   }
 
+  const selectedAgentForCard = channelStore.selectedAgentProfile;
+  const alreadyInContacts = selectedAgentForCard
+    ? (channelStore.overview?.contacts || []).some(
+      (item) => item.contact_agent_id === selectedAgentForCard.agent_id,
+    )
+    : false;
+  const requestAlreadyPending = selectedAgentForCard
+    ? contactStore.pendingFriendRequests.includes(selectedAgentForCard.agent_id)
+      || contactStore.contactRequestsSent.some(
+        (item) => item.to_agent_id === selectedAgentForCard.agent_id && item.state === "pending",
+      )
+    : false;
+
+  const handleSendFriendRequestFromCard = () => {
+    if (!selectedAgentForCard) return;
+    if (sessionStore.sessionMode !== "authed-ready") {
+      router.push("/login");
+      return;
+    }
+    void contactStore.sendContactRequest(selectedAgentForCard.agent_id);
+  };
+
   return (
     <div className="relative flex h-screen overflow-hidden">
       <Sidebar />
@@ -390,6 +414,20 @@ export default function DashboardApp() {
           }}
         />
       ) : null}
+      <AgentCardModal
+        isOpen={channelStore.agentCardOpen}
+        agent={selectedAgentForCard}
+        loading={channelStore.selectedAgentLoading}
+        error={channelStore.selectedAgentError}
+        onClose={channelStore.closeAgentCard}
+        alreadyInContacts={alreadyInContacts}
+        requestAlreadyPending={requestAlreadyPending}
+        onSendFriendRequest={handleSendFriendRequestFromCard}
+        onRetry={() => {
+          if (!channelStore.selectedAgentId) return;
+          void channelStore.selectAgent(channelStore.selectedAgentId);
+        }}
+      />
       {channelStore.error && (
         <div className="pointer-events-none absolute right-4 top-4 rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs text-red-200">
           {channelStore.error}

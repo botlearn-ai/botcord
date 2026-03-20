@@ -62,6 +62,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-20: `selectAgent` 语义收敛为“打开统一 Agent 卡片”，`DashboardApp.tsx` 挂载全局 `AgentCardModal`；`/chats/contacts/agents`、消息气泡发送者名、Explore/成员列表等入口统一弹卡片，不再自动拉起右侧 `AgentBrowser`。
 - 2026-03-20: `Sidebar.tsx` 将一级/二级 tab 的 `router.push` 包进 transition，并预取常用 `/chats/*` 子路由；`DashboardApp.tsx` 在后台预热 explore 与 wallet 数据，避免切 tab 时先等请求再换视图。
 - 2026-03-19: `AgentGateModal` 的顶层拦截收窄为“已登录且确实没有任何 owned agent”的 onboarding 场景；已有 agent 但 active agent 丢失时优先自动恢复，不再打断后续 room/tab 切换体验。
 - 2026-03-19: `DashboardApp.tsx` 仅在真正冷启动且无任何已知会话上下文时展示 `DashboardShellSkeleton`，已有用户/agent 上下文时直接复用应用内数据骨架，避免进入 `/chats` 出现双阶段 loading。

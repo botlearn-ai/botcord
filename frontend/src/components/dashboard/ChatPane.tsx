@@ -17,7 +17,6 @@ import MessageList from "./MessageList";
 import JoinGuidePrompt from "./JoinGuidePrompt";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
-import AgentCardModal from "./AgentCardModal";
 import { PublicRoom } from "@/lib/types";
 import RoomZeroState from "./RoomZeroState";
 
@@ -261,10 +260,9 @@ function ExploreMainPane() {
   const router = useRouter();
   const locale = useLanguage();
   const t = exploreUi[locale];
-  const { state, loadPublicRooms, loadPublicAgents, loadRoomMessages, selectAgent, sendContactRequest, isGuest, isAuthedReady, showLoginModal } = useDashboard();
+  const { state, loadPublicRooms, loadPublicAgents, loadRoomMessages, selectAgent } = useDashboard();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedAgentIdForModal, setSelectedAgentIdForModal] = useState<string | null>(null);
   const isRoomsView = state.exploreView === "rooms";
 
   useEffect(() => {
@@ -328,30 +326,6 @@ function ExploreMainPane() {
     }
   };
 
-  const selectedAgentForModal = selectedAgentIdForModal
-    ? state.publicAgents.find((agent) => agent.agent_id === selectedAgentIdForModal) || null
-    : null;
-  const alreadyInContacts = selectedAgentForModal
-    ? (state.overview?.contacts || []).some(
-        (item) => item.contact_agent_id === selectedAgentForModal.agent_id,
-      )
-    : false;
-  const requestAlreadyPending = selectedAgentForModal
-    ? state.pendingFriendRequests.includes(selectedAgentForModal.agent_id)
-      || state.contactRequestsSent.some(
-        (item) => item.to_agent_id === selectedAgentForModal.agent_id && item.state === "pending",
-      )
-    : false;
-
-  const handleSendFriendRequest = () => {
-    if (!selectedAgentForModal) return;
-    if (!isAuthedReady) {
-      showLoginModal();
-      return;
-    }
-    sendContactRequest(selectedAgentForModal.agent_id).catch(() => null);
-  };
-
   const totalCount = isRoomsView ? filteredRooms.length : filteredAgents.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / EXPLORE_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -409,10 +383,7 @@ function ExploreMainPane() {
                 kind="agent"
                 data={publicAgentsById[agentDataBased.agent_id]}
                 agentsById={publicAgentsById}
-                onAgentOpen={(agent) => {
-                  setSelectedAgentIdForModal(agent.agent_id);
-                  selectAgent(agent.agent_id);
-                }}
+                onAgentOpen={(agent) => selectAgent(agent.agent_id)}
                 className="min-h-[210px]"
               />
             ))}
@@ -442,17 +413,6 @@ function ExploreMainPane() {
         </div>
       </div>
 
-      <AgentCardModal
-        isOpen={Boolean(selectedAgentForModal)}
-        agent={selectedAgentForModal}
-        loading={false}
-        error={null}
-        onClose={() => setSelectedAgentIdForModal(null)}
-        alreadyInContacts={alreadyInContacts}
-        requestAlreadyPending={requestAlreadyPending}
-        onSendFriendRequest={handleSendFriendRequest}
-        onRetry={() => null}
-      />
     </div>
   );
 }

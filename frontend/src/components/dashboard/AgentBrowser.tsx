@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 dashboard store 的会话/联系人状态，依赖 api 层拉取成员与 agent 详情
- * [OUTPUT]: 对外提供右侧 agent 浏览器与成员点击弹窗交互
+ * [OUTPUT]: 对外提供右侧 agent 浏览器与成员点击后卡片入口
  * [POS]: dashboard 右侧信息面板，连接成员列表、搜索结果与 agent 详情弹层
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -16,55 +16,18 @@ import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
-import type { AgentProfile, PublicRoomMember } from "@/lib/types";
-import AgentCardModal from "./AgentCardModal";
+import type { PublicRoomMember } from "@/lib/types";
 
 export default function AgentBrowser() {
-  const { state, searchAgents, selectAgent, loadRoomMessages, sendContactRequest, isGuest, isAuthedReady, showLoginModal } = useDashboard();
+  const { state, searchAgents, selectAgent, loadRoomMessages, isAuthedReady } = useDashboard();
   const router = useRouter();
   const locale = useLanguage();
   const t = agentBrowser[locale];
   const [roomMembers, setRoomMembers] = useState<PublicRoomMember[]>([]);
   const [roomMembersLoading, setRoomMembersLoading] = useState(false);
   const [roomMembersError, setRoomMembersError] = useState<string | null>(null);
-  const [agentModalOpen, setAgentModalOpen] = useState(false);
-  const [selectedAgentForModal, setSelectedAgentForModal] = useState<AgentProfile | null>(null);
 
   const currentRoom = state.focusedRoomId ? state.getRoomSummary(state.focusedRoomId) : null;
-  const alreadyInContacts = selectedAgentForModal
-    ? (state.overview?.contacts || []).some((item) => item.contact_agent_id === selectedAgentForModal.agent_id)
-    : false;
-  const requestAlreadyPending = selectedAgentForModal
-    ? state.pendingFriendRequests.includes(selectedAgentForModal.agent_id)
-      || state.contactRequestsSent.some(
-        (item) => item.to_agent_id === selectedAgentForModal.agent_id && item.state === "pending",
-      )
-    : false;
-
-  const openAgentModal = (member: PublicRoomMember) => {
-    setSelectedAgentForModal({
-      agent_id: member.agent_id,
-      display_name: member.display_name,
-      bio: member.bio,
-      message_policy: member.message_policy,
-      created_at: member.created_at,
-    });
-    setAgentModalOpen(true);
-  };
-
-  const closeAgentModal = () => {
-    setAgentModalOpen(false);
-    setSelectedAgentForModal(null);
-  };
-
-  const handleSendFriendRequest = () => {
-    if (!selectedAgentForModal) return;
-    if (!isAuthedReady) {
-      showLoginModal();
-      return;
-    }
-    sendContactRequest(selectedAgentForModal.agent_id).catch(() => null);
-  };
 
   useEffect(() => {
     if (!state.focusedRoomId) {
@@ -139,7 +102,7 @@ export default function AgentBrowser() {
                 {roomMembers.map((member) => (
                   <button
                     key={member.agent_id}
-                    onClick={() => openAgentModal(member)}
+                    onClick={() => selectAgent(member.agent_id)}
                     className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg"
                   >
                     <div className="min-w-0">
@@ -246,17 +209,6 @@ export default function AgentBrowser() {
           </div>
         )}
       </div>
-      <AgentCardModal
-        isOpen={agentModalOpen}
-        agent={selectedAgentForModal}
-        loading={false}
-        error={null}
-        onClose={closeAgentModal}
-        alreadyInContacts={alreadyInContacts}
-        requestAlreadyPending={requestAlreadyPending}
-        onSendFriendRequest={handleSendFriendRequest}
-        onRetry={() => null}
-      />
     </div>
   );
 }

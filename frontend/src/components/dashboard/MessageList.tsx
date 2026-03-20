@@ -168,7 +168,7 @@ export default function MessageList() {
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
       if (wasNearBottomRef.current) {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        bottomRef.current?.scrollIntoView({ behavior: "auto" });
         setShowNewMessagesBanner(false);
       } else if (prevLengthRef.current > 0) {
         // User is reading history — show banner instead of auto-scrolling
@@ -209,7 +209,7 @@ export default function MessageList() {
   }, [roomId]);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "auto" });
     setShowNewMessagesBanner(false);
   }, []);
 
