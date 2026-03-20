@@ -62,6 +62,17 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
     }
   };
 
+  const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, roomId: string) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    handleSelect(roomId);
+  };
+
   if (rooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
@@ -74,7 +85,8 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
     <div className="py-1">
       {rooms.map((room) => {
         const isSelected = state.focusedRoomId === room.room_id;
-        const cachedLatestMessage = state.messages[room.room_id]?.[state.messages[room.room_id].length - 1];
+        const roomMessages = state.messages[room.room_id] || [];
+        const cachedLatestMessage = roomMessages[roomMessages.length - 1];
         const previewText = room.last_message_preview || cachedLatestMessage?.text || t.noMessagesYet;
         const previewSender = room.last_sender_name || cachedLatestMessage?.sender_name || "";
         const previewLine = previewSender ? `${previewSender}: ${previewText}` : previewText;
@@ -83,10 +95,15 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
         const avatarTone = buildAvatarTone(room.room_id);
 
         return (
-          <button
+          <div
             key={room.room_id}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open room ${room.name}`}
+            aria-current={isSelected ? "page" : undefined}
             onClick={() => handleSelect(room.room_id)}
-            className={`w-full border-l-2 px-4 py-3 text-left transition-colors ${
+            onKeyDown={(event) => handleRoomKeyDown(event, room.room_id)}
+            className={`w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
               isSelected
                 ? "border-neon-cyan bg-neon-cyan/10"
                 : "border-transparent hover:bg-glass-bg"
@@ -115,7 +132,7 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
                 </p>
               </div>
             </div>
-          </button>
+          </div>
         );
       })}
     </div>
