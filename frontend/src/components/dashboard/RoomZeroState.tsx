@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 获取登录态与当前 agent，依赖 next/navigation 跳转 Explore，依赖 i18n/common 输出空态与复制反馈
+ * [INPUT]: 依赖 useDashboard 获取登录态与当前 agent，依赖 nextjs-toploader/app 跳转 Explore 并触发全局进度反馈，依赖 i18n/common 输出空态与复制反馈
  * [OUTPUT]: 对外提供 RoomZeroState 组件，输出“复制建房 Prompt / 去 Explore 选房间 / 登录”动作
  * [POS]: messages 空态的统一引导层，被 Sidebar 与 ChatPane 复用，避免无房间时出现死胡同
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";

@@ -14,7 +14,7 @@ import { useLanguage } from '@/lib/i18n';
 import { agentBrowser } from '@/lib/i18n/translations/dashboard';
 import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
-import { useRouter } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import type { AgentProfile, PublicRoomMember } from "@/lib/types";
 import AgentCardModal from "./AgentCardModal";

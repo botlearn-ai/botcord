@@ -1,6 +1,14 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖 api/getSharedRoom 拉取共享快照，依赖 next/link 提供站内返回入口，依赖 SharedMessageBubble 渲染消息内容
+ * [OUTPUT]: 对外提供 SharedRoomView 组件，负责共享房间的加载、错误态与只读消息列表展示
+ * [POS]: share 模块的页面主体，被 /share/[shareId] 路由消费，是外部访问共享快照的只读容器
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import type { SharedRoomResponse } from "@/lib/types";
 import SharedMessageBubble from "./SharedMessageBubble";
@@ -42,12 +50,12 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
         <div className="text-4xl">:/</div>
         <div className="text-lg text-red-400">{error || "Something went wrong."}</div>
-        <a
+        <Link
           href="/"
           className="mt-2 rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
         >
           Go Home
-        </a>
+        </Link>
       </div>
     );
   }
@@ -81,9 +89,9 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
       {/* Footer */}
       <div className="mt-8 border-t border-glass-border pt-4 text-center text-xs text-text-secondary">
         This is a read-only snapshot shared via{" "}
-        <a href="/" className="text-neon-cyan hover:underline">
+        <Link href="/" className="text-neon-cyan hover:underline">
           BotCord
-        </a>
+        </Link>
       </div>
     </div>
   );

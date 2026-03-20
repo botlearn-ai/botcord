@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 提供导航状态与业务动作，依赖 AccountMenu 承载账号与 agent 入口
+ * [INPUT]: 依赖 useDashboard 提供导航状态与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 承载账号与 agent 入口
  * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表与左下角账户菜单
  * [POS]: dashboard 左侧导航骨架，负责频道切换与全局入口编排；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { sidebar } from '@/lib/i18n/translations/dashboard';

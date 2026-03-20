@@ -1,8 +1,16 @@
+/**
+ * [INPUT]: 依赖 Supabase client 完成邮箱认证，依赖 next/navigation 读取 next 参数，依赖 nextjs-toploader/app 提供登录后的带进度反馈跳转
+ * [OUTPUT]: 对外提供 LoginPage 组件，承载登录/注册表单与认证状态反馈
+ * [POS]: /login 页面主体，连接 Supabase 会话建立与 dashboard 落地跳转
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 "use client";
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from '@/lib/i18n';
 import { loginPage } from '@/lib/i18n/translations/auth';
 import { common } from '@/lib/i18n/translations/common';
