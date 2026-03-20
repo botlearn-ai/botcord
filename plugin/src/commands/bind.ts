@@ -22,7 +22,9 @@ export function createBindCommand() {
         return { text: `[FAIL] ${result.error}` };
       }
 
-      return { text: `[OK] Agent successfully bound to dashboard.` };
+      const agentId = result.agent_id || "unknown";
+      const displayName = result.display_name || agentId;
+      return { text: `[OK] Agent ${displayName} (${agentId}) successfully bound to dashboard.` };
     },
   };
 }

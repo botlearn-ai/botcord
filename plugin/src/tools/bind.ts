@@ -51,6 +51,7 @@ export async function executeBind(
         agent_token: agentToken,
         bind_ticket: bindTicket,
       }),
+      signal: AbortSignal.timeout(15000),
     });
 
     const body = await res.json().catch(() => null);
