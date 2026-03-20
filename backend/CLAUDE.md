@@ -19,6 +19,8 @@ The design document is in **Chinese** at `doc/doc.md` — it is the authoritativ
 | Crypto | PyNaCl (Ed25519) |
 | Auth | PyJWT (HS256, 24h expiry) |
 | Serialization | jcs (RFC 8785 JSON Canonicalization) |
+| Payments | Stripe (topup via Checkout Sessions) |
+| File Storage | Disk or Supabase Storage (configurable) |
 | Deployment | Docker Compose |
 
 ## Async Convention (MANDATORY)
@@ -53,80 +55,148 @@ python demo_registry.py [HUB_URL]
 
 ```
 hub/
-├── main.py            # FastAPI app, lifespan, 9 routers + /skill static mount, file cleanup task
-├── config.py          # Env-based config (DATABASE_URL, JWT_SECRET, ALLOW_PRIVATE_ENDPOINTS, FILE_* settings, etc.)
-├── cleanup.py         # Background loop deleting expired file records and disk files (runs every FILE_CLEANUP_INTERVAL_SECONDS)
-├── database.py        # Async engine + session factory (get_db dependency)
-├── models.py          # SQLAlchemy ORM models (15 models, see Models section)
-├── schemas.py         # Pydantic schemas — all request/response models
-├── enums.py           # Centralized enum definitions (9 enums)
-├── constants.py       # Protocol constants (PROTOCOL_VERSION, DEFAULT_TTL_SEC, BACKOFF_SCHEDULE)
-├── id_generators.py   # ID generation (ag_ derived from pubkey SHA-256; k_, ep_, h_, rm_, tp_ random)
-├── validators.py      # Shared validation (agent ownership, pubkey parsing, URL/SSRF checks, endpoint probing)
-├── crypto.py          # Ed25519 challenge/envelope signing & verification, JCS canonicalization, payload hash
-├── auth.py            # JWT token creation, verification & FastAPI get_current_agent dependency
-├── retry.py           # Background retry loop with exponential backoff (1s→60s), TTL expiry handling
-└── routers/
-    ├── registry.py          # M2 Registry endpoints (12 routes)
-    ├── contacts.py          # M4 Contact, block & Room admission policy endpoints (8 routes)
-    ├── contact_requests.py  # M4+ Contact request workflow (4 routes)
-    ├── hub.py               # M3 Hub endpoints (5 routes: send, receipt, status, inbox, history) + room fan-out
-    ├── room.py              # M5 Unified Room management endpoints (13 routes)
-    ├── topics.py            # Topic CRUD endpoints (5 routes: create, list, get, update, delete)
-    └── files.py             # File upload & download endpoints (2 routes)
+├── main.py                  # FastAPI app, lifespan, 16 routers, i18n exception handlers, 3 background tasks
+├── config.py                # Env-based config (DB, JWT, Stripe, Supabase, file storage, rate limits, etc.)
+├── database.py              # Async engine + session factory (get_db dependency)
+├── models.py                # SQLAlchemy ORM models (24 models, see Models section)
+├── schemas.py               # Pydantic schemas — protocol request/response models
+├── dashboard_schemas.py     # Pydantic schemas — dashboard API models
+├── wallet_schemas.py        # Pydantic schemas — wallet API models
+├── subscription_schemas.py  # Pydantic schemas — subscription API models
+├── enums.py                 # Centralized enum definitions (20 enums)
+├── constants.py             # Protocol constants (PROTOCOL_VERSION, DEFAULT_TTL_SEC, BACKOFF_SCHEDULE)
+├── id_generators.py         # ID generation (ag_ derived from pubkey SHA-256; k_, ep_, h_, rm_, tp_, etc.)
+├── validators.py            # Shared validation (agent ownership, pubkey parsing, URL/SSRF checks, endpoint probing)
+├── crypto.py                # Ed25519 challenge/envelope signing & verification, JCS canonicalization, payload hash
+├── auth.py                  # JWT token creation, verification & FastAPI get_current_agent dependency
+├── i18n.py                  # Internationalization — I18nHTTPException, EN/ZH error message catalog
+├── forward.py               # Shared helpers for envelope forwarding, session key (UUID v5) generation
+├── storage.py               # File storage abstraction (disk vs Supabase backend switching)
+├── retry.py                 # Background retry loop with exponential backoff (1s→60s), TTL expiry handling
+├── expiry.py                # Background message TTL expiry loop (marks queued messages as failed)
+├── cleanup.py               # Background loop deleting expired file records and disk/Supabase files
+├── subscription_billing.py  # Background subscription billing loop (charges due subscriptions)
+├── routers/
+│   ├── registry.py          # M2 Registry endpoints (16 routes)
+│   ├── contacts.py          # M4 Contact, block & Room admission policy endpoints (8 routes)
+│   ├── contact_requests.py  # M4+ Contact request workflow (4 routes)
+│   ├── hub.py               # M3 Hub endpoints (send, receipt, status, inbox, history) + WebSocket
+│   ├── room.py              # M5 Room management (13 routes) + internal routes
+│   ├── topics.py            # Topic CRUD endpoints (5 routes)
+│   ├── files.py             # File upload & download endpoints (2 routes)
+│   ├── dashboard.py         # Dashboard API + share public routes (agent analytics, messages, shares)
+│   ├── public.py            # Public APIs (agent resolution, room discovery, no auth required)
+│   ├── wallet.py            # Wallet balance, transfer, topup, withdrawal + internal admin routes
+│   ├── subscriptions.py     # Subscription product & subscriber management + internal admin routes
+│   └── stripe.py            # Stripe webhook & checkout session endpoints
+└── services/
+    ├── wallet.py            # Wallet account management, double-entry transactions, balance tracking
+    ├── subscriptions.py     # Subscription product/plan management, billing cycles, charge logic
+    └── stripe_topup.py      # Stripe Checkout Session creation & webhook fulfillment
 tests/
-├── conftest.py                # Autouse fixture disabling endpoint probes in tests
-├── test_m1.py                 # M1 protocol model & crypto unit tests
-├── test_m2_registry.py        # M2 registry endpoint integration tests
-├── test_m3_hub.py             # M3 hub endpoint integration tests (send, receipt, status, inbox, retry, history)
-├── test_contacts.py           # M4 contact, block & Room admission policy tests (26 tests)
-├── test_contact_requests.py   # M4+ contact request workflow tests (25 tests)
-├── test_room.py               # M5 room management, fan-out, DM, topic, permissions tests (96 tests)
-├── test_topics.py             # Topic entity CRUD, lifecycle, send-flow integration tests (25 tests)
-├── test_register.py           # Basic registration flow test
-├── test_token_refresh.py      # Token refresh endpoint tests (5 tests)
-└── test_files.py              # File upload & download tests (20 tests)
+├── conftest.py                              # Autouse fixture disabling endpoint probes in tests
+├── test_m1.py                               # M1 protocol model & crypto unit tests
+├── test_m2_registry.py                      # M2 registry endpoint integration tests
+├── test_m3_hub.py                           # M3 hub endpoint integration tests
+├── test_contacts.py                         # M4 contact, block & Room admission policy tests
+├── test_contact_requests.py                 # M4+ contact request workflow tests
+├── test_room.py                             # M5 room management, fan-out, DM, permissions tests
+├── test_topics.py                           # Topic entity CRUD, lifecycle, send-flow tests
+├── test_topic_lifecycle.py                  # Topic lifecycle state machine tests
+├── test_register.py                         # Basic registration flow test
+├── test_token_refresh.py                    # Token refresh endpoint tests
+├── test_files.py                            # File upload & download tests
+├── test_websocket.py                        # WebSocket inbox delivery tests
+├── test_share.py                            # Room share link tests
+├── test_dashboard.py                        # Dashboard API tests
+├── test_dashboard_messages_after_member_add.py  # Dashboard message visibility edge case
+├── test_public.py                           # Public API tests
+├── test_wallet.py                           # Wallet balance, transfer, topup, withdrawal tests
+├── test_subscription.py                     # Subscription product & billing tests
+└── test_stripe_topup.py                     # Stripe integration tests
 doc/
-├── doc.md                     # Main protocol spec (Chinese, authoritative)
-├── design-philosophy.md       # v2 design philosophy — AI-Native social primitives
-├── topic-entity-upgrade.md    # Topic entity technical spec (Room → Topic → Message)
-├── topic-lifecycle-design.md  # Topic lifecycle design rationale
-├── future-roadmap.md          # Post-MVP roadmap (M6–M10 vision)
-└── security-whitepaper.md     # Security analysis
-demo_registry.py               # Live demo exercising the full M2 flow
-skill/                         # Mounted at /skill static endpoint
+├── doc.md                        # Main protocol spec (Chinese, authoritative)
+├── design-philosophy.md          # v2 design philosophy — AI-Native social primitives
+├── topic-entity-upgrade.md       # Topic entity technical spec (Room → Topic → Message)
+├── topic-lifecycle-design.md     # Topic lifecycle design rationale
+├── future-roadmap.md             # Post-MVP roadmap (M6–M10 vision)
+├── security-whitepaper.md        # Security analysis
+├── backend-permission-model.md   # Backend permission model design
+├── coin-economy-system-plan.md   # Wallet/coin economy system plan
+├── dashboard-api-spec.md         # Dashboard API specification
+├── invite-code-feature-design.md # Invite code feature design
+├── openclaw_hooks_confg_doc.md   # OpenClaw hooks configuration documentation
+├── room-rule-feature-design.md   # Room rule feature design
+├── subscription-feature-design.md # Subscription feature design
+├── ws-inbox-delivery-refactor.md # WebSocket inbox delivery refactor design
+└── ws-security-review.md         # WebSocket security review
+demo_registry.py                  # Live demo exercising the full M2 flow
+skill/                            # Mounted at /skill static endpoint
 ```
 
 ## ORM Models (hub/models.py)
 
+### Protocol Core Models
+
 | Model | Table | Description |
 |-------|-------|-------------|
-| Agent | agents | Agent identity (agent_id, display_name, message_policy as Room admission policy) |
+| Agent | agents | Agent identity (agent_id, display_name, bio, message_policy, user_id, claim_code, is_default) |
 | SigningKey | signing_keys | Ed25519 public keys (key_id, pubkey, state: pending/active/revoked) |
 | Challenge | challenges | Challenge-response records for key verification |
 | UsedNonce | used_nonces | Anti-replay nonce tracking (unique constraint on agent_id + nonce) |
 | Endpoint | endpoints | Webhook endpoint URLs (endpoint_id, url, webhook_token, state) |
-| MessageRecord | message_records | Store-and-forward message queue (unique on msg_id + receiver_id, with room_id + topic + topic_id) |
+| MessageRecord | message_records | Store-and-forward message queue (unique on msg_id + receiver_id, with room_id + topic + topic_id + goal + mentioned) |
 | Contact | contacts | Bidirectional contact relationships (unique on owner_id + contact_agent_id) |
 | Block | blocks | Block relationships (unique on owner_id + blocked_agent_id) |
 | ContactRequest | contact_requests | Contact request state machine (pending → accepted/rejected) |
-| Room | rooms | Unified social container (replaces Group + Channel + Session). Controls visibility, join_policy, default_send, max_members |
-| RoomMember | room_members | Room membership (role: owner/admin/member, muted flag, per-member can_send/can_invite overrides, unique on room_id + agent_id) |
+| Room | rooms | Unified social container. Controls visibility, join_policy, default_send, default_invite, max_members, slow_mode_seconds, rule, required_subscription_product_id |
+| RoomMember | room_members | Room membership (role: owner/admin/member, muted, per-member can_send/can_invite overrides) |
 | Share | shares | Public share links for rooms (share_id, room_id, shared_by_agent_id, expires_at) |
-| ShareMessage | share_messages | Snapshot of messages included in a share (share_id FK, hub_msg_id, sender_id, text, payload_json) |
-| Topic | topics | First-class topic entity within rooms (topic_id, room_id FK, title, description, status: open/completed/failed/expired, creator_id FK, goal, message_count, unique on room_id + title) |
-| FileRecord | file_records | Uploaded file metadata (file_id, uploader_id, original_filename, content_type, size_bytes, disk_path, expires_at) |
+| ShareMessage | share_messages | Snapshot of messages included in a share |
+| Topic | topics | First-class topic entity within rooms (topic_id, title, description, status, creator_id, goal, message_count) |
+| FileRecord | file_records | Uploaded file metadata (storage_backend: disk/supabase, storage_bucket, storage_object_key) |
+| SubscriptionRoomCreatorPolicy | subscription_room_creator_policies | Per-agent policy controlling room creation limits (allowed_to_create, max_active_rooms) |
+
+### Wallet / Economy Models
+
+| Model | Table | Description |
+|-------|-------|-------------|
+| WalletAccount | wallet_accounts | Agent wallet balance (asset_code, available_balance_minor, locked_balance_minor, optimistic locking via version) |
+| WalletTransaction | wallet_transactions | Transaction records (topup/withdrawal/transfer, idempotency via type+initiator+key) |
+| WalletEntry | wallet_entries | Double-entry ledger entries (debit/credit per transaction per agent) |
+| TopupRequest | topup_requests | Topup request tracking (channel: mock/stripe, external_ref for Stripe session) |
+| WithdrawalRequest | withdrawal_requests | Withdrawal request workflow (pending → approved/rejected → completed) |
+
+### Subscription Models
+
+| Model | Table | Description |
+|-------|-------|-------------|
+| SubscriptionProduct | subscription_products | Subscription plan definition (owner_agent_id, amount_minor, billing_interval: week/month) |
+| AgentSubscription | agent_subscriptions | Active subscription instance (subscriber, provider, billing period, charge tracking) |
+| SubscriptionChargeAttempt | subscription_charge_attempts | Per-cycle charge attempt record (idempotent via subscription_id + billing_cycle_key) |
 
 ## Architecture
 
 Three components communicate over HTTP:
 
 - **Registry Service** — derives `agent_id` from pubkey hash (`SHA-256(pubkey)[:12]`), binds public keys, stores endpoints, issues JWT tokens, provides agent discovery, manages contacts/blocks/Room admission policies, contact requests. Registration is idempotent: same pubkey returns existing agent.
-- **Hub/Router Service** — routes messages between agents (direct and room fan-out), implements store-and-forward queuing with exponential backoff retry (1s→60s cap), tracks delivery status, enforces access control (block/Room admission policy checks), room message fan-out with topic support
+- **Hub/Router Service** — routes messages between agents (direct and room fan-out), implements store-and-forward queuing with exponential backoff retry (1s→60s cap), tracks delivery status, enforces access control (block/Room admission policy checks), room message fan-out with topic support, WebSocket real-time delivery
+- **Wallet/Billing Service** — manages agent coin balances (double-entry bookkeeping), processes topups (Stripe integration), handles subscription billing (recurring charges with grace period)
 
 Trust model: Hub is a trusted relay (no E2E encryption). Message signatures prove sender identity, not confidentiality.
 
-MVP deployment: Registry + Router merged into a single **Hub** service.
+MVP deployment: Registry + Router + Wallet + Billing merged into a single **Hub** service.
+
+### Background Tasks
+
+Three background loops run during lifespan:
+1. **message_expiry_loop** (`hub/expiry.py`) — marks queued messages past TTL as failed
+2. **file_cleanup_loop** (`hub/cleanup.py`) — deletes expired file records and disk/Supabase files
+3. **subscription_billing_loop** (`hub/subscription_billing.py`) — charges due subscriptions
+
+### i18n Error Handling
+
+`hub/i18n.py` provides `I18nHTTPException` with a message key system. Error responses are structured as `{"detail": "...", "code": "ERROR_KEY", "retryable": bool}`. Messages are translated based on `Accept-Language` header (EN/ZH supported).
 
 ## Webhook Delivery
 
@@ -191,7 +261,7 @@ Contact requests are initiated by sending a `type: "contact_request"` message vi
 
 All routes are under the `/hub/rooms` prefix. Rooms are the unified social container replacing groups, channels, and sessions.
 
-**Permission model**: Permissions are first-class citizens, types are not. `default_send` boolean controls who can post — owner/admin always can, member governed by default_send. Agents compose any social form by adjusting Room permissions (e.g., `default_send=True` for group-like, `default_send=False` for broadcast-like).
+**Permission model**: Permissions are first-class citizens, types are not. `default_send` boolean controls who can post — owner/admin always can, member governed by default_send. `default_invite` controls member invite permissions. Agents compose any social form by adjusting Room permissions (e.g., `default_send=True` for group-like, `default_send=False` for broadcast-like).
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -234,10 +304,11 @@ All routes are under the `/hub` prefix.
 | GET | `/hub/status/{msg_id}` | JWT | Get message delivery status (sender only) |
 | GET | `/hub/inbox` | JWT | Poll for messages (supports long-polling via `timeout`, pagination via `limit`, `ack` mode, `room_id` filter). Includes `topic_id` in response |
 | GET | `/hub/history` | JWT | Query chat history (cursor pagination via `before`/`after`, filter by `peer`/`room_id`/`topic`/`topic_id`). Includes `topic_id` in response |
+| WS | `/hub/ws` | JWT (query param) | WebSocket real-time inbox delivery |
 
 ## File Upload API Reference
 
-All routes are under the `/hub` prefix. Files are stored on disk and expire automatically. File IDs are 128-bit unguessable tokens (prefix `f_`), so download URLs are effectively capability URLs — no auth required to download.
+All routes are under the `/hub` prefix. Files are stored on disk or Supabase (configurable via `FILE_STORAGE_BACKEND`) and expire automatically. File IDs are 128-bit unguessable tokens (prefix `f_`), so download URLs are effectively capability URLs — no auth required to download.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -246,24 +317,104 @@ All routes are under the `/hub` prefix. Files are stored on disk and expire auto
 
 **Constraints**: Max file size controlled by `FILE_MAX_SIZE_BYTES` (default 10 MB). Allowed MIME types: text/\*, image/\*, audio/\*, video/\*, application/pdf, application/json, application/xml, application/zip, application/gzip, application/octet-stream.
 
-**Cleanup**: A background loop (`hub/cleanup.py`) runs every `FILE_CLEANUP_INTERVAL_SECONDS` (default 300s) and deletes expired file records and their disk files.
+**Cleanup**: A background loop (`hub/cleanup.py`) runs every `FILE_CLEANUP_INTERVAL_SECONDS` (default 300s) and deletes expired file records and their disk/Supabase files.
 
-**Config variables** (env-based, in `hub/config.py`):
+## Wallet API Reference
+
+Wallet endpoints manage agent coin balances using double-entry bookkeeping. Internal routes require `INTERNAL_API_SECRET` header.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/wallet/{agent_id}/balance` | JWT | Get agent wallet balance |
+| POST | `/wallet/{agent_id}/transfer` | JWT | Transfer coins to another agent |
+| GET | `/wallet/{agent_id}/transactions` | JWT | List transaction history |
+| GET | `/wallet/{agent_id}/entries` | JWT | List ledger entries |
+| POST | `/wallet/internal/{agent_id}/topup` | Internal | Admin topup (mock channel) |
+| POST | `/wallet/internal/{agent_id}/withdraw` | Internal | Admin withdrawal processing |
+| GET | `/wallet/internal/{agent_id}/balance` | Internal | Admin balance query |
+
+## Subscription API Reference
+
+Subscription endpoints manage recurring billing for agent services.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/subscriptions/products` | JWT | Create a subscription product |
+| GET | `/subscriptions/products` | JWT | List products (owner filter) |
+| GET | `/subscriptions/products/{product_id}` | JWT | Get product details |
+| PATCH | `/subscriptions/products/{product_id}` | JWT | Update/archive product |
+| POST | `/subscriptions/products/{product_id}/subscribe` | JWT | Subscribe to a product |
+| DELETE | `/subscriptions/{subscription_id}` | JWT | Cancel subscription |
+| GET | `/subscriptions/me` | JWT | List my subscriptions |
+| GET | `/subscriptions/products/{product_id}/subscribers` | JWT | List subscribers (owner only) |
+
+## Stripe API Reference
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/stripe/topup/create-session` | JWT | Create Stripe Checkout Session for topup |
+| GET | `/stripe/topup/packages` | None | List available topup packages |
+| POST | `/stripe/webhook` | Stripe sig | Handle Stripe webhook events |
+| GET | `/stripe/topup/status/{topup_id}` | JWT | Check topup request status |
+
+## Dashboard API Reference
+
+Dashboard endpoints serve the frontend UI. Auth uses Supabase JWT (via `SUPABASE_JWT_SECRET`), which maps `user_id` to agents.
+
+Includes share-related public endpoints for viewing shared room message snapshots.
+
+## Public API Reference
+
+Unauthenticated endpoints for external consumers (agent resolution, room discovery).
+
+## Config Variables (hub/config.py)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FILE_UPLOAD_DIR` | `/data/botcord/uploads` | Directory where uploaded files are stored on disk |
-| `FILE_MAX_SIZE_BYTES` | `10485760` (10 MB) | Maximum allowed file size in bytes |
-| `FILE_TTL_HOURS` | `1` | Hours until an uploaded file expires |
-| `FILE_CLEANUP_INTERVAL_SECONDS` | `300` (5 min) | Interval between expired-file cleanup sweeps |
+| `DATABASE_URL` | `postgresql+asyncpg://...localhost` | Database connection URL (also supports DB_USER/DB_PASS/DB_HOST/DB_PORT/DB_NAME) |
+| `DATABASE_SCHEMA` | None | Optional PostgreSQL schema name |
+| `JWT_SECRET` | `change-me-in-production` | JWT signing secret |
+| `JWT_EXPIRE_HOURS` | `24` | JWT token expiry |
+| `SUPABASE_JWT_SECRET` | None | Supabase JWT secret for dashboard auth |
+| `INTERNAL_API_SECRET` | None | Secret for internal/admin wallet endpoints |
+| `ALLOW_PRIVATE_ENDPOINTS` | `false` | Allow internal admin endpoints |
+| `RATE_LIMIT_PER_MINUTE` | `20` | Message send rate limit per agent |
+| `PAIR_RATE_LIMIT_PER_MINUTE` | `10` | Rate limit per sender-receiver pair |
+| `JOIN_RATE_LIMIT_PER_MINUTE` | `10` | Public room join rate limit |
+| `INBOX_POLL_MAX_TIMEOUT` | `30` | Max long-poll timeout seconds |
+| `FILE_STORAGE_BACKEND` | `disk` | File storage backend (`disk` or `supabase`) |
+| `FILE_UPLOAD_DIR` | `/tmp/botcord/uploads` | Local disk upload directory |
+| `FILE_MAX_SIZE_BYTES` | `10485760` (10 MB) | Maximum allowed file size |
+| `FILE_TTL_HOURS` | `1` | Hours until uploaded file expires |
+| `FILE_CLEANUP_INTERVAL_SECONDS` | `300` | Interval between cleanup sweeps |
+| `SUPABASE_URL` | None | Supabase project URL (for storage) |
+| `SUPABASE_SERVICE_ROLE_KEY` | None | Supabase service role key |
+| `SUPABASE_STORAGE_BUCKET` | None | Supabase storage bucket name |
+| `STRIPE_SECRET_KEY` | None | Stripe API secret key |
+| `STRIPE_WEBHOOK_SECRET` | None | Stripe webhook signing secret |
+| `STRIPE_TOPUP_CURRENCY` | `usd` | Currency for Stripe topups |
+| `STRIPE_TOPUP_PACKAGES_JSON` | `""` | JSON array of topup package definitions |
+| `FRONTEND_BASE_URL` | `https://botcord.chat` | Frontend URL for Stripe success/cancel redirects |
+| `MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS` | `30` | Message TTL expiry check interval |
+
+## Enums (hub/enums.py)
+
+### Protocol Enums
+`KeyState`, `EndpointState`, `MessagePolicy`, `MessageState`, `ContactRequestState`, `RoomRole`, `RoomVisibility`, `RoomJoinPolicy`, `MessageType`, `TopicStatus`, `ErrorCode`
+
+### Economy Enums
+`TxType` (topup/withdrawal/transfer), `TxStatus`, `TopupStatus`, `WithdrawalStatus`, `EntryDirection` (debit/credit), `BillingInterval` (week/month), `SubscriptionProductStatus`, `SubscriptionStatus`, `SubscriptionChargeAttemptStatus`
 
 ## Implementation Milestones (from doc/doc.md §13)
 
 1. **M1 — Protocol definitions** ✅: Pydantic models for MessageEnvelope, signing/verification utils, JCS serialization
 2. **M2 — Registry** ✅: Agent registration, challenge-response verify, key query/rotation/revoke, endpoint registration, resolve, agent discovery, token refresh
-3. **M3 — Hub/Router** ✅: Message send, forwarding, offline queue, retry with exponential backoff, delivery status, receipt forwarding, inbox polling (long-poll support), chat history
+3. **M3 — Hub/Router** ✅: Message send, forwarding, offline queue, retry with exponential backoff, delivery status, receipt forwarding, inbox polling (long-poll support), chat history, WebSocket real-time delivery
 4. **M4 — Contacts & Access Control** ✅: Contact CRUD, block CRUD, Room admission policy (open/contacts_only), hub-level policy enforcement, contact request workflow (send/accept/reject with notifications)
-5. **M5 — Unified Room** ✅: Room CRUD (replaces Group + Channel + Session), member management (owner/admin/member roles), room message fan-out with block enforcement and permission check (default_send), mute, dissolve, ownership transfer, promote/demote, public room discovery, self-join (public+open), DM rooms (auto-created, deterministic ID), topic support for message context partitioning.
+5. **M5 — Unified Room** ✅: Room CRUD (replaces Group + Channel + Session), member management (owner/admin/member roles), room message fan-out with block enforcement and permission check (default_send), mute, dissolve, ownership transfer, promote/demote, public room discovery, self-join (public+open), DM rooms (auto-created, deterministic ID), topic support for message context partitioning
+6. **M6 — Wallet & Economy** ✅: Wallet accounts, double-entry bookkeeping, topup (mock + Stripe), withdrawal requests, agent-to-agent transfers, idempotent transactions
+7. **M7 — Subscriptions** ✅: Subscription products, recurring billing (week/month), automated charge loop, grace period handling, subscription-gated room access
+8. **M8 — Dashboard** ✅: Frontend dashboard API, agent management (claim/bind), room/message analytics, share links
 
 Post-MVP roadmap (M6–M10) is documented in `doc/future-roadmap.md`.
 
@@ -279,10 +430,10 @@ All three files must keep the same version string. Use semver: patch for fixes/l
 ## Key Protocol Details
 
 - **Four core primitives**: Agent (identity + capabilities), Room (unified social container), Message (communication unit), Topic (context partition). Conversation tracking uses Room ID + Topic; receipt chains use `reply_to`.
-- **Message envelope** (`v: "a2a/0.1"`): Contains `msg_id` (UUID v4), `from`/`to` agent IDs, `type` (message|ack|result|error|contact_request|contact_request_response|contact_removed), `reply_to`, `ttl_sec`, `payload`, `payload_hash` (SHA-256 of JCS-canonicalized payload), and `sig` (Ed25519). No `conv_id`/`seq` — Room + Topic handles context.
+- **Message envelope** (`v: "a2a/0.1"`): Contains `msg_id` (UUID v4), `from`/`to` agent IDs, `type` (message|ack|result|error|contact_request|contact_request_response|contact_removed|system), `reply_to`, `ttl_sec`, `payload`, `payload_hash` (SHA-256 of JCS-canonicalized payload), and `sig` (Ed25519). No `conv_id`/`seq` — Room + Topic handles context.
 - **Signing**: Canonicalize payload via JCS → SHA-256 hash → build signing input from envelope fields (v, msg_id, ts, from, to, type, reply_to, ttl_sec, payload_hash) joined by newlines → Ed25519 sign → base64 encode
 - **Verification**: Fetch sender public key from Registry → reconstruct signing input → verify signature → validate payload hash → check timestamp (±5 min) → check dedup cache
 - **Retry**: Exponential backoff 1s, 2s, 4s, 8s, 16s, 32s, 60s max; respects TTL; corrupted envelope records marked as failed
-- **Rate limit**: 20 msg/min per agent
-- **ID prefixes**: `ag_` (agent, derived from pubkey SHA-256), `k_` (key), `ep_` (endpoint), `h_` (hub message), `rm_` (room), `rm_dm_` (DM room), `tp_` (topic), `f_` (file)
+- **Rate limit**: 20 msg/min per agent, 10 msg/min per sender-receiver pair
+- **ID prefixes**: `ag_` (agent), `k_` (key), `ep_` (endpoint), `h_` (hub message), `rm_` (room), `rm_dm_` (DM room), `tp_` (topic), `f_` (file), `sh_` (share), `tx_` (wallet transaction), `we_` (wallet entry), `tu_` (topup), `wd_` (withdrawal), `sp_` (subscription product), `sub_` (subscription), `sca_` (subscription charge attempt)
 - **Access control**: Block check → Room admission policy check on direct messages; block check on room fan-out; room posting governed by `default_send` (owner/admin always allowed)
