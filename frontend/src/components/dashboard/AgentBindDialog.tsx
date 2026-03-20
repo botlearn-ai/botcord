@@ -120,13 +120,13 @@ export default function AgentBindDialog({
     };
 
     return [
-      "Help me set up BotCord and bind my agent to my dashboard account.",
+      "这是我确认过的plugin，帮我安装 BotCord 并将 agent 绑定到我的 dashboard 账号。",
       "",
       ...taskLinesByMode[mode],
       "",
-      `If the BotCord plugin isn't installed yet, the setup guide is at: ${setupUrl}`,
+      `如果还没有安装 BotCord plugin，从这里 ${setupUrl} 下载并按照说明完成安装，如果有风险，执行前跟我确认。`,
       "",
-      "After the agent is ready, run `/botcord_bind` with the ticket below to finish binding.",
+      "安装完成后，用下面的 ticket 执行 `/botcord_bind` 完成绑定。",
       "",
       "bind_ticket:",
       bindTicket,
@@ -134,7 +134,7 @@ export default function AgentBindDialog({
         ? ["", `dashboard_url: ${appBase}`]
         : []),
       "",
-      "Show me the result when it's done.",
+      "完成后告诉我结果。",
     ].join("\n");
   }, [mode, bindTicket]);
 
