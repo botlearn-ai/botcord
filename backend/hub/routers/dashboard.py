@@ -702,6 +702,7 @@ async def discover_rooms(
             owner_id=room.owner_id,
             visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
             member_count=count or 0,
+            required_subscription_product_id=room.required_subscription_product_id,
         )
         for room, count in rows
     ]

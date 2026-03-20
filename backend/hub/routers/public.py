@@ -41,6 +41,7 @@ class PublicRoom(BaseModel):
     owner_id: str
     visibility: str
     member_count: int
+    required_subscription_product_id: str | None = None
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None
     last_sender_name: str | None = None
@@ -150,11 +151,13 @@ async def _build_public_rooms(
 
     result: list[PublicRoom] = []
     for room, count in rooms_with_counts:
+        is_gated = bool(room.required_subscription_product_id)
         last_rec = last_messages.get(room.room_id)
         last_preview: str | None = None
         last_at: datetime.datetime | None = None
         last_sender: str | None = None
-        if last_rec:
+        # Hide message preview for subscription-gated rooms
+        if last_rec and not is_gated:
             envelope_data = json.loads(last_rec.envelope_json)
             sid, text, _ = _extract_text_from_envelope(envelope_data)
             last_preview = text[:200] if text else None
@@ -173,6 +176,7 @@ async def _build_public_rooms(
                     else str(room.visibility)
                 ),
                 member_count=count or 0,
+                required_subscription_product_id=room.required_subscription_product_id,
                 last_message_preview=last_preview,
                 last_message_at=last_at,
                 last_sender_name=last_sender,
@@ -335,6 +339,13 @@ async def public_room_messages(
     room = room_result.scalar_one_or_none()
     if room is None or room.visibility != RoomVisibility.public:
         raise I18nHTTPException(status_code=404, message_key="room_not_found")
+
+    # Subscription-gated rooms require active subscription to view messages
+    if room.required_subscription_product_id:
+        raise I18nHTTPException(
+            status_code=403,
+            message_key="subscription_required_to_view",
+        )
 
     # Deduplicate fan-out: pick one record (min id) per msg_id
     dedup_sub = (

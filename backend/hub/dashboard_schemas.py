@@ -120,6 +120,7 @@ class DiscoverRoom(BaseModel):
     owner_id: str
     visibility: str
     member_count: int
+    required_subscription_product_id: str | None = None
 
 
 class DiscoverRoomsResponse(BaseModel):

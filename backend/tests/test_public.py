@@ -109,6 +109,10 @@ def _auth_header(token: str) -> dict[str, str]:
 async def _create_agent(client: AsyncClient, name: str = "agent"):
     sk, pub = _make_keypair()
     agent_id, key_id, token = await _register_and_verify(client, sk, pub, name)
+    await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        headers=_auth_header(token),
+    )
     await client.patch(
         f"/registry/agents/{agent_id}/policy",
         json={"message_policy": "open"},
@@ -603,3 +607,232 @@ async def test_private_room_not_in_overview(client: AsyncClient):
     data = resp.json()
     for room in data["featured_rooms"]:
         assert room["visibility"] == "public"
+
+
+# ===========================================================================
+# Subscription-gated public rooms
+# ===========================================================================
+
+
+@pytest_asyncio.fixture
+async def sub_client(db_session: AsyncSession, monkeypatch):
+    """Client with ALLOW_PRIVATE_ENDPOINTS=True for subscription/wallet tests."""
+    import hub.config as cfg
+    import hub.routers.dashboard as dash
+
+    monkeypatch.setattr(cfg, "ALLOW_PRIVATE_ENDPOINTS", True)
+    dash._stats_cache = None
+    dash._stats_cache_ts = 0.0
+
+    from hub.main import app
+    from hub.database import get_db
+
+    async def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    app.state.http_client = AsyncMock(spec=AsyncClient)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+async def _register_claimed_agent(client: AsyncClient, name: str = "agent"):
+    """Register, verify, and claim an agent. Returns (sk, agent_id, key_id, token)."""
+    sk, pub = _make_keypair()
+    agent_id, key_id, token = await _register_and_verify(client, sk, pub, name)
+    resp = await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    await client.patch(
+        f"/registry/agents/{agent_id}/policy",
+        json={"message_policy": "open"},
+        headers=_auth_header(token),
+    )
+    return sk, agent_id, key_id, token
+
+
+async def _setup_subscription_room(client: AsyncClient, *, visibility: str = "public"):
+    """Create a subscription product + public gated room. Returns (owner info, room_id, product_id)."""
+    sk, agent_id, key_id, token = await _register_claimed_agent(client, "Provider")
+
+    # Fund agent
+    resp = await client.post(
+        "/wallet/topups",
+        json={"amount_minor": "50000", "channel": "mock"},
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 201
+    topup_id = resp.json()["topup_id"]
+    resp = await client.post(f"/internal/wallet/topups/{topup_id}/complete")
+    assert resp.status_code == 200
+
+    # Create subscription product
+    resp = await client.post(
+        "/subscriptions/products",
+        json={
+            "name": "Premium Access",
+            "description": "Premium room access",
+            "amount_minor": "1000",
+            "billing_interval": "month",
+        },
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 201
+    product = resp.json()
+
+    # Set subscription room creator policy
+    resp = await client.put(
+        f"/internal/rooms/subscription-room-policies/{agent_id}",
+        json={"allowed_to_create": True, "max_active_rooms": 5, "note": None},
+    )
+    assert resp.status_code == 200
+
+    # Create public + invite_only + subscription-gated room
+    resp = await client.post(
+        "/hub/rooms",
+        json={
+            "name": "Premium Room",
+            "description": "Subscribers only",
+            "visibility": visibility,
+            "join_policy": "invite_only",
+            "required_subscription_product_id": product["product_id"],
+        },
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 201
+    room_id = resp.json()["room_id"]
+
+    # Send a message in the room
+    envelope = _build_envelope(sk, key_id, agent_id, room_id, payload={"text": "secret content"})
+    resp = await client.post("/hub/send", json=envelope, headers=_auth_header(token))
+    assert resp.status_code in (200, 202)
+
+    return (sk, agent_id, key_id, token), room_id, product["product_id"]
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_messages_blocked_for_public(sub_client: AsyncClient):
+    """Public API blocks message viewing for subscription-gated rooms."""
+    _, room_id, _ = await _setup_subscription_room(sub_client)
+
+    resp = await sub_client.get(f"/public/rooms/{room_id}/messages")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_listed_with_product_id(sub_client: AsyncClient):
+    """Public room listing includes required_subscription_product_id."""
+    _, room_id, product_id = await _setup_subscription_room(sub_client)
+
+    resp = await sub_client.get("/public/rooms")
+    assert resp.status_code == 200
+    rooms = resp.json()["rooms"]
+    gated = [r for r in rooms if r["room_id"] == room_id]
+    assert len(gated) == 1
+    assert gated[0]["required_subscription_product_id"] == product_id
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_hides_message_preview(sub_client: AsyncClient):
+    """Subscription-gated rooms hide last_message_preview in public listing."""
+    _, room_id, _ = await _setup_subscription_room(sub_client)
+
+    resp = await sub_client.get("/public/rooms")
+    assert resp.status_code == 200
+    rooms = resp.json()["rooms"]
+    gated = [r for r in rooms if r["room_id"] == room_id]
+    assert len(gated) == 1
+    assert gated[0]["last_message_preview"] is None
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_in_overview_hides_preview(sub_client: AsyncClient):
+    """Overview featured rooms hide message preview for gated rooms."""
+    _, room_id, _ = await _setup_subscription_room(sub_client)
+
+    resp = await sub_client.get("/public/overview")
+    assert resp.status_code == 200
+    featured = resp.json()["featured_rooms"]
+    gated = [r for r in featured if r["room_id"] == room_id]
+    assert len(gated) == 1
+    assert gated[0]["last_message_preview"] is None
+    assert gated[0]["required_subscription_product_id"] is not None
+
+
+@pytest.mark.asyncio
+async def test_non_gated_public_room_messages_still_accessible(sub_client: AsyncClient):
+    """Regular public rooms still allow message viewing."""
+    sk, agent_id, key_id, token = await _register_claimed_agent(sub_client, "Regular")
+    _, _, _, t2 = await _register_claimed_agent(sub_client, "Joiner")
+    room_id = await _create_public_room(sub_client, token, "Open Room")
+    await _join_room(sub_client, None, room_id, t2)
+    await _send_room_message(sub_client, sk, key_id, agent_id, room_id, token, "hello world")
+
+    resp = await sub_client.get(f"/public/rooms/{room_id}/messages")
+    assert resp.status_code == 200
+    assert len(resp.json()["messages"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_public_subscription_room_creation_allowed(sub_client: AsyncClient):
+    """Public + invite_only subscription rooms can be created (visibility no longer forced to private)."""
+    _, room_id, _ = await _setup_subscription_room(sub_client, visibility="public")
+
+    resp = await sub_client.get("/public/rooms")
+    assert resp.status_code == 200
+    gated = [r for r in resp.json()["rooms"] if r["room_id"] == room_id]
+    assert len(gated) == 1
+    assert gated[0]["visibility"] == "public"
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_rejects_open_join_policy(sub_client: AsyncClient):
+    """Subscription-gated rooms must use invite_only join policy."""
+    sk, agent_id, key_id, token = await _register_claimed_agent(sub_client, "BadCreator")
+
+    # Fund + create product + set policy
+    resp = await sub_client.post(
+        "/wallet/topups",
+        json={"amount_minor": "50000", "channel": "mock"},
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 201
+    topup_id = resp.json()["topup_id"]
+    await sub_client.post(f"/internal/wallet/topups/{topup_id}/complete")
+
+    resp = await sub_client.post(
+        "/subscriptions/products",
+        json={
+            "name": "Bad Product",
+            "description": "",
+            "amount_minor": "1000",
+            "billing_interval": "month",
+        },
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 201
+    product_id = resp.json()["product_id"]
+
+    await sub_client.put(
+        f"/internal/rooms/subscription-room-policies/{agent_id}",
+        json={"allowed_to_create": True, "max_active_rooms": 5, "note": None},
+    )
+
+    # Try to create public + open (should fail)
+    resp = await sub_client.post(
+        "/hub/rooms",
+        json={
+            "name": "Bad Room",
+            "visibility": "public",
+            "join_policy": "open",
+            "required_subscription_product_id": product_id,
+        },
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 400
+    assert "invite_only" in resp.json()["detail"].lower()
