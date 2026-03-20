@@ -61,7 +61,13 @@ class Agent(Base):
     user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     agent_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    claim_code: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    claim_code: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: f"clm_{_uuid.uuid4().hex}",
+    )
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

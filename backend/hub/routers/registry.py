@@ -107,7 +107,12 @@ async def register_agent(req: RegisterAgentRequest, db: AsyncSession = Depends(g
     key_id = generate_key_id()
     challenge = generate_challenge()
 
-    agent = Agent(agent_id=agent_id, display_name=req.display_name, bio=req.bio)
+    agent = Agent(
+        agent_id=agent_id,
+        display_name=req.display_name,
+        bio=req.bio,
+        claim_code=_generate_claim_code(),
+    )
     db.add(agent)
 
     signing_key = SigningKey(

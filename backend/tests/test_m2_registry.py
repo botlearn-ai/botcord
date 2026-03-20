@@ -12,7 +12,7 @@ from nacl.signing import SigningKey
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from hub.models import Base, Endpoint, MessageRecord
+from hub.models import Agent, Base, Endpoint, MessageRecord
 
 # ---------------------------------------------------------------------------
 # Fixtures — in-memory SQLite database + ASGI test client
@@ -1368,6 +1368,21 @@ async def test_register_agent_with_bio(client: AsyncClient):
     resolve = await client.get(f"/registry/resolve/{agent_id}")
     assert resolve.status_code == 200
     assert resolve.json()["bio"] == "I can translate languages"
+
+
+@pytest.mark.asyncio
+async def test_register_agent_assigns_claim_code(client: AsyncClient, db_session: AsyncSession):
+    sk, pubkey_str = _make_keypair()
+    resp = await client.post(
+        "/registry/agents",
+        json={"display_name": "claim-code-agent", "pubkey": pubkey_str, "bio": "Has claim code"},
+    )
+    assert resp.status_code == 201
+    agent_id = resp.json()["agent_id"]
+
+    result = await db_session.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one()
+    assert agent.claim_code.startswith("clm_")
 
 
 @pytest.mark.asyncio
