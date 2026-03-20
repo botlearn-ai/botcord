@@ -186,6 +186,30 @@ const initialState = {
   recentVisitedRooms: [],
 };
 
+function hasTransientChannelState(state: DashboardChannelState): boolean {
+  return (
+    state.overviewRefreshing
+    || state.overview !== null
+    || state.focusedRoomId !== null
+    || state.openedRoomId !== null
+    || Object.keys(state.messages).length > 0
+    || Object.keys(state.messagesLoading).length > 0
+    || Object.keys(state.messagesHasMore).length > 0
+    || Object.keys(state.topics).length > 0
+    || state.error !== null
+    || state.rightPanelOpen
+    || state.selectedAgentId !== null
+    || state.selectedAgentProfile !== null
+    || state.selectedAgentConversations !== null
+    || state.searchResults !== null
+    || state.discoverRooms.length > 0
+    || state.discoverLoading
+    || state.joiningRoomId !== null
+    || state.publicRoomsLoading
+    || state.publicAgentsLoading
+  );
+}
+
 export const useDashboardChannelStore = create<DashboardChannelState>()(
   persist(
     (set, get) => ({
@@ -213,12 +237,20 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
         })),
 
       resetChannelState: () =>
-        set({
-          ...initialState,
-          recentVisitedRooms: get().recentVisitedRooms,
-          publicRooms: get().publicRooms,
-          publicAgents: get().publicAgents,
-          publicRoomDetails: get().publicRoomDetails,
+        set((state) => {
+          if (!hasTransientChannelState(state)) {
+            return state;
+          }
+          return {
+            ...initialState,
+            sidebarTab: state.sidebarTab,
+            exploreView: state.exploreView,
+            contactsView: state.contactsView,
+            recentVisitedRooms: state.recentVisitedRooms,
+            publicRooms: state.publicRooms,
+            publicAgents: state.publicAgents,
+            publicRoomDetails: state.publicRoomDetails,
+          };
         }),
 
       logout: () =>

@@ -69,12 +69,27 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
   const locale = useLanguage();
   const t = exploreUi[locale];
   const className = props.className || "";
+
+  const handleKeyActivate = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    action: () => void,
+  ) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    action();
+  };
+
   if (props.kind === "room") {
     const room = props.data || (props.id ? props.roomsById?.[props.id] : undefined);
     if (!room) return null;
     return (
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => props.onRoomOpen?.(room)}
+        onKeyDown={(event) => handleKeyActivate(event, () => props.onRoomOpen?.(room))}
         className={`group rounded-2xl border border-glass-border bg-deep-black-light p-5 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg ${className}`}
       >
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -107,7 +122,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
             ? `${room.last_sender_name || t.someone}: ${room.last_message_preview}`
             : t.noRecentMessages}
         </p>
-      </button>
+      </div>
     );
   }
 
@@ -120,8 +135,11 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
       : t.personaContactsOnly;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => props.onAgentOpen?.(agent)}
+      onKeyDown={(event) => handleKeyActivate(event, () => props.onAgentOpen?.(agent))}
       className={`group rounded-2xl border border-glass-border bg-deep-black-light p-5 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg ${className}`}
     >
       <div className="mb-3 flex items-start gap-3">
@@ -140,6 +158,6 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
       <div className="mt-4">
         <CopyableId value={agent.agent_id} />
       </div>
-    </button>
+    </div>
   );
 }
