@@ -14,7 +14,6 @@ import type {
   DashboardRoom,
   DiscoverRoom,
   PublicRoom,
-  TopicInfo,
 } from "@/lib/types";
 import { api, getActiveAgentId } from "@/lib/api";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
@@ -109,7 +108,6 @@ interface DashboardChannelState {
   messages: Record<string, DashboardMessage[]>;
   messagesLoading: Record<string, boolean>;
   messagesHasMore: Record<string, boolean>;
-  topics: Record<string, TopicInfo[]>;
   error: string | null;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
@@ -157,7 +155,6 @@ interface DashboardChannelState {
   loadPublicRooms: () => Promise<void>;
   loadPublicRoomDetail: (roomId: string) => Promise<PublicRoom | null>;
   loadPublicAgents: () => Promise<void>;
-  loadTopics: (roomId: string) => Promise<void>;
   switchActiveAgent: (agentId: string) => Promise<void>;
 }
 
@@ -169,7 +166,6 @@ const initialState = {
   messages: {},
   messagesLoading: {},
   messagesHasMore: {},
-  topics: {},
   error: null,
   rightPanelOpen: false,
   agentCardOpen: false,
@@ -202,7 +198,6 @@ function hasTransientChannelState(state: DashboardChannelState): boolean {
     || Object.keys(state.messages).length > 0
     || Object.keys(state.messagesLoading).length > 0
     || Object.keys(state.messagesHasMore).length > 0
-    || Object.keys(state.topics).length > 0
     || state.error !== null
     || state.rightPanelOpen
     || state.agentCardOpen
@@ -370,10 +365,6 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
                   messages: { ...state.messages, [roomId]: [...current, ...deduped] },
                 };
               });
-              // Refresh topics if any new message has a topic
-              if (newMsgs.some((m) => m.topic_id)) {
-                get().loadTopics(roomId);
-              }
             },
             onMemberError: (error) => {
               console.error("[ChannelStore] Failed to poll new messages:", error);
@@ -582,27 +573,6 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
         } catch {
           set({ publicAgentsLoading: false });
         }
-      },
-
-      loadTopics: async (roomId: string) => {
-        const { token, activeAgentId } = useDashboardSessionStore.getState();
-        const resolvedAgentId = activeAgentId || getActiveAgentId();
-        const canUseMemberView = Boolean(token && resolvedAgentId);
-        await loadReadableRoomResource({
-          canUseMemberView,
-          loadMember: () => api.getTopics(token!, roomId),
-          loadPublic: () => api.getPublicTopics(roomId),
-          onSuccess: (result) => {
-            set((state) => ({ topics: { ...state.topics, [roomId]: result.topics } }));
-          },
-          onMemberError: (error) => {
-            console.error("[ChannelStore] Failed to load topics:", error);
-          },
-          onPublicError: (error) => {
-            console.error("[ChannelStore] Failed to load public topics:", error);
-            set((state) => ({ topics: { ...state.topics, [roomId]: [] } }));
-          },
-        });
       },
 
       switchActiveAgent: async (agentId: string) => {

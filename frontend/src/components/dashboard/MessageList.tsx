@@ -113,7 +113,7 @@ function isNearBottom(el: HTMLElement, threshold = 150): boolean {
 }
 
 export default function MessageList() {
-  const { state, loadMoreMessages, loadTopics, pollNewMessages } = useDashboard();
+  const { state, loadMoreMessages, pollNewMessages } = useDashboard();
   const locale = useLanguage();
   const t = messageList[locale];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,15 +130,10 @@ export default function MessageList() {
   const isRoomMessagesLoading = roomId ? state.messagesLoading[roomId] ?? false : false;
   const hasMore = roomId ? state.messagesHasMore[roomId] ?? false : false;
   const currentAgentId = state.overview?.agent?.agent_id;
-  const topics = roomId ? state.topics[roomId] || [] : [];
 
-  // Load topics when room changes
   useEffect(() => {
-    if (roomId) {
-      loadTopics(roomId);
-      setCollapsedTopics(new Set());
-    }
-  }, [roomId, loadTopics]);
+    setCollapsedTopics(new Set());
+  }, [roomId]);
 
   // Poll for new messages
   useEffect(() => {
@@ -151,9 +146,31 @@ export default function MessageList() {
 
   const topicsMap = useMemo(() => {
     const m = new Map<string, TopicInfo>();
-    for (const t of topics) m.set(t.topic_id, t);
+    const counter = new Map<string, number>();
+    for (const msg of messages) {
+      if (!msg.topic_id) continue;
+      counter.set(msg.topic_id, (counter.get(msg.topic_id) || 0) + 1);
+      if (m.has(msg.topic_id)) continue;
+      m.set(msg.topic_id, {
+        topic_id: msg.topic_id,
+        room_id: msg.room_id || roomId || "",
+        title: msg.topic_title || msg.topic || msg.topic_id,
+        description: msg.topic_description || "",
+        status: msg.topic_status || "open",
+        creator_id: msg.topic_creator_id || msg.sender_id,
+        goal: msg.topic_goal || null,
+        message_count: 0,
+        created_at: msg.topic_created_at || msg.created_at,
+        updated_at: msg.topic_updated_at || msg.created_at,
+        closed_at: msg.topic_closed_at || null,
+      });
+    }
+    for (const [topicId, count] of counter.entries()) {
+      const topic = m.get(topicId);
+      if (topic) topic.message_count = topic.message_count || count;
+    }
     return m;
-  }, [topics]);
+  }, [messages, roomId]);
 
   const hasTopics = messages.some((m) => m.topic_id);
 

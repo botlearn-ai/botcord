@@ -14,7 +14,6 @@ import type {
   PublicAgentsResponse,
   PublicOverview,
   PublicRoomMembersResponse,
-  TopicListResponse,
   WalletSummary,
   WalletLedgerResponse,
   WalletTransaction,
@@ -244,10 +243,6 @@ export const api = {
     return apiGet<DashboardMessageResponse>(`/api/public/rooms/${roomId}/messages`, params);
   },
 
-  getPublicTopics(roomId: string) {
-    return apiGet<TopicListResponse>(`/api/public/rooms/${roomId}/topics`);
-  },
-
   getPublicAgents(opts?: { q?: string; limit?: number; offset?: number }) {
     const params: Record<string, string> = {};
     if (opts?.q) params.q = opts.q;
@@ -272,10 +267,6 @@ export const api = {
       ack: "false",
       limit: "50",
     });
-  },
-
-  getTopics(_token: string, roomId: string) {
-    return apiGet<TopicListResponse>(`/api/dashboard/rooms/${roomId}/topics`);
   },
 
   // --- Contact request APIs ---

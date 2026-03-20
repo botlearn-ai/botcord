@@ -74,7 +74,6 @@ export function useDashboard() {
     loadPublicRooms: channelStore.loadPublicRooms,
     loadPublicRoomDetail: channelStore.loadPublicRoomDetail,
     loadPublicAgents: channelStore.loadPublicAgents,
-    loadTopics: channelStore.loadTopics,
     loadWallet: walletStore.loadWallet,
     loadWalletLedger: walletStore.loadWalletLedger,
     loadWithdrawalRequests: walletStore.loadWithdrawalRequests,

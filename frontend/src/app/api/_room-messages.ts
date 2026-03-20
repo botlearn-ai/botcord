@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { messageRecords, roomMembers, rooms, agents } from "@/../db/schema";
+import { messageRecords, roomMembers, rooms, agents, topics } from "@/../db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { extractTextFromEnvelope } from "@/app/api/_helpers";
 
@@ -26,6 +26,16 @@ type PublicRoomRow = {
   room_id: string | null;
   topic: string | null;
   topic_id: string | null;
+  goal: string | null;
+  topic_title: string | null;
+  topic_description: string | null;
+  topic_status: string | null;
+  topic_creator_id: string | null;
+  topic_goal: string | null;
+  topic_message_count: number | null;
+  topic_created_at: string | null;
+  topic_updated_at: string | null;
+  topic_closed_at: string | null;
   state: string;
   created_at: string;
 };
@@ -37,6 +47,18 @@ type MemberRoomRow = {
   sender_id: string;
   sender_display_name: string | null;
   envelope_json: string;
+  topic: string | null;
+  topic_id: string | null;
+  goal: string | null;
+  topic_title: string | null;
+  topic_description: string | null;
+  topic_status: string | null;
+  topic_creator_id: string | null;
+  topic_goal: string | null;
+  topic_message_count: number | null;
+  topic_created_at: string | null;
+  topic_updated_at: string | null;
+  topic_closed_at: string | null;
   state: string;
   created_at: string;
   mentioned: boolean;
@@ -99,7 +121,16 @@ function mapPublicMessageRow(row: PublicRoomRow) {
     room_id: row.room_id,
     topic: row.topic,
     topic_id: row.topic_id,
-    goal: null,
+    goal: row.goal,
+    topic_title: row.topic_title,
+    topic_description: row.topic_description,
+    topic_status: row.topic_status,
+    topic_creator_id: row.topic_creator_id,
+    topic_goal: row.topic_goal,
+    topic_message_count: row.topic_message_count,
+    topic_created_at: row.topic_created_at,
+    topic_updated_at: row.topic_updated_at,
+    topic_closed_at: row.topic_closed_at,
     state: row.state,
     state_counts: null,
     created_at: row.created_at,
@@ -157,9 +188,18 @@ function mapMemberMessageRow(
     text,
     payload: {},
     room_id: null,
-    topic: null,
-    topic_id: null,
-    goal: null,
+    topic: row.topic,
+    topic_id: row.topic_id,
+    goal: row.goal,
+    topic_title: row.topic_title,
+    topic_description: row.topic_description,
+    topic_status: row.topic_status,
+    topic_creator_id: row.topic_creator_id,
+    topic_goal: row.topic_goal,
+    topic_message_count: row.topic_message_count,
+    topic_created_at: row.topic_created_at,
+    topic_updated_at: row.topic_updated_at,
+    topic_closed_at: row.topic_closed_at,
     state: row.state,
     mentioned: row.mentioned,
     state_counts: stateCounts[row.msg_id] || {},
@@ -196,7 +236,11 @@ export async function loadPublicRoomMessagesResponse(
   const orderDirection = opts.after ? sql`ASC` : sql`DESC`;
   const rows = await backendDb.execute<PublicRoomRow>(sql`
     SELECT mr.hub_msg_id, mr.msg_id, mr.sender_id, a.display_name AS sender_display_name,
-           mr.envelope_json, mr.room_id, mr.topic, mr.topic_id, mr.state, mr.created_at
+           mr.envelope_json, mr.room_id, mr.topic, mr.topic_id, mr.goal,
+           tp.title AS topic_title, tp.description AS topic_description, tp.status AS topic_status,
+           tp.creator_id AS topic_creator_id, tp.goal AS topic_goal, tp.message_count AS topic_message_count,
+           tp.created_at AS topic_created_at, tp.updated_at AS topic_updated_at, tp.closed_at AS topic_closed_at,
+           mr.state, mr.created_at
     FROM message_records mr
     INNER JOIN (
       SELECT msg_id, MIN(id) AS min_id
@@ -205,6 +249,7 @@ export async function loadPublicRoomMessagesResponse(
       GROUP BY msg_id
     ) dedup ON mr.id = dedup.min_id
     LEFT JOIN agents a ON a.agent_id = mr.sender_id
+    LEFT JOIN topics tp ON tp.topic_id = mr.topic_id
     WHERE mr.room_id = ${roomId}
     ${cursorCondition}
     ORDER BY mr.id ${orderDirection}
@@ -252,7 +297,11 @@ export async function loadMemberRoomMessagesResponse(
   const orderDirection = opts.after ? sql`ASC` : sql`DESC`;
   const rows = await backendDb.execute<MemberRoomRow>(sql`
     SELECT mr.id, mr.hub_msg_id, mr.msg_id, mr.sender_id, a.display_name AS sender_display_name,
-           mr.envelope_json, mr.state, mr.created_at, mr.mentioned
+           mr.envelope_json, mr.topic, mr.topic_id, mr.goal,
+           tp.title AS topic_title, tp.description AS topic_description, tp.status AS topic_status,
+           tp.creator_id AS topic_creator_id, tp.goal AS topic_goal, tp.message_count AS topic_message_count,
+           tp.created_at AS topic_created_at, tp.updated_at AS topic_updated_at, tp.closed_at AS topic_closed_at,
+           mr.state, mr.created_at, mr.mentioned
     FROM message_records mr
     INNER JOIN (
       SELECT msg_id, MIN(id) AS min_id
@@ -261,6 +310,7 @@ export async function loadMemberRoomMessagesResponse(
       GROUP BY msg_id
     ) dedup ON mr.id = dedup.min_id
     LEFT JOIN agents a ON a.agent_id = mr.sender_id
+    LEFT JOIN topics tp ON tp.topic_id = mr.topic_id
     WHERE mr.room_id = ${roomId}
     ${cursorCondition}
     ORDER BY mr.id ${orderDirection}

@@ -50,7 +50,7 @@ dashboard/
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
 - 登录但无 agent 时由 `AgentGateModal.tsx` 顶层强制拦截；在身份准备好之前不渲染主工作区，也不触发 rooms/messages API。
-- public room 的浏览语义要求消息与 topics 同构：未加入成员或游客都应走公开只读数据源，不能一半公开一半成员校验。
+- 话题分组语义统一从消息流派生：未加入成员或游客只要拿到公开消息，就能得到一致的 topic 分组视图，避免 message/topics 双接口时序竞争。
 - agent 绑定流程收敛为 Prompt 驱动：浏览器签发临时 `bind_ticket` → 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。

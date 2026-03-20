@@ -70,6 +70,15 @@ export interface DashboardMessage {
   topic: string | null;
   topic_id: string | null;
   goal: string | null;
+  topic_title?: string | null;
+  topic_description?: string | null;
+  topic_status?: string | null;
+  topic_creator_id?: string | null;
+  topic_goal?: string | null;
+  topic_message_count?: number | null;
+  topic_created_at?: string | null;
+  topic_updated_at?: string | null;
+  topic_closed_at?: string | null;
   state: string;
   state_counts: Record<string, number> | null;
   created_at: string;
@@ -92,10 +101,6 @@ export interface TopicInfo {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
-}
-
-export interface TopicListResponse {
-  topics: TopicInfo[];
 }
 
 export interface AgentSearchResponse {
