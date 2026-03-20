@@ -5,6 +5,7 @@
 import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
 import { buildSessionKey } from "./session-key.js";
+import { loadSessionStore } from "openclaw/plugin-sdk/mattermost";
 import type { InboxMessage, MessageType } from "./types.js";
 
 // Envelope types that count as notifications rather than normal messages
@@ -256,12 +257,9 @@ function parseSessionKeyDeliveryContext(sessionKey: string): DeliveryContext | u
   const parts = sessionKey.split(":");
   if (parts.length < 5 || parts[0] !== "agent") return undefined;
 
-  const KNOWN_CHANNELS = new Set([
-    "telegram", "discord", "slack", "whatsapp", "signal", "imessage",
-  ]);
   const agentName = parts[1]; // e.g. "pm"
   const channel = parts[2];   // e.g. "telegram"
-  if (!KNOWN_CHANNELS.has(channel)) return undefined;
+  if (!channel) return undefined;
 
   const peerId = parts.slice(4).join(":"); // handle colons in id
   if (!peerId) return undefined;
@@ -271,6 +269,68 @@ function parseSessionKeyDeliveryContext(sessionKey: string): DeliveryContext | u
     to: `${channel}:${peerId}`,
     accountId: agentName,
   };
+}
+
+function parseSessionStoreDeliveryContext(
+  core: ReturnType<typeof getBotCordRuntime>,
+  cfg: any,
+  sessionKey: string,
+): DeliveryContext[] {
+  try {
+    const storePath = core.channel.session.resolveStorePath(cfg);
+    if (!storePath) return [];
+
+    const store = loadSessionStore(storePath);
+    const trimmedKey = sessionKey.trim();
+    const normalizedKey = trimmedKey.toLowerCase();
+    let existing = store[normalizedKey] ?? store[trimmedKey];
+    let existingUpdatedAt = existing?.updatedAt ?? 0;
+
+    // Legacy stores may contain differently-cased keys for the same session.
+    // Prefer the most recently updated matching entry.
+    for (const [candidateKey, candidateEntry] of Object.entries(store)) {
+      if (candidateKey.toLowerCase() !== normalizedKey) continue;
+      const candidateUpdatedAt = candidateEntry?.updatedAt ?? 0;
+      if (!existing || candidateUpdatedAt > existingUpdatedAt) {
+        existing = candidateEntry;
+        existingUpdatedAt = candidateUpdatedAt;
+      }
+    }
+    if (!existing) return [];
+
+    const lastRoute = {
+      channel: existing.lastChannel,
+      to: existing.lastTo,
+      accountId: existing.lastAccountId,
+      threadId: existing.lastThreadId ?? existing.origin?.threadId,
+    };
+    const candidates: DeliveryContext[] = [];
+    for (const ctx of [existing.deliveryContext, lastRoute]) {
+      if (!ctx?.channel || !ctx?.to) continue;
+      const normalized: DeliveryContext = {
+        channel: String(ctx.channel),
+        to: String(ctx.to),
+      };
+      if (ctx.accountId != null) normalized.accountId = String(ctx.accountId);
+      if (ctx.threadId != null) normalized.threadId = String(ctx.threadId);
+      candidates.push(normalized);
+    }
+
+    // Deduplicate identical contexts while preserving order.
+    const seen = new Set<string>();
+    return candidates.filter((ctx) => {
+      const key = `${ctx.channel}|${ctx.to}|${ctx.accountId ?? ""}|${ctx.threadId ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  } catch (err: any) {
+    console.warn(
+      `[botcord] notifySession ${sessionKey}: failed to read deliveryContext from session store:`,
+      err?.message ?? err,
+    );
+    return [];
+  }
 }
 
 /** Channel name → runtime send function dispatcher. */
@@ -293,8 +353,8 @@ function resolveChannelSendFn(
 
 /**
  * Deliver a notification message directly to the channel associated with
- * the target session (looked up via deliveryContext in the session store).
- * Does not trigger an agent turn — just sends the text.
+ * the target session. Prefer deriving target from session key; fallback to
+ * session store deliveryContext when direct routing is unavailable.
  */
 export async function deliverNotification(
   core: ReturnType<typeof getBotCordRuntime>,
@@ -302,19 +362,35 @@ export async function deliverNotification(
   sessionKey: string,
   text: string,
 ): Promise<void> {
-  // Derive delivery target directly from the session key.
-  // The session store's deliveryContext is unreliable because it gets
-  // overwritten whenever the user accesses the session from a different
-  // channel (e.g. webchat), losing the original channel/to values.
-  const delivery = parseSessionKeyDeliveryContext(sessionKey);
+  const deliveryFromKey = parseSessionKeyDeliveryContext(sessionKey);
+  const storeCandidates = parseSessionStoreDeliveryContext(core, cfg, sessionKey);
+  const candidates = [
+    ...(deliveryFromKey ? [deliveryFromKey] : []),
+    ...storeCandidates,
+  ];
+  let delivery: DeliveryContext | undefined;
+  let sendFn: ChannelSendFn | undefined;
+
+  for (const candidate of candidates) {
+    if (!delivery) delivery = candidate;
+    const resolved = resolveChannelSendFn(core, candidate.channel);
+    if (resolved) {
+      delivery = candidate;
+      sendFn = resolved;
+      break;
+    }
+  }
+
   if (!delivery) {
     console.warn(
-      `[botcord] notifySession ${sessionKey}: cannot derive delivery target from session key — skipping notification`,
+      `[botcord] notifySession ${sessionKey}: cannot derive delivery target from session key or session store — skipping notification`,
     );
     return;
   }
 
-  const sendFn = resolveChannelSendFn(core, delivery.channel);
+  if (!sendFn) {
+    sendFn = resolveChannelSendFn(core, delivery.channel);
+  }
   if (!sendFn) {
     console.warn(
       `[botcord] unsupported notify channel "${delivery.channel}" — skipping notification`,
