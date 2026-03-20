@@ -167,7 +167,7 @@ function mapMemberMessageRow(
 
 export async function loadPublicRoomMessagesResponse(
   roomId: string,
-  opts: { before?: string | null; limit: number },
+  opts: { before?: string | null; after?: string | null; limit: number },
 ) {
   const [room] = await backendDb
     .select({ visibility: rooms.visibility })
@@ -185,11 +185,13 @@ export async function loadPublicRoomMessagesResponse(
   const { cursorCondition, errorResponse } = await resolveCursorCondition({
     roomId,
     before: opts.before,
+    after: opts.after,
   });
   if (errorResponse) {
     return errorResponse;
   }
 
+  const orderDirection = opts.after ? sql`ASC` : sql`DESC`;
   const rows = await backendDb.execute<PublicRoomRow>(sql`
     SELECT mr.hub_msg_id, mr.msg_id, mr.sender_id, mr.envelope_json, mr.room_id, mr.topic, mr.topic_id, mr.state, mr.created_at
     FROM message_records mr
@@ -201,15 +203,20 @@ export async function loadPublicRoomMessagesResponse(
     ) dedup ON mr.id = dedup.min_id
     WHERE mr.room_id = ${roomId}
     ${cursorCondition}
-    ORDER BY mr.id DESC
+    ORDER BY mr.id ${orderDirection}
     LIMIT ${opts.limit + 1}
   `);
 
   const hasMore = rows.length > opts.limit;
   const pageRows = hasMore ? rows.slice(0, opts.limit) : rows;
+  const messages = pageRows.map(mapPublicMessageRow);
+
+  if (opts.after) {
+    messages.reverse();
+  }
 
   return NextResponse.json({
-    messages: pageRows.map(mapPublicMessageRow),
+    messages,
     has_more: hasMore,
   });
 }

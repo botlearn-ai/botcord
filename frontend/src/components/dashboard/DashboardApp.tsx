@@ -64,6 +64,7 @@ export function useDashboard() {
     state,
     loadRoomMessages: channelStore.loadRoomMessages,
     loadMoreMessages: channelStore.loadMoreMessages,
+    pollNewMessages: channelStore.pollNewMessages,
     selectAgent: channelStore.selectAgent,
     searchAgents: channelStore.searchAgents,
     refreshOverview: channelStore.refreshOverview,

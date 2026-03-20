@@ -738,6 +738,7 @@ export const messageList: TranslationMap<{
   scrollUp: string
   msg: string
   msgs: string
+  newMessages: string
 }> = {
   en: {
     open: 'Open',
@@ -749,6 +750,7 @@ export const messageList: TranslationMap<{
     scrollUp: 'Scroll up for older messages...',
     msg: 'msg',
     msgs: 'msgs',
+    newMessages: 'New messages ↓',
   },
   zh: {
     open: '进行中',
@@ -760,6 +762,7 @@ export const messageList: TranslationMap<{
     scrollUp: '向上滚动查看更早的消息...',
     msg: '条消息',
     msgs: '条消息',
+    newMessages: '有新消息 ↓',
   },
 }
 
