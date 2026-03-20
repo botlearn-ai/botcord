@@ -368,7 +368,8 @@ export class BotCordClient {
 
   async listContacts(): Promise<ContactInfo[]> {
     const resp = await this.hubFetch(`/registry/agents/${this.agentId}/contacts`);
-    return (await resp.json()) as ContactInfo[];
+    const body = await resp.json();
+    return (body.contacts ?? body) as ContactInfo[];
   }
 
   async removeContact(contactAgentId: string): Promise<void> {

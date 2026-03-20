@@ -433,7 +433,7 @@ export function createMockHub() {
     // ── Contacts ───────────────────────────────────────────────
     if (path.includes("/contacts") && method === "GET") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(state.contacts));
+      res.end(JSON.stringify({ contacts: state.contacts }));
       return;
     }
 
