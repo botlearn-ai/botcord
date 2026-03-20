@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { backendDb } from "@/../db/backend";
-import { messageRecords, roomMembers, rooms } from "@/../db/schema";
+import { messageRecords, roomMembers, rooms, agents } from "@/../db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { extractTextFromEnvelope } from "@/app/api/_helpers";
 
@@ -21,6 +21,7 @@ type PublicRoomRow = {
   hub_msg_id: string;
   msg_id: string;
   sender_id: string;
+  sender_display_name: string | null;
   envelope_json: string;
   room_id: string | null;
   topic: string | null;
@@ -34,6 +35,7 @@ type MemberRoomRow = {
   hub_msg_id: string;
   msg_id: string;
   sender_id: string;
+  sender_display_name: string | null;
   envelope_json: string;
   state: string;
   created_at: string;
@@ -90,7 +92,7 @@ function mapPublicMessageRow(row: PublicRoomRow) {
     hub_msg_id: row.hub_msg_id,
     msg_id: row.msg_id,
     sender_id: senderId,
-    sender_name: senderId,
+    sender_name: row.sender_display_name || senderId,
     type,
     text,
     payload,
@@ -150,7 +152,7 @@ function mapMemberMessageRow(
     hub_msg_id: row.hub_msg_id,
     msg_id: row.msg_id,
     sender_id: senderId,
-    sender_name: senderId,
+    sender_name: row.sender_display_name || senderId,
     type: "message",
     text,
     payload: {},
@@ -193,7 +195,8 @@ export async function loadPublicRoomMessagesResponse(
 
   const orderDirection = opts.after ? sql`ASC` : sql`DESC`;
   const rows = await backendDb.execute<PublicRoomRow>(sql`
-    SELECT mr.hub_msg_id, mr.msg_id, mr.sender_id, mr.envelope_json, mr.room_id, mr.topic, mr.topic_id, mr.state, mr.created_at
+    SELECT mr.hub_msg_id, mr.msg_id, mr.sender_id, a.display_name AS sender_display_name,
+           mr.envelope_json, mr.room_id, mr.topic, mr.topic_id, mr.state, mr.created_at
     FROM message_records mr
     INNER JOIN (
       SELECT msg_id, MIN(id) AS min_id
@@ -201,6 +204,7 @@ export async function loadPublicRoomMessagesResponse(
       WHERE room_id = ${roomId}
       GROUP BY msg_id
     ) dedup ON mr.id = dedup.min_id
+    LEFT JOIN agents a ON a.agent_id = mr.sender_id
     WHERE mr.room_id = ${roomId}
     ${cursorCondition}
     ORDER BY mr.id ${orderDirection}
@@ -247,8 +251,8 @@ export async function loadMemberRoomMessagesResponse(
 
   const orderDirection = opts.after ? sql`ASC` : sql`DESC`;
   const rows = await backendDb.execute<MemberRoomRow>(sql`
-    SELECT mr.id, mr.hub_msg_id, mr.msg_id, mr.sender_id, mr.envelope_json,
-           mr.state, mr.created_at, mr.mentioned
+    SELECT mr.id, mr.hub_msg_id, mr.msg_id, mr.sender_id, a.display_name AS sender_display_name,
+           mr.envelope_json, mr.state, mr.created_at, mr.mentioned
     FROM message_records mr
     INNER JOIN (
       SELECT msg_id, MIN(id) AS min_id
@@ -256,6 +260,7 @@ export async function loadMemberRoomMessagesResponse(
       WHERE room_id = ${roomId}
       GROUP BY msg_id
     ) dedup ON mr.id = dedup.min_id
+    LEFT JOIN agents a ON a.agent_id = mr.sender_id
     WHERE mr.room_id = ${roomId}
     ${cursorCondition}
     ORDER BY mr.id ${orderDirection}

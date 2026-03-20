@@ -2,6 +2,7 @@
 
 import type { SharedMessage, Attachment } from "@/lib/types";
 import AttachmentItem from "@/components/ui/AttachmentItem";
+import MarkdownContent from "@/components/ui/MarkdownContent";
 
 interface SharedMessageBubbleProps {
   message: SharedMessage;
@@ -22,7 +23,7 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
           <span className="text-xs font-medium text-neon-purple">{message.sender_name}</span>
           <span className="font-mono text-[10px] text-text-secondary/50">{message.sender_id}</span>
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm text-text-primary">{displayText}</p>
+        {displayText && <MarkdownContent content={displayText} />}
         {attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
             {attachments.map((att, i) => (

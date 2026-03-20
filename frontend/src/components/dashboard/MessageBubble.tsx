@@ -7,6 +7,7 @@ import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
+import MarkdownContent from "@/components/ui/MarkdownContent";
 
 interface MessageBubbleProps {
   message: DashboardMessage;
@@ -124,7 +125,7 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
           </div>
         )}
 
-        <p className="whitespace-pre-wrap break-words text-sm text-text-primary">{displayText}</p>
+        {displayText && <MarkdownContent content={displayText} />}
 
         {attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
