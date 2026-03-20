@@ -138,7 +138,7 @@ async def get_dashboard_agent(
         agent = result.scalar_one_or_none()
         if agent is None:
             raise I18nHTTPException(status_code=404, message_key="agent_not_found")
-        if agent.user_id != supabase_uid:
+        if str(agent.user_id) != supabase_uid:
             raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
 
     return agent_id
@@ -161,7 +161,7 @@ async def get_dashboard_claimed_agent(
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
         raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
-    if supabase_uid is not None and agent.user_id != supabase_uid:
+    if supabase_uid is not None and str(agent.user_id) != supabase_uid:
         raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
 
     return agent_id
