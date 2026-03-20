@@ -20,5 +20,6 @@ export async function GET(
     `/hub/rooms/${roomId}/topics`,
     request.nextUrl.searchParams,
     auth.token,
+    auth.agentId,
   );
 }

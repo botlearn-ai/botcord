@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_claimed_agent
+from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent
 from hub.database import get_db
 from hub.enums import TopicStatus
 from hub.id_generators import generate_topic_id
@@ -123,7 +123,7 @@ async def list_topics(
     room_id: str,
     status: TopicStatus | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_claimed_agent),
+    current_agent: str = Depends(get_dashboard_claimed_agent),
 ):
     """List topics in a room. Room membership required."""
     room = await _load_room_with_members(db, room_id)

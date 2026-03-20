@@ -5,5 +5,5 @@ export async function GET(request: NextRequest) {
   const auth = await getBoundAgentToken();
   if (auth.error) return auth.error;
 
-  return proxyHubGet("/hub/inbox", request.nextUrl.searchParams, auth.token);
+  return proxyHubGet("/hub/inbox", request.nextUrl.searchParams, auth.token, auth.agentId);
 }
