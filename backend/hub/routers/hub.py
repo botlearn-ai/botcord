@@ -975,6 +975,7 @@ async def poll_inbox(
             sender_display_name=sender_name_map.get(rec.sender_id),
             room_context=room_ctx,
             mentioned=rec.mentioned,
+            topic_id=rec.topic_id,
         )
 
         messages.append(

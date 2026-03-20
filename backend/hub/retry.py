@@ -36,6 +36,7 @@ async def _forward(
     sender_display_name: str | None = None,
     room_id: str | None = None,
     topic: str | None = None,
+    topic_id: str | None = None,
     room_context: RoomContext | None = None,
 ) -> str | None:
     """POST envelope to agent inbox. Returns None on success, error string on failure."""
@@ -44,7 +45,15 @@ async def _forward(
     env_type = envelope_dict.get("type", "message")
     msg_id = envelope_dict.get("msg_id", "?")
     forward_url = build_forward_url(url, env_type)
-    body = convert_payload_for_openclaw(forward_url, MessageEnvelope(**envelope_dict), sender_display_name, room_id=room_id, topic=topic, room_context=room_context)
+    body = convert_payload_for_openclaw(
+        forward_url,
+        MessageEnvelope(**envelope_dict),
+        sender_display_name,
+        room_id=room_id,
+        topic=topic,
+        topic_id=topic_id,
+        room_context=room_context,
+    )
     headers: dict[str, str] = {}
     if webhook_token:
         headers["Authorization"] = f"Bearer {webhook_token}"
@@ -340,6 +349,7 @@ async def _retry_batch(http_client: httpx.AsyncClient) -> None:
                 sender_display_name=sender_display_name,
                 room_id=record.room_id,
                 topic=record.topic,
+                topic_id=record.topic_id,
                 room_context=room_context,
             )
             # Track delivery error on endpoint

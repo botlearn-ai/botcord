@@ -42,7 +42,12 @@ class MessageEnvelope(BaseModel):
     sig: Signature
     mentions: list[str] | None = None
 
-    def to_text(self, sender_name: str | None = None, mentioned: bool = False) -> str:
+    def to_text(
+        self,
+        sender_name: str | None = None,
+        mentioned: bool = False,
+        topic_id: str | None = None,
+    ) -> str:
         """Flatten envelope into a human-readable string that an AI agent can understand."""
         p = self.payload
         who = f"{sender_name} ({self.from_})" if sender_name else self.from_
@@ -104,7 +109,10 @@ class MessageEnvelope(BaseModel):
         # Prepend topic/goal/mention context with distinctive markers for agent parsing
         lines = []
         if self.topic:
-            lines.append(f"【Topic: {self.topic}】")
+            if topic_id:
+                lines.append(f"【Topic: {self.topic} | ID: {topic_id}】")
+            else:
+                lines.append(f"【Topic: {self.topic}】")
         if self.goal:
             lines.append(f"【Goal: {self.goal}】")
         if self.mentions:

@@ -1,5 +1,7 @@
 import datetime
 
+import uuid as _uuid
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -12,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -55,7 +58,7 @@ class Agent(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     agent_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     claim_code: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
