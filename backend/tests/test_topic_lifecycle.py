@@ -700,6 +700,12 @@ class TestToTextTopicGoal:
         assert "ag_alice says: hello" in text
         assert "Goal" not in text
 
+    def test_topic_with_topic_id(self):
+        """Topic line includes topic_id when provided by caller."""
+        env = self._make_envelope(topic="translate_doc")
+        text = env.to_text(topic_id="tp_123")
+        assert "【Topic: translate_doc | ID: tp_123】" in text
+
     def test_goal_only(self):
         """Goal appears with 【】 markers."""
         env = self._make_envelope(goal="翻译 README")
@@ -710,9 +716,9 @@ class TestToTextTopicGoal:
     def test_topic_and_goal(self):
         """Both topic and goal appear, each on its own line before the message."""
         env = self._make_envelope(topic="translate_doc", goal="翻译 README")
-        text = env.to_text()
+        text = env.to_text(topic_id="tp_123")
         lines = text.split("\n")
-        assert lines[0] == "【Topic: translate_doc】"
+        assert lines[0] == "【Topic: translate_doc | ID: tp_123】"
         assert lines[1] == "【Goal: 翻译 README】"
         assert lines[2] == "ag_alice says: hello"
 
@@ -747,3 +753,51 @@ class TestToTextTopicGoal:
         text = env.to_text()
         assert "【Topic: translate_doc】" in text
         assert "Error from ag_alice: FILE_NOT_FOUND: no such file" in text
+
+
+class TestBuildFlatTextRoomRule:
+    """Verify build_flat_text() prepends room rule guidance for room messages."""
+
+    def test_room_rule_guidance_and_topic_id(self):
+        from hub.forward import RoomContext, build_flat_text
+        from hub.schemas import MessageEnvelope
+
+        env = MessageEnvelope(
+            v="a2a/0.1",
+            msg_id=str(uuid.uuid4()),
+            ts=int(time.time()),
+            **{"from": "ag_alice"},
+            to="rm_ops",
+            type="message",
+            reply_to=None,
+            ttl_sec=3600,
+            topic="deploy_status",
+            goal="post updates",
+            payload={"text": "deploy started"},
+            payload_hash="sha256:abc",
+            sig={"alg": "ed25519", "key_id": "k1", "value": "fake"},
+        )
+        room_ctx = RoomContext(
+            room_id="rm_ops",
+            name="Ops Room",
+            member_count=3,
+            rule="Only post deploy status updates.",
+            member_names=["alice", "bob", "carol"],
+            my_role="member",
+            my_can_send=True,
+        )
+
+        text = build_flat_text(
+            env,
+            sender_display_name="Alice",
+            room_context=room_ctx,
+            topic_id="tp_123",
+        )
+
+        lines = text.split("\n")
+        assert lines[0] == "[群聊「Ops Room」(rm_ops) | 3人: alice, bob, carol | 权限: member, 可发言]"
+        assert lines[1] == "[房间规则] Only post deploy status updates."
+        assert lines[2] == "[系统提示] 你在该群聊中的行为和回复必须遵循上述房间规则。"
+        assert lines[3] == "【Topic: deploy_status | ID: tp_123】"
+        assert lines[4] == "【Goal: post updates】"
+        assert lines[5] == "Alice (ag_alice) says: deploy started"

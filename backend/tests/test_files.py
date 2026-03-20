@@ -645,9 +645,9 @@ class TestToTextAttachments:
                 "attachments": [{"filename": "r.pdf", "url": "/hub/files/f_x"}],
             },
         )
-        text = env.to_text()
+        text = env.to_text(topic_id="tp_abc")
         lines = text.split("\n")
-        assert lines[0] == "【Topic: task_001】"
+        assert lines[0] == "【Topic: task_001 | ID: tp_abc】"
         assert lines[1] == "【Goal: send report】"
         assert "【Attachments】" in text
         assert "📎 r.pdf" in text
