@@ -76,6 +76,10 @@ export function createSubscriptionTool() {
           type: "string" as const,
           description: "Subscription ID — for cancel",
         },
+        idempotency_key: {
+          type: "string" as const,
+          description: "Optional unique key to prevent duplicate subscriptions — for subscribe",
+        },
         room_id: {
           type: "string" as const,
           description: "Room ID — for bind_room_to_product",
@@ -213,7 +217,7 @@ export function createSubscriptionTool() {
 
           case "subscribe": {
             if (!args.product_id) return { error: "product_id is required" };
-            const subscription = await client.subscribeToProduct(args.product_id);
+            const subscription = await client.subscribeToProduct(args.product_id, args.idempotency_key);
             return { result: formatSubscription(subscription), data: subscription };
           }
 

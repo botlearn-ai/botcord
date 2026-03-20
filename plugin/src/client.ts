@@ -710,9 +710,13 @@ export class BotCordClient {
     return (await resp.json()) as SubscriptionProduct;
   }
 
-  async subscribeToProduct(productId: string): Promise<Subscription> {
+  async subscribeToProduct(productId: string, idempotencyKey?: string): Promise<Subscription> {
+    const body: Record<string, string> = {};
+    if (idempotencyKey) body.idempotency_key = idempotencyKey;
     const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribe`, {
       method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
     });
     return (await resp.json()) as Subscription;
   }
