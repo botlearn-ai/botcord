@@ -48,6 +48,14 @@ const API_BASE =
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
 
 const ACTIVE_AGENT_KEY = "botcord_active_agent_id";
+const ME_CACHE_TTL_MS = 10_000;
+
+let meCache: { value: UserProfile; expiresAt: number } | null = null;
+let meInFlight: Promise<UserProfile> | null = null;
+
+function invalidateMeCache() {
+  meCache = null;
+}
 
 export function getActiveAgentId(): string | null {
   if (typeof window === "undefined") return null;
@@ -358,13 +366,32 @@ export const api = {
 // --- User API (Next.js API Routes) ---
 
 const userApi = {
-  async getMe(): Promise<UserProfile> {
-    const res = await fetch("/api/users/me");
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: res.statusText }));
-      throw new ApiError(res.status, data.error || res.statusText);
+  async getMe(options?: { force?: boolean }): Promise<UserProfile> {
+    const force = options?.force ?? false;
+    const now = Date.now();
+
+    if (!force && meCache && meCache.expiresAt > now) {
+      return meCache.value;
     }
-    return res.json();
+    if (!force && meInFlight) {
+      return meInFlight;
+    }
+
+    const request = (async () => {
+      const res = await fetch("/api/users/me");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: res.statusText }));
+        throw new ApiError(res.status, data.error || res.statusText);
+      }
+      const profile = (await res.json()) as UserProfile;
+      meCache = { value: profile, expiresAt: Date.now() + ME_CACHE_TTL_MS };
+      return profile;
+    })();
+
+    meInFlight = request.finally(() => {
+      meInFlight = null;
+    });
+    return meInFlight;
   },
 
   async getMyAgents(): Promise<{ agents: UserAgent[] }> {
@@ -408,6 +435,7 @@ const userApi = {
       const data = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, data.error || res.statusText);
     }
+    invalidateMeCache();
     return res.json();
   },
 
@@ -437,6 +465,7 @@ const userApi = {
       const data = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, data.error || res.statusText);
     }
+    invalidateMeCache();
     return res.json();
   },
 
@@ -446,6 +475,7 @@ const userApi = {
       const data = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, data.error || res.statusText);
     }
+    invalidateMeCache();
   },
 
   async setDefaultAgent(agentId: string): Promise<UserAgent> {
@@ -458,6 +488,7 @@ const userApi = {
       const data = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, data.error || res.statusText);
     }
+    invalidateMeCache();
     return res.json();
   },
 };

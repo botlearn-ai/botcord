@@ -86,13 +86,13 @@ export default function DashboardApp() {
   const pathname = usePathname();
   const supabase = createClient();
   const recoveredAgentRef = useRef<string | null>(null);
+  const initResolvedRef = useRef(false);
+  const lastAccessTokenRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const shouldShowBootstrapSkeleton =
     !store.authResolved
-    && !store.user
-    && !store.activeAgentId
-    && !store.overview
-    && !store.token;
+    || store.authBootstrapping
+    || (store.sessionMode === "authed-ready" && !store.overview);
   const fallbackAgent =
     store.ownedAgents.find((agent) => agent.is_default) ?? store.ownedAgents[0] ?? null;
   const shouldShowAgentGate =
@@ -104,27 +104,52 @@ export default function DashboardApp() {
   useEffect(() => {
     let cancelled = false;
 
-    const resolveSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    const syncSession = async (
+      session: { access_token?: string } | null,
+      source: "getSession" | "authEvent",
+      event?: string,
+    ) => {
       if (cancelled) {
         return;
       }
-      if (session?.access_token) {
-        await store.initAuth(session.access_token);
+
+      const accessToken = session?.access_token ?? null;
+      const isSignOutEvent = event === "SIGNED_OUT";
+
+      if (source === "authEvent" && event === "INITIAL_SESSION") {
+        return;
+      }
+
+      if (source === "authEvent" && !initResolvedRef.current && !accessToken && !isSignOutEvent) {
+        return;
+      }
+
+      if (accessToken) {
+        if (lastAccessTokenRef.current === accessToken && useDashboardStore.getState().authResolved) {
+          return;
+        }
+        lastAccessTokenRef.current = accessToken;
+        await store.initAuth(accessToken);
       } else {
+        if (source === "authEvent" && !isSignOutEvent) {
+          return;
+        }
+        lastAccessTokenRef.current = null;
         store.setToken(null);
       }
+      initResolvedRef.current = true;
     };
 
-    resolveSession();
+    const resolveSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      await syncSession(session, "getSession");
+    };
+
+    void resolveSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        if (session?.access_token) {
-          store.initAuth(session.access_token);
-        } else {
-          store.setToken(null);
-        }
+        void syncSession(session, "authEvent", _event);
       },
     );
 
@@ -198,7 +223,7 @@ export default function DashboardApp() {
     } else if (store.sidebarTab !== "messages") {
       store.setSidebarTab("messages");
     }
-  }, [store.authResolved, store.sessionMode, pathnameParts, store.focusedRoomId, store.openedRoomId, store.overview?.rooms, store.publicRoomDetails, store.publicRooms, store.recentVisitedRooms, store.discoverRooms]);
+  }, [store.authResolved, store.sessionMode, pathnameParts]);
 
   useEffect(() => {
     if (
@@ -219,21 +244,19 @@ export default function DashboardApp() {
     void store.switchActiveAgent(fallbackAgent.agent_id);
   }, [store.authResolved, store.sessionMode, store.activeAgentId, fallbackAgent, store.switchActiveAgent]);
 
+  if (shouldShowBootstrapSkeleton) {
+    return <DashboardShellSkeleton />;
+  }
+
   return (
     <div className="relative flex h-screen overflow-hidden">
-      {shouldShowBootstrapSkeleton ? (
-        <DashboardShellSkeleton />
+      <Sidebar />
+      {store.sidebarTab === "wallet" ? (
+        <WalletPanel />
       ) : (
         <>
-          <Sidebar />
-          {store.sidebarTab === "wallet" ? (
-            <WalletPanel />
-          ) : (
-            <>
-              <ChatPane />
-              {store.sidebarTab !== "explore" && store.rightPanelOpen && <AgentBrowser />}
-            </>
-          )}
+          <ChatPane />
+          {store.sidebarTab !== "explore" && store.rightPanelOpen && <AgentBrowser />}
         </>
       )}
       <StripeReturnBanner />

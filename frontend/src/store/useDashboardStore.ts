@@ -15,6 +15,7 @@ import type {
 import { api, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
 const roomMessagesInFlight = new Set<string>();
+let authInitRequestId = 0;
 
 type ReadableRoomResourceOptions<T> = {
   canUseMemberView: boolean;
@@ -123,6 +124,7 @@ interface DashboardState {
   focusedRoomId: string | null;
   openedRoomId: string | null;
   messages: Record<string, DashboardMessage[]>;
+  messagesLoading: Record<string, boolean>;
   messagesHasMore: Record<string, boolean>;
   error: string | null;
   rightPanelOpen: boolean;
@@ -217,6 +219,7 @@ const initialState = {
   focusedRoomId: null,
   openedRoomId: null,
   messages: {},
+  messagesLoading: {},
   messagesHasMore: {},
   topics: {},
   error: null,
@@ -265,7 +268,24 @@ export const useDashboardStore = create<DashboardState>()(
       setAuthResolved: (authResolved) => set({ authResolved }),
 
       setToken: (token) => {
-        const activeAgentId = token ? get().activeAgentId : null;
+        if (!token) {
+          authInitRequestId += 1;
+          setActiveAgentId(null);
+          set({
+            ...initialState,
+            authResolved: true,
+            authBootstrapping: false,
+            recentVisitedRooms: get().recentVisitedRooms,
+            pendingFriendRequests: get().pendingFriendRequests,
+            publicRooms: get().publicRooms,
+            publicAgents: get().publicAgents,
+            publicRoomDetails: get().publicRoomDetails,
+            sidebarTab: "messages",
+          });
+          return;
+        }
+
+        const activeAgentId = get().activeAgentId || getActiveAgentId();
         set({
           authResolved: true,
           authBootstrapping: false,
@@ -349,6 +369,7 @@ export const useDashboardStore = create<DashboardState>()(
 
   // Async Actions
       initAuth: async (token: string) => {
+    const requestId = ++authInitRequestId;
     const current = get();
     const shouldShowBootstrap = !current.authResolved;
 
@@ -361,6 +382,9 @@ export const useDashboardStore = create<DashboardState>()(
     
     try {
       const user = await userApi.getMe();
+      if (requestId !== authInitRequestId) {
+        return;
+      }
       const activeId = resolveStoredActiveAgentId(user);
       set({
         authResolved: true,
@@ -391,6 +415,9 @@ export const useDashboardStore = create<DashboardState>()(
               error: err.message || "Failed to load withdrawals",
             }))
         ]);
+        if (requestId !== authInitRequestId) {
+          return;
+        }
         set({
           authResolved: true,
           authBootstrapping: false,
@@ -402,9 +429,30 @@ export const useDashboardStore = create<DashboardState>()(
         });
         await get().loadContactRequests();
       } else {
+        if (requestId !== authInitRequestId) {
+          return;
+        }
         set({ authResolved: true, authBootstrapping: false });
       }
     } catch (err: any) {
+      if (requestId !== authInitRequestId) {
+        return;
+      }
+      if (err?.status === 401 || err?.status === 403) {
+        setActiveAgentId(null);
+        set({
+          ...initialState,
+          authResolved: true,
+          authBootstrapping: false,
+          recentVisitedRooms: get().recentVisitedRooms,
+          pendingFriendRequests: get().pendingFriendRequests,
+          publicRooms: get().publicRooms,
+          publicAgents: get().publicAgents,
+          publicRoomDetails: get().publicRoomDetails,
+          sidebarTab: "messages",
+        });
+        return;
+      }
       console.warn("[Store] User profile unavailable, forcing agent gate:", err.message);
       setActiveAgentId(null);
       set({
@@ -432,6 +480,9 @@ export const useDashboardStore = create<DashboardState>()(
     if (roomMessagesInFlight.has(roomId)) {
       return;
     }
+    set((state) => ({
+      messagesLoading: { ...state.messagesLoading, [roomId]: true },
+    }));
     roomMessagesInFlight.add(roomId);
     const { token, activeAgentId } = get();
     const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
@@ -457,6 +508,9 @@ export const useDashboardStore = create<DashboardState>()(
       console.error("[Store] Failed to load messages:", err);
     } finally {
       roomMessagesInFlight.delete(roomId);
+      set((state) => ({
+        messagesLoading: { ...state.messagesLoading, [roomId]: false },
+      }));
     }
   },
 
@@ -794,7 +848,7 @@ export const useDashboardStore = create<DashboardState>()(
 
   refreshUserProfile: async () => {
     try {
-      const user = await userApi.getMe();
+      const user = await userApi.getMe({ force: true });
       const activeAgentId = resolveStoredActiveAgentId(user);
       setActiveAgentId(activeAgentId);
       set((state) => ({
