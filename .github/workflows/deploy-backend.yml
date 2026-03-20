@@ -1,0 +1,114 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+  workflow_dispatch:
+
+env:
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  PROJECT: botcord-backend
+
+jobs:
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build docker image
+        run: |
+          echo "Branch: ${{ github.head_ref || github.ref_name }}, Project: $PROJECT"
+          if [ -f "backend/Dockerfile" ]; then
+            docker build -f backend/Dockerfile -t $PROJECT:test backend/
+          else
+            echo "No Dockerfile found, skipping build."
+            exit 0
+          fi
+
+      - name: Push docker image to ECR
+        run: |
+          if [ -f "backend/Dockerfile" ]; then
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+            docker tag $PROJECT:test $ECR_REGISTRY/botlearn-ai/$PROJECT:test
+            docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:test
+          fi
+
+  restart:
+    needs: deploy
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted
+    steps:
+      - name: Restart service
+        run: |
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml down
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml up -d
+
+  report:
+    needs: [deploy, restart]
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare notification data
+        id: notify-data
+        env:
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          RESTART_RESULT: ${{ needs.restart.result }}
+        run: |
+          if [ "$DEPLOY_RESULT" = "success" ] && [ "$RESTART_RESULT" = "success" ]; then
+            echo "status_icon=✅" >> $GITHUB_OUTPUT
+            echo "status_text=成功" >> $GITHUB_OUTPUT
+            echo "status_color=green" >> $GITHUB_OUTPUT
+            echo "status_desc=部署成功" >> $GITHUB_OUTPUT
+          elif [ "$DEPLOY_RESULT" = "failure" ] || [ "$RESTART_RESULT" = "failure" ]; then
+            echo "status_icon=❌" >> $GITHUB_OUTPUT
+            echo "status_text=失败" >> $GITHUB_OUTPUT
+            echo "status_color=red" >> $GITHUB_OUTPUT
+            echo "status_desc=部署失败" >> $GITHUB_OUTPUT
+          elif [ "$DEPLOY_RESULT" = "skipped" ] || [ "$RESTART_RESULT" = "skipped" ]; then
+            echo "status_icon=⏭️" >> $GITHUB_OUTPUT
+            echo "status_text=跳过" >> $GITHUB_OUTPUT
+            echo "status_color=grey" >> $GITHUB_OUTPUT
+            echo "status_desc=部署已跳过" >> $GITHUB_OUTPUT
+          else
+            echo "status_icon=⚠️" >> $GITHUB_OUTPUT
+            echo "status_text=已取消" >> $GITHUB_OUTPUT
+            echo "status_color=orange" >> $GITHUB_OUTPUT
+            echo "status_desc=部署已取消" >> $GITHUB_OUTPUT
+          fi
+
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s%n%n%b" | sed '/^$/d')
+          EOF_MARKER="EOF_$(date +%s)"
+          echo "commit_msg<<$EOF_MARKER" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "$EOF_MARKER" >> $GITHUB_OUTPUT
+
+      - name: Send Feishu notification
+        if: always()
+        uses: ./.github/actions/feishu-notify
+        with:
+          webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          title: '${{ steps.notify-data.outputs.status_icon }}「BotCord Hub」Deploy - ${{ steps.notify-data.outputs.status_text }}'
+          color: ${{ steps.notify-data.outputs.status_color }}
+          fields: |
+            [
+              {"label": "状态", "value": "${{ steps.notify-data.outputs.status_desc }}"},
+              {"label": "分支", "value": "${{ github.head_ref || github.ref_name }}"},
+              {"label": "提交", "value": "[${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"},
+              {"label": "触发者", "value": "${{ github.actor }}"}
+            ]
+          commit_msg: ${{ steps.notify-data.outputs.commit_msg }}
+          buttons: |
+            [
+              {"text": "查看详情", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"}
+            ]
