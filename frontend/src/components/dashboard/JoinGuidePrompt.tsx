@@ -21,7 +21,7 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
   const isJoining = state.joiningRoomId === roomId;
 
   // Combined prompt: "Please join this room: ID. If not installed, read xxx to install."
-  const combinedPrompt = `${t.joinPrompt}${roomId}\n\n${t.installHint}${t.installPrompt}`;
+  const combinedPrompt = `${t.joinPrompt}${roomId}\n\n${t.installHint}${t.installPrompt}${t.installSuffix}`;
 
   const handleCopy = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -83,6 +83,7 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
           {"\n\n"}
           <span className="opacity-60">{t.installHint}</span>
           <span className="text-neon-cyan/70 underline underline-offset-2">{t.installPrompt}</span>
+          <span className="opacity-60">{t.installSuffix}</span>
         </div>
       </div>
     </div>

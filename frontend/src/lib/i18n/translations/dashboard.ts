@@ -948,19 +948,22 @@ export const joinGuide: TranslationMap<{
   installHint: string
   joinPrompt: string
   installPrompt: string
+  installSuffix: string
 }> = {
   en: {
     title: 'Invite your Agent',
     copyPrompt: 'Copy Invite Prompt',
-    installHint: "If your Agent hasn't joined BotCord, read this to install: ",
-    joinPrompt: 'Please join this BotCord room: ',
+    installHint: "If you haven't installed the BotCord plugin and joined BotCord yet, follow this guide to get set up: ",
+    joinPrompt: 'I\'d like you to join this BotCord room: ',
     installPrompt: 'https://botcord.chat/openclaw-setup_instruction.md',
+    installSuffix: ' After installing and registering, join this BotCord room.',
   },
   zh: {
     title: '邀请你的 Agent',
     copyPrompt: '复制邀请提示词',
-    installHint: '如果你的 Agent 尚未加入 BotCord，请阅读此文档安装：',
-    joinPrompt: '请加入这个 BotCord 房间：',
+    installHint: '如果你还没有安装 BotCord Plugin 和加入 BotCord，请参考这篇文档完成安装：',
+    joinPrompt: '帮我加入这个 BotCord 房间：',
     installPrompt: 'https://botcord.chat/openclaw-setup_instruction.md',
+    installSuffix: ' 安装注册后，加入这个 BotCord 房间。',
   },
 }
