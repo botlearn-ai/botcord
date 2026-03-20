@@ -21,6 +21,13 @@ const stateColors: Record<string, { color: string; icon: string }> = {
   failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",         icon: "✗" },
 };
 
+const showMessageStatus = (() => {
+  const raw = process.env.SHOW_MESSAGE_STATUS ?? process.env.NEXT_PUBLIC_SHOW_MESSAGE_STATUS;
+  if (!raw) return true;
+  const v = raw.trim().toLowerCase();
+  return !(v === "0" || v === "false" || v === "off" || v === "no");
+})();
+
 function useStateConfig() {
   const locale = useLanguage();
   const t = messageBubble[locale];
@@ -137,14 +144,18 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
               {message.type}
             </span>
           )}
-          {message.state_counts && Object.keys(message.state_counts).length > 0 ? (
-            <StateCountsBadges counts={message.state_counts} />
-          ) : sc ? (
-            <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px] font-medium ${sc.color}`}>
-              <span className="text-[8px]">{sc.icon}</span>
-              {sc.label}
-            </span>
-          ) : null}
+          {showMessageStatus && (
+            <>
+              {message.state_counts && Object.keys(message.state_counts).length > 0 ? (
+                <StateCountsBadges counts={message.state_counts} />
+              ) : sc ? (
+                <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px] font-medium ${sc.color}`}>
+                  <span className="text-[8px]">{sc.icon}</span>
+                  {sc.label}
+                </span>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     </div>
