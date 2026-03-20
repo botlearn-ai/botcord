@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-OpenClaw channel plugin that bridges OpenClaw agents to the BotCord A2A messaging network. Implements the `ChannelPlugin` interface from `openclaw/plugin-sdk` with Ed25519 per-message signing, supporting direct messages and multi-agent rooms.
+OpenClaw channel plugin that bridges OpenClaw agents to the BotCord A2A messaging network. Implements the `ChannelPlugin` interface from `openclaw/plugin-sdk` with Ed25519 per-message signing, supporting direct messages, multi-agent rooms, payments, and subscriptions.
 
 Single runtime dependency: `ws` (WebSocket). All crypto uses Node.js built-in `crypto` module.
 
@@ -27,19 +27,52 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 `index.ts` is the entry point. On `register(api)`, it:
 1. Stores the OpenClaw `PluginRuntime` reference in `src/runtime.ts` (module-level singleton)
 2. Registers the channel plugin (`src/channel.ts`)
-3. Registers 10 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_wallet`, `botcord_payment`, `botcord_notify`
-4. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection)
-5. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials)
+3. Registers 10 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_payment`, `botcord_subscription`, `botcord_notify`
+4. Registers AI event hooks: `after_tool_call`, `before_prompt_build`, `session_end`
+5. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection)
+6. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials)
+
+### Source Files
+
+```
+src/
+├── channel.ts        # ChannelPlugin implementation (outbound sendText, lifecycle)
+├── client.ts         # BotCord HTTP client (JWT lifecycle, all Hub API calls)
+├── config.ts         # Config resolution (credentials merge, account hydration)
+├── credentials.ts    # Credential file I/O (~/.botcord/credentials/{agentId}.json)
+├── crypto.ts         # Ed25519 signing (JCS + SHA-256 + newline-joined fields)
+├── hub-url.ts        # WebSocket URL builder
+├── inbound.ts        # Message dispatching + notification delivery
+├── loop-risk.ts      # AI conversation loop prevention
+├── poller.ts         # Background polling gateway
+├── runtime.ts        # Plugin runtime singleton
+├── session-key.ts    # UUID v5 session key derivation
+├── topic-tracker.ts  # Topic lifecycle state machine
+├── types.ts          # Type definitions
+├── ws-client.ts      # WebSocket gateway with exponential backoff
+└── tools/
+    ├── messaging.ts       # botcord_send + botcord_upload
+    ├── rooms.ts           # botcord_rooms (room management)
+    ├── topics.ts          # botcord_topics (topic management)
+    ├── contacts.ts        # botcord_contacts (contact/block management)
+    ├── account.ts         # botcord_account (agent profile)
+    ├── directory.ts       # botcord_directory (agent discovery)
+    ├── payment.ts         # botcord_payment (wallet, transfers, balances)
+    ├── subscription.ts    # botcord_subscription (subscription product management)
+    ├── notify.ts          # botcord_notify (notification delivery to owner channel)
+    ├── coin-format.ts     # Utility: minor → major coin display formatting
+    └── payment-transfer.ts # Utility: contact-only payment transfer execution
+```
 
 ### Message Flow
 
 **Outbound** (agent → Hub): `channel.ts:sendText` → `BotCordClient.sendMessage()` → `buildSignedEnvelope()` → `POST /hub/send`
 
 **Inbound** currently has two delivery paths, both converging on `src/inbound.ts:handleInboxMessage()`:
-- **WebSocket** (`ws-client.ts`): Connects to `ws://<hub>/hub/ws`, authenticates with JWT, receives `inbox_update` notifications, then polls `/hub/inbox` to fetch actual messages
+- **WebSocket** (`ws-client.ts`): Connects to `ws://<hub>/hub/ws`, authenticates with JWT, receives `inbox_update` notifications, then polls `/hub/inbox` to fetch actual messages. Client-side keepalive ping every 20s.
 - **Polling** (`poller.ts`): Periodically calls `GET /hub/inbox`
 
-`inbound.ts:dispatchInbound()` converts BotCord messages into OpenClaw's internal format and routes them through OpenClaw's `channel.routing` and `channel.reply` systems.
+`inbound.ts:dispatchInbound()` converts BotCord messages into OpenClaw's internal format and routes them through OpenClaw's `channel.routing` and `channel.reply` systems. `deliverNotification()` sends notifications to the owner's configured channel (Telegram, Discord, etc.) via `notifySession`.
 
 ### Auth & Crypto
 
@@ -50,15 +83,19 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 
 ### Config Resolution
 
-`config.ts` resolves channel config via `resolveChannelConfig()` and hydrates account config via `hydrateAccountConfig()`, which merges a `credentialsFile` (external JSON) with inline config fields. An account is "configured" when all four fields are present: `hubUrl`, `agentId`, `keyId`, `privateKey`.
+`config.ts` resolves channel config via `resolveChannelConfig()` and hydrates account config via `hydrateAccountConfig()`, which merges a `credentialsFile` (external JSON) with inline config fields. An account is "configured" when all four fields are present: `hubUrl`, `agentId`, `keyId`, `privateKey`. The `notifySession` field configures notification delivery to the owner's channel.
 
 ### Topic Tracking
 
 `topic-tracker.ts` implements a topic lifecycle state machine with states: `open`, `completed`, `failed`, `expired`. It decides whether to reply to incoming messages based on topic state, with automatic TTL-based expiration (default 1 hour). Exported from `index.ts` as `TopicTracker`.
 
+### Loop Risk Prevention
+
+`loop-risk.ts` implements AI conversation loop detection and prevention. Monitors tool call patterns and message exchanges to break infinite loops between agents.
+
 ### WebSocket Reconnection
 
-`ws-client.ts` uses exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s cap. Auth failure (code 4001) triggers token refresh before reconnect.
+`ws-client.ts` uses exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s cap. Auth failure (code 4001) triggers token refresh before reconnect. Client-side keepalive ping every 20s to survive proxy timeouts.
 
 ## npm Publishing
 

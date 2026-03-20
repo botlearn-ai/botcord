@@ -127,6 +127,7 @@ export default function MessageList() {
 
   const roomId = state.openedRoomId;
   const messages = roomId ? state.messages[roomId] || [] : [];
+  const isRoomMessagesLoading = roomId ? state.messagesLoading[roomId] ?? false : false;
   const hasMore = roomId ? state.messagesHasMore[roomId] ?? false : false;
   const currentAgentId = state.overview?.agent?.agent_id;
   const topics = roomId ? state.topics[roomId] || [] : [];
@@ -222,6 +223,23 @@ export default function MessageList() {
   }, []);
 
   if (!roomId) return null;
+
+  if (isRoomMessagesLoading && messages.length === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, idx) => (
+            <div
+              key={idx}
+              className={`h-11 w-full animate-pulse rounded-lg border border-glass-border/60 bg-deep-black-light ${
+                idx % 2 === 0 ? "max-w-[72%]" : "ml-auto max-w-[64%]"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (messages.length === 0) {
     return (

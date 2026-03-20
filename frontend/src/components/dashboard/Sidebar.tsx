@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 提供导航状态与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 承载账号与 agent 入口
+ * [INPUT]: 依赖 react 的 startTransition/useEffect 解耦导航切换与路由提交，依赖 useDashboard 提供导航状态与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 承载账号与 agent 入口
  * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表与左下角账户菜单
  * [POS]: dashboard 左侧导航骨架，负责频道切换与全局入口编排；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { startTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
 import { useDashboard } from "./DashboardApp";
@@ -91,6 +92,20 @@ export default function Sidebar() {
   const showOverviewSkeleton =
     state.sessionMode === "authed-ready" && !state.overview && state.sidebarTab === "messages";
 
+  useEffect(() => {
+    const prefetch = (path: string) => {
+      if (typeof router.prefetch !== "function") {
+        return;
+      }
+      void router.prefetch(path);
+    };
+
+    prefetch("/chats/messages");
+    prefetch(`/chats/contacts/${state.contactsView}`);
+    prefetch(`/chats/explore/${state.exploreView}`);
+    prefetch("/chats/wallet");
+  }, [router, state.contactsView, state.exploreView]);
+
   const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet") => {
     if (isGuest && tab === "contacts") {
       showLoginModal();
@@ -106,7 +121,9 @@ export default function Sidebar() {
       wallet: "/chats/wallet",
     };
     state.setSidebarTab(tab);
-    router.push(pathByTab[tab]);
+    startTransition(() => {
+      router.push(pathByTab[tab]);
+    });
   };
 
   return (
@@ -205,7 +222,9 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 state.setExploreView("rooms");
-                router.push("/chats/explore/rooms");
+                startTransition(() => {
+                  router.push("/chats/explore/rooms");
+                });
               }}
               className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
                 state.exploreView === "rooms"
@@ -218,7 +237,9 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 state.setExploreView("agents");
-                router.push("/chats/explore/agents");
+                startTransition(() => {
+                  router.push("/chats/explore/agents");
+                });
               }}
               className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
                 state.exploreView === "agents"
@@ -236,7 +257,9 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 state.setContactsView("agents");
-                router.push("/chats/contacts/agents");
+                startTransition(() => {
+                  router.push("/chats/contacts/agents");
+                });
               }}
               className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
                 state.contactsView === "agents"
@@ -249,7 +272,9 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 state.setContactsView("requests");
-                router.push("/chats/contacts/requests");
+                startTransition(() => {
+                  router.push("/chats/contacts/requests");
+                });
               }}
               className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
                 state.contactsView === "requests"
@@ -262,7 +287,9 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 state.setContactsView("rooms");
-                router.push("/chats/contacts/rooms");
+                startTransition(() => {
+                  router.push("/chats/contacts/rooms");
+                });
               }}
               className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
                 state.contactsView === "rooms"

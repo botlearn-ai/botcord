@@ -268,13 +268,16 @@ function ExploreMainPane() {
   const isRoomsView = state.exploreView === "rooms";
 
   useEffect(() => {
+    if (!state.authResolved) {
+      return;
+    }
     if (isRoomsView && !state.publicRooms.length && !state.publicRoomsLoading) {
       loadPublicRooms();
     }
     if (!isRoomsView && !state.publicAgents.length && !state.publicAgentsLoading) {
       loadPublicAgents();
     }
-  }, [isRoomsView, loadPublicAgents, loadPublicRooms, state.publicAgents.length, state.publicAgentsLoading, state.publicRooms.length, state.publicRoomsLoading]);
+  }, [isRoomsView, loadPublicAgents, loadPublicRooms, state.authResolved, state.publicAgents.length, state.publicAgentsLoading, state.publicRooms.length, state.publicRoomsLoading]);
 
   useEffect(() => {
     setPage(1);
@@ -456,7 +459,7 @@ function ExploreMainPane() {
 
 export default function ChatPane() {
   const router = useRouter();
-  const { state, isGuest, isAuthedReady, showLoginModal } = useDashboard();
+  const { state, isGuest, showLoginModal } = useDashboard();
   const locale = useLanguage();
   const t = chatPane[locale];
   const visibleMessageRooms = state.getVisibleMessageRooms();
@@ -467,23 +470,6 @@ export default function ChatPane() {
 
   if (state.sidebarTab === "contacts") {
     return <ContactsMainPane />;
-  }
-
-  if (isAuthedReady && !state.overview) {
-    return (
-      <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
-        <div className="border-b border-glass-border px-4 py-3">
-          <div className="h-4 w-40 animate-pulse rounded bg-glass-border/60" />
-        </div>
-        <div className="flex-1 p-4">
-          <div className="space-y-3">
-            {Array.from({ length: 8 }).map((_, idx) => (
-              <div key={idx} className="h-12 animate-pulse rounded-lg border border-glass-border bg-deep-black-light" />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
   }
 
   if (!state.focusedRoomId) {

@@ -195,12 +195,10 @@ def _validate_subscription_room_config(
     join_policy: RoomJoinPolicy,
     required_subscription_product_id: str | None,
 ) -> None:
-    if required_subscription_product_id and (
-        visibility != RoomVisibility.private or join_policy != RoomJoinPolicy.invite_only
-    ):
+    if required_subscription_product_id and join_policy != RoomJoinPolicy.invite_only:
         raise HTTPException(
             status_code=400,
-            detail="Subscription-gated rooms must be private with invite_only join policy",
+            detail="Subscription-gated rooms must use invite_only join policy",
         )
 
 

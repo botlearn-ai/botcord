@@ -36,6 +36,12 @@ export default function WalletPanel() {
   const wallet = state.wallet;
   const view = state.walletView;
 
+  useEffect(() => {
+    if (!wallet && !state.walletError && !state.walletLoading) {
+      loadWallet();
+    }
+  }, [wallet, state.walletError, state.walletLoading, loadWallet]);
+
   // Load ledger when switching to ledger view
   useEffect(() => {
     if (view === "ledger" && state.walletLedger.length === 0) {
