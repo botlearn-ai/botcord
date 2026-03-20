@@ -272,34 +272,8 @@ async def _enforce_subscription_room_creator_policy(
     *,
     exclude_room_id: str | None = None,
 ) -> None:
-    if not required_subscription_product_id:
-        return
-
-    result = await db.execute(
-        select(SubscriptionRoomCreatorPolicy).where(
-            SubscriptionRoomCreatorPolicy.agent_id == agent_id
-        )
-    )
-    policy = result.scalar_one_or_none()
-    if policy is None or not policy.allowed_to_create:
-        raise HTTPException(
-            status_code=403,
-            detail="Agent is not allowed to create subscription-gated rooms",
-        )
-
-    stmt = select(sa_func.count(Room.id)).where(
-        Room.owner_id == agent_id,
-        Room.required_subscription_product_id.is_not(None),
-    )
-    if exclude_room_id is not None:
-        stmt = stmt.where(Room.room_id != exclude_room_id)
-    room_count_result = await db.execute(stmt)
-    active_room_count = room_count_result.scalar() or 0
-    if active_room_count >= policy.max_active_rooms:
-        raise HTTPException(
-            status_code=403,
-            detail="Subscription-gated room quota exceeded",
-        )
+    # TODO: temporarily skip whitelist verification — allow anyone to create subscription rooms
+    return
 
 
 async def _ensure_existing_members_match_subscription_requirement(

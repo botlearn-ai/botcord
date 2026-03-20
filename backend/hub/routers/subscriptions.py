@@ -82,17 +82,7 @@ async def create_product(
     current_agent: str = Depends(get_current_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(SubscriptionRoomCreatorPolicy).where(
-            SubscriptionRoomCreatorPolicy.agent_id == current_agent
-        )
-    )
-    policy = result.scalar_one_or_none()
-    if policy is None or not policy.allowed_to_create:
-        raise I18nHTTPException(
-            status_code=403,
-            message_key="subscription_product_creation_not_allowed",
-        )
+    # TODO: temporarily skip whitelist verification — allow anyone to create subscription products
 
     try:
         amount = int(req.amount_minor)
