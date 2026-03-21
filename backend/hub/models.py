@@ -701,3 +701,97 @@ class SubscriptionChargeAttempt(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# ---------------------------------------------------------------------------
+# User / RBAC models
+# ---------------------------------------------------------------------------
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    supabase_user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, unique=True, nullable=False, index=True)
+    max_agents: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    banned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ban_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    last_login_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user_roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Permission(Base):
+    __tablename__ = "permissions"
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    resource: Mapped[str] = mapped_column(String(64), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, default="own")
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+    __table_args__ = (
+        UniqueConstraint("role_id", "permission_id", name="uq_role_permission"),
+    )
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    role_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("roles.id"), nullable=False, index=True
+    )
+    permission_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("permissions.id"), nullable=False, index=True
+    )
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "role_id", name="uq_user_role"),
+    )
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    user_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True
+    )
+    role_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("roles.id"), nullable=False, index=True
+    )
+    granted_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped["User"] = relationship(back_populates="user_roles")
+    role: Mapped["Role"] = relationship()

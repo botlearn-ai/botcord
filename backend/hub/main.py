@@ -39,6 +39,9 @@ from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
 from hub.storage import storage_requires_local_disk
 
+from app.routers.users import router as app_users_router
+from app.routers.dashboard import router as app_dashboard_router
+
 logging.basicConfig(level=logging.INFO)
 
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -170,3 +173,5 @@ app.include_router(subscriptions_internal_router)
 app.include_router(dashboard_router)
 app.include_router(public_router)
 app.include_router(share_public_router)
+app.include_router(app_users_router)
+app.include_router(app_dashboard_router)
