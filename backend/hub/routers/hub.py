@@ -11,7 +11,6 @@ from collections import defaultdict, deque
 
 from cachetools import TTLCache
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from hub.i18n import I18nHTTPException
 from sqlalchemy import func, select, text
