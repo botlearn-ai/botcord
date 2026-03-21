@@ -91,6 +91,8 @@ export interface MockHubState {
   knownAgents: Set<string>;
   /** JWT token to agent mapping */
   tokens: Map<string, string>;
+  /** Last observed history query params */
+  lastHistoryQuery?: Record<string, string>;
 }
 
 function parseBody(req: IncomingMessage): Promise<any> {
@@ -332,6 +334,7 @@ export function createMockHub() {
     idempotencyKeys: new Map(),
     knownAgents: new Set(["ag_testclient00"]),
     tokens: new Map(),
+    lastHistoryQuery: undefined,
   };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -398,6 +401,7 @@ export function createMockHub() {
 
     // ── History ────────────────────────────────────────────────
     if (path === "/hub/history" && method === "GET") {
+      state.lastHistoryQuery = Object.fromEntries(url.searchParams.entries());
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ messages: state.messages.map((m) => m.envelope) }));
       return;
@@ -429,7 +433,7 @@ export function createMockHub() {
     // ── Contacts ───────────────────────────────────────────────
     if (path.includes("/contacts") && method === "GET") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(state.contacts));
+      res.end(JSON.stringify({ contacts: state.contacts }));
       return;
     }
 
@@ -443,7 +447,11 @@ export function createMockHub() {
         rule: body.rule ?? null,
         visibility: body.visibility || "private",
         join_policy: body.join_policy || "invite_only",
+        required_subscription_product_id: body.required_subscription_product_id ?? null,
+        max_members: body.max_members ?? null,
         default_send: body.default_send ?? true,
+        default_invite: body.default_invite ?? false,
+        slow_mode_seconds: body.slow_mode_seconds ?? null,
         member_count: 1,
         created_at: new Date().toISOString(),
       };
@@ -486,9 +494,21 @@ export function createMockHub() {
       if (body.rule !== undefined) room.rule = body.rule;
       if (body.visibility !== undefined) room.visibility = body.visibility;
       if (body.join_policy !== undefined) room.join_policy = body.join_policy;
+      if (body.required_subscription_product_id !== undefined) {
+        room.required_subscription_product_id = body.required_subscription_product_id;
+      }
+      if (body.max_members !== undefined) room.max_members = body.max_members;
       if (body.default_send !== undefined) room.default_send = body.default_send;
+      if (body.default_invite !== undefined) room.default_invite = body.default_invite;
+      if (body.slow_mode_seconds !== undefined) room.slow_mode_seconds = body.slow_mode_seconds;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...room, members: [] }));
+      return;
+    }
+
+    if (path.match(/^\/hub\/rooms\/rm_[^/]+\/mute$/) && method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -570,7 +590,11 @@ export function createMockHub() {
 
       const txId = uniqueId("tx_");
       const now = nowIso();
-      const metadataJson = body.memo ? JSON.stringify({ memo: body.memo }) : null;
+      const metadata = {
+        ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+        ...(body.memo ? { memo: body.memo } : {}),
+      };
+      const metadataJson = Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
       const tx = {
         tx_id: txId,
         type: "transfer",
@@ -754,10 +778,16 @@ export function createMockHub() {
       const result = {
         withdrawal_id: wdId,
         tx_id: txId,
+        agent_id: agentId,
+        asset_code: "COIN",
         status: "pending",
         amount_minor: String(amount),
-        fee_minor: "0",
+        fee_minor: String(body.fee_minor ?? "0"),
+        destination_type: body.destination_type ?? null,
+        review_note: null,
         created_at: now,
+        reviewed_at: null,
+        completed_at: null,
       };
       state.walletTransactions.push({
         tx_id: txId,
@@ -781,8 +811,51 @@ export function createMockHub() {
         state.idempotencyKeys.set(body.idempotency_key, result);
       }
 
+      (state as any)._withdrawals = (state as any)._withdrawals || new Map();
+      (state as any)._withdrawals.set(wdId, { ...result, _amount: amount, _agentId: agentId, _txId: txId });
+
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
+      return;
+    }
+
+    // ── Wallet: cancel withdrawal ─────────────────────────────
+    if (path.match(/^\/wallet\/withdrawals\/wd_[^/]+\/cancel$/) && method === "POST") {
+      const withdrawalId = path.split("/")[3];
+      const currentAgent = getAgentIdFromRequest(req, state);
+      const withdrawals = (state as any)._withdrawals as Map<string, any> | undefined;
+      const withdrawal = withdrawals?.get(withdrawalId);
+      const tx = state.walletTransactions.find((item: any) => item.tx_id === withdrawal?._txId);
+      const wallet = ensureWallet(state, currentAgent);
+      const amount = withdrawal?._amount ?? 0;
+
+      if (!withdrawal || withdrawal.agent_id !== currentAgent || !tx || tx.status !== "pending") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "Withdrawal not found or cannot be cancelled" }));
+        return;
+      }
+
+      wallet.available_balance_minor += amount;
+      wallet.locked_balance_minor -= amount;
+      tx.status = "cancelled";
+      tx.updated_at = nowIso();
+      withdrawal.status = "cancelled";
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        withdrawal_id: withdrawalId,
+        tx_id: tx.tx_id,
+        agent_id: currentAgent,
+        asset_code: "COIN",
+        amount_minor: tx.amount_minor,
+        fee_minor: tx.fee_minor,
+        status: "cancelled",
+        destination_type: withdrawal.destination_type,
+        review_note: withdrawal.review_note,
+        created_at: tx.created_at,
+        reviewed_at: withdrawal.reviewed_at,
+        completed_at: withdrawal.completed_at,
+      }));
       return;
     }
 
@@ -836,14 +909,14 @@ export function createMockHub() {
       const agentId = getAgentIdFromRequest(req, state);
       const products = state.subscriptionProducts.filter((product) => product.owner_agent_id === agentId);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(products.map(productResponse)));
+      res.end(JSON.stringify({ products: products.map(productResponse) }));
       return;
     }
 
     if (path === "/subscriptions/products" && method === "GET") {
       const products = state.subscriptionProducts.filter((product) => product.status === "active");
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(products.map(productResponse)));
+      res.end(JSON.stringify({ products: products.map(productResponse) }));
       return;
     }
 
@@ -948,7 +1021,7 @@ export function createMockHub() {
       const agentId = getAgentIdFromRequest(req, state);
       const subscriptions = state.subscriptions.filter((subscription) => subscription.subscriber_agent_id === agentId);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(subscriptions.map(subscriptionResponse)));
+      res.end(JSON.stringify({ subscriptions: subscriptions.map(subscriptionResponse) }));
       return;
     }
 
@@ -968,7 +1041,7 @@ export function createMockHub() {
       }
       const subscriptions = state.subscriptions.filter((subscription) => subscription.product_id === productId);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(subscriptions.map(subscriptionResponse)));
+      res.end(JSON.stringify({ subscriptions: subscriptions.map(subscriptionResponse) }));
       return;
     }
 

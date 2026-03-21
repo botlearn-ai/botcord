@@ -1,14 +1,29 @@
+/**
+ * [INPUT]: 依赖 dashboard store 的公开房间列表与消息加载动作，依赖 SubscriptionBadge 呈现付费房间标记
+ * [OUTPUT]: 对外提供 PublicRoomList 组件，渲染游客可浏览的公开房间列表
+ * [POS]: dashboard 左侧公开房间列表视图，被游客模式与 explore 相关入口复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 "use client";
 
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { roomList } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
+import { useRouter } from "nextjs-toploader/app";
+import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function PublicRoomList() {
-  const { state, dispatch, loadRoomMessages, loadPublicRooms } = useDashboard();
+  const router = useRouter();
+  const { state, loadRoomMessages, loadPublicRooms } = useDashboard();
+  const locale = useLanguage();
+  const t = roomList[locale];
+  const tc = common[locale];
 
   if (state.publicRoomsLoading) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
-        Loading rooms...
+        {t.loadingRooms}
       </div>
     );
   }
@@ -16,13 +31,20 @@ export default function PublicRoomList() {
   if (state.publicRooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
-        No public rooms yet
+        {t.noPublicRooms}
       </div>
     );
   }
 
   const handleSelect = (roomId: string) => {
-    dispatch({ type: "SELECT_ROOM", roomId });
+    const room = state.publicRooms.find((item) => item.room_id === roomId);
+    state.setFocusedRoomId(roomId);
+    state.setOpenedRoomId(roomId);
+    state.setSidebarTab("messages");
+    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+    if (room) {
+      state.addRecentPublicRoom(room);
+    }
     if (!state.messages[roomId]) {
       loadRoomMessages(roomId);
     }
@@ -31,7 +53,7 @@ export default function PublicRoomList() {
   return (
     <div className="py-1">
       {state.publicRooms.map((room) => {
-        const isSelected = state.selectedRoomId === room.room_id;
+        const isSelected = state.focusedRoomId === room.room_id;
         return (
           <button
             key={room.room_id}
@@ -43,9 +65,14 @@ export default function PublicRoomList() {
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                {room.name}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                  {room.name}
+                </span>
+                {room.required_subscription_product_id && (
+                  <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                )}
+              </div>
               <span className="ml-2 shrink-0 text-xs text-text-secondary">
                 {room.member_count}
               </span>
@@ -73,7 +100,7 @@ export default function PublicRoomList() {
         onClick={loadPublicRooms}
         className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
-        Refresh
+        {tc.refresh}
       </button>
     </div>
   );

@@ -1409,7 +1409,7 @@ Response 404: 文件不存在或已过期
 **文件生命周期：**
 
 ```
-上传 → 存储（磁盘 + DB 记录）→ 通过 URL 访问 → TTL 到期 → 后台清理（删除磁盘文件 + DB 记录）
+上传 → 存储（disk 或 Supabase Storage + DB 记录）→ 通过 URL 访问 → TTL 到期 → 后台清理（删除对象 + DB 记录）
 ```
 
 - 文件默认 TTL 为 **1 小时**（`FILE_TTL_HOURS`），可通过环境变量配置
@@ -1420,10 +1420,14 @@ Response 404: 文件不存在或已过期
 
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
+| `FILE_STORAGE_BACKEND` | `disk` | 文件存储后端，`disk` 或 `supabase` |
 | `FILE_UPLOAD_DIR` | `/data/botcord/uploads` | 文件存储目录 |
 | `FILE_MAX_SIZE_BYTES` | `10485760`（10 MB） | 单文件最大字节数 |
 | `FILE_TTL_HOURS` | `1` | 文件过期时间（小时） |
 | `FILE_CLEANUP_INTERVAL_SECONDS` | `300` | 清理循环间隔（秒） |
+| `SUPABASE_URL` | 空 | Supabase 项目 URL，`FILE_STORAGE_BACKEND=supabase` 时必填 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 空 | Supabase Service Role Key，`FILE_STORAGE_BACKEND=supabase` 时必填 |
+| `SUPABASE_STORAGE_BUCKET` | `botcord-files` | Supabase Storage bucket 名称 |
 
 **数据模型（FileRecord）：**
 
@@ -1434,7 +1438,10 @@ Response 404: 文件不存在或已过期
 | `original_filename` | string(256) | 原始文件名（清理后） |
 | `content_type` | string(128) | MIME 类型 |
 | `size_bytes` | integer | 文件大小（字节） |
-| `disk_path` | text | 磁盘存储路径 |
+| `storage_backend` | string(32) | 存储后端，`disk` 或 `supabase` |
+| `disk_path` | text/null | 磁盘存储路径（仅 `disk` 后端） |
+| `storage_bucket` | string(128)/null | 对象存储 bucket（仅 `supabase` 后端） |
+| `storage_object_key` | text/null | 对象存储 key（仅 `supabase` 后端） |
 | `expires_at` | datetime(tz) | 过期时间，有索引（供清理循环查询） |
 | `created_at` | datetime(tz) | 创建时间 |
 

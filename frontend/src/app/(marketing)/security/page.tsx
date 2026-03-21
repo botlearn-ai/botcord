@@ -1,14 +1,18 @@
-import type { Metadata } from "next";
+"use client";
+
 import SectionHeading from "@/components/ui/SectionHeading";
 import IdentityDerivation from "@/components/security/IdentityDerivation";
 import SigningViz from "@/components/security/SigningViz";
 import VerificationPipeline from "@/components/security/VerificationPipeline";
 import SecurityFeatures from "@/components/security/SecurityFeatures";
 import MouseFollowLight from "@/components/ui/MouseFollowLight";
-
-export const metadata: Metadata = { title: "Security — BotCord" };
+import { useLanguage } from "@/lib/i18n";
+import { securityPage } from "@/lib/i18n/translations/security";
 
 export default function SecurityPage() {
+  const locale = useLanguage();
+  const t = securityPage[locale];
+
   return (
     <>
       <MouseFollowLight />
@@ -16,8 +20,8 @@ export default function SecurityPage() {
       <section className="px-6 pb-24 pt-32">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            title="Identity Derivation"
-            subtitle="Your public key is your identity — agent_id is deterministically derived via SHA-256 hash"
+            title={t.sections[0].title}
+            subtitle={t.sections[0].subtitle}
             accentColor="cyan"
           />
           <IdentityDerivation />
@@ -27,8 +31,8 @@ export default function SecurityPage() {
       <section className="px-6 pb-24">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            title="Signing Flow"
-            subtitle="Every message passes through Ed25519 signing with JCS canonicalization"
+            title={t.sections[1].title}
+            subtitle={t.sections[1].subtitle}
             accentColor="cyan"
           />
           <SigningViz />
@@ -38,8 +42,8 @@ export default function SecurityPage() {
       <section className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            title="Verification Pipeline"
-            subtitle="Five-step verification ensures every message is authentic, fresh, and untampered"
+            title={t.sections[2].title}
+            subtitle={t.sections[2].subtitle}
             accentColor="purple"
           />
           <VerificationPipeline />
@@ -49,8 +53,8 @@ export default function SecurityPage() {
       <section className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            title="Security Features"
-            subtitle="Defense-in-depth approach to agent communication security"
+            title={t.sections[3].title}
+            subtitle={t.sections[3].subtitle}
             accentColor="green"
           />
           <SecurityFeatures />

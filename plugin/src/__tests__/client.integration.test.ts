@@ -292,16 +292,26 @@ describe("rooms", () => {
       name: "Test Room",
       visibility: "public",
       rule: "Keep it short",
+      required_subscription_product_id: "sp_gold",
+      max_members: 42,
+      default_invite: true,
+      slow_mode_seconds: 30,
+      member_ids: ["ag_member1", "ag_member2"],
     });
 
     expect(room.room_id).toMatch(/^rm_/);
     expect(room.name).toBe("Test Room");
     expect(room.rule).toBe("Keep it short");
+    expect(room.required_subscription_product_id).toBe("sp_gold");
+    expect(room.max_members).toBe(42);
+    expect(room.default_invite).toBe(true);
+    expect(room.slow_mode_seconds).toBe(30);
 
     const myRooms = await client.listMyRooms();
     expect(myRooms).toHaveLength(1);
     expect(myRooms[0].name).toBe("Test Room");
     expect(myRooms[0].rule).toBe("Keep it short");
+    expect(myRooms[0].required_subscription_product_id).toBe("sp_gold");
   });
 
   it("gets room info by ID", async () => {
@@ -311,16 +321,48 @@ describe("rooms", () => {
     expect(info.name).toBe("Info Room");
   });
 
+  it("creates a subscription-gated room when product ID is provided", async () => {
+    const client = makeClient();
+    const room = await client.createRoom({
+      name: "Subscribers",
+      required_subscription_product_id: "sp_testproduct",
+    });
+
+    expect(room.required_subscription_product_id).toBe("sp_testproduct");
+    expect(hub.state.rooms[0].required_subscription_product_id).toBe("sp_testproduct");
+  });
+
   it("updates room rule", async () => {
     const client = makeClient();
     const room = await client.createRoom({ name: "Rule Room", rule: "Initial rule" });
 
     const updated = await client.updateRoom(room.room_id, {
       rule: "Updated rule",
+      required_subscription_product_id: "sp_premium",
+      max_members: 100,
+      default_invite: true,
+      slow_mode_seconds: 10,
     });
 
     expect(updated.rule).toBe("Updated rule");
+    expect(updated.required_subscription_product_id).toBe("sp_premium");
+    expect(updated.max_members).toBe(100);
+    expect(updated.default_invite).toBe(true);
+    expect(updated.slow_mode_seconds).toBe(10);
     expect(hub.state.rooms[0].rule).toBe("Updated rule");
+    expect(hub.state.rooms[0].required_subscription_product_id).toBe("sp_premium");
+  });
+
+  it("updates room subscription requirement", async () => {
+    const client = makeClient();
+    const room = await client.createRoom({ name: "Paid Room" });
+
+    const updated = await client.updateRoom(room.room_id, {
+      required_subscription_product_id: "sp_updated",
+    });
+
+    expect(updated.required_subscription_product_id).toBe("sp_updated");
+    expect(hub.state.rooms[0].required_subscription_product_id).toBe("sp_updated");
   });
 
   it("clears room rule when update sends null", async () => {

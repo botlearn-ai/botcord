@@ -1,592 +1,437 @@
 "use client";
 
-import { createContext, useContext, useReducer, useEffect, useCallback, useState } from "react";
-import type { DashboardOverview, DashboardMessage, AgentProfile, DashboardRoom, DiscoverRoom, PublicRoom, TopicInfo, WalletSummary, WalletLedgerEntry } from "@/lib/types";
-import { api } from "@/lib/api";
-import LoginPanel from "./LoginPanel";
+/**
+ * [INPUT]: 依赖 session/channel/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 react effect 在后台预热跨 tab 数据，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门与三栏布局编排
+ * [POS]: /chats 页面的顶层容器，连接路由状态与 UI 面板渲染
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
+import { useEffect, createContext, useMemo, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { usePathname } from "next/navigation";
+import { useRouter } from "nextjs-toploader/app";
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import AgentBrowser from "./AgentBrowser";
+import AgentCardModal from "./AgentCardModal";
 import WalletPanel from "./WalletPanel";
+import StripeReturnBanner from "./StripeReturnBanner";
+import AgentGateModal from "./AgentGateModal";
+import DashboardShellSkeleton from "./DashboardShellSkeleton";
+import { useDashboardChannelStore } from "@/store/useDashboardChannelStore";
+import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import { useDashboardContactStore } from "@/store/useDashboardContactStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
-// --- State ---
+// --- Legacy Context Proxy for Compatibility ---
+// We keep the context but make it a proxy to the Zustand store 
+// so we don't have to refactor all child components at once.
 
-interface DashboardState {
-  token: string | null;
-  overview: DashboardOverview | null;
-  selectedRoomId: string | null;
-  messages: Record<string, DashboardMessage[]>;
-  messagesHasMore: Record<string, boolean>;
-  loading: boolean;
-  error: string | null;
-  rightPanelOpen: boolean;
-  selectedAgentId: string | null;
-  selectedAgentProfile: AgentProfile | null;
-  selectedAgentConversations: DashboardRoom[] | null;
-  searchResults: AgentProfile[] | null;
-  sidebarTab: "rooms" | "contacts" | "discover" | "agents" | "wallet";
-  discoverRooms: DiscoverRoom[];
-  discoverLoading: boolean;
-  joiningRoomId: string | null;
-  // Topics per room
-  topics: Record<string, TopicInfo[]>;
-  // Guest mode state
-  publicRooms: PublicRoom[];
-  publicRoomsLoading: boolean;
-  publicAgents: AgentProfile[];
-  publicAgentsLoading: boolean;
-  // Wallet state
-  wallet: WalletSummary | null;
-  walletLedger: WalletLedgerEntry[];
-  walletLedgerHasMore: boolean;
-  walletLedgerCursor: string | null;
-  walletLoading: boolean;
-  walletError: string | null;
-  walletLedgerError: string | null;
-  walletView: 'overview' | 'ledger';
-}
+const DashboardContext = createContext<ReturnType<typeof useDashboardSessionStore> | null>(null);
 
-type Action =
-  | { type: "SET_TOKEN"; token: string | null }
-  | { type: "SET_OVERVIEW"; overview: DashboardOverview }
-  | { type: "SET_LOADING"; loading: boolean }
-  | { type: "SET_ERROR"; error: string | null }
-  | { type: "SELECT_ROOM"; roomId: string | null }
-  | { type: "SET_MESSAGES"; roomId: string; messages: DashboardMessage[]; hasMore: boolean }
-  | { type: "PREPEND_MESSAGES"; roomId: string; messages: DashboardMessage[]; hasMore: boolean }
-  | { type: "APPEND_MESSAGE"; roomId: string; message: DashboardMessage }
-  | { type: "TOGGLE_RIGHT_PANEL" }
-  | { type: "SET_SELECTED_AGENT"; agentId: string | null; profile?: AgentProfile | null; conversations?: DashboardRoom[] | null }
-  | { type: "SET_SEARCH_RESULTS"; results: AgentProfile[] | null }
-  | { type: "SET_SIDEBAR_TAB"; tab: "rooms" | "contacts" | "discover" | "agents" | "wallet" }
-  | { type: "SET_DISCOVER_ROOMS"; rooms: DiscoverRoom[] }
-  | { type: "SET_DISCOVER_LOADING"; loading: boolean }
-  | { type: "SET_JOINING_ROOM"; roomId: string | null }
-  | { type: "SET_TOPICS"; roomId: string; topics: TopicInfo[] }
-  | { type: "LOGOUT" }
-  | { type: "REFRESH" }
-  | { type: "SET_PUBLIC_ROOMS"; rooms: PublicRoom[] }
-  | { type: "SET_PUBLIC_ROOMS_LOADING"; loading: boolean }
-  | { type: "SET_PUBLIC_AGENTS"; agents: AgentProfile[] }
-  | { type: "SET_PUBLIC_AGENTS_LOADING"; loading: boolean }
-  | { type: "SET_WALLET"; wallet: WalletSummary | null }
-  | { type: "SET_WALLET_LEDGER"; entries: WalletLedgerEntry[]; hasMore: boolean; cursor: string | null }
-  | { type: "APPEND_WALLET_LEDGER"; entries: WalletLedgerEntry[]; hasMore: boolean; cursor: string | null }
-  | { type: "SET_WALLET_LOADING"; loading: boolean }
-  | { type: "SET_WALLET_ERROR"; error: string | null }
-  | { type: "SET_WALLET_LEDGER_ERROR"; error: string | null }
-  | { type: "SET_WALLET_VIEW"; view: 'overview' | 'ledger' };
-
-function reducer(state: DashboardState, action: Action): DashboardState {
-  switch (action.type) {
-    case "SET_TOKEN":
-      return { ...state, token: action.token, error: null };
-    case "SET_OVERVIEW":
-      return { ...state, overview: action.overview, loading: false };
-    case "SET_LOADING":
-      return { ...state, loading: action.loading };
-    case "SET_ERROR":
-      return { ...state, error: action.error, loading: false };
-    case "SELECT_ROOM":
-      return { ...state, selectedRoomId: action.roomId };
-    case "SET_MESSAGES":
-      return {
-        ...state,
-        messages: { ...state.messages, [action.roomId]: action.messages },
-        messagesHasMore: { ...state.messagesHasMore, [action.roomId]: action.hasMore },
-      };
-    case "PREPEND_MESSAGES": {
-      const existing = state.messages[action.roomId] || [];
-      return {
-        ...state,
-        messages: { ...state.messages, [action.roomId]: [...action.messages, ...existing] },
-        messagesHasMore: { ...state.messagesHasMore, [action.roomId]: action.hasMore },
-      };
-    }
-    case "APPEND_MESSAGE": {
-      const existing = state.messages[action.roomId] || [];
-      // Deduplicate by hub_msg_id
-      if (existing.some((m) => m.hub_msg_id === action.message.hub_msg_id)) return state;
-      return {
-        ...state,
-        messages: { ...state.messages, [action.roomId]: [...existing, action.message] },
-      };
-    }
-    case "TOGGLE_RIGHT_PANEL":
-      return { ...state, rightPanelOpen: !state.rightPanelOpen };
-    case "SET_SELECTED_AGENT":
-      return {
-        ...state,
-        selectedAgentId: action.agentId,
-        selectedAgentProfile: action.profile ?? null,
-        selectedAgentConversations: action.conversations ?? null,
-        rightPanelOpen: action.agentId !== null,
-      };
-    case "SET_SEARCH_RESULTS":
-      return { ...state, searchResults: action.results };
-    case "SET_SIDEBAR_TAB":
-      return { ...state, sidebarTab: action.tab };
-    case "SET_DISCOVER_ROOMS":
-      return { ...state, discoverRooms: action.rooms, discoverLoading: false };
-    case "SET_DISCOVER_LOADING":
-      return { ...state, discoverLoading: action.loading };
-    case "SET_JOINING_ROOM":
-      return { ...state, joiningRoomId: action.roomId };
-    case "SET_TOPICS":
-      return { ...state, topics: { ...state.topics, [action.roomId]: action.topics } };
-    case "REFRESH":
-      return { ...state, loading: true };
-    case "LOGOUT":
-      localStorage.removeItem("botcord_token");
-      return { ...initialState, publicRooms: state.publicRooms, publicAgents: state.publicAgents, sidebarTab: "discover" };
-    case "SET_PUBLIC_ROOMS":
-      return { ...state, publicRooms: action.rooms, publicRoomsLoading: false };
-    case "SET_PUBLIC_ROOMS_LOADING":
-      return { ...state, publicRoomsLoading: action.loading };
-    case "SET_PUBLIC_AGENTS":
-      return { ...state, publicAgents: action.agents, publicAgentsLoading: false };
-    case "SET_PUBLIC_AGENTS_LOADING":
-      return { ...state, publicAgentsLoading: action.loading };
-    case "SET_WALLET":
-      return { ...state, wallet: action.wallet, walletLoading: false, walletError: null };
-    case "SET_WALLET_LEDGER":
-      return { ...state, walletLedger: action.entries, walletLedgerHasMore: action.hasMore, walletLedgerCursor: action.cursor, walletLoading: false, walletLedgerError: null };
-    case "APPEND_WALLET_LEDGER":
-      return { ...state, walletLedger: [...state.walletLedger, ...action.entries], walletLedgerHasMore: action.hasMore, walletLedgerCursor: action.cursor, walletLoading: false, walletLedgerError: null };
-    case "SET_WALLET_LOADING":
-      return { ...state, walletLoading: action.loading };
-    case "SET_WALLET_ERROR":
-      return { ...state, walletError: action.error, walletLoading: false };
-    case "SET_WALLET_LEDGER_ERROR":
-      return { ...state, walletLedgerError: action.error, walletLoading: false };
-    case "SET_WALLET_VIEW":
-      return { ...state, walletView: action.view };
-    default:
-      return state;
+function decodeRoomIdFromPath(segment: string | undefined): string | null {
+  if (!segment) return null;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
   }
 }
-
-const initialState: DashboardState = {
-  token: null,
-  overview: null,
-  selectedRoomId: null,
-  messages: {},
-  messagesHasMore: {},
-  topics: {},
-  loading: false,
-  error: null,
-  rightPanelOpen: false,
-  selectedAgentId: null,
-  selectedAgentProfile: null,
-  selectedAgentConversations: null,
-  searchResults: null,
-  sidebarTab: "discover",
-  discoverRooms: [],
-  discoverLoading: false,
-  joiningRoomId: null,
-  publicRooms: [],
-  publicRoomsLoading: false,
-  publicAgents: [],
-  publicAgentsLoading: false,
-  wallet: null,
-  walletLedger: [],
-  walletLedgerHasMore: false,
-  walletLedgerCursor: null,
-  walletLoading: false,
-  walletError: null,
-  walletLedgerError: null,
-  walletView: 'overview',
-};
-
-// --- Context ---
-
-interface DashboardContextValue {
-  state: DashboardState;
-  dispatch: React.Dispatch<Action>;
-  loadRoomMessages: (roomId: string) => Promise<void>;
-  loadMoreMessages: (roomId: string) => Promise<void>;
-  selectAgent: (agentId: string) => Promise<void>;
-  searchAgents: (q: string) => Promise<void>;
-  refreshOverview: () => Promise<void>;
-  loadDiscoverRooms: () => Promise<void>;
-  joinRoom: (roomId: string) => Promise<void>;
-  loadPublicRooms: () => Promise<void>;
-  loadPublicAgents: () => Promise<void>;
-  loadTopics: (roomId: string) => Promise<void>;
-  loadWallet: () => Promise<void>;
-  loadWalletLedger: (loadMore?: boolean) => Promise<void>;
-  isGuest: boolean;
-  showLoginModal: () => void;
-}
-
-const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export function useDashboard() {
-  const ctx = useContext(DashboardContext);
-  if (!ctx) throw new Error("useDashboard must be used within DashboardApp");
-  return ctx;
+  const sessionStore = useDashboardSessionStore();
+  const channelStore = useDashboardChannelStore();
+  const walletStore = useDashboardWalletStore();
+  const contactStore = useDashboardContactStore();
+  const router = useRouter();
+  const supabase = createClient();
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.warn("[Dashboard] Supabase signOut failed:", error.message);
+    }
+    sessionStore.logout();
+    channelStore.logout();
+    walletStore.resetWalletState();
+    contactStore.resetContactState();
+    router.push("/login");
+  };
+  
+  // Add legacy properties/methods that child components expect
+  const state = { ...channelStore, ...contactStore, ...walletStore, ...sessionStore };
+  return {
+    state,
+    loadRoomMessages: channelStore.loadRoomMessages,
+    loadMoreMessages: channelStore.loadMoreMessages,
+    pollNewMessages: channelStore.pollNewMessages,
+    selectAgent: channelStore.selectAgent,
+    searchAgents: channelStore.searchAgents,
+    refreshOverview: channelStore.refreshOverview,
+    loadDiscoverRooms: channelStore.loadDiscoverRooms,
+    joinRoom: channelStore.joinRoom,
+    loadPublicRooms: channelStore.loadPublicRooms,
+    loadPublicRoomDetail: channelStore.loadPublicRoomDetail,
+    loadPublicAgents: channelStore.loadPublicAgents,
+    loadWallet: walletStore.loadWallet,
+    loadWalletLedger: walletStore.loadWalletLedger,
+    loadWithdrawalRequests: walletStore.loadWithdrawalRequests,
+    loadContactRequests: contactStore.loadContactRequests,
+    sendContactRequest: contactStore.sendContactRequest,
+    respondContactRequest: contactStore.respondContactRequest,
+    switchActiveAgent: channelStore.switchActiveAgent,
+    refreshUserProfile: sessionStore.refreshUserProfile,
+    sessionMode: sessionStore.sessionMode,
+    isAuthResolved: sessionStore.authResolved,
+    isGuest: sessionStore.sessionMode === "guest",
+    needsAgent: sessionStore.sessionMode === "authed-no-agent",
+    isAuthedReady: sessionStore.sessionMode === "authed-ready",
+    showLoginModal: () => router.push("/login"),
+    handleLogout,
+  };
 }
 
-// --- Root Component ---
-
 export default function DashboardApp() {
-  const [state, dispatch] = useReducer(reducer, initialState);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const sessionStore = useDashboardSessionStore();
+  const channelStore = useDashboardChannelStore();
+  const walletStore = useDashboardWalletStore();
+  const contactStore = useDashboardContactStore();
+  const router = useRouter();
+  const pathname = usePathname();
+  const supabase = createClient();
+  const recoveredAgentRef = useRef<string | null>(null);
+  const walletBoundAgentRef = useRef<string | null>(null);
+  const contactBoundAgentRef = useRef<string | null>(null);
+  const initResolvedRef = useRef(false);
+  const lastAccessTokenRef = useRef<string | null>(null);
+  const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
+  const shouldShowBootstrapSkeleton =
+    !sessionStore.authResolved
+    || sessionStore.authBootstrapping;
+  const fallbackAgent =
+    sessionStore.ownedAgents.find((agent) => agent.is_default) ?? sessionStore.ownedAgents[0] ?? null;
+  const shouldShowAgentGate =
+    sessionStore.authResolved
+    && sessionStore.sessionMode === "authed-no-agent"
+    && sessionStore.ownedAgents.length === 0;
 
-  const isGuest = !state.token;
-
-  // Restore token from localStorage on mount
+  // Auth sync
   useEffect(() => {
-    const saved = localStorage.getItem("botcord_token");
-    if (saved) {
-      dispatch({ type: "SET_TOKEN", token: saved });
-      dispatch({ type: "SET_SIDEBAR_TAB", tab: "rooms" });
-    }
-  }, []);
+    let cancelled = false;
 
-  // Guest mode: load public data on mount
-  useEffect(() => {
-    if (!state.token) {
-      loadPublicRooms();
-      loadPublicAgents();
-    }
-  }, [state.token]);
-
-  // Load overview when token is set (auth mode)
-  useEffect(() => {
-    if (!state.token) return;
-    dispatch({ type: "SET_LOADING", loading: true });
-    console.log("[Dashboard] Loading overview with token:", state.token.substring(0, 20) + "...");
-    api
-      .getOverview(state.token)
-      .then((overview) => {
-        console.log("[Dashboard] Overview loaded:", overview);
-        dispatch({ type: "SET_OVERVIEW", overview });
-      })
-      .catch((err) => {
-        console.error("[Dashboard] Overview failed:", err, "status:", err.status);
-        dispatch({ type: "SET_ERROR", error: err.message || "Failed to load overview" });
-        if (err.status === 401) {
-          console.warn("[Dashboard] 401 → logging out");
-          dispatch({ type: "LOGOUT" });
-        }
-      });
-    // Also load wallet summary
-    api
-      .getWallet(state.token)
-      .then((wallet) => {
-        dispatch({ type: "SET_WALLET", wallet });
-      })
-      .catch((err) => {
-        console.error("[Dashboard] Wallet load failed (non-fatal):", err);
-        dispatch({ type: "SET_WALLET_ERROR", error: err.message || "Failed to load wallet" });
-      });
-  }, [state.token]);
-
-  const loadRoomMessages = useCallback(
-    async (roomId: string) => {
-      console.log("[Dashboard] Loading messages for room:", roomId);
-      try {
-        let result;
-        if (state.token) {
-          result = await api.getRoomMessages(state.token, roomId, { limit: 50 });
-        } else {
-          // Guest mode: use public API
-          result = await api.getPublicRoomMessages(roomId, { limit: 50 });
-        }
-        console.log("[Dashboard] Got", result.messages.length, "messages for room:", roomId);
-        dispatch({
-          type: "SET_MESSAGES",
-          roomId,
-          messages: result.messages.reverse(),
-          hasMore: result.has_more,
-        });
-      } catch (err) {
-        console.error("[Dashboard] Failed to load messages for room:", roomId, err);
-      }
-    },
-    [state.token],
-  );
-
-  const loadMoreMessages = useCallback(
-    async (roomId: string) => {
-      const existing = state.messages[roomId];
-      if (!existing || existing.length === 0) return;
-      const oldest = existing[0];
-      let result;
-      if (state.token) {
-        result = await api.getRoomMessages(state.token, roomId, {
-          before: oldest.hub_msg_id,
-          limit: 50,
-        });
-      } else {
-        result = await api.getPublicRoomMessages(roomId, {
-          before: oldest.hub_msg_id,
-          limit: 50,
-        });
-      }
-      dispatch({
-        type: "PREPEND_MESSAGES",
-        roomId,
-        messages: result.messages.reverse(),
-        hasMore: result.has_more,
-      });
-    },
-    [state.token, state.messages],
-  );
-
-  const selectAgent = useCallback(
-    async (agentId: string) => {
-      console.log("[Dashboard] Selecting agent:", agentId);
-      try {
-        if (state.token) {
-          const [profile, convos] = await Promise.all([
-            api.getAgentProfile(state.token, agentId),
-            api.getConversations(state.token, agentId),
-          ]);
-          console.log("[Dashboard] Agent profile:", profile, "conversations:", convos);
-          dispatch({
-            type: "SET_SELECTED_AGENT",
-            agentId,
-            profile,
-            conversations: convos.conversations,
-          });
-        } else {
-          // Guest mode: public profile only, no shared conversations
-          const profile = await api.getPublicAgentProfile(agentId);
-          dispatch({
-            type: "SET_SELECTED_AGENT",
-            agentId,
-            profile,
-            conversations: null,
-          });
-        }
-      } catch (err) {
-        console.error("[Dashboard] Failed to select agent:", agentId, err);
-      }
-    },
-    [state.token],
-  );
-
-  const searchAgents = useCallback(
-    async (q: string) => {
-      if (!q.trim()) {
-        dispatch({ type: "SET_SEARCH_RESULTS", results: null });
+    const syncSession = async (
+      session: { access_token?: string } | null,
+      source: "getSession" | "authEvent",
+      event?: string,
+    ) => {
+      if (cancelled) {
         return;
       }
-      console.log("[Dashboard] Searching agents:", q);
-      try {
-        if (state.token) {
-          const result = await api.searchAgents(state.token, q);
-          console.log("[Dashboard] Search results:", result.agents);
-          dispatch({ type: "SET_SEARCH_RESULTS", results: result.agents });
-        } else {
-          const result = await api.getPublicAgents({ q });
-          dispatch({ type: "SET_SEARCH_RESULTS", results: result.agents });
-        }
-      } catch (err) {
-        console.error("[Dashboard] Search failed:", q, err);
-      }
-    },
-    [state.token],
-  );
 
-  const refreshOverview = useCallback(async () => {
-    if (!state.token) {
-      // Guest mode: refresh public data
-      loadPublicRooms();
-      loadPublicAgents();
+      const accessToken = session?.access_token ?? null;
+      const isSignOutEvent = event === "SIGNED_OUT";
+
+      if (source === "authEvent" && event === "INITIAL_SESSION") {
+        return;
+      }
+
+      if (source === "authEvent" && !initResolvedRef.current && !accessToken && !isSignOutEvent) {
+        return;
+      }
+
+      if (accessToken) {
+        if (lastAccessTokenRef.current === accessToken && useDashboardSessionStore.getState().authResolved) {
+          return;
+        }
+        lastAccessTokenRef.current = accessToken;
+        await sessionStore.initAuth(accessToken);
+      } else {
+        if (source === "authEvent" && !isSignOutEvent) {
+          return;
+        }
+        lastAccessTokenRef.current = null;
+        sessionStore.setToken(null);
+      }
+      initResolvedRef.current = true;
+    };
+
+    const resolveSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      await syncSession(session, "getSession");
+    };
+
+    void resolveSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        void syncSession(session, "authEvent", _event);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Route sync: /chats/{tab}/{subtab?}
+  useEffect(() => {
+    if (!sessionStore.authResolved) {
       return;
     }
-    dispatch({ type: "REFRESH" });
-    try {
-      const overview = await api.getOverview(state.token);
-      dispatch({ type: "SET_OVERVIEW", overview });
-      // Reload messages for the currently selected room
-      if (state.selectedRoomId) {
-        const result = await api.getRoomMessages(state.token, state.selectedRoomId, { limit: 50 });
-        dispatch({
-          type: "SET_MESSAGES",
-          roomId: state.selectedRoomId,
-          messages: result.messages.reverse(),
-          hasMore: result.has_more,
-        });
+    if (sessionStore.sessionMode === "authed-no-agent") {
+      if (channelStore.focusedRoomId !== null) {
+        channelStore.setFocusedRoomId(null);
       }
-    } catch (err: any) {
-      dispatch({ type: "SET_ERROR", error: err.message || "Failed to refresh" });
-    }
-  }, [state.token, state.selectedRoomId]);
-
-  const loadDiscoverRooms = useCallback(async () => {
-    if (!state.token) return;
-    dispatch({ type: "SET_DISCOVER_LOADING", loading: true });
-    try {
-      const result = await api.discoverRooms(state.token);
-      dispatch({ type: "SET_DISCOVER_ROOMS", rooms: result.rooms });
-    } catch (err: any) {
-      console.error("[Dashboard] Failed to load discover rooms:", err);
-      dispatch({ type: "SET_DISCOVER_LOADING", loading: false });
-    }
-  }, [state.token]);
-
-  const joinRoom = useCallback(async (roomId: string) => {
-    if (!state.token) return;
-    dispatch({ type: "SET_JOINING_ROOM", roomId });
-    try {
-      await api.joinRoom(state.token, roomId);
-      // Refresh overview to get updated room list, and reload discover list
-      const overview = await api.getOverview(state.token);
-      dispatch({ type: "SET_OVERVIEW", overview });
-      dispatch({ type: "SET_JOINING_ROOM", roomId: null });
-      // Remove the joined room from discover list
-      dispatch({
-        type: "SET_DISCOVER_ROOMS",
-        rooms: state.discoverRooms.filter((r) => r.room_id !== roomId),
-      });
-    } catch (err: any) {
-      console.error("[Dashboard] Failed to join room:", roomId, err);
-      dispatch({ type: "SET_JOINING_ROOM", roomId: null });
-    }
-  }, [state.token, state.discoverRooms]);
-
-  const loadPublicRooms = useCallback(async () => {
-    dispatch({ type: "SET_PUBLIC_ROOMS_LOADING", loading: true });
-    try {
-      const result = await api.getPublicRooms({ limit: 50 });
-      dispatch({ type: "SET_PUBLIC_ROOMS", rooms: result.rooms });
-    } catch (err) {
-      console.error("[Dashboard] Failed to load public rooms:", err);
-      dispatch({ type: "SET_PUBLIC_ROOMS_LOADING", loading: false });
-    }
-  }, []);
-
-  const loadTopics = useCallback(async (roomId: string) => {
-    if (!state.token) return;
-    try {
-      const result = await api.getTopics(state.token, roomId);
-      dispatch({ type: "SET_TOPICS", roomId, topics: result.topics });
-    } catch (err) {
-      console.error("[Dashboard] Failed to load topics for room:", roomId, err);
-    }
-  }, [state.token]);
-
-  const loadPublicAgents = useCallback(async () => {
-    dispatch({ type: "SET_PUBLIC_AGENTS_LOADING", loading: true });
-    try {
-      const result = await api.getPublicAgents({ limit: 50 });
-      dispatch({ type: "SET_PUBLIC_AGENTS", agents: result.agents });
-    } catch (err) {
-      console.error("[Dashboard] Failed to load public agents:", err);
-      dispatch({ type: "SET_PUBLIC_AGENTS_LOADING", loading: false });
-    }
-  }, []);
-
-  const loadWallet = useCallback(async () => {
-    if (!state.token) return;
-    try {
-      const wallet = await api.getWallet(state.token);
-      dispatch({ type: "SET_WALLET", wallet });
-    } catch (err: any) {
-      console.error("[Dashboard] Failed to load wallet:", err);
-      dispatch({ type: "SET_WALLET_ERROR", error: err.message || "Failed to load wallet" });
-    }
-  }, [state.token]);
-
-  const loadWalletLedger = useCallback(async (loadMore = false) => {
-    if (!state.token) return;
-    dispatch({ type: "SET_WALLET_LOADING", loading: true });
-    try {
-      const cursor = loadMore ? state.walletLedgerCursor : undefined;
-      const result = await api.getWalletLedger(state.token, { cursor: cursor ?? undefined, limit: 20 });
-      if (loadMore) {
-        dispatch({ type: "APPEND_WALLET_LEDGER", entries: result.entries, hasMore: result.has_more, cursor: result.next_cursor });
-      } else {
-        dispatch({ type: "SET_WALLET_LEDGER", entries: result.entries, hasMore: result.has_more, cursor: result.next_cursor });
+      if (channelStore.openedRoomId !== null) {
+        channelStore.setOpenedRoomId(null);
       }
-    } catch (err: any) {
-      console.error("[Dashboard] Failed to load wallet ledger:", err);
-      dispatch({ type: "SET_WALLET_LEDGER_ERROR", error: err.message || "Failed to load ledger" });
+      return;
     }
-  }, [state.token, state.walletLedgerCursor]);
+    const parts = pathnameParts;
+    // ["chats", tab?, subtab?]
+    const tab = parts[1];
+    const subtab = parts[2];
+    const normalizedTab =
+      tab === "dm" || tab === "rooms"
+        ? "messages"
+        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet"
+          ? tab
+          : null;
+    if (normalizedTab) {
+      if (channelStore.sidebarTab !== normalizedTab) {
+        channelStore.setSidebarTab(normalizedTab);
+      }
+      if (tab === "explore" && (subtab === "rooms" || subtab === "agents")) {
+        if (channelStore.exploreView !== subtab) {
+          channelStore.setExploreView(subtab);
+        }
+      }
+      if (tab === "contacts" && (subtab === "agents" || subtab === "requests" || subtab === "rooms")) {
+        if (channelStore.contactsView !== subtab) {
+          channelStore.setContactsView(subtab);
+        }
+      }
+      if (normalizedTab === "messages") {
+        const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
+        if (roomIdFromPath) {
+          if (channelStore.focusedRoomId !== roomIdFromPath) {
+            channelStore.setFocusedRoomId(roomIdFromPath);
+          }
+          if (channelStore.openedRoomId !== roomIdFromPath) {
+            channelStore.setOpenedRoomId(roomIdFromPath);
+          }
+          const knownRoom =
+            Boolean(channelStore.getRoomSummary(roomIdFromPath))
+            || channelStore.discoverRooms.some((room) => room.room_id === roomIdFromPath);
+          if (!knownRoom) {
+            channelStore.loadPublicRoomDetail(roomIdFromPath);
+          }
+          if (!channelStore.messages[roomIdFromPath]) {
+            channelStore.loadRoomMessages(roomIdFromPath);
+          }
+        } else {
+          if (channelStore.focusedRoomId !== null) {
+            channelStore.setFocusedRoomId(null);
+          }
+          if (channelStore.openedRoomId !== null) {
+            channelStore.setOpenedRoomId(null);
+          }
+        }
+      }
+    } else if (channelStore.sidebarTab !== "messages") {
+      channelStore.setSidebarTab("messages");
+    }
+  }, [sessionStore.authResolved, sessionStore.sessionMode, pathnameParts, channelStore]);
 
-  const handleLogin = useCallback((token: string) => {
-    localStorage.setItem("botcord_token", token);
-    dispatch({ type: "SET_TOKEN", token });
-    dispatch({ type: "SET_SIDEBAR_TAB", tab: "rooms" });
-    setLoginModalOpen(false);
-  }, []);
+  useEffect(() => {
+    if (
+      !sessionStore.authResolved
+      || sessionStore.sessionMode !== "authed-no-agent"
+      || sessionStore.activeAgentId
+      || !fallbackAgent
+    ) {
+      if (sessionStore.sessionMode !== "authed-no-agent") {
+        recoveredAgentRef.current = null;
+      }
+      return;
+    }
+    if (recoveredAgentRef.current === fallbackAgent.agent_id) {
+      return;
+    }
+    recoveredAgentRef.current = fallbackAgent.agent_id;
+    void channelStore.switchActiveAgent(fallbackAgent.agent_id);
+  }, [sessionStore.authResolved, sessionStore.sessionMode, sessionStore.activeAgentId, fallbackAgent, channelStore.switchActiveAgent]);
 
-  const showLoginModal = useCallback(() => {
-    setLoginModalOpen(true);
-  }, []);
+  useEffect(() => {
+    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
+      walletBoundAgentRef.current = null;
+      contactBoundAgentRef.current = null;
+      channelStore.resetChannelState();
+      walletStore.resetWalletState();
+      contactStore.resetContactState();
+      return;
+    }
+    if (walletBoundAgentRef.current !== sessionStore.activeAgentId) {
+      walletBoundAgentRef.current = sessionStore.activeAgentId;
+      walletStore.resetWalletState();
+    }
+    if (contactBoundAgentRef.current !== sessionStore.activeAgentId) {
+      contactBoundAgentRef.current = sessionStore.activeAgentId;
+      contactStore.resetContactState();
+    }
+    if (!channelStore.overview && !channelStore.overviewRefreshing && channelStore.sidebarTab !== "wallet") {
+      void channelStore.refreshOverview();
+    }
+  }, [
+    sessionStore.sessionMode,
+    sessionStore.activeAgentId,
+    channelStore.overview,
+    channelStore.overviewRefreshing,
+    channelStore.sidebarTab,
+    channelStore.resetChannelState,
+    channelStore.refreshOverview,
+    walletStore.resetWalletState,
+    contactStore.resetContactState,
+  ]);
 
-  const ctxValue: DashboardContextValue = {
-    state,
-    dispatch,
-    loadRoomMessages,
-    loadMoreMessages,
-    selectAgent,
-    searchAgents,
-    refreshOverview,
-    loadDiscoverRooms,
-    joinRoom,
-    loadPublicRooms,
-    loadPublicAgents,
-    loadTopics,
-    loadWallet,
-    loadWalletLedger,
-    isGuest,
-    showLoginModal,
+  useEffect(() => {
+    if (!sessionStore.authResolved || sessionStore.sessionMode !== "authed-ready") {
+      return;
+    }
+    if (channelStore.sidebarTab === "wallet") {
+      return;
+    }
+    if (channelStore.overview || channelStore.overviewRefreshing) {
+      return;
+    }
+    void channelStore.refreshOverview();
+  }, [
+    sessionStore.authResolved,
+    sessionStore.sessionMode,
+    channelStore.sidebarTab,
+    channelStore.overview,
+    channelStore.overviewRefreshing,
+    channelStore.refreshOverview,
+  ]);
+
+  useEffect(() => {
+    if (!sessionStore.authResolved) {
+      return;
+    }
+
+    if (channelStore.publicRooms.length === 0 && !channelStore.publicRoomsLoading) {
+      void channelStore.loadPublicRooms();
+    }
+
+    if (channelStore.publicAgents.length === 0 && !channelStore.publicAgentsLoading) {
+      void channelStore.loadPublicAgents();
+    }
+  }, [
+    sessionStore.authResolved,
+    channelStore.publicRooms.length,
+    channelStore.publicRoomsLoading,
+    channelStore.publicAgents.length,
+    channelStore.publicAgentsLoading,
+    channelStore.loadPublicRooms,
+    channelStore.loadPublicAgents,
+  ]);
+
+  useEffect(() => {
+    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
+      return;
+    }
+
+    if (!walletStore.wallet && !walletStore.walletLoading && !walletStore.walletError) {
+      void walletStore.loadWallet();
+    }
+
+    if (
+      !walletStore.withdrawalRequestsLoaded
+      && !walletStore.withdrawalRequestsLoading
+      && !walletStore.withdrawalRequestsError
+    ) {
+      void walletStore.loadWithdrawalRequests();
+    }
+  }, [
+    sessionStore.sessionMode,
+    sessionStore.activeAgentId,
+    walletStore.wallet,
+    walletStore.walletLoading,
+    walletStore.walletError,
+    walletStore.withdrawalRequestsLoaded,
+    walletStore.withdrawalRequestsLoading,
+    walletStore.withdrawalRequestsError,
+    walletStore.loadWallet,
+    walletStore.loadWithdrawalRequests,
+  ]);
+
+  if (shouldShowBootstrapSkeleton) {
+    return <DashboardShellSkeleton />;
+  }
+
+  const selectedAgentForCard = channelStore.selectedAgentProfile;
+  const alreadyInContacts = selectedAgentForCard
+    ? (channelStore.overview?.contacts || []).some(
+      (item) => item.contact_agent_id === selectedAgentForCard.agent_id,
+    )
+    : false;
+  const requestAlreadyPending = selectedAgentForCard
+    ? contactStore.pendingFriendRequests.includes(selectedAgentForCard.agent_id)
+      || contactStore.contactRequestsSent.some(
+        (item) => item.to_agent_id === selectedAgentForCard.agent_id && item.state === "pending",
+      )
+    : false;
+
+  const handleSendFriendRequestFromCard = () => {
+    if (!selectedAgentForCard) return;
+    if (sessionStore.sessionMode !== "authed-ready") {
+      router.push("/login");
+      return;
+    }
+    void contactStore.sendContactRequest(selectedAgentForCard.agent_id);
   };
 
-  // Auth mode: loading state
-  if (state.token && state.loading && !state.overview) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-neon-cyan animate-pulse text-lg">Loading...</div>
-      </div>
-    );
-  }
-
-  // Auth mode: error state
-  if (state.token && state.error && !state.overview) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <div className="text-red-400">{state.error}</div>
-        <button
-          onClick={() => dispatch({ type: "LOGOUT" })}
-          className="rounded border border-glass-border px-4 py-2 text-text-secondary hover:text-text-primary"
-        >
-          Back to Login
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <DashboardContext.Provider value={ctxValue}>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        {state.sidebarTab === "wallet" ? (
-          <WalletPanel />
-        ) : (
-          <>
-            <ChatPane />
-            {state.rightPanelOpen && <AgentBrowser />}
-          </>
-        )}
-      </div>
-      {/* Login Modal */}
-      {loginModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setLoginModalOpen(false)}
-        >
-          <div onClick={(e) => e.stopPropagation()}>
-            <LoginPanel onLogin={handleLogin} onClose={() => setLoginModalOpen(false)} />
-          </div>
+    <div className="relative flex h-screen overflow-hidden">
+      <Sidebar />
+      {channelStore.sidebarTab === "wallet" ? (
+        <WalletPanel />
+      ) : (
+        <>
+          <ChatPane />
+          {channelStore.sidebarTab !== "explore" && channelStore.rightPanelOpen && <AgentBrowser />}
+        </>
+      )}
+      <StripeReturnBanner />
+      {shouldShowAgentGate ? (
+        <AgentGateModal
+          onAgentReady={async (agentId) => {
+            await sessionStore.refreshUserProfile();
+            await channelStore.switchActiveAgent(agentId);
+          }}
+        />
+      ) : null}
+      <AgentCardModal
+        isOpen={channelStore.agentCardOpen}
+        agent={selectedAgentForCard}
+        loading={channelStore.selectedAgentLoading}
+        error={channelStore.selectedAgentError}
+        onClose={channelStore.closeAgentCard}
+        alreadyInContacts={alreadyInContacts}
+        requestAlreadyPending={requestAlreadyPending}
+        onSendFriendRequest={handleSendFriendRequestFromCard}
+        onRetry={() => {
+          if (!channelStore.selectedAgentId) return;
+          void channelStore.selectAgent(channelStore.selectedAgentId);
+        }}
+      />
+      {channelStore.error && (
+        <div className="pointer-events-none absolute right-4 top-4 rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs text-red-200">
+          {channelStore.error}
         </div>
       )}
-    </DashboardContext.Provider>
+    </div>
   );
 }

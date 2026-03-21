@@ -2,15 +2,35 @@
 
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { messageList } from '@/lib/i18n/translations/dashboard';
 import MessageBubble from "./MessageBubble";
 import type { DashboardMessage, TopicInfo } from "@/lib/types";
 
-const topicStatusConfig: Record<string, { label: string; color: string; icon: string }> = {
-  open:      { label: "Open",      color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
-  completed: { label: "Completed", color: "text-green-400 bg-green-400/10 border-green-400/30",       icon: "✔" },
-  failed:    { label: "Failed",    color: "text-red-400 bg-red-400/10 border-red-400/30",             icon: "✗" },
-  expired:   { label: "Expired",   color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30",    icon: "⏱" },
+const POLL_INTERVAL_MS = 5000;
+
+const topicStatusColors: Record<string, { color: string; icon: string }> = {
+  open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
+  completed: { color: "text-green-400 bg-green-400/10 border-green-400/30",       icon: "✔" },
+  failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",             icon: "✗" },
+  expired:   { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30",    icon: "⏱" },
 };
+
+function useTopicStatusConfig() {
+  const locale = useLanguage();
+  const t = messageList[locale];
+  const labels: Record<string, string> = {
+    open: t.open,
+    completed: t.completed,
+    failed: t.failed,
+    expired: t.expired,
+  };
+  const config: Record<string, { label: string; color: string; icon: string }> = {};
+  for (const [key, val] of Object.entries(topicStatusColors)) {
+    config[key] = { label: labels[key] || key, ...val };
+  }
+  return config;
+}
 
 interface TopicGroup {
   topicId: string | null;
@@ -51,6 +71,9 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
   isCollapsed: boolean;
   onToggle: () => void;
 }) {
+  const topicStatusConfig = useTopicStatusConfig();
+  const locale = useLanguage();
+  const t = messageList[locale];
   const sc = group.topicInfo ? topicStatusConfig[group.topicInfo.status] : null;
 
   return (
@@ -61,7 +84,7 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
       <span className="text-xs text-text-secondary/60">{isCollapsed ? "▶" : "▼"}</span>
 
       <span className="text-sm font-medium text-text-primary truncate">
-        {group.topicName || "General"}
+        {group.topicName || t.general}
       </span>
 
       {sc && (
@@ -79,39 +102,75 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
       )}
 
       <span className="ml-auto text-[10px] text-text-secondary/50">
-        {group.messages.length} msg{group.messages.length !== 1 ? "s" : ""}
+        {group.messages.length} {group.messages.length !== 1 ? t.msgs : t.msg}
       </span>
     </button>
   );
 }
 
+function isNearBottom(el: HTMLElement, threshold = 150): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+}
+
 export default function MessageList() {
-  const { state, loadMoreMessages, loadTopics } = useDashboard();
+  const { state, loadMoreMessages, pollNewMessages } = useDashboard();
+  const locale = useLanguage();
+  const t = messageList[locale];
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   const isLoadingMore = useRef(false);
   const [collapsedTopics, setCollapsedTopics] = useState<Set<string>>(new Set());
+  const [showNewMessagesBanner, setShowNewMessagesBanner] = useState(false);
+  const showBannerRef = useRef(false);
+  const wasNearBottomRef = useRef(true);
 
-  const roomId = state.selectedRoomId;
+  const roomId = state.openedRoomId;
   const messages = roomId ? state.messages[roomId] || [] : [];
+  const isRoomMessagesLoading = roomId ? state.messagesLoading[roomId] ?? false : false;
   const hasMore = roomId ? state.messagesHasMore[roomId] ?? false : false;
-  const currentAgentId = state.overview?.agent.agent_id;
-  const topics = roomId ? state.topics[roomId] || [] : [];
+  const currentAgentId = state.overview?.agent?.agent_id;
 
-  // Load topics when room changes
   useEffect(() => {
-    if (roomId) {
-      loadTopics(roomId);
-      setCollapsedTopics(new Set());
-    }
-  }, [roomId, loadTopics]);
+    setCollapsedTopics(new Set());
+  }, [roomId]);
+
+  // Poll for new messages
+  useEffect(() => {
+    if (!roomId) return;
+    const timer = setInterval(() => {
+      pollNewMessages(roomId);
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [roomId, pollNewMessages]);
 
   const topicsMap = useMemo(() => {
     const m = new Map<string, TopicInfo>();
-    for (const t of topics) m.set(t.topic_id, t);
+    const counter = new Map<string, number>();
+    for (const msg of messages) {
+      if (!msg.topic_id) continue;
+      counter.set(msg.topic_id, (counter.get(msg.topic_id) || 0) + 1);
+      if (m.has(msg.topic_id)) continue;
+      m.set(msg.topic_id, {
+        topic_id: msg.topic_id,
+        room_id: msg.room_id || roomId || "",
+        title: msg.topic_title || msg.topic || msg.topic_id,
+        description: msg.topic_description || "",
+        status: msg.topic_status || "open",
+        creator_id: msg.topic_creator_id || msg.sender_id,
+        goal: msg.topic_goal || null,
+        message_count: 0,
+        created_at: msg.topic_created_at || msg.created_at,
+        updated_at: msg.topic_updated_at || msg.created_at,
+        closed_at: msg.topic_closed_at || null,
+      });
+    }
+    for (const [topicId, count] of counter.entries()) {
+      const topic = m.get(topicId);
+      if (topic) topic.message_count = topic.message_count || count;
+    }
     return m;
-  }, [topics]);
+  }, [messages, roomId]);
 
   const hasTopics = messages.some((m) => m.topic_id);
 
@@ -120,23 +179,56 @@ export default function MessageList() {
     return groupMessagesByTopic(messages, topicsMap);
   }, [messages, topicsMap, hasTopics]);
 
-  // Scroll to bottom on initial load or new messages appended
+  // Auto-scroll or show "new messages" banner when new messages arrive.
+  // Uses wasNearBottomRef (snapshotted on scroll events, before DOM changes)
+  // to decide whether to auto-scroll or show the banner.
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (wasNearBottomRef.current) {
+        bottomRef.current?.scrollIntoView({ behavior: "auto" });
+        setShowNewMessagesBanner(false);
+      } else if (prevLengthRef.current > 0) {
+        // User is reading history — show banner instead of auto-scrolling
+        setShowNewMessagesBanner(true);
+      }
     }
     prevLengthRef.current = messages.length;
     isLoadingMore.current = false;
   }, [messages.length]);
 
-  // Infinite scroll up
+  // Keep ref in sync with state for use in scroll handler
+  useEffect(() => {
+    showBannerRef.current = showNewMessagesBanner;
+  }, [showNewMessagesBanner]);
+
+  // Track scroll position & handle infinite scroll up
   const handleScroll = useCallback(() => {
-    if (!containerRef.current || !roomId || !hasMore || isLoadingMore.current) return;
-    if (containerRef.current.scrollTop < 100) {
+    if (!containerRef.current || !roomId) return;
+
+    // Snapshot scroll position for use by the auto-scroll effect
+    wasNearBottomRef.current = isNearBottom(containerRef.current);
+
+    // Infinite scroll up
+    if (hasMore && !isLoadingMore.current && containerRef.current.scrollTop < 100) {
       isLoadingMore.current = true;
       loadMoreMessages(roomId);
     }
+
+    // Dismiss banner when scrolled near bottom
+    if (showBannerRef.current && wasNearBottomRef.current) {
+      setShowNewMessagesBanner(false);
+    }
   }, [roomId, hasMore, loadMoreMessages]);
+
+  // Reset banner on room change
+  useEffect(() => {
+    setShowNewMessagesBanner(false);
+  }, [roomId]);
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "auto" });
+    setShowNewMessagesBanner(false);
+  }, []);
 
   const toggleTopic = useCallback((topicKey: string) => {
     setCollapsedTopics((prev) => {
@@ -149,80 +241,112 @@ export default function MessageList() {
 
   if (!roomId) return null;
 
-  if (messages.length === 0) {
+  if (isRoomMessagesLoading && messages.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-text-secondary">
-        No messages yet
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, idx) => (
+            <div
+              key={idx}
+              className={`h-11 w-full animate-pulse rounded-lg border border-glass-border/60 bg-deep-black-light ${
+                idx % 2 === 0 ? "max-w-[72%]" : "ml-auto max-w-[64%]"
+              }`}
+            />
+          ))}
+        </div>
       </div>
     );
   }
 
+  if (messages.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-text-secondary">
+        {t.noMessages}
+      </div>
+    );
+  }
+
+  const newMessagesBanner = showNewMessagesBanner && (
+    <button
+      onClick={scrollToBottom}
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 rounded-full bg-neon-cyan/90 px-4 py-1.5 text-xs font-medium text-deep-black shadow-lg shadow-neon-cyan/20 transition-all hover:bg-neon-cyan animate-bounce"
+    >
+      {t.newMessages}
+    </button>
+  );
+
   // No topics — flat list (original behavior)
   if (!groups) {
     return (
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-3"
-      >
-        {hasMore && (
-          <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
-            Scroll up for older messages...
-          </div>
-        )}
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.hub_msg_id}
-            message={msg}
-            isOwn={msg.sender_id === currentAgentId}
-          />
-        ))}
-        <div ref={bottomRef} />
+      <div className="relative flex-1">
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto px-4 py-3"
+        >
+          {hasMore && (
+            <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
+              {t.scrollUp}
+            </div>
+          )}
+          {messages.map((msg) => (
+            <MessageBubble
+              key={msg.hub_msg_id}
+              message={msg}
+              isOwn={msg.sender_id === currentAgentId}
+            />
+          ))}
+          <div ref={bottomRef} />
+        </div>
+        {newMessagesBanner}
       </div>
     );
   }
 
   // Grouped by topic
   return (
-    <div
-      ref={containerRef}
-      onScroll={handleScroll}
-      className="flex-1 overflow-y-auto px-4 py-3"
-    >
-      {hasMore && (
-        <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
-          Scroll up for older messages...
-        </div>
-      )}
-      {groups.map((group) => {
-        const key = group.topicId || "__no_topic__";
-        const isCollapsed = collapsedTopics.has(key);
-        const statusColor = group.topicInfo
-          ? { completed: "border-green-400/40", failed: "border-red-400/40", expired: "border-yellow-400/40", open: "border-neon-cyan/40" }[group.topicInfo.status] || "border-neon-cyan/40"
-          : "border-glass-border";
-
-        return (
-          <div key={key} className={`mb-4 rounded-xl border border-glass-border/50 bg-glass-bg/30`}>
-            <TopicHeader
-              group={group}
-              isCollapsed={isCollapsed}
-              onToggle={() => toggleTopic(key)}
-            />
-            {!isCollapsed && (
-              <div className={`border-l-2 ${statusColor} ml-3 pl-3 pr-1 pb-2`}>
-                {group.messages.map((msg) => (
-                  <MessageBubble
-                    key={msg.hub_msg_id}
-                    message={msg}
-                    isOwn={msg.sender_id === currentAgentId}
-                  />
-                ))}
-              </div>
-            )}
+    <div className="relative flex-1">
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="absolute inset-0 overflow-y-auto px-4 py-3"
+      >
+        {hasMore && (
+          <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
+            {t.scrollUp}
           </div>
-        );
-      })}
-      <div ref={bottomRef} />
+        )}
+        {groups.map((group) => {
+          const key = group.topicId || "__no_topic__";
+          const isCollapsed = collapsedTopics.has(key);
+          const statusColor = group.topicInfo
+            ? { completed: "border-green-400/40", failed: "border-red-400/40", expired: "border-yellow-400/40", open: "border-neon-cyan/40" }[group.topicInfo.status] || "border-neon-cyan/40"
+            : "border-glass-border";
+
+          return (
+            <div key={key} className={`mb-4 rounded-xl border border-glass-border/50 bg-glass-bg/30`}>
+              <TopicHeader
+                group={group}
+                isCollapsed={isCollapsed}
+                onToggle={() => toggleTopic(key)}
+              />
+              {!isCollapsed && (
+                <div className={`border-l-2 ${statusColor} ml-3 pl-3 pr-1 pb-2`}>
+                  {group.messages.map((msg) => (
+                    <MessageBubble
+                      key={msg.hub_msg_id}
+                      message={msg}
+                      isOwn={msg.sender_id === currentAgentId}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+      {newMessagesBanner}
     </div>
   );
 }

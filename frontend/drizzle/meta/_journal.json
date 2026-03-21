@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1773836695532,
+      "tag": "0000_shiny_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773926400000,
+      "tag": "0001_merge_user_agents_into_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774003200000,
+      "tag": "0002_add_claim_code_to_agents",
+      "breakpoints": true
+    }
+  ]
+}

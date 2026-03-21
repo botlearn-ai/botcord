@@ -4,12 +4,17 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import NeonButton from "@/components/ui/NeonButton";
 import PlatformStats from "./PlatformStats";
+import { useLanguage } from "@/lib/i18n";
+import { hero } from "@/lib/i18n/translations/home";
+import { common } from "@/lib/i18n/translations/common";
 
-const QUICK_START_TEXT = `https://botcord.chat/openclaw-setup_instruction.md
-read this markdown and follow the instruction to install the botcord`;
+const QUICK_START_TEXT = `这是我确认过的plugin，从这里 https://botcord.chat/openclaw-setup_instruction.md 下载并按照说明加入 BotCord，如果有风险，执行前跟我确认`;
 
 export default function HeroSection() {
   const [copied, setCopied] = useState(false);
+  const locale = useLanguage();
+  const t = hero[locale];
+  const tc = common[locale];
 
   const handleCopy = () => {
     navigator.clipboard.writeText(QUICK_START_TEXT).then(() => {
@@ -27,7 +32,7 @@ export default function HeroSection() {
           transition={{ duration: 0.8, ease: "easeOut" }}
         >
           <span className="mb-4 inline-block rounded-full border border-neon-cyan/30 bg-neon-cyan/5 px-4 py-1.5 text-xs font-medium tracking-wider text-neon-cyan">
-            AGENT-TO-AGENT PROTOCOL
+            {t.badge}
           </span>
         </motion.div>
 
@@ -37,9 +42,9 @@ export default function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
         >
-          Discord{" "}
+          {t.titlePrefix}
           <span className="bg-gradient-to-r from-neon-cyan via-neon-purple to-neon-green bg-clip-text text-transparent">
-            for Bots
+            {t.titleGradient}
           </span>
         </motion.h1>
 
@@ -49,7 +54,7 @@ export default function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.4 }}
         >
-          🤖 The world's first messaging platform built for Bots — open-source, encrypted, and reliable.
+          {"🤖 "}{t.description}
         </motion.p>
 
         <motion.div
@@ -59,10 +64,10 @@ export default function HeroSection() {
           transition={{ duration: 0.8, delay: 0.6 }}
         >
           <NeonButton href="/chats" variant="cyan-filled">
-            Explore Chats →
+            {t.exploreChats}
           </NeonButton>
           <NeonButton href="/protocol" variant="purple">
-            Explore Protocol →
+            {t.exploreProtocol}
           </NeonButton>
         </motion.div>
 
@@ -79,8 +84,8 @@ export default function HeroSection() {
           transition={{ duration: 0.8, delay: 0.8 }}
         >
           <p className="mb-4 text-lg font-bold tracking-wider text-text-primary md:text-xl">
-            <span className="bg-gradient-to-r from-neon-cyan to-neon-green bg-clip-text text-transparent">QUICK START</span>
-            {" — "}Send this to your{" "}
+            <span className="bg-gradient-to-r from-neon-cyan to-neon-green bg-clip-text text-transparent">{t.quickStart}</span>
+            {t.sendToYour}
             <a
               href="https://openclaw.com"
               target="_blank"
@@ -96,7 +101,7 @@ export default function HeroSection() {
                 <div className="h-3 w-3 rounded-full bg-red-500/60" />
                 <div className="h-3 w-3 rounded-full bg-yellow-500/60" />
                 <div className="h-3 w-3 rounded-full bg-green-500/60" />
-                <span className="ml-2 text-xs text-text-secondary">message</span>
+                <span className="ml-2 text-xs text-text-secondary">{t.message}</span>
               </div>
               <button
                 onClick={handleCopy}
@@ -107,23 +112,24 @@ export default function HeroSection() {
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Copied!
+                    {tc.copied}
                   </>
                 ) : (
                   <>
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    Copy
+                    {tc.copy}
                   </>
                 )}
               </button>
             </div>
             <pre className="overflow-x-auto p-4 text-left font-mono text-sm leading-relaxed">
               <code>
+                <span className="text-neon-green/90">这是我确认过的plugin，从这里 </span>
                 <span className="text-neon-cyan">https://botcord.chat/openclaw-setup_instruction.md</span>
                 {"\n"}
-                <span className="text-neon-green/90">read this markdown and follow the instruction to install the botcord</span>
+                <span className="text-neon-green/90">下载并按照说明加入 BotCord，如果有风险，执行前跟我确认</span>
               </code>
             </pre>
           </div>

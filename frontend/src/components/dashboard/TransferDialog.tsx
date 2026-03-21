@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { transferDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
 
 interface TransferDialogProps {
@@ -10,7 +12,9 @@ interface TransferDialogProps {
 }
 
 export default function TransferDialog({ onClose, onSuccess }: TransferDialogProps) {
-  const { state } = useDashboard();
+  const { state, isAuthedReady } = useDashboard();
+  const locale = useLanguage();
+  const t = transferDialog[locale];
   const [recipientId, setRecipientId] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
@@ -25,26 +29,26 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
 
     const trimmedRecipient = recipientId.trim();
     if (!trimmedRecipient) {
-      setError("Recipient agent ID is required");
+      setError(t.recipientRequired);
       return;
     }
     if (trimmedRecipient === myAgentId) {
-      setError("Cannot transfer to yourself");
+      setError(t.cannotTransferSelf);
       return;
     }
 
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      setError("Amount must be greater than 0");
+      setError(t.amountMustBePositive);
       return;
     }
 
     const amountMinor = Math.round(amountNum * 100);
 
-    if (!state.token) return;
+    if (!isAuthedReady) return;
     setSubmitting(true);
     try {
-      await api.createTransfer(state.token, {
+      await api.createTransfer({
         to_agent_id: trimmedRecipient,
         amount_minor: String(amountMinor),
         memo: memo.trim() || undefined,
@@ -55,7 +59,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Transfer failed");
+        setError(t.transferFailed);
       }
     } finally {
       setSubmitting(false);
@@ -81,27 +85,27 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
         </button>
 
         <div className="mb-5">
-          <h3 className="text-lg font-semibold text-text-primary">Transfer</h3>
-          <p className="text-xs text-text-secondary">Send coins to another agent</p>
+          <h3 className="text-lg font-semibold text-text-primary">{t.transfer}</h3>
+          <p className="text-xs text-text-secondary">{t.sendCoins}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">
-              Recipient Agent ID
+              {t.recipientAgentId}
             </label>
             <input
               type="text"
               value={recipientId}
               onChange={(e) => setRecipientId(e.target.value)}
-              placeholder="ag_..."
+              placeholder={t.recipientPlaceholder}
               className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
             />
           </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">
-              Amount (COIN)
+              {t.amountCoin}
             </label>
             <input
               type="number"
@@ -116,13 +120,13 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
 
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">
-              Memo (optional)
+              {t.memoOptional}
             </label>
             <input
               type="text"
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
-              placeholder="What is this for?"
+              placeholder={t.memoPlaceholder}
               className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
             />
           </div>
@@ -134,7 +138,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
             disabled={submitting}
             className="w-full rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-2.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-40"
           >
-            {submitting ? "Sending..." : "Send Transfer"}
+            {submitting ? t.sending : t.sendTransfer}
           </button>
         </form>
       </div>

@@ -5,14 +5,15 @@ import logging
 import uuid
 
 import jcs
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from hub.i18n import I18nHTTPException
 
 logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
 from hub.database import get_db
 from hub.id_generators import generate_hub_msg_id
@@ -89,7 +90,7 @@ async def _create_contact_removed_notification(
 async def list_contacts(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -119,7 +120,7 @@ async def get_contact(
     agent_id: str,
     contact_agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -131,7 +132,7 @@ async def get_contact(
     )
     contact = result.scalar_one_or_none()
     if contact is None:
-        raise HTTPException(status_code=404, detail="Contact not found")
+        raise I18nHTTPException(status_code=404, message_key="contact_not_found")
 
     return ContactResponse(
         contact_agent_id=contact.contact_agent_id,
@@ -148,7 +149,7 @@ async def remove_contact(
     agent_id: str,
     contact_agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -161,7 +162,7 @@ async def remove_contact(
     )
     contact = result.scalar_one_or_none()
     if contact is None:
-        raise HTTPException(status_code=404, detail="Contact not found")
+        raise I18nHTTPException(status_code=404, message_key="contact_not_found")
 
     # Delete A→B
     await db.delete(contact)
@@ -197,24 +198,24 @@ async def add_block(
     agent_id: str,
     body: AddBlockRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
     # Owner must exist
     owner = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     if owner.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     if body.blocked_agent_id == agent_id:
-        raise HTTPException(status_code=400, detail="Cannot block yourself")
+        raise I18nHTTPException(status_code=400, message_key="cannot_block_yourself")
 
     # Target must exist
     result = await db.execute(
         select(Agent).where(Agent.agent_id == body.blocked_agent_id)
     )
     if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Target agent not found")
+        raise I18nHTTPException(status_code=404, message_key="target_agent_not_found")
 
     block = Block(owner_id=agent_id, blocked_agent_id=body.blocked_agent_id)
     db.add(block)
@@ -222,7 +223,7 @@ async def add_block(
         await db.flush()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Agent already blocked")
+        raise I18nHTTPException(status_code=409, message_key="agent_already_blocked")
 
     await db.commit()
     await db.refresh(block)
@@ -239,7 +240,7 @@ async def add_block(
 async def list_blocks(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -268,7 +269,7 @@ async def remove_block(
     agent_id: str,
     blocked_agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -280,7 +281,7 @@ async def remove_block(
     )
     block = result.scalar_one_or_none()
     if block is None:
-        raise HTTPException(status_code=404, detail="Block not found")
+        raise I18nHTTPException(status_code=404, message_key="block_not_found")
 
     await db.delete(block)
     await db.commit()
@@ -299,14 +300,14 @@ async def update_policy(
     agent_id: str,
     body: UpdatePolicyRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     agent.message_policy = body.message_policy
     await db.commit()
@@ -324,6 +325,6 @@ async def get_policy(
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     return PolicyResponse(message_policy=agent.message_policy.value)

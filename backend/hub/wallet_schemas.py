@@ -109,3 +109,43 @@ class WithdrawalCreateRequest(BaseModel):
 
 class WithdrawalRejectRequest(BaseModel):
     note: str | None = None
+
+
+# --- Stripe ---
+
+
+class StripeCheckoutRequest(BaseModel):
+    package_code: str = Field(..., min_length=1)
+    idempotency_key: str = Field(..., min_length=1)
+    quantity: int = Field(default=1, ge=1, le=100)
+
+
+class StripeCheckoutResponse(BaseModel):
+    topup_id: str
+    tx_id: str | None = None
+    checkout_session_id: str
+    checkout_url: str
+    expires_at: int | None = None
+    status: str
+
+
+class StripeSessionStatusResponse(BaseModel):
+    topup_id: str
+    tx_id: str | None = None
+    checkout_session_id: str
+    topup_status: str
+    payment_status: str
+    wallet_credited: bool
+    amount_minor: str
+    asset_code: str
+
+
+class StripePackageItem(BaseModel):
+    package_code: str
+    coin_amount_minor: str
+    fiat_amount: str
+    currency: str
+
+
+class StripePackageResponse(BaseModel):
+    packages: list[StripePackageItem]

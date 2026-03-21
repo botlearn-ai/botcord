@@ -1440,6 +1440,32 @@ async def test_inbox_includes_room_rule_and_text_hint(client: AsyncClient):
     assert message["room_id"] == room_id
     assert message["room_rule"] == "Only post deploy status updates."
     assert "[房间规则] Only post deploy status updates." in message["text"]
+    assert "[系统提示] 你在该群聊中的行为和回复必须遵循上述房间规则。" in message["text"]
+
+
+@pytest.mark.asyncio
+async def test_inbox_text_includes_topic_id(client: AsyncClient):
+    """Inbox flat text renders topic_id alongside topic."""
+    sk_a, a_id, a_key, a_token = await _create_agent(client, "alice")
+    sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
+
+    env = _build_envelope(sk_a, a_key, a_id, b_id, payload={"text": "hello"})
+    send_resp = await client.post(
+        "/hub/send?topic=translate_doc",
+        json=env,
+        headers=_auth_header(a_token),
+    )
+    assert send_resp.status_code == 202
+    topic_id = send_resp.json()["topic_id"]
+    assert topic_id is not None
+
+    inbox = await client.get("/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"})
+    assert inbox.status_code == 200
+    assert inbox.json()["count"] == 1
+    message = inbox.json()["messages"][0]
+    assert message["topic"] == "translate_doc"
+    assert message["topic_id"] == topic_id
+    assert f"【Topic: translate_doc | ID: {topic_id}】" in message["text"]
 
 
 @pytest.mark.asyncio

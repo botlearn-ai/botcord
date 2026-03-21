@@ -79,6 +79,11 @@ async def _register_and_verify(
     )
     assert resp.status_code == 200
     token = resp.json()["agent_token"]
+    claim_resp = await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert claim_resp.status_code == 200
     return agent_id, token
 
 
@@ -102,6 +107,36 @@ async def _fund_agent(client: AsyncClient, token: str, amount_minor: int):
     topup_id = resp.json()["topup_id"]
     resp = await client.post(f"/internal/wallet/topups/{topup_id}/complete")
     assert resp.status_code == 200
+
+
+async def _set_open_policy(client: AsyncClient, agent_id: str, token: str):
+    resp = await client.patch(
+        f"/registry/agents/{agent_id}/policy",
+        json={"message_policy": "open"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+
+
+async def _set_subscription_room_policy(
+    client: AsyncClient,
+    agent_id: str,
+    *,
+    allowed_to_create: bool,
+    max_active_rooms: int,
+    note: str | None = None,
+):
+    payload = {
+        "allowed_to_create": allowed_to_create,
+        "max_active_rooms": max_active_rooms,
+        "note": note,
+    }
+    resp = await client.put(
+        f"/internal/rooms/subscription-room-policies/{agent_id}",
+        json=payload,
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
 
 
 async def _create_product(
@@ -137,6 +172,25 @@ async def _subscribe(client: AsyncClient, token: str, product_id: str, key: str 
         headers=_auth(token),
     )
     return resp
+
+
+async def _create_room(
+    client: AsyncClient,
+    token: str,
+    *,
+    name: str,
+    required_subscription_product_id: str | None = None,
+):
+    payload = {"name": name}
+    if required_subscription_product_id is not None:
+        payload["required_subscription_product_id"] = required_subscription_product_id
+    resp = await client.post(
+        "/hub/rooms",
+        json=payload,
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
 
 
 async def _set_subscription_due(
@@ -434,3 +488,350 @@ async def test_archived_product_blocks_new_subscribe(client: AsyncClient):
     resp = await _subscribe(client, subscriber_token, product["product_id"])
     assert resp.status_code == 400
     assert "archived" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_subscribe_auto_joins_bound_private_room(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    subscriber_id, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Premium Room Access",
+        amount_minor=10000,
+        billing_interval="week",
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Premium Room",
+        required_subscription_product_id=product["product_id"],
+    )
+
+    await _fund_agent(client, subscriber_token, 20000)
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.get(f"/hub/rooms/{room['room_id']}", headers=_auth(subscriber_token))
+    assert resp.status_code == 200, resp.text
+    member_ids = {member["agent_id"] for member in resp.json()["members"]}
+    assert member_ids == {provider_id, subscriber_id}
+    assert resp.json()["required_subscription_product_id"] == product["product_id"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_subscription_revokes_gated_room_access(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    _, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Cancelable Room Access",
+        amount_minor=10000,
+        billing_interval="week",
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Cancelable Premium Room",
+        required_subscription_product_id=product["product_id"],
+    )
+
+    await _fund_agent(client, subscriber_token, 20000)
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    assert resp.status_code == 201, resp.text
+    subscription_id = resp.json()["subscription_id"]
+
+    resp = await client.post(
+        f"/subscriptions/{subscription_id}/cancel",
+        headers=_auth(subscriber_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "cancelled"
+
+    resp = await client.get(f"/hub/rooms/{room['room_id']}", headers=_auth(subscriber_token))
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_subscription_gated_room_blocks_unsubscribed_invite(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    subscriber_id, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+    await _set_open_policy(client, subscriber_id, subscriber_token)
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Invite Gated Access",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Invite Gated Room",
+        required_subscription_product_id=product["product_id"],
+    )
+
+    resp = await client.post(
+        f"/hub/rooms/{room['room_id']}/members",
+        json={"agent_id": subscriber_id},
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 403
+    assert "Active subscription required" in resp.json()["detail"]
+
+    await _fund_agent(client, subscriber_token, 10000)
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.get(f"/hub/rooms/{room['room_id']}", headers=_auth(subscriber_token))
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_update_room_rejects_enabling_subscription_gate_with_unsubscribed_members(
+    client: AsyncClient,
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_member, pub_member = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    member_id, member_token = await _register_and_verify(client, sk_member, pub_member, "Member")
+    await _set_open_policy(client, member_id, member_token)
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Retroactive Gate",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Initially Open Access Room",
+    )
+
+    resp = await client.post(
+        f"/hub/rooms/{room['room_id']}/members",
+        json={"agent_id": member_id},
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.patch(
+        f"/hub/rooms/{room['room_id']}",
+        json={"required_subscription_product_id": product["product_id"]},
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 400, resp.text
+    assert "All existing members must have an active subscription" in resp.json()["detail"]
+
+    resp = await client.get(f"/hub/rooms/{room['room_id']}", headers=_auth(member_token))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["required_subscription_product_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_gated_room_transfer_ownership_requires_product_owner(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    subscriber_id, subscriber_token = await _register_and_verify(client, sk_subscriber, pub_subscriber, "Subscriber")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Transfer Scoped Product",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Transfer Gated Room",
+        required_subscription_product_id=product["product_id"],
+    )
+
+    await _fund_agent(client, subscriber_token, 10000)
+    resp = await _subscribe(client, subscriber_token, product["product_id"])
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.post(
+        f"/hub/rooms/{room['room_id']}/transfer",
+        json={"new_owner_id": subscriber_id},
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 403
+    assert "must own" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_room_owner_must_own_required_subscription_product(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    sk_other, pub_other = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+    other_id, other_token = await _register_and_verify(client, sk_other, pub_other, "Other")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Owner Scoped Product",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    await _set_subscription_room_policy(
+        client, other_id, allowed_to_create=True, max_active_rooms=5
+    )
+
+    resp = await client.post(
+        "/hub/rooms",
+        json={
+            "name": "Bad Room",
+            "required_subscription_product_id": product["product_id"],
+        },
+        headers=_auth(other_token),
+    )
+    assert resp.status_code == 403
+    assert "must own" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_internal_subscription_room_policy_upsert_and_list(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    provider_id, _provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+
+    resp = await client.put(
+        f"/internal/rooms/subscription-room-policies/{provider_id}",
+        json={
+            "allowed_to_create": True,
+            "max_active_rooms": 3,
+            "note": "pilot allowlist",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["agent_id"] == provider_id
+    assert resp.json()["allowed_to_create"] is True
+    assert resp.json()["max_active_rooms"] == 3
+
+    resp = await client.get(f"/internal/rooms/subscription-room-policies/{provider_id}")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["note"] == "pilot allowlist"
+
+    resp = await client.get("/internal/rooms/subscription-room-policies")
+    assert resp.status_code == 200, resp.text
+    assert any(policy["agent_id"] == provider_id for policy in resp.json()["policies"])
+
+
+@pytest.mark.asyncio
+async def test_subscription_gated_room_requires_creator_policy(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Policy Required Product",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+
+    resp = await client.post(
+        "/hub/rooms",
+        json={
+            "name": "Blocked Premium Room",
+            "required_subscription_product_id": product["product_id"],
+        },
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 403
+    assert "not allowed" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_room_to_subscription_gate_requires_creator_policy(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Policy Required Update Product",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Plain Private Room",
+    )
+
+    resp = await client.patch(
+        f"/hub/rooms/{room['room_id']}",
+        json={"required_subscription_product_id": product["product_id"]},
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 403
+    assert "not allowed" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_subscription_gated_room_quota_enforced(client: AsyncClient):
+    sk_provider, pub_provider = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(client, sk_provider, pub_provider, "Provider")
+
+    product = await _create_product(
+        client,
+        provider_token,
+        name="Quota Product",
+        amount_minor=5000,
+        billing_interval="week",
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=1
+    )
+
+    room_one = await _create_room(
+        client,
+        provider_token,
+        name="First Gated Room",
+        required_subscription_product_id=product["product_id"],
+    )
+    assert room_one["required_subscription_product_id"] == product["product_id"]
+
+    resp = await client.post(
+        "/hub/rooms",
+        json={
+            "name": "Second Gated Room",
+            "required_subscription_product_id": product["product_id"],
+        },
+        headers=_auth(provider_token),
+    )
+    assert resp.status_code == 403
+    assert "quota exceeded" in resp.json()["detail"]

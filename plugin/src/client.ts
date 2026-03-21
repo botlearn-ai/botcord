@@ -233,6 +233,32 @@ export class BotCordClient {
     return (await resp.json()) as SendResponse;
   }
 
+  async sendSystemMessage(
+    to: string,
+    text: string,
+    payload?: Record<string, unknown>,
+    options?: { topic?: string },
+  ): Promise<SendResponse> {
+    const envelope = buildSignedEnvelope({
+      from: this.agentId,
+      to,
+      type: "system",
+      payload: {
+        text,
+        ...(payload || {}),
+      },
+      privateKey: this.privateKey,
+      keyId: this.keyId,
+      topic: options?.topic,
+    });
+    const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
+    const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
+      method: "POST",
+      body: JSON.stringify(envelope),
+    });
+    return (await resp.json()) as SendResponse;
+  }
+
   async sendEnvelope(envelope: BotCordMessageEnvelope, topic?: string): Promise<SendResponse> {
     const topicQuery = topic ? `?topic=${encodeURIComponent(topic)}` : "";
     const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
@@ -342,7 +368,8 @@ export class BotCordClient {
 
   async listContacts(): Promise<ContactInfo[]> {
     const resp = await this.hubFetch(`/registry/agents/${this.agentId}/contacts`);
-    return (await resp.json()) as ContactInfo[];
+    const body = await resp.json();
+    return (body.contacts ?? body) as ContactInfo[];
   }
 
   async removeContact(contactAgentId: string): Promise<void> {
@@ -403,8 +430,11 @@ export class BotCordClient {
     rule?: string;
     visibility?: "private" | "public";
     join_policy?: "invite_only" | "open";
-    default_send?: boolean;
+    required_subscription_product_id?: string;
     max_members?: number;
+    default_send?: boolean;
+    default_invite?: boolean;
+    slow_mode_seconds?: number;
     member_ids?: string[];
   }): Promise<RoomInfo> {
     const resp = await this.hubFetch("/hub/rooms", {
@@ -424,10 +454,13 @@ export class BotCordClient {
     return (await resp.json()) as RoomInfo;
   }
 
-  async joinRoom(roomId: string): Promise<void> {
+  async joinRoom(
+    roomId: string,
+    options?: { can_send?: boolean; can_invite?: boolean },
+  ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/members`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: this.agentId }),
+      body: JSON.stringify({ agent_id: this.agentId, ...options }),
     });
   }
 
@@ -441,10 +474,14 @@ export class BotCordClient {
     return (data as any).members ?? [];
   }
 
-  async inviteToRoom(roomId: string, agentId: string): Promise<void> {
+  async inviteToRoom(
+    roomId: string,
+    agentId: string,
+    options?: { can_send?: boolean; can_invite?: boolean },
+  ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/members`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: agentId }),
+      body: JSON.stringify({ agent_id: agentId, ...options }),
     });
   }
 
@@ -462,7 +499,11 @@ export class BotCordClient {
       rule?: string | null;
       visibility?: string;
       join_policy?: string;
+      required_subscription_product_id?: string | null;
+      max_members?: number | null;
       default_send?: boolean;
+      default_invite?: boolean;
+      slow_mode_seconds?: number | null;
     },
   ): Promise<RoomInfo> {
     const resp = await this.hubFetch(`/hub/rooms/${roomId}`, {
@@ -506,6 +547,13 @@ export class BotCordClient {
     await this.hubFetch(`/hub/rooms/${roomId}/permissions`, {
       method: "POST",
       body: JSON.stringify({ agent_id: agentId, ...permissions }),
+    });
+  }
+
+  async muteRoom(roomId: string, muted: boolean): Promise<void> {
+    await this.hubFetch(`/hub/rooms/${roomId}/mute`, {
+      method: "POST",
+      body: JSON.stringify({ muted }),
     });
   }
 
@@ -576,6 +624,9 @@ export class BotCordClient {
     to_agent_id: string;
     amount_minor: string;
     memo?: string;
+    reference_type?: string;
+    reference_id?: string;
+    metadata?: Record<string, unknown>;
     idempotency_key?: string;
   }): Promise<WalletTransaction> {
     const resp = await this.hubFetch("/wallet/transfers", {
@@ -588,6 +639,7 @@ export class BotCordClient {
   async createTopup(params: {
     amount_minor: string;
     channel?: string;
+    metadata?: Record<string, unknown>;
     idempotency_key?: string;
   }): Promise<TopupResponse> {
     const resp = await this.hubFetch("/wallet/topups", {
@@ -599,8 +651,9 @@ export class BotCordClient {
 
   async createWithdrawal(params: {
     amount_minor: string;
+    fee_minor?: string;
     destination_type?: string;
-    destination?: Record<string, string>;
+    destination?: Record<string, unknown>;
     idempotency_key?: string;
   }): Promise<WithdrawalResponse> {
     const resp = await this.hubFetch("/wallet/withdrawals", {
@@ -613,6 +666,13 @@ export class BotCordClient {
   async getWalletTransaction(txId: string): Promise<WalletTransaction> {
     const resp = await this.hubFetch(`/wallet/transactions/${txId}`);
     return (await resp.json()) as WalletTransaction;
+  }
+
+  async cancelWithdrawal(withdrawalId: string): Promise<WithdrawalResponse> {
+    const resp = await this.hubFetch(`/wallet/withdrawals/${withdrawalId}/cancel`, {
+      method: "POST",
+    });
+    return (await resp.json()) as WithdrawalResponse;
   }
 
   // ── Subscriptions ───────────────────────────────────────────
@@ -633,12 +693,14 @@ export class BotCordClient {
 
   async listMySubscriptionProducts(): Promise<SubscriptionProduct[]> {
     const resp = await this.hubFetch("/subscriptions/products/me");
-    return (await resp.json()) as SubscriptionProduct[];
+    const body = await resp.json();
+    return body.products as SubscriptionProduct[];
   }
 
   async listSubscriptionProducts(): Promise<SubscriptionProduct[]> {
     const resp = await this.hubFetch("/subscriptions/products");
-    return (await resp.json()) as SubscriptionProduct[];
+    const body = await resp.json();
+    return body.products as SubscriptionProduct[];
   }
 
   async archiveSubscriptionProduct(productId: string): Promise<SubscriptionProduct> {
@@ -648,21 +710,27 @@ export class BotCordClient {
     return (await resp.json()) as SubscriptionProduct;
   }
 
-  async subscribeToProduct(productId: string): Promise<Subscription> {
+  async subscribeToProduct(productId: string, idempotencyKey?: string): Promise<Subscription> {
+    const body: Record<string, string> = {};
+    if (idempotencyKey) body.idempotency_key = idempotencyKey;
     const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribe`, {
       method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
     });
     return (await resp.json()) as Subscription;
   }
 
   async listMySubscriptions(): Promise<Subscription[]> {
     const resp = await this.hubFetch("/subscriptions/me");
-    return (await resp.json()) as Subscription[];
+    const body = await resp.json();
+    return body.subscriptions as Subscription[];
   }
 
   async listProductSubscribers(productId: string): Promise<Subscription[]> {
     const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribers`);
-    return (await resp.json()) as Subscription[];
+    const body = await resp.json();
+    return body.subscriptions as Subscription[];
   }
 
   async cancelSubscription(subscriptionId: string): Promise<Subscription> {

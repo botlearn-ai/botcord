@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
+from hub.i18n import I18nHTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent
 from hub.database import get_db
 from hub.enums import TopicStatus
 from hub.id_generators import generate_topic_id
@@ -39,7 +40,7 @@ async def _load_room_with_members(db: AsyncSession, room_id: str) -> Room:
     )
     room = result.scalar_one_or_none()
     if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
     return room
 
 
@@ -48,7 +49,7 @@ def _require_membership(room: Room, agent_id: str) -> RoomMember:
     for m in room.members:
         if m.agent_id == agent_id:
             return m
-    raise HTTPException(status_code=403, detail="Not a member of this room")
+    raise I18nHTTPException(status_code=403, message_key="not_a_member")
 
 
 def _build_topic_response(topic: Topic) -> TopicResponse:
@@ -87,7 +88,7 @@ async def create_topic(
     room_id: str,
     body: CreateTopicRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Create a topic in a room. Room membership required."""
     room = await _load_room_with_members(db, room_id)
@@ -107,9 +108,9 @@ async def create_topic(
             db.add(topic)
             await db.flush()
     except IntegrityError:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=409,
-            detail="A topic with this title already exists in this room",
+            message_key="topic_title_duplicate",
         )
 
     await db.commit()
@@ -122,7 +123,7 @@ async def list_topics(
     room_id: str,
     status: TopicStatus | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_claimed_agent),
 ):
     """List topics in a room. Room membership required."""
     room = await _load_room_with_members(db, room_id)
@@ -146,7 +147,7 @@ async def get_topic(
     room_id: str,
     topic_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Get topic details. Room membership required."""
     room = await _load_room_with_members(db, room_id)
@@ -160,7 +161,7 @@ async def get_topic(
     )
     topic = result.scalar_one_or_none()
     if topic is None:
-        raise HTTPException(status_code=404, detail="Topic not found")
+        raise I18nHTTPException(status_code=404, message_key="topic_not_found")
 
     return _build_topic_response(topic)
 
@@ -171,7 +172,7 @@ async def update_topic(
     topic_id: str,
     body: UpdateTopicRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Update a topic.
 
@@ -190,7 +191,7 @@ async def update_topic(
     )
     topic = result.scalar_one_or_none()
     if topic is None:
-        raise HTTPException(status_code=404, detail="Topic not found")
+        raise I18nHTTPException(status_code=404, message_key="topic_not_found")
 
     now = datetime.datetime.now(datetime.timezone.utc)
 
@@ -200,9 +201,9 @@ async def update_topic(
             current_agent != topic.creator_id
             and member.role not in (RoomRole.owner, RoomRole.admin)
         ):
-            raise HTTPException(
+            raise I18nHTTPException(
                 status_code=403,
-                detail="Only the creator, admin, or owner can update title/description",
+                message_key="topic_update_title_desc_forbidden",
             )
 
     if "title" in body.model_fields_set and body.title is not None:
@@ -221,9 +222,9 @@ async def update_topic(
         ):
             new_goal = body.goal if "goal" in body.model_fields_set else None
             if not new_goal:
-                raise HTTPException(
+                raise I18nHTTPException(
                     status_code=400,
-                    detail="Reactivating a terminated topic requires a new goal",
+                    message_key="topic_reactivation_requires_goal",
                 )
             topic.goal = new_goal
             topic.closed_at = None
@@ -245,9 +246,9 @@ async def update_topic(
     try:
         await db.commit()
     except IntegrityError:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=409,
-            detail="A topic with this title already exists in this room",
+            message_key="topic_title_duplicate",
         )
 
     await db.refresh(topic)
@@ -259,15 +260,15 @@ async def delete_topic(
     room_id: str,
     topic_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Delete a topic. Owner or admin only."""
     room = await _load_room_with_members(db, room_id)
     member = _require_membership(room, current_agent)
 
     if member.role not in (RoomRole.owner, RoomRole.admin):
-        raise HTTPException(
-            status_code=403, detail="Only owner or admin can delete topics"
+        raise I18nHTTPException(
+            status_code=403, message_key="only_owner_admin_can_delete_topics"
         )
 
     result = await db.execute(
@@ -278,7 +279,7 @@ async def delete_topic(
     )
     topic = result.scalar_one_or_none()
     if topic is None:
-        raise HTTPException(status_code=404, detail="Topic not found")
+        raise I18nHTTPException(status_code=404, message_key="topic_not_found")
 
     await db.delete(topic)
     await db.commit()

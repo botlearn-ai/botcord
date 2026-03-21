@@ -61,3 +61,21 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+.dashboard-skeleton-block {
+  background-color: rgba(148, 163, 184, 0.12);
+  animation: dashboard-skeleton-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes dashboard-skeleton-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    background-color: rgba(148, 163, 184, 0.1);
+  }
+
+  50% {
+    opacity: 0.9;
+    background-color: rgba(148, 163, 184, 0.18);
+  }
+}

@@ -1,0 +1,145 @@
+name: 'Feishu Notification'
+description: '发送飞书卡片通知'
+
+inputs:
+  webhook_url:
+    description: '飞书 Webhook URL'
+    required: true
+  title:
+    description: '卡片标题'
+    required: true
+  color:
+    description: '卡片颜色 (green/red/grey/blue)'
+    required: false
+    default: 'blue'
+  fields:
+    description: 'JSON 格式的字段数组，如 [{"label":"状态","value":"成功"},{"label":"分支","value":"main"}]'
+    required: true
+  extra_elements:
+    description: '额外的卡片元素 JSON 数组（可选）'
+    required: false
+    default: '[]'
+  commit_msg:
+    description: '提交信息（可选，会显示在 hr 之后）'
+    required: false
+    default: ''
+  buttons:
+    description: 'JSON 格式的按钮数组，如 [{"text":"查看详情","url":"https://...","type":"primary"}]'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Send Feishu notification
+      shell: bash
+      env:
+        WEBHOOK_URL: ${{ inputs.webhook_url }}
+        TITLE: ${{ inputs.title }}
+        COLOR: ${{ inputs.color }}
+        FIELDS: ${{ inputs.fields }}
+        EXTRA_ELEMENTS: ${{ inputs.extra_elements }}
+        COMMIT_MSG: ${{ inputs.commit_msg }}
+        BUTTONS: ${{ inputs.buttons }}
+      run: |
+        # 跳过没有配置 webhook 的情况
+        if [ -z "$WEBHOOK_URL" ]; then
+          echo "⚠️ Webhook URL not configured, skipping notification"
+          exit 0
+        fi
+
+        # 转义 JSON 特殊字符
+        escape_json() {
+          printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//'
+        }
+
+        # 构建 fields 元素
+        build_fields() {
+          echo "$FIELDS" | jq -r '
+            [.[] | {
+              "is_short": true,
+              "text": {
+                "tag": "lark_md",
+                "content": "**\(.label)**\n\(.value)"
+              }
+            }]
+          '
+        }
+
+        # 构建 buttons 元素
+        build_buttons() {
+          echo "$BUTTONS" | jq -r '
+            [.[] | {
+              "tag": "button",
+              "text": {
+                "tag": "plain_text",
+                "content": .text
+              },
+              "type": (.type // "default"),
+              "url": .url
+            }]
+          '
+        }
+
+        FIELDS_JSON=$(build_fields)
+        BUTTONS_JSON=$(build_buttons)
+
+        if [ "$EXTRA_ELEMENTS" != "[]" ] && [ -n "$EXTRA_ELEMENTS" ]; then
+          EXTRA_JSON=$(echo "$EXTRA_ELEMENTS" | jq -c '.')
+        else
+          EXTRA_JSON="[]"
+        fi
+
+        # 处理提交消息
+        if [ -n "$COMMIT_MSG" ]; then
+          COMMIT_MSG_ESCAPED=$(escape_json "$COMMIT_MSG")
+          COMMIT_ELEMENT='[{"tag":"hr"},{"tag":"markdown","content":"'"${COMMIT_MSG_ESCAPED}"'"}]'
+        else
+          COMMIT_ELEMENT="[]"
+        fi
+
+        # 构建完整的 payload
+        PAYLOAD=$(jq -n \
+          --arg title "$TITLE" \
+          --arg color "$COLOR" \
+          --argjson fields "$FIELDS_JSON" \
+          --argjson extra "$EXTRA_JSON" \
+          --argjson commit "$COMMIT_ELEMENT" \
+          --argjson buttons "$BUTTONS_JSON" \
+          '{
+            "msg_type": "interactive",
+            "card": {
+              "config": {
+                "wide_screen_mode": true,
+                "enable_forward": true
+              },
+              "header": {
+                "title": {
+                  "tag": "plain_text",
+                  "content": $title
+                },
+                "template": $color
+              },
+              "elements": (
+                [{"tag": "div", "fields": $fields}] +
+                $extra +
+                $commit +
+                [{"tag": "action", "actions": $buttons}]
+              )
+            }
+          }'
+        )
+
+        echo "📤 Sending Feishu notification..."
+        RESPONSE=$(curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -d "${PAYLOAD}" \
+          "${WEBHOOK_URL}")
+
+        echo "Response: $RESPONSE"
+
+        if echo "$RESPONSE" | jq -e '.code == 0' > /dev/null 2>&1; then
+          echo "✅ Notification sent successfully"
+        else
+          echo "⚠️ Notification may have failed"
+          echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
+        fi

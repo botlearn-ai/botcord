@@ -12,7 +12,7 @@ from nacl.signing import SigningKey
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from hub.models import Base, Endpoint, MessageRecord
+from hub.models import Agent, Base, Endpoint, MessageRecord
 
 # ---------------------------------------------------------------------------
 # Fixtures — in-memory SQLite database + ASGI test client
@@ -1371,6 +1371,21 @@ async def test_register_agent_with_bio(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_register_agent_assigns_claim_code(client: AsyncClient, db_session: AsyncSession):
+    sk, pubkey_str = _make_keypair()
+    resp = await client.post(
+        "/registry/agents",
+        json={"display_name": "claim-code-agent", "pubkey": pubkey_str, "bio": "Has claim code"},
+    )
+    assert resp.status_code == 201
+    agent_id = resp.json()["agent_id"]
+
+    result = await db_session.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one()
+    assert agent.claim_code.startswith("clm_")
+
+
+@pytest.mark.asyncio
 async def test_register_agent_without_bio(client: AsyncClient):
     """Registering without bio should return 422 since bio is now required."""
     sk, pubkey_str = _make_keypair()
@@ -1539,3 +1554,91 @@ async def test_endpoint_status_deprecation_headers(client: AsyncClient, db_sessi
     )
     assert resp.status_code == 200
     assert resp.headers.get("Deprecation") == "true"
+
+
+
+# ===========================================================================
+# Claim context tests
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_claim_context_success(client: AsyncClient):
+    sk, pubkey_str = _make_keypair()
+    agent_id, _, _ = await _register_and_verify(client, sk, pubkey_str, display_name="Claim Agent")
+
+    resp = await client.get(f"/registry/agents/{agent_id}/claim-context")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent_id"] == agent_id
+    assert data["display_name"] == "Claim Agent"
+
+
+@pytest.mark.asyncio
+async def test_get_claim_context_not_found(client: AsyncClient):
+    resp = await client.get("/registry/agents/ag_missing/claim-context")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_claim_context_invalid_agent_id(client: AsyncClient):
+    resp = await client.get("/registry/agents/not_agent_id/claim-context")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_claim_link_success(client: AsyncClient):
+    sk, pubkey_str = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey_str, display_name="Claim Link Agent")
+
+    resp = await client.get(
+        f"/registry/agents/{agent_id}/claim-link",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent_id"] == agent_id
+    assert data["display_name"] == "Claim Link Agent"
+    assert data["claim_code"].startswith("clm_")
+    assert data["claim_url"].endswith(f"/agents/claim/{data['claim_code']}")
+
+
+@pytest.mark.asyncio
+async def test_get_claim_link_forbidden_when_not_owner(client: AsyncClient):
+    sk1, pubkey1 = _make_keypair()
+    agent_id_1, _, token_1 = await _register_and_verify(client, sk1, pubkey1)
+
+    sk2, pubkey2 = _make_keypair()
+    _, _, token_2 = await _register_and_verify(client, sk2, pubkey2)
+
+    resp = await client.get(
+        f"/registry/agents/{agent_id_1}/claim-link",
+        headers=_auth_header(token_2),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_claim_status_and_claim_endpoint(client: AsyncClient):
+    sk, pubkey = _make_keypair()
+    agent_id, _, token = await _register_and_verify(client, sk, pubkey, display_name="Claimable Agent")
+
+    status_before = await client.get(f"/registry/agents/{agent_id}/claim-status")
+    assert status_before.status_code == 200
+    assert status_before.json()["claimed"] is False
+    assert status_before.json()["claimed_at"] is None
+
+    claim_resp = await client.post(
+        f"/registry/agents/{agent_id}/claim",
+        headers=_auth_header(token),
+    )
+    assert claim_resp.status_code == 200
+    claim_data = claim_resp.json()
+    assert claim_data["agent_id"] == agent_id
+    assert claim_data["claimed"] is True
+    assert claim_data["claimed_at"] is not None
+
+    status_after = await client.get(f"/registry/agents/{agent_id}/claim-status")
+    assert status_after.status_code == 200
+    assert status_after.json()["claimed"] is True
+    assert status_after.json()["claimed_at"] is not None

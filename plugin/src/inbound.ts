@@ -2,11 +2,10 @@
  * Inbound message dispatch — shared by websocket and polling paths.
  * Converts BotCord messages to OpenClaw inbound format.
  */
-import { readFile, readdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
 import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
 import { buildSessionKey } from "./session-key.js";
+import { loadSessionStore } from "openclaw/plugin-sdk/mattermost";
 import type { InboxMessage, MessageType } from "./types.js";
 
 // Envelope types that count as notifications rather than normal messages
@@ -245,53 +244,93 @@ type DeliveryContext = {
 };
 
 /**
- * Read deliveryContext for a session key from the session store on disk.
- * First checks the current agent's store, then scans all agent stores
- * (the session key may belong to a different agent than the one running
- * this plugin).
- * Returns undefined when the session has no recorded delivery route.
+ * Parse a session key like "agent:pm:telegram:direct:7904063707" into a
+ * DeliveryContext.  Returns undefined if the key doesn't contain a
+ * recognisable channel segment.
+ *
+ * Supported formats:
+ *   agent:<agentName>:<channel>:direct:<peerId>
+ *   agent:<agentName>:<channel>:group:<groupId>
  */
-async function resolveSessionDeliveryContext(
+function parseSessionKeyDeliveryContext(sessionKey: string): DeliveryContext | undefined {
+  // e.g. ["agent", "pm", "telegram", "direct", "7904063707"]
+  const parts = sessionKey.split(":");
+  if (parts.length < 5 || parts[0] !== "agent") return undefined;
+
+  const agentName = parts[1]; // e.g. "pm"
+  const channel = parts[2];   // e.g. "telegram"
+  if (!channel) return undefined;
+
+  const peerId = parts.slice(4).join(":"); // handle colons in id
+  if (!peerId) return undefined;
+
+  return {
+    channel,
+    to: `${channel}:${peerId}`,
+    accountId: agentName,
+  };
+}
+
+function parseSessionStoreDeliveryContext(
   core: ReturnType<typeof getBotCordRuntime>,
   cfg: any,
   sessionKey: string,
-): Promise<DeliveryContext | undefined> {
-  const tryStore = async (path: string): Promise<DeliveryContext | undefined> => {
-    try {
-      const raw = await readFile(path, "utf-8");
-      const store: Record<string, { deliveryContext?: DeliveryContext }> =
-        JSON.parse(raw);
-      const entry = store[sessionKey];
-      if (entry?.deliveryContext?.channel && entry.deliveryContext.to) {
-        return entry.deliveryContext;
-      }
-    } catch {
-      // store may not exist yet
-    }
-    return undefined;
-  };
-
-  // 1. Try the current agent's store first (fast path)
+): DeliveryContext[] {
   try {
-    const storePath = core.channel.session.resolveStorePath(cfg.session?.store);
-    const result = await tryStore(storePath);
-    if (result) return result;
+    const storePath = core.channel.session.resolveStorePath(cfg);
+    if (!storePath) return [];
 
-    // 2. Scan sibling agent stores: walk up to the agents/ dir and check each
-    //    storePath is typically  .../.openclaw/agents/<name>/sessions/sessions.json
-    const agentsDir = dirname(dirname(dirname(storePath)));
-    const entries = await readdir(agentsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const candidate = join(agentsDir, entry.name, "sessions", "sessions.json");
-      if (candidate === storePath) continue; // already checked
-      const result = await tryStore(candidate);
-      if (result) return result;
+    const store = loadSessionStore(storePath);
+    const trimmedKey = sessionKey.trim();
+    const normalizedKey = trimmedKey.toLowerCase();
+    let existing = store[normalizedKey] ?? store[trimmedKey];
+    let existingUpdatedAt = existing?.updatedAt ?? 0;
+
+    // Legacy stores may contain differently-cased keys for the same session.
+    // Prefer the most recently updated matching entry.
+    for (const [candidateKey, candidateEntry] of Object.entries(store)) {
+      if (candidateKey.toLowerCase() !== normalizedKey) continue;
+      const candidateUpdatedAt = candidateEntry?.updatedAt ?? 0;
+      if (!existing || candidateUpdatedAt > existingUpdatedAt) {
+        existing = candidateEntry;
+        existingUpdatedAt = candidateUpdatedAt;
+      }
     }
-  } catch {
-    // best-effort
+    if (!existing) return [];
+
+    const lastRoute = {
+      channel: existing.lastChannel,
+      to: existing.lastTo,
+      accountId: existing.lastAccountId,
+      threadId: existing.lastThreadId ?? existing.origin?.threadId,
+    };
+    const candidates: DeliveryContext[] = [];
+    for (const ctx of [existing.deliveryContext, lastRoute]) {
+      if (!ctx?.channel || !ctx?.to) continue;
+      const normalized: DeliveryContext = {
+        channel: String(ctx.channel),
+        to: String(ctx.to),
+      };
+      if (ctx.accountId != null) normalized.accountId = String(ctx.accountId);
+      if (ctx.threadId != null) normalized.threadId = String(ctx.threadId);
+      candidates.push(normalized);
+    }
+
+    // Deduplicate identical contexts while preserving order.
+    const seen = new Set<string>();
+    return candidates.filter((ctx) => {
+      const key = `${ctx.channel}|${ctx.to}|${ctx.accountId ?? ""}|${ctx.threadId ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  } catch (err: any) {
+    console.warn(
+      `[botcord] notifySession ${sessionKey}: failed to read deliveryContext from session store:`,
+      err?.message ?? err,
+    );
+    return [];
   }
-  return undefined;
 }
 
 /** Channel name → runtime send function dispatcher. */
@@ -314,8 +353,8 @@ function resolveChannelSendFn(
 
 /**
  * Deliver a notification message directly to the channel associated with
- * the target session (looked up via deliveryContext in the session store).
- * Does not trigger an agent turn — just sends the text.
+ * the target session. Prefer deriving target from session key; fallback to
+ * session store deliveryContext when direct routing is unavailable.
  */
 export async function deliverNotification(
   core: ReturnType<typeof getBotCordRuntime>,
@@ -323,15 +362,35 @@ export async function deliverNotification(
   sessionKey: string,
   text: string,
 ): Promise<void> {
-  const delivery = await resolveSessionDeliveryContext(core, cfg, sessionKey);
+  const deliveryFromKey = parseSessionKeyDeliveryContext(sessionKey);
+  const storeCandidates = parseSessionStoreDeliveryContext(core, cfg, sessionKey);
+  const candidates = [
+    ...(deliveryFromKey ? [deliveryFromKey] : []),
+    ...storeCandidates,
+  ];
+  let delivery: DeliveryContext | undefined;
+  let sendFn: ChannelSendFn | undefined;
+
+  for (const candidate of candidates) {
+    if (!delivery) delivery = candidate;
+    const resolved = resolveChannelSendFn(core, candidate.channel);
+    if (resolved) {
+      delivery = candidate;
+      sendFn = resolved;
+      break;
+    }
+  }
+
   if (!delivery) {
     console.warn(
-      `[botcord] notifySession ${sessionKey} has no deliveryContext — skipping notification`,
+      `[botcord] notifySession ${sessionKey}: cannot derive delivery target from session key or session store — skipping notification`,
     );
     return;
   }
 
-  const sendFn = resolveChannelSendFn(core, delivery.channel);
+  if (!sendFn) {
+    sendFn = resolveChannelSendFn(core, delivery.channel);
+  }
   if (!sendFn) {
     console.warn(
       `[botcord] unsupported notify channel "${delivery.channel}" — skipping notification`,

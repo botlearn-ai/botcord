@@ -11,12 +11,13 @@ from collections import defaultdict, deque
 from cachetools import TTLCache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from hub.i18n import I18nHTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_agent, verify_agent_token
+from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent, verify_agent_token
 from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.database import get_db
@@ -134,7 +135,7 @@ def _check_rate_limit(agent_id: str, target_id: str | None = None) -> None:
     while window and window[0] <= now - 60:
         window.popleft()
     if len(window) >= RATE_LIMIT_PER_MINUTE:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        raise I18nHTTPException(status_code=429, message_key="rate_limit_exceeded")
     window.append(now)
 
     # --- Per-pair limit (sender → target) ---
@@ -144,9 +145,10 @@ def _check_rate_limit(agent_id: str, target_id: str | None = None) -> None:
         while pair_window and pair_window[0] <= now - 60:
             pair_window.popleft()
         if len(pair_window) >= PAIR_RATE_LIMIT_PER_MINUTE:
-            raise HTTPException(
+            raise I18nHTTPException(
                 status_code=429,
-                detail=f"Conversation rate limit exceeded ({PAIR_RATE_LIMIT_PER_MINUTE} msg/min per conversation)",
+                message_key="conversation_rate_limit_exceeded",
+                limit=PAIR_RATE_LIMIT_PER_MINUTE,
             )
         pair_window.append(now)
 
@@ -155,11 +157,11 @@ async def _verify_envelope(envelope: MessageEnvelope, db: AsyncSession) -> None:
     """Verify signature, payload hash, and timestamp. Raises HTTPException on failure."""
     # Timestamp check
     if not check_timestamp(envelope.ts):
-        raise HTTPException(status_code=400, detail="Timestamp out of range")
+        raise I18nHTTPException(status_code=400, message_key="timestamp_out_of_range")
 
     # Payload hash check
     if not verify_payload_hash(envelope.payload, envelope.payload_hash):
-        raise HTTPException(status_code=400, detail="Payload hash mismatch")
+        raise I18nHTTPException(status_code=400, message_key="payload_hash_mismatch")
 
     # Fetch sender's active signing key by key_id
     result = await db.execute(
@@ -170,16 +172,16 @@ async def _verify_envelope(envelope: MessageEnvelope, db: AsyncSession) -> None:
     )
     signing_key = result.scalar_one_or_none()
     if signing_key is None:
-        raise HTTPException(status_code=400, detail="Signing key not found or not active")
+        raise I18nHTTPException(status_code=400, message_key="signing_key_not_found_or_inactive")
 
     # Verify sender owns this key
     if signing_key.agent_id != envelope.from_:
-        raise HTTPException(status_code=400, detail="Key does not belong to sender")
+        raise I18nHTTPException(status_code=400, message_key="key_does_not_belong_to_sender")
 
     # Extract base64 pubkey
     pubkey_b64 = signing_key.pubkey[len("ed25519:"):]
     if not verify_envelope_sig(envelope, pubkey_b64):
-        raise HTTPException(status_code=400, detail="Signature verification failed")
+        raise I18nHTTPException(status_code=400, message_key="signature_verification_failed")
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +328,7 @@ async def _send_direct_message(
     )
     receiver = result.scalar_one_or_none()
     if receiver is None:
-        raise HTTPException(status_code=404, detail="UNKNOWN_AGENT")
+        raise I18nHTTPException(status_code=404, message_key="unknown_agent")
 
     # Block check: receiver blocked sender?
     block_result = await db.execute(
@@ -336,7 +338,7 @@ async def _send_direct_message(
         )
     )
     if block_result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=403, detail="BLOCKED")
+        raise I18nHTTPException(status_code=403, message_key="blocked")
 
     # Policy check: contacts_only requires sender in receiver's contact list
     # contact_request type bypasses this check
@@ -349,13 +351,13 @@ async def _send_direct_message(
                 )
             )
             if contact_result.scalar_one_or_none() is None:
-                raise HTTPException(status_code=403, detail="NOT_IN_CONTACTS")
+                raise I18nHTTPException(status_code=403, message_key="not_in_contacts")
 
     # Handle contact_request: create/update ContactRequest record
     if envelope.type == MessageType.contact_request:
         # Self-request not allowed
         if envelope.from_ == envelope.to:
-            raise HTTPException(status_code=400, detail="Cannot send contact request to yourself")
+            raise I18nHTTPException(status_code=400, message_key="cannot_send_contact_request_to_self")
 
         # Check if already in contacts
         contact_result = await db.execute(
@@ -365,7 +367,7 @@ async def _send_direct_message(
             )
         )
         if contact_result.scalar_one_or_none() is not None:
-            raise HTTPException(status_code=409, detail="Already in contacts")
+            raise I18nHTTPException(status_code=409, message_key="already_in_contacts")
 
         # Check existing request
         existing_result = await db.execute(
@@ -377,14 +379,14 @@ async def _send_direct_message(
         existing_req = existing_result.scalar_one_or_none()
         if existing_req is not None:
             if existing_req.state == ContactRequestState.pending:
-                raise HTTPException(status_code=409, detail="Contact request already pending")
+                raise I18nHTTPException(status_code=409, message_key="contact_request_already_pending")
             elif existing_req.state == ContactRequestState.rejected:
                 # Allow re-request: reset to pending
                 existing_req.state = ContactRequestState.pending
                 existing_req.resolved_at = None
                 existing_req.message = envelope.payload.get("message")
             elif existing_req.state == ContactRequestState.accepted:
-                raise HTTPException(status_code=409, detail="Contact request already accepted")
+                raise I18nHTTPException(status_code=409, message_key="contact_request_already_accepted")
         else:
             cr = ContactRequest(
                 from_agent_id=envelope.from_,
@@ -492,9 +494,10 @@ def _check_slow_mode(room: Room, member: RoomMember) -> None:
         elapsed = now - last
         remaining = room.slow_mode_seconds - elapsed
         if remaining > 0:
-            raise HTTPException(
+            raise I18nHTTPException(
                 status_code=429,
-                detail=f"Slow mode: wait {remaining:.0f}s before sending again",
+                message_key="slow_mode_wait",
+                remaining=f"{remaining:.0f}",
             )
 
 
@@ -509,7 +512,7 @@ def _check_duplicate_content(room_id: str, sender_id: str, payload: dict) -> Non
     payload_bytes = json.dumps(payload, sort_keys=True).encode()
     content_hash = hashlib.sha256(payload_bytes).hexdigest()
     if _last_msg_hash.get(key) == content_hash:
-        raise HTTPException(status_code=429, detail="Duplicate content: consecutive identical messages are not allowed")
+        raise I18nHTTPException(status_code=429, message_key="duplicate_content")
     _last_msg_hash[key] = content_hash
 
 
@@ -531,7 +534,7 @@ async def _send_room_message(
     )
     room = result.scalar_one_or_none()
     if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
     # Verify sender is a member
     sender_member = None
@@ -540,11 +543,11 @@ async def _send_room_message(
             sender_member = m
             break
     if sender_member is None:
-        raise HTTPException(status_code=403, detail="Not a member of this room")
+        raise I18nHTTPException(status_code=403, message_key="not_a_member")
 
     # Permission check
     if not _can_send(room, sender_member):
-        raise HTTPException(status_code=403, detail="Only owner/admin can post to this room")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_admin_can_post")
 
     # Slow mode check (owner/admin exempt)
     _check_slow_mode(room, sender_member)
@@ -652,13 +655,13 @@ async def send_message(
     envelope: MessageEnvelope,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     topic: str | None = Query(default=None),
 ):
     """Accept a message, verify it, attempt delivery or queue."""
     # Sender must match JWT
     if envelope.from_ != current_agent:
-        raise HTTPException(status_code=403, detail="Sender does not match token")
+        raise I18nHTTPException(status_code=403, message_key="sender_does_not_match_token")
 
     # Allowed types: message, contact_request, result, error
     # result/error are topic termination signals that need room fan-out
@@ -669,7 +672,7 @@ async def send_message(
         MessageType.error,
     )
     if envelope.type not in _SEND_ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail="Only type 'message', 'contact_request', 'result', or 'error' accepted on /hub/send")
+        raise I18nHTTPException(status_code=400, message_key="send_invalid_type")
 
     # Topic priority: envelope > query param
     effective_topic = envelope.topic or topic
@@ -707,14 +710,14 @@ async def receive_receipt(
         envelope.from_, envelope.type, envelope.reply_to, envelope.msg_id,
     )
     if envelope.type not in (MessageType.ack, MessageType.result, MessageType.error):
-        raise HTTPException(status_code=400, detail="Only ack/result/error accepted on /hub/receipt")
+        raise I18nHTTPException(status_code=400, message_key="receipt_invalid_type")
 
     # Verify envelope signature
     await _verify_envelope(envelope, db)
 
     # Find original message record via reply_to
     if not envelope.reply_to:
-        raise HTTPException(status_code=400, detail="Receipt must have reply_to")
+        raise I18nHTTPException(status_code=400, message_key="receipt_must_have_reply_to")
 
     result = await db.execute(
         select(MessageRecord).where(
@@ -724,7 +727,7 @@ async def receive_receipt(
     )
     record = result.scalar_one_or_none()
     if record is None:
-        raise HTTPException(status_code=404, detail="Original message not found")
+        raise I18nHTTPException(status_code=404, message_key="original_message_not_found")
 
     # Update state based on receipt type
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -795,7 +798,7 @@ async def receive_receipt(
 async def get_message_status(
     msg_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Query delivery status. Only the sender may query."""
     # Check message exists first (404), then check authorization (403)
@@ -804,12 +807,12 @@ async def get_message_status(
     )
     all_records = list(result.scalars().all())
     if not all_records:
-        raise HTTPException(status_code=404, detail="Message not found")
+        raise I18nHTTPException(status_code=404, message_key="message_not_found")
 
     # Filter to records where current agent is the sender
     sender_records = [r for r in all_records if r.sender_id == current_agent]
     if not sender_records:
-        raise HTTPException(status_code=403, detail="Not the sender of this message")
+        raise I18nHTTPException(status_code=403, message_key="not_the_sender")
 
     record = sender_records[0]
 
@@ -871,7 +874,7 @@ async def _fetch_queued_messages(
 @router.get("/inbox", response_model=InboxPollResponse)
 async def poll_inbox(
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_claimed_agent),
     limit: int = Query(default=10, ge=1, le=50),
     timeout: int = Query(default=0, ge=0, le=INBOX_POLL_MAX_TIMEOUT),
     ack: bool = Query(default=True),
@@ -971,6 +974,7 @@ async def poll_inbox(
             sender_display_name=sender_name_map.get(rec.sender_id),
             room_context=room_ctx,
             mentioned=rec.mentioned,
+            topic_id=rec.topic_id,
         )
 
         messages.append(
@@ -1015,7 +1019,7 @@ async def poll_inbox(
 @router.get("/history", response_model=HistoryResponse)
 async def query_history(
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     room_id: str | None = Query(default=None),
     topic: str | None = Query(default=None),
     topic_id: str | None = Query(default=None),
@@ -1037,7 +1041,7 @@ async def query_history(
         )
         room_obj = room_result.scalar_one_or_none()
         if room_obj is None:
-            raise HTTPException(status_code=404, detail="Room not found")
+            raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
         member_result = await db.execute(
             select(RoomMember).where(
@@ -1046,9 +1050,9 @@ async def query_history(
             )
         )
         if member_result.scalar_one_or_none() is None:
-            raise HTTPException(
+            raise I18nHTTPException(
                 status_code=403,
-                detail="Not a member of this room",
+                message_key="not_a_member",
             )
         is_public_room = room_obj.visibility == RoomVisibility.public
 
@@ -1112,7 +1116,7 @@ async def query_history(
         )
         cursor_rec = cursor_result.scalar_one_or_none()
         if cursor_rec is None:
-            raise HTTPException(status_code=400, detail="Invalid cursor: message not found")
+            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
         stmt = stmt.where(MessageRecord.id < cursor_rec.id)
         stmt = stmt.order_by(MessageRecord.id.desc())
     elif after is not None:
@@ -1121,7 +1125,7 @@ async def query_history(
         )
         cursor_rec = cursor_result.scalar_one_or_none()
         if cursor_rec is None:
-            raise HTTPException(status_code=400, detail="Invalid cursor: message not found")
+            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
         stmt = stmt.where(MessageRecord.id > cursor_rec.id)
         stmt = stmt.order_by(MessageRecord.id.asc())
     else:

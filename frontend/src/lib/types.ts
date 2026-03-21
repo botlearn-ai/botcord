@@ -15,6 +15,7 @@ export interface DashboardRoom {
   member_count: number;
   my_role: string;
   rule: string | null;
+  required_subscription_product_id?: string | null;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;
@@ -25,6 +26,22 @@ export interface ContactInfo {
   alias: string | null;
   display_name: string;
   created_at: string;
+}
+
+export interface ContactRequestItem {
+  id: number;
+  from_agent_id: string;
+  to_agent_id: string;
+  state: "pending" | "accepted" | "rejected";
+  message: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  from_display_name: string | null;
+  to_display_name: string | null;
+}
+
+export interface ContactRequestListResponse {
+  requests: ContactRequestItem[];
 }
 
 export interface DashboardOverview {
@@ -53,6 +70,15 @@ export interface DashboardMessage {
   topic: string | null;
   topic_id: string | null;
   goal: string | null;
+  topic_title?: string | null;
+  topic_description?: string | null;
+  topic_status?: string | null;
+  topic_creator_id?: string | null;
+  topic_goal?: string | null;
+  topic_message_count?: number | null;
+  topic_created_at?: string | null;
+  topic_updated_at?: string | null;
+  topic_closed_at?: string | null;
   state: string;
   state_counts: Record<string, number> | null;
   created_at: string;
@@ -75,10 +101,6 @@ export interface TopicInfo {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
-}
-
-export interface TopicListResponse {
-  topics: TopicInfo[];
 }
 
 export interface AgentSearchResponse {
@@ -120,6 +142,7 @@ export interface DiscoverRoom {
   visibility: string;
   member_count: number;
   rule: string | null;
+  required_subscription_product_id?: string | null;
 }
 
 export interface DiscoverRoomsResponse {
@@ -136,6 +159,7 @@ export interface JoinRoomResponse {
   member_count: number;
   my_role: string;
   rule: string | null;
+  required_subscription_product_id?: string | null;
 }
 
 // --- Share types ---
@@ -190,6 +214,7 @@ export interface PublicRoom {
   visibility: string;
   member_count: number;
   rule?: string | null;
+  required_subscription_product_id?: string | null;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;
@@ -214,6 +239,9 @@ export interface PublicOverview {
 export interface PublicRoomMember {
   agent_id: string;
   display_name: string;
+  bio: string | null;
+  message_policy: string;
+  created_at: string;
   role: string;
   joined_at: string;
 }
@@ -222,6 +250,49 @@ export interface PublicRoomMembersResponse {
   room_id: string;
   members: PublicRoomMember[];
   total: number;
+}
+
+export interface SubscriptionProduct {
+  product_id: string;
+  owner_agent_id: string;
+  name: string;
+  description: string;
+  asset_code: string;
+  amount_minor: number;
+  billing_interval: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+export interface SubscriptionProductResponse {
+  product: SubscriptionProduct;
+}
+
+export interface AgentSubscription {
+  subscription_id: string;
+  product_id: string;
+  subscriber_agent_id: string;
+  provider_agent_id: string;
+  asset_code: string;
+  amount_minor: number;
+  billing_interval: string;
+  status: string;
+  current_period_start: string;
+  current_period_end: string;
+  next_charge_at: string;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  last_charged_at: string | null;
+  last_charge_tx_id: string | null;
+  consecutive_failed_attempts: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MySubscriptionsResponse {
+  subscriptions: AgentSubscription[];
 }
 
 // --- Wallet types ---
@@ -290,6 +361,10 @@ export interface WithdrawalResponse {
   completed_at: string | null;
 }
 
+export interface WithdrawalListResponse {
+  withdrawals: WithdrawalResponse[];
+}
+
 export interface CreateTransferRequest {
   to_agent_id: string;
   amount_minor: string;
@@ -302,9 +377,67 @@ export interface CreateTopupRequest {
   channel: string;
 }
 
-export interface CreateWithdrawalRequest {
+export interface StripeCheckoutRequest {
+  package_code: string;
+  idempotency_key: string;
+  quantity: number;
+}
+
+export interface StripeCheckoutResponse {
+  topup_id: string;
+  tx_id: string | null;
+  checkout_session_id: string;
+  checkout_url: string;
+  expires_at: number | null;
+  status: string;
+}
+
+export interface StripePackageItem {
+  package_code: string;
+  coin_amount_minor: string;
+  fiat_amount: string;
+  currency: string;
+}
+
+export interface StripePackageResponse {
+  packages: StripePackageItem[];
+}
+
+export interface StripeSessionStatusResponse {
+  topup_id: string;
+  tx_id: string | null;
+  checkout_session_id: string;
+  topup_status: string;
+  payment_status: string;
+  wallet_credited: boolean;
   amount_minor: string;
+  asset_code: string;
+}
+
+export interface CreateWithdrawalRequest {
+  amount_minor: number;
+  fee_minor?: number;
   destination_type?: string;
   destination?: Record<string, string>;
   idempotency_key?: string;
+}
+
+// --- User & Agent binding types ---
+
+export interface UserProfile {
+  id: string;
+  display_name: string;
+  email: string | null;
+  avatar_url: string | null;
+  status: string;
+  max_agents: number;
+  roles: string[];
+  agents: UserAgent[];
+}
+
+export interface UserAgent {
+  agent_id: string;
+  display_name: string;
+  is_default: boolean;
+  claimed_at: string;
 }

@@ -3,10 +3,13 @@ import logging
 import pathlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from hub.i18n import I18nHTTPException, detect_locale, get_message
 
 from sqlalchemy import text
 
@@ -26,12 +29,15 @@ from hub.routers.files import router as files_router
 from hub.routers.hub import router as hub_router
 from hub.routers.registry import router as registry_router
 from hub.routers.public import router as public_router
+from hub.routers.room import internal_router as room_internal_router
 from hub.routers.room import router as room_router
 from hub.routers.subscriptions import internal_router as subscriptions_internal_router
 from hub.routers.subscriptions import router as subscriptions_router
 from hub.routers.topics import router as topics_router
+from hub.routers.stripe import router as stripe_router
 from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
+from hub.storage import storage_requires_local_disk
 
 logging.basicConfig(level=logging.INFO)
 
@@ -68,9 +74,10 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "http_client"):
         app.state.http_client = None
 
-    # Ensure upload directory exists
-    import os
-    os.makedirs(hub_config.FILE_UPLOAD_DIR, exist_ok=True)
+    if storage_requires_local_disk():
+        # Ensure upload directory exists for local-disk storage mode.
+        import os
+        os.makedirs(hub_config.FILE_UPLOAD_DIR, exist_ok=True)
 
     expiry_task = None
     cleanup_task = None
@@ -109,15 +116,30 @@ _cors_origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"https://botcord(-[a-z0-9]+)?-botlearn-ai\.vercel\.app",
+    allow_origin_regex=r"https://[a-z0-9-]+\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+@app.exception_handler(I18nHTTPException)
+async def i18n_http_exception_handler(request: Request, exc: I18nHTTPException):
+    """Return structured error with translated message based on Accept-Language."""
+    locale = detect_locale(request.headers.get("accept-language"))
+    detail = get_message(exc.message_key, locale, **exc.message_kwargs)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": detail,
+            "code": exc.message_key,
+            "retryable": exc.status_code >= 500,
+        },
+    )
+
+
 @app.exception_handler(HTTPException)
-async def structured_http_exception_handler(request, exc: HTTPException):
+async def structured_http_exception_handler(request: Request, exc: HTTPException):
     """Return structured error with retryable hint.
 
     4xx = client error, never retryable.
@@ -137,10 +159,12 @@ app.include_router(contacts_router)
 app.include_router(contact_requests_router)
 app.include_router(hub_router)
 app.include_router(room_router)
+app.include_router(room_internal_router)
 app.include_router(topics_router)
 app.include_router(files_router)
 app.include_router(wallet_router)
 app.include_router(wallet_internal_router)
+app.include_router(stripe_router)
 app.include_router(subscriptions_router)
 app.include_router(subscriptions_internal_router)
 app.include_router(dashboard_router)

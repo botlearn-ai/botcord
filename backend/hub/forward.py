@@ -81,19 +81,25 @@ def build_flat_text(
     sender_display_name: str | None = None,
     room_context: RoomContext | None = None,
     mentioned: bool = False,
+    topic_id: str | None = None,
 ) -> str:
     """Flatten an envelope into a human-readable string with optional room context.
 
     This is the single source of truth for message text rendering — used by both
     webhook delivery (convert_payload_for_openclaw) and inbox polling (/hub/inbox).
     """
-    text = envelope.to_text(sender_name=sender_display_name, mentioned=mentioned)
+    text = envelope.to_text(
+        sender_name=sender_display_name,
+        mentioned=mentioned,
+        topic_id=topic_id,
+    )
     prefix_lines: list[str] = []
     # Prepend room context header for group rooms (>2 members)
     if room_context and room_context.member_count > 2:
         prefix_lines.append(_format_room_header(room_context))
     if room_context and room_context.rule:
         prefix_lines.append(f"[房间规则] {room_context.rule}")
+        prefix_lines.append("[系统提示] 你在该群聊中的行为和回复必须遵循上述房间规则。")
     if prefix_lines:
         prefix_lines.append(text)
         text = "\n".join(prefix_lines)
@@ -106,6 +112,7 @@ def convert_payload_for_openclaw(
     sender_display_name: str | None = None,
     room_id: str | None = None,
     topic: str | None = None,
+    topic_id: str | None = None,
     room_context: RoomContext | None = None,
 ) -> dict:
     """Convert a MessageEnvelope into the format expected by OpenClaw.
@@ -113,7 +120,12 @@ def convert_payload_for_openclaw(
     - /agent path -> {"message": "...", "name": "...", "channel": "last", "sessionKey": "..."}
     - /wake  path -> {"body": "...", "mode": "now", "sessionKey": "..."}
     """
-    text = build_flat_text(envelope, sender_display_name, room_context)
+    text = build_flat_text(
+        envelope,
+        sender_display_name,
+        room_context,
+        topic_id=topic_id,
+    )
     name = (
         f"{sender_display_name} ({envelope.from_})"
         if sender_display_name

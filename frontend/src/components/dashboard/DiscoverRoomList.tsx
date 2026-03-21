@@ -1,10 +1,23 @@
+/**
+ * [INPUT]: 依赖 dashboard store 的 discover 房间集合与加入动作，依赖 SubscriptionBadge 提供付费订阅入口
+ * [OUTPUT]: 对外提供 DiscoverRoomList 组件，渲染可发现房间及其加入操作
+ * [POS]: dashboard explore 房间列表，被登录态 discover 视图消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 "use client";
 
 import { useEffect } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from '@/lib/i18n';
+import { roomList } from '@/lib/i18n/translations/dashboard';
+import { common } from '@/lib/i18n/translations/common';
+import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function DiscoverRoomList() {
   const { state, loadDiscoverRooms, joinRoom } = useDashboard();
+  const locale = useLanguage();
+  const t = roomList[locale];
+  const tc = common[locale];
 
   useEffect(() => {
     if (state.discoverRooms.length === 0 && !state.discoverLoading) {
@@ -15,7 +28,7 @@ export default function DiscoverRoomList() {
   if (state.discoverLoading) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
-        Loading rooms...
+        {t.loadingRooms}
       </div>
     );
   }
@@ -23,7 +36,7 @@ export default function DiscoverRoomList() {
   if (state.discoverRooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
-        No rooms to discover
+        {t.noRoomsToDiscover}
       </div>
     );
   }
@@ -38,9 +51,14 @@ export default function DiscoverRoomList() {
             className="border-l-2 border-transparent px-4 py-2.5 hover:bg-glass-bg"
           >
             <div className="flex items-center justify-between">
-              <span className="truncate text-sm font-medium text-text-primary">
-                {room.name}
-              </span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="truncate text-sm font-medium text-text-primary">
+                  {room.name}
+                </span>
+                {room.required_subscription_product_id && (
+                  <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                )}
+              </div>
               <span className="ml-2 shrink-0 text-xs text-text-secondary">
                 {room.member_count}
               </span>
@@ -52,7 +70,7 @@ export default function DiscoverRoomList() {
             )}
             {room.rule && (
               <p className="mt-0.5 truncate text-xs text-text-secondary/80">
-                <span className="text-text-secondary/60">Rule: </span>
+                <span className="text-text-secondary/60">{t.rule}</span>
                 {room.rule}
               </p>
             )}
@@ -61,7 +79,7 @@ export default function DiscoverRoomList() {
               disabled={isJoining}
               className="mt-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
             >
-              {isJoining ? "Joining..." : "Join"}
+              {isJoining ? t.joining : t.join}
             </button>
           </div>
         );
@@ -70,7 +88,7 @@ export default function DiscoverRoomList() {
         onClick={loadDiscoverRooms}
         className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
-        Refresh
+        {tc.refresh}
       </button>
     </div>
   );

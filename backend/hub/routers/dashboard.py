@@ -4,12 +4,13 @@ import datetime
 import json
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
+from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_agent, get_dashboard_agent
 from hub.database import get_db
 from hub.dashboard_schemas import (
     CreateShareResponse,
@@ -30,8 +31,10 @@ from hub.dashboard_schemas import (
     SharedRoomResponse,
 )
 from hub.id_generators import generate_share_id
+from hub.enums import SubscriptionStatus
 from hub.models import (
     Agent,
+    AgentSubscription,
     Contact,
     ContactRequest,
     ContactRequestState,
@@ -196,7 +199,7 @@ async def _build_dashboard_rooms(
 @router.get("/overview", response_model=DashboardOverviewResponse)
 async def get_overview(
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_agent),
 ):
     """Return the current agent's dashboard overview."""
     # Agent profile
@@ -205,7 +208,7 @@ async def get_overview(
     )
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     agent_profile = DashboardAgentProfile(
         agent_id=agent.agent_id,
@@ -266,14 +269,14 @@ async def get_overview(
 async def get_room_messages(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_agent),
     before: str | None = Query(default=None),
     after: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
 ):
     """Return paginated messages for a room. Deduplicates fan-out records."""
     if before is not None and after is not None:
-        raise HTTPException(status_code=400, detail="before and after cannot be used together")
+        raise I18nHTTPException(status_code=400, message_key="before_after_exclusive")
 
     # Verify membership
     member_result = await db.execute(
@@ -283,7 +286,7 @@ async def get_room_messages(
         )
     )
     if member_result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="Not a member of this room")
+        raise I18nHTTPException(status_code=403, message_key="not_a_member")
 
     # Deduplicate fan-out: pick one record (min id) per msg_id in this room
     dedup_sub = (
@@ -308,7 +311,7 @@ async def get_room_messages(
         )
         cursor_id = cursor_result.scalar_one_or_none()
         if cursor_id is None:
-            raise HTTPException(status_code=400, detail="Invalid cursor: message not found")
+            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
         stmt = stmt.where(MessageRecord.id < cursor_id)
     elif after is not None:
         cursor_result = await db.execute(
@@ -320,7 +323,7 @@ async def get_room_messages(
         )
         cursor_id = cursor_result.scalar_one_or_none()
         if cursor_id is None:
-            raise HTTPException(status_code=400, detail="Invalid cursor: message not found")
+            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
         stmt = stmt.where(MessageRecord.id > cursor_id)
     stmt = stmt.order_by(MessageRecord.id.desc())
 
@@ -413,7 +416,7 @@ async def get_room_messages(
 async def search_agents(
     q: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
-    _current_agent: str = Depends(get_current_agent),
+    _current_agent: str = Depends(get_dashboard_agent),
 ):
     """Search agents by agent_id or display_name."""
     stmt = (
@@ -452,7 +455,7 @@ async def search_agents(
 async def get_agent(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    _current_agent: str = Depends(get_current_agent),
+    _current_agent: str = Depends(get_dashboard_agent),
 ):
     """Look up a single agent by agent_id."""
     result = await db.execute(
@@ -460,7 +463,7 @@ async def get_agent(
     )
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     return DashboardAgentProfile(
         agent_id=agent.agent_id,
@@ -483,14 +486,14 @@ async def get_agent(
 async def get_agent_conversations(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_agent),
 ):
     """Find rooms where both current_agent and target agent_id are members."""
     target_result = await db.execute(
         select(Agent.agent_id).where(Agent.agent_id == agent_id)
     )
     if target_result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     # Subquery: rooms where current_agent is member
     my_rooms = (
@@ -528,14 +531,14 @@ async def get_agent_conversations(
 async def create_share(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_agent),
 ):
     """Create a snapshot share link for a room's messages."""
     # Verify room exists
     room_result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = room_result.scalar_one_or_none()
     if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
     # Verify membership
     member_result = await db.execute(
@@ -545,7 +548,7 @@ async def create_share(
         )
     )
     if member_result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="Not a member of this room")
+        raise I18nHTTPException(status_code=403, message_key="not_a_member")
 
     # Get current agent display_name
     agent_result = await db.execute(
@@ -641,7 +644,7 @@ async def discover_rooms(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_agent),
 ):
     """Discover public rooms the current agent has NOT joined."""
     # Subquery: rooms where current agent is already a member
@@ -701,6 +704,7 @@ async def discover_rooms(
             owner_id=room.owner_id,
             visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
             member_count=count or 0,
+            required_subscription_product_id=room.required_subscription_product_id,
         )
         for room, count in rows
     ]
@@ -717,21 +721,33 @@ async def discover_rooms(
 async def join_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_dashboard_agent),
 ):
     """Join a public, open room."""
     # Load room
     result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = result.scalar_one_or_none()
     if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
-    # Must be public + open
-    if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
-        raise HTTPException(
-            status_code=403,
-            detail="Self-join only allowed for public rooms with open join policy",
+    # Subscription-gated rooms: subscribers can self-join regardless of join_policy,
+    # but room must still be public.
+    has_subscription_access = False
+    if room.required_subscription_product_id and room.visibility == RoomVisibility.public:
+        sub_result = await db.execute(
+            select(AgentSubscription).where(
+                AgentSubscription.product_id == room.required_subscription_product_id,
+                AgentSubscription.subscriber_agent_id == current_agent,
+                AgentSubscription.status == SubscriptionStatus.active,
+            )
         )
+        has_subscription_access = sub_result.scalar_one_or_none() is not None
+    if not has_subscription_access:
+        if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
+            raise I18nHTTPException(
+                status_code=403,
+                message_key="self_join_public_open_only",
+            )
 
     # Check max_members
     member_count_result = await db.execute(
@@ -739,7 +755,7 @@ async def join_room(
     )
     current_count = member_count_result.scalar() or 0
     if room.max_members is not None and current_count >= room.max_members:
-        raise HTTPException(status_code=400, detail="Room is full")
+        raise I18nHTTPException(status_code=400, message_key="room_is_full")
 
     # Add member
     new_member = RoomMember(
@@ -752,7 +768,7 @@ async def join_room(
             db.add(new_member)
             await db.flush()
     except IntegrityError:
-        raise HTTPException(status_code=409, detail="Already a member of this room")
+        raise I18nHTTPException(status_code=409, message_key="already_a_member")
 
     await db.commit()
 
@@ -793,7 +809,7 @@ async def get_shared_room(
     )
     share = share_result.scalar_one_or_none()
     if share is None:
-        raise HTTPException(status_code=404, detail="Share not found")
+        raise I18nHTTPException(status_code=404, message_key="share_not_found")
 
     # Check expiration
     if share.expires_at is not None:
@@ -802,7 +818,7 @@ async def get_shared_room(
         if expires.tzinfo is None:
             expires = expires.replace(tzinfo=datetime.timezone.utc)
         if now > expires:
-            raise HTTPException(status_code=404, detail="Share has expired")
+            raise I18nHTTPException(status_code=404, message_key="share_expired")
 
     # Room info
     room_result = await db.execute(

@@ -5,14 +5,15 @@ import logging
 import uuid
 
 import jcs
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
+from hub.i18n import I18nHTTPException
 
 logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
 from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
 from hub.database import get_db
 from hub.id_generators import generate_hub_msg_id
@@ -98,7 +99,7 @@ async def _create_notification(
 async def list_received_requests(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     state: ContactRequestState | None = Query(default=None),
 ):
     check_agent_ownership(agent_id, current_agent)
@@ -129,7 +130,7 @@ async def list_received_requests(
 async def list_sent_requests(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
     state: ContactRequestState | None = Query(default=None),
 ):
     check_agent_ownership(agent_id, current_agent)
@@ -161,7 +162,7 @@ async def accept_request(
     agent_id: str,
     request_id: int,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -173,12 +174,13 @@ async def accept_request(
     )
     cr = result.scalar_one_or_none()
     if cr is None:
-        raise HTTPException(status_code=404, detail="Contact request not found")
+        raise I18nHTTPException(status_code=404, message_key="contact_request_not_found")
 
     if cr.state != ContactRequestState.pending:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=400,
-            detail=f"Contact request is already {cr.state.value}",
+            message_key="contact_request_already_resolved",
+            state=cr.state.value,
         )
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -225,7 +227,7 @@ async def reject_request(
     agent_id: str,
     request_id: int,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
 
@@ -237,12 +239,13 @@ async def reject_request(
     )
     cr = result.scalar_one_or_none()
     if cr is None:
-        raise HTTPException(status_code=404, detail="Contact request not found")
+        raise I18nHTTPException(status_code=404, message_key="contact_request_not_found")
 
     if cr.state != ContactRequestState.pending:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=400,
-            detail=f"Contact request is already {cr.state.value}",
+            message_key="contact_request_already_resolved",
+            state=cr.state.value,
         )
 
     cr.state = ContactRequestState.rejected

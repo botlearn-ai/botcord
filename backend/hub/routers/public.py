@@ -7,7 +7,8 @@ from __future__ import annotations
 import datetime
 import json
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Query, Depends
+from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +41,7 @@ class PublicRoom(BaseModel):
     owner_id: str
     visibility: str
     member_count: int
+    required_subscription_product_id: str | None = None
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None
     last_sender_name: str | None = None
@@ -63,6 +65,9 @@ class PublicAgentsResponse(BaseModel):
 class PublicRoomMember(BaseModel):
     agent_id: str
     display_name: str
+    bio: str | None = None
+    message_policy: str
+    created_at: datetime.datetime
     role: str
     joined_at: datetime.datetime
 
@@ -146,11 +151,13 @@ async def _build_public_rooms(
 
     result: list[PublicRoom] = []
     for room, count in rooms_with_counts:
+        is_gated = bool(room.required_subscription_product_id)
         last_rec = last_messages.get(room.room_id)
         last_preview: str | None = None
         last_at: datetime.datetime | None = None
         last_sender: str | None = None
-        if last_rec:
+        # Hide message preview for subscription-gated rooms
+        if last_rec and not is_gated:
             envelope_data = json.loads(last_rec.envelope_json)
             sid, text, _ = _extract_text_from_envelope(envelope_data)
             last_preview = text[:200] if text else None
@@ -169,6 +176,7 @@ async def _build_public_rooms(
                     else str(room.visibility)
                 ),
                 member_count=count or 0,
+                required_subscription_product_id=room.required_subscription_product_id,
                 last_message_preview=last_preview,
                 last_message_at=last_at,
                 last_sender_name=last_sender,
@@ -330,7 +338,14 @@ async def public_room_messages(
     room_result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = room_result.scalar_one_or_none()
     if room is None or room.visibility != RoomVisibility.public:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
+
+    # Subscription-gated rooms require active subscription to view messages
+    if room.required_subscription_product_id:
+        raise I18nHTTPException(
+            status_code=403,
+            message_key="subscription_required_to_view",
+        )
 
     # Deduplicate fan-out: pick one record (min id) per msg_id
     dedup_sub = (
@@ -355,8 +370,8 @@ async def public_room_messages(
         )
         cursor_id = cursor_result.scalar_one_or_none()
         if cursor_id is None:
-            raise HTTPException(
-                status_code=400, detail="Invalid cursor: message not found"
+            raise I18nHTTPException(
+                status_code=400, message_key="invalid_cursor"
             )
         stmt = stmt.where(MessageRecord.id < cursor_id)
 
@@ -481,7 +496,7 @@ async def public_agent_detail(
     )
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     return DashboardAgentProfile(
         agent_id=agent.agent_id,
@@ -513,11 +528,17 @@ async def public_room_members(
     room_result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = room_result.scalar_one_or_none()
     if room is None or room.visibility != RoomVisibility.public:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
-    # Fetch members with agent display names
+    # Fetch members with agent public profile
     stmt = (
-        select(RoomMember, Agent.display_name)
+        select(
+            RoomMember,
+            Agent.display_name,
+            Agent.bio,
+            Agent.message_policy,
+            Agent.created_at,
+        )
         .join(Agent, Agent.agent_id == RoomMember.agent_id)
         .where(RoomMember.room_id == room_id)
         .order_by(RoomMember.joined_at.asc())
@@ -529,10 +550,17 @@ async def public_room_members(
         PublicRoomMember(
             agent_id=member.agent_id,
             display_name=display_name or member.agent_id,
+            bio=bio,
+            message_policy=(
+                message_policy.value
+                if hasattr(message_policy, "value")
+                else str(message_policy)
+            ),
+            created_at=_ensure_utc(created_at),
             role=member.role.value,
             joined_at=_ensure_utc(member.joined_at),
         )
-        for member, display_name in rows
+        for member, display_name, bio, message_policy, created_at in rows
     ]
 
     return PublicRoomMembersResponse(

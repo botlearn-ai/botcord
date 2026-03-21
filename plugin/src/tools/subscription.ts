@@ -8,13 +8,14 @@ import {
 } from "../config.js";
 import { BotCordClient } from "../client.js";
 import { getConfig as getAppConfig } from "../runtime.js";
+import { formatCoinAmount } from "./coin-format.js";
 
 function formatProduct(product: any): string {
   return [
     `Product: ${product.product_id}`,
     `Owner: ${product.owner_agent_id}`,
     `Name: ${product.name}`,
-    `Amount: ${product.amount_minor} minor units`,
+    `Amount: ${formatCoinAmount(product.amount_minor)}`,
     `Interval: ${product.billing_interval}`,
     `Status: ${product.status}`,
   ].join("\n");
@@ -26,7 +27,7 @@ function formatSubscription(subscription: any): string {
     `Product: ${subscription.product_id}`,
     `Subscriber: ${subscription.subscriber_agent_id}`,
     `Provider: ${subscription.provider_agent_id}`,
-    `Amount: ${subscription.amount_minor} minor units`,
+    `Amount: ${formatCoinAmount(subscription.amount_minor)}`,
     `Interval: ${subscription.billing_interval}`,
     `Status: ${subscription.status}`,
     `Next charge: ${subscription.next_charge_at}`,
@@ -58,6 +59,8 @@ export function createSubscriptionTool() {
             "list_my_products",
             "list_products",
             "archive_product",
+            "create_subscription_room",
+            "bind_room_to_product",
             "subscribe",
             "list_my_subscriptions",
             "list_subscribers",
@@ -67,19 +70,31 @@ export function createSubscriptionTool() {
         },
         product_id: {
           type: "string" as const,
-          description: "Product ID — for archive_product, subscribe, list_subscribers",
+          description: "Product ID — for archive_product, create_subscription_room, bind_room_to_product, subscribe, list_subscribers",
         },
         subscription_id: {
           type: "string" as const,
           description: "Subscription ID — for cancel",
         },
+        idempotency_key: {
+          type: "string" as const,
+          description: "Optional unique key to prevent duplicate subscriptions — for subscribe",
+        },
+        room_id: {
+          type: "string" as const,
+          description: "Room ID — for bind_room_to_product",
+        },
         name: {
           type: "string" as const,
-          description: "Product name — for create_product",
+          description: "Product name — for create_product, or room name — for create_subscription_room",
         },
         description: {
           type: "string" as const,
-          description: "Product description — for create_product",
+          description: "Product description — for create_product, or room description — for create_subscription_room",
+        },
+        rule: {
+          type: "string" as const,
+          description: "Room rule/instructions — for create_subscription_room or bind_room_to_product",
         },
         amount_minor: {
           type: "string" as const,
@@ -93,6 +108,22 @@ export function createSubscriptionTool() {
         asset_code: {
           type: "string" as const,
           description: "Asset code — for create_product",
+        },
+        max_members: {
+          type: "number" as const,
+          description: "Maximum room members — for create_subscription_room or bind_room_to_product",
+        },
+        default_send: {
+          type: "boolean" as const,
+          description: "Whether members can post by default — for create_subscription_room or bind_room_to_product",
+        },
+        default_invite: {
+          type: "boolean" as const,
+          description: "Whether members can invite by default — for create_subscription_room or bind_room_to_product",
+        },
+        slow_mode_seconds: {
+          type: "number" as const,
+          description: "Slow mode interval in seconds — for create_subscription_room or bind_room_to_product",
         },
       },
       required: ["action"],
@@ -142,9 +173,51 @@ export function createSubscriptionTool() {
             return { result: formatProduct(product), data: product };
           }
 
+          case "create_subscription_room": {
+            if (!args.product_id) return { error: "product_id is required" };
+            if (!args.name) return { error: "name is required" };
+            const room = await client.createRoom({
+              name: args.name,
+              description: args.description,
+              rule: args.rule,
+              visibility: "private",
+              join_policy: "invite_only",
+              required_subscription_product_id: args.product_id,
+              max_members: args.max_members,
+              default_send: args.default_send,
+              default_invite: args.default_invite,
+              slow_mode_seconds: args.slow_mode_seconds,
+            });
+            return {
+              result: `Subscription room created: ${room.room_id} bound to ${args.product_id}`,
+              data: room,
+            };
+          }
+
+          case "bind_room_to_product": {
+            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.product_id) return { error: "product_id is required" };
+            const room = await client.updateRoom(args.room_id, {
+              name: args.name,
+              description: args.description,
+              rule: args.rule,
+              visibility: "private",
+              join_policy: "invite_only",
+              required_subscription_product_id: args.product_id,
+              max_members: args.max_members,
+              default_send: args.default_send,
+              default_invite: args.default_invite,
+              slow_mode_seconds: args.slow_mode_seconds,
+            });
+            return {
+              result: `Room ${room.room_id} bound to subscription product ${args.product_id}`,
+              data: room,
+            };
+          }
+
           case "subscribe": {
             if (!args.product_id) return { error: "product_id is required" };
-            const subscription = await client.subscribeToProduct(args.product_id);
+            const subscription = await client.subscribeToProduct(args.product_id, args.idempotency_key);
             return { result: formatSubscription(subscription), data: subscription };
           }
 

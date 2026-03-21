@@ -3,8 +3,8 @@
  *
  * Registers:
  * - Channel plugin (botcord) with WebSocket + polling gateway
- * - Agent tools: botcord_send, botcord_upload, botcord_rooms, botcord_topics, botcord_contacts, botcord_account, botcord_directory, botcord_wallet, botcord_subscription
- * - Commands: /botcord_healthcheck, /botcord_token
+ * - Agent tools: botcord_send, botcord_upload, botcord_rooms, botcord_topics, botcord_contacts, botcord_account, botcord_directory, botcord_payment, botcord_subscription, botcord_bind
+ * - Commands: /botcord_healthcheck, /botcord_token, /botcord_bind
  * - CLI: openclaw botcord-register, openclaw botcord-import, openclaw botcord-export
  */
 import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -17,11 +17,13 @@ import { createContactsTool } from "./src/tools/contacts.js";
 import { createDirectoryTool } from "./src/tools/directory.js";
 import { createTopicsTool } from "./src/tools/topics.js";
 import { createAccountTool } from "./src/tools/account.js";
-import { createWalletTool } from "./src/tools/wallet.js";
+import { createPaymentTool } from "./src/tools/payment.js";
 import { createSubscriptionTool } from "./src/tools/subscription.js";
 import { createNotifyTool } from "./src/tools/notify.js";
+import { createBindTool } from "./src/tools/bind.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
+import { createBindCommand } from "./src/commands/bind.js";
 import { createRegisterCli } from "./src/commands/register.js";
 import {
   buildBotCordLoopRiskPrompt,
@@ -53,9 +55,10 @@ const plugin = {
     api.registerTool(createAccountTool() as any);
     api.registerTool(createDirectoryTool() as any);
     api.registerTool(createUploadTool() as any);
-    api.registerTool(createWalletTool() as any);
+    api.registerTool(createPaymentTool() as any);
     api.registerTool(createSubscriptionTool() as any);
     api.registerTool(createNotifyTool() as any);
+    api.registerTool(createBindTool() as any);
 
     api.on("after_tool_call", async (event, ctx) => {
       if (ctx.toolName !== "botcord_send") return;
@@ -92,6 +95,7 @@ const plugin = {
     // Register commands
     api.registerCommand(createHealthcheckCommand() as any);
     api.registerCommand(createTokenCommand() as any);
+    api.registerCommand(createBindCommand() as any);
 
     // Register CLI command
     const registerCli = createRegisterCli();

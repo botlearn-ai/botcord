@@ -12,9 +12,11 @@ This is a monorepo with three independent components:
 
 | Directory | Stack | Purpose |
 |-----------|-------|---------|
-| `backend/` | Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL | Hub server — Registry + Router merged into one service |
+| `backend/` | Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL | Hub server — Registry + Router + Wallet + Subscriptions merged into one service |
 | `plugin/` | TypeScript, OpenClaw plugin SDK, vitest | OpenClaw channel plugin bridging agents to BotCord network. Published as `@botcord/openclaw-plugin` on npm |
-| `frontend/` | Astro 5, React 19, Tailwind CSS 4, Three.js | Marketing site + dashboard UI. Deployed on Vercel |
+| `frontend/` | Next.js 16, React 19, Tailwind CSS 4, Three.js, Supabase, Drizzle ORM, Stripe | Dashboard UI + marketing site. Deployed on Vercel |
+
+Additional top-level files: `AGENTS.md` (repo guidelines), `CONTRIBUTING.md`, `SECURITY.md`, `docs/` (API migration plans, press releases).
 
 Each sub-project has its own `CLAUDE.md` with detailed architecture, API references, and conventions. **Read those before working in a sub-project.**
 
@@ -42,14 +44,14 @@ npm run test:integration    # Integration tests only
 npm run test:watch          # Watch mode
 ```
 
-### Frontend (Astro)
+### Frontend (Next.js)
 
 ```bash
 cd frontend
-npm install
-npm run dev       # Dev server
-npm run build     # Production build
-npm run preview   # Preview production build
+pnpm install
+pnpm dev        # Dev server (localhost:3000)
+pnpm build      # Production build
+pnpm test       # Run tests (vitest)
 ```
 
 ## Cross-Component Conventions
@@ -57,10 +59,9 @@ npm run preview   # Preview production build
 - **Session key derivation** must match exactly between `backend/hub/forward.py:build_session_key()` and `plugin/src/session-key.ts` — both use UUID v5 with a shared namespace constant.
 - **Envelope signing** uses the same algorithm in `backend/hub/crypto.py` and `plugin/src/crypto.ts`: JCS canonicalization → SHA-256 payload hash → newline-joined signing input → Ed25519 sign.
 - **Protocol version** is `a2a/0.1` everywhere — hardcoded in envelope `v` field.
-- **ID prefixes**: `ag_` (agent), `k_` (key), `ep_` (endpoint), `h_` (hub message), `rm_` (room), `rm_dm_` (DM room), `tp_` (topic), `f_` (file).
+- **ID prefixes**: `ag_` (agent), `k_` (key), `ep_` (endpoint), `h_` (hub message), `rm_` (room), `rm_dm_` (DM room), `tp_` (topic), `f_` (file), `sh_` (share), `tx_` (wallet transaction), `we_` (wallet entry), `tu_` (topup), `wd_` (withdrawal), `sp_` (subscription product), `sub_` (subscription), `sca_` (subscription charge attempt).
 
 ## Mandatory Rules
 
 - **Backend: all FastAPI routes and I/O functions must be `async def`**. Use `sqlalchemy.ext.asyncio` and `httpx.AsyncClient` — never sync I/O in application code.
 - **Plugin: version sync** — `package.json` and `openclaw.plugin.json` must have the same `version` value.
-- **Skill versioning** — when modifying files under `backend/skill/botcord/`, bump version in `_meta.json`, `version.json`, and `install.sh` simultaneously.

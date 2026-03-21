@@ -1,50 +1,32 @@
+/**
+ * [INPUT]: 依赖 dashboard store 的当前房间选择、分享状态与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
+ * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、成员入口、订阅标记与分享动作
+ * [POS]: dashboard 消息主视图的头部区域，承接当前房间的关键信息与快捷操作
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useDashboard } from "./DashboardApp";
+import { useLanguage } from "@/lib/i18n";
+import { roomList } from "@/lib/i18n/translations/dashboard";
 import ShareModal from "./ShareModal";
 import CopyableId from "@/components/ui/CopyableId";
-import type { PublicRoomMember } from "@/lib/types";
-import { api } from "@/lib/api";
+import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function RoomHeader() {
-  const { state, isGuest, selectAgent } = useDashboard();
+  const { state, isGuest, isAuthedReady } = useDashboard();
   const [showShareModal, setShowShareModal] = useState(false);
-  const [showMembers, setShowMembers] = useState(false);
-  const [members, setMembers] = useState<PublicRoomMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
-
-  // Auth mode: find room from overview
-  const authRoom = state.overview?.rooms.find((r) => r.room_id === state.selectedRoomId);
-  // Guest mode: find room from public rooms
-  const publicRoom = state.publicRooms.find((r) => r.room_id === state.selectedRoomId);
-
-  const room = authRoom || publicRoom;
+  const locale = useLanguage();
+  const t = roomList[locale];
+  const currentRoomId = state.openedRoomId;
+  const authRoom = state.overview?.rooms.find((r) => r.room_id === currentRoomId);
+  const room = currentRoomId ? state.getRoomSummary(currentRoomId) : null;
   const roomRule = room?.rule?.trim();
 
-  // Reset members panel when room changes
-  useEffect(() => {
-    setShowMembers(false);
-    setMembers([]);
-  }, [state.selectedRoomId]);
-
-  const handleToggleMembers = async () => {
-    if (showMembers) {
-      setShowMembers(false);
-      return;
-    }
-    if (!state.selectedRoomId) return;
-    setShowMembers(true);
-    if (members.length > 0) return;
-
-    setMembersLoading(true);
-    try {
-      const result = await api.getPublicRoomMembers(state.selectedRoomId);
-      setMembers(result.members);
-    } catch (err) {
-      console.error("[RoomHeader] Failed to load members:", err);
-    } finally {
-      setMembersLoading(false);
+  const handleOpenMembersPanel = () => {
+    if (!state.rightPanelOpen) {
+      state.toggleRightPanel();
     }
   };
 
@@ -52,29 +34,32 @@ export default function RoomHeader() {
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
-        <div className="min-w-0">
+      <div className="flex min-h-16 items-start justify-between border-b border-glass-border px-4 py-3">
+        <div className="min-w-0 py-0.5">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-text-primary">{room.name}</h3>
+            {room.required_subscription_product_id ? (
+              <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+            ) : null}
             <CopyableId value={room.room_id} />
           </div>
-          <p className="text-xs text-text-secondary">
+          <div className="flex items-center text-xs text-text-secondary">
             <button
-              onClick={handleToggleMembers}
+              onClick={handleOpenMembersPanel}
               className="hover:text-neon-cyan hover:underline transition-colors"
             >
-              {room.member_count} member{room.member_count !== 1 ? "s" : ""}
+              {room.member_count} {room.member_count !== 1 ? t.members : t.member}
             </button>
             {room.description && <span className="ml-2 text-text-secondary/60">· {room.description}</span>}
-          </p>
+          </div>
           {roomRule && (
             <p className="mt-1 text-xs leading-5 text-text-secondary">
-              <span className="font-medium text-neon-cyan">Rule:</span> {roomRule}
+              <span className="font-medium text-neon-cyan">{t.rule}</span> {roomRule}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {!isGuest && authRoom && (
+        <div className="flex items-center gap-2 self-start py-0.5">
+          {isAuthedReady && authRoom && (
             <>
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
                 {authRoom.my_role}
@@ -82,7 +67,7 @@ export default function RoomHeader() {
               <button
                 onClick={() => setShowShareModal(true)}
                 className="rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-                title="Share room"
+                title={t.shareRoom}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M4 8V12C4 12.5523 4.44772 13 5 13H11C11.5523 13 12 12.5523 12 12V8" />
@@ -94,14 +79,14 @@ export default function RoomHeader() {
           )}
           {isGuest && (
             <span className="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
-              Guest
+              {t.guest}
             </span>
           )}
           {/* Members toggle */}
           <button
-            onClick={handleToggleMembers}
-            className={`rounded p-1 transition-colors ${showMembers ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"}`}
-            title="View members"
+            onClick={handleOpenMembersPanel}
+            className="rounded p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            title={t.viewMembers}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="6" cy="5" r="2.5" />
@@ -113,55 +98,7 @@ export default function RoomHeader() {
         </div>
       </div>
 
-      {/* Members panel */}
-      {showMembers && (
-        <div className="border-b border-glass-border bg-deep-black-light px-4 py-2">
-          <div className="mb-1.5 flex items-center justify-between">
-            <h4 className="text-xs font-medium text-text-secondary">
-              Members ({members.length || room.member_count})
-            </h4>
-            <button
-              onClick={() => setShowMembers(false)}
-              className="rounded p-0.5 text-text-secondary hover:text-text-primary"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M2 2l8 8M10 2l-8 8" />
-              </svg>
-            </button>
-          </div>
-          {membersLoading ? (
-            <p className="py-2 text-center text-xs text-text-secondary animate-pulse">Loading...</p>
-          ) : members.length === 0 ? (
-            <p className="py-2 text-center text-xs text-text-secondary">No members</p>
-          ) : (
-            <div className="max-h-48 overflow-y-auto">
-              {members.map((m) => (
-                <button
-                  key={m.agent_id}
-                  onClick={() => selectAgent(m.agent_id)}
-                  className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left transition-colors hover:bg-glass-bg"
-                >
-                  <div className="min-w-0">
-                    <span className="text-xs font-medium text-text-primary">{m.display_name}</span>
-                    <CopyableId value={m.agent_id} className="ml-1.5" />
-                  </div>
-                  <span className={`shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
-                    m.role === "owner"
-                      ? "border-neon-cyan/30 text-neon-cyan"
-                      : m.role === "admin"
-                        ? "border-neon-purple/30 text-neon-purple"
-                        : "border-glass-border text-text-secondary"
-                  }`}>
-                    {m.role}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {showShareModal && state.token && (
+      {showShareModal && isAuthedReady && state.token && (
         <ShareModal
           roomId={room.room_id}
           roomName={room.name}

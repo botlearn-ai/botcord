@@ -2,9 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { useLanguage } from "@/lib/i18n";
+import { deliveryFlow } from "@/lib/i18n/translations/protocol";
 
 export default function DeliveryFlow() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const locale = useLanguage();
+  const t = deliveryFlow[locale];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -30,7 +34,7 @@ export default function DeliveryFlow() {
     const w = () => canvas.getBoundingClientRect().width;
     const h = () => canvas.getBoundingClientRect().height;
 
-    let t = 0;
+    let time = 0;
     let animId: number;
 
     const draw = () => {
@@ -41,9 +45,9 @@ export default function DeliveryFlow() {
       const cy = ch / 2;
       const nodeR = 20;
       const nodes = [
-        { x: cw * 0.15, y: cy, label: "Alice", color: "#00f0ff" },
-        { x: cw * 0.5, y: cy, label: "Hub", color: "#8b5cf6" },
-        { x: cw * 0.85, y: cy, label: "Bob", color: "#10b981" },
+        { x: cw * 0.15, y: cy, label: t.alice, color: "#00f0ff" },
+        { x: cw * 0.5, y: cy, label: t.hub, color: "#8b5cf6" },
+        { x: cw * 0.85, y: cy, label: t.bob, color: "#10b981" },
       ];
 
       // Draw connection lines
@@ -90,7 +94,7 @@ export default function DeliveryFlow() {
       }
 
       // Animated pulse: message traveling Alice → Hub → Bob
-      const cycle = t % 3;
+      const cycle = time % 3;
       let px: number;
       let py: number = cy;
 
@@ -123,7 +127,7 @@ export default function DeliveryFlow() {
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      t += 0.008;
+      time += 0.008;
       animId = requestAnimationFrame(draw);
     };
 
@@ -133,7 +137,7 @@ export default function DeliveryFlow() {
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", resize);
     };
-  }, []);
+  }, [t]);
 
   return (
     <motion.div

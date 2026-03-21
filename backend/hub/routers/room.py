@@ -5,17 +5,32 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_agent
+from hub.auth import get_current_claimed_agent
+from hub import config as hub_config
 from hub.config import JOIN_RATE_LIMIT_PER_MINUTE
 from hub.database import get_db
 from hub.id_generators import generate_room_id
-from hub.models import Agent, Contact, MessagePolicy, Room, RoomMember, RoomRole, RoomVisibility, RoomJoinPolicy
+from hub.enums import SubscriptionProductStatus, SubscriptionStatus
+from hub.models import (
+    Agent,
+    AgentSubscription,
+    Contact,
+    MessagePolicy,
+    Room,
+    RoomJoinPolicy,
+    RoomMember,
+    RoomRole,
+    RoomVisibility,
+    SubscriptionRoomCreatorPolicy,
+    SubscriptionProduct,
+)
 from hub.schemas import (
     AddRoomMemberRequest,
     CreateRoomRequest,
@@ -26,12 +41,16 @@ from hub.schemas import (
     RoomMemberResponse,
     RoomPublicResponse,
     RoomResponse,
+    SubscriptionRoomCreatorPolicyListResponse,
+    SubscriptionRoomCreatorPolicyResponse,
+    SubscriptionRoomCreatorPolicyUpsertRequest,
     SetMemberPermissionsRequest,
     TransferRoomOwnerRequest,
     UpdateRoomRequest,
 )
 
 router = APIRouter(prefix="/hub/rooms", tags=["rooms"])
+internal_router = APIRouter(prefix="/internal/rooms", tags=["rooms-internal"])
 
 # ---------------------------------------------------------------------------
 # In-memory join rate-limit state: room_id → deque of timestamps
@@ -46,8 +65,21 @@ def _check_join_rate_limit(room_id: str) -> None:
     while window and window[0] <= now - 60:
         window.popleft()
     if len(window) >= JOIN_RATE_LIMIT_PER_MINUTE:
-        raise HTTPException(status_code=429, detail="Join rate limit exceeded for this room")
+        raise I18nHTTPException(status_code=429, message_key="join_rate_limit_exceeded")
     window.append(now)
+
+
+def _require_internal(authorization: str | None = None):
+    if not hub_config.ALLOW_PRIVATE_ENDPOINTS:
+        raise HTTPException(status_code=403, detail="Internal endpoints are disabled")
+
+    expected = hub_config.INTERNAL_API_SECRET
+    if expected:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing internal API secret")
+        provided = authorization.removeprefix("Bearer ").strip()
+        if provided != expected:
+            raise HTTPException(status_code=401, detail="Invalid internal API secret")
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +104,7 @@ def _build_room_response(room: Room) -> RoomResponse:
         owner_id=room.owner_id,
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
+        required_subscription_product_id=room.required_subscription_product_id,
         max_members=room.max_members,
         default_send=room.default_send,
         default_invite=room.default_invite,
@@ -101,6 +134,7 @@ def _build_room_public_response(room: Room) -> RoomPublicResponse:
         owner_id=room.owner_id,
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
+        required_subscription_product_id=room.required_subscription_product_id,
         slow_mode_seconds=room.slow_mode_seconds,
         member_count=len(room.members),
         created_at=room.created_at,
@@ -118,7 +152,7 @@ async def _load_room(db: AsyncSession, room_id: str, *, fresh: bool = False) -> 
     )
     room = result.scalar_one_or_none()
     if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
     return room
 
 
@@ -127,14 +161,14 @@ def _require_membership(room: Room, agent_id: str) -> RoomMember:
     for m in room.members:
         if m.agent_id == agent_id:
             return m
-    raise HTTPException(status_code=403, detail="Not a member of this room")
+    raise I18nHTTPException(status_code=403, message_key="not_a_member")
 
 
 def _require_admin_or_owner(room: Room, agent_id: str) -> RoomMember:
     """Return the member record if owner/admin, else raise 403."""
     member = _require_membership(room, agent_id)
     if member.role not in (RoomRole.owner, RoomRole.admin):
-        raise HTTPException(status_code=403, detail="Admin or owner role required")
+        raise I18nHTTPException(status_code=403, message_key="admin_or_owner_required")
     return member
 
 
@@ -156,6 +190,124 @@ def _can_invite(room: Room, member: RoomMember) -> bool:
     return room.default_invite
 
 
+def _validate_subscription_room_config(
+    visibility: RoomVisibility,
+    join_policy: RoomJoinPolicy,
+    required_subscription_product_id: str | None,
+) -> None:
+    # Subscription-gated rooms no longer require invite_only — subscribers
+    # can self-join regardless of join_policy.
+    pass
+
+
+async def _ensure_room_subscription_product(
+    db: AsyncSession,
+    owner_id: str,
+    required_subscription_product_id: str | None,
+) -> SubscriptionProduct | None:
+    if not required_subscription_product_id:
+        return None
+
+    result = await db.execute(
+        select(SubscriptionProduct).where(
+            SubscriptionProduct.product_id == required_subscription_product_id
+        )
+    )
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=400, detail="Subscription product not found")
+    if product.owner_agent_id != owner_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Room owner must own the required subscription product",
+        )
+    if product.status != SubscriptionProductStatus.active:
+        raise HTTPException(
+            status_code=400,
+            detail="Required subscription product must be active",
+        )
+    return product
+
+
+async def _ensure_subscription_room_access(
+    db: AsyncSession,
+    room: Room,
+    target_agent_id: str,
+) -> None:
+    if not room.required_subscription_product_id or target_agent_id == room.owner_id:
+        return
+
+    result = await db.execute(
+        select(AgentSubscription).where(
+            AgentSubscription.product_id == room.required_subscription_product_id,
+            AgentSubscription.subscriber_agent_id == target_agent_id,
+            AgentSubscription.status == SubscriptionStatus.active,
+        )
+    )
+    subscription = result.scalar_one_or_none()
+    if subscription is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Active subscription required to join this room",
+        )
+
+
+def _subscription_room_creator_policy_response(
+    policy: SubscriptionRoomCreatorPolicy,
+) -> SubscriptionRoomCreatorPolicyResponse:
+    return SubscriptionRoomCreatorPolicyResponse(
+        agent_id=policy.agent_id,
+        allowed_to_create=policy.allowed_to_create,
+        max_active_rooms=policy.max_active_rooms,
+        note=policy.note,
+        created_at=policy.created_at,
+        updated_at=policy.updated_at,
+    )
+
+
+async def _enforce_subscription_room_creator_policy(
+    db: AsyncSession,
+    agent_id: str,
+    required_subscription_product_id: str | None,
+    *,
+    exclude_room_id: str | None = None,
+) -> None:
+    # TODO: temporarily skip whitelist verification — allow anyone to create subscription rooms
+    return
+
+
+async def _ensure_existing_members_match_subscription_requirement(
+    db: AsyncSession,
+    room: Room,
+    required_subscription_product_id: str | None,
+) -> None:
+    if not required_subscription_product_id:
+        return
+
+    member_ids = {
+        member.agent_id
+        for member in room.members
+        if member.agent_id != room.owner_id
+    }
+    if not member_ids:
+        return
+
+    result = await db.execute(
+        select(AgentSubscription.subscriber_agent_id).where(
+            AgentSubscription.product_id == required_subscription_product_id,
+            AgentSubscription.subscriber_agent_id.in_(member_ids),
+            AgentSubscription.status == SubscriptionStatus.active,
+        )
+    )
+    subscribed_member_ids = set(result.scalars().all())
+    missing_member_ids = member_ids - subscribed_member_ids
+    if missing_member_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="All existing members must have an active subscription for this room",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Routes — ordered so /me comes before /{room_id}
 # ---------------------------------------------------------------------------
@@ -165,9 +317,19 @@ def _can_invite(room: Room, member: RoomMember) -> bool:
 async def create_room(
     body: CreateRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Create a new room. Creator becomes the owner."""
+    _validate_subscription_room_config(
+        body.visibility, body.join_policy, body.required_subscription_product_id
+    )
+    await _enforce_subscription_room_creator_policy(
+        db, current_agent, body.required_subscription_product_id
+    )
+    await _ensure_room_subscription_product(
+        db, current_agent, body.required_subscription_product_id
+    )
+
     unique_member_ids = set(body.member_ids) - {current_agent}
 
     if unique_member_ids:
@@ -176,7 +338,7 @@ async def create_room(
         )
         agents = list(result.scalars().all())
         if len(agents) != len(unique_member_ids):
-            raise HTTPException(status_code=400, detail="One or more member_ids not found")
+            raise I18nHTTPException(status_code=400, message_key="member_ids_not_found")
 
         # Admission policy: contacts_only agents require creator to be in their contacts
         contacts_only_ids = [
@@ -192,13 +354,29 @@ async def create_room(
             has_contact = {row[0] for row in contact_result.all()}
             denied = set(contacts_only_ids) - has_contact
             if denied:
-                raise HTTPException(
+                raise I18nHTTPException(
                     status_code=403,
-                    detail=f"Admission denied: agents {sorted(denied)} have contacts_only policy and you are not in their contacts",
+                    message_key="admission_denied_contacts_only",
+                    denied=str(sorted(denied)),
                 )
 
     if body.max_members is not None and len(unique_member_ids) + 1 > body.max_members:
-        raise HTTPException(status_code=400, detail="Initial members exceed max_members")
+        raise I18nHTTPException(status_code=400, message_key="initial_members_exceed_max")
+
+    if body.required_subscription_product_id:
+        for member_id in unique_member_ids:
+            result = await db.execute(
+                select(AgentSubscription).where(
+                    AgentSubscription.product_id == body.required_subscription_product_id,
+                    AgentSubscription.subscriber_agent_id == member_id,
+                    AgentSubscription.status == SubscriptionStatus.active,
+                )
+            )
+            if result.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="All initial members must have an active subscription for this room",
+                )
 
     room = Room(
         room_id=generate_room_id(),
@@ -208,6 +386,7 @@ async def create_room(
         owner_id=current_agent,
         visibility=body.visibility,
         join_policy=body.join_policy,
+        required_subscription_product_id=body.required_subscription_product_id,
         max_members=body.max_members,
         default_send=body.default_send,
         default_invite=body.default_invite,
@@ -234,6 +413,92 @@ async def create_room(
 
     room = await _load_room(db, room.room_id, fresh=True)
     return _build_room_response(room)
+
+
+@internal_router.put(
+    "/subscription-room-policies/{agent_id}",
+    response_model=SubscriptionRoomCreatorPolicyResponse,
+)
+async def upsert_subscription_room_creator_policy(
+    agent_id: str,
+    body: SubscriptionRoomCreatorPolicyUpsertRequest,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _require_internal(authorization)
+
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).where(
+            SubscriptionRoomCreatorPolicy.agent_id == agent_id
+        )
+    )
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        policy = SubscriptionRoomCreatorPolicy(
+            agent_id=agent_id,
+            allowed_to_create=body.allowed_to_create,
+            max_active_rooms=body.max_active_rooms,
+            note=body.note,
+        )
+        db.add(policy)
+    else:
+        policy.allowed_to_create = body.allowed_to_create
+        policy.max_active_rooms = body.max_active_rooms
+        policy.note = body.note
+
+    await db.commit()
+    await db.refresh(policy)
+    return _subscription_room_creator_policy_response(policy)
+
+
+@internal_router.get(
+    "/subscription-room-policies/{agent_id}",
+    response_model=SubscriptionRoomCreatorPolicyResponse,
+)
+async def get_subscription_room_creator_policy(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _require_internal(authorization)
+
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).where(
+            SubscriptionRoomCreatorPolicy.agent_id == agent_id
+        )
+    )
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Subscription room creator policy not found")
+    return _subscription_room_creator_policy_response(policy)
+
+
+@internal_router.get(
+    "/subscription-room-policies",
+    response_model=SubscriptionRoomCreatorPolicyListResponse,
+)
+async def list_subscription_room_creator_policies(
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _require_internal(authorization)
+
+    result = await db.execute(
+        select(SubscriptionRoomCreatorPolicy).order_by(
+            SubscriptionRoomCreatorPolicy.created_at.desc()
+        )
+    )
+    policies = list(result.scalars().all())
+    return SubscriptionRoomCreatorPolicyListResponse(
+        policies=[
+            _subscription_room_creator_policy_response(policy)
+            for policy in policies
+        ]
+    )
 
 
 @router.get("", response_model=RoomDiscoveryResponse)
@@ -267,7 +532,7 @@ async def list_my_rooms(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """List all rooms the current agent is a member of."""
     result = await db.execute(
@@ -289,7 +554,7 @@ async def list_my_rooms(
 async def get_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Get room info. Only members can view."""
     room = await _load_room(db, room_id, fresh=True)
@@ -302,34 +567,62 @@ async def update_room(
     room_id: str,
     body: UpdateRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Update room info. Owner/admin only."""
     room = await _load_room(db, room_id)
     _require_admin_or_owner(room, current_agent)
+    previous_required_subscription_product_id = room.required_subscription_product_id
 
-    # Use model_fields_set to distinguish "field omitted" from "field set to None"
-    # This allows setting max_members/description back to None.
-    if "name" in body.model_fields_set:
-        room.name = body.name
-    if "description" in body.model_fields_set:
-        room.description = body.description
-    if "rule" in body.model_fields_set:
-        room.rule = _normalize_room_rule(body.rule)
-    if "visibility" in body.model_fields_set:
-        room.visibility = body.visibility
-    if "join_policy" in body.model_fields_set:
-        room.join_policy = body.join_policy
-    if "max_members" in body.model_fields_set:
-        room.max_members = body.max_members
-    if "default_send" in body.model_fields_set:
-        room.default_send = body.default_send
-    if "default_invite" in body.model_fields_set:
-        room.default_invite = body.default_invite
-    if "slow_mode_seconds" in body.model_fields_set:
-        room.slow_mode_seconds = body.slow_mode_seconds
+    try:
+        # Use model_fields_set to distinguish "field omitted" from "field set to None"
+        # This allows setting max_members/description back to None.
+        if "name" in body.model_fields_set:
+            room.name = body.name
+        if "description" in body.model_fields_set:
+            room.description = body.description
+        if "rule" in body.model_fields_set:
+            room.rule = _normalize_room_rule(body.rule)
+        if "visibility" in body.model_fields_set:
+            room.visibility = body.visibility
+        if "join_policy" in body.model_fields_set:
+            room.join_policy = body.join_policy
+        if "required_subscription_product_id" in body.model_fields_set:
+            room.required_subscription_product_id = body.required_subscription_product_id
+        if "max_members" in body.model_fields_set:
+            room.max_members = body.max_members
+        if "default_send" in body.model_fields_set:
+            room.default_send = body.default_send
+        if "default_invite" in body.model_fields_set:
+            room.default_invite = body.default_invite
+        if "slow_mode_seconds" in body.model_fields_set:
+            room.slow_mode_seconds = body.slow_mode_seconds
 
-    await db.commit()
+        _validate_subscription_room_config(
+            room.visibility, room.join_policy, room.required_subscription_product_id
+        )
+        await _enforce_subscription_room_creator_policy(
+            db,
+            room.owner_id,
+            room.required_subscription_product_id,
+            exclude_room_id=room.room_id,
+        )
+        await _ensure_room_subscription_product(
+            db, room.owner_id, room.required_subscription_product_id
+        )
+        if (
+            room.required_subscription_product_id
+            and room.required_subscription_product_id != previous_required_subscription_product_id
+        ):
+            await _ensure_existing_members_match_subscription_requirement(
+                db, room, room.required_subscription_product_id
+            )
+
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+
     room = await _load_room(db, room.room_id, fresh=True)
     return _build_room_response(room)
 
@@ -338,13 +631,13 @@ async def update_room(
 async def dissolve_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Dissolve (delete) a room. Owner only."""
     room = await _load_room(db, room_id)
     member = _require_membership(room, current_agent)
     if member.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can dissolve the room")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_dissolve")
 
     await db.delete(room)
     await db.commit()
@@ -356,7 +649,7 @@ async def add_member(
     room_id: str,
     body: AddRoomMemberRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Add a member to the room.
 
@@ -371,17 +664,30 @@ async def add_member(
 
     if is_self_join:
         target_agent_id = current_agent
-        if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
-            raise HTTPException(
-                status_code=403,
-                detail="Self-join only allowed for public rooms with open join policy",
+        # Subscription-gated rooms: subscribers can self-join regardless of join_policy,
+        # but room must still be public (visibility check is NOT bypassed).
+        has_subscription_access = False
+        if room.required_subscription_product_id and room.visibility == RoomVisibility.public:
+            sub_result = await db.execute(
+                select(AgentSubscription).where(
+                    AgentSubscription.product_id == room.required_subscription_product_id,
+                    AgentSubscription.subscriber_agent_id == target_agent_id,
+                    AgentSubscription.status == SubscriptionStatus.active,
+                )
             )
+            has_subscription_access = sub_result.scalar_one_or_none() is not None
+        if not has_subscription_access:
+            if room.visibility != RoomVisibility.public or room.join_policy != RoomJoinPolicy.open:
+                raise I18nHTTPException(
+                    status_code=403,
+                    message_key="self_join_public_open_only",
+                )
         _check_join_rate_limit(room_id)
     else:
         # Permission check: use _can_invite instead of _require_admin_or_owner
         inviter = _require_membership(room, current_agent)
         if not _can_invite(room, inviter):
-            raise HTTPException(status_code=403, detail="You do not have invite permission")
+            raise I18nHTTPException(status_code=403, message_key="no_invite_permission")
 
         # Check target agent exists and load for admission policy
         result = await db.execute(
@@ -389,7 +695,7 @@ async def add_member(
         )
         target_agent = result.scalar_one_or_none()
         if target_agent is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
+            raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
         # Admission policy: contacts_only agents require inviter to be in their contacts
         if target_agent.message_policy == MessagePolicy.contacts_only:
@@ -400,14 +706,16 @@ async def add_member(
                 )
             )
             if contact_result.scalar_one_or_none() is None:
-                raise HTTPException(
+                raise I18nHTTPException(
                     status_code=403,
-                    detail="Admission denied: target agent has contacts_only policy and you are not in their contacts",
+                    message_key="admission_denied_target_contacts_only",
                 )
 
     # Check max_members
     if room.max_members is not None and len(room.members) >= room.max_members:
-        raise HTTPException(status_code=400, detail="Room is full")
+        raise I18nHTTPException(status_code=400, message_key="room_is_full")
+
+    await _ensure_subscription_room_access(db, room, target_agent_id)
 
     new_member = RoomMember(
         room_id=room.room_id,
@@ -421,9 +729,9 @@ async def add_member(
             db.add(new_member)
             await db.flush()
     except IntegrityError:
-        raise HTTPException(
+        raise I18nHTTPException(
             status_code=409,
-            detail="Agent is already a member or does not exist",
+            message_key="agent_already_member_or_not_exist",
         )
 
     await db.commit()
@@ -436,7 +744,7 @@ async def remove_member(
     room_id: str,
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Remove a member from the room. Owner/admin only. Cannot remove the owner."""
     room = await _load_room(db, room_id)
@@ -448,13 +756,13 @@ async def remove_member(
             target = m
             break
     if target is None:
-        raise HTTPException(status_code=404, detail="Member not found in room")
+        raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
     if target.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Cannot remove the room owner")
+        raise I18nHTTPException(status_code=400, message_key="cannot_remove_room_owner")
 
     if target.role == RoomRole.admin and caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can remove admins")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_remove_admins")
 
     await db.delete(target)
     await db.commit()
@@ -467,14 +775,14 @@ async def remove_member(
 async def leave_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Leave a room. Owner cannot leave."""
     room = await _load_room(db, room_id)
     member = _require_membership(room, current_agent)
 
     if member.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Owner cannot leave the room")
+        raise I18nHTTPException(status_code=400, message_key="owner_cannot_leave")
 
     await db.delete(member)
     await db.commit()
@@ -486,16 +794,16 @@ async def transfer_ownership(
     room_id: str,
     body: TransferRoomOwnerRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Transfer room ownership to another member. Owner only."""
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can transfer ownership")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_transfer")
 
     if body.new_owner_id == current_agent:
-        raise HTTPException(status_code=400, detail="Cannot transfer ownership to yourself")
+        raise I18nHTTPException(status_code=400, message_key="cannot_transfer_to_self")
 
     new_owner_member = None
     for m in room.members:
@@ -503,7 +811,12 @@ async def transfer_ownership(
             new_owner_member = m
             break
     if new_owner_member is None:
-        raise HTTPException(status_code=404, detail="New owner is not a member of this room")
+        raise I18nHTTPException(status_code=404, message_key="new_owner_not_member")
+
+    if room.required_subscription_product_id:
+        await _ensure_room_subscription_product(
+            db, body.new_owner_id, room.required_subscription_product_id
+        )
 
     caller.role = RoomRole.member
     new_owner_member.role = RoomRole.owner
@@ -519,13 +832,13 @@ async def promote_demote(
     room_id: str,
     body: PromoteRoomMemberRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Promote/demote a member. Owner only. Valid roles: 'admin', 'member'."""
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can promote/demote")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_promote")
 
     target = None
     for m in room.members:
@@ -533,10 +846,10 @@ async def promote_demote(
             target = m
             break
     if target is None:
-        raise HTTPException(status_code=404, detail="Member not found in room")
+        raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
     if target.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Cannot change owner role via promote/demote")
+        raise I18nHTTPException(status_code=400, message_key="cannot_change_owner_role")
 
     target.role = RoomRole(body.role)
     await db.commit()
@@ -549,7 +862,7 @@ async def mute_room(
     room_id: str,
     body: MuteRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Set mute status for the current member. Muted members skip fan-out."""
     room = await _load_room(db, room_id)
@@ -564,7 +877,7 @@ async def set_member_permissions(
     room_id: str,
     body: SetMemberPermissionsRequest,
     db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
+    current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Set per-member permission overrides (can_send, can_invite).
 
@@ -581,13 +894,13 @@ async def set_member_permissions(
             target = m
             break
     if target is None:
-        raise HTTPException(status_code=404, detail="Member not found in room")
+        raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
     if target.role == RoomRole.owner:
-        raise HTTPException(status_code=400, detail="Cannot modify owner permissions")
+        raise I18nHTTPException(status_code=400, message_key="cannot_modify_owner_permissions")
 
     if target.role == RoomRole.admin and caller.role != RoomRole.owner:
-        raise HTTPException(status_code=403, detail="Only the owner can modify admin permissions")
+        raise I18nHTTPException(status_code=403, message_key="only_owner_can_modify_admin_permissions")
 
     # Apply permission overrides (None = use defaults)
     target.can_send = body.can_send

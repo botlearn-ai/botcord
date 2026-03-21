@@ -1,5 +1,7 @@
 import datetime
 
+import uuid as _uuid
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -12,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -55,6 +58,18 @@ class Agent(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    agent_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_code: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: f"clm_{_uuid.uuid4().hex}",
+    )
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")
@@ -155,6 +170,12 @@ class Room(Base):
     join_policy: Mapped[RoomJoinPolicy] = mapped_column(
         Enum(RoomJoinPolicy), nullable=False, default=RoomJoinPolicy.invite_only
     )
+    required_subscription_product_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("subscription_products.product_id"),
+        nullable=True,
+        index=True,
+    )
     max_members: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_send: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_invite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -168,6 +189,28 @@ class Room(Base):
     )
     topics: Mapped[list["Topic"]] = relationship(
         back_populates="room", cascade="all, delete-orphan"
+    )
+
+
+class SubscriptionRoomCreatorPolicy(Base):
+    __tablename__ = "subscription_room_creator_policies"
+    __table_args__ = (
+        UniqueConstraint("agent_id", name="uq_subscription_room_creator_policy_agent"),
+        CheckConstraint("max_active_rooms >= 0", name="ck_subscription_room_creator_policy_nonneg"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    allowed_to_create: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    max_active_rooms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -383,7 +426,10 @@ class FileRecord(Base):
     original_filename: Mapped[str] = mapped_column(String(256), nullable=False)
     content_type: Mapped[str] = mapped_column(String(128), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    disk_path: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="disk", index=True)
+    disk_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    storage_bucket: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    storage_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     expires_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )

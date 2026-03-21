@@ -42,7 +42,12 @@ class MessageEnvelope(BaseModel):
     sig: Signature
     mentions: list[str] | None = None
 
-    def to_text(self, sender_name: str | None = None, mentioned: bool = False) -> str:
+    def to_text(
+        self,
+        sender_name: str | None = None,
+        mentioned: bool = False,
+        topic_id: str | None = None,
+    ) -> str:
         """Flatten envelope into a human-readable string that an AI agent can understand."""
         p = self.payload
         who = f"{sender_name} ({self.from_})" if sender_name else self.from_
@@ -104,7 +109,10 @@ class MessageEnvelope(BaseModel):
         # Prepend topic/goal/mention context with distinctive markers for agent parsing
         lines = []
         if self.topic:
-            lines.append(f"【Topic: {self.topic}】")
+            if topic_id:
+                lines.append(f"【Topic: {self.topic} | ID: {topic_id}】")
+            else:
+                lines.append(f"【Topic: {self.topic}】")
         if self.goal:
             lines.append(f"【Goal: {self.goal}】")
         if self.mentions:
@@ -150,6 +158,24 @@ class TokenRefreshRequest(BaseModel):
 class VerifyResponse(BaseModel):
     agent_token: str
     expires_at: int
+
+
+class ClaimContextResponse(BaseModel):
+    agent_id: str
+    display_name: str
+
+
+class ClaimLinkResponse(BaseModel):
+    agent_id: str
+    display_name: str
+    claim_code: str
+    claim_url: str
+
+
+class ClaimStatusResponse(BaseModel):
+    agent_id: str
+    claimed: bool
+    claimed_at: datetime.datetime | None = None
 
 
 # --- Endpoint schemas ---
@@ -384,6 +410,7 @@ class CreateRoomRequest(BaseModel):
     rule: str | None = Field(default=None, max_length=1000)
     visibility: RoomVisibility = RoomVisibility.private
     join_policy: RoomJoinPolicy = RoomJoinPolicy.invite_only
+    required_subscription_product_id: str | None = None
     max_members: int | None = Field(default=None, ge=1)
     default_send: bool = True
     default_invite: bool = False
@@ -397,6 +424,7 @@ class UpdateRoomRequest(BaseModel):
     rule: str | None = Field(default=None, max_length=1000)
     visibility: RoomVisibility | None = None
     join_policy: RoomJoinPolicy | None = None
+    required_subscription_product_id: str | None = None
     max_members: int | None = None
     default_send: bool | None = None
     default_invite: bool | None = None
@@ -445,6 +473,7 @@ class RoomResponse(BaseModel):
     owner_id: str
     visibility: str
     join_policy: str
+    required_subscription_product_id: str | None = None
     max_members: int | None = None
     default_send: bool
     default_invite: bool
@@ -462,6 +491,7 @@ class RoomPublicResponse(BaseModel):
     owner_id: str
     visibility: str
     join_policy: str
+    required_subscription_product_id: str | None = None
     slow_mode_seconds: int | None = None
     member_count: int
     created_at: datetime.datetime
@@ -473,6 +503,25 @@ class RoomDiscoveryResponse(BaseModel):
 
 class RoomListResponse(BaseModel):
     rooms: list[RoomResponse]
+
+
+class SubscriptionRoomCreatorPolicyUpsertRequest(BaseModel):
+    allowed_to_create: bool = False
+    max_active_rooms: int = Field(..., ge=0)
+    note: str | None = None
+
+
+class SubscriptionRoomCreatorPolicyResponse(BaseModel):
+    agent_id: str
+    allowed_to_create: bool
+    max_active_rooms: int
+    note: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class SubscriptionRoomCreatorPolicyListResponse(BaseModel):
+    policies: list[SubscriptionRoomCreatorPolicyResponse]
 
 
 # --- Dashboard schemas ---

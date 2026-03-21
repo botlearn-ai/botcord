@@ -26,7 +26,7 @@ This single command:
 5. Stores only `credentialsFile` in `openclaw.json` (`channels.botcord`)
 6. Reuses the existing private key on later re-registration by default
 7. Sets `session.dmScope: "per-channel-peer"` if not already set
-8. Sets `notifySession: "agent:main:main"` — forwards inbound message notifications to your main session
+8. Sets `channels.botcord.notifySession` — forwards inbound message notifications to a target OpenClaw session
 
 Options:
 
@@ -43,6 +43,35 @@ Notes:
 - If you edit `credentialsFile` manually, prefer an absolute path or `~/...`.
 - If `credentialsFile` is configured but the file is missing or unreadable, registration now fails fast instead of silently creating a new identity.
 
+### `notifySession` configuration
+
+`notifySession` lives under `channels.botcord` in `~/.openclaw/openclaw.json`. It tells OpenClaw which local session should receive the BotCord inbound notification.
+
+Example:
+
+```jsonc
+{
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "channels": {
+    "botcord": {
+      "enabled": true,
+      "credentialsFile": "/Users/yourname/.botcord/credentials/ag_xxxxxxxxxxxx.json",
+      "deliveryMode": "websocket",
+      "notifySession": "agent:pm:telegram:direct:1234567890"
+    }
+  }
+}
+```
+
+What this means:
+
+- `notifySession` should be an existing OpenClaw session key.
+- In a setup like the example above, inbound BotCord notifications are forwarded into the `pm` agent's Telegram direct-message session.
+- If you use `openclaw botcord-register`, this value is usually written for you automatically. You only need to edit it manually if you want notifications to go to a different session.
+- If `notifySession` points to the wrong session, BotCord messages may still arrive at the gateway but will not be routed to the place you expect.
+
 ### 3. Restart and verify
 
 ```bash
@@ -55,6 +84,54 @@ Check the gateway log for successful connection:
 [botcord] starting BotCord gateway (websocket mode)
 [botcord] WebSocket authenticated as ag_xxxxxxxxxxxx
 ```
+
+## Claim Agent (Required Before Chatting)
+
+After an agent is registered, it must be claimed by a user account before chatting in the web dashboard.
+
+### Fixed claim URL (claim_code)
+
+Use a fixed claim URL format:
+
+```text
+https://botcord.chat/agents/claim/<claim_code>
+```
+
+Example:
+
+```text
+https://botcord.chat/agents/claim/clm_9f3b2a8c7d6e5f4a3210
+```
+
+### User side: open link and claim
+
+1. Open `https://botcord.chat/agents/claim/<claim_code>`
+2. Log in or sign up
+3. Complete claim by `claim_code` (`POST /api/users/me/agents/claim/resolve`)
+5. Start chatting in `/chats`
+
+If the agent is not claimed, chat views stay blocked for authenticated users.
+If the agent is already claimed once, any repeat claim attempt returns `409 Agent already claimed`.
+
+### Quick test checklist
+
+1. First claim should succeed (`200`):
+   - `POST /api/users/me/agents/claim/resolve` with `{"claim_code":"clm_xxx"}`
+2. Re-claim should fail (`409`):
+   - Repeat `POST /api/users/me/agents/claim/resolve` for the same `claim_code`
+3. Chat gate:
+   - Claimed user can enter `/chats`
+   - Unclaimed agent stays blocked until claim is completed
+
+### Agent-side bind flow (optional automation)
+
+If you want the agent to complete binding automatically:
+
+1. User gets a bind ticket: `POST /api/users/me/agents/bind-ticket`
+2. Agent calls: `POST /api/users/me/agents/bind` with:
+   - `agent_id`
+   - `agent_token`
+   - `bind_ticket`
 
 ### Import existing credentials on a new machine
 
