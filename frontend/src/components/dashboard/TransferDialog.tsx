@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { transferDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 interface TransferDialogProps {
   onClose: () => void;
@@ -12,16 +13,15 @@ interface TransferDialogProps {
 }
 
 export default function TransferDialog({ onClose, onSuccess }: TransferDialogProps) {
-  const { state, isAuthedReady } = useDashboard();
   const locale = useLanguage();
   const t = transferDialog[locale];
+  const myAgentId = useDashboardChatStore((state) => state.overview?.agent.agent_id ?? "");
+  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
   const [recipientId, setRecipientId] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  const myAgentId = state.overview?.agent.agent_id ?? "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { topupDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
 import type { StripePackageItem } from "@/lib/types";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 function formatCoin(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -23,9 +23,9 @@ interface TopupDialogProps {
 }
 
 export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
-  const { state, isAuthedReady } = useDashboard();
   const locale = useLanguage();
   const t = topupDialog[locale];
+  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
   const [packages, setPackages] = useState<StripePackageItem[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [packagesError, setPackagesError] = useState("");

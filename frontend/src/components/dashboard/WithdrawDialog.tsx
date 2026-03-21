@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { withdrawDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 const MIN_WITHDRAWAL_MINOR = 1000 * 100;
 
@@ -22,9 +22,9 @@ function formatCoinAmount(minorStr: string): string {
 }
 
 export default function WithdrawDialog({ onClose, onSuccess, availableBalance }: WithdrawDialogProps) {
-  const { state, isAuthedReady } = useDashboard();
   const locale = useLanguage();
   const t = withdrawDialog[locale];
+  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
   const [amount, setAmount] = useState("");
   const [destinationType, setDestinationType] = useState<"bank" | "usdt_trc20" | "paypal">("bank");
   const [accountName, setAccountName] = useState("");

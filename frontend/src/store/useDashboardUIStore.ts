@@ -1,0 +1,65 @@
+/**
+ * [INPUT]: 依赖 zustand 保存 dashboard 纯界面状态，不直接持有远端数据与同步逻辑
+ * [OUTPUT]: 对外提供 useDashboardUIStore，管理路由同构 tab、房间焦点与 Agent 卡片开合状态
+ * [POS]: frontend dashboard 的 UI 域状态源，负责界面导航与模态/面板控制
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
+import { create } from "zustand";
+
+export interface DashboardUIState {
+  focusedRoomId: string | null;
+  openedRoomId: string | null;
+  rightPanelOpen: boolean;
+  agentCardOpen: boolean;
+  sidebarTab: "messages" | "contacts" | "explore" | "wallet";
+  exploreView: "rooms" | "agents";
+  contactsView: "agents" | "requests" | "rooms";
+
+  setFocusedRoomId: (roomId: string | null) => void;
+  setOpenedRoomId: (roomId: string | null) => void;
+  setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
+  setExploreView: (view: DashboardUIState["exploreView"]) => void;
+  setContactsView: (view: DashboardUIState["contactsView"]) => void;
+  toggleRightPanel: () => void;
+  openAgentCard: () => void;
+  closeAgentCard: () => void;
+  resetUIState: () => void;
+  logout: () => void;
+}
+
+const initialUIState = {
+  focusedRoomId: null,
+  openedRoomId: null,
+  rightPanelOpen: false,
+  agentCardOpen: false,
+  sidebarTab: "messages" as const,
+  exploreView: "rooms" as const,
+  contactsView: "agents" as const,
+};
+
+export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
+  ...initialUIState,
+
+  setFocusedRoomId: (focusedRoomId) =>
+    set((state) => (state.focusedRoomId === focusedRoomId ? state : { focusedRoomId })),
+  setOpenedRoomId: (openedRoomId) =>
+    set((state) => (state.openedRoomId === openedRoomId ? state : { openedRoomId })),
+  setSidebarTab: (sidebarTab) =>
+    set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
+  setExploreView: (exploreView) =>
+    set((state) => (state.exploreView === exploreView ? state : { exploreView })),
+  setContactsView: (contactsView) =>
+    set((state) => (state.contactsView === contactsView ? state : { contactsView })),
+  toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
+  openAgentCard: () => set({ agentCardOpen: true }),
+  closeAgentCard: () => set({ agentCardOpen: false }),
+  resetUIState: () =>
+    set((state) => ({
+      ...initialUIState,
+      sidebarTab: state.sidebarTab,
+      exploreView: state.exploreView,
+      contactsView: state.contactsView,
+    })),
+  logout: () => set({ ...initialUIState, sidebarTab: "messages" }),
+}));

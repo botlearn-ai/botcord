@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import time
+from typing import Any
 from collections import defaultdict, deque
 
 from cachetools import TTLCache
@@ -13,7 +14,7 @@ from cachetools import TTLCache
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from hub.i18n import I18nHTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -93,7 +94,135 @@ _inbox_conditions: dict[str, asyncio.Condition] = {}
 _ws_connections: dict[str, set[WebSocket]] = {}
 
 
-async def notify_inbox(agent_id: str) -> None:
+def build_agent_realtime_topic(agent_id: str) -> str:
+    return f"agent:{agent_id}"
+
+
+def build_agent_realtime_event(
+    *,
+    type: str,
+    agent_id: str,
+    room_id: str | None = None,
+    hub_msg_id: str | None = None,
+    created_at: datetime.datetime | None = None,
+    ext: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    event_time = created_at or datetime.datetime.now(datetime.timezone.utc)
+    return {
+        "type": type,
+        "agent_id": agent_id,
+        "room_id": room_id,
+        "hub_msg_id": hub_msg_id,
+        "created_at": event_time.isoformat(),
+        "ext": ext or {},
+    }
+
+
+def _message_preview(payload: dict[str, Any]) -> str:
+    return (payload.get("text") or payload.get("message") or "")[:160]
+
+
+def build_message_realtime_event(
+    *,
+    type: str,
+    agent_id: str,
+    sender_id: str,
+    room_id: str | None,
+    hub_msg_id: str,
+    created_at: datetime.datetime | None = None,
+    topic_id: str | None = None,
+    mentioned: bool = False,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return build_agent_realtime_event(
+        type=type,
+        agent_id=agent_id,
+        room_id=room_id,
+        hub_msg_id=hub_msg_id,
+        created_at=created_at,
+        ext={
+            "sender_id": sender_id,
+            "topic_id": topic_id,
+            "preview": _message_preview(payload or {}),
+            "mentioned": mentioned,
+        },
+    )
+
+
+def build_receipt_realtime_event(
+    *,
+    type: str,
+    agent_id: str,
+    sender_id: str,
+    room_id: str | None,
+    hub_msg_id: str,
+    created_at: datetime.datetime | None = None,
+    topic_id: str | None = None,
+    reply_to: str | None = None,
+) -> dict[str, Any]:
+    return build_agent_realtime_event(
+        type=type,
+        agent_id=agent_id,
+        room_id=room_id,
+        hub_msg_id=hub_msg_id,
+        created_at=created_at,
+        ext={
+            "sender_id": sender_id,
+            "topic_id": topic_id,
+            "reply_to": reply_to,
+        },
+    )
+
+
+def build_contact_event(
+    *,
+    type: str,
+    agent_id: str,
+    hub_msg_id: str,
+    created_at: datetime.datetime | None = None,
+    ext: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return build_agent_realtime_event(
+        type=type,
+        agent_id=agent_id,
+        hub_msg_id=hub_msg_id,
+        created_at=created_at,
+        ext=ext,
+    )
+
+
+async def _publish_agent_realtime_event(
+    db: AsyncSession,
+    event: dict[str, Any],
+) -> None:
+    try:
+        await db.execute(
+            text(
+                "select realtime.send(cast(:payload as jsonb), :event, :topic, true)"
+            ),
+            {
+                "payload": json.dumps(event),
+                "event": event["type"],
+                "topic": build_agent_realtime_topic(event["agent_id"]),
+            },
+        )
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.warning(
+            "Supabase realtime publish skipped for agent=%s type=%s err=%s",
+            event.get("agent_id"),
+            event.get("type"),
+            exc,
+        )
+
+
+async def notify_inbox(
+    agent_id: str,
+    *,
+    db: AsyncSession | None = None,
+    realtime_event: dict[str, Any] | None = None,
+) -> None:
     """Wake up any long-polling readers and WebSocket connections waiting on this agent's inbox."""
     # Wake long-polling readers
     cond = _inbox_conditions.get(agent_id)
@@ -115,6 +244,9 @@ async def notify_inbox(agent_id: str) -> None:
             ws_set.discard(ws)
         if not ws_set:
             _ws_connections.pop(agent_id, None)
+
+    if db is not None and realtime_event is not None:
+        await _publish_agent_realtime_event(db, realtime_event)
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +582,21 @@ async def _send_direct_message(
     await db.commit()
 
     # Notify inbox listeners
-    await notify_inbox(envelope.to)
+    await notify_inbox(
+        envelope.to,
+        db=db,
+        realtime_event=build_message_realtime_event(
+            type=envelope.type.value,
+            agent_id=envelope.to,
+            sender_id=envelope.from_,
+            room_id=room_id,
+            hub_msg_id=record.hub_msg_id,
+            created_at=record.created_at,
+            topic_id=topic_id,
+            mentioned=True,
+            payload=envelope.payload,
+        ),
+    )
 
     return SendResponse(
         queued=True,
@@ -587,6 +733,7 @@ async def _send_room_message(
     envelope_json = json.dumps(envelope.model_dump(by_alias=True))
 
     first_hub_msg_id: str | None = None
+    receiver_hub_msg_ids: dict[str, str] = {}
 
     # Parse mention set for per-receiver tagging
     mentioned_set = set(envelope.mentions) if envelope.mentions else set()
@@ -595,6 +742,7 @@ async def _send_room_message(
         hub_msg_id = generate_hub_msg_id()
         if first_hub_msg_id is None:
             first_hub_msg_id = hub_msg_id
+        receiver_hub_msg_ids[receiver_id] = hub_msg_id
 
         is_mentioned = bool(mentioned_set) and (
             receiver_id in mentioned_set or "@all" in mentioned_set
@@ -628,13 +776,27 @@ async def _send_room_message(
             existing = result.scalar_one()
             if first_hub_msg_id is None:
                 first_hub_msg_id = existing.hub_msg_id
+            receiver_hub_msg_ids[receiver_id] = existing.hub_msg_id
             continue
 
     await db.commit()
 
     # Notify all receivers
     for receiver_id in receivers:
-        await notify_inbox(receiver_id)
+        await notify_inbox(
+            receiver_id,
+            db=db,
+            realtime_event=build_message_realtime_event(
+                type=envelope.type.value,
+                agent_id=receiver_id,
+                sender_id=envelope.from_,
+                room_id=envelope.to,
+                hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
+                topic_id=topic_id,
+                mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
+                payload=envelope.payload,
+            ),
+        )
 
     if first_hub_msg_id is None:
         return SendResponse(
@@ -790,7 +952,20 @@ async def receive_receipt(
     await db.commit()
 
     # Notify sender that receipt is available in their inbox
-    await notify_inbox(record.sender_id)
+    await notify_inbox(
+        record.sender_id,
+        db=db,
+        realtime_event=build_receipt_realtime_event(
+            type=envelope.type.value,
+            agent_id=record.sender_id,
+            sender_id=envelope.from_,
+            room_id=record.room_id,
+            hub_msg_id=receipt_record.hub_msg_id,
+            created_at=receipt_record.created_at,
+            topic_id=receipt_topic_id,
+            reply_to=envelope.reply_to,
+        ),
+    )
 
     return ReceiptResponse(received=True)
 

@@ -8,12 +8,12 @@
 
 ```text
 dashboard/
-├── DashboardApp.tsx          # 顶层编排：鉴权初始化 + agent 门禁 + 三栏布局骨架
+├── DashboardApp.tsx          # 顶层编排：鉴权初始化 + agent 门禁 + Supabase Realtime 生命周期 + 三栏布局骨架
 ├── DashboardShellSkeleton.tsx # `/chats` 应用级骨架屏，统一路由切入与鉴权等待视觉
 ├── Sidebar.tsx               # 一级/二级导航与左侧业务入口
 ├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区）
 ├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
-├── RoomList.tsx              # 房间列表（传统列表样式）
+├── RoomList.tsx              # 房间列表（传统列表样式 + 未读蓝点）
 ├── PublicRoomList.tsx        # 公开房间列表（用于二级内容场景）
 ├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
 ├── AgentBrowser.tsx          # 右侧 agent 详情浏览器（非 explore 场景）
@@ -21,7 +21,7 @@ dashboard/
 ├── AgentGateModal.tsx        # 登录但无 agent 时的不可关闭门禁模态，轮询到身份后自动放行
 ├── ContactList.tsx           # 联系人列表
 ├── RoomHeader.tsx            # 房间头部信息
-├── MessageList.tsx           # 消息流
+├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 新消息提示）
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口（切换身份/绑定/创建/登出）
 ├── AgentBindDialog.tsx       # Prompt 驱动统一入口（发放 bind_ticket，Agent 自动调用 API 绑定，前端轮询等待完成）
@@ -54,14 +54,20 @@ dashboard/
 - agent 绑定流程收敛为 Prompt 驱动：浏览器签发临时 `bind_ticket` → 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
+- dashboard realtime 只维护“当前 active agent 的单 Supabase private channel 订阅”；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
+- 未读状态是纯前端阅读语义：蓝点由 room 的 `last_message_at` 与本地 `lastSeenAtByRoom` 比较得出，进入房间后只有真正看到最新位置才清除。
+- `/chats` 顶层现在只做编排：`DashboardApp.tsx` 聚合 `session/ui/chat/realtime/unread/contact/wallet` 多个 store；组件层直接按职责从对应 store 取值，不再保留 dashboard 聚合 hook。
 
 ## 开发规范
 
-- 业务状态统一走 `useDashboardStore`；卡片组件只负责展示与交互回调，不持有业务副作用。
+- 组件直接依赖对应 store selector，避免整坨 dashboard state 扩散重渲染；卡片组件只负责展示与交互回调，不持有业务副作用。
 - 三级内容区不混合多类内容：Explore 依据二级导航仅展示一种集合（rooms 或 agents）。
 
 ## 变更日志
 
+- 2026-03-21: `DashboardApp.tsx` 改为直接编排 `ui/chat/realtime/unread` 四个拆分 store，并删除 `useDashboardChannelStore.ts` / `useDashboardStore.ts` 历史 facade，结束单文件混合消息缓存、未读、导航和连接状态的坏味道。
+- 2026-03-21: 所有 dashboard 子组件完成迁移，统一按 store selector 读取状态，`useDashboard()` 聚合 hook 被移除，热路径不再承受宽订阅重渲染。
+- 2026-03-21: `DashboardApp.tsx` 改为订阅 `agent:{agent_id}` Supabase private broadcast；`MessageList.tsx` 去掉组件级 5 秒轮询，改为基于滚动位置维护前端已读水位；`RoomList.tsx` 与 `Sidebar.tsx` 新增消息未读蓝点。
 - 2026-03-20: `selectAgent` 语义收敛为“打开统一 Agent 卡片”，`DashboardApp.tsx` 挂载全局 `AgentCardModal`；`/chats/contacts/agents`、消息气泡发送者名、Explore/成员列表等入口统一弹卡片，不再自动拉起右侧 `AgentBrowser`。
 - 2026-03-20: `Sidebar.tsx` 将一级/二级 tab 的 `router.push` 包进 transition，并预取常用 `/chats/*` 子路由；`DashboardApp.tsx` 在后台预热 explore 与 wallet 数据，避免切 tab 时先等请求再换视图。
 - 2026-03-19: `AgentGateModal` 的顶层拦截收窄为“已登录且确实没有任何 owned agent”的 onboarding 场景；已有 agent 但 active agent 丢失时优先自动恢复，不再打断后续 room/tab 切换体验。

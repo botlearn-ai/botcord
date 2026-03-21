@@ -1,16 +1,18 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 提供 agent 切换与刷新动作，依赖 AgentBindDialog 提供统一绑定入口
+ * [INPUT]: 依赖 session/chat store 提供 agent 切换与刷新动作，依赖 AgentBindDialog 提供统一绑定入口
  * [OUTPUT]: 对外提供 AgentRequiredState 组件，渲染“缺少当前 agent”空态与恢复动作
  * [POS]: dashboard 身份前置条件的复用提示层，被钱包、联系人等需要 active agent 的视图消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useCallback, useState } from "react";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from "@/lib/i18n";
 import { agentRequiredState, bindDialog } from "@/lib/i18n/translations/dashboard";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import AgentBindDialog from "./AgentBindDialog";
 
 interface AgentRequiredStateProps {
@@ -24,9 +26,13 @@ export default function AgentRequiredState({
   description,
   compact = false,
 }: AgentRequiredStateProps) {
-  const { state, switchActiveAgent, refreshUserProfile } = useDashboard();
+  const { ownedAgents, refreshUserProfile } = useDashboardSessionStore(useShallow((state) => ({
+    ownedAgents: state.ownedAgents,
+    refreshUserProfile: state.refreshUserProfile,
+  })));
+  const switchActiveAgent = useDashboardChatStore((state) => state.switchActiveAgent);
   const [showBindDialog, setShowBindDialog] = useState(false);
-  const fallbackAgent = state.ownedAgents[0] ?? null;
+  const fallbackAgent = ownedAgents[0] ?? null;
   const locale = useLanguage();
   const t = agentRequiredState[locale];
   const tb = bindDialog[locale];

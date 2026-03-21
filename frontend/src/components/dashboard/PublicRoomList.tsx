@@ -1,26 +1,50 @@
 /**
- * [INPUT]: 依赖 dashboard store 的公开房间列表与消息加载动作，依赖 SubscriptionBadge 呈现付费房间标记
+ * [INPUT]: 依赖 ui/chat store 的公开房间列表与消息加载动作，依赖 SubscriptionBadge 呈现付费房间标记
  * [OUTPUT]: 对外提供 PublicRoomList 组件，渲染游客可浏览的公开房间列表
  * [POS]: dashboard 左侧公开房间列表视图，被游客模式与 explore 相关入口复用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 "use client";
 
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import { useRouter } from "nextjs-toploader/app";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function PublicRoomList() {
   const router = useRouter();
-  const { state, loadRoomMessages, loadPublicRooms } = useDashboard();
   const locale = useLanguage();
   const t = roomList[locale];
   const tc = common[locale];
+  const {
+    publicRooms,
+    publicRoomsLoading,
+    messages,
+    loadRoomMessages,
+    loadPublicRooms,
+    addRecentPublicRoom,
+  } = useDashboardChatStore(useShallow((state) => ({
+    publicRooms: state.publicRooms,
+    publicRoomsLoading: state.publicRoomsLoading,
+    messages: state.messages,
+    loadRoomMessages: state.loadRoomMessages,
+    loadPublicRooms: state.loadPublicRooms,
+    addRecentPublicRoom: state.addRecentPublicRoom,
+  })));
+  const { focusedRoomId, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(
+    useShallow((state) => ({
+      focusedRoomId: state.focusedRoomId,
+      setFocusedRoomId: state.setFocusedRoomId,
+      setOpenedRoomId: state.setOpenedRoomId,
+      setSidebarTab: state.setSidebarTab,
+    })),
+  );
 
-  if (state.publicRoomsLoading) {
+  if (publicRoomsLoading) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
         {t.loadingRooms}
@@ -28,7 +52,7 @@ export default function PublicRoomList() {
     );
   }
 
-  if (state.publicRooms.length === 0) {
+  if (publicRooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
         {t.noPublicRooms}
@@ -37,23 +61,23 @@ export default function PublicRoomList() {
   }
 
   const handleSelect = (roomId: string) => {
-    const room = state.publicRooms.find((item) => item.room_id === roomId);
-    state.setFocusedRoomId(roomId);
-    state.setOpenedRoomId(roomId);
-    state.setSidebarTab("messages");
+    const room = publicRooms.find((item) => item.room_id === roomId);
+    setFocusedRoomId(roomId);
+    setOpenedRoomId(roomId);
+    setSidebarTab("messages");
     router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (room) {
-      state.addRecentPublicRoom(room);
+      addRecentPublicRoom(room);
     }
-    if (!state.messages[roomId]) {
-      loadRoomMessages(roomId);
+    if (!messages[roomId]) {
+      void loadRoomMessages(roomId);
     }
   };
 
   return (
     <div className="py-1">
-      {state.publicRooms.map((room) => {
-        const isSelected = state.focusedRoomId === room.room_id;
+      {publicRooms.map((room) => {
+        const isSelected = focusedRoomId === room.room_id;
         return (
           <button
             key={room.room_id}
@@ -97,7 +121,7 @@ export default function PublicRoomList() {
         );
       })}
       <button
-        onClick={loadPublicRooms}
+        onClick={() => void loadPublicRooms()}
         className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
         {tc.refresh}

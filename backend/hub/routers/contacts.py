@@ -38,7 +38,7 @@ async def _create_contact_removed_notification(
     other_id: str,
 ) -> None:
     """Push a contact_removed notification into the other agent's inbox."""
-    from hub.routers.hub import notify_inbox
+    from hub.routers.hub import build_contact_event, notify_inbox
 
     now = datetime.datetime.now(datetime.timezone.utc)
     ts = int(now.timestamp())
@@ -75,7 +75,19 @@ async def _create_contact_removed_notification(
     db.add(record)
     await db.commit()
 
-    await notify_inbox(other_id)
+    await notify_inbox(
+        other_id,
+        db=db,
+        realtime_event=build_contact_event(
+            type="contact_removed",
+            agent_id=other_id,
+            hub_msg_id=hub_msg_id,
+            created_at=now,
+            ext={
+                "removed_by": remover_id,
+            },
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

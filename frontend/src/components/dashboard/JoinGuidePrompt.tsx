@@ -4,21 +4,28 @@ import React, { useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { common } from '@/lib/i18n/translations/common';
 import { joinGuide } from '@/lib/i18n/translations/dashboard';
-import { useDashboard } from "./DashboardApp";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 interface JoinGuidePromptProps {
   roomId: string;
 }
 
 export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
-  const { state, isAuthedReady, joinRoom } = useDashboard();
   const locale = useLanguage();
   const tc = common[locale];
   const t = joinGuide[locale];
+  const { overview, joiningRoomId, joinRoom } = useDashboardChatStore(useShallow((state) => ({
+    overview: state.overview,
+    joiningRoomId: state.joiningRoomId,
+    joinRoom: state.joinRoom,
+  })));
+  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
   
   const [copied, setCopied] = useState(false);
-  const isJoined = !!state.overview?.rooms.find((room) => room.room_id === roomId);
-  const isJoining = state.joiningRoomId === roomId;
+  const isJoined = !!overview?.rooms.find((room) => room.room_id === roomId);
+  const isJoining = joiningRoomId === roomId;
 
   // Combined prompt: "Please join this room: ID. If not installed, read xxx to install."
   const combinedPrompt = `${t.joinPrompt}${roomId}\n\n${t.installHint}${t.installPrompt}${t.installSuffix}`;
@@ -68,7 +75,7 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
         <div className="mb-2">
           <button
             type="button"
-            onClick={() => joinRoom(roomId)}
+            onClick={() => void joinRoom(roomId)}
             disabled={isJoining}
             className="rounded-md border border-neon-green/40 bg-neon-green/10 px-2 py-1 text-[10px] font-medium text-neon-green transition-all hover:bg-neon-green/20 disabled:opacity-50"
           >

@@ -1,22 +1,30 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 react 的 startTransition/useEffect 解耦导航切换与路由提交，依赖 useDashboard 提供导航状态与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 承载账号与 agent 入口
- * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表与左下角账户菜单
- * [POS]: dashboard 左侧导航骨架，负责频道切换与全局入口编排；无 agent 准入由 DashboardApp 顶层统一处理
+ * [INPUT]: 依赖 react 的 startTransition/useEffect 解耦导航切换与路由提交，依赖 session/ui/chat/unread/wallet store 提供导航状态、会话未读与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 承载账号与 agent 入口
+ * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表、未读提示与左下角账户菜单
+ * [POS]: dashboard 左侧导航骨架，负责频道切换、未读入口提示与全局入口编排；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { startTransition, useEffect } from "react";
+import { startTransition, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { sidebar } from '@/lib/i18n/translations/dashboard';
 import { common, nav } from '@/lib/i18n/translations/common';
+import { useShallow } from "zustand/react/shallow";
+import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
 import RoomZeroState from "./RoomZeroState";
+import { createClient } from "@/lib/supabase/client";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -65,19 +73,55 @@ const authNavItems = [
 ] as const;
 
 export default function Sidebar() {
-  const {
-    state,
-    switchActiveAgent,
-    refreshUserProfile,
-    isGuest,
-    showLoginModal,
-    handleLogout,
-  } = useDashboard();
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const locale = useLanguage();
   const t = sidebar[locale];
   const tc = common[locale];
   const tNav = nav[locale];
+  const sessionStore = useDashboardSessionStore(useShallow((state) => ({
+    user: state.user,
+    ownedAgents: state.ownedAgents,
+    activeAgentId: state.activeAgentId,
+    sessionMode: state.sessionMode,
+    token: state.token,
+    refreshUserProfile: state.refreshUserProfile,
+    logout: state.logout,
+  })));
+  const uiStore = useDashboardUIStore(useShallow((state) => ({
+    sidebarTab: state.sidebarTab,
+    contactsView: state.contactsView,
+    exploreView: state.exploreView,
+    openedRoomId: state.openedRoomId,
+    setSidebarTab: state.setSidebarTab,
+    setExploreView: state.setExploreView,
+    setContactsView: state.setContactsView,
+  })));
+  const chatStore = useDashboardChatStore(useShallow((state) => ({
+    overview: state.overview,
+    recentVisitedRooms: state.recentVisitedRooms,
+    switchActiveAgent: state.switchActiveAgent,
+  })));
+  const unreadRoomIds = useDashboardUnreadStore((state) => state.unreadRoomIds);
+  const wallet = useDashboardWalletStore(useShallow((state) => ({
+    wallet: state.wallet,
+    walletError: state.walletError,
+  })));
+  const isGuest = sessionStore.sessionMode === "guest";
+  const showLoginModal = () => router.push("/login");
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.warn("[Dashboard] Supabase signOut failed:", error.message);
+    }
+    sessionStore.logout();
+    useDashboardUIStore.getState().logout();
+    useDashboardChatStore.getState().logout();
+    useDashboardUnreadStore.getState().logout();
+    useDashboardContactStore.getState().resetContactState();
+    useDashboardWalletStore.getState().resetWalletState();
+    router.push("/login");
+  };
 
   const tabTitles: Record<string, string> = {
     messages: t.messages,
@@ -88,9 +132,17 @@ export default function Sidebar() {
 
   const navItems = authNavItems;
 
-  const visibleMessageRooms = state.getVisibleMessageRooms();
+  const visibleMessageRooms = useMemo(
+    () => buildVisibleMessageRooms({
+      overview: chatStore.overview,
+      recentVisitedRooms: chatStore.recentVisitedRooms,
+      token: sessionStore.token,
+    }),
+    [chatStore.overview, chatStore.recentVisitedRooms, sessionStore.token],
+  );
   const showOverviewSkeleton =
-    state.sessionMode === "authed-ready" && !state.overview && state.sidebarTab === "messages";
+    sessionStore.sessionMode === "authed-ready" && !chatStore.overview && uiStore.sidebarTab === "messages";
+  const hasUnreadMessages = unreadRoomIds.length > 0;
 
   useEffect(() => {
     const prefetch = (path: string) => {
@@ -101,26 +153,26 @@ export default function Sidebar() {
     };
 
     prefetch("/chats/messages");
-    prefetch(`/chats/contacts/${state.contactsView}`);
-    prefetch(`/chats/explore/${state.exploreView}`);
+    prefetch(`/chats/contacts/${uiStore.contactsView}`);
+    prefetch(`/chats/explore/${uiStore.exploreView}`);
     prefetch("/chats/wallet");
-  }, [router, state.contactsView, state.exploreView]);
+  }, [router, uiStore.contactsView, uiStore.exploreView]);
 
   const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet") => {
     if (isGuest && tab === "contacts") {
       showLoginModal();
       return;
     }
-    const openedRoomPath = state.openedRoomId
-      ? `/chats/messages/${encodeURIComponent(state.openedRoomId)}`
+    const openedRoomPath = uiStore.openedRoomId
+      ? `/chats/messages/${encodeURIComponent(uiStore.openedRoomId)}`
       : "/chats/messages";
     const pathByTab: Record<typeof tab, string> = {
       messages: openedRoomPath,
-      contacts: `/chats/contacts/${state.contactsView}`,
-      explore: `/chats/explore/${state.exploreView}`,
+      contacts: `/chats/contacts/${uiStore.contactsView}`,
+      explore: `/chats/explore/${uiStore.exploreView}`,
       wallet: "/chats/wallet",
     };
-    state.setSidebarTab(tab);
+    uiStore.setSidebarTab(tab);
     startTransition(() => {
       router.push(pathByTab[tab]);
     });
@@ -140,7 +192,7 @@ export default function Sidebar() {
         {/* Nav icons */}
         <div className="flex flex-1 flex-col items-center gap-1 pt-1">
           {navItems.map((item) => {
-            const isActive = state.sidebarTab === item.key;
+            const isActive = uiStore.sidebarTab === item.key;
             const isExplore = item.key === "explore";
             const requiresLogin = isGuest && item.key === "contacts";
             return (
@@ -161,6 +213,9 @@ export default function Sidebar() {
                 {/* Active indicator bar */}
                 {isActive && !requiresLogin && (
                   <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full ${isExplore ? "bg-neon-purple" : "bg-neon-cyan"}`} />
+                )}
+                {item.key === "messages" && hasUnreadMessages && !requiresLogin && (
+                  <div className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
                 )}
                 {item.icon}
                 <span className="mt-0.5 text-[9px] font-medium leading-none">{tabTitles[item.key] || item.label}</span>
@@ -185,15 +240,15 @@ export default function Sidebar() {
             </button>
           ) : (
             <AccountMenu
-              user={state.user}
-              agents={state.ownedAgents}
-              activeAgentId={state.activeAgentId}
-              pendingRequests={state.overview?.pending_requests || 0}
-              onSwitchAgent={switchActiveAgent}
+              user={sessionStore.user}
+              agents={sessionStore.ownedAgents}
+              activeAgentId={sessionStore.activeAgentId}
+              pendingRequests={chatStore.overview?.pending_requests || 0}
+              onSwitchAgent={chatStore.switchActiveAgent}
               onLogout={handleLogout}
               onAgentBound={async (agentId) => {
-                await refreshUserProfile();
-                await switchActiveAgent(agentId);
+                await sessionStore.refreshUserProfile();
+                await chatStore.switchActiveAgent(agentId);
               }}
             />
           )}
@@ -206,7 +261,7 @@ export default function Sidebar() {
         <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-text-primary">
-              {tabTitles[state.sidebarTab]}
+              {tabTitles[uiStore.sidebarTab]}
             </h2>
             {isGuest && (
               <p className="truncate text-[10px] text-text-secondary/60">
@@ -217,17 +272,17 @@ export default function Sidebar() {
         </div>
 
         {/* Secondary navigation */}
-        {state.sidebarTab === "explore" && (
+        {uiStore.sidebarTab === "explore" && (
           <div className="border-b border-glass-border p-3">
             <button
               onClick={() => {
-                state.setExploreView("rooms");
+                uiStore.setExploreView("rooms");
                 startTransition(() => {
                   router.push("/chats/explore/rooms");
                 });
               }}
               className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                state.exploreView === "rooms"
+                uiStore.exploreView === "rooms"
                   ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
@@ -236,13 +291,13 @@ export default function Sidebar() {
             </button>
             <button
               onClick={() => {
-                state.setExploreView("agents");
+                uiStore.setExploreView("agents");
                 startTransition(() => {
                   router.push("/chats/explore/agents");
                 });
               }}
               className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                state.exploreView === "agents"
+                uiStore.exploreView === "agents"
                   ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
@@ -252,17 +307,17 @@ export default function Sidebar() {
           </div>
         )}
 
-        {state.sidebarTab === "contacts" && (
+        {uiStore.sidebarTab === "contacts" && (
           <div className="border-b border-glass-border p-3">
             <button
               onClick={() => {
-                state.setContactsView("agents");
+                uiStore.setContactsView("agents");
                 startTransition(() => {
                   router.push("/chats/contacts/agents");
                 });
               }}
               className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                state.contactsView === "agents"
+                uiStore.contactsView === "agents"
                   ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
@@ -271,13 +326,13 @@ export default function Sidebar() {
             </button>
             <button
               onClick={() => {
-                state.setContactsView("requests");
+                uiStore.setContactsView("requests");
                 startTransition(() => {
                   router.push("/chats/contacts/requests");
                 });
               }}
               className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                state.contactsView === "requests"
+                uiStore.contactsView === "requests"
                   ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
@@ -286,13 +341,13 @@ export default function Sidebar() {
             </button>
             <button
               onClick={() => {
-                state.setContactsView("rooms");
+                uiStore.setContactsView("rooms");
                 startTransition(() => {
                   router.push("/chats/contacts/rooms");
                 });
               }}
               className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                state.contactsView === "rooms"
+                uiStore.contactsView === "rooms"
                   ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
                   : "border-glass-border text-text-secondary hover:text-text-primary"
               }`}
@@ -317,7 +372,7 @@ export default function Sidebar() {
             </div>
           )}
 
-          {!showOverviewSkeleton && state.sidebarTab === "messages" && (
+          {!showOverviewSkeleton && uiStore.sidebarTab === "messages" && (
             <div className="py-1">
               {visibleMessageRooms.length === 0 ? (
                 <RoomZeroState compact />
@@ -327,7 +382,7 @@ export default function Sidebar() {
             </div>
           )}
 
-          {state.sidebarTab === "wallet" && (
+          {uiStore.sidebarTab === "wallet" && (
             <div className="p-4">
               {isGuest ? (
                 <div className="rounded-xl border border-glass-border bg-glass-bg p-6 text-center">
@@ -349,24 +404,24 @@ export default function Sidebar() {
                 </div>
               ) : (
                 <>
-                  {state.wallet ? (
+                  {wallet.wallet ? (
                     <div className="space-y-3">
                       <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
                         <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">{t.available}</p>
-                        <p className="font-mono text-lg font-semibold text-neon-green">{formatCoinAmount(state.wallet.available_balance_minor)}</p>
+                        <p className="font-mono text-lg font-semibold text-neon-green">{formatCoinAmount(wallet.wallet.available_balance_minor)}</p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
                         <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">{t.locked}</p>
-                        <p className="font-mono text-sm text-text-secondary">{formatCoinAmount(state.wallet.locked_balance_minor)}</p>
+                        <p className="font-mono text-sm text-text-secondary">{formatCoinAmount(wallet.wallet.locked_balance_minor)}</p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
                         <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">{t.total}</p>
-                        <p className="font-mono text-sm text-text-primary">{formatCoinAmount(state.wallet.total_balance_minor)}</p>
+                        <p className="font-mono text-sm text-text-primary">{formatCoinAmount(wallet.wallet.total_balance_minor)}</p>
                       </div>
                     </div>
-                  ) : state.walletError ? (
+                  ) : wallet.walletError ? (
                     <div className="flex flex-col items-center gap-2 py-4">
-                      <p className="text-center text-xs text-red-400">{state.walletError}</p>
+                      <p className="text-center text-xs text-red-400">{wallet.walletError}</p>
                     </div>
                   ) : (
                     <p className="text-center text-xs text-text-secondary animate-pulse">{t.loadingWallet}</p>

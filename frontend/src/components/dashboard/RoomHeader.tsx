@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 dashboard store 的当前房间选择、分享状态与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
+ * [INPUT]: 依赖 session/ui/chat store 的当前房间选择、分享状态与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
  * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、成员入口、订阅标记与分享动作
  * [POS]: dashboard 消息主视图的头部区域，承接当前房间的关键信息与快捷操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -7,26 +7,42 @@
 "use client";
 
 import { useState } from "react";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from "@/lib/i18n";
 import { roomList } from "@/lib/i18n/translations/dashboard";
+import { useShallow } from "zustand/react/shallow";
 import ShareModal from "./ShareModal";
 import CopyableId from "@/components/ui/CopyableId";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function RoomHeader() {
-  const { state, isGuest, isAuthedReady } = useDashboard();
   const [showShareModal, setShowShareModal] = useState(false);
   const locale = useLanguage();
   const t = roomList[locale];
-  const currentRoomId = state.openedRoomId;
-  const authRoom = state.overview?.rooms.find((r) => r.room_id === currentRoomId);
-  const room = currentRoomId ? state.getRoomSummary(currentRoomId) : null;
+  const { token, sessionMode } = useDashboardSessionStore(useShallow((state) => ({
+    token: state.token,
+    sessionMode: state.sessionMode,
+  })));
+  const { openedRoomId, rightPanelOpen, toggleRightPanel } = useDashboardUIStore(useShallow((state) => ({
+    openedRoomId: state.openedRoomId,
+    rightPanelOpen: state.rightPanelOpen,
+    toggleRightPanel: state.toggleRightPanel,
+  })));
+  const { overview, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
+    overview: state.overview,
+    getRoomSummary: state.getRoomSummary,
+  })));
+  const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
+  const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
   const roomRule = room?.rule?.trim();
+  const isGuest = sessionMode === "guest";
+  const isAuthedReady = sessionMode === "authed-ready";
 
   const handleOpenMembersPanel = () => {
-    if (!state.rightPanelOpen) {
-      state.toggleRightPanel();
+    if (!rightPanelOpen) {
+      toggleRightPanel();
     }
   };
 
@@ -98,11 +114,11 @@ export default function RoomHeader() {
         </div>
       </div>
 
-      {showShareModal && isAuthedReady && state.token && (
+      {showShareModal && isAuthedReady && token && (
         <ShareModal
           roomId={room.room_id}
           roomName={room.name}
-          token={state.token}
+          token={token}
           onClose={() => setShowShareModal(false)}
         />
       )}

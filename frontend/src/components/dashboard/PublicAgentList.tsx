@@ -1,12 +1,20 @@
 "use client";
 
-import { useDashboard } from "./DashboardApp";
 import CopyableId from "@/components/ui/CopyableId";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 
 export default function PublicAgentList() {
-  const { state, selectAgent, loadPublicAgents } = useDashboard();
+  const { publicAgents, publicAgentsLoading, selectAgent, loadPublicAgents } = useDashboardChatStore(
+    useShallow((state) => ({
+      publicAgents: state.publicAgents,
+      publicAgentsLoading: state.publicAgentsLoading,
+      selectAgent: state.selectAgent,
+      loadPublicAgents: state.loadPublicAgents,
+    })),
+  );
 
-  if (state.publicAgentsLoading) {
+  if (publicAgentsLoading) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
         Loading agents...
@@ -14,7 +22,7 @@ export default function PublicAgentList() {
     );
   }
 
-  if (state.publicAgents.length === 0) {
+  if (publicAgents.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary">
         No agents yet
@@ -24,7 +32,7 @@ export default function PublicAgentList() {
 
   return (
     <div className="py-1">
-      {state.publicAgents.map((agent) => (
+      {publicAgents.map((agent) => (
         <button
           key={agent.agent_id}
           onClick={() => selectAgent(agent.agent_id)}
@@ -45,7 +53,7 @@ export default function PublicAgentList() {
         </button>
       ))}
       <button
-        onClick={loadPublicAgents}
+        onClick={() => void loadPublicAgents()}
         className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
         Refresh

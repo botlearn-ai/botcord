@@ -1,36 +1,70 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 dashboard store 的会话/联系人状态，依赖 api 层拉取成员与 agent 详情
+ * [INPUT]: 依赖 ui/chat/session store 的会话/联系人状态，依赖 api 层拉取成员与 agent 详情
  * [OUTPUT]: 对外提供右侧 agent 浏览器与成员点击后卡片入口
  * [POS]: dashboard 右侧信息面板，连接成员列表、搜索结果与 agent 详情弹层
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useEffect, useState } from "react";
-import { useDashboard } from "./DashboardApp";
 import SubscriptionBadge from "./SubscriptionBadge";
 import { useLanguage } from '@/lib/i18n';
 import { agentBrowser } from '@/lib/i18n/translations/dashboard';
 import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
 import { useRouter } from "nextjs-toploader/app";
+import { useShallow } from "zustand/react/shallow";
 import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 
 export default function AgentBrowser() {
-  const { state, searchAgents, selectAgent, loadRoomMessages, isAuthedReady } = useDashboard();
   const router = useRouter();
   const locale = useLanguage();
   const t = agentBrowser[locale];
+  const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
+  const {
+    focusedRoomId,
+    toggleRightPanel,
+    setFocusedRoomId,
+    setOpenedRoomId,
+  } = useDashboardUIStore(useShallow((state) => ({
+    focusedRoomId: state.focusedRoomId,
+    toggleRightPanel: state.toggleRightPanel,
+    setFocusedRoomId: state.setFocusedRoomId,
+    setOpenedRoomId: state.setOpenedRoomId,
+  })));
+  const {
+    messages,
+    searchResults,
+    selectedAgentProfile,
+    selectedAgentConversations,
+    getRoomSummary,
+    searchAgents,
+    selectAgent,
+    loadRoomMessages,
+  } = useDashboardChatStore(useShallow((state) => ({
+    messages: state.messages,
+    searchResults: state.searchResults,
+    selectedAgentProfile: state.selectedAgentProfile,
+    selectedAgentConversations: state.selectedAgentConversations,
+    getRoomSummary: state.getRoomSummary,
+    searchAgents: state.searchAgents,
+    selectAgent: state.selectAgent,
+    loadRoomMessages: state.loadRoomMessages,
+  })));
   const [roomMembers, setRoomMembers] = useState<PublicRoomMember[]>([]);
   const [roomMembersLoading, setRoomMembersLoading] = useState(false);
   const [roomMembersError, setRoomMembersError] = useState<string | null>(null);
+  const isAuthedReady = sessionMode === "authed-ready";
 
-  const currentRoom = state.focusedRoomId ? state.getRoomSummary(state.focusedRoomId) : null;
+  const currentRoom = focusedRoomId ? getRoomSummary(focusedRoomId) : null;
 
   useEffect(() => {
-    if (!state.focusedRoomId) {
+    if (!focusedRoomId) {
       setRoomMembers([]);
       setRoomMembersError(null);
       setRoomMembersLoading(false);
@@ -39,7 +73,7 @@ export default function AgentBrowser() {
     let cancelled = false;
     setRoomMembersLoading(true);
     setRoomMembersError(null);
-    api.getPublicRoomMembers(state.focusedRoomId)
+    api.getPublicRoomMembers(focusedRoomId)
       .then((result) => {
         if (cancelled) return;
         setRoomMembers(result.members);
@@ -56,7 +90,7 @@ export default function AgentBrowser() {
     return () => {
       cancelled = true;
     };
-  }, [state.focusedRoomId]);
+  }, [focusedRoomId]);
 
   return (
     <div className="flex h-full min-h-0 w-[320px] min-w-[320px] flex-col border-l border-glass-border bg-deep-black-light">
@@ -64,7 +98,7 @@ export default function AgentBrowser() {
       <div className="shrink-0 flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
         <h3 className="text-sm font-semibold text-text-primary">{t.agents}</h3>
         <button
-          onClick={() => state.toggleRightPanel()}
+          onClick={() => toggleRightPanel()}
           className="rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -126,13 +160,13 @@ export default function AgentBrowser() {
         )}
 
         {/* Search Results */}
-        {state.searchResults && (
+        {searchResults && (
           <div className="border-b border-glass-border p-3">
             <h4 className="mb-2 text-xs font-medium text-text-secondary">{t.searchResults}</h4>
-            {state.searchResults.length === 0 ? (
+            {searchResults.length === 0 ? (
               <p className="text-xs text-text-secondary/60">{t.noAgentsFound}</p>
             ) : (
-              state.searchResults.map((agent) => (
+              searchResults.map((agent) => (
                 <button
                   key={agent.agent_id}
                   onClick={() => selectAgent(agent.agent_id)}
@@ -147,25 +181,25 @@ export default function AgentBrowser() {
         )}
 
         {/* Agent Profile */}
-        {state.selectedAgentProfile && (
+        {selectedAgentProfile && (
           <div className="border-b border-glass-border p-4">
             <h4 className="mb-3 text-xs font-medium text-text-secondary">{t.agentProfile}</h4>
             <div className="space-y-2">
               <div>
                 <div className="text-sm font-medium text-text-primary">
-                  {state.selectedAgentProfile.display_name}
+                  {selectedAgentProfile.display_name}
                 </div>
-                <CopyableId value={state.selectedAgentProfile.agent_id} />
+                <CopyableId value={selectedAgentProfile.agent_id} />
               </div>
-              {state.selectedAgentProfile.bio && (
-                <p className="text-xs text-text-secondary">{state.selectedAgentProfile.bio}</p>
+              {selectedAgentProfile.bio && (
+                <p className="text-xs text-text-secondary">{selectedAgentProfile.bio}</p>
               )}
               <div className="flex gap-2">
                 <span className="rounded border border-glass-border px-2 py-0.5 text-[10px] text-text-secondary">
-                  {state.selectedAgentProfile.message_policy}
+                  {selectedAgentProfile.message_policy}
                 </span>
                 <span className="font-mono text-[10px] text-text-secondary/60">
-                  {t.since} {new Date(state.selectedAgentProfile.created_at).toLocaleDateString()}
+                  {t.since} {new Date(selectedAgentProfile.created_at).toLocaleDateString()}
                 </span>
               </div>
             </div>
@@ -173,23 +207,23 @@ export default function AgentBrowser() {
         )}
 
         {/* Shared Conversations (auth mode only) */}
-        {isAuthedReady && state.selectedAgentConversations && (
+        {isAuthedReady && selectedAgentConversations && (
           <div className="p-4">
             <h4 className="mb-2 text-xs font-medium text-text-secondary">
-              {t.sharedRooms} ({state.selectedAgentConversations.length})
+              {t.sharedRooms} ({selectedAgentConversations.length})
             </h4>
-            {state.selectedAgentConversations.length === 0 ? (
+            {selectedAgentConversations.length === 0 ? (
               <p className="text-xs text-text-secondary/60">{t.noSharedRooms}</p>
             ) : (
-              state.selectedAgentConversations.map((room) => (
+              selectedAgentConversations.map((room) => (
                 <button
                   key={room.room_id}
                   onClick={() => {
-                    state.setFocusedRoomId(room.room_id);
-                    state.setOpenedRoomId(room.room_id);
+                    setFocusedRoomId(room.room_id);
+                    setOpenedRoomId(room.room_id);
                     router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
-                    if (!state.messages[room.room_id]) {
-                      loadRoomMessages(room.room_id);
+                    if (!messages[room.room_id]) {
+                      void loadRoomMessages(room.room_id);
                     }
                   }}
                   className="w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg mb-1"

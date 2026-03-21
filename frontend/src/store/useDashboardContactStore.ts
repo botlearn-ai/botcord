@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 zustand 保存联系人域状态，依赖 @/lib/api 发起联系人请求，依赖 channel store 提供鉴权上下文与概览刷新能力
+ * [INPUT]: 依赖 zustand 保存联系人域状态，依赖 @/lib/api 发起联系人请求，依赖 chat store 提供鉴权上下文与概览刷新能力
  * [OUTPUT]: 对外提供 useDashboardContactStore 联系人业务状态仓库与异步动作
  * [POS]: frontend dashboard 的联系人业务模块 store，独立管理联系人请求收发与处理状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -8,7 +8,7 @@
 import { create } from "zustand";
 import type { ContactRequestItem } from "@/lib/types";
 import { api } from "@/lib/api";
-import { useDashboardChannelStore } from "@/store/useDashboardChannelStore";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 interface DashboardContactState {
@@ -110,8 +110,8 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
       } else {
         await api.rejectContactRequest(requestId);
       }
-      const channelStore = useDashboardChannelStore.getState();
-      await Promise.all([channelStore.refreshOverview(), get().loadContactRequests()]);
+      const chatStore = useDashboardChatStore.getState();
+      await Promise.all([chatStore.refreshOverview(), get().loadContactRequests()]);
       set({ processingContactRequestId: null });
     } catch (err) {
       set({ processingContactRequestId: null });

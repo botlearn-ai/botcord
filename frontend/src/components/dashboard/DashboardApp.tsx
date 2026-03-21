@@ -1,34 +1,32 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/channel/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 react effect 在后台预热跨 tab 数据，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
- * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门与三栏布局编排
- * [POS]: /chats 页面的顶层容器，连接路由状态与 UI 面板渲染
+ * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期与三栏布局编排
+ * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, createContext, useMemo, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useMemo, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
-import Sidebar from "./Sidebar";
-import ChatPane from "./ChatPane";
+import { createClient } from "@/lib/supabase/client";
+import type { RealtimeMetaEvent } from "@/lib/types";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardContactStore } from "@/store/useDashboardContactStore";
+import { useDashboardRealtimeStore } from "@/store/useDashboardRealtimeStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
-import WalletPanel from "./WalletPanel";
-import StripeReturnBanner from "./StripeReturnBanner";
 import AgentGateModal from "./AgentGateModal";
+import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
-import { useDashboardChannelStore } from "@/store/useDashboardChannelStore";
-import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
-import { useDashboardContactStore } from "@/store/useDashboardContactStore";
-import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
-
-// --- Legacy Context Proxy for Compatibility ---
-// We keep the context but make it a proxy to the Zustand store 
-// so we don't have to refactor all child components at once.
-
-const DashboardContext = createContext<ReturnType<typeof useDashboardSessionStore> | null>(null);
+import Sidebar from "./Sidebar";
+import StripeReturnBanner from "./StripeReturnBanner";
+import WalletPanel from "./WalletPanel";
 
 function decodeRoomIdFromPath(segment: string | undefined): string | null {
   if (!segment) return null;
@@ -39,76 +37,24 @@ function decodeRoomIdFromPath(segment: string | undefined): string | null {
   }
 }
 
-export function useDashboard() {
-  const sessionStore = useDashboardSessionStore();
-  const channelStore = useDashboardChannelStore();
-  const walletStore = useDashboardWalletStore();
-  const contactStore = useDashboardContactStore();
-  const router = useRouter();
-  const supabase = createClient();
-
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.warn("[Dashboard] Supabase signOut failed:", error.message);
-    }
-    sessionStore.logout();
-    channelStore.logout();
-    walletStore.resetWalletState();
-    contactStore.resetContactState();
-    router.push("/login");
-  };
-  
-  // Add legacy properties/methods that child components expect
-  const state = { ...channelStore, ...contactStore, ...walletStore, ...sessionStore };
-  return {
-    state,
-    loadRoomMessages: channelStore.loadRoomMessages,
-    loadMoreMessages: channelStore.loadMoreMessages,
-    pollNewMessages: channelStore.pollNewMessages,
-    selectAgent: channelStore.selectAgent,
-    searchAgents: channelStore.searchAgents,
-    refreshOverview: channelStore.refreshOverview,
-    loadDiscoverRooms: channelStore.loadDiscoverRooms,
-    joinRoom: channelStore.joinRoom,
-    loadPublicRooms: channelStore.loadPublicRooms,
-    loadPublicRoomDetail: channelStore.loadPublicRoomDetail,
-    loadPublicAgents: channelStore.loadPublicAgents,
-    loadWallet: walletStore.loadWallet,
-    loadWalletLedger: walletStore.loadWalletLedger,
-    loadWithdrawalRequests: walletStore.loadWithdrawalRequests,
-    loadContactRequests: contactStore.loadContactRequests,
-    sendContactRequest: contactStore.sendContactRequest,
-    respondContactRequest: contactStore.respondContactRequest,
-    switchActiveAgent: channelStore.switchActiveAgent,
-    refreshUserProfile: sessionStore.refreshUserProfile,
-    sessionMode: sessionStore.sessionMode,
-    isAuthResolved: sessionStore.authResolved,
-    isGuest: sessionStore.sessionMode === "guest",
-    needsAgent: sessionStore.sessionMode === "authed-no-agent",
-    isAuthedReady: sessionStore.sessionMode === "authed-ready",
-    showLoginModal: () => router.push("/login"),
-    handleLogout,
-  };
-}
-
 export default function DashboardApp() {
   const sessionStore = useDashboardSessionStore();
-  const channelStore = useDashboardChannelStore();
+  const uiStore = useDashboardUIStore();
+  const chatStore = useDashboardChatStore();
+  const realtimeStore = useDashboardRealtimeStore();
+  const unreadStore = useDashboardUnreadStore();
   const walletStore = useDashboardWalletStore();
   const contactStore = useDashboardContactStore();
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const recoveredAgentRef = useRef<string | null>(null);
   const walletBoundAgentRef = useRef<string | null>(null);
   const contactBoundAgentRef = useRef<string | null>(null);
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
-  const shouldShowBootstrapSkeleton =
-    !sessionStore.authResolved
-    || sessionStore.authBootstrapping;
+  const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
   const fallbackAgent =
     sessionStore.ownedAgents.find((agent) => agent.is_default) ?? sessionStore.ownedAgents[0] ?? null;
   const shouldShowAgentGate =
@@ -116,7 +62,6 @@ export default function DashboardApp() {
     && sessionStore.sessionMode === "authed-no-agent"
     && sessionStore.ownedAgents.length === 0;
 
-  // Auth sync
   useEffect(() => {
     let cancelled = false;
 
@@ -125,34 +70,24 @@ export default function DashboardApp() {
       source: "getSession" | "authEvent",
       event?: string,
     ) => {
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
       const accessToken = session?.access_token ?? null;
       const isSignOutEvent = event === "SIGNED_OUT";
 
-      if (source === "authEvent" && event === "INITIAL_SESSION") {
-        return;
-      }
-
-      if (source === "authEvent" && !initResolvedRef.current && !accessToken && !isSignOutEvent) {
-        return;
-      }
+      if (source === "authEvent" && event === "INITIAL_SESSION") return;
+      if (source === "authEvent" && !initResolvedRef.current && !accessToken && !isSignOutEvent) return;
 
       if (accessToken) {
-        if (lastAccessTokenRef.current === accessToken && useDashboardSessionStore.getState().authResolved) {
-          return;
-        }
+        if (lastAccessTokenRef.current === accessToken && useDashboardSessionStore.getState().authResolved) return;
         lastAccessTokenRef.current = accessToken;
         await sessionStore.initAuth(accessToken);
       } else {
-        if (source === "authEvent" && !isSignOutEvent) {
-          return;
-        }
+        if (source === "authEvent" && !isSignOutEvent) return;
         lastAccessTokenRef.current = null;
         sessionStore.setToken(null);
       }
+
       initResolvedRef.current = true;
     };
 
@@ -163,87 +98,93 @@ export default function DashboardApp() {
 
     void resolveSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        void syncSession(session, "authEvent", _event);
-      },
-    );
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      void syncSession(session, "authEvent", _event);
+    });
 
     return () => {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [sessionStore.initAuth, sessionStore.setToken, supabase]);
 
-  // Route sync: /chats/{tab}/{subtab?}
   useEffect(() => {
-    if (!sessionStore.authResolved) {
-      return;
-    }
+    if (!sessionStore.authResolved) return;
+
     if (sessionStore.sessionMode === "authed-no-agent") {
-      if (channelStore.focusedRoomId !== null) {
-        channelStore.setFocusedRoomId(null);
-      }
-      if (channelStore.openedRoomId !== null) {
-        channelStore.setOpenedRoomId(null);
-      }
+      if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
+      if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
       return;
     }
-    const parts = pathnameParts;
-    // ["chats", tab?, subtab?]
-    const tab = parts[1];
-    const subtab = parts[2];
+
+    const tab = pathnameParts[1];
+    const subtab = pathnameParts[2];
     const normalizedTab =
       tab === "dm" || tab === "rooms"
         ? "messages"
         : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet"
           ? tab
           : null;
+
     if (normalizedTab) {
-      if (channelStore.sidebarTab !== normalizedTab) {
-        channelStore.setSidebarTab(normalizedTab);
+      if (uiStore.sidebarTab !== normalizedTab) uiStore.setSidebarTab(normalizedTab);
+
+      if (tab === "explore" && (subtab === "rooms" || subtab === "agents") && uiStore.exploreView !== subtab) {
+        uiStore.setExploreView(subtab);
       }
-      if (tab === "explore" && (subtab === "rooms" || subtab === "agents")) {
-        if (channelStore.exploreView !== subtab) {
-          channelStore.setExploreView(subtab);
-        }
+
+      if (
+        tab === "contacts"
+        && (subtab === "agents" || subtab === "requests" || subtab === "rooms")
+        && uiStore.contactsView !== subtab
+      ) {
+        uiStore.setContactsView(subtab);
       }
-      if (tab === "contacts" && (subtab === "agents" || subtab === "requests" || subtab === "rooms")) {
-        if (channelStore.contactsView !== subtab) {
-          channelStore.setContactsView(subtab);
-        }
-      }
+
       if (normalizedTab === "messages") {
         const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
         if (roomIdFromPath) {
-          if (channelStore.focusedRoomId !== roomIdFromPath) {
-            channelStore.setFocusedRoomId(roomIdFromPath);
-          }
-          if (channelStore.openedRoomId !== roomIdFromPath) {
-            channelStore.setOpenedRoomId(roomIdFromPath);
-          }
+          if (uiStore.focusedRoomId !== roomIdFromPath) uiStore.setFocusedRoomId(roomIdFromPath);
+          if (uiStore.openedRoomId !== roomIdFromPath) uiStore.setOpenedRoomId(roomIdFromPath);
+
           const knownRoom =
-            Boolean(channelStore.getRoomSummary(roomIdFromPath))
-            || channelStore.discoverRooms.some((room) => room.room_id === roomIdFromPath);
+            Boolean(chatStore.getRoomSummary(roomIdFromPath))
+            || chatStore.discoverRooms.some((room) => room.room_id === roomIdFromPath);
+
           if (!knownRoom) {
-            channelStore.loadPublicRoomDetail(roomIdFromPath);
+            void chatStore.loadPublicRoomDetail(roomIdFromPath);
           }
-          if (!channelStore.messages[roomIdFromPath]) {
-            channelStore.loadRoomMessages(roomIdFromPath);
+          if (!chatStore.messages[roomIdFromPath]) {
+            void chatStore.loadRoomMessages(roomIdFromPath);
           }
         } else {
-          if (channelStore.focusedRoomId !== null) {
-            channelStore.setFocusedRoomId(null);
-          }
-          if (channelStore.openedRoomId !== null) {
-            channelStore.setOpenedRoomId(null);
-          }
+          if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
+          if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
         }
       }
-    } else if (channelStore.sidebarTab !== "messages") {
-      channelStore.setSidebarTab("messages");
+    } else if (uiStore.sidebarTab !== "messages") {
+      uiStore.setSidebarTab("messages");
     }
-  }, [sessionStore.authResolved, sessionStore.sessionMode, pathnameParts, channelStore]);
+  }, [
+    sessionStore.authResolved,
+    sessionStore.sessionMode,
+    pathnameParts,
+    uiStore.focusedRoomId,
+    uiStore.openedRoomId,
+    uiStore.sidebarTab,
+    uiStore.exploreView,
+    uiStore.contactsView,
+    uiStore.setFocusedRoomId,
+    uiStore.setOpenedRoomId,
+    uiStore.setSidebarTab,
+    uiStore.setExploreView,
+    uiStore.setContactsView,
+    chatStore.getRoomSummary,
+    chatStore.discoverRooms,
+    chatStore.messages,
+    chatStore.loadPublicRoomDetail,
+    chatStore.loadRoomMessages,
+  ]);
 
   useEffect(() => {
     if (
@@ -257,22 +198,30 @@ export default function DashboardApp() {
       }
       return;
     }
-    if (recoveredAgentRef.current === fallbackAgent.agent_id) {
-      return;
-    }
+    if (recoveredAgentRef.current === fallbackAgent.agent_id) return;
     recoveredAgentRef.current = fallbackAgent.agent_id;
-    void channelStore.switchActiveAgent(fallbackAgent.agent_id);
-  }, [sessionStore.authResolved, sessionStore.sessionMode, sessionStore.activeAgentId, fallbackAgent, channelStore.switchActiveAgent]);
+    void chatStore.switchActiveAgent(fallbackAgent.agent_id);
+  }, [
+    sessionStore.authResolved,
+    sessionStore.sessionMode,
+    sessionStore.activeAgentId,
+    fallbackAgent,
+    chatStore.switchActiveAgent,
+  ]);
 
   useEffect(() => {
     if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
       walletBoundAgentRef.current = null;
       contactBoundAgentRef.current = null;
-      channelStore.resetChannelState();
+      uiStore.resetUIState();
+      chatStore.resetChatState();
+      unreadStore.resetUnreadState();
+      realtimeStore.resetRealtimeState();
       walletStore.resetWalletState();
       contactStore.resetContactState();
       return;
     }
+
     if (walletBoundAgentRef.current !== sessionStore.activeAgentId) {
       walletBoundAgentRef.current = sessionStore.activeAgentId;
       walletStore.resetWalletState();
@@ -281,72 +230,110 @@ export default function DashboardApp() {
       contactBoundAgentRef.current = sessionStore.activeAgentId;
       contactStore.resetContactState();
     }
-    if (!channelStore.overview && !channelStore.overviewRefreshing && channelStore.sidebarTab !== "wallet") {
-      void channelStore.refreshOverview();
+    if (!chatStore.overview && !chatStore.overviewRefreshing && uiStore.sidebarTab !== "wallet") {
+      void chatStore.refreshOverview();
     }
   }, [
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
-    channelStore.overview,
-    channelStore.overviewRefreshing,
-    channelStore.sidebarTab,
-    channelStore.resetChannelState,
-    channelStore.refreshOverview,
+    uiStore.sidebarTab,
+    uiStore.resetUIState,
+    chatStore.overview,
+    chatStore.overviewRefreshing,
+    chatStore.resetChatState,
+    chatStore.refreshOverview,
+    unreadStore.resetUnreadState,
+    realtimeStore.resetRealtimeState,
     walletStore.resetWalletState,
     contactStore.resetContactState,
   ]);
 
   useEffect(() => {
-    if (!sessionStore.authResolved || sessionStore.sessionMode !== "authed-ready") {
-      return;
-    }
-    if (channelStore.sidebarTab === "wallet") {
-      return;
-    }
-    if (channelStore.overview || channelStore.overviewRefreshing) {
-      return;
-    }
-    void channelStore.refreshOverview();
+    if (!sessionStore.authResolved || sessionStore.sessionMode !== "authed-ready") return;
+    if (uiStore.sidebarTab === "wallet") return;
+    if (chatStore.overview || chatStore.overviewRefreshing) return;
+    void chatStore.refreshOverview();
   }, [
     sessionStore.authResolved,
     sessionStore.sessionMode,
-    channelStore.sidebarTab,
-    channelStore.overview,
-    channelStore.overviewRefreshing,
-    channelStore.refreshOverview,
+    uiStore.sidebarTab,
+    chatStore.overview,
+    chatStore.overviewRefreshing,
+    chatStore.refreshOverview,
   ]);
 
   useEffect(() => {
-    if (!sessionStore.authResolved) {
+    if (
+      !sessionStore.authResolved
+      || sessionStore.sessionMode !== "authed-ready"
+      || !sessionStore.activeAgentId
+    ) {
+      realtimeStore.setRealtimeStatus("idle");
       return;
     }
 
-    if (channelStore.publicRooms.length === 0 && !channelStore.publicRoomsLoading) {
-      void channelStore.loadPublicRooms();
-    }
+    const topic = `agent:${sessionStore.activeAgentId}`;
+    realtimeStore.setRealtimeStatus("connecting");
+    const channel = supabase
+      .channel(topic, { config: { private: true } })
+      .on("broadcast", { event: "*" }, ({ payload }) => {
+        const realtimeEvent = payload as RealtimeMetaEvent;
+        if (!realtimeEvent?.type || realtimeEvent.agent_id !== sessionStore.activeAgentId) {
+          return;
+        }
+        chatStore.applyRealtimeEventHint(realtimeEvent);
+        unreadStore.applyRealtimeEvent(realtimeEvent);
+        void realtimeStore.syncRealtimeEvent(realtimeEvent);
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          realtimeStore.setRealtimeStatus("connected");
+          return;
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          realtimeStore.setRealtimeStatus("error", `realtime ${status.toLowerCase()}`);
+        }
+      });
 
-    if (channelStore.publicAgents.length === 0 && !channelStore.publicAgentsLoading) {
-      void channelStore.loadPublicAgents();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [
+    sessionStore.authResolved,
+    sessionStore.sessionMode,
+    sessionStore.activeAgentId,
+    chatStore.applyRealtimeEventHint,
+    unreadStore.applyRealtimeEvent,
+    realtimeStore.setRealtimeStatus,
+    realtimeStore.syncRealtimeEvent,
+    supabase,
+  ]);
+
+  useEffect(() => {
+    if (!sessionStore.authResolved) return;
+
+    if (chatStore.publicRooms.length === 0 && !chatStore.publicRoomsLoading) {
+      void chatStore.loadPublicRooms();
+    }
+    if (chatStore.publicAgents.length === 0 && !chatStore.publicAgentsLoading) {
+      void chatStore.loadPublicAgents();
     }
   }, [
     sessionStore.authResolved,
-    channelStore.publicRooms.length,
-    channelStore.publicRoomsLoading,
-    channelStore.publicAgents.length,
-    channelStore.publicAgentsLoading,
-    channelStore.loadPublicRooms,
-    channelStore.loadPublicAgents,
+    chatStore.publicRooms.length,
+    chatStore.publicRoomsLoading,
+    chatStore.publicAgents.length,
+    chatStore.publicAgentsLoading,
+    chatStore.loadPublicRooms,
+    chatStore.loadPublicAgents,
   ]);
 
   useEffect(() => {
-    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
-      return;
-    }
+    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) return;
 
     if (!walletStore.wallet && !walletStore.walletLoading && !walletStore.walletError) {
       void walletStore.loadWallet();
     }
-
     if (
       !walletStore.withdrawalRequestsLoaded
       && !walletStore.withdrawalRequestsLoading
@@ -371,9 +358,9 @@ export default function DashboardApp() {
     return <DashboardShellSkeleton />;
   }
 
-  const selectedAgentForCard = channelStore.selectedAgentProfile;
+  const selectedAgentForCard = chatStore.selectedAgentProfile;
   const alreadyInContacts = selectedAgentForCard
-    ? (channelStore.overview?.contacts || []).some(
+    ? (chatStore.overview?.contacts || []).some(
       (item) => item.contact_agent_id === selectedAgentForCard.agent_id,
     )
     : false;
@@ -396,12 +383,12 @@ export default function DashboardApp() {
   return (
     <div className="relative flex h-screen overflow-hidden">
       <Sidebar />
-      {channelStore.sidebarTab === "wallet" ? (
+      {uiStore.sidebarTab === "wallet" ? (
         <WalletPanel />
       ) : (
         <>
           <ChatPane />
-          {channelStore.sidebarTab !== "explore" && channelStore.rightPanelOpen && <AgentBrowser />}
+          {uiStore.sidebarTab !== "explore" && uiStore.rightPanelOpen && <AgentBrowser />}
         </>
       )}
       <StripeReturnBanner />
@@ -409,27 +396,30 @@ export default function DashboardApp() {
         <AgentGateModal
           onAgentReady={async (agentId) => {
             await sessionStore.refreshUserProfile();
-            await channelStore.switchActiveAgent(agentId);
+            await chatStore.switchActiveAgent(agentId);
           }}
         />
       ) : null}
       <AgentCardModal
-        isOpen={channelStore.agentCardOpen}
+        isOpen={uiStore.agentCardOpen}
         agent={selectedAgentForCard}
-        loading={channelStore.selectedAgentLoading}
-        error={channelStore.selectedAgentError}
-        onClose={channelStore.closeAgentCard}
+        loading={chatStore.selectedAgentLoading}
+        error={chatStore.selectedAgentError}
+        onClose={() => {
+          uiStore.closeAgentCard();
+          chatStore.closeAgentCardState();
+        }}
         alreadyInContacts={alreadyInContacts}
         requestAlreadyPending={requestAlreadyPending}
         onSendFriendRequest={handleSendFriendRequestFromCard}
         onRetry={() => {
-          if (!channelStore.selectedAgentId) return;
-          void channelStore.selectAgent(channelStore.selectedAgentId);
+          if (!chatStore.selectedAgentId) return;
+          void chatStore.selectAgent(chatStore.selectedAgentId);
         }}
       />
-      {channelStore.error && (
+      {chatStore.error && (
         <div className="pointer-events-none absolute right-4 top-4 rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs text-red-200">
-          {channelStore.error}
+          {chatStore.error}
         </div>
       )}
     </div>

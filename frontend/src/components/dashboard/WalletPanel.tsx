@@ -1,19 +1,20 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 提供钱包状态，依赖钱包子组件完成资金操作
+ * [INPUT]: 依赖 wallet store 提供钱包状态，依赖钱包子组件完成资金操作
  * [OUTPUT]: 对外提供 WalletPanel 组件，负责余额概览与流水视图
  * [POS]: dashboard 钱包主面板，在已登录且已通过 agent 准入的上下文中渲染资金信息
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { walletPanel } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import { api, ApiError } from "@/lib/api";
 import type { WithdrawalResponse } from "@/lib/types";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
@@ -27,58 +28,84 @@ function formatCoinAmount(minorStr: string): string {
 }
 
 export default function WalletPanel() {
-  const { state, loadWallet, loadWalletLedger, loadWithdrawalRequests } = useDashboard();
   const locale = useLanguage();
   const t = walletPanel[locale];
   const tc = common[locale];
+  const {
+    wallet,
+    walletView,
+    walletError,
+    walletLoading,
+    walletLedger,
+    withdrawalRequests,
+    withdrawalRequestsLoading,
+    withdrawalRequestsError,
+    withdrawalRequestsLoaded,
+    loadWallet,
+    loadWalletLedger,
+    loadWithdrawalRequests,
+    setWalletView,
+  } = useDashboardWalletStore(useShallow((state) => ({
+    wallet: state.wallet,
+    walletView: state.walletView,
+    walletError: state.walletError,
+    walletLoading: state.walletLoading,
+    walletLedger: state.walletLedger,
+    withdrawalRequests: state.withdrawalRequests,
+    withdrawalRequestsLoading: state.withdrawalRequestsLoading,
+    withdrawalRequestsError: state.withdrawalRequestsError,
+    withdrawalRequestsLoaded: state.withdrawalRequestsLoaded,
+    loadWallet: state.loadWallet,
+    loadWalletLedger: state.loadWalletLedger,
+    loadWithdrawalRequests: state.loadWithdrawalRequests,
+    setWalletView: state.setWalletView,
+  })));
   const [activeDialog, setActiveDialog] = useState<"transfer" | "topup" | "withdraw" | null>(null);
-
-  const wallet = state.wallet;
-  const view = state.walletView;
+  const view = walletView;
 
   useEffect(() => {
-    if (!wallet && !state.walletError && !state.walletLoading) {
-      loadWallet();
+    if (!wallet && !walletError && !walletLoading) {
+      void loadWallet();
     }
-  }, [wallet, state.walletError, state.walletLoading, loadWallet]);
+  }, [wallet, walletError, walletLoading, loadWallet]);
 
   // Load ledger when switching to ledger view
   useEffect(() => {
-    if (view === "ledger" && state.walletLedger.length === 0) {
-      loadWalletLedger();
+    if (view === "ledger" && walletLedger.length === 0) {
+      void loadWalletLedger();
     }
-  }, [view, state.walletLedger.length, loadWalletLedger]);
+  }, [view, walletLedger.length, loadWalletLedger]);
 
   useEffect(() => {
     if (
-      !state.withdrawalRequestsLoaded &&
-      !state.withdrawalRequestsLoading &&
-      !state.withdrawalRequestsError
+      !withdrawalRequestsLoaded &&
+      !withdrawalRequestsLoading &&
+      !withdrawalRequestsError
     ) {
-      loadWithdrawalRequests();
+      void loadWithdrawalRequests();
     }
   }, [
-    state.withdrawalRequestsLoaded,
-    state.withdrawalRequestsLoading,
-    state.withdrawalRequestsError,
+    withdrawalRequestsLoaded,
+    withdrawalRequestsLoading,
+    withdrawalRequestsError,
     loadWithdrawalRequests,
   ]);
 
   const handleDialogSuccess = useCallback(() => {
     setActiveDialog(null);
-    loadWallet();
-    loadWalletLedger();
-    loadWithdrawalRequests();
+    void loadWallet();
+    void loadWalletLedger();
+    void loadWithdrawalRequests();
   }, [loadWallet, loadWalletLedger, loadWithdrawalRequests]);
 
   if (!wallet) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black gap-3">
-        {state.walletError ? (
+        {walletError ? (
           <>
-            <div className="text-sm text-red-400">{state.walletError}</div>
+            <div className="text-sm text-red-400">{walletError}</div>
             <button
-              onClick={loadWallet}
+              onClick={() => void loadWallet()}
               className="rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
             >
               {tc.retry}
@@ -98,7 +125,7 @@ export default function WalletPanel() {
         <h2 className="text-lg font-semibold text-text-primary">{t.wallet}</h2>
         <div className="flex gap-1">
           <button
-            onClick={() => state.setWalletView("overview")}
+            onClick={() => setWalletView("overview")}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               view === "overview"
                 ? "bg-neon-cyan/15 text-neon-cyan"
@@ -108,7 +135,7 @@ export default function WalletPanel() {
             {t.overview}
           </button>
           <button
-            onClick={() => state.setWalletView("ledger")}
+            onClick={() => setWalletView("ledger")}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               view === "ledger"
                 ? "bg-neon-cyan/15 text-neon-cyan"
@@ -124,9 +151,9 @@ export default function WalletPanel() {
         {view === "overview" ? (
           <WalletOverview
             wallet={wallet}
-            withdrawalRequests={state.withdrawalRequests}
-            withdrawalsLoading={state.withdrawalRequestsLoading}
-            withdrawalsError={state.withdrawalRequestsError}
+            withdrawalRequests={withdrawalRequests}
+            withdrawalsLoading={withdrawalRequestsLoading}
+            withdrawalsError={withdrawalRequestsError}
             onRefreshWithdrawals={loadWithdrawalRequests}
             onWithdrawalUpdated={handleDialogSuccess}
             onTransfer={() => setActiveDialog("transfer")}

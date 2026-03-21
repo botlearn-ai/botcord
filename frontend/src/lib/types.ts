@@ -132,6 +132,24 @@ export interface InboxPollResponse {
   has_more: boolean;
 }
 
+export type RealtimeMetaEventType =
+  | "message"
+  | "contact_request"
+  | "contact_request_response"
+  | "contact_removed"
+  | "ack"
+  | "result"
+  | "error";
+
+export interface RealtimeMetaEvent {
+  type: RealtimeMetaEventType;
+  agent_id: string;
+  room_id: string | null;
+  hub_msg_id: string | null;
+  created_at: string;
+  ext: Record<string, unknown>;
+}
+
 // --- Discover & Join types ---
 
 export interface DiscoverRoom {

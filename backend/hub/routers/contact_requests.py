@@ -47,7 +47,7 @@ async def _create_notification(
     status: str,
 ) -> None:
     """Push a contact_request_response notification into the requester's inbox."""
-    from hub.routers.hub import notify_inbox
+    from hub.routers.hub import build_contact_event, notify_inbox
 
     now = datetime.datetime.now(datetime.timezone.utc)
     ts = int(now.timestamp())
@@ -84,7 +84,21 @@ async def _create_notification(
     db.add(record)
     await db.commit()
 
-    await notify_inbox(requester_id)
+    await notify_inbox(
+        requester_id,
+        db=db,
+        realtime_event=build_contact_event(
+            type="contact_request_response",
+            agent_id=requester_id,
+            hub_msg_id=hub_msg_id,
+            created_at=now,
+            ext={
+                "request_id": request_id,
+                "responder_id": responder_id,
+                "state": status,
+            },
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,18 +1,21 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 useDashboard 的会话状态与缓存消息，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
- * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项（头像 + 最后一条消息预览）
+ * [INPUT]: 依赖 ui/chat/unread store 的会话状态、缓存消息与未读房间状态，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
+ * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项（头像 + 最后一条消息预览 + 未读蓝点）
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
+import { useShallow } from "zustand/react/shallow";
 
 import { DashboardRoom } from "@/lib/types";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 interface RoomListProps {
@@ -47,17 +50,27 @@ function formatLastMessageTime(isoTime: string | null): string {
 }
 
 export default function RoomList({ rooms: propsRooms }: RoomListProps) {
-  const { state, loadRoomMessages } = useDashboard();
   const router = useRouter();
   const locale = useLanguage();
   const t = roomList[locale];
-  const rooms = propsRooms || state.overview?.rooms || [];
+  const { overview, messages, loadRoomMessages } = useDashboardChatStore(useShallow((state) => ({
+    overview: state.overview,
+    messages: state.messages,
+    loadRoomMessages: state.loadRoomMessages,
+  })));
+  const { focusedRoomId, setFocusedRoomId, setOpenedRoomId } = useDashboardUIStore(useShallow((state) => ({
+    focusedRoomId: state.focusedRoomId,
+    setFocusedRoomId: state.setFocusedRoomId,
+    setOpenedRoomId: state.setOpenedRoomId,
+  })));
+  const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
+  const rooms = propsRooms || overview?.rooms || [];
 
   const handleSelect = (roomId: string) => {
-    state.setFocusedRoomId(roomId);
-    state.setOpenedRoomId(roomId);
+    setFocusedRoomId(roomId);
+    setOpenedRoomId(roomId);
     router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    if (!state.messages[roomId]) {
+    if (!messages[roomId]) {
       loadRoomMessages(roomId);
     }
   };
@@ -84,8 +97,8 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
   return (
     <div className="py-1">
       {rooms.map((room) => {
-        const isSelected = state.focusedRoomId === room.room_id;
-        const roomMessages = state.messages[room.room_id] || [];
+        const isSelected = focusedRoomId === room.room_id;
+        const roomMessages = messages[room.room_id] || [];
         const cachedLatestMessage = roomMessages[roomMessages.length - 1];
         const previewText = room.last_message_preview || cachedLatestMessage?.text || t.noMessagesYet;
         const previewSender = room.last_sender_name || cachedLatestMessage?.sender_name || "";
@@ -93,6 +106,7 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
         const messageTime = formatLastMessageTime(room.last_message_at);
         const avatarLabel = buildRoomAvatarLabel(room.name);
         const avatarTone = buildAvatarTone(room.room_id);
+        const isUnread = isRoomUnread(room.room_id);
 
         return (
           <div
@@ -121,11 +135,16 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
                       <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
                     )}
                   </span>
-                  {messageTime && (
-                    <span className="shrink-0 text-[11px] text-text-secondary/80">
-                      {messageTime}
-                    </span>
-                  )}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isUnread && (
+                      <span className="h-2.5 w-2.5 rounded-full bg-neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
+                    )}
+                    {messageTime && (
+                      <span className="text-[11px] text-text-secondary/80">
+                        {messageTime}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <p className="mt-0.5 truncate text-xs text-text-secondary">
                   {previewLine}

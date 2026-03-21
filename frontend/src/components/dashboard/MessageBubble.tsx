@@ -2,12 +2,12 @@
 
 import type { KeyboardEvent } from "react";
 import type { DashboardMessage, Attachment } from "@/lib/types";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 
 interface MessageBubbleProps {
   message: DashboardMessage;
@@ -74,7 +74,7 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
 }
 
 export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
-  const { selectAgent } = useDashboard();
+  const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const stateConfig = useStateConfig();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;

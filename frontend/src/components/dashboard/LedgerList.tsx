@@ -1,6 +1,7 @@
 "use client";
 
-import { useDashboard } from "./DashboardApp";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -20,8 +21,14 @@ function formatTime(iso: string): string {
 }
 
 export default function LedgerList() {
-  const { state, loadWalletLedger } = useDashboard();
-  const { walletLedger, walletLedgerHasMore, walletLoading, walletLedgerError } = state;
+  const { walletLedger, walletLedgerHasMore, walletLoading, walletLedgerError, loadWalletLedger } =
+    useDashboardWalletStore(useShallow((state) => ({
+      walletLedger: state.walletLedger,
+      walletLedgerHasMore: state.walletLedgerHasMore,
+      walletLoading: state.walletLoading,
+      walletLedgerError: state.walletLedgerError,
+      loadWalletLedger: state.loadWalletLedger,
+    })));
 
   if (walletLoading && walletLedger.length === 0) {
     return (

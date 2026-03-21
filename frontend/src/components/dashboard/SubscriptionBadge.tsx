@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 subscriptions BFF、dashboard 会话状态与可选 roomId，动态加载商品详情与当前 agent 订阅状态
+ * [INPUT]: 依赖 subscriptions BFF、session/chat store 与可选 roomId，动态加载商品详情与当前 agent 订阅状态
  * [OUTPUT]: 对外提供 SubscriptionBadge 组件，渲染订阅 badge 并在弹层里展示价格、周期、状态与订阅操作
  * [POS]: dashboard 各类房间卡片与消息头的统一订阅入口，连接“看见门槛”与“立即订阅”
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -9,8 +9,10 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useDashboard } from "./DashboardApp";
 import type { AgentSubscription, SubscriptionProduct } from "@/lib/types";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 interface SubscriptionBadgeProps {
   productId?: string | null;
@@ -34,11 +36,20 @@ export default function SubscriptionBadge({
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState(false);
 
-  const { state, isGuest, isAuthedReady, joinRoom, showLoginModal } = useDashboard();
-
   if (!productId) return null;
 
-  const activeAgentId = state.activeAgentId;
+  const { activeAgentId, sessionMode } = useDashboardSessionStore(useShallow((state) => ({
+    activeAgentId: state.activeAgentId,
+    sessionMode: state.sessionMode,
+  })));
+  const joinRoom = useDashboardChatStore((state) => state.joinRoom);
+  const isGuest = sessionMode === "guest";
+  const isAuthedReady = sessionMode === "authed-ready";
+  const showLoginModal = () => {
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+  };
   const alreadySubscribed = subscription?.status === "active";
 
   useEffect(() => {

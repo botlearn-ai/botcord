@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 zustand/persist 保存频道域状态，依赖 @/lib/api 发起房间、消息、探索相关请求，依赖 session/contact store 提供鉴权上下文与联系人刷新
- * [OUTPUT]: 对外提供 useDashboardChannelStore 状态仓库与频道域异步动作
- * [POS]: frontend dashboard 的 channel 主域状态源，负责房间、消息、探索、公开频道与 agent 资料展示状态
+ * [INPUT]: 依赖 zustand/persist 保存 dashboard 会话与目录数据，依赖 @/lib/api 发起房间/目录/Agent 查询，依赖 session/ui/unread/contact store 提供鉴权、界面上下文与未读协调
+ * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、消息缓存、公开房间/Agent、Agent 卡片数据与 chat 相关异步动作
+ * [POS]: frontend dashboard 的 chat 数据状态源，负责真正的会话数据与目录数据，不负责阅读语义和连接生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -14,112 +14,53 @@ import type {
   DashboardRoom,
   DiscoverRoom,
   PublicRoom,
+  RealtimeMetaEvent,
 } from "@/lib/types";
-import { api, getActiveAgentId } from "@/lib/api";
+import { api } from "@/lib/api";
+import {
+  buildVisibleMessageRooms,
+  hasReadyActiveAgent,
+  loadReadableRoomResource,
+  roomMessagesInFlight,
+  roomPollInFlight,
+  toRoomSummary,
+} from "@/store/dashboard-shared";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 
-const roomMessagesInFlight = new Set<string>();
-const roomPollInFlight = new Set<string>();
+function applyRealtimeRoomHint<T extends {
+  room_id: string;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+}>(room: T, event: RealtimeMetaEvent): T {
+  if (room.room_id !== event.room_id) return room;
 
-type ReadableRoomResourceOptions<T> = {
-  canUseMemberView: boolean;
-  loadMember: () => Promise<T>;
-  loadPublic: () => Promise<T>;
-  onSuccess: (value: T) => void;
-  onPublicError?: (error: unknown) => void;
-  onMemberError?: (error: unknown) => void;
-};
+  const preview = typeof event.ext.preview === "string"
+    ? event.ext.preview
+    : room.last_message_preview;
 
-async function loadReadableRoomResource<T>({
-  canUseMemberView,
-  loadMember,
-  loadPublic,
-  onSuccess,
-  onPublicError,
-  onMemberError,
-}: ReadableRoomResourceOptions<T>): Promise<void> {
-  if (!canUseMemberView) {
-    try {
-      onSuccess(await loadPublic());
-    } catch (error) {
-      onPublicError?.(error);
-    }
-    return;
-  }
-
-  try {
-    onSuccess(await loadMember());
-    return;
-  } catch (error: any) {
-    if (error?.status !== 403) {
-      onMemberError?.(error);
-      return;
-    }
-  }
-
-  try {
-    onSuccess(await loadPublic());
-  } catch (error) {
-    onPublicError?.(error);
-  }
-}
-
-function toRoomSummary(room: PublicRoom): DashboardRoom {
   return {
-    room_id: room.room_id,
-    name: room.name,
-    description: room.description,
-    owner_id: room.owner_id,
-    visibility: room.visibility,
-    member_count: room.member_count,
-    my_role: "viewer",
-    rule: room.rule ?? null,
-    required_subscription_product_id: room.required_subscription_product_id,
-    last_message_preview: room.last_message_preview,
-    last_message_at: room.last_message_at,
-    last_sender_name: room.last_sender_name,
+    ...room,
+    last_message_at: event.created_at > (room.last_message_at ?? "") ? event.created_at : room.last_message_at,
+    last_message_preview: preview,
   };
 }
 
-function hasReadyActiveAgent(token: string | null, activeAgentId?: string | null): activeAgentId is string {
-  return Boolean(token && (activeAgentId || getActiveAgentId()));
-}
-
-function buildVisibleMessageRooms(state: Pick<DashboardChannelState, "overview" | "recentVisitedRooms"> & { token: string | null }): DashboardRoom[] {
-  const joinedRooms = state.overview?.rooms || [];
-  const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
-  const recentUnjoinedRooms = state.recentVisitedRooms
-    .filter((room) => !joinedRoomIds.has(room.room_id))
-    .map(toRoomSummary);
-  const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
-    const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
-    const bTs = b.last_message_at ? Date.parse(b.last_message_at) : 0;
-    return bTs - aTs;
-  });
-  return state.token ? mergedRooms : state.recentVisitedRooms.map(toRoomSummary);
-}
-
-interface DashboardChannelState {
+interface DashboardChatState {
   overviewRefreshing: boolean;
   overview: DashboardOverview | null;
-  focusedRoomId: string | null;
-  openedRoomId: string | null;
   messages: Record<string, DashboardMessage[]>;
   messagesLoading: Record<string, boolean>;
   messagesHasMore: Record<string, boolean>;
   error: string | null;
-  rightPanelOpen: boolean;
-  agentCardOpen: boolean;
   selectedAgentId: string | null;
   selectedAgentLoading: boolean;
   selectedAgentError: string | null;
   selectedAgentProfile: AgentProfile | null;
   selectedAgentConversations: DashboardRoom[] | null;
   searchResults: AgentProfile[] | null;
-  sidebarTab: "messages" | "contacts" | "explore" | "wallet";
-  exploreView: "rooms" | "agents";
-  contactsView: "agents" | "requests" | "rooms";
   discoverRooms: DiscoverRoom[];
   discoverLoading: boolean;
   joiningRoomId: string | null;
@@ -130,26 +71,22 @@ interface DashboardChannelState {
   publicAgentsLoading: boolean;
   recentVisitedRooms: PublicRoom[];
 
-  setFocusedRoomId: (roomId: string | null) => void;
-  setOpenedRoomId: (roomId: string | null) => void;
-  setSidebarTab: (tab: DashboardChannelState["sidebarTab"]) => void;
-  setExploreView: (view: DashboardChannelState["exploreView"]) => void;
-  setContactsView: (view: DashboardChannelState["contactsView"]) => void;
-  toggleRightPanel: () => void;
-  closeAgentCard: () => void;
-  addRecentPublicRoom: (room: PublicRoom) => void;
   setError: (error: string | null) => void;
-  resetChannelState: () => void;
+  addRecentPublicRoom: (room: PublicRoom) => void;
+  resetChatState: () => void;
   logout: () => void;
+  closeAgentCardState: () => void;
   getRoomSummary: (roomId: string) => DashboardRoom | null;
   getVisibleMessageRooms: () => DashboardRoom[];
+  applyRealtimeEventHint: (event: RealtimeMetaEvent) => void;
+  replaceOverview: (overview: DashboardOverview) => void;
 
   loadRoomMessages: (roomId: string) => Promise<void>;
   pollNewMessages: (roomId: string) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
   selectAgent: (agentId: string) => Promise<void>;
   searchAgents: (q: string) => Promise<void>;
-  refreshOverview: () => Promise<void>;
+  refreshOverview: (opts?: { reloadOpenedRoom?: boolean }) => Promise<void>;
   loadDiscoverRooms: () => Promise<void>;
   joinRoom: (roomId: string) => Promise<void>;
   loadPublicRooms: () => Promise<void>;
@@ -158,26 +95,19 @@ interface DashboardChannelState {
   switchActiveAgent: (agentId: string) => Promise<void>;
 }
 
-const initialState = {
+const initialChatState = {
   overviewRefreshing: false,
   overview: null,
-  focusedRoomId: null,
-  openedRoomId: null,
   messages: {},
   messagesLoading: {},
   messagesHasMore: {},
   error: null,
-  rightPanelOpen: false,
-  agentCardOpen: false,
   selectedAgentId: null,
   selectedAgentLoading: false,
   selectedAgentError: null,
   selectedAgentProfile: null,
   selectedAgentConversations: null,
   searchResults: null,
-  sidebarTab: "messages" as const,
-  exploreView: "rooms" as const,
-  contactsView: "agents" as const,
   discoverRooms: [],
   discoverLoading: false,
   joiningRoomId: null,
@@ -189,18 +119,14 @@ const initialState = {
   recentVisitedRooms: [],
 };
 
-function hasTransientChannelState(state: DashboardChannelState): boolean {
+function hasTransientChatState(state: DashboardChatState): boolean {
   return (
     state.overviewRefreshing
     || state.overview !== null
-    || state.focusedRoomId !== null
-    || state.openedRoomId !== null
     || Object.keys(state.messages).length > 0
     || Object.keys(state.messagesLoading).length > 0
     || Object.keys(state.messagesHasMore).length > 0
     || state.error !== null
-    || state.rightPanelOpen
-    || state.agentCardOpen
     || state.selectedAgentId !== null
     || state.selectedAgentLoading
     || state.selectedAgentError !== null
@@ -215,30 +141,11 @@ function hasTransientChannelState(state: DashboardChannelState): boolean {
   );
 }
 
-export const useDashboardChannelStore = create<DashboardChannelState>()(
+export const useDashboardChatStore = create<DashboardChatState>()(
   persist(
     (set, get) => ({
-      ...initialState,
+      ...initialChatState,
 
-      setFocusedRoomId: (roomId) =>
-        set((state) => (state.focusedRoomId === roomId ? state : { focusedRoomId: roomId })),
-      setOpenedRoomId: (roomId) =>
-        set((state) => (state.openedRoomId === roomId ? state : { openedRoomId: roomId })),
-      setSidebarTab: (tab) =>
-        set((state) => (state.sidebarTab === tab ? state : { sidebarTab: tab })),
-      setExploreView: (view) =>
-        set((state) => (state.exploreView === view ? state : { exploreView: view })),
-      setContactsView: (view) =>
-        set((state) => (state.contactsView === view ? state : { contactsView: view })),
-      toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
-      closeAgentCard: () =>
-        set((state) => (state.agentCardOpen
-          ? {
-            agentCardOpen: false,
-            selectedAgentLoading: false,
-            selectedAgentError: null,
-          }
-          : state)),
       setError: (error) => set({ error }),
 
       addRecentPublicRoom: (room) =>
@@ -249,16 +156,13 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
           ].slice(0, 20),
         })),
 
-      resetChannelState: () =>
+      resetChatState: () =>
         set((state) => {
-          if (!hasTransientChannelState(state)) {
+          if (!hasTransientChatState(state)) {
             return state;
           }
           return {
-            ...initialState,
-            sidebarTab: state.sidebarTab,
-            exploreView: state.exploreView,
-            contactsView: state.contactsView,
+            ...initialChatState,
             recentVisitedRooms: state.recentVisitedRooms,
             publicRooms: state.publicRooms,
             publicAgents: state.publicAgents,
@@ -268,13 +172,21 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
 
       logout: () =>
         set({
-          ...initialState,
+          ...initialChatState,
           recentVisitedRooms: get().recentVisitedRooms,
           publicRooms: get().publicRooms,
           publicAgents: get().publicAgents,
           publicRoomDetails: get().publicRoomDetails,
-          sidebarTab: "messages",
         }),
+
+      closeAgentCardState: () =>
+        set((state) => ({
+          selectedAgentId: state.selectedAgentId,
+          selectedAgentProfile: state.selectedAgentProfile,
+          selectedAgentConversations: state.selectedAgentConversations,
+          selectedAgentLoading: false,
+          selectedAgentError: null,
+        })),
 
       getRoomSummary: (roomId) => {
         const state = get();
@@ -292,6 +204,30 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
           recentVisitedRooms: get().recentVisitedRooms,
           token: useDashboardSessionStore.getState().token,
         }),
+
+      applyRealtimeEventHint: (event) =>
+        set((state) => ({
+          overview: state.overview
+            ? {
+              ...state.overview,
+              rooms: state.overview.rooms.map((room) => applyRealtimeRoomHint(room, event)),
+            }
+            : state.overview,
+          publicRoomDetails: event.room_id && state.publicRoomDetails[event.room_id]
+            ? {
+              ...state.publicRoomDetails,
+              [event.room_id]: applyRealtimeRoomHint(state.publicRoomDetails[event.room_id], event),
+            }
+            : state.publicRoomDetails,
+          recentVisitedRooms: event.room_id
+            ? state.recentVisitedRooms.map((room) => applyRealtimeRoomHint(room, event))
+            : state.recentVisitedRooms,
+        })),
+
+      replaceOverview: (overview) => {
+        set({ overview, overviewRefreshing: false });
+        useDashboardUnreadStore.getState().reconcileUnreadRooms(overview.rooms);
+      },
 
       loadRoomMessages: async (roomId: string) => {
         if (roomMessagesInFlight.has(roomId)) return;
@@ -314,10 +250,10 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
               }));
             },
             onMemberError: (error) => {
-              console.error("[ChannelStore] Failed to load messages:", error);
+              console.error("[ChatStore] Failed to load messages:", error);
             },
             onPublicError: (error) => {
-              console.error("[ChannelStore] Failed to load messages:", error);
+              console.error("[ChatStore] Failed to load messages:", error);
             },
           });
         } finally {
@@ -336,7 +272,6 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
         const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
         const existing = get().messages[roomId];
 
-        // Empty room: reload from scratch to pick up the first message
         if (!existing || existing.length === 0) {
           try {
             await get().loadRoomMessages(roomId);
@@ -354,12 +289,11 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
             loadPublic: () => api.getPublicRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 }),
             onSuccess: (result) => {
               if (result.messages.length === 0) return;
-              // API returns descending order; reverse to chronological
               const newMsgs = result.messages.reverse();
               set((state) => {
                 const current = state.messages[roomId] || [];
-                const existingIds = new Set(current.map((m) => m.hub_msg_id));
-                const deduped = newMsgs.filter((m) => !existingIds.has(m.hub_msg_id));
+                const existingIds = new Set(current.map((message) => message.hub_msg_id));
+                const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
                 if (deduped.length === 0) return state;
                 return {
                   messages: { ...state.messages, [roomId]: [...current, ...deduped] },
@@ -367,14 +301,14 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
               });
             },
             onMemberError: (error) => {
-              console.error("[ChannelStore] Failed to poll new messages:", error);
+              console.error("[ChatStore] Failed to poll new messages:", error);
             },
             onPublicError: (error) => {
-              console.error("[ChannelStore] Failed to poll new messages:", error);
+              console.error("[ChatStore] Failed to poll new messages:", error);
             },
           });
-        } catch (err) {
-          console.error("[ChannelStore] Failed to poll new messages:", err);
+        } catch (error) {
+          console.error("[ChatStore] Failed to poll new messages:", error);
         } finally {
           roomPollInFlight.delete(roomId);
         }
@@ -382,9 +316,8 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
 
       loadMoreMessages: async (roomId: string) => {
         const { token, activeAgentId } = useDashboardSessionStore.getState();
-        const { messages } = get();
+        const existing = get().messages[roomId];
         const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
-        const existing = messages[roomId];
         if (!existing || existing.length === 0) return;
 
         const oldest = existing[0];
@@ -400,26 +333,26 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
               }));
             },
             onMemberError: (error) => {
-              console.error("[ChannelStore] Failed to load more messages:", error);
+              console.error("[ChatStore] Failed to load more messages:", error);
             },
             onPublicError: (error) => {
-              console.error("[ChannelStore] Failed to load more messages:", error);
+              console.error("[ChatStore] Failed to load more messages:", error);
             },
           });
-        } catch (err) {
-          console.error("[ChannelStore] Failed to load more messages:", err);
+        } catch (error) {
+          console.error("[ChatStore] Failed to load more messages:", error);
         }
       },
 
       selectAgent: async (agentId: string) => {
         const { token } = useDashboardSessionStore.getState();
+        useDashboardUIStore.getState().openAgentCard();
         set({
           selectedAgentId: agentId,
           selectedAgentLoading: true,
           selectedAgentError: null,
           selectedAgentProfile: null,
           selectedAgentConversations: null,
-          agentCardOpen: true,
         });
         try {
           if (token) {
@@ -433,25 +366,22 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
               selectedAgentError: null,
               selectedAgentProfile: profile,
               selectedAgentConversations: convos.conversations,
-              agentCardOpen: true,
             });
-          } else {
-            const profile = await api.getPublicAgentProfile(agentId);
-            set({
-              selectedAgentId: agentId,
-              selectedAgentLoading: false,
-              selectedAgentError: null,
-              selectedAgentProfile: profile,
-              selectedAgentConversations: null,
-              agentCardOpen: true,
-            });
+            return;
           }
-        } catch (err: any) {
-          console.error("[ChannelStore] Failed to select agent:", err);
+          const profile = await api.getPublicAgentProfile(agentId);
+          set({
+            selectedAgentId: agentId,
+            selectedAgentLoading: false,
+            selectedAgentError: null,
+            selectedAgentProfile: profile,
+            selectedAgentConversations: null,
+          });
+        } catch (error: any) {
+          console.error("[ChatStore] Failed to select agent:", error);
           set({
             selectedAgentLoading: false,
-            selectedAgentError: err?.message || "Failed to load agent profile",
-            agentCardOpen: true,
+            selectedAgentError: error?.message || "Failed to load agent profile",
           });
         }
       },
@@ -465,14 +395,17 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
         try {
           const result = token ? await api.searchAgents(q) : await api.getPublicAgents({ q });
           set({ searchResults: result.agents });
-        } catch (err) {
-          console.error("[ChannelStore] Search failed:", err);
+        } catch (error) {
+          console.error("[ChatStore] Search failed:", error);
         }
       },
 
-      refreshOverview: async () => {
+      refreshOverview: async (opts) => {
         const { token, activeAgentId } = useDashboardSessionStore.getState();
-        const { openedRoomId } = get();
+        const openedRoomId = opts?.reloadOpenedRoom
+          ? useDashboardUIStore.getState().openedRoomId
+          : null;
+
         if (!token) {
           await Promise.all([get().loadPublicRooms(), get().loadPublicAgents()]);
           return;
@@ -485,13 +418,13 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
         set({ overviewRefreshing: true });
         try {
           const overview = await api.getOverview();
-          set({ overview, overviewRefreshing: false });
+          get().replaceOverview(overview);
           await useDashboardContactStore.getState().loadContactRequests();
           if (openedRoomId) {
             void get().loadRoomMessages(openedRoomId);
           }
-        } catch (err: any) {
-          set({ error: err.message || "Failed to refresh", overviewRefreshing: false });
+        } catch (error: any) {
+          set({ error: error?.message || "Failed to refresh", overviewRefreshing: false });
         }
       },
 
@@ -509,17 +442,16 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
 
       joinRoom: async (roomId: string) => {
         const { token } = useDashboardSessionStore.getState();
-        const { discoverRooms } = get();
         if (!token) return;
         set({ joiningRoomId: roomId });
         try {
           await api.joinRoom(roomId);
           const overview = await api.getOverview();
-          set({
-            overview,
+          set((state) => ({
             joiningRoomId: null,
-            discoverRooms: discoverRooms.filter((room) => room.room_id !== roomId),
-          });
+            discoverRooms: state.discoverRooms.filter((room) => room.room_id !== roomId),
+          }));
+          get().replaceOverview(overview);
         } catch {
           set({ joiningRoomId: null });
         }
@@ -578,22 +510,28 @@ export const useDashboardChannelStore = create<DashboardChannelState>()(
       switchActiveAgent: async (agentId: string) => {
         const { token } = useDashboardSessionStore.getState();
         useDashboardSessionStore.getState().switchActiveAgent(agentId);
+        useDashboardUIStore.getState().resetUIState();
+        useDashboardUnreadStore.getState().resetUnreadState();
+        get().resetChatState();
         if (!token) return;
 
         set({ overviewRefreshing: true });
         try {
           const overview = await api.getOverview();
-          set({ overview, overviewRefreshing: false });
+          get().replaceOverview(overview);
           await useDashboardContactStore.getState().loadContactRequests();
-        } catch (err: any) {
-          set({ error: err.message, overviewRefreshing: false });
+        } catch (error: any) {
+          set({ error: error?.message || "Failed to switch agent", overviewRefreshing: false });
         }
       },
     }),
     {
-      name: "dashboard-storage",
+      name: "dashboard-chat-storage",
       partialize: (state) => ({
         recentVisitedRooms: state.recentVisitedRooms,
+        publicRooms: state.publicRooms,
+        publicAgents: state.publicAgents,
+        publicRoomDetails: state.publicRoomDetails,
       }),
     },
   ),

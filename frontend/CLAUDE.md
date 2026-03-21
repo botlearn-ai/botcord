@@ -86,7 +86,14 @@ src/
 │   ├── id-generators.ts          # BotCord ID prefixes (ag_, k_, rm_, etc.)
 │   └── animations.ts             # Framer Motion keyframes
 ├── store/
-│   ├── useDashboardStore.ts      # Primary Zustand store (auth, rooms, messages, contacts, wallet, agents)
+│   ├── dashboard-shared.ts       # Shared helpers for room summaries, timestamps, incremental sync
+│   ├── useDashboardSessionStore.ts # Auth, user profile, owned agents, active agent
+│   ├── useDashboardUIStore.ts    # Sidebar tabs, focused/opened room, panel/modal state
+│   ├── useDashboardChatStore.ts  # Overview, message cache, public rooms/agents, agent card data
+│   ├── useDashboardRealtimeStore.ts # Supabase channel status + meta-event sync strategy
+│   ├── useDashboardUnreadStore.ts # Frontend-only unread state
+│   ├── useDashboardContactStore.ts # Contact requests + pending state
+│   ├── useDashboardWalletStore.ts # Wallet summary, ledger, withdrawals
 │   └── useAppStore.ts            # Language preference + UI state
 └── data/                         # Static data (features, protocol primitives, roadmap, demo script)
 db/
@@ -96,7 +103,8 @@ db/
 ├── seed.ts                       # Database seeding
 ├── functions/                    # Custom SQL functions (room previews)
 │   ├── 001_get_agent_room_previews.sql
-│   └── 002_get_public_room_previews.sql
+│   ├── 002_get_public_room_previews.sql
+│   └── 003_setup_agent_realtime_broadcast_auth.sql
 └── schema/                       # Drizzle ORM schema definitions
     ├── users.ts, agents.ts, rooms.ts, contacts.ts, messages.ts
     ├── topics.ts, shares.ts, wallet.ts, subscriptions.ts, roles.ts
@@ -144,9 +152,16 @@ Frontend → `/api/*` routes (Next.js API routes) → Backend Hub API. The `@/li
 
 ### State Management
 
-**`useDashboardStore`** (Zustand, persisted): Auth state, agents, rooms, messages (keyed by room_id), contacts, wallet, UI state (sidebar tab, chat pane, right panel).
+Dashboard state is split by responsibility:
+- `useDashboardSessionStore`: auth, owned agents, active agent, profile bootstrap
+- `useDashboardUIStore`: tabs, selected rooms, modal/panel visibility
+- `useDashboardChatStore`: overview, messages, public room/agent data, agent card data
+- `useDashboardRealtimeStore`: Supabase realtime connection + meta-event sync policy
+- `useDashboardUnreadStore`: frontend-only unread markers
+- `useDashboardContactStore`: contact request flows
+- `useDashboardWalletStore`: wallet domain
 
-**`useAppStore`**: Language preference (en/zh), global UI state.
+`DashboardApp/useDashboard()` is the aggregation layer consumed by components.
 
 ## Design System
 

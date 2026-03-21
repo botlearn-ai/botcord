@@ -1,13 +1,22 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖 chat/ui/session/unread store 的消息状态与增量加载动作，依赖共享时间工具更新已读水位，依赖 MessageBubble 渲染单条消息，依赖滚动位置判定已读水位
+ * [OUTPUT]: 对外提供 MessageList 组件，渲染消息流、话题分组、历史加载与“新消息”提示
+ * [POS]: dashboard 聊天正文区的消息阅读器，负责把实时追加消息转成可见阅读状态
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
-import { useDashboard } from "./DashboardApp";
 import { useLanguage } from '@/lib/i18n';
 import { messageList } from '@/lib/i18n/translations/dashboard';
+import { useShallow } from "zustand/react/shallow";
 import MessageBubble from "./MessageBubble";
 import type { DashboardMessage, TopicInfo } from "@/lib/types";
-
-const POLL_INTERVAL_MS = 5000;
+import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
   open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
@@ -113,9 +122,26 @@ function isNearBottom(el: HTMLElement, threshold = 150): boolean {
 }
 
 export default function MessageList() {
-  const { state, loadMoreMessages, pollNewMessages } = useDashboard();
   const locale = useLanguage();
   const t = messageList[locale];
+  const { openedRoomId } = useDashboardUIStore(useShallow((state) => ({
+    openedRoomId: state.openedRoomId,
+  })));
+  const { messagesByRoom, messagesLoading, messagesHasMore, loadMoreMessages, overview } = useDashboardChatStore(
+    useShallow((state) => ({
+      messagesByRoom: state.messages,
+      messagesLoading: state.messagesLoading,
+      messagesHasMore: state.messagesHasMore,
+      loadMoreMessages: state.loadMoreMessages,
+      overview: state.overview,
+    })),
+  );
+  const { publicRoomDetails, publicRooms, recentVisitedRooms } = useDashboardChatStore(useShallow((state) => ({
+    publicRoomDetails: state.publicRoomDetails,
+    publicRooms: state.publicRooms,
+    recentVisitedRooms: state.recentVisitedRooms,
+  })));
+  const markRoomSeen = useDashboardUnreadStore((state) => state.markRoomSeen);
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
@@ -125,24 +151,30 @@ export default function MessageList() {
   const showBannerRef = useRef(false);
   const wasNearBottomRef = useRef(true);
 
-  const roomId = state.openedRoomId;
-  const messages = roomId ? state.messages[roomId] || [] : [];
-  const isRoomMessagesLoading = roomId ? state.messagesLoading[roomId] ?? false : false;
-  const hasMore = roomId ? state.messagesHasMore[roomId] ?? false : false;
-  const currentAgentId = state.overview?.agent?.agent_id;
+  const roomId = openedRoomId;
+  const messages = roomId ? messagesByRoom[roomId] || [] : [];
+  const isRoomMessagesLoading = roomId ? messagesLoading[roomId] ?? false : false;
+  const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
+  const currentAgentId = overview?.agent?.agent_id;
+  const commitRoomSeen = useCallback((targetRoomId: string) => {
+    markRoomSeen(
+      targetRoomId,
+      getLatestSeenAtForRoom(targetRoomId, {
+        messages: messagesByRoom,
+        overview,
+        publicRoomDetails,
+        publicRooms,
+        recentVisitedRooms,
+      }),
+    );
+  }, [markRoomSeen, messagesByRoom, overview, publicRoomDetails, publicRooms, recentVisitedRooms]);
 
   useEffect(() => {
     setCollapsedTopics(new Set());
+    prevLengthRef.current = 0;
+    wasNearBottomRef.current = true;
+    setShowNewMessagesBanner(false);
   }, [roomId]);
-
-  // Poll for new messages
-  useEffect(() => {
-    if (!roomId) return;
-    const timer = setInterval(() => {
-      pollNewMessages(roomId);
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [roomId, pollNewMessages]);
 
   const topicsMap = useMemo(() => {
     const m = new Map<string, TopicInfo>();
@@ -187,6 +219,9 @@ export default function MessageList() {
       if (wasNearBottomRef.current) {
         bottomRef.current?.scrollIntoView({ behavior: "auto" });
         setShowNewMessagesBanner(false);
+        if (roomId) {
+          commitRoomSeen(roomId);
+        }
       } else if (prevLengthRef.current > 0) {
         // User is reading history — show banner instead of auto-scrolling
         setShowNewMessagesBanner(true);
@@ -194,7 +229,7 @@ export default function MessageList() {
     }
     prevLengthRef.current = messages.length;
     isLoadingMore.current = false;
-  }, [messages.length]);
+  }, [messages.length, roomId, commitRoomSeen]);
 
   // Keep ref in sync with state for use in scroll handler
   useEffect(() => {
@@ -218,7 +253,10 @@ export default function MessageList() {
     if (showBannerRef.current && wasNearBottomRef.current) {
       setShowNewMessagesBanner(false);
     }
-  }, [roomId, hasMore, loadMoreMessages]);
+    if (wasNearBottomRef.current) {
+      commitRoomSeen(roomId);
+    }
+  }, [roomId, hasMore, loadMoreMessages, commitRoomSeen]);
 
   // Reset banner on room change
   useEffect(() => {
@@ -228,7 +266,10 @@ export default function MessageList() {
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto" });
     setShowNewMessagesBanner(false);
-  }, []);
+    if (roomId) {
+      commitRoomSeen(roomId);
+    }
+  }, [roomId, commitRoomSeen]);
 
   const toggleTopic = useCallback((topicKey: string) => {
     setCollapsedTopics((prev) => {

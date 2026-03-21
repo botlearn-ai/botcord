@@ -1,14 +1,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useDashboard } from "./DashboardApp";
 import { api } from "@/lib/api";
 import type { StripeSessionStatusResponse } from "@/lib/types";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 
 type BannerMode = "success_polling" | "cancelled";
 
 export default function StripeReturnBanner() {
-  const { state, isAuthedReady, loadWallet, loadWalletLedger } = useDashboard();
+  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
+  const token = useDashboardSessionStore((state) => state.token);
+  const { loadWallet, loadWalletLedger } = useDashboardWalletStore(useShallow((state) => ({
+    loadWallet: state.loadWallet,
+    loadWalletLedger: state.loadWalletLedger,
+  })));
   const [status, setStatus] = useState<StripeSessionStatusResponse | null>(null);
   const [mode, setMode] = useState<BannerMode | null>(null);
   const [polling, setPolling] = useState(false);
@@ -57,7 +64,7 @@ export default function StripeReturnBanner() {
       };
       poll();
     }
-  }, [isAuthedReady, state.token]);
+  }, [isAuthedReady, token, loadWallet, loadWalletLedger]);
 
   if (!mode) return null;
 
