@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 zustand/persist 保存房间阅读水位，依赖 dashboard 类型定义做 room 级未读计算
+ * [INPUT]: 依赖 zustand/persist 保存房间阅读水位，依赖 dashboard 类型定义做 room 级未读维护
  * [OUTPUT]: 对外提供 useDashboardUnreadStore，管理 lastSeenAtByRoom、unreadRoomIds 与实时未读提示
  * [POS]: frontend dashboard 的阅读语义状态源，只负责“看没看到”，不负责拉数据或建连接
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -56,15 +56,6 @@ export const useDashboardUnreadStore = create<DashboardUnreadState>()(
           for (const roomId of Array.from(nextUnread)) {
             if (!validRoomIds.has(roomId)) {
               nextUnread.delete(roomId);
-            }
-          }
-
-          for (const room of rooms) {
-            const seenAt = state.lastSeenAtByRoom[room.room_id];
-            if (getIsoTimestampValue(room.last_message_at) > getIsoTimestampValue(seenAt)) {
-              nextUnread.add(room.room_id);
-            } else {
-              nextUnread.delete(room.room_id);
             }
           }
 
