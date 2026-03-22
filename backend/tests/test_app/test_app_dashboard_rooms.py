@@ -157,7 +157,9 @@ async def test_discover_rooms(client: AsyncClient, seed: dict):
     )
     assert resp.status_code == 200
     data = resp.json()
-    room_ids = [r["room_id"] for r in data]
+    assert "rooms" in data
+    assert "total" in data
+    room_ids = [r["room_id"] for r in data["rooms"]]
     assert "rm_pubopen01" in room_ids
     assert "rm_pubinv01" in room_ids
     assert "rm_priv0001" not in room_ids
@@ -172,7 +174,9 @@ async def test_join_public_open_room(client: AsyncClient, seed: dict):
     assert resp.status_code == 201
     data = resp.json()
     assert data["room_id"] == "rm_pubopen01"
-    assert data["role"] == "member"
+    assert data["my_role"] == "member"
+    assert data["name"] == "Public Open"
+    assert "member_count" in data
 
 
 @pytest.mark.asyncio

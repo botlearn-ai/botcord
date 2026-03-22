@@ -639,32 +639,49 @@ async def discover_rooms(
 
     my_rooms = select(RoomMember.room_id).where(RoomMember.agent_id == agent_id).subquery()
 
+    not_joined = (
+        Room.visibility == RoomVisibility.public,
+        ~Room.room_id.in_(select(my_rooms.c.room_id)),
+    )
+
+    # Total count
+    count_result = await db.execute(
+        select(func.count()).select_from(Room).where(*not_joined)
+    )
+    total = count_result.scalar() or 0
+
     stmt = (
         select(Room, func.count(RoomMember.id).label("member_count"))
         .outerjoin(RoomMember, RoomMember.room_id == Room.room_id)
-        .where(
-            Room.visibility == RoomVisibility.public,
-            ~Room.room_id.in_(select(my_rooms.c.room_id)),
-        )
+        .where(*not_joined)
         .group_by(Room.id)
+        .order_by(Room.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
     result = await db.execute(stmt)
     rows = result.all()
 
-    return [
-        {
-            "room_id": r.room_id,
-            "name": r.name,
-            "description": r.description,
-            "owner_id": r.owner_id,
-            "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
-            "join_policy": r.join_policy.value if hasattr(r.join_policy, "value") else str(r.join_policy),
-            "member_count": int(mc),
-        }
-        for r, mc in rows
-    ]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "rooms": [
+            {
+                "room_id": r.room_id,
+                "name": r.name,
+                "description": r.description,
+                "rule": r.rule,
+                "required_subscription_product_id": r.required_subscription_product_id,
+                "owner_id": r.owner_id,
+                "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
+                "join_policy": r.join_policy.value if hasattr(r.join_policy, "value") else str(r.join_policy),
+                "max_members": r.max_members,
+                "member_count": int(mc),
+            }
+            for r, mc in rows
+        ],
+    }
 
 
 @router.post("/rooms/{room_id}/join", status_code=201)
@@ -714,7 +731,23 @@ async def join_room(
     db.add(member)
     await db.commit()
 
-    return {"room_id": room_id, "agent_id": agent_id, "role": "member"}
+    # Return full room summary matching JoinRoomResponse
+    mc_result = await db.execute(
+        select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)
+    )
+    member_count = mc_result.scalar() or 0
+
+    return {
+        "room_id": room_id,
+        "name": room.name,
+        "description": room.description,
+        "owner_id": room.owner_id,
+        "visibility": room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
+        "member_count": member_count,
+        "my_role": "member",
+        "rule": room.rule,
+        "required_subscription_product_id": room.required_subscription_product_id,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -956,23 +989,15 @@ async def create_share(
 
 
 # ---------------------------------------------------------------------------
-# Inbox proxy (TODO: hub integration)
+# Inbox — polls queued messages, supports long-polling via timeout param
 # ---------------------------------------------------------------------------
 
 
-@router.get("/inbox")
-async def get_inbox(
-    limit: int = Query(default=10, ge=1, le=50),
-    timeout: int = Query(default=0, ge=0),
-    ack: bool = Query(default=True),
-    room_id: str | None = Query(default=None),
-    ctx: RequestContext = Depends(require_active_agent),
-    db: AsyncSession = Depends(get_db),
-):
-    """Poll for queued messages for the active agent."""
+async def _fetch_inbox(
+    db: AsyncSession, agent_id: str, limit: int, room_id: str | None = None,
+) -> list[MessageRecord]:
+    """Return up to *limit* queued messages for *agent_id*, oldest first."""
     from hub.models import MessageState
-
-    agent_id = ctx.active_agent_id
 
     stmt = (
         select(MessageRecord)
@@ -980,14 +1005,52 @@ async def get_inbox(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.state == MessageState.queued,
         )
+        .order_by(MessageRecord.created_at.asc())
+        .limit(limit)
     )
-    if room_id:
+    if room_id is not None:
         stmt = stmt.where(MessageRecord.room_id == room_id)
-
-    stmt = stmt.order_by(MessageRecord.id).limit(limit + 1)
-
     result = await db.execute(stmt)
-    records = result.scalars().all()
+    return list(result.scalars().all())
+
+
+@router.get("/inbox")
+async def get_inbox(
+    limit: int = Query(default=10, ge=1, le=50),
+    timeout: int = Query(default=0, ge=0, le=30),
+    ack: bool = Query(default=True),
+    room_id: str | None = Query(default=None),
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Poll for queued messages for the active agent.
+
+    Supports long-polling: when *timeout* > 0 and no messages are available,
+    blocks until a message arrives or the timeout elapses — reusing the hub's
+    shared ``_inbox_conditions`` so that ``notify_inbox()`` wakes us up.
+    """
+    import asyncio
+    from hub.models import MessageState
+    from hub.routers.hub import _inbox_conditions
+
+    agent_id = ctx.active_agent_id
+
+    records = await _fetch_inbox(db, agent_id, limit + 1, room_id)
+
+    # Long-poll: if nothing found and timeout > 0, wait for notification
+    if not records and timeout > 0:
+        cond = _inbox_conditions.get(agent_id)
+        if cond is None:
+            cond = asyncio.Condition()
+            _inbox_conditions[agent_id] = cond
+        try:
+            async with cond:
+                await asyncio.wait_for(cond.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            pass
+        _inbox_conditions.pop(agent_id, None)
+        # Re-query after wakeup / timeout
+        records = await _fetch_inbox(db, agent_id, limit + 1, room_id)
 
     has_more = len(records) > limit
     records = records[:limit]

@@ -126,18 +126,38 @@ async def _get_public_room_previews(
                 last_msg_map[rec.room_id] = {
                     "last_message_preview": parsed["text"],
                     "last_message_at": rec.created_at.isoformat() if rec.created_at else None,
+                    "last_sender_id": parsed["sender_id"],
                 }
+
+    # Resolve last sender names
+    sender_ids_set: set[str] = set()
+    for info in last_msg_map.values():
+        sid = info.get("last_sender_id")
+        if sid:
+            sender_ids_set.add(sid)
+    sender_names: dict[str, str] = {}
+    if sender_ids_set:
+        sn_result = await db.execute(
+            select(Agent.agent_id, Agent.display_name)
+            .where(Agent.agent_id.in_(sender_ids_set))
+        )
+        sender_names = dict(sn_result.all())
 
     return [
         {
             "room_id": r.room_id,
             "name": r.name,
             "description": r.description,
+            "rule": r.rule,
+            "required_subscription_product_id": r.required_subscription_product_id,
             "owner_id": r.owner_id,
             "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
             "member_count": int(mc),
             "last_message_preview": last_msg_map.get(r.room_id, {}).get("last_message_preview"),
             "last_message_at": last_msg_map.get(r.room_id, {}).get("last_message_at"),
+            "last_sender_name": sender_names.get(
+                last_msg_map.get(r.room_id, {}).get("last_sender_id", ""), None
+            ),
         }
         for r, mc in rows
     ]
