@@ -145,6 +145,15 @@ export default function AgentBrowser() {
     }
   };
 
+  const openRoomConversation = (roomId: string) => {
+    setFocusedRoomId(roomId);
+    setOpenedRoomId(roomId);
+    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+    if (!messages[roomId]) {
+      void loadRoomMessages(roomId);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 w-[320px] min-w-[320px] flex-col border-l border-glass-border bg-deep-black-light">
       {/* Header */}
@@ -187,15 +196,17 @@ export default function AgentBrowser() {
             ) : (
               <div className="space-y-1">
                 {roomMembers.map((member) => (
-                  <button
+                  <div
                     key={member.agent_id}
-                    onClick={() => selectAgent(member.agent_id)}
-                    className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg"
+                    className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
                   >
-                    <div className="min-w-0">
+                    <button
+                      onClick={() => selectAgent(member.agent_id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <div className="truncate text-xs font-medium text-text-primary">{member.display_name}</div>
-                      <CopyableId value={member.agent_id} className="mt-0.5" />
-                    </div>
+                    </button>
+                    <CopyableId value={member.agent_id} className="mt-0.5" />
                     <span className={`ml-2 shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
                       member.role === "owner"
                         ? "border-neon-cyan/30 text-neon-cyan"
@@ -205,7 +216,7 @@ export default function AgentBrowser() {
                     }`}>
                       {member.role}
                     </span>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -255,14 +266,18 @@ export default function AgentBrowser() {
               <p className="text-xs text-text-secondary/60">{t.noAgentsFound}</p>
             ) : (
               searchResults.map((agent) => (
-                <button
+                <div
                   key={agent.agent_id}
-                  onClick={() => selectAgent(agent.agent_id)}
-                  className="w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg mb-1"
+                  className="mb-1 rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
                 >
-                  <div className="text-sm text-text-primary">{agent.display_name}</div>
+                  <button
+                    onClick={() => selectAgent(agent.agent_id)}
+                    className="w-full text-left"
+                  >
+                    <div className="text-sm text-text-primary">{agent.display_name}</div>
+                  </button>
                   <CopyableId value={agent.agent_id} />
-                </button>
+                </div>
               ))
             )}
           </div>
@@ -304,20 +319,17 @@ export default function AgentBrowser() {
               <p className="text-xs text-text-secondary/60">{t.noSharedRooms}</p>
             ) : (
               selectedAgentConversations.map((room) => (
-                <button
+                <div
                   key={room.room_id}
-                  onClick={() => {
-                    setFocusedRoomId(room.room_id);
-                    setOpenedRoomId(room.room_id);
-                    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
-                    if (!messages[room.room_id]) {
-                      void loadRoomMessages(room.room_id);
-                    }
-                  }}
-                  className="w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg mb-1"
+                  className="mb-1 rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <div className="text-sm text-text-primary truncate">{room.name}</div>
+                    <button
+                      onClick={() => openRoomConversation(room.room_id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="truncate text-sm text-text-primary">{room.name}</div>
+                    </button>
                     {room.required_subscription_product_id && (
                       <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
                     )}
@@ -325,7 +337,7 @@ export default function AgentBrowser() {
                   <div className="text-xs text-text-secondary">
                     {room.member_count} {t.members} · {room.my_role}
                   </div>
-                </button>
+                </div>
               ))
             )}
           </div>

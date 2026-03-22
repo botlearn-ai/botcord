@@ -93,9 +93,16 @@ export interface DashboardMessage {
   created_at: string;
 }
 
+export interface RoomMessagesViewerContext {
+  access_mode: "member" | "public";
+  agent_id: string | null;
+  membership_role: string | null;
+}
+
 export interface DashboardMessageResponse {
   messages: DashboardMessage[];
   has_more: boolean;
+  viewer_context: RoomMessagesViewerContext;
 }
 
 export interface TopicInfo {

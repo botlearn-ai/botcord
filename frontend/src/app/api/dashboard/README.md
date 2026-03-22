@@ -29,6 +29,7 @@
 - `overview` 对房间成员计数与最近消息采用批量查询，避免逐房间 N+1 查询导致抖动。
 - `overview` 的 room 未读状态由 SQL 直接根据 `room_members.last_viewed_at` 与去重后的 room 消息时间线计算，不再把阅读语义留给前端本地存储。
 - `rooms/[roomId]/messages` 采用“成员优先，公开回退”的单路由语义，消息与话题分组都从同一数据源派生，避免多接口时序竞争与鉴权分叉。
+- 统一消息协议已下沉到 `/api/rooms/[roomId]/messages`；dashboard/public 路由继续保留，但不再应该成为前端消息读取的主入口。
 - `rooms/[roomId]/read` 只写成员级阅读水位，不参与消息分页 cursor；未读判断与分页拉取保持解耦。
 - `rooms/[roomId]/join` 与 `leave` 都收敛到 dashboard BFF，保证房间 membership 变更后的 overview 与只读视图切换可由前端统一刷新。
 - 房间消息的游标查询与 envelope 解析下沉到 `/src/app/api/_room-messages.ts`，dashboard 路由只保留鉴权与分流职责。

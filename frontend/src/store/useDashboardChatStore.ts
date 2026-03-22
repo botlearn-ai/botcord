@@ -20,7 +20,6 @@ import { api } from "@/lib/api";
 import {
   buildVisibleMessageRooms,
   hasReadyActiveAgent,
-  loadReadableRoomResource,
   roomMessagesInFlight,
   roomPollInFlight,
   toRoomSummary,
@@ -240,26 +239,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }));
         roomMessagesInFlight.add(roomId);
 
-        const { token, activeAgentId } = useDashboardSessionStore.getState();
-        const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
         try {
-          await loadReadableRoomResource({
-            canUseMemberView: canUseAuthedMessages,
-            loadMember: () => api.getRoomMessages(roomId, { limit: 50 }),
-            loadPublic: () => api.getPublicRoomMessages(roomId, { limit: 50 }),
-            onSuccess: (result) => {
-              set((state) => ({
-                messages: { ...state.messages, [roomId]: result.messages.reverse() },
-                messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
-              }));
-            },
-            onMemberError: (error) => {
-              console.error("[ChatStore] Failed to load messages:", error);
-            },
-            onPublicError: (error) => {
-              console.error("[ChatStore] Failed to load messages:", error);
-            },
-          });
+          const result = await api.getRoomMessages(roomId, { limit: 50 });
+          set((state) => ({
+            messages: { ...state.messages, [roomId]: result.messages.reverse() },
+            messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
+          }));
+        } catch (error) {
+          console.error("[ChatStore] Failed to load messages:", error);
         } finally {
           roomMessagesInFlight.delete(roomId);
           set((state) => ({
@@ -272,8 +259,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         if (roomPollInFlight.has(roomId)) return;
         roomPollInFlight.add(roomId);
 
-        const { token, activeAgentId } = useDashboardSessionStore.getState();
-        const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
         const existing = get().messages[roomId];
 
         if (!existing || existing.length === 0) {
@@ -287,29 +272,17 @@ export const useDashboardChatStore = create<DashboardChatState>()(
 
         const newest = existing[existing.length - 1];
         try {
-          await loadReadableRoomResource({
-            canUseMemberView: canUseAuthedMessages,
-            loadMember: () => api.getRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 }),
-            loadPublic: () => api.getPublicRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 }),
-            onSuccess: (result) => {
-              if (result.messages.length === 0) return;
-              const newMsgs = result.messages.reverse();
-              set((state) => {
-                const current = state.messages[roomId] || [];
-                const existingIds = new Set(current.map((message) => message.hub_msg_id));
-                const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
-                if (deduped.length === 0) return state;
-                return {
-                  messages: { ...state.messages, [roomId]: [...current, ...deduped] },
-                };
-              });
-            },
-            onMemberError: (error) => {
-              console.error("[ChatStore] Failed to poll new messages:", error);
-            },
-            onPublicError: (error) => {
-              console.error("[ChatStore] Failed to poll new messages:", error);
-            },
+          const result = await api.getRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 });
+          if (result.messages.length === 0) return;
+          const newMsgs = result.messages.reverse();
+          set((state) => {
+            const current = state.messages[roomId] || [];
+            const existingIds = new Set(current.map((message) => message.hub_msg_id));
+            const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
+            if (deduped.length === 0) return state;
+            return {
+              messages: { ...state.messages, [roomId]: [...current, ...deduped] },
+            };
           });
         } catch (error) {
           console.error("[ChatStore] Failed to poll new messages:", error);
@@ -319,30 +292,16 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       loadMoreMessages: async (roomId: string) => {
-        const { token, activeAgentId } = useDashboardSessionStore.getState();
         const existing = get().messages[roomId];
-        const canUseAuthedMessages = hasReadyActiveAgent(token, activeAgentId);
         if (!existing || existing.length === 0) return;
 
         const oldest = existing[0];
         try {
-          await loadReadableRoomResource({
-            canUseMemberView: canUseAuthedMessages,
-            loadMember: () => api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 }),
-            loadPublic: () => api.getPublicRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 }),
-            onSuccess: (result) => {
-              set((state) => ({
-                messages: { ...state.messages, [roomId]: [...result.messages.reverse(), ...existing] },
-                messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
-              }));
-            },
-            onMemberError: (error) => {
-              console.error("[ChatStore] Failed to load more messages:", error);
-            },
-            onPublicError: (error) => {
-              console.error("[ChatStore] Failed to load more messages:", error);
-            },
-          });
+          const result = await api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
+          set((state) => ({
+            messages: { ...state.messages, [roomId]: [...result.messages.reverse(), ...existing] },
+            messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
+          }));
         } catch (error) {
           console.error("[ChatStore] Failed to load more messages:", error);
         }

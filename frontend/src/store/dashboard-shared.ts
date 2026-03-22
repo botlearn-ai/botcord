@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 dashboard 类型定义、@/lib/api 的 active-agent 工具与浏览器时间解析
- * [OUTPUT]: 对外提供 dashboard chat/unread/realtime store 共用的房间摘要、增量拉取与时间比较工具
+ * [OUTPUT]: 对外提供 dashboard chat/unread/realtime store 共用的房间摘要与时间比较工具
  * [POS]: frontend store 层的共享基础模块，负责消除多 store 拆分后的重复逻辑
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -15,49 +15,6 @@ import { getActiveAgentId } from "@/lib/api";
 
 export const roomMessagesInFlight = new Set<string>();
 export const roomPollInFlight = new Set<string>();
-
-export type ReadableRoomResourceOptions<T> = {
-  canUseMemberView: boolean;
-  loadMember: () => Promise<T>;
-  loadPublic: () => Promise<T>;
-  onSuccess: (value: T) => void;
-  onPublicError?: (error: unknown) => void;
-  onMemberError?: (error: unknown) => void;
-};
-
-export async function loadReadableRoomResource<T>({
-  canUseMemberView,
-  loadMember,
-  loadPublic,
-  onSuccess,
-  onPublicError,
-  onMemberError,
-}: ReadableRoomResourceOptions<T>): Promise<void> {
-  if (!canUseMemberView) {
-    try {
-      onSuccess(await loadPublic());
-    } catch (error) {
-      onPublicError?.(error);
-    }
-    return;
-  }
-
-  try {
-    onSuccess(await loadMember());
-    return;
-  } catch (error: any) {
-    if (error?.status !== 403) {
-      onMemberError?.(error);
-      return;
-    }
-  }
-
-  try {
-    onSuccess(await loadPublic());
-  } catch (error) {
-    onPublicError?.(error);
-  }
-}
 
 export function toRoomSummary(room: PublicRoom): DashboardRoom {
   return {
