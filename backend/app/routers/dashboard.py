@@ -4,7 +4,7 @@ import datetime
 import json
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -203,7 +203,7 @@ async def get_overview(
     )
     agent = result.scalar_one_or_none()
     if agent is None:
-        return {"error": "Agent not found"}, 404
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     agent_data = {
         "agent_id": agent.agent_id,
