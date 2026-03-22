@@ -70,6 +70,8 @@ export function toRoomSummary(room: PublicRoom): DashboardRoom {
     my_role: "viewer",
     rule: room.rule ?? null,
     required_subscription_product_id: room.required_subscription_product_id,
+    last_viewed_at: null,
+    has_unread: false,
     last_message_preview: room.last_message_preview,
     last_message_at: room.last_message_at,
     last_sender_name: room.last_sender_name,

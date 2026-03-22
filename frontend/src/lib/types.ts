@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: 依赖 dashboard/public API 的 JSON 契约，约束前端 store 与组件之间的数据边界
+ * [OUTPUT]: 对外提供 dashboard/public/wallet/subscription 相关 TypeScript 类型
+ * [POS]: frontend 类型中枢，负责把 BFF 返回结构显式化，避免组件自行猜测响应形状
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 export interface AgentProfile {
   agent_id: string;
   display_name: string;
@@ -16,6 +23,8 @@ export interface DashboardRoom {
   my_role: string;
   rule: string | null;
   required_subscription_product_id?: string | null;
+  last_viewed_at?: string | null;
+  has_unread: boolean;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;

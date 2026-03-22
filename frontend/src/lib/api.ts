@@ -174,6 +174,10 @@ export const api = {
     return apiGet<DashboardMessageResponse>(`/api/dashboard/rooms/${roomId}/messages`, params);
   },
 
+  markRoomRead(roomId: string) {
+    return apiPost<{ room_id: string; last_viewed_at: string | null }>(`/api/dashboard/rooms/${roomId}/read`);
+  },
+
   searchAgents(q: string) {
     return apiGet<AgentSearchResponse>("/api/dashboard/agents/search", { q });
   },

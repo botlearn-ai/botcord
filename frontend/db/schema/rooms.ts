@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: 依赖 agents/subscriptions schema 建模 room 与 room_members 关系，并为前端 BFF/SQL 函数提供字段定义
+ * [OUTPUT]: 对外提供 rooms 与 roomMembers 两张表的 drizzle schema
+ * [POS]: frontend db schema 的房间关系层，承载房间元数据、成员权限与阅读水位
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import {
   pgTable,
   serial,
@@ -46,11 +53,13 @@ export const roomMembers = pgTable(
     muted: boolean("muted").default(false).notNull(),
     canSend: boolean("can_send"),
     canInvite: boolean("can_invite"),
+    lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     unique("uq_room_member").on(table.roomId, table.agentId),
     index("ix_room_members_room_id").on(table.roomId),
     index("ix_room_members_agent_id").on(table.agentId),
+    index("ix_room_members_agent_room").on(table.agentId, table.roomId),
   ],
 );

@@ -157,7 +157,11 @@ export default function MessageList() {
   const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
   const currentAgentId = overview?.agent?.agent_id;
   const commitRoomSeen = useCallback((targetRoomId: string) => {
-    markRoomSeen(
+    const joinedRoom = overview?.rooms.find((room) => room.room_id === targetRoomId);
+    if (!joinedRoom) {
+      return;
+    }
+    void markRoomSeen(
       targetRoomId,
       getLatestSeenAtForRoom(targetRoomId, {
         messages: messagesByRoom,

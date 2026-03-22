@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: 依赖 agents schema 建模消息投递副本，并为 room 预览、消息分页与投递状态查询提供字段定义
+ * [OUTPUT]: 对外提供 messageRecords 表的 drizzle schema
+ * [POS]: frontend db schema 的消息记录层，既承载 fan-out 投递副本，也为房间时间线 SQL 提供基础数据
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import {
   pgTable,
   serial,
@@ -42,6 +49,7 @@ export const messageRecords = pgTable(
     index("ix_message_records_sender_id").on(table.senderId),
     index("ix_message_records_receiver_id").on(table.receiverId),
     index("ix_message_records_room_id").on(table.roomId),
+    index("ix_message_records_room_id_created_at_id").on(table.roomId, table.createdAt, table.id),
     index("ix_message_records_topic").on(table.topic),
     index("ix_message_records_topic_id").on(table.topicId),
     index("ix_message_records_retry").on(table.state, table.nextRetryAt),

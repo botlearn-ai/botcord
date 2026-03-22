@@ -1,89 +1,116 @@
 /**
- * [INPUT]: 依赖 zustand/persist 保存房间阅读水位，依赖 dashboard 类型定义做 room 级未读维护
- * [OUTPUT]: 对外提供 useDashboardUnreadStore，管理 lastSeenAtByRoom、unreadRoomIds 与实时未读提示
- * [POS]: frontend dashboard 的阅读语义状态源，只负责“看没看到”，不负责拉数据或建连接
+ * [INPUT]: 依赖 zustand 保存本地乐观未读覆盖，依赖 dashboard 类型定义与 api.markRoomRead 对接后端 room 级阅读水位
+ * [OUTPUT]: 对外提供 useDashboardUnreadStore，管理 optimisticSeen/Unread 覆盖与实时未读提示
+ * [POS]: frontend dashboard 的阅读语义协调层；数据库是最终真相源，这里只负责本地瞬时覆盖
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type { DashboardRoom, RealtimeMetaEvent } from "@/lib/types";
-import { getIsoTimestampValue } from "@/store/dashboard-shared";
+import { api } from "@/lib/api";
 
 interface DashboardUnreadState {
-  lastSeenAtByRoom: Record<string, string>;
-  unreadRoomIds: string[];
+  optimisticSeenRoomIds: string[];
+  optimisticUnreadRoomIds: string[];
+  lastMarkedSeenAtByRoom: Record<string, string>;
 
-  isRoomUnread: (roomId: string) => boolean;
+  isRoomUnread: (roomId: string, persistedUnread?: boolean) => boolean;
   applyRealtimeEvent: (event: RealtimeMetaEvent) => void;
   reconcileUnreadRooms: (rooms: DashboardRoom[]) => void;
-  markRoomSeen: (roomId: string, seenAt: string | null) => void;
+  markRoomSeen: (roomId: string, seenAt: string | null) => Promise<void>;
   resetUnreadState: () => void;
   logout: () => void;
 }
 
 const initialUnreadState = {
-  lastSeenAtByRoom: {},
-  unreadRoomIds: [],
+  optimisticSeenRoomIds: [],
+  optimisticUnreadRoomIds: [],
+  lastMarkedSeenAtByRoom: {},
 };
 
-export const useDashboardUnreadStore = create<DashboardUnreadState>()(
-  persist(
-    (set, get) => ({
-      ...initialUnreadState,
+export const useDashboardUnreadStore = create<DashboardUnreadState>()((set, get) => ({
+  ...initialUnreadState,
 
-      isRoomUnread: (roomId) => get().unreadRoomIds.includes(roomId),
+  isRoomUnread: (roomId, persistedUnread = false) => {
+    const state = get();
+    if (state.optimisticSeenRoomIds.includes(roomId)) return false;
+    return persistedUnread || state.optimisticUnreadRoomIds.includes(roomId);
+  },
 
-      applyRealtimeEvent: (event) =>
-        set((state) => {
-          if (!event.room_id) return state;
-          const seenAt = state.lastSeenAtByRoom[event.room_id];
-          if (getIsoTimestampValue(event.created_at) <= getIsoTimestampValue(seenAt)) {
-            return state;
-          }
-          return {
-            unreadRoomIds: state.unreadRoomIds.includes(event.room_id)
-              ? state.unreadRoomIds
-              : [...state.unreadRoomIds, event.room_id],
-          };
-        }),
-
-      reconcileUnreadRooms: (rooms) =>
-        set((state) => {
-          const nextUnread = new Set(state.unreadRoomIds);
-          const validRoomIds = new Set(rooms.map((room) => room.room_id));
-
-          for (const roomId of Array.from(nextUnread)) {
-            if (!validRoomIds.has(roomId)) {
-              nextUnread.delete(roomId);
-            }
-          }
-
-          return { unreadRoomIds: Array.from(nextUnread) };
-        }),
-
-      markRoomSeen: (roomId, seenAt) =>
-        set((state) => {
-          if (!seenAt && !state.unreadRoomIds.includes(roomId)) {
-            return state;
-          }
-          return {
-            lastSeenAtByRoom: seenAt
-              ? { ...state.lastSeenAtByRoom, [roomId]: seenAt }
-              : state.lastSeenAtByRoom,
-            unreadRoomIds: state.unreadRoomIds.filter((id) => id !== roomId),
-          };
-        }),
-
-      resetUnreadState: () => set({ ...initialUnreadState }),
-      logout: () => set({ ...initialUnreadState }),
+  applyRealtimeEvent: (event) =>
+    set((state) => {
+      if (!event.room_id) return state;
+      return {
+        optimisticSeenRoomIds: state.optimisticSeenRoomIds.filter((id) => id !== event.room_id),
+        optimisticUnreadRoomIds: state.optimisticUnreadRoomIds.includes(event.room_id)
+          ? state.optimisticUnreadRoomIds
+          : [...state.optimisticUnreadRoomIds, event.room_id],
+      };
     }),
-    {
-      name: "dashboard-unread-storage",
-      partialize: (state) => ({
-        lastSeenAtByRoom: state.lastSeenAtByRoom,
-        unreadRoomIds: state.unreadRoomIds,
-      }),
-    },
-  ),
-);
+
+  reconcileUnreadRooms: (rooms) =>
+    set((state) => {
+      const validRoomIds = new Set(rooms.map((room) => room.room_id));
+      const nextSeen = new Set(state.optimisticSeenRoomIds);
+      const nextUnread = new Set(state.optimisticUnreadRoomIds);
+      const nextLastMarked = { ...state.lastMarkedSeenAtByRoom };
+
+      for (const roomId of Array.from(nextSeen)) {
+        if (!validRoomIds.has(roomId)) {
+          nextSeen.delete(roomId);
+          delete nextLastMarked[roomId];
+        }
+      }
+
+      for (const roomId of Array.from(nextUnread)) {
+        if (!validRoomIds.has(roomId)) {
+          nextUnread.delete(roomId);
+        }
+      }
+
+      for (const room of rooms) {
+        if (!room.has_unread) {
+          nextSeen.delete(room.room_id);
+          nextUnread.delete(room.room_id);
+          delete nextLastMarked[room.room_id];
+        }
+      }
+
+      return {
+        optimisticSeenRoomIds: Array.from(nextSeen),
+        optimisticUnreadRoomIds: Array.from(nextUnread),
+        lastMarkedSeenAtByRoom: nextLastMarked,
+      };
+    }),
+
+  markRoomSeen: async (roomId, seenAt) => {
+    set((state) => ({
+      optimisticSeenRoomIds: state.optimisticSeenRoomIds.includes(roomId)
+        ? state.optimisticSeenRoomIds
+        : [...state.optimisticSeenRoomIds, roomId],
+      optimisticUnreadRoomIds: state.optimisticUnreadRoomIds.filter((id) => id !== roomId),
+    }));
+
+    if (!seenAt || get().lastMarkedSeenAtByRoom[roomId] === seenAt) {
+      return;
+    }
+
+    set((state) => ({
+      lastMarkedSeenAtByRoom: { ...state.lastMarkedSeenAtByRoom, [roomId]: seenAt },
+    }));
+
+    try {
+      await api.markRoomRead(roomId);
+    } catch (error) {
+      console.error("[UnreadStore] Failed to persist room read watermark:", error);
+      set((state) => {
+        const nextLastMarked = { ...state.lastMarkedSeenAtByRoom };
+        delete nextLastMarked[roomId];
+        return { lastMarkedSeenAtByRoom: nextLastMarked };
+      });
+    }
+  },
+
+  resetUnreadState: () => set({ ...initialUnreadState }),
+  logout: () => set({ ...initialUnreadState }),
+}));

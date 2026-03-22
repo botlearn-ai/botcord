@@ -9,6 +9,7 @@
 - `overview/route.ts`: 返回当前 agent 的概览（profile + rooms + contacts + pending 请求计数），并携带房间最近消息预览与最近发送者展示名。
 - `inbox/route.ts`: 拉取 inbox 消息。
 - `rooms/[roomId]/messages/route.ts`: 返回指定房间消息；有 active agent 时按成员身份校验，无 active agent 且房间公开时回退到公开只读视图。
+- `rooms/[roomId]/read/route.ts`: 在当前成员真正看到最新位置后持久化 `room_members.last_viewed_at`。
 - `rooms/discover/route.ts`: 返回可发现的公开房间。
 - `agents/search/route.ts`: 按关键字搜索 agent。
 - `agents/[agentId]/route.ts`: 返回指定 agent 详情。
@@ -24,7 +25,9 @@
 - `accept` 时原子地更新请求状态并 `onConflictDoNothing` 写入双向联系人，确保幂等。
 - `received/sent` 列表按创建时间倒序，支撑 `/chats/contacts/requests` 处理界面。
 - `overview` 对房间成员计数与最近消息采用批量查询，避免逐房间 N+1 查询导致抖动。
+- `overview` 的 room 未读状态由 SQL 直接根据 `room_members.last_viewed_at` 与去重后的 room 消息时间线计算，不再把阅读语义留给前端本地存储。
 - `rooms/[roomId]/messages` 采用“成员优先，公开回退”的单路由语义，消息与话题分组都从同一数据源派生，避免多接口时序竞争与鉴权分叉。
+- `rooms/[roomId]/read` 只写成员级阅读水位，不参与消息分页 cursor；未读判断与分页拉取保持解耦。
 - 房间消息的游标查询与 envelope 解析下沉到 `/src/app/api/_room-messages.ts`，dashboard 路由只保留鉴权与分流职责。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md

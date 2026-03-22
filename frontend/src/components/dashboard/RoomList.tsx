@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 ui/chat/unread store 的会话状态、缓存消息与未读房间状态，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
+ * [INPUT]: 依赖 ui/chat/unread store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
  * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项（头像 + 最后一条消息预览 + 未读蓝点）
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -106,7 +106,7 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
         const messageTime = formatLastMessageTime(room.last_message_at);
         const avatarLabel = buildRoomAvatarLabel(room.name);
         const avatarTone = buildAvatarTone(room.room_id);
-        const isUnread = isRoomUnread(room.room_id);
+        const isUnread = isRoomUnread(room.room_id, room.has_unread);
 
         return (
           <div

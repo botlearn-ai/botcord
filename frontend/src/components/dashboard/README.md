@@ -55,7 +55,7 @@ dashboard/
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
 - dashboard realtime 只维护“当前 active agent 的单 Supabase private channel 订阅”；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
-- 未读状态是纯前端阅读语义：蓝点由 room 的 `last_message_at` 与本地 `lastSeenAtByRoom` 比较得出，进入房间后只有真正看到最新位置才清除。
+- 未读状态以后端 `room_members.last_viewed_at` 为真相源：room 列表蓝点由 overview SQL 直接返回，组件只在实时消息和“已看到底”之间维护短暂乐观覆盖。
 - `/chats` 顶层现在只做编排：`DashboardApp.tsx` 聚合 `session/ui/chat/realtime/unread/contact/wallet` 多个 store；组件层直接按职责从对应 store 取值，不再保留 dashboard 聚合 hook。
 
 ## 开发规范
@@ -66,6 +66,7 @@ dashboard/
 ## 变更日志
 
 - 2026-03-21: `DashboardApp.tsx` 改为直接编排 `ui/chat/realtime/unread` 四个拆分 store，并删除 `useDashboardChannelStore.ts` / `useDashboardStore.ts` 历史 facade，结束单文件混合消息缓存、未读、导航和连接状态的坏味道。
+- 2026-03-22: `MessageList.tsx` 在看到最新位置时通过 BFF 持久化 `room_members.last_viewed_at`，`RoomList.tsx` / `Sidebar.tsx` 的未读蓝点改读后端 SQL 返回的 `has_unread`。
 - 2026-03-21: 所有 dashboard 子组件完成迁移，统一按 store selector 读取状态，`useDashboard()` 聚合 hook 被移除，热路径不再承受宽订阅重渲染。
 - 2026-03-21: `DashboardApp.tsx` 改为订阅 `agent:{agent_id}` Supabase private broadcast；`MessageList.tsx` 去掉组件级 5 秒轮询，改为基于滚动位置维护前端已读水位；`RoomList.tsx` 与 `Sidebar.tsx` 新增消息未读蓝点。
 - 2026-03-20: `selectAgent` 语义收敛为“打开统一 Agent 卡片”，`DashboardApp.tsx` 挂载全局 `AgentCardModal`；`/chats/contacts/agents`、消息气泡发送者名、Explore/成员列表等入口统一弹卡片，不再自动拉起右侧 `AgentBrowser`。

@@ -216,7 +216,10 @@ class SubscriptionRoomCreatorPolicy(Base):
 
 class RoomMember(Base):
     __tablename__ = "room_members"
-    __table_args__ = (UniqueConstraint("room_id", "agent_id"),)
+    __table_args__ = (
+        UniqueConstraint("room_id", "agent_id"),
+        Index("ix_room_members_agent_room", "agent_id", "room_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     room_id: Mapped[str] = mapped_column(
@@ -231,6 +234,9 @@ class RoomMember(Base):
     muted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_send: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     can_invite: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    last_viewed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     joined_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -243,6 +249,7 @@ class MessageRecord(Base):
     __table_args__ = (
         UniqueConstraint("msg_id", "receiver_id"),
         Index("ix_message_records_retry", "state", "next_retry_at"),
+        Index("ix_message_records_room_id_created_at_id", "room_id", "created_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

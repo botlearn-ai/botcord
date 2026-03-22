@@ -47,6 +47,8 @@ export async function GET() {
     owner_id: string;
     visibility: string;
     my_role: string;
+    last_viewed_at: string | null;
+    has_unread: boolean;
     member_count: number;
     last_message_preview: string | null;
     last_message_at: string | null;
@@ -94,6 +96,8 @@ export async function GET() {
       visibility: room.visibility,
       member_count: Number(room.member_count ?? 0),
       my_role: room.my_role,
+      last_viewed_at: room.last_viewed_at,
+      has_unread: room.has_unread,
       last_message_preview: room.last_message_preview,
       last_message_at: room.last_message_at,
       last_sender_name: room.last_sender_name,

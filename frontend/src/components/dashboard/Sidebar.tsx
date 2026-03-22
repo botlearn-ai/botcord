@@ -102,7 +102,7 @@ export default function Sidebar() {
     recentVisitedRooms: state.recentVisitedRooms,
     switchActiveAgent: state.switchActiveAgent,
   })));
-  const unreadRoomIds = useDashboardUnreadStore((state) => state.unreadRoomIds);
+  const optimisticUnreadRoomIds = useDashboardUnreadStore((state) => state.optimisticUnreadRoomIds);
   const wallet = useDashboardWalletStore(useShallow((state) => ({
     wallet: state.wallet,
     walletError: state.walletError,
@@ -142,7 +142,7 @@ export default function Sidebar() {
   );
   const showOverviewSkeleton =
     sessionStore.sessionMode === "authed-ready" && !chatStore.overview && uiStore.sidebarTab === "messages";
-  const hasUnreadMessages = unreadRoomIds.length > 0;
+  const hasUnreadMessages = optimisticUnreadRoomIds.length > 0 || visibleMessageRooms.some((room) => room.has_unread);
 
   useEffect(() => {
     const prefetch = (path: string) => {
