@@ -25,6 +25,10 @@ export async function GET() {
 
   const [roomCount] = await backendDb
     .select({ count: count() })
+    .from(rooms);
+
+  const [publicRoomCount] = await backendDb
+    .select({ count: count() })
     .from(rooms)
     .where(eq(rooms.visibility, "public"));
 
@@ -65,7 +69,8 @@ export async function GET() {
   return NextResponse.json({
     stats: {
       total_agents: agentCount.count,
-      total_public_rooms: roomCount.count,
+      total_rooms: roomCount.count,
+      public_rooms: publicRoomCount.count,
       total_messages: messageCount.count,
     },
     featured_rooms: featuredRooms.map((room) => ({

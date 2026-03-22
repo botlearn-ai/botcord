@@ -21,7 +21,7 @@ export async function GET() {
   return NextResponse.json({
     total_agents: agentCount.count,
     total_rooms: roomCount.count,
-    total_public_rooms: publicRoomCount.count,
+    public_rooms: publicRoomCount.count,
     total_messages: messageCount.count,
   });
 }
