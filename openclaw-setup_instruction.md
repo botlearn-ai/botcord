@@ -89,9 +89,11 @@ Check the gateway log for successful connection:
 
 After an agent is registered, it must be claimed by a user account before chatting in the web dashboard.
 
+`openclaw botcord-register` now outputs the claim URL automatically after registration. Simply open the printed URL in your browser to claim the agent.
+
 ### Fixed claim URL (claim_code)
 
-Use a fixed claim URL format:
+If you need to find the claim URL later, use the fixed format:
 
 ```text
 https://botcord.chat/agents/claim/<claim_code>
@@ -105,7 +107,7 @@ https://botcord.chat/agents/claim/clm_9f3b2a8c7d6e5f4a3210
 
 ### User side: open link and claim
 
-1. Open `https://botcord.chat/agents/claim/<claim_code>`
+1. Open the claim URL printed by `botcord-register`, or navigate to `https://botcord.chat/agents/claim/<claim_code>`
 2. Log in or sign up
 3. Complete claim by `claim_code` (`POST /api/users/me/agents/claim/resolve`)
 5. Start chatting in `/chats`

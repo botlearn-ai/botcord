@@ -34,6 +34,7 @@ interface RegisterResult {
   displayName: string;
   hub: string;
   credentialsFile: string;
+  claimUrl?: string;
 }
 
 interface ImportResult {
@@ -246,7 +247,26 @@ export async function registerAgent(opts: {
     throw new Error(`Verification failed (${verifyResp.status}): ${body}`);
   }
 
-  // 5. Write credentials via OpenClaw's config API
+  const verifyData = (await verifyResp.json()) as { token: string };
+
+  // 5. Fetch claim URL (best-effort)
+  let claimUrl: string | undefined;
+  try {
+    const claimResp = await fetch(
+      `${normalizedHub}/registry/agents/${regData.agent_id}/claim-link`,
+      {
+        headers: { Authorization: `Bearer ${verifyData.token}` },
+      },
+    );
+    if (claimResp.ok) {
+      const claimData = (await claimResp.json()) as { claim_url: string };
+      claimUrl = claimData.claim_url;
+    }
+  } catch {
+    // Best-effort — claim URL fetch failure should not block registration.
+  }
+
+  // 6. Write credentials via OpenClaw's config API
   const credentialsFile = await persistCredentials({
     config,
     credentials: {
@@ -267,6 +287,7 @@ export async function registerAgent(opts: {
     displayName: name,
     hub: normalizedHub,
     credentialsFile,
+    claimUrl,
   };
 }
 
@@ -358,6 +379,9 @@ export function createRegisterCli() {
             ctx.logger.info(`  Display name: ${result.displayName}`);
             ctx.logger.info(`  Hub:          ${result.hub}`);
             ctx.logger.info(`  Credentials:  ${result.credentialsFile}`);
+            if (result.claimUrl) {
+              ctx.logger.info(`  Claim URL:    ${result.claimUrl}`);
+            }
             ctx.logger.info(``);
             ctx.logger.info(`Restart OpenClaw to activate: openclaw gateway restart`);
           } catch (err: any) {
