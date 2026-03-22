@@ -8,6 +8,7 @@
  */
 
 import { startTransition, useEffect, useMemo } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from '@/lib/i18n';
@@ -71,6 +72,94 @@ const authNavItems = [
     ),
   },
 ] as const;
+
+interface PrimaryNavButtonProps {
+  active: boolean;
+  activeTone: "cyan" | "purple";
+  badge?: ReactNode;
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  title: string;
+}
+
+function PrimaryNavButton({
+  active,
+  activeTone,
+  badge,
+  disabled = false,
+  icon,
+  label,
+  onClick,
+  title,
+}: PrimaryNavButtonProps) {
+  const activeClass = activeTone === "purple"
+    ? "bg-neon-purple/15 text-neon-purple"
+    : "bg-neon-cyan/15 text-neon-cyan";
+  const indicatorClass = activeTone === "purple" ? "bg-neon-purple" : "bg-neon-cyan";
+
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
+        disabled
+          ? "text-text-secondary/45 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+          : active
+          ? activeClass
+          : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+      }`}
+      title={title}
+    >
+      {active && !disabled && (
+        <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full ${indicatorClass}`} />
+      )}
+      {badge}
+      {icon}
+      <span className="mt-0.5 text-[9px] font-medium leading-none">{label}</span>
+    </button>
+  );
+}
+
+interface SecondaryNavButtonProps {
+  active: boolean;
+  badge?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  onClick: () => void;
+  tone: "cyan" | "purple";
+}
+
+function SecondaryNavButton({
+  active,
+  badge,
+  children,
+  className = "",
+  onClick,
+  tone,
+}: SecondaryNavButtonProps) {
+  const activeClass = tone === "purple"
+    ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
+    : "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan";
+
+  return (
+    <button
+      onClick={onClick}
+      className={`${className} w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
+        active ? activeClass : "border-glass-border text-text-secondary hover:text-text-primary"
+      }`}
+    >
+      {badge ? (
+        <span className="flex items-center justify-between gap-3">
+          <span>{children}</span>
+          {badge}
+        </span>
+      ) : (
+        children
+      )}
+    </button>
+  );
+}
 
 export default function Sidebar() {
   const router = useRouter();
@@ -143,6 +232,7 @@ export default function Sidebar() {
   const showOverviewSkeleton =
     sessionStore.sessionMode === "authed-ready" && !chatStore.overview && uiStore.sidebarTab === "messages";
   const hasUnreadMessages = optimisticUnreadRoomIds.length > 0 || visibleMessageRooms.some((room) => room.has_unread);
+  const pendingContactRequests = chatStore.overview?.pending_requests || 0;
 
   useEffect(() => {
     const prefetch = (path: string) => {
@@ -195,31 +285,31 @@ export default function Sidebar() {
             const isActive = uiStore.sidebarTab === item.key;
             const isExplore = item.key === "explore";
             const requiresLogin = isGuest && item.key === "contacts";
+            let badge: ReactNode = null;
+            if (item.key === "messages" && hasUnreadMessages && !requiresLogin) {
+              badge = (
+                <div className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
+              );
+            }
+            if (item.key === "contacts" && pendingContactRequests > 0 && !requiresLogin) {
+              badge = (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]">
+                  {pendingContactRequests > 9 ? "9+" : pendingContactRequests}
+                </span>
+              );
+            }
             return (
-              <button
+              <PrimaryNavButton
                 key={item.key}
                 onClick={() => navigatePrimaryTab(item.key)}
-                className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
-                  requiresLogin
-                    ? "text-text-secondary/45 hover:bg-neon-cyan/10 hover:text-neon-cyan"
-                    : isActive
-                    ? isExplore
-                      ? "bg-neon-purple/15 text-neon-purple"
-                      : "bg-neon-cyan/15 text-neon-cyan"
-                    : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-                }`}
+                active={isActive}
+                activeTone={isExplore ? "purple" : "cyan"}
+                badge={badge}
+                disabled={requiresLogin}
+                icon={item.icon}
+                label={tabTitles[item.key] || item.label}
                 title={requiresLogin ? tc.login : tabTitles[item.key] || item.label}
-              >
-                {/* Active indicator bar */}
-                {isActive && !requiresLogin && (
-                  <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full ${isExplore ? "bg-neon-purple" : "bg-neon-cyan"}`} />
-                )}
-                {item.key === "messages" && hasUnreadMessages && !requiresLogin && (
-                  <div className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
-                )}
-                {item.icon}
-                <span className="mt-0.5 text-[9px] font-medium leading-none">{tabTitles[item.key] || item.label}</span>
-              </button>
+              />
             );
           })}
         </div>
@@ -274,86 +364,79 @@ export default function Sidebar() {
         {/* Secondary navigation */}
         {uiStore.sidebarTab === "explore" && (
           <div className="border-b border-glass-border p-3">
-            <button
+            <SecondaryNavButton
               onClick={() => {
                 uiStore.setExploreView("rooms");
                 startTransition(() => {
                   router.push("/chats/explore/rooms");
                 });
               }}
-              className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                uiStore.exploreView === "rooms"
-                  ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
-                  : "border-glass-border text-text-secondary hover:text-text-primary"
-              }`}
+              active={uiStore.exploreView === "rooms"}
+              tone="purple"
             >
               {t.publicRooms}
-            </button>
-            <button
+            </SecondaryNavButton>
+            <SecondaryNavButton
               onClick={() => {
                 uiStore.setExploreView("agents");
                 startTransition(() => {
                   router.push("/chats/explore/agents");
                 });
               }}
-              className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                uiStore.exploreView === "agents"
-                  ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
-                  : "border-glass-border text-text-secondary hover:text-text-primary"
-              }`}
+              active={uiStore.exploreView === "agents"}
+              className="mt-2"
+              tone="purple"
             >
               {t.agents}
-            </button>
+            </SecondaryNavButton>
           </div>
         )}
 
         {uiStore.sidebarTab === "contacts" && (
           <div className="border-b border-glass-border p-3">
-            <button
+            <SecondaryNavButton
               onClick={() => {
                 uiStore.setContactsView("agents");
                 startTransition(() => {
                   router.push("/chats/contacts/agents");
                 });
               }}
-              className={`w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                uiStore.contactsView === "agents"
-                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                  : "border-glass-border text-text-secondary hover:text-text-primary"
-              }`}
+              active={uiStore.contactsView === "agents"}
+              tone="cyan"
             >
               {t.agents}
-            </button>
-            <button
+            </SecondaryNavButton>
+            <SecondaryNavButton
               onClick={() => {
                 uiStore.setContactsView("requests");
                 startTransition(() => {
                   router.push("/chats/contacts/requests");
                 });
               }}
-              className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                uiStore.contactsView === "requests"
-                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                  : "border-glass-border text-text-secondary hover:text-text-primary"
-              }`}
+              active={uiStore.contactsView === "requests"}
+              badge={pendingContactRequests > 0 ? (
+                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
+                  {pendingContactRequests > 99 ? "99+" : pendingContactRequests}
+                </span>
+              ) : undefined}
+              className="mt-2"
+              tone="cyan"
             >
               {t.requests}
-            </button>
-            <button
+            </SecondaryNavButton>
+            <SecondaryNavButton
               onClick={() => {
                 uiStore.setContactsView("rooms");
                 startTransition(() => {
                   router.push("/chats/contacts/rooms");
                 });
               }}
-              className={`mt-2 w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                uiStore.contactsView === "rooms"
-                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                  : "border-glass-border text-text-secondary hover:text-text-primary"
-              }`}
+              active={uiStore.contactsView === "rooms"}
+              className="mt-2"
+              tone="cyan"
             >
               {t.joinedRooms}
-            </button>
+            </SecondaryNavButton>
           </div>
         )}
 

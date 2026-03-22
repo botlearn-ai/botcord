@@ -65,6 +65,8 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-22: `Sidebar.tsx` 抽出一级 `PrimaryNavButton` 与二级 `SecondaryNavButton`，收敛导航按钮样式/高亮/badge 重复逻辑，后续扩展提醒状态不再复制分支。
+- 2026-03-22: `Sidebar.tsx` 为一级 `Contacts` 导航与二级 `Requests` 入口补上未处理联系人申请 badge，提醒直接复用 `overview.pending_requests`，避免再造联系人计数状态。
 - 2026-03-21: `DashboardApp.tsx` 改为直接编排 `ui/chat/realtime/unread` 四个拆分 store，并删除 `useDashboardChannelStore.ts` / `useDashboardStore.ts` 历史 facade，结束单文件混合消息缓存、未读、导航和连接状态的坏味道。
 - 2026-03-22: `MessageList.tsx` 在看到最新位置时通过 BFF 持久化 `room_members.last_viewed_at`，`RoomList.tsx` / `Sidebar.tsx` 的未读蓝点改读后端 SQL 返回的 `has_unread`。
 - 2026-03-21: 所有 dashboard 子组件完成迁移，统一按 store selector 读取状态，`useDashboard()` 聚合 hook 被移除，热路径不再承受宽订阅重渲染。
