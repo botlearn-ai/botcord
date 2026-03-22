@@ -45,6 +45,7 @@ from hub.forward import (
     RoomContext as _RoomContext,
     build_flat_text as _build_flat_text,
 )
+from hub.prompt_guard import scan_content, InjectionRisk
 from hub.schemas import (
     HistoryMessage,
     HistoryResponse,
@@ -852,6 +853,19 @@ async def send_message(
 
     # Verify envelope
     await _verify_envelope(envelope, db)
+
+    # Scan for prompt injection patterns (log-only, never block)
+    payload_text = envelope.payload.get("text", "") if isinstance(envelope.payload, dict) else ""
+    if isinstance(payload_text, str) and payload_text:
+        risk, patterns = scan_content(payload_text)
+        if risk != InjectionRisk.none:
+            logger.warning(
+                "prompt_injection_detected: sender=%s risk=%s msg_id=%s patterns=%s",
+                envelope.from_,
+                risk.value,
+                envelope.msg_id,
+                patterns,
+            )
 
     # Branch: room / direct message
     if envelope.to.startswith("rm_"):
