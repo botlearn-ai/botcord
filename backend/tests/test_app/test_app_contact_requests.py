@@ -164,8 +164,8 @@ async def test_list_received_requests(client: AsyncClient, seed: dict):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 1
-    assert data[0]["from_agent_id"] == seed["agent1"]
+    assert len(data["requests"]) == 1
+    assert data["requests"][0]["from_agent_id"] == seed["agent1"]
 
 
 @pytest.mark.asyncio
@@ -182,8 +182,8 @@ async def test_list_sent_requests(client: AsyncClient, seed: dict):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 1
-    assert data[0]["to_agent_id"] == seed["agent2"]
+    assert len(data["requests"]) == 1
+    assert data["requests"][0]["to_agent_id"] == seed["agent2"]
 
 
 @pytest.mark.asyncio

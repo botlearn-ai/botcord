@@ -369,18 +369,22 @@ async def list_received_requests(
     result = await db.execute(stmt)
     rows = result.all()
 
-    return [
-        {
-            "id": cr.id,
-            "from_agent_id": cr.from_agent_id,
-            "from_display_name": dn,
-            "to_agent_id": cr.to_agent_id,
-            "state": cr.state.value if hasattr(cr.state, "value") else str(cr.state),
-            "message": cr.message,
-            "created_at": cr.created_at.isoformat() if cr.created_at else None,
-        }
-        for cr, dn in rows
-    ]
+    return {
+        "requests": [
+            {
+                "id": cr.id,
+                "from_agent_id": cr.from_agent_id,
+                "from_display_name": dn,
+                "to_agent_id": cr.to_agent_id,
+                "to_display_name": None,
+                "state": cr.state.value if hasattr(cr.state, "value") else str(cr.state),
+                "message": cr.message,
+                "created_at": cr.created_at.isoformat() if cr.created_at else None,
+                "resolved_at": cr.resolved_at.isoformat() if cr.resolved_at else None,
+            }
+            for cr, dn in rows
+        ],
+    }
 
 
 @router.get("/contact-requests/sent")
@@ -403,18 +407,22 @@ async def list_sent_requests(
     result = await db.execute(stmt)
     rows = result.all()
 
-    return [
-        {
-            "id": cr.id,
-            "from_agent_id": cr.from_agent_id,
-            "to_agent_id": cr.to_agent_id,
-            "to_display_name": dn,
-            "state": cr.state.value if hasattr(cr.state, "value") else str(cr.state),
-            "message": cr.message,
-            "created_at": cr.created_at.isoformat() if cr.created_at else None,
-        }
-        for cr, dn in rows
-    ]
+    return {
+        "requests": [
+            {
+                "id": cr.id,
+                "from_agent_id": cr.from_agent_id,
+                "from_display_name": None,
+                "to_agent_id": cr.to_agent_id,
+                "to_display_name": dn,
+                "state": cr.state.value if hasattr(cr.state, "value") else str(cr.state),
+                "message": cr.message,
+                "created_at": cr.created_at.isoformat() if cr.created_at else None,
+                "resolved_at": cr.resolved_at.isoformat() if cr.resolved_at else None,
+            }
+            for cr, dn in rows
+        ],
+    }
 
 
 @router.post("/contact-requests/{request_id}/accept")
@@ -455,8 +463,19 @@ async def accept_contact_request(
             db.add(Contact(owner_id=owner, contact_agent_id=contact_agent))
 
     await db.commit()
+    await db.refresh(req)
 
-    return {"id": req.id, "state": "accepted"}
+    return {
+        "id": req.id,
+        "from_agent_id": req.from_agent_id,
+        "to_agent_id": req.to_agent_id,
+        "state": "accepted",
+        "message": req.message,
+        "created_at": req.created_at.isoformat() if req.created_at else None,
+        "resolved_at": req.resolved_at.isoformat() if req.resolved_at else None,
+        "from_display_name": None,
+        "to_display_name": None,
+    }
 
 
 @router.post("/contact-requests/{request_id}/reject")
@@ -482,8 +501,19 @@ async def reject_contact_request(
     req.state = ContactRequestState.rejected
     req.resolved_at = datetime.datetime.now(datetime.timezone.utc)
     await db.commit()
+    await db.refresh(req)
 
-    return {"id": req.id, "state": "rejected"}
+    return {
+        "id": req.id,
+        "from_agent_id": req.from_agent_id,
+        "to_agent_id": req.to_agent_id,
+        "state": "rejected",
+        "message": req.message,
+        "created_at": req.created_at.isoformat() if req.created_at else None,
+        "resolved_at": req.resolved_at.isoformat() if req.resolved_at else None,
+        "from_display_name": None,
+        "to_display_name": None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -508,15 +538,17 @@ async def search_agents(
         .limit(20)
     )
     agents = result.scalars().all()
-    return [
-        {
-            "agent_id": a.agent_id,
-            "display_name": a.display_name,
-            "bio": a.bio,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-        }
-        for a in agents
-    ]
+    return {
+        "agents": [
+            {
+                "agent_id": a.agent_id,
+                "display_name": a.display_name,
+                "bio": a.bio,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in agents
+        ],
+    }
 
 
 @router.get("/agents/{agent_id}")
@@ -575,17 +607,19 @@ async def get_shared_rooms(
         )
         member_counts = dict(count_result.all())
 
-    return [
-        {
-            "room_id": r.room_id,
-            "name": r.name,
-            "description": r.description,
-            "owner_id": r.owner_id,
-            "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
-            "member_count": member_counts.get(r.room_id, 0),
-        }
-        for r in rooms
-    ]
+    return {
+        "conversations": [
+            {
+                "room_id": r.room_id,
+                "name": r.name,
+                "description": r.description,
+                "owner_id": r.owner_id,
+                "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
+                "member_count": member_counts.get(r.room_id, 0),
+            }
+            for r in rooms
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -699,6 +733,8 @@ async def get_room_messages(
     db: AsyncSession = Depends(get_db),
 ):
     """Get room messages. Supports both authenticated (member) and public views."""
+    from app.auth import _decode_supabase_token, _load_user_and_roles
+
     # Resolve room
     room_result = await db.execute(
         select(Room).where(Room.room_id == room_id)
@@ -710,17 +746,32 @@ async def get_room_messages(
     is_member = False
     viewer_agent_id = None
 
-    # Try to resolve authenticated user
+    # Try to resolve authenticated user and verify agent ownership
     if authorization and authorization.startswith("Bearer ") and x_active_agent:
-        member_result = await db.execute(
-            select(RoomMember).where(
-                RoomMember.room_id == room_id,
-                RoomMember.agent_id == x_active_agent,
+        token = authorization[len("Bearer "):]
+        try:
+            supabase_uid = _decode_supabase_token(token)
+            user, _roles = await _load_user_and_roles(supabase_uid, db)
+            # Verify agent belongs to authenticated user
+            agent_check = await db.execute(
+                select(Agent).where(
+                    Agent.agent_id == x_active_agent,
+                    Agent.user_id == user.id,
+                )
             )
-        )
-        if member_result.scalar_one_or_none() is not None:
-            is_member = True
-            viewer_agent_id = x_active_agent
+            if agent_check.scalar_one_or_none() is not None:
+                # Now check room membership
+                member_result = await db.execute(
+                    select(RoomMember).where(
+                        RoomMember.room_id == room_id,
+                        RoomMember.agent_id == x_active_agent,
+                    )
+                )
+                if member_result.scalar_one_or_none() is not None:
+                    is_member = True
+                    viewer_agent_id = x_active_agent
+        except HTTPException:
+            pass  # Invalid token — fall through to public view
 
     if not is_member:
         if room.visibility != RoomVisibility.public:
@@ -898,9 +949,8 @@ async def create_share(
 
     return {
         "share_id": share_id,
-        "room_id": room_id,
-        "room_name": room.name,
-        "message_count": len(records),
+        "share_url": f"/share/{share_id}",
+        "created_at": share.created_at.isoformat() if share.created_at else datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "expires_at": expires_at.isoformat() if expires_at else None,
     }
 
@@ -912,9 +962,64 @@ async def create_share(
 
 @router.get("/inbox")
 async def get_inbox(
+    limit: int = Query(default=10, ge=1, le=50),
+    timeout: int = Query(default=0, ge=0),
+    ack: bool = Query(default=True),
+    room_id: str | None = Query(default=None),
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Proxy to hub inbox. Currently returns 501 — needs hub integration."""
-    # TODO: integrate with hub inbox endpoint via internal call
-    raise HTTPException(status_code=501, detail="Inbox proxy not yet implemented")
+    """Poll for queued messages for the active agent."""
+    from hub.models import MessageState
+
+    agent_id = ctx.active_agent_id
+
+    stmt = (
+        select(MessageRecord)
+        .where(
+            MessageRecord.receiver_id == agent_id,
+            MessageRecord.state == MessageState.queued,
+        )
+    )
+    if room_id:
+        stmt = stmt.where(MessageRecord.room_id == room_id)
+
+    stmt = stmt.order_by(MessageRecord.id).limit(limit + 1)
+
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    has_more = len(records) > limit
+    records = records[:limit]
+
+    messages = []
+    for rec in records:
+        try:
+            envelope = json.loads(rec.envelope_json) if rec.envelope_json else {}
+        except (json.JSONDecodeError, TypeError):
+            envelope = {}
+
+        messages.append({
+            "hub_msg_id": rec.hub_msg_id,
+            "envelope": envelope,
+            "room_id": rec.room_id,
+            "topic": rec.topic,
+            "topic_id": rec.topic_id,
+        })
+
+    # Mark as delivered if ack=True
+    if ack and records:
+        record_ids = [r.id for r in records]
+        from sqlalchemy import update as sa_update
+        await db.execute(
+            sa_update(MessageRecord)
+            .where(MessageRecord.id.in_(record_ids))
+            .values(state=MessageState.delivered)
+        )
+        await db.commit()
+
+    return {
+        "messages": messages,
+        "count": len(messages),
+        "has_more": has_more,
+    }

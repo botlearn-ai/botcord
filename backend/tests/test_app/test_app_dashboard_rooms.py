@@ -239,8 +239,8 @@ async def test_create_share(client: AsyncClient, seed: dict):
     assert resp.status_code == 200
     data = resp.json()
     assert data["share_id"].startswith("sh_")
-    assert data["room_id"] == "rm_pubopen01"
-    assert data["message_count"] == 3
+    assert data["share_url"].startswith("/share/sh_")
+    assert "created_at" in data
 
     # Now read it via share endpoint
     share_resp = await client.get(f"/api/share/{data['share_id']}")
@@ -264,8 +264,8 @@ async def test_search_agents(client: AsyncClient, seed: dict):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) >= 1
-    assert data[0]["display_name"] == "Owner Agent"
+    assert len(data["agents"]) >= 1
+    assert data["agents"][0]["display_name"] == "Owner Agent"
 
 
 @pytest.mark.asyncio
@@ -292,5 +292,5 @@ async def test_shared_conversations(client: AsyncClient, seed: dict):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) >= 1
-    assert data[0]["room_id"] == "rm_pubopen01"
+    assert len(data["conversations"]) >= 1
+    assert data["conversations"][0]["room_id"] == "rm_pubopen01"

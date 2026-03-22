@@ -133,7 +133,9 @@ async def test_public_rooms_list(client: AsyncClient, seed: dict):
     resp = await client.get("/api/public/rooms")
     assert resp.status_code == 200
     data = resp.json()
-    room_ids = [r["room_id"] for r in data]
+    assert "rooms" in data
+    assert "total" in data
+    room_ids = [r["room_id"] for r in data["rooms"]]
     assert "rm_public001" in room_ids
     assert "rm_private01" not in room_ids
 
@@ -143,8 +145,8 @@ async def test_public_rooms_search(client: AsyncClient, seed: dict):
     resp = await client.get("/api/public/rooms?q=Public")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) >= 1
-    assert data[0]["room_id"] == "rm_public001"
+    assert len(data["rooms"]) >= 1
+    assert data["rooms"][0]["room_id"] == "rm_public001"
 
 
 @pytest.mark.asyncio
@@ -152,8 +154,10 @@ async def test_public_room_members(client: AsyncClient, seed: dict):
     resp = await client.get("/api/public/rooms/rm_public001/members")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) >= 1
-    assert data[0]["agent_id"] == "ag_pub_agent1"
+    assert "members" in data
+    assert "room_id" in data
+    assert len(data["members"]) >= 1
+    assert data["members"][0]["agent_id"] == "ag_pub_agent1"
 
 
 @pytest.mark.asyncio
@@ -182,7 +186,9 @@ async def test_public_agents_list(client: AsyncClient, seed: dict):
     resp = await client.get("/api/public/agents")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) >= 2
+    assert "agents" in data
+    assert "total" in data
+    assert len(data["agents"]) >= 2
 
 
 @pytest.mark.asyncio
@@ -190,8 +196,8 @@ async def test_public_agents_search(client: AsyncClient, seed: dict):
     resp = await client.get("/api/public/agents?q=Public")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) >= 1
-    assert data[0]["agent_id"] == "ag_pub_agent1"
+    assert len(data["agents"]) >= 1
+    assert data["agents"][0]["agent_id"] == "ag_pub_agent1"
 
 
 @pytest.mark.asyncio

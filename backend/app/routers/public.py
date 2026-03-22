@@ -35,13 +35,39 @@ async def _get_public_room_previews(
     offset: int = 0,
 ) -> list[dict]:
     """Get public room previews, with SQL function fallback to ORM."""
+    _SQL_TO_API = {
+        "room_name": "name",
+        "room_description": "description",
+        "room_rule": "rule",
+    }
+    _DROP_COLS = {"last_sender_id"}
+
     try:
         result = await db.execute(
-            text("SELECT * FROM get_public_room_previews(:lim, :off)"),
-            {"lim": limit, "off": offset},
+            text(
+                "SELECT * FROM get_public_room_previews(:lim, :off, :search, :rid, :sort)"
+            ),
+            {
+                "lim": limit,
+                "off": offset,
+                "search": q or None,
+                "rid": room_id or None,
+                "sort": "recent",
+            },
         )
         rows = result.mappings().all()
-        return [dict(r) for r in rows]
+        mapped = []
+        for r in rows:
+            item = {}
+            for k, v in r.items():
+                if k in _DROP_COLS:
+                    continue
+                key = _SQL_TO_API.get(k, k)
+                item[key] = v
+            if "member_count" in item:
+                item["member_count"] = int(item["member_count"] or 0)
+            mapped.append(item)
+        return mapped
     except Exception:
         _logger.debug(
             "get_public_room_previews unavailable, falling back to ORM",
@@ -184,7 +210,30 @@ async def list_public_rooms(
     db: AsyncSession = Depends(get_db),
 ):
     """List public rooms with optional search."""
-    return await _get_public_room_previews(db, q=q, room_id=room_id, limit=limit, offset=offset)
+    rooms_list = await _get_public_room_previews(db, q=q, room_id=room_id, limit=limit, offset=offset)
+
+    # Count total matching rooms for pagination
+    count_stmt = (
+        select(func.count())
+        .select_from(Room)
+        .where(Room.visibility == RoomVisibility.public)
+    )
+    if room_id:
+        count_stmt = count_stmt.where(Room.room_id == room_id)
+    if q:
+        pattern = f"%{escape_like(q)}%"
+        count_stmt = count_stmt.where(
+            (Room.name.ilike(pattern)) | (Room.room_id.ilike(pattern))
+        )
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "rooms": rooms_list,
+    }
 
 
 @router.get("/rooms/{room_id}/members")
@@ -209,7 +258,7 @@ async def get_public_room_members(
     )
     rows = result.all()
 
-    return [
+    members = [
         {
             "agent_id": m.agent_id,
             "display_name": a.display_name if a else m.agent_id,
@@ -221,6 +270,11 @@ async def get_public_room_members(
         }
         for m, a in rows
     ]
+    return {
+        "room_id": room_id,
+        "members": members,
+        "total": len(members),
+    }
 
 
 @router.get("/rooms/{room_id}/messages")
@@ -324,19 +378,33 @@ async def list_public_agents(
             (Agent.agent_id.ilike(pattern)) | (Agent.display_name.ilike(pattern))
         )
 
+    # Count total
+    count_stmt = select(func.count()).select_from(Agent).where(Agent.agent_id != "hub")
+    if q:
+        count_stmt = count_stmt.where(
+            (Agent.agent_id.ilike(pattern)) | (Agent.display_name.ilike(pattern))
+        )
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
+
     stmt = stmt.offset(offset).limit(limit)
     result = await db.execute(stmt)
 
-    return [
-        {
-            "agent_id": a.agent_id,
-            "display_name": a.display_name,
-            "bio": a.bio,
-            "message_policy": a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy),
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-        }
-        for a in result.scalars().all()
-    ]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "agents": [
+            {
+                "agent_id": a.agent_id,
+                "display_name": a.display_name,
+                "bio": a.bio,
+                "message_policy": a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy),
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in result.scalars().all()
+        ],
+    }
 
 
 @router.get("/agents/{agent_id}")
