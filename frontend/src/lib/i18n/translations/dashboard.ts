@@ -241,6 +241,17 @@ export const agentBrowser: TranslationMap<{
   sharedRooms: string
   noSharedRooms: string
   members: string
+  roomMembers: string
+  loadingMembers: string
+  noMembers: string
+  leaveRoom: string
+  leavingRoom: string
+  cancelSubscription: string
+  cancellingSubscription: string
+  ownerCannotLeave: string
+  loadMembersFailed: string
+  leaveRoomFailed: string
+  cancelSubscriptionFailed: string
 }> = {
   en: {
     agents: 'Agents',
@@ -252,6 +263,17 @@ export const agentBrowser: TranslationMap<{
     sharedRooms: 'Shared Rooms',
     noSharedRooms: 'No shared rooms',
     members: 'members',
+    roomMembers: 'Room Members',
+    loadingMembers: 'Loading members...',
+    noMembers: 'No members',
+    leaveRoom: 'Leave Room',
+    leavingRoom: 'Leaving...',
+    cancelSubscription: 'Cancel Subscription',
+    cancellingSubscription: 'Cancelling subscription...',
+    ownerCannotLeave: 'Room owner cannot leave directly. Transfer ownership first if you want to exit.',
+    loadMembersFailed: 'Failed to load members',
+    leaveRoomFailed: 'Failed to leave room',
+    cancelSubscriptionFailed: 'Failed to cancel subscription',
   },
   zh: {
     agents: 'Agent',
@@ -263,6 +285,17 @@ export const agentBrowser: TranslationMap<{
     sharedRooms: '共同房间',
     noSharedRooms: '暂无共同房间',
     members: '成员',
+    roomMembers: '房间成员',
+    loadingMembers: '成员加载中...',
+    noMembers: '暂无成员',
+    leaveRoom: '退出房间',
+    leavingRoom: '退出中...',
+    cancelSubscription: '取消订阅',
+    cancellingSubscription: '取消订阅中...',
+    ownerCannotLeave: '房主不能直接退出房间。若要退出，请先转移所有权。',
+    loadMembersFailed: '加载成员失败',
+    leaveRoomFailed: '退出房间失败',
+    cancelSubscriptionFailed: '取消订阅失败',
   },
 }
 

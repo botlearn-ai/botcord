@@ -16,6 +16,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardRealtimeStore } from "@/store/useDashboardRealtimeStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
@@ -59,12 +60,14 @@ export default function DashboardApp() {
   const unreadStore = useDashboardUnreadStore();
   const walletStore = useDashboardWalletStore();
   const contactStore = useDashboardContactStore();
+  const subscriptionStore = useDashboardSubscriptionStore();
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
   const recoveredAgentRef = useRef<string | null>(null);
   const walletBoundAgentRef = useRef<string | null>(null);
   const contactBoundAgentRef = useRef<string | null>(null);
+  const subscriptionBoundAgentRef = useRef<string | null>(null);
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
@@ -279,12 +282,14 @@ export default function DashboardApp() {
     if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
       walletBoundAgentRef.current = null;
       contactBoundAgentRef.current = null;
+      subscriptionBoundAgentRef.current = null;
       uiStore.resetUIState();
       chatStore.resetChatState();
       unreadStore.resetUnreadState();
       realtimeStore.resetRealtimeState();
       walletStore.resetWalletState();
       contactStore.resetContactState();
+      subscriptionStore.resetSubscriptionState();
       return;
     }
 
@@ -295,6 +300,10 @@ export default function DashboardApp() {
     if (contactBoundAgentRef.current !== sessionStore.activeAgentId) {
       contactBoundAgentRef.current = sessionStore.activeAgentId;
       contactStore.resetContactState();
+    }
+    if (subscriptionBoundAgentRef.current !== sessionStore.activeAgentId) {
+      subscriptionBoundAgentRef.current = sessionStore.activeAgentId;
+      subscriptionStore.resetSubscriptionState();
     }
     if (!chatStore.overview && !chatStore.overviewRefreshing && uiStore.sidebarTab !== "wallet") {
       void chatStore.refreshOverview();
@@ -312,6 +321,7 @@ export default function DashboardApp() {
     realtimeStore.resetRealtimeState,
     walletStore.resetWalletState,
     contactStore.resetContactState,
+    subscriptionStore.resetSubscriptionState,
   ]);
 
   useEffect(() => {

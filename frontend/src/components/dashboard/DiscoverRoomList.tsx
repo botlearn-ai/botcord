@@ -83,13 +83,23 @@ export default function DiscoverRoomList() {
                 {room.rule}
               </p>
             )}
-            <button
-              onClick={() => void joinRoom(room.room_id)}
-              disabled={isJoining}
-              className="mt-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
-            >
-              {isJoining ? t.joining : t.join}
-            </button>
+            {room.required_subscription_product_id ? (
+              <SubscriptionBadge
+                productId={room.required_subscription_product_id}
+                roomId={room.room_id}
+                variant="button"
+                triggerLabel={t.join}
+                className="mt-1.5"
+              />
+            ) : (
+              <button
+                onClick={() => void joinRoom(room.room_id)}
+                disabled={isJoining}
+                className="mt-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
+              >
+                {isJoining ? t.joining : t.join}
+              </button>
+            )}
           </div>
         );
       })}

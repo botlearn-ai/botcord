@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 ui/chat/session store 的会话/联系人状态，依赖 api 层拉取成员与 agent 详情
- * [OUTPUT]: 对外提供右侧 agent 浏览器与成员点击后卡片入口
+ * [INPUT]: 依赖 ui/chat/session/subscription store 的会话/联系人/订阅状态，依赖 api 层拉取成员与 agent 详情
+ * [OUTPUT]: 对外提供右侧 agent 浏览器、成员点击后卡片入口与成员面板底部的退出/退订动作
  * [POS]: dashboard 右侧信息面板，连接成员列表、搜索结果与 agent 详情弹层
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -19,6 +19,7 @@ import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 
 export default function AgentBrowser() {
@@ -39,6 +40,7 @@ export default function AgentBrowser() {
   })));
   const {
     messages,
+    overview,
     searchResults,
     selectedAgentProfile,
     selectedAgentConversations,
@@ -46,8 +48,11 @@ export default function AgentBrowser() {
     searchAgents,
     selectAgent,
     loadRoomMessages,
+    leaveRoom,
+    leavingRoomId,
   } = useDashboardChatStore(useShallow((state) => ({
     messages: state.messages,
+    overview: state.overview,
     searchResults: state.searchResults,
     selectedAgentProfile: state.selectedAgentProfile,
     selectedAgentConversations: state.selectedAgentConversations,
@@ -55,13 +60,31 @@ export default function AgentBrowser() {
     searchAgents: state.searchAgents,
     selectAgent: state.selectAgent,
     loadRoomMessages: state.loadRoomMessages,
+    leaveRoom: state.leaveRoom,
+    leavingRoomId: state.leavingRoomId,
+  })));
+  const {
+    getActiveSubscription,
+    ensureSubscriptions,
+    cancelSubscription,
+  } = useDashboardSubscriptionStore(useShallow((state) => ({
+    getActiveSubscription: state.getActiveSubscription,
+    ensureSubscriptions: state.ensureSubscriptions,
+    cancelSubscription: state.cancelSubscription,
   })));
   const [roomMembers, setRoomMembers] = useState<PublicRoomMember[]>([]);
   const [roomMembersLoading, setRoomMembersLoading] = useState(false);
   const [roomMembersError, setRoomMembersError] = useState<string | null>(null);
+  const [roomActionError, setRoomActionError] = useState<string | null>(null);
+  const [cancellingSubscriptionId, setCancellingSubscriptionId] = useState<string | null>(null);
   const isAuthedReady = sessionMode === "authed-ready";
 
   const currentRoom = focusedRoomId ? getRoomSummary(focusedRoomId) : null;
+  const joinedRoom = overview?.rooms.find((room) => room.room_id === focusedRoomId) || null;
+  const activeSubscription = currentRoom?.required_subscription_product_id
+    ? getActiveSubscription(currentRoom.required_subscription_product_id)
+    : null;
+  const isLeavingCurrentRoom = leavingRoomId === currentRoom?.room_id;
 
   useEffect(() => {
     if (!focusedRoomId) {
@@ -81,7 +104,7 @@ export default function AgentBrowser() {
       .catch(() => {
         if (cancelled) return;
         setRoomMembers([]);
-        setRoomMembersError("Failed to load members");
+        setRoomMembersError(t.loadMembersFailed);
       })
       .finally(() => {
         if (cancelled) return;
@@ -91,6 +114,36 @@ export default function AgentBrowser() {
       cancelled = true;
     };
   }, [focusedRoomId]);
+
+  useEffect(() => {
+    if (!isAuthedReady || !currentRoom?.required_subscription_product_id) {
+      return;
+    }
+    void ensureSubscriptions().catch(() => {});
+  }, [currentRoom?.required_subscription_product_id, ensureSubscriptions, isAuthedReady]);
+
+  const handleLeaveRoom = async () => {
+    if (!currentRoom?.room_id) return;
+    setRoomActionError(null);
+    try {
+      await leaveRoom(currentRoom.room_id);
+    } catch (err: any) {
+      setRoomActionError(err?.message || t.leaveRoomFailed);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!activeSubscription?.subscription_id) return;
+    setRoomActionError(null);
+    setCancellingSubscriptionId(activeSubscription.subscription_id);
+    try {
+      await cancelSubscription(activeSubscription.subscription_id);
+    } catch (err: any) {
+      setRoomActionError(err?.message || t.cancelSubscriptionFailed);
+    } finally {
+      setCancellingSubscriptionId(null);
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0 w-[320px] min-w-[320px] flex-col border-l border-glass-border bg-deep-black-light">
@@ -117,7 +170,7 @@ export default function AgentBrowser() {
         {currentRoom && (
           <div className="border-b border-glass-border p-3">
             <h4 className="mb-2 text-xs font-medium text-text-secondary">
-              Room Members ({roomMembers.length || currentRoom.member_count})
+              {t.roomMembers} ({roomMembers.length || currentRoom.member_count})
             </h4>
             <div className="mb-2 flex items-center gap-1.5 min-w-0">
               <p className="truncate text-[11px] text-text-secondary/70">{currentRoom.name}</p>
@@ -126,11 +179,11 @@ export default function AgentBrowser() {
               )}
             </div>
             {roomMembersLoading ? (
-              <p className="text-xs text-text-secondary animate-pulse">Loading members...</p>
+              <p className="text-xs text-text-secondary animate-pulse">{t.loadingMembers}</p>
             ) : roomMembersError ? (
               <p className="text-xs text-red-400">{roomMembersError}</p>
             ) : roomMembers.length === 0 ? (
-              <p className="text-xs text-text-secondary/60">No members</p>
+              <p className="text-xs text-text-secondary/60">{t.noMembers}</p>
             ) : (
               <div className="space-y-1">
                 {roomMembers.map((member) => (
@@ -154,6 +207,41 @@ export default function AgentBrowser() {
                     </span>
                   </button>
                 ))}
+              </div>
+            )}
+            {joinedRoom && (
+              <div className="mt-3 border-t border-glass-border pt-3">
+                {roomActionError ? (
+                  <p className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-400">
+                    {roomActionError}
+                  </p>
+                ) : null}
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => void handleLeaveRoom()}
+                    disabled={joinedRoom.my_role === "owner" || isLeavingCurrentRoom}
+                    className="w-full rounded border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                    title={joinedRoom.my_role === "owner" ? t.ownerCannotLeave : t.leaveRoom}
+                  >
+                    {isLeavingCurrentRoom ? t.leavingRoom : t.leaveRoom}
+                  </button>
+                  {activeSubscription ? (
+                    <button
+                      onClick={() => void handleCancelSubscription()}
+                      disabled={cancellingSubscriptionId === activeSubscription.subscription_id}
+                      className="w-full rounded border border-yellow-500/35 bg-yellow-500/10 px-3 py-2 text-xs font-medium text-yellow-300 transition-colors hover:bg-yellow-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {cancellingSubscriptionId === activeSubscription.subscription_id
+                        ? t.cancellingSubscription
+                        : t.cancelSubscription}
+                    </button>
+                  ) : null}
+                </div>
+                {joinedRoom.my_role === "owner" ? (
+                  <p className="mt-2 text-[11px] leading-5 text-text-secondary/70">
+                    {t.ownerCannotLeave}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>

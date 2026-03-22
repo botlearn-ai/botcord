@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 session/ui/chat store 的当前房间选择、分享状态与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
- * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、成员入口、订阅标记与分享动作
+ * [INPUT]: 依赖 session/ui/chat store 的当前房间选择、成员关系与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
+ * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、成员入口、加入入口与分享动作
  * [POS]: dashboard 消息主视图的头部区域，承接当前房间的关键信息与快捷操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -34,16 +34,35 @@ export default function RoomHeader() {
     overview: state.overview,
     getRoomSummary: state.getRoomSummary,
   })));
+  const { joinRoom, joiningRoomId } = useDashboardChatStore(useShallow((state) => ({
+    joinRoom: state.joinRoom,
+    joiningRoomId: state.joiningRoomId,
+  })));
   const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
   const roomRule = room?.rule?.trim();
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
+  const isJoined = Boolean(authRoom);
+  const isJoining = joiningRoomId === room?.room_id;
+  const loginHref = room ? `/login?next=${encodeURIComponent(`/chats/messages/${room.room_id}`)}` : "/login";
 
   const handleOpenMembersPanel = () => {
     if (!rightPanelOpen) {
       toggleRightPanel();
     }
+  };
+
+  const handleJoinOpenRoom = () => {
+    if (!room?.room_id) return;
+    if (isGuest) {
+      if (typeof window !== "undefined") {
+        window.location.href = loginHref;
+      }
+      return;
+    }
+    if (!isAuthedReady || room.required_subscription_product_id) return;
+    void joinRoom(room.room_id);
   };
 
   if (!room) return null;
@@ -92,6 +111,26 @@ export default function RoomHeader() {
                 </svg>
               </button>
             </>
+          )}
+          {!isJoined && (
+            room.required_subscription_product_id ? (
+              <SubscriptionBadge
+                productId={room.required_subscription_product_id}
+                roomId={room.room_id}
+                variant="button"
+                triggerLabel={t.join}
+                loginHref={loginHref}
+              />
+            ) : (
+              <button
+                onClick={handleJoinOpenRoom}
+                disabled={!isGuest && (!isAuthedReady || isJoining)}
+                className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+                title={!isGuest && !isAuthedReady ? "Select an active agent first" : t.join}
+              >
+                {isJoining ? t.joining : t.join}
+              </button>
+            )
           )}
           {isGuest && (
             <span className="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">

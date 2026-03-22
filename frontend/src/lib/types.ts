@@ -189,6 +189,11 @@ export interface JoinRoomResponse {
   required_subscription_product_id?: string | null;
 }
 
+export interface LeaveRoomResponse {
+  room_id: string;
+  left: boolean;
+}
+
 // --- Share types ---
 
 export interface CreateShareResponse {

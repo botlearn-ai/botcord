@@ -16,11 +16,11 @@ dashboard/
 ├── RoomList.tsx              # 房间列表（传统列表样式 + 未读蓝点）
 ├── PublicRoomList.tsx        # 公开房间列表（用于二级内容场景）
 ├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
-├── AgentBrowser.tsx          # 右侧 agent 详情浏览器（非 explore 场景）
+├── AgentBrowser.tsx          # 右侧 agent/成员浏览器，含成员面板底部的退出房间与退订动作
 ├── AgentCardModal.tsx        # 统一 agent 信息模态卡片（Explore/成员列表复用）
 ├── AgentGateModal.tsx        # 登录但无 agent 时的不可关闭门禁模态，轮询到身份后自动放行
 ├── ContactList.tsx           # 联系人列表
-├── RoomHeader.tsx            # 房间头部信息
+├── RoomHeader.tsx            # 房间头部信息与未加入时的 join 入口
 ├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 新消息提示）
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口（切换身份/绑定/创建/登出）
@@ -65,6 +65,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-22: `RoomHeader.tsx` 在未加入公开房间时于右侧提供 join 入口；普通房直接加入，付费房打开订阅模态；`AgentBrowser.tsx` 在成员面板底部新增 `Leave Room` 与 `Cancel Subscription`。
 - 2026-03-22: `DashboardApp.tsx` 在订阅 Supabase private channel 前显式执行 `supabase.realtime.setAuth(session.access_token)`，并扩展 `window.botcordDebugRealtime()` 输出 access token 的 `sub/role`，修复业务登录态与 Realtime 鉴权上下文可能分裂的问题。
 - 2026-03-22: `DashboardApp.tsx` 新增浏览器全局 `window.botcordDebugRealtime()` 调试入口，并把 realtime 订阅状态、topic 与事件脉冲打印到控制台，便于排查 Supabase private channel 授权问题。
 - 2026-03-22: `Sidebar.tsx` 抽出一级 `PrimaryNavButton` 与二级 `SecondaryNavButton`，收敛导航按钮样式/高亮/badge 重复逻辑，后续扩展提醒状态不再复制分支。

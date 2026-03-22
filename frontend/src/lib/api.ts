@@ -9,6 +9,7 @@ import type {
   SharedRoomResponse,
   DiscoverRoomsResponse,
   JoinRoomResponse,
+  LeaveRoomResponse,
   PlatformStats,
   PublicRoomsResponse,
   PublicAgentsResponse,
@@ -210,6 +211,10 @@ export const api = {
     return apiPost<JoinRoomResponse>(`/api/dashboard/rooms/${roomId}/join`);
   },
 
+  leaveRoom(roomId: string) {
+    return apiPost<LeaveRoomResponse>(`/api/dashboard/rooms/${roomId}/leave`);
+  },
+
   getPlatformStats() {
     return apiGet<PlatformStats>("/api/stats");
   },
@@ -353,6 +358,9 @@ export const api = {
   },
   subscribeToProduct(productId: string) {
     return apiPost<any>(`/api/subscriptions/products/${productId}/subscribe`);
+  },
+  cancelSubscription(subscriptionId: string) {
+    return apiPost<{ subscription_id: string; status: string }>(`/api/subscriptions/${subscriptionId}/cancel`);
   },
   getMySubscriptions() {
     return apiGet<MySubscriptionsResponse>("/api/subscriptions/me");

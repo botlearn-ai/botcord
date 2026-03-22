@@ -64,6 +64,7 @@ interface DashboardChatState {
   discoverRooms: DiscoverRoom[];
   discoverLoading: boolean;
   joiningRoomId: string | null;
+  leavingRoomId: string | null;
   publicRooms: PublicRoom[];
   publicRoomDetails: Record<string, PublicRoom>;
   publicRoomsLoading: boolean;
@@ -89,6 +90,7 @@ interface DashboardChatState {
   refreshOverview: (opts?: { reloadOpenedRoom?: boolean }) => Promise<void>;
   loadDiscoverRooms: () => Promise<void>;
   joinRoom: (roomId: string) => Promise<void>;
+  leaveRoom: (roomId: string) => Promise<void>;
   loadPublicRooms: () => Promise<void>;
   loadPublicRoomDetail: (roomId: string) => Promise<PublicRoom | null>;
   loadPublicAgents: () => Promise<void>;
@@ -111,6 +113,7 @@ const initialChatState = {
   discoverRooms: [],
   discoverLoading: false,
   joiningRoomId: null,
+  leavingRoomId: null,
   publicRooms: [],
   publicRoomDetails: {},
   publicRoomsLoading: false,
@@ -136,6 +139,7 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || state.discoverRooms.length > 0
     || state.discoverLoading
     || state.joiningRoomId !== null
+    || state.leavingRoomId !== null
     || state.publicRoomsLoading
     || state.publicAgentsLoading
   );
@@ -452,8 +456,28 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             discoverRooms: state.discoverRooms.filter((room) => room.room_id !== roomId),
           }));
           get().replaceOverview(overview);
-        } catch {
+        } catch (error) {
           set({ joiningRoomId: null });
+          throw error;
+        }
+      },
+
+      leaveRoom: async (roomId: string) => {
+        const { token } = useDashboardSessionStore.getState();
+        if (!token) return;
+        set({ leavingRoomId: roomId });
+        try {
+          await api.leaveRoom(roomId);
+          const [overview] = await Promise.all([
+            api.getOverview(),
+            get().loadPublicRoomDetail(roomId),
+          ]);
+          set({ leavingRoomId: null });
+          get().replaceOverview(overview);
+          void get().loadRoomMessages(roomId);
+        } catch (error) {
+          set({ leavingRoomId: null });
+          throw error;
         }
       },
 
