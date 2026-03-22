@@ -148,7 +148,9 @@ async def test_get_me(client: AsyncClient, seed_user: dict):
 @pytest.mark.asyncio
 async def test_get_me_unauthorized(client: AsyncClient):
     resp = await client.get("/api/users/me")
-    assert resp.status_code == 422  # missing header
+    assert resp.status_code == 401
+    data = resp.json()
+    assert data["error"] == "Unauthorized"
 
 
 @pytest.mark.asyncio
@@ -169,11 +171,13 @@ async def test_get_my_agents(client: AsyncClient, seed_user: dict):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 1
-    assert data[0]["agent_id"] == "ag_testuser001"
-    assert data[0]["bio"] == "A test agent"
-    assert data[0]["message_policy"] == "contacts_only"
-    assert data[0]["is_default"] is True
+    assert "agents" in data
+    agents = data["agents"]
+    assert len(agents) == 1
+    assert agents[0]["agent_id"] == "ag_testuser001"
+    assert agents[0]["bio"] == "A test agent"
+    assert agents[0]["message_policy"] == "contacts_only"
+    assert agents[0]["is_default"] is True
 
 
 @pytest.mark.asyncio

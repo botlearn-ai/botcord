@@ -50,13 +50,34 @@ async def _build_rooms_from_sql(
     Tries to call get_agent_room_previews SQL function (PostgreSQL).
     Falls back to ORM query on failure (e.g. SQLite in tests).
     """
+    # Column mapping: SQL function uses room_name/room_description/room_rule/last_sender_id
+    # but frontend contract expects name/description/rule (no last_sender_id).
+    _SQL_TO_API = {
+        "room_name": "name",
+        "room_description": "description",
+        "room_rule": "rule",
+    }
+    _DROP_COLS = {"last_sender_id"}
+
     try:
         result = await db.execute(
             text("SELECT * FROM get_agent_room_previews(:agent_id)"),
             {"agent_id": agent_id},
         )
         rows = result.mappings().all()
-        return [dict(r) for r in rows]
+        mapped = []
+        for r in rows:
+            item = {}
+            for k, v in r.items():
+                if k in _DROP_COLS:
+                    continue
+                key = _SQL_TO_API.get(k, k)
+                item[key] = v
+            # Coerce member_count to int (SQL returns bigint)
+            if "member_count" in item:
+                item["member_count"] = int(item["member_count"] or 0)
+            mapped.append(item)
+        return mapped
     except Exception:
         _logger.debug(
             "get_agent_room_previews unavailable, falling back to ORM query",

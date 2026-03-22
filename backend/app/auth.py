@@ -83,12 +83,12 @@ async def _load_user_and_roles(
 
 
 async def require_user(
-    authorization: str = Header(...),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> RequestContext:
     """Verify Supabase Bearer token, load user, return context."""
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     token = authorization[len("Bearer "):]
     supabase_user_id = _decode_supabase_token(token)
@@ -102,7 +102,7 @@ async def require_user(
 
 
 async def require_active_agent(
-    authorization: str = Header(...),
+    authorization: str | None = Header(default=None),
     x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
     db: AsyncSession = Depends(get_db),
 ) -> RequestContext:
@@ -110,8 +110,8 @@ async def require_active_agent(
 
     Ensures the referenced agent belongs to the authenticated user.
     """
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     token = authorization[len("Bearer "):]
     supabase_user_id = _decode_supabase_token(token)

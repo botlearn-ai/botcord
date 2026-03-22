@@ -147,11 +147,15 @@ async def structured_http_exception_handler(request: Request, exc: HTTPException
 
     4xx = client error, never retryable.
     5xx = server error, may be retryable.
+
+    Includes both ``detail`` (hub convention) and ``error`` (frontend convention)
+    so that consumers on either side can read whichever field they expect.
     """
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "detail": exc.detail,
+            "error": exc.detail,
             "retryable": exc.status_code >= 500,
         },
     )

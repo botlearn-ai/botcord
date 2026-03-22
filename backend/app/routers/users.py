@@ -68,14 +68,16 @@ async def get_my_agents(
     )
     agents = agent_result.scalars().all()
 
-    return [
-        {
-            "agent_id": a.agent_id,
-            "display_name": a.display_name,
-            "bio": a.bio,
-            "message_policy": a.message_policy.value if a.message_policy else None,
-            "is_default": a.is_default,
-            "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
-        }
-        for a in agents
-    ]
+    return {
+        "agents": [
+            {
+                "agent_id": a.agent_id,
+                "display_name": a.display_name,
+                "bio": a.bio,
+                "message_policy": a.message_policy.value if a.message_policy else None,
+                "is_default": a.is_default,
+                "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
+            }
+            for a in agents
+        ],
+    }
