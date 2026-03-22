@@ -44,6 +44,8 @@ from app.routers.dashboard import router as app_dashboard_router
 from app.routers.public import router as app_public_router
 from app.routers.share import router as app_share_router
 from app.routers.stats import router as app_stats_router
+from app.routers.wallet import router as app_wallet_router
+from app.routers.subscriptions import router as app_subscriptions_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -185,3 +187,5 @@ app.include_router(app_dashboard_router)
 app.include_router(app_public_router)
 app.include_router(app_share_router)
 app.include_router(app_stats_router)
+app.include_router(app_wallet_router)
+app.include_router(app_subscriptions_router)
