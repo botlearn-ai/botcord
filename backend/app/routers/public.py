@@ -1,0 +1,361 @@
+"""Public (no-auth) API routes under /api/public."""
+
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.helpers import escape_like, extract_text_from_envelope
+from hub.database import get_db
+from hub.models import (
+    Agent,
+    MessageRecord,
+    Room,
+    RoomMember,
+    RoomVisibility,
+    Topic,
+)
+
+_logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/public", tags=["app-public"])
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _get_public_room_previews(
+    db: AsyncSession,
+    q: str | None = None,
+    room_id: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[dict]:
+    """Get public room previews, with SQL function fallback to ORM."""
+    try:
+        result = await db.execute(
+            text("SELECT * FROM get_public_room_previews(:lim, :off)"),
+            {"lim": limit, "off": offset},
+        )
+        rows = result.mappings().all()
+        return [dict(r) for r in rows]
+    except Exception:
+        _logger.debug(
+            "get_public_room_previews unavailable, falling back to ORM",
+            exc_info=True,
+        )
+        await db.rollback()
+
+    # ORM fallback
+    stmt = (
+        select(Room, func.count(RoomMember.id).label("member_count"))
+        .outerjoin(RoomMember, RoomMember.room_id == Room.room_id)
+        .where(Room.visibility == RoomVisibility.public)
+    )
+
+    if room_id:
+        stmt = stmt.where(Room.room_id == room_id)
+    if q:
+        pattern = f"%{escape_like(q)}%"
+        stmt = stmt.where(
+            (Room.name.ilike(pattern)) | (Room.room_id.ilike(pattern))
+        )
+
+    stmt = stmt.group_by(Room.id).offset(offset).limit(limit)
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    # Get last message preview per room
+    room_ids = [r.room_id for r, _ in rows]
+    last_msg_map: dict[str, dict] = {}
+    if room_ids:
+        dedup_sub = (
+            select(
+                MessageRecord.room_id,
+                MessageRecord.msg_id,
+                func.min(MessageRecord.id).label("min_id"),
+            )
+            .where(MessageRecord.room_id.in_(room_ids))
+            .group_by(MessageRecord.room_id, MessageRecord.msg_id)
+            .subquery()
+        )
+        latest_sub = (
+            select(
+                dedup_sub.c.room_id,
+                func.max(dedup_sub.c.min_id).label("record_id"),
+            )
+            .group_by(dedup_sub.c.room_id)
+            .subquery()
+        )
+        msg_result = await db.execute(
+            select(MessageRecord)
+            .where(MessageRecord.id.in_(select(latest_sub.c.record_id)))
+        )
+        for rec in msg_result.scalars().all():
+            if rec.room_id:
+                parsed = extract_text_from_envelope(rec.envelope_json)
+                last_msg_map[rec.room_id] = {
+                    "last_message_preview": parsed["text"],
+                    "last_message_at": rec.created_at.isoformat() if rec.created_at else None,
+                }
+
+    return [
+        {
+            "room_id": r.room_id,
+            "name": r.name,
+            "description": r.description,
+            "owner_id": r.owner_id,
+            "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
+            "member_count": int(mc),
+            "last_message_preview": last_msg_map.get(r.room_id, {}).get("last_message_preview"),
+            "last_message_at": last_msg_map.get(r.room_id, {}).get("last_message_at"),
+        }
+        for r, mc in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/overview")
+async def public_overview(
+    db: AsyncSession = Depends(get_db),
+):
+    """Public overview with stats, featured rooms, and recent agents."""
+    # Stats
+    agent_count = await db.execute(
+        select(func.count()).select_from(Agent).where(Agent.agent_id != "hub")
+    )
+    total_agents = agent_count.scalar() or 0
+
+    public_room_count = await db.execute(
+        select(func.count()).select_from(Room).where(Room.visibility == RoomVisibility.public)
+    )
+    total_public_rooms = public_room_count.scalar() or 0
+
+    msg_count = await db.execute(
+        select(func.count()).select_from(MessageRecord)
+    )
+    total_messages = msg_count.scalar() or 0
+
+    # Featured rooms
+    featured = await _get_public_room_previews(db, limit=10)
+
+    # Recent agents
+    agent_result = await db.execute(
+        select(Agent)
+        .where(Agent.agent_id != "hub")
+        .order_by(Agent.created_at.desc())
+        .limit(10)
+    )
+    recent_agents = [
+        {
+            "agent_id": a.agent_id,
+            "display_name": a.display_name,
+            "bio": a.bio,
+            "message_policy": a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy),
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in agent_result.scalars().all()
+    ]
+
+    return {
+        "stats": {
+            "total_agents": total_agents,
+            "total_public_rooms": total_public_rooms,
+            "total_messages": total_messages,
+        },
+        "featured_rooms": featured,
+        "recent_agents": recent_agents,
+    }
+
+
+@router.get("/rooms")
+async def list_public_rooms(
+    q: str | None = Query(default=None),
+    room_id: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """List public rooms with optional search."""
+    return await _get_public_room_previews(db, q=q, room_id=room_id, limit=limit, offset=offset)
+
+
+@router.get("/rooms/{room_id}/members")
+async def get_public_room_members(
+    room_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get members of a public room."""
+    room_result = await db.execute(
+        select(Room).where(Room.room_id == room_id)
+    )
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.visibility != RoomVisibility.public:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    result = await db.execute(
+        select(RoomMember, Agent)
+        .outerjoin(Agent, Agent.agent_id == RoomMember.agent_id)
+        .where(RoomMember.room_id == room_id)
+    )
+    rows = result.all()
+
+    return [
+        {
+            "agent_id": m.agent_id,
+            "display_name": a.display_name if a else m.agent_id,
+            "bio": a.bio if a else None,
+            "message_policy": (a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy)) if a else None,
+            "created_at": a.created_at.isoformat() if a and a.created_at else None,
+            "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+            "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+        }
+        for m, a in rows
+    ]
+
+
+@router.get("/rooms/{room_id}/messages")
+async def get_public_room_messages(
+    room_id: str,
+    before: int | None = Query(default=None),
+    after: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get messages from a public room."""
+    room_result = await db.execute(
+        select(Room).where(Room.room_id == room_id)
+    )
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.visibility != RoomVisibility.public:
+        raise HTTPException(status_code=403, detail="Room is not public")
+
+    # Deduplicated messages
+    dedup_sub = (
+        select(
+            MessageRecord.msg_id,
+            func.min(MessageRecord.id).label("min_id"),
+        )
+        .where(MessageRecord.room_id == room_id)
+        .group_by(MessageRecord.msg_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(MessageRecord)
+        .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
+    )
+
+    if before is not None:
+        stmt = stmt.where(MessageRecord.id < before)
+    if after is not None:
+        stmt = stmt.where(MessageRecord.id > after)
+
+    stmt = stmt.order_by(MessageRecord.id.desc()).limit(limit + 1)
+
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    has_more = len(records) > limit
+    records = records[:limit]
+
+    # Sender names
+    sender_ids = {r.sender_id for r in records}
+    sender_names: dict[str, str] = {}
+    if sender_ids:
+        name_result = await db.execute(
+            select(Agent.agent_id, Agent.display_name)
+            .where(Agent.agent_id.in_(sender_ids))
+        )
+        sender_names = dict(name_result.all())
+
+    # Topic info
+    topic_ids = {r.topic_id for r in records if r.topic_id}
+    topic_info: dict[str, dict] = {}
+    if topic_ids:
+        topic_result = await db.execute(
+            select(Topic).where(Topic.topic_id.in_(topic_ids))
+        )
+        for t in topic_result.scalars().all():
+            topic_info[t.topic_id] = {"title": t.title}
+
+    messages = []
+    for rec in records:
+        parsed = extract_text_from_envelope(rec.envelope_json)
+        messages.append({
+            "msg_id": rec.msg_id,
+            "sender_id": rec.sender_id,
+            "sender_display_name": sender_names.get(rec.sender_id),
+            "text": parsed["text"],
+            "type": parsed["type"],
+            "topic": rec.topic,
+            "topic_id": rec.topic_id,
+            "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
+            "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        })
+
+    return {"messages": messages, "has_more": has_more}
+
+
+@router.get("/agents")
+async def list_public_agents(
+    q: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """List agents publicly."""
+    stmt = select(Agent).where(Agent.agent_id != "hub")
+
+    if q:
+        pattern = f"%{escape_like(q)}%"
+        stmt = stmt.where(
+            (Agent.agent_id.ilike(pattern)) | (Agent.display_name.ilike(pattern))
+        )
+
+    stmt = stmt.offset(offset).limit(limit)
+    result = await db.execute(stmt)
+
+    return [
+        {
+            "agent_id": a.agent_id,
+            "display_name": a.display_name,
+            "bio": a.bio,
+            "message_policy": a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy),
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in result.scalars().all()
+    ]
+
+
+@router.get("/agents/{agent_id}")
+async def get_public_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get public agent details."""
+    result = await db.execute(
+        select(Agent).where(Agent.agent_id == agent_id)
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return {
+        "agent_id": agent.agent_id,
+        "display_name": agent.display_name,
+        "bio": agent.bio,
+        "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
+        "created_at": agent.created_at.isoformat() if agent.created_at else None,
+    }
