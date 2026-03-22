@@ -65,6 +65,8 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-22: `DashboardApp.tsx` 在订阅 Supabase private channel 前显式执行 `supabase.realtime.setAuth(session.access_token)`，并扩展 `window.botcordDebugRealtime()` 输出 access token 的 `sub/role`，修复业务登录态与 Realtime 鉴权上下文可能分裂的问题。
+- 2026-03-22: `DashboardApp.tsx` 新增浏览器全局 `window.botcordDebugRealtime()` 调试入口，并把 realtime 订阅状态、topic 与事件脉冲打印到控制台，便于排查 Supabase private channel 授权问题。
 - 2026-03-22: `Sidebar.tsx` 抽出一级 `PrimaryNavButton` 与二级 `SecondaryNavButton`，收敛导航按钮样式/高亮/badge 重复逻辑，后续扩展提醒状态不再复制分支。
 - 2026-03-22: `Sidebar.tsx` 为一级 `Contacts` 导航与二级 `Requests` 入口补上未处理联系人申请 badge，提醒直接复用 `overview.pending_requests`，避免再造联系人计数状态。
 - 2026-03-21: `DashboardApp.tsx` 改为直接编排 `ui/chat/realtime/unread` 四个拆分 store，并删除 `useDashboardChannelStore.ts` / `useDashboardStore.ts` 历史 facade，结束单文件混合消息缓存、未读、导航和连接状态的坏味道。

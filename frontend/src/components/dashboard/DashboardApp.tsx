@@ -28,6 +28,20 @@ import Sidebar from "./Sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
 import WalletPanel from "./WalletPanel";
 
+type BotcordDebugRealtimeSnapshot = {
+  supabaseUrl: string | undefined;
+  authResolved: boolean;
+  sessionMode: string;
+  activeAgentId: string | null;
+  topic: string | null;
+  realtimeStatus: string;
+  realtimeError: string | null;
+  browserUserId: string | null;
+  browserEmail: string | null;
+  accessTokenSub: string | null;
+  accessTokenRole: string | null;
+};
+
 function decodeRoomIdFromPath(segment: string | undefined): string | null {
   if (!segment) return null;
   try {
@@ -61,6 +75,58 @@ export default function DashboardApp() {
     sessionStore.authResolved
     && sessionStore.sessionMode === "authed-no-agent"
     && sessionStore.ownedAgents.length === 0;
+  const realtimeTopic = sessionStore.activeAgentId ? `agent:${sessionStore.activeAgentId}` : null;
+
+  useEffect(() => {
+    const debugRealtime = async (): Promise<BotcordDebugRealtimeSnapshot> => {
+      const [{ data: { user } }, { data: { session } }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.auth.getSession(),
+      ]);
+      const accessTokenClaims = (() => {
+        const token = session?.access_token;
+        if (!token) return null;
+        try {
+          return JSON.parse(atob(token.split(".")[1] ?? ""));
+        } catch {
+          return null;
+        }
+      })();
+      const snapshot: BotcordDebugRealtimeSnapshot = {
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        authResolved: useDashboardSessionStore.getState().authResolved,
+        sessionMode: useDashboardSessionStore.getState().sessionMode,
+        activeAgentId: useDashboardSessionStore.getState().activeAgentId,
+        topic: useDashboardSessionStore.getState().activeAgentId
+          ? `agent:${useDashboardSessionStore.getState().activeAgentId}`
+          : null,
+        realtimeStatus: useDashboardRealtimeStore.getState().realtimeStatus,
+        realtimeError: useDashboardRealtimeStore.getState().realtimeError,
+        browserUserId: user?.id ?? null,
+        browserEmail: user?.email ?? null,
+        accessTokenSub: typeof accessTokenClaims?.sub === "string" ? accessTokenClaims.sub : null,
+        accessTokenRole: typeof accessTokenClaims?.role === "string" ? accessTokenClaims.role : null,
+      };
+      console.group("[BotCord][Realtime] Debug Snapshot");
+      console.log(snapshot);
+      if (accessTokenClaims) {
+        console.log("[BotCord][Realtime] Access Token Claims", accessTokenClaims);
+      }
+      console.groupEnd();
+      return snapshot;
+    };
+
+    const target = window as typeof window & {
+      botcordDebugRealtime?: () => Promise<BotcordDebugRealtimeSnapshot>;
+    };
+    target.botcordDebugRealtime = debugRealtime;
+
+    console.info("[BotCord][Realtime] Global debug helper ready: window.botcordDebugRealtime()");
+
+    return () => {
+      delete target.botcordDebugRealtime;
+    };
+  }, [supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -273,30 +339,74 @@ export default function DashboardApp() {
     }
 
     const topic = `agent:${sessionStore.activeAgentId}`;
-    realtimeStore.setRealtimeStatus("connecting");
-    const channel = supabase
-      .channel(topic, { config: { private: true } })
-      .on("broadcast", { event: "*" }, ({ payload }) => {
-        const realtimeEvent = payload as RealtimeMetaEvent;
-        if (!realtimeEvent?.type || realtimeEvent.agent_id !== sessionStore.activeAgentId) {
-          return;
-        }
-        chatStore.applyRealtimeEventHint(realtimeEvent);
-        unreadStore.applyRealtimeEvent(realtimeEvent);
-        void realtimeStore.syncRealtimeEvent(realtimeEvent);
-      })
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          realtimeStore.setRealtimeStatus("connected");
-          return;
-        }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          realtimeStore.setRealtimeStatus("error", `realtime ${status.toLowerCase()}`);
-        }
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const subscribeRealtime = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        console.warn("[BotCord][Realtime] missing access token before subscribe", {
+          topic,
+          activeAgentId: sessionStore.activeAgentId,
+        });
+        realtimeStore.setRealtimeStatus("error", "realtime missing access token");
+        return;
+      }
+
+      await supabase.realtime.setAuth(accessToken);
+      if (cancelled) return;
+
+      realtimeStore.setRealtimeStatus("connecting");
+      console.info("[BotCord][Realtime] subscribing", {
+        topic,
+        activeAgentId: sessionStore.activeAgentId,
+        sessionMode: sessionStore.sessionMode,
       });
 
+      channel = supabase
+        .channel(topic, { config: { private: true } })
+        .on("broadcast", { event: "*" }, ({ payload }) => {
+          const realtimeEvent = payload as RealtimeMetaEvent;
+          if (!realtimeEvent?.type || realtimeEvent.agent_id !== sessionStore.activeAgentId) {
+            return;
+          }
+          console.info("[BotCord][Realtime] event", {
+            topic,
+            type: realtimeEvent.type,
+            roomId: realtimeEvent.room_id,
+            hubMsgId: realtimeEvent.hub_msg_id,
+          });
+          chatStore.applyRealtimeEventHint(realtimeEvent);
+          unreadStore.applyRealtimeEvent(realtimeEvent);
+          void realtimeStore.syncRealtimeEvent(realtimeEvent);
+        })
+        .subscribe((status) => {
+          console.info("[BotCord][Realtime] channel status", {
+            topic,
+            status,
+          });
+          if (status === "SUBSCRIBED") {
+            realtimeStore.setRealtimeStatus("connected");
+            return;
+          }
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            realtimeStore.setRealtimeStatus("error", `realtime ${status.toLowerCase()}`);
+          }
+        });
+    };
+
+    void subscribeRealtime();
+
     return () => {
-      void supabase.removeChannel(channel);
+      cancelled = true;
+      console.info("[BotCord][Realtime] removing channel", {
+        topic,
+      });
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
     };
   }, [
     sessionStore.authResolved,
