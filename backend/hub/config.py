@@ -117,3 +117,7 @@ STRIPE_TOPUP_PACKAGES: list[dict] = _parse_stripe_packages()
 
 # Message expiry settings (replaces retry loop)
 MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS: float = float(os.getenv("MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS", "30"))
+
+# Secret used to HMAC-sign bind tickets for cryptographic agent binding.
+# Falls back to JWT_SECRET if not explicitly set.
+BIND_PROOF_SECRET: str | None = os.getenv("BIND_PROOF_SECRET") or os.getenv("BOTCORD_BIND_PROOF_SECRET")
