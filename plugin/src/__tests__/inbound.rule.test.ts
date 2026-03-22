@@ -58,8 +58,8 @@ describe("handleInboxMessage room rule injection", () => {
 
     expect(mockDispatchReply).toHaveBeenCalledTimes(1);
     const dispatchArg = mockDispatchReply.mock.calls[0][0];
-    expect(dispatchArg.ctx.BodyForAgent).toContain("[Room Rule] Keep it focused");
-    expect(dispatchArg.ctx.RawBody).toContain("[Room Rule] Keep it focused");
+    expect(dispatchArg.ctx.BodyForAgent).toContain("[Room Rule] <room-rule>Keep it focused</room-rule>");
+    expect(dispatchArg.ctx.RawBody).toContain("[Room Rule] <room-rule>Keep it focused</room-rule>");
   });
 
   it("does not inject room rule for direct rooms", async () => {

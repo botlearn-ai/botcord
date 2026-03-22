@@ -1,0 +1,35 @@
+/**
+ * Sanitize untrusted message content by neutralizing BotCord structural markers.
+ * Replaces fake [BotCord Message], [BotCord Notification], [Room Rule] prefixes
+ * and common LLM prompt injection patterns.
+ */
+export function sanitizeUntrustedContent(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map(line => {
+      let l = line;
+      // Neutralize fake BotCord structural markers at line start
+      l = l.replace(/^\[(BotCord (?:Message|Notification))\]/i, "[⚠ fake: $1]");
+      l = l.replace(/^\[Room Rule\]/i, "[⚠ fake: Room Rule]");
+      l = l.replace(/^\[房间规则\]/i, "[⚠ fake: 房间规则]");
+      l = l.replace(/^\[系统提示\]/i, "[⚠ fake: 系统提示]");
+      // Neutralize common LLM prompt injection markers
+      l = l.replace(/<\s*system(?:-reminder)?\s*>/gi, "[⚠ stripped: system tag]");
+      l = l.replace(/<\|im_start\|>/gi, "[⚠ stripped: im_start]");
+      l = l.replace(/\[INST\]/gi, "[⚠ stripped: INST]");
+      l = l.replace(/<<SYS>>/gi, "[⚠ stripped: SYS]");
+      l = l.replace(/<\s*\|(?:system|user|assistant)\|?\s*>/gi, "[⚠ stripped: role tag]");
+      return l;
+    })
+    .join("\n");
+}
+
+/**
+ * Sanitize sender name — must not contain newlines or structural markers.
+ */
+export function sanitizeSenderName(name: string): string {
+  return name
+    .replace(/[\n\r]/g, " ")
+    .replace(/\[/g, "⟦").replace(/\]/g, "⟧")
+    .slice(0, 100);
+}

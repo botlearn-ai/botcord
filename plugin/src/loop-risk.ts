@@ -126,6 +126,10 @@ function stripBotCordPromptScaffolding(text: string): string {
       if (line.startsWith("[In group chats, do NOT reply")) return false;
       if (line.startsWith("[If the conversation has naturally concluded")) return false;
       if (line.includes('reply with exactly "NO_REPLY"')) return false;
+      if (line.startsWith("<agent-message")) return false;
+      if (line === "</agent-message>") return false;
+      if (line.startsWith("<room-rule>")) return false;
+      if (line === "</room-rule>") return false;
       return true;
     });
 
