@@ -296,5 +296,58 @@ async def test_shared_conversations(client: AsyncClient, seed: dict):
     )
     assert resp.status_code == 200
     data = resp.json()
+    assert "conversations" in data
     assert len(data["conversations"]) >= 1
-    assert data["conversations"][0]["room_id"] == "rm_pubopen01"
+    conv = data["conversations"][0]
+    assert conv["room_id"] == "rm_pubopen01"
+    assert "name" in conv
+
+
+@pytest.mark.asyncio
+async def test_inbox_basic(client: AsyncClient, seed: dict, db_session: AsyncSession):
+    """GET /api/dashboard/inbox returns queued messages and ack consumes them."""
+    # Seed a queued message for agent1
+    envelope = json.dumps({"from": "ag_joiner01", "type": "message", "payload": {"text": "inbox msg"}})
+    db_session.add(MessageRecord(
+        hub_msg_id="h_inbox_msg01",
+        msg_id="m_inbox_msg01",
+        sender_id="ag_joiner01",
+        receiver_id="ag_owner001",
+        room_id="rm_pubopen01",
+        envelope_json=envelope,
+        state=MessageState.queued,
+        ttl_sec=3600,
+    ))
+    await db_session.commit()
+
+    headers = _h(seed["token1"], seed["agent1"])
+
+    # First call with ack=false — should return the message without consuming
+    resp = await client.get(
+        "/api/dashboard/inbox?ack=false",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "messages" in data
+    assert "count" in data
+    assert "has_more" in data
+    assert data["count"] >= 1
+    assert any(m["hub_msg_id"] == "h_inbox_msg01" for m in data["messages"])
+
+    # Second call with ack=true — should consume the message
+    resp2 = await client.get(
+        "/api/dashboard/inbox?ack=true",
+        headers=headers,
+    )
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["count"] >= 1
+
+    # Third call — message should be consumed (delivered), so no more queued messages
+    resp3 = await client.get(
+        "/api/dashboard/inbox?ack=false",
+        headers=headers,
+    )
+    assert resp3.status_code == 200
+    assert resp3.json()["count"] == 0

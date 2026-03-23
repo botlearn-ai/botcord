@@ -399,3 +399,133 @@ async def test_stripe_packages(client, seed_data):
     resp = await client.get("/api/wallet/stripe/packages")
     assert resp.status_code == 200
     assert "packages" in resp.json()
+
+
+@pytest.mark.asyncio
+async def test_list_wallet_ledger(client, seed_data):
+    """GET /api/wallet/ledger returns entries with correct shape after a transfer."""
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": seed_data["agent_id"],
+    }
+    # Do a transfer to generate ledger entries
+    await client.post(
+        "/api/wallet/transfers",
+        headers=headers,
+        json={
+            "to_agent_id": seed_data["agent_id2"],
+            "amount_minor": "300",
+        },
+    )
+
+    resp = await client.get("/api/wallet/ledger", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "entries" in data
+    assert "has_more" in data
+    assert "next_cursor" in data
+    assert len(data["entries"]) >= 1
+
+    entry = data["entries"][0]
+    assert "entry_id" in entry
+    assert "tx_id" in entry
+    assert "direction" in entry
+    assert "amount_minor" in entry
+    assert "balance_after_minor" in entry
+    assert "created_at" in entry
+
+
+@pytest.mark.asyncio
+async def test_list_withdrawals(client, seed_data):
+    """GET /api/wallet/withdrawals returns withdrawals with correct shape."""
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": seed_data["agent_id"],
+    }
+    # Create a withdrawal first
+    create_resp = await client.post(
+        "/api/wallet/withdrawals",
+        headers=headers,
+        json={"amount_minor": "200"},
+    )
+    assert create_resp.status_code == 201
+
+    resp = await client.get("/api/wallet/withdrawals", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "withdrawals" in data
+    assert len(data["withdrawals"]) >= 1
+
+    wd = data["withdrawals"][0]
+    assert "withdrawal_id" in wd
+    assert "status" in wd
+    assert "amount_minor" in wd
+
+
+@pytest.mark.asyncio
+async def test_cancel_withdrawal(client, seed_data):
+    """POST /api/wallet/withdrawals/{id}/cancel cancels a pending withdrawal."""
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": seed_data["agent_id"],
+    }
+    # Create withdrawal
+    create_resp = await client.post(
+        "/api/wallet/withdrawals",
+        headers=headers,
+        json={"amount_minor": "400"},
+    )
+    assert create_resp.status_code == 201
+    withdrawal_id = create_resp.json()["withdrawal_id"]
+
+    # Cancel it
+    resp = await client.post(
+        f"/api/wallet/withdrawals/{withdrawal_id}/cancel",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_stripe_checkout_session_not_configured(client, seed_data):
+    """POST /api/wallet/stripe/checkout-session returns 400 when Stripe is not configured."""
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": seed_data["agent_id"],
+    }
+    resp = await client.post(
+        "/api/wallet/stripe/checkout-session",
+        headers=headers,
+        json={
+            "package_code": "starter",
+            "idempotency_key": "test-idem-123",
+        },
+    )
+    assert resp.status_code == 400
+    assert "Stripe" in resp.json()["detail"] or "configured" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_stripe_session_status_missing_param(client, seed_data):
+    """GET /api/wallet/stripe/session-status without session_id returns 422."""
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": seed_data["agent_id"],
+    }
+    resp = await client.get("/api/wallet/stripe/session-status", headers=headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_stripe_session_status_not_found(client, seed_data):
+    """GET /api/wallet/stripe/session-status with nonexistent session returns 404."""
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": seed_data["agent_id"],
+    }
+    resp = await client.get(
+        "/api/wallet/stripe/session-status?session_id=cs_nonexistent",
+        headers=headers,
+    )
+    assert resp.status_code == 404

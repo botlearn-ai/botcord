@@ -456,3 +456,144 @@ async def test_list_subscribers_not_owner(client, seed_data):
         },
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_list_my_subscriptions(client, seed_data):
+    """GET /api/subscriptions/me returns subscriptions with correct shape."""
+    sub_headers = {
+        "Authorization": f"Bearer {seed_data['sub_token']}",
+        "X-Active-Agent": seed_data["sub_agent_id"],
+    }
+    owner_headers = {
+        "Authorization": f"Bearer {seed_data['owner_token']}",
+        "X-Active-Agent": seed_data["owner_agent_id"],
+    }
+
+    # Create product
+    create_resp = await client.post(
+        "/api/subscriptions/products",
+        headers=owner_headers,
+        json={
+            "name": "My Sub Test",
+            "amount_minor": "100",
+            "billing_interval": "month",
+        },
+    )
+    product_id = create_resp.json()["product_id"]
+
+    # Subscribe
+    await client.post(
+        f"/api/subscriptions/products/{product_id}/subscribe",
+        headers=sub_headers,
+        json={},
+    )
+
+    # List my subscriptions
+    resp = await client.get("/api/subscriptions/me", headers=sub_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "subscriptions" in data
+    assert len(data["subscriptions"]) >= 1
+
+    sub = data["subscriptions"][0]
+    assert "subscription_id" in sub
+    assert "product_id" in sub
+    assert "status" in sub
+    assert sub["product_id"] == product_id
+    assert sub["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_cancel_subscription_directly(client, seed_data):
+    """POST /api/subscriptions/{subscription_id}/cancel cancels a subscription."""
+    sub_headers = {
+        "Authorization": f"Bearer {seed_data['sub_token']}",
+        "X-Active-Agent": seed_data["sub_agent_id"],
+    }
+    owner_headers = {
+        "Authorization": f"Bearer {seed_data['owner_token']}",
+        "X-Active-Agent": seed_data["owner_agent_id"],
+    }
+
+    # Create product
+    create_resp = await client.post(
+        "/api/subscriptions/products",
+        headers=owner_headers,
+        json={
+            "name": "Cancel Direct Test",
+            "amount_minor": "200",
+            "billing_interval": "week",
+        },
+    )
+    product_id = create_resp.json()["product_id"]
+
+    # Subscribe
+    sub_resp = await client.post(
+        f"/api/subscriptions/products/{product_id}/subscribe",
+        headers=sub_headers,
+        json={},
+    )
+    subscription_id = sub_resp.json()["subscription_id"]
+
+    # Cancel
+    resp = await client.post(
+        f"/api/subscriptions/{subscription_id}/cancel",
+        headers=sub_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_cancel_subscription_by_provider(client, seed_data):
+    """POST /api/subscriptions/{subscription_id}/cancel by provider (product owner) succeeds."""
+    sub_headers = {
+        "Authorization": f"Bearer {seed_data['sub_token']}",
+        "X-Active-Agent": seed_data["sub_agent_id"],
+    }
+    owner_headers = {
+        "Authorization": f"Bearer {seed_data['owner_token']}",
+        "X-Active-Agent": seed_data["owner_agent_id"],
+    }
+
+    # Create product
+    create_resp = await client.post(
+        "/api/subscriptions/products",
+        headers=owner_headers,
+        json={
+            "name": "Provider Cancel Test",
+            "amount_minor": "300",
+            "billing_interval": "month",
+        },
+    )
+    product_id = create_resp.json()["product_id"]
+
+    # Subscribe as subscriber
+    sub_resp = await client.post(
+        f"/api/subscriptions/products/{product_id}/subscribe",
+        headers=sub_headers,
+        json={},
+    )
+    subscription_id = sub_resp.json()["subscription_id"]
+
+    # Provider (owner) can also cancel the subscription
+    resp = await client.post(
+        f"/api/subscriptions/{subscription_id}/cancel",
+        headers=owner_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_cancel_nonexistent_subscription(client, seed_data):
+    """POST /api/subscriptions/{subscription_id}/cancel for nonexistent ID returns 400."""
+    resp = await client.post(
+        "/api/subscriptions/sub_nonexistent/cancel",
+        headers={
+            "Authorization": f"Bearer {seed_data['sub_token']}",
+            "X-Active-Agent": seed_data["sub_agent_id"],
+        },
+    )
+    assert resp.status_code == 400
