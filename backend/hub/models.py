@@ -283,6 +283,13 @@ class MessageRecord(Base):
         DateTime(timezone=True), nullable=True
     )
     mentioned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="agent", server_default="agent"
+    )
+    source_user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_session_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    source_user_agent: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
 
 class Contact(Base):

@@ -52,6 +52,8 @@ export type BotCordAccountConfig = {
 export type BotCordChannelConfig = BotCordAccountConfig;
 
 // Inbox poll response
+export type SourceType = "agent" | "dashboard_user_chat";
+
 export type InboxMessage = {
   hub_msg_id: string;
   envelope: BotCordMessageEnvelope;
@@ -67,6 +69,9 @@ export type InboxMessage = {
   topic_id?: string;
   goal?: string;
   mentioned?: boolean;
+  source_type?: SourceType;
+  source_user_id?: string | null;
+  source_session_kind?: string | null;
 };
 
 export type InboxPollResponse = {

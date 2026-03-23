@@ -25,6 +25,10 @@ function isMessageRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
   return type === "message" || type === "ack" || type === "result" || type === "error";
 }
 
+function isTypingRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
+  return type === "typing";
+}
+
 interface DashboardRealtimeState {
   realtimeStatus: "idle" | "connecting" | "connected" | "error";
   realtimeError: string | null;
@@ -67,7 +71,29 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         queuedRealtimeEvent = null;
         nextEvent = null;
 
-        const openedRoomId = useDashboardUIStore.getState().openedRoomId;
+        const uiState = useDashboardUIStore.getState();
+        const openedRoomId = uiState.openedRoomId;
+        const userChatRoomId = uiState.userChatRoomId;
+
+        // Handle typing events — just toggle the UI flag, no data fetching
+        if (currentEvent && isTypingRealtimeEvent(currentEvent.type)) {
+          if (userChatRoomId && currentEvent.room_id === userChatRoomId) {
+            uiState.setUserChatAgentTyping(true);
+          }
+          nextEvent = queuedRealtimeEvent;
+          continue;
+        }
+
+        // Clear typing indicator when a message arrives for the user-chat room
+        if (
+          currentEvent
+          && isMessageRealtimeEvent(currentEvent.type)
+          && userChatRoomId
+          && currentEvent.room_id === userChatRoomId
+        ) {
+          uiState.setUserChatAgentTyping(false);
+        }
+
         const chatStore = useDashboardChatStore.getState();
         const shouldRefreshOverview = (() => {
           if (!currentEvent) return true;
@@ -91,6 +117,15 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
           && (!currentEvent || currentEvent.room_id === openedRoomId)
         ) {
           await chatStore.pollNewMessages(openedRoomId);
+        }
+
+        // User-chat pane has its own room slot so it doesn't clobber openedRoomId
+        if (
+          userChatRoomId
+          && userChatRoomId !== openedRoomId
+          && (!currentEvent || currentEvent.room_id === userChatRoomId)
+        ) {
+          await chatStore.pollNewMessages(userChatRoomId);
         }
 
         nextEvent = queuedRealtimeEvent;

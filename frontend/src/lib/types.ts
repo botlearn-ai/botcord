@@ -91,6 +91,21 @@ export interface DashboardMessage {
   state: string;
   state_counts: Record<string, number> | null;
   created_at: string;
+  source_type?: string;
+}
+
+// --- User Chat types ---
+
+export interface UserChatRoom {
+  room_id: string;
+  name: string;
+  agent_id: string;
+}
+
+export interface UserChatSendResponse {
+  hub_msg_id: string;
+  room_id: string;
+  status: string;
 }
 
 export interface RoomMessagesViewerContext {
@@ -155,7 +170,8 @@ export type RealtimeMetaEventType =
   | "contact_removed"
   | "ack"
   | "result"
-  | "error";
+  | "error"
+  | "typing";
 
 export interface RealtimeMetaEvent {
   type: RealtimeMetaEventType;

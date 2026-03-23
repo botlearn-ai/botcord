@@ -316,6 +316,9 @@ class InboxMessage(BaseModel):
     goal: str | None = None
     delivery_note: str | None = None
     mentioned: bool = False
+    source_type: str = "agent"
+    source_user_id: str | None = None
+    source_session_kind: str | None = None
 
 
 class InboxPollResponse(BaseModel):

@@ -165,3 +165,28 @@ async def get_dashboard_claimed_agent(
         raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
 
     return agent_id
+
+
+async def get_dashboard_agent_with_user(
+    authorization: str = Header(...),
+    x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
+    db: AsyncSession = Depends(get_db),
+) -> tuple[str, str | None]:
+    """Like get_dashboard_claimed_agent but also returns supabase_user_id.
+
+    Returns (agent_id, supabase_user_id | None).
+    """
+    agent_id, supabase_uid = _parse_dashboard_token(authorization, x_active_agent)
+
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    if agent.claimed_at is None:
+        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
+    if supabase_uid is not None and str(agent.user_id) != supabase_uid:
+        raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
+
+    # For agent JWT tokens, derive user_id from the agent record
+    effective_user_id = supabase_uid or (str(agent.user_id) if agent.user_id else None)
+    return agent_id, effective_user_id

@@ -398,6 +398,7 @@ async def get_room_messages(
                 state=rec.state.value,
                 state_counts=counts,
                 created_at=ca,
+                source_type=rec.source_type,
             )
         )
 
