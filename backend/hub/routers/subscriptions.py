@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub import config as hub_config
-from hub.auth import get_current_claimed_agent
+from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent
 from hub.database import get_db
 from hub.models import SubscriptionRoomCreatorPolicy
 from hub.services import subscriptions as subscription_svc
@@ -153,7 +153,7 @@ async def archive_product(
 async def subscribe(
     product_id: str,
     req: SubscriptionCreateRequest,
-    current_agent: str = Depends(get_current_claimed_agent),
+    current_agent: str = Depends(get_dashboard_claimed_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:
