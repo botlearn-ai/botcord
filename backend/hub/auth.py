@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hub.config import JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET, SUPABASE_JWT_JWKS_URL
 from hub.database import get_db
 from hub.i18n import I18nHTTPException
-from hub.models import Agent
+from hub.models import Agent, User
 
 _logger = logging.getLogger(__name__)
 
@@ -139,6 +139,21 @@ def _parse_dashboard_token(
     return x_active_agent, supabase_user_id
 
 
+async def _resolve_internal_user_id(
+    db: AsyncSession, supabase_uid: str
+) -> str | None:
+    """Resolve a Supabase ``sub`` claim to the internal ``users.id``.
+
+    The ``agents.user_id`` column references ``users.id``, not the Supabase
+    UUID directly, so we need this indirection.
+    """
+    result = await db.execute(
+        select(User.id).where(User.supabase_user_id == supabase_uid)
+    )
+    row = result.scalar_one_or_none()
+    return str(row) if row else None
+
+
 async def get_dashboard_agent(
     authorization: str = Header(...),
     x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
@@ -150,16 +165,19 @@ async def get_dashboard_agent(
     2. Fall back to Supabase JWT + X-Active-Agent header.
 
     When using Supabase JWT, verifies that the agent belongs to the
-    authenticated user (via ``Agent.user_id``).
+    authenticated user (via ``users.supabase_user_id`` → ``agents.user_id``).
     """
     agent_id, supabase_uid = _parse_dashboard_token(authorization, x_active_agent)
 
     if supabase_uid is not None:
+        internal_uid = await _resolve_internal_user_id(db, supabase_uid)
+        if internal_uid is None:
+            raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
         result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
         agent = result.scalar_one_or_none()
         if agent is None:
             raise I18nHTTPException(status_code=404, message_key="agent_not_found")
-        if str(agent.user_id) != supabase_uid:
+        if str(agent.user_id) != internal_uid:
             raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
 
     return agent_id
@@ -172,7 +190,7 @@ async def get_dashboard_claimed_agent(
 ) -> str:
     """Like get_dashboard_agent but also verifies the agent exists and is claimed.
 
-    When using Supabase JWT, verifies agent ownership via ``Agent.user_id``.
+    When using Supabase JWT, verifies agent ownership via ``users`` → ``agents.user_id``.
     """
     agent_id, supabase_uid = _parse_dashboard_token(authorization, x_active_agent)
 
@@ -182,8 +200,10 @@ async def get_dashboard_claimed_agent(
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
         raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
-    if supabase_uid is not None and str(agent.user_id) != supabase_uid:
-        raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
+    if supabase_uid is not None:
+        internal_uid = await _resolve_internal_user_id(db, supabase_uid)
+        if internal_uid is None or str(agent.user_id) != internal_uid:
+            raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
 
     return agent_id
 
@@ -193,9 +213,9 @@ async def get_dashboard_agent_with_user(
     x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
     db: AsyncSession = Depends(get_db),
 ) -> tuple[str, str | None]:
-    """Like get_dashboard_claimed_agent but also returns supabase_user_id.
+    """Like get_dashboard_claimed_agent but also returns the internal user_id.
 
-    Returns (agent_id, supabase_user_id | None).
+    Returns (agent_id, internal_user_id | None).
     """
     agent_id, supabase_uid = _parse_dashboard_token(authorization, x_active_agent)
 
@@ -205,9 +225,14 @@ async def get_dashboard_agent_with_user(
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
         raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
-    if supabase_uid is not None and str(agent.user_id) != supabase_uid:
-        raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
 
-    # For agent JWT tokens, derive user_id from the agent record
-    effective_user_id = supabase_uid or (str(agent.user_id) if agent.user_id else None)
-    return agent_id, effective_user_id
+    internal_uid: str | None = None
+    if supabase_uid is not None:
+        internal_uid = await _resolve_internal_user_id(db, supabase_uid)
+        if internal_uid is None or str(agent.user_id) != internal_uid:
+            raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
+    else:
+        # Agent JWT: derive user_id from the agent record
+        internal_uid = str(agent.user_id) if agent.user_id else None
+
+    return agent_id, internal_uid
