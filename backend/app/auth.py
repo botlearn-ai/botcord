@@ -1,9 +1,20 @@
-"""Supabase JWT authentication for the /api routes."""
+"""Supabase JWT authentication for the /api routes.
 
+Supports both HS256 (shared secret) and RS256/ES256 (JWKS public key)
+tokens.  The strategy:
+
+1. Peek at the token header ``alg``.
+2. If HS256 → verify with ``SUPABASE_JWT_SECRET``.
+3. Otherwise → fetch the signing key from the issuer's JWKS endpoint
+   (cached in-process by ``PyJWKClient``).
+"""
+
+import logging
 import uuid as _uuid
 from dataclasses import dataclass, field
 
 import jwt
+from jwt import PyJWKClient
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hub.config import SUPABASE_JWT_SECRET
 from hub.database import get_db
 from hub.models import User, UserRole, Role
+
+_logger = logging.getLogger(__name__)
+
+# JWKS clients keyed by issuer URL — lazily created, long-lived.
+_jwks_clients: dict[str, PyJWKClient] = {}
 
 
 @dataclass
@@ -23,24 +39,56 @@ class RequestContext:
     active_agent_id: str | None = None
 
 
+def _get_jwks_client(issuer: str) -> PyJWKClient:
+    """Return a cached ``PyJWKClient`` for the given issuer."""
+    if issuer not in _jwks_clients:
+        jwks_url = f"{issuer.rstrip('/')}/.well-known/jwks.json"
+        _jwks_clients[issuer] = PyJWKClient(jwks_url, cache_keys=True)
+    return _jwks_clients[issuer]
+
+
 def _decode_supabase_token(token: str) -> str:
     """Decode a Supabase JWT and return the ``sub`` claim.
 
     Raises ``HTTPException(401)`` on any verification failure.
     """
-    if not SUPABASE_JWT_SECRET:
-        raise HTTPException(status_code=401, detail="User auth is not configured")
+    # Peek at the header to decide verification strategy.
+    try:
+        header = jwt.get_unverified_header(token)
+    except jwt.DecodeError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    alg = header.get("alg", "HS256")
 
     try:
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
+        if alg == "HS256":
+            # Shared-secret path (legacy / local dev).
+            if not SUPABASE_JWT_SECRET:
+                raise HTTPException(status_code=401, detail="User auth is not configured")
+            payload = jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                audience="authenticated",
+            )
+        else:
+            # Asymmetric path — use JWKS from the token's issuer.
+            unverified = jwt.decode(token, options={"verify_signature": False})
+            issuer = unverified.get("iss", "")
+            if not issuer:
+                raise HTTPException(status_code=401, detail="Invalid token: missing issuer")
+            jwks_client = _get_jwks_client(issuer)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=[alg],
+                audience="authenticated",
+            )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as exc:
+        _logger.debug("JWT verification failed: %s", exc)
         raise HTTPException(status_code=401, detail="Invalid token")
 
     sub = payload.get("sub")
