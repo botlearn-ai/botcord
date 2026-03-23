@@ -82,7 +82,7 @@ async def seed_user(db_session: AsyncSession):
         avatar_url=None,
         status="active",
         supabase_user_id=supabase_uuid,
-        max_agents=5,
+        max_agents=10,
     )
     db_session.add(user)
 
