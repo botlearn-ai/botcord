@@ -24,6 +24,7 @@ import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import RoomZeroState from "./RoomZeroState";
+import SubscriptionBadge from "./SubscriptionBadge";
 
 const EXPLORE_PAGE_SIZE = 12;
 
@@ -491,9 +492,10 @@ export default function ChatPane() {
     focusedRoomId: state.focusedRoomId,
     openedRoomId: state.openedRoomId,
   })));
-  const { overview, recentVisitedRooms } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, recentVisitedRooms, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     recentVisitedRooms: state.recentVisitedRooms,
+    getRoomSummary: state.getRoomSummary,
   })));
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token }),
@@ -547,19 +549,41 @@ export default function ChatPane() {
     );
   }
 
+  const openedRoom = openedRoomId ? getRoomSummary(openedRoomId) : null;
+  const isJoinedRoom = Boolean(overview?.rooms.find((r) => r.room_id === openedRoomId));
+  const isPaidAndNotJoined = Boolean(overview && openedRoom?.required_subscription_product_id && !isJoinedRoom);
+  const loginHref = openedRoom ? `/login?next=${encodeURIComponent(`/chats/messages/${openedRoom.room_id}`)}` : "/login";
+
   return (
     <div className="flex flex-1 flex-col bg-deep-black overflow-hidden">
       {openedRoomId && <RoomHeader />}
       <div className="flex-1 overflow-hidden flex flex-col">
         {openedRoomId ? (
-          <MessageList />
+          isPaidAndNotJoined ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+              <div className="text-4xl opacity-30">🔒</div>
+              <h3 className="text-sm font-semibold text-text-primary">{t.subscriptionRequired}</h3>
+              <p className="max-w-xs text-xs text-text-secondary">{t.subscriptionRequiredDesc}</p>
+              {openedRoom?.required_subscription_product_id && (
+                <SubscriptionBadge
+                  productId={openedRoom.required_subscription_product_id}
+                  roomId={openedRoomId}
+                  variant="button"
+                  triggerLabel={isGuest ? t.loginToParticipate : t.subscriptionRequired}
+                  loginHref={loginHref}
+                />
+              )}
+            </div>
+          ) : (
+            <MessageList />
+          )
         ) : (
           <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-text-secondary">
             {t.selectRoom}
           </div>
         )}
       </div>
-      {openedRoomId && (
+      {openedRoomId && !isPaidAndNotJoined && (
         <>
           <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
             <JoinGuidePrompt roomId={openedRoomId} />

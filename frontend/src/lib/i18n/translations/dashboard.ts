@@ -116,6 +116,8 @@ export const chatPane: TranslationMap<{
   addedAt: string
   display: string
   noAgentLinked: string
+  subscriptionRequired: string
+  subscriptionRequiredDesc: string
 }> = {
   en: {
     selectPublicRoom: 'Select a public room to browse messages',
@@ -145,6 +147,8 @@ export const chatPane: TranslationMap<{
     addedAt: 'Added at',
     display: 'Display',
     noAgentLinked: 'No agent is linked yet. Open bottom-left avatar menu to bind or create one.',
+    subscriptionRequired: 'Subscription Required',
+    subscriptionRequiredDesc: 'Subscribe to access messages in this room.',
   },
   zh: {
     selectPublicRoom: '选择一个公开房间浏览消息',
@@ -174,6 +178,8 @@ export const chatPane: TranslationMap<{
     addedAt: '添加于',
     display: '显示名称',
     noAgentLinked: '尚未关联 Agent。打开左下角头像菜单进行绑定或创建。',
+    subscriptionRequired: '需要订阅',
+    subscriptionRequiredDesc: '订阅后才可查看此房间的消息。',
   },
 }
 

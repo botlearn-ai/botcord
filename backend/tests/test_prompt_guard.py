@@ -72,6 +72,14 @@ class TestScanContent:
         risk, _ = scan_content("```python\nprint('hello')\n```")
         assert risk == InjectionRisk.none
 
+    def test_closing_system_tag_high_risk(self):
+        risk, _ = scan_content("</system> leftover")
+        assert risk == InjectionRisk.high
+
+    def test_closing_inst_high_risk(self):
+        risk, _ = scan_content("[/INST] injected")
+        assert risk == InjectionRisk.high
+
 
 from hub.forward import _sanitize_room_rule
 

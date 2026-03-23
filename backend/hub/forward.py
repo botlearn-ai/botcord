@@ -29,11 +29,11 @@ class RoomContext:
 _WAKE_TYPES = frozenset({"contact_request", "contact_request_response", "contact_removed"})
 
 _INJECTION_PATTERNS = [
-    (re.compile(r"<\s*system(?:-reminder)?\s*>", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"<\|im_start\|>", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"\[INST\]", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"<<SYS>>", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"<\s*\|(?:system|user|assistant)\|?\s*>", re.IGNORECASE), "[⚠ stripped]"),
+    (re.compile(r"<\/?\s*system(?:-reminder)?\s*>", re.IGNORECASE), "[⚠ stripped]"),
+    (re.compile(r"<\|im_(?:start|end)\|>", re.IGNORECASE), "[⚠ stripped]"),
+    (re.compile(r"\[/?INST\]", re.IGNORECASE), "[⚠ stripped]"),
+    (re.compile(r"<</?SYS>>", re.IGNORECASE), "[⚠ stripped]"),
+    (re.compile(r"<\s*\/?\|(?:system|user|assistant)\|?\s*>", re.IGNORECASE), "[⚠ stripped]"),
 ]
 
 

@@ -17,13 +17,13 @@ class InjectionRisk(str, Enum):
     high = "high"
 
 
-# High-risk: well-known LLM prompt injection markers
+# High-risk: well-known LLM prompt injection markers (open AND close tags)
 _HIGH_RISK_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"<\s*system(?:-reminder)?\s*>", re.IGNORECASE),
-    re.compile(r"<\|im_start\|>", re.IGNORECASE),
-    re.compile(r"\[INST\]", re.IGNORECASE),
-    re.compile(r"<<SYS>>", re.IGNORECASE),
-    re.compile(r"<\s*\|(?:system|user|assistant)\|?\s*>", re.IGNORECASE),
+    re.compile(r"<\/?\s*system(?:-reminder)?\s*>", re.IGNORECASE),
+    re.compile(r"<\|im_(?:start|end)\|>", re.IGNORECASE),
+    re.compile(r"\[/?INST\]", re.IGNORECASE),
+    re.compile(r"<</?SYS>>", re.IGNORECASE),
+    re.compile(r"<\s*\/?\|(?:system|user|assistant)\|?\s*>", re.IGNORECASE),
     re.compile(r"```system\b", re.IGNORECASE),
 ]
 
