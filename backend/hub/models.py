@@ -717,6 +717,7 @@ class SubscriptionChargeAttempt(Base):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {"schema": "public"}
 
     id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -742,6 +743,7 @@ class User(Base):
 
 class Role(Base):
     __tablename__ = "roles"
+    __table_args__ = {"schema": "public"}
 
     id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
@@ -756,6 +758,7 @@ class Role(Base):
 
 class Permission(Base):
     __tablename__ = "permissions"
+    __table_args__ = {"schema": "public"}
 
     id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
     resource: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -769,14 +772,15 @@ class RolePermission(Base):
     __tablename__ = "role_permissions"
     __table_args__ = (
         UniqueConstraint("role_id", "permission_id", name="uq_role_permission"),
+        {"schema": "public"},
     )
 
     id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
     role_id: Mapped[_uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("roles.id"), nullable=False, index=True
+        Uuid, ForeignKey("public.roles.id"), nullable=False, index=True
     )
     permission_id: Mapped[_uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("permissions.id"), nullable=False, index=True
+        Uuid, ForeignKey("public.permissions.id"), nullable=False, index=True
     )
 
 
@@ -784,14 +788,15 @@ class UserRole(Base):
     __tablename__ = "user_roles"
     __table_args__ = (
         UniqueConstraint("user_id", "role_id", name="uq_user_role"),
+        {"schema": "public"},
     )
 
     id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
     user_id: Mapped[_uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id"), nullable=False, index=True
+        Uuid, ForeignKey("public.users.id"), nullable=False, index=True
     )
     role_id: Mapped[_uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("roles.id"), nullable=False, index=True
+        Uuid, ForeignKey("public.roles.id"), nullable=False, index=True
     )
     granted_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

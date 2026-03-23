@@ -6,7 +6,9 @@ _connect_args: dict = {}
 _execution_options: dict = {}
 if DATABASE_SCHEMA:
     _connect_args["server_settings"] = {"search_path": f"{DATABASE_SCHEMA},public"}
-    _execution_options["schema_translate_map"] = {None: DATABASE_SCHEMA}
+    # Map unqualified tables → custom schema, but keep "public" schema as-is
+    # so User/Role models (schema="public") always hit the real public schema.
+    _execution_options["schema_translate_map"] = {None: DATABASE_SCHEMA, "public": "public"}
 
 engine = create_async_engine(
     DATABASE_URL, echo=False, connect_args=_connect_args,

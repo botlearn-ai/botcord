@@ -33,7 +33,7 @@ TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
 
 @pytest_asyncio.fixture
 async def db_session():
-    engine = create_async_engine(TEST_DB_URL)
+    from tests.test_app.conftest import create_test_engine; engine = create_test_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

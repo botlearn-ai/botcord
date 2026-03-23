@@ -44,7 +44,7 @@ def _make_supabase_token(sub: str, secret: str = TEST_SUPABASE_SECRET) -> str:
 
 @pytest_asyncio.fixture
 async def db_session():
-    engine = create_async_engine(TEST_DB_URL)
+    from tests.test_app.conftest import create_test_engine; engine = create_test_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
