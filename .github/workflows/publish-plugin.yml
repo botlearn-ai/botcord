@@ -61,8 +61,8 @@ jobs:
       - name: Commit and tag
         run: |
           git add package.json package-lock.json openclaw.plugin.json
-          git commit -m "chore(plugin): release ${{ steps.bump.outputs.new_version }}"
-          git tag plugin/${{ steps.bump.outputs.new_version }}
+          git commit -m "chore: release ${{ steps.bump.outputs.new_version }}"
+          git tag ${{ steps.bump.outputs.new_version }}
           git push origin HEAD:main --tags
 
       - name: Prepare notification data
