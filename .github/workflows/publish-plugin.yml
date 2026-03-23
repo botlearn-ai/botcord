@@ -53,17 +53,17 @@ jobs:
           VERSION="${VERSION#v}"
           jq --arg v "$VERSION" '.version = $v' openclaw.plugin.json > tmp.json && mv tmp.json openclaw.plugin.json
 
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Commit and tag
         run: |
           git add package.json package-lock.json openclaw.plugin.json
           git commit -m "chore: release ${{ steps.bump.outputs.new_version }}"
           git tag ${{ steps.bump.outputs.new_version }}
           git push origin HEAD:main --tags
-
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Prepare notification data
         id: notify-data
