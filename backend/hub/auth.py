@@ -1,14 +1,23 @@
 import datetime
+import logging
 
 import jwt
 from fastapi import Depends, Header, HTTPException
+from jwt import PyJWKClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.config import JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET
+from hub.config import JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET, SUPABASE_JWT_JWKS_URL
 from hub.database import get_db
 from hub.i18n import I18nHTTPException
 from hub.models import Agent
+
+_logger = logging.getLogger(__name__)
+
+# Lazily initialised JWKS client (cached keys, thread-safe)
+_jwks_client: PyJWKClient | None = None
+if SUPABASE_JWT_JWKS_URL:
+    _jwks_client = PyJWKClient(SUPABASE_JWT_JWKS_URL, cache_keys=True)
 
 
 def create_agent_token(agent_id: str) -> tuple[str, int]:
@@ -99,12 +108,24 @@ def _parse_dashboard_token(
         pass
 
     # Slow path: Supabase JWT — need X-Active-Agent + ownership check later.
-    if not SUPABASE_JWT_SECRET:
+    if not SUPABASE_JWT_SECRET and not _jwks_client:
         raise I18nHTTPException(status_code=401, message_key="user_auth_not_configured")
+
     try:
-        payload = jwt.decode(
-            token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated",
-        )
+        if _jwks_client:
+            # ES256 / RS256 via JWKS endpoint
+            signing_key = _jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256", "RS256"],
+                audience="authenticated",
+            )
+        else:
+            # Legacy HS256 via symmetric secret
+            payload = jwt.decode(
+                token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated",
+            )
     except jwt.InvalidTokenError:
         raise I18nHTTPException(status_code=401, message_key="invalid_token")
 
