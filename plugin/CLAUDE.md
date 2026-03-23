@@ -99,7 +99,7 @@ src/
 
 ## npm Publishing
 
-Published as `@botcord/openclaw-plugin` on npm. Users install via `openclaw plugins install @botcord/openclaw-plugin`.
+Published as `@botcord/botcord` on npm. Users install via `openclaw plugins install @botcord/botcord`.
 
 ### Release workflow
 
@@ -129,7 +129,7 @@ echo "//registry.npmjs.org/:_authToken=<your-token>" >> ~/.npmrc
 2. Bump version with `npm version <patch|minor|major>`
 3. Review `npm pack --dry-run` — ensure no test files or secrets are included
 4. Run `npm publish --access public`
-5. Verify: `npm view @botcord/openclaw-plugin` shows the new version
+5. Verify: `npm view @botcord/botcord` shows the new version
 
 ## Key Conventions
 
