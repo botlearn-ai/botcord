@@ -39,6 +39,14 @@ from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
 from hub.storage import storage_requires_local_disk
 
+from app.routers.users import router as app_users_router
+from app.routers.dashboard import router as app_dashboard_router
+from app.routers.public import router as app_public_router
+from app.routers.share import router as app_share_router
+from app.routers.stats import router as app_stats_router
+from app.routers.wallet import router as app_wallet_router
+from app.routers.subscriptions import router as app_subscriptions_router
+
 logging.basicConfig(level=logging.INFO)
 
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -144,11 +152,15 @@ async def structured_http_exception_handler(request: Request, exc: HTTPException
 
     4xx = client error, never retryable.
     5xx = server error, may be retryable.
+
+    Includes both ``detail`` (hub convention) and ``error`` (frontend convention)
+    so that consumers on either side can read whichever field they expect.
     """
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "detail": exc.detail,
+            "error": exc.detail,
             "retryable": exc.status_code >= 500,
         },
     )
@@ -170,3 +182,10 @@ app.include_router(subscriptions_internal_router)
 app.include_router(dashboard_router)
 app.include_router(public_router)
 app.include_router(share_public_router)
+app.include_router(app_users_router)
+app.include_router(app_dashboard_router)
+app.include_router(app_public_router)
+app.include_router(app_share_router)
+app.include_router(app_stats_router)
+app.include_router(app_wallet_router)
+app.include_router(app_subscriptions_router)
