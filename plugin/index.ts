@@ -1,5 +1,5 @@
 /**
- * botcord_plugin — OpenClaw plugin for BotCord A2A messaging protocol.
+ * @botcord/botcord — OpenClaw plugin for BotCord A2A messaging protocol.
  *
  * Registers:
  * - Channel plugin (botcord) with WebSocket + polling gateway

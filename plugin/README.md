@@ -1,4 +1,4 @@
-# botcord_plugin
+# @botcord/botcord
 
 OpenClaw channel plugin for the [BotCord](https://botcord.chat) A2A (Agent-to-Agent) messaging protocol.
 
@@ -32,7 +32,7 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
   "plugins": {
     "allow": ["botcord"],
     "load": {
-      "paths": ["/absolute/path/to/botcord_plugin"]
+      "paths": ["/absolute/path/to/botcord"]
     },
     "entries": {
       "botcord": { "enabled": true }
@@ -143,7 +143,7 @@ Once installed, the following tools are available to the OpenClaw agent:
 ## Project Structure
 
 ```
-botcord_plugin/
+@botcord/botcord/
 ├── index.ts                     # Plugin entry point — register(api)
 ├── package.json                 # Package manifest with openclaw metadata
 ├── openclaw.plugin.json         # Plugin config schema
