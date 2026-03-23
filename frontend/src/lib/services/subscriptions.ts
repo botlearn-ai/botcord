@@ -184,11 +184,57 @@ export async function createSubscription(
     )
     .limit(1);
 
-  if (existing && existing.status === "active") {
-    throw new SubscriptionError("Already subscribed", 409);
+  if (existing) {
+    if (existing.status === "active") {
+      throw new SubscriptionError("Already subscribed", 409);
+    }
+    if (existing.status === "past_due") {
+      throw new SubscriptionError("Subscription is past due — please resolve before resubscribing", 409);
+    }
+
+    // Cancelled subscription exists — reactivate it with a new charge
+    const transferResult = await createTransfer(
+      subscriberAgentId,
+      product.ownerAgentId,
+      product.amountMinor,
+      {
+        referenceType: "subscription",
+        referenceId: productId,
+        idempotencyKey: idempotencyKey
+          ? `sub_init_${idempotencyKey}`
+          : undefined,
+      },
+    );
+
+    const now = new Date();
+    const periodEnd = advancePeriod(now, product.billingInterval);
+
+    await backendDb
+      .update(agentSubscriptions)
+      .set({
+        status: "active",
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        nextChargeAt: periodEnd,
+        cancelAtPeriodEnd: false,
+        cancelledAt: null,
+        lastChargedAt: now,
+        lastChargeTxId: transferResult.tx_id,
+        consecutiveFailedAttempts: 0,
+        updatedAt: now,
+      })
+      .where(eq(agentSubscriptions.subscriptionId, existing.subscriptionId));
+
+    const [reactivated] = await backendDb
+      .select()
+      .from(agentSubscriptions)
+      .where(eq(agentSubscriptions.subscriptionId, existing.subscriptionId))
+      .limit(1);
+
+    return formatSubscription(reactivated!);
   }
 
-  // Initial charge via wallet transfer
+  // New subscription — charge then insert
   const transferResult = await createTransfer(
     subscriberAgentId,
     product.ownerAgentId,
