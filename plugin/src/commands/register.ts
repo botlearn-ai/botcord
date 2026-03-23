@@ -247,7 +247,7 @@ export async function registerAgent(opts: {
     throw new Error(`Verification failed (${verifyResp.status}): ${body}`);
   }
 
-  const verifyData = (await verifyResp.json()) as { token: string };
+  const verifyData = (await verifyResp.json()) as { agent_token: string };
 
   // 5. Fetch claim URL (best-effort)
   let claimUrl: string | undefined;
@@ -255,7 +255,7 @@ export async function registerAgent(opts: {
     const claimResp = await fetch(
       `${normalizedHub}/registry/agents/${regData.agent_id}/claim-link`,
       {
-        headers: { Authorization: `Bearer ${verifyData.token}` },
+        headers: { Authorization: `Bearer ${verifyData.agent_token}` },
       },
     );
     if (claimResp.ok) {
