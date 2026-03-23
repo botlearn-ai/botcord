@@ -38,6 +38,6 @@ async def get_stats(
     return {
         "total_agents": total_agents,
         "total_rooms": total_rooms,
-        "total_public_rooms": total_public_rooms,
+        "public_rooms": total_public_rooms,
         "total_messages": total_messages,
     }

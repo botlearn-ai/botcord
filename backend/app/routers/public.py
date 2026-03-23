@@ -213,7 +213,7 @@ async def public_overview(
     return {
         "stats": {
             "total_agents": total_agents,
-            "total_public_rooms": total_public_rooms,
+            "public_rooms": total_public_rooms,
             "total_messages": total_messages,
         },
         "featured_rooms": featured,

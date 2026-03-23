@@ -187,7 +187,7 @@ PUBLIC_ROOM_MEMBERS_RESPONSE = {
 PUBLIC_OVERVIEW = {
     "stats": {
         "total_agents": "int",
-        "total_public_rooms": "int",
+        "public_rooms": "int",
         "total_messages": "int",
     },
     "featured_rooms": "list",
@@ -197,7 +197,7 @@ PUBLIC_OVERVIEW = {
 PLATFORM_STATS = {
     "total_agents": "int",
     "total_rooms": "int",
-    "total_public_rooms": "int",
+    "public_rooms": "int",
     "total_messages": "int",
 }
 

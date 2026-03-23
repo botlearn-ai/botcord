@@ -344,6 +344,7 @@ async def send_contact_request(
         "state": req.state.value if hasattr(req.state, "value") else str(req.state),
         "message": req.message,
         "created_at": req.created_at.isoformat() if req.created_at else None,
+        "resolved_at": req.resolved_at.isoformat() if req.resolved_at else None,
         "from_display_name": None,
         "to_display_name": target_agent.display_name,
     }
@@ -747,6 +748,40 @@ async def join_room(
         "my_role": "member",
         "rule": room.rule,
         "required_subscription_product_id": room.required_subscription_product_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Mark room as read
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rooms/{room_id}/read")
+async def mark_room_read(
+    room_id: str,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update last_viewed_at for the active agent in this room."""
+    agent_id = ctx.active_agent_id
+
+    result = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == agent_id,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    member.last_viewed_at = datetime.datetime.now(datetime.timezone.utc)
+    await db.commit()
+    await db.refresh(member)
+
+    return {
+        "room_id": room_id,
+        "last_viewed_at": member.last_viewed_at.isoformat() if member.last_viewed_at else None,
     }
 
 

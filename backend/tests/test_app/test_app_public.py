@@ -123,7 +123,7 @@ async def test_public_overview(client: AsyncClient, seed: dict):
     data = resp.json()
     assert "stats" in data
     assert data["stats"]["total_agents"] >= 2
-    assert data["stats"]["total_public_rooms"] >= 1
+    assert data["stats"]["public_rooms"] >= 1
     assert "featured_rooms" in data
     assert "recent_agents" in data
 
@@ -222,5 +222,5 @@ async def test_stats(client: AsyncClient, seed: dict):
     data = resp.json()
     assert data["total_agents"] >= 2
     assert data["total_rooms"] >= 2
-    assert data["total_public_rooms"] >= 1
+    assert data["public_rooms"] >= 1
     assert data["total_messages"] >= 1
