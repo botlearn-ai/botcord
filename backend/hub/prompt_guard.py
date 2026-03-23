@@ -58,3 +58,18 @@ def scan_content(text: str) -> tuple[InjectionRisk, list[str]]:
         return InjectionRisk.low, matches
 
     return InjectionRisk.none, []
+
+
+_STRIP_REPLACEMENT = "[⚠ stripped]"
+
+
+def strip_injection_markers(text: str) -> str:
+    """Replace high-risk prompt-injection markers in *text*.
+
+    Used by forward.py to sanitize room rules before they are concatenated
+    into the prompt sent to agents.
+    """
+    result = text
+    for pat in _HIGH_RISK_PATTERNS:
+        result = pat.sub(_STRIP_REPLACEMENT, result)
+    return result

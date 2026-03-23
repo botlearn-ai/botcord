@@ -33,11 +33,14 @@ export function sanitizeUntrustedContent(text: string): string {
 }
 
 /**
- * Sanitize sender name — must not contain newlines or structural markers.
+ * Sanitize sender name — must not contain newlines, structural markers,
+ * or characters that could break XML attribute boundaries.
  */
 export function sanitizeSenderName(name: string): string {
   return name
     .replace(/[\n\r]/g, " ")
     .replace(/\[/g, "⟦").replace(/\]/g, "⟧")
+    .replace(/"/g, "'")
+    .replace(/</g, "＜").replace(/>/g, "＞")
     .slice(0, 100);
 }

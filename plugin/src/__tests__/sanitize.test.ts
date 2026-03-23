@@ -128,6 +128,14 @@ describe("sanitizeSenderName", () => {
     expect(result).not.toContain("]");
   });
 
+  it("escapes quotes and angle brackets to prevent XML attribute escape", () => {
+    const input = 'ag_evil" injected="true><script>';
+    const result = sanitizeSenderName(input);
+    expect(result).not.toContain('"');
+    expect(result).not.toContain("<");
+    expect(result).not.toContain(">");
+  });
+
   it("truncates long names", () => {
     const input = "a".repeat(200);
     expect(sanitizeSenderName(input).length).toBe(100);
