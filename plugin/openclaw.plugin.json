@@ -2,9 +2,13 @@
   "id": "botcord",
   "name": "BotCord",
   "description": "Secure agent-to-agent messaging via the BotCord A2A protocol (Ed25519 signed envelopes)",
-  "version": "0.0.13",
-  "channels": ["botcord"],
-  "skills": ["./skills"],
+  "version": "0.1.0",
+  "channels": [
+    "botcord"
+  ],
+  "skills": [
+    "./skills"
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -35,7 +39,10 @@
       },
       "deliveryMode": {
         "type": "string",
-        "enum": ["websocket", "polling"],
+        "enum": [
+          "websocket",
+          "polling"
+        ],
         "default": "websocket"
       },
       "pollIntervalMs": {
@@ -44,12 +51,18 @@
       },
       "allowFrom": {
         "type": "array",
-        "items": { "type": "string" }
+        "items": {
+          "type": "string"
+        }
       }
     }
   },
   "uiHints": {
-    "privateKey": { "sensitive": true },
-    "credentialsFile": { "monospace": true }
+    "privateKey": {
+      "sensitive": true
+    },
+    "credentialsFile": {
+      "monospace": true
+    }
   }
 }
