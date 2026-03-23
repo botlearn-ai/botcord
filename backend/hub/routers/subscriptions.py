@@ -164,6 +164,7 @@ async def subscribe(
             idempotency_key=req.idempotency_key,
         )
         await db.commit()
+        await db.refresh(subscription)
     except ValueError as err:
         raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
     return _subscription_response(subscription)
