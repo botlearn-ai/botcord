@@ -181,7 +181,7 @@ async def send_chat_message(
         "v": "a2a/0.1",
         "msg_id": msg_id,
         "ts": ts,
-        "from": f"user:{user_id}",
+        "from": agent_id,
         "to": agent_id,
         "type": "message",
         "reply_to": None,
@@ -193,10 +193,13 @@ async def send_chat_message(
     envelope_json = json.dumps(envelope_data)
 
     hub_msg_id = generate_hub_msg_id()
+    # sender_id must be a valid agents.agent_id (FK constraint + VARCHAR(32)).
+    # The real user identity is captured in source_user_id; sender_id uses
+    # the agent_id so the record satisfies the FK and column-width constraints.
     record = MessageRecord(
         hub_msg_id=hub_msg_id,
         msg_id=msg_id,
-        sender_id=f"user:{user_id}",
+        sender_id=agent_id,
         receiver_id=agent_id,
         room_id=room_id,
         state=MessageState.queued,
@@ -225,7 +228,7 @@ async def send_chat_message(
         realtime_event=build_message_realtime_event(
             type="message",
             agent_id=agent_id,
-            sender_id=f"user:{user_id}",
+            sender_id=agent_id,
             room_id=room_id,
             hub_msg_id=hub_msg_id,
             created_at=record.created_at,
