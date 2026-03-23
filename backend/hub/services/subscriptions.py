@@ -205,7 +205,10 @@ async def create_subscription(
     current = existing.scalar_one_or_none()
     if current is not None:
         if current.status == SubscriptionStatus.cancelled:
-            raise ValueError("Subscription already cancelled")
+            # Reactivate cancelled subscription: charge and reset billing period
+            return await _reactivate_subscription(
+                session, current, product, idempotency_key,
+            )
         return current
 
     now = _utcnow()
@@ -262,6 +265,49 @@ async def create_subscription(
         if current is not None:
             return current
         raise ValueError("Subscription already exists")
+
+    await _auto_join_subscription_rooms(session, subscription)
+    return subscription
+
+
+async def _reactivate_subscription(
+    session: AsyncSession,
+    subscription: AgentSubscription,
+    product: SubscriptionProduct,
+    idempotency_key: str | None,
+) -> AgentSubscription:
+    """Reactivate a cancelled subscription by charging and resetting the billing period."""
+    now = _utcnow()
+    current_period_end = _advance_period(now, product.billing_interval)
+
+    metadata = {
+        "kind": "subscription_charge",
+        "product_id": product.product_id,
+        "subscription_id": subscription.subscription_id,
+        "billing_cycle_key": now.isoformat(),
+    }
+    tx = await create_transfer(
+        session,
+        from_agent_id=subscription.subscriber_agent_id,
+        to_agent_id=product.owner_agent_id,
+        amount_minor=product.amount_minor,
+        idempotency_key=idempotency_key or f"subscription:reactivate:{subscription.subscription_id}:{now.isoformat()}",
+        reference_type="subscription_charge",
+        reference_id=subscription.subscription_id,
+        metadata=metadata,
+        asset_code=product.asset_code,
+    )
+
+    subscription.status = SubscriptionStatus.active
+    subscription.current_period_start = now
+    subscription.current_period_end = current_period_end
+    subscription.next_charge_at = current_period_end
+    subscription.cancel_at_period_end = False
+    subscription.cancelled_at = None
+    subscription.last_charged_at = now
+    subscription.last_charge_tx_id = tx.tx_id
+    subscription.consecutive_failed_attempts = 0
+    await session.flush()
 
     await _auto_join_subscription_rooms(session, subscription)
     return subscription
