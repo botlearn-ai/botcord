@@ -46,7 +46,7 @@ function TypewriterText({
 }
 
 function isOwnerMessage(msg: DashboardMessage): boolean {
-  return msg.source_type === "dashboard_user_chat" || msg.sender_id.startsWith("user:");
+  return msg.source_type === "dashboard_user_chat";
 }
 
 export default function UserChatPane() {
