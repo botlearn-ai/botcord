@@ -726,9 +726,20 @@ async def _send_room_message(
         m.agent_id for m in room.members
         if m.agent_id != envelope.from_ and not m.muted and m.agent_id not in blocked_by
     }
+
+    # Owner-chat rooms (rm_oc_*): the agent is typically the sole member, so
+    # receivers would be empty after excluding the sender.  Create a self-
+    # delivery record so the reply appears in the room's message history for
+    # the dashboard, but skip inbox notification to avoid re-triggering the
+    # plugin.
+    _owner_chat_self_delivery = False
+    if not receivers and room_id.startswith("rm_oc_"):
+        receivers = {envelope.from_}
+        _owner_chat_self_delivery = True
+
     logger.info(
-        "ROOM fan-out msg_id=%s from=%s room=%s topic=%s receivers=%s",
-        envelope.msg_id, envelope.from_, room_id, topic, receivers,
+        "ROOM fan-out msg_id=%s from=%s room=%s topic=%s receivers=%s owner_chat_self=%s",
+        envelope.msg_id, envelope.from_, room_id, topic, receivers, _owner_chat_self_delivery,
     )
     envelope_json = json.dumps(envelope.model_dump(by_alias=True))
 
@@ -748,6 +759,10 @@ async def _send_room_message(
             receiver_id in mentioned_set or "@all" in mentioned_set
         )
 
+        # Owner-chat self-delivery records are marked as 'delivered' immediately
+        # so they never appear in the agent's inbox poll.  They exist solely for
+        # room history queries (dashboard get_room_messages).
+        _is_self_delivery = _owner_chat_self_delivery and receiver_id == envelope.from_
         record = MessageRecord(
             hub_msg_id=hub_msg_id,
             msg_id=envelope.msg_id,
@@ -757,7 +772,7 @@ async def _send_room_message(
             topic=topic,
             topic_id=topic_id,
             goal=goal,
-            state=MessageState.queued,
+            state=MessageState.delivered if _is_self_delivery else MessageState.queued,
             envelope_json=envelope_json,
             ttl_sec=envelope.ttl_sec,
             mentioned=is_mentioned,
@@ -783,20 +798,23 @@ async def _send_room_message(
 
     # Notify all receivers
     for receiver_id in receivers:
-        await notify_inbox(
-            receiver_id,
-            db=db,
-            realtime_event=build_message_realtime_event(
-                type=envelope.type.value,
-                agent_id=receiver_id,
-                sender_id=envelope.from_,
-                room_id=envelope.to,
-                hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
-                topic_id=topic_id,
-                mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
-                payload=envelope.payload,
-            ),
+        rt_event = build_message_realtime_event(
+            type=envelope.type.value,
+            agent_id=receiver_id,
+            sender_id=envelope.from_,
+            room_id=envelope.to,
+            hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
+            topic_id=topic_id,
+            mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
+            payload=envelope.payload,
         )
+        if _owner_chat_self_delivery and receiver_id == envelope.from_:
+            # Self-delivery in owner-chat: publish realtime event for the
+            # dashboard frontend but do NOT wake the agent's inbox/WS to
+            # avoid the plugin re-processing its own reply.
+            await _publish_agent_realtime_event(db, rt_event)
+        else:
+            await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
 
     if first_hub_msg_id is None:
         return SendResponse(
@@ -1192,6 +1210,9 @@ async def poll_inbox(
                 goal=rec.goal,
                 delivery_note=_build_delivery_note(rec.last_error),
                 mentioned=rec.mentioned,
+                source_type=rec.source_type,
+                source_user_id=rec.source_user_id,
+                source_session_kind=rec.source_session_kind,
             )
         )
         if ack:

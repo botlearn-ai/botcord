@@ -10,14 +10,20 @@ import { create } from "zustand";
 export interface DashboardUIState {
   focusedRoomId: string | null;
   openedRoomId: string | null;
+  /** Separate slot for the user-chat pane so it doesn't clobber openedRoomId. */
+  userChatRoomId: string | null;
+  /** True while the agent is expected to be composing a reply in user chat. */
+  userChatAgentTyping: boolean;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
-  sidebarTab: "messages" | "contacts" | "explore" | "wallet";
+  sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "user-chat";
   exploreView: "rooms" | "agents";
   contactsView: "agents" | "requests" | "rooms";
 
   setFocusedRoomId: (roomId: string | null) => void;
   setOpenedRoomId: (roomId: string | null) => void;
+  setUserChatRoomId: (roomId: string | null) => void;
+  setUserChatAgentTyping: (typing: boolean) => void;
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
@@ -31,6 +37,8 @@ export interface DashboardUIState {
 const initialUIState = {
   focusedRoomId: null,
   openedRoomId: null,
+  userChatRoomId: null,
+  userChatAgentTyping: false,
   rightPanelOpen: false,
   agentCardOpen: false,
   sidebarTab: "messages" as const,
@@ -45,6 +53,10 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.focusedRoomId === focusedRoomId ? state : { focusedRoomId })),
   setOpenedRoomId: (openedRoomId) =>
     set((state) => (state.openedRoomId === openedRoomId ? state : { openedRoomId })),
+  setUserChatRoomId: (userChatRoomId) =>
+    set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
+  setUserChatAgentTyping: (userChatAgentTyping) =>
+    set((state) => (state.userChatAgentTyping === userChatAgentTyping ? state : { userChatAgentTyping })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
   setExploreView: (exploreView) =>

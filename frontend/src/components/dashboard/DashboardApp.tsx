@@ -27,6 +27,7 @@ import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import Sidebar from "./Sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
+import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 
 type BotcordDebugRealtimeSnapshot = {
@@ -191,7 +192,7 @@ export default function DashboardApp() {
     const normalizedTab =
       tab === "dm" || tab === "rooms"
         ? "messages"
-        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet"
+        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet" || tab === "user-chat"
           ? tab
           : null;
 
@@ -505,6 +506,10 @@ export default function DashboardApp() {
       <Sidebar />
       {uiStore.sidebarTab === "wallet" ? (
         <WalletPanel />
+      ) : uiStore.sidebarTab === "user-chat" ? (
+        <div className="flex-1 min-w-0">
+          <UserChatPane />
+        </div>
       ) : (
         <>
           <ChatPane />

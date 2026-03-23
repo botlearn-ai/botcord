@@ -34,6 +34,8 @@ import type {
   ContactRequestListResponse,
   SubscriptionProductResponse,
   MySubscriptionsResponse,
+  UserChatRoom,
+  UserChatSendResponse,
 } from "./types";
 
 /**
@@ -361,6 +363,16 @@ export const api = {
   },
   getMySubscriptions() {
     return apiGet<MySubscriptionsResponse>("/api/subscriptions/me");
+  },
+
+  // --- User Chat (owner-agent direct messaging) ---
+
+  getUserChatRoom() {
+    return apiGet<UserChatRoom>("/api/dashboard/chat/room");
+  },
+
+  sendUserChatMessage(text: string) {
+    return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", { text });
   },
 };
 

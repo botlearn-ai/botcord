@@ -527,6 +527,18 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "{detail}",
         Locale.ZH: "{detail}",
     },
+
+    # -----------------------------------------------------------------------
+    # Dashboard chat
+    # -----------------------------------------------------------------------
+    "user_id_required_for_chat": {
+        Locale.EN: "User authentication is required for dashboard chat",
+        Locale.ZH: "Dashboard 聊天需要用户登录",
+    },
+    "duplicate_message": {
+        Locale.EN: "Duplicate message",
+        Locale.ZH: "重复消息",
+    },
 }
 
 

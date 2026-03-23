@@ -54,6 +54,7 @@ class DashboardMessage(BaseModel):
     state: str
     state_counts: dict[str, int] | None = None
     created_at: datetime.datetime
+    source_type: str = "agent"
 
 
 class DashboardMessageResponse(BaseModel):

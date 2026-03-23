@@ -7,6 +7,8 @@ import { resolveAccountConfig } from "./config.js";
 import { buildSessionKey } from "./session-key.js";
 import { loadSessionStore } from "openclaw/plugin-sdk/mattermost";
 import { sanitizeUntrustedContent, sanitizeSenderName } from "./sanitize.js";
+import { BotCordClient } from "./client.js";
+import { createBotCordReplyDispatcher } from "./reply-dispatcher.js";
 import type { InboxMessage, MessageType } from "./types.js";
 
 // Envelope types that count as notifications rather than normal messages
@@ -72,8 +74,128 @@ export interface InboundParams {
 /**
  * Shared handler for InboxMessage — used by both WebSocket and Poller paths.
  * Normalizes InboxMessage into InboundParams and dispatches to OpenClaw.
+ *
+ * Routes differently based on msg.source_type:
+ * - "dashboard_user_chat": auto-reply mode (user chat), skips NO_REPLY/loop-risk
+ * - default ("agent"): existing A2A flow
  */
 export async function handleInboxMessage(
+  msg: InboxMessage,
+  accountId: string,
+  cfg: any,
+): Promise<void> {
+  const isDashboardUserChat = msg.source_type === "dashboard_user_chat";
+
+  if (isDashboardUserChat) {
+    await handleDashboardUserChat(msg, accountId, cfg);
+  } else {
+    await handleA2AMessage(msg, accountId, cfg);
+  }
+}
+
+/**
+ * Handle dashboard user chat messages — auto-reply mode.
+ * No NO_REPLY hints, no A2A loop-risk, replies auto-delivered back to room.
+ */
+async function handleDashboardUserChat(
+  msg: InboxMessage,
+  accountId: string,
+  cfg: any,
+): Promise<void> {
+  const core = getBotCordRuntime();
+  const envelope = msg.envelope;
+  const senderId = envelope.from || "owner";
+  const rawContent =
+    msg.text ||
+    (typeof envelope.payload === "string"
+      ? envelope.payload
+      : (envelope.payload?.text as string) ?? JSON.stringify(envelope.payload));
+
+  const sanitizedContent = sanitizeUntrustedContent(rawContent);
+  const header = "[Owner Message]";
+  const content = `${header}\n${sanitizedContent}`;
+
+  const replyTarget = msg.room_id || "";
+  const sessionKey = buildSessionKey(msg.room_id, undefined, senderId);
+
+  const route = core.channel.routing.resolveAgentRoute({
+    cfg,
+    channel: "botcord",
+    accountId,
+    peer: { kind: "direct", id: replyTarget },
+  });
+
+  const from = `botcord:${senderId}`;
+  const to = `botcord:${accountId}`;
+
+  const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(cfg);
+  const formattedBody = core.channel.reply.formatAgentEnvelope({
+    channel: "BotCord",
+    from: "Owner",
+    timestamp: new Date(),
+    envelope: envelopeOptions,
+    body: content,
+  });
+
+  const ctxPayload = core.channel.reply.finalizeInboundContext({
+    Body: formattedBody,
+    BodyForAgent: content,
+    RawBody: content,
+    CommandBody: content,
+    From: from,
+    To: to,
+    SessionKey: route.sessionKey || sessionKey,
+    AccountId: accountId,
+    ChatType: "direct",
+    SenderName: "Owner",
+    SenderId: senderId,
+    Provider: "botcord" as const,
+    Surface: "botcord" as const,
+    MessageSid: envelope.msg_id || `botcord-${Date.now()}`,
+    Timestamp: Date.now(),
+    WasMentioned: true,
+    CommandAuthorized: true,
+    OriginatingChannel: "botcord" as const,
+    OriginatingTo: to,
+    ConversationLabel: "Owner Chat",
+  });
+
+  // Create the reply dispatcher that sends replies back to the chat room
+  const acct = resolveAccountConfig(cfg, accountId);
+  const client = new BotCordClient(acct);
+  const replyDispatcher = createBotCordReplyDispatcher({
+    client,
+    replyTarget,
+  });
+
+  // Use buffered block dispatcher with auto-delivery to the chat room.
+  // The deliver callback receives a ReplyPayload object (not a plain string).
+  await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+    ctx: ctxPayload,
+    cfg,
+    dispatcherOptions: {
+      deliver: async (payload: any) => {
+        const text = payload?.text ?? "";
+        const mediaUrl = payload?.mediaUrl;
+        if (mediaUrl) {
+          await replyDispatcher.sendMedia(text, mediaUrl);
+        } else if (text) {
+          await replyDispatcher.sendText(text);
+        }
+      },
+      onError: (err: any, info: any) => {
+        console.error(`[botcord] user-chat ${info?.kind ?? "unknown"} reply error:`, err);
+      },
+    },
+    replyOptions: {},
+  });
+}
+
+/**
+ * Handle regular A2A messages — existing flow with NO_REPLY hints and
+ * suppressed auto-delivery.
+ */
+async function handleA2AMessage(
   msg: InboxMessage,
   accountId: string,
   cfg: any,
@@ -84,7 +206,7 @@ export async function handleInboxMessage(
     msg.text ||
     (typeof envelope.payload === "string"
       ? envelope.payload
-      : envelope.payload?.text ?? JSON.stringify(envelope.payload));
+      : (envelope.payload?.text as string) ?? JSON.stringify(envelope.payload));
   // DM rooms have rm_dm_ prefix; only non-DM rooms are true group chats
   const isGroupRoom = !!msg.room_id && !msg.room_id.startsWith("rm_dm_");
   const chatType = isGroupRoom ? "group" : "direct";
