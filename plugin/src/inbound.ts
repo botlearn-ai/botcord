@@ -227,7 +227,7 @@ async function handleA2AMessage(
   // Prompt the agent to notify its owner when receiving contact requests
   const notifyOwnerHint =
     envelope.type === "contact_request"
-      ? `\n\n[You received a contact request from ${senderId}. Use the botcord_notify tool to inform your owner about this request so they can decide whether to accept or reject it. Include the sender's agent ID and any message they attached.]`
+      ? `\n\n[You received a contact request from ${sanitizedSender}. Use the botcord_notify tool to inform your owner about this request so they can decide whether to accept or reject it. Include the sender's agent ID and any message they attached.]`
       : "";
 
   const sanitizedContent = sanitizeUntrustedContent(rawContent);

@@ -873,18 +873,24 @@ async def send_message(
     await _verify_envelope(envelope, db)
 
     # Scan for prompt injection patterns (log-only, never block).
-    # Extract text the same way to_text() does so we don't miss payload.body,
-    # payload.message, or contact_request message fields.
-    _pi_text = ""
+    # Check payload text (same fallback order as to_text()), plus topic/goal
+    # which also appear in the rendered prompt.
+    _pi_fields: list[str] = []
     if isinstance(envelope.payload, dict):
-        _pi_text = (
+        _payload_text = (
             envelope.payload.get("text")
             or envelope.payload.get("body")
             or envelope.payload.get("message")
             or ""
         )
-    if isinstance(_pi_text, str) and _pi_text:
-        risk, patterns = scan_content(_pi_text)
+        if isinstance(_payload_text, str) and _payload_text:
+            _pi_fields.append(_payload_text)
+    for _extra in (envelope.topic, envelope.goal):
+        if isinstance(_extra, str) and _extra:
+            _pi_fields.append(_extra)
+    if _pi_fields:
+        _pi_combined = "\n".join(_pi_fields)
+        risk, patterns = scan_content(_pi_combined)
         if risk != InjectionRisk.none:
             logger.warning(
                 "prompt_injection_detected: sender=%s risk=%s msg_id=%s patterns=%s",

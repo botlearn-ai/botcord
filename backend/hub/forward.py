@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass, field
 
@@ -11,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.constants import SESSION_KEY_NAMESPACE
 from hub.models import Agent
+from hub.prompt_guard import strip_injection_markers
 from hub.schemas import MessageEnvelope
 
 
@@ -27,22 +27,6 @@ class RoomContext:
     my_can_send: bool | None = None
 
 _WAKE_TYPES = frozenset({"contact_request", "contact_request_response", "contact_removed"})
-
-_INJECTION_PATTERNS = [
-    (re.compile(r"<\/?\s*system(?:-reminder)?\s*>", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"<\|im_(?:start|end)\|>", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"\[/?INST\]", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"<</?SYS>>", re.IGNORECASE), "[⚠ stripped]"),
-    (re.compile(r"<\s*\/?\|(?:system|user|assistant)\|?\s*>", re.IGNORECASE), "[⚠ stripped]"),
-]
-
-
-def _sanitize_room_rule(rule: str) -> str:
-    """Strip common prompt-injection markers from a room rule string."""
-    result = rule
-    for pattern, replacement in _INJECTION_PATTERNS:
-        result = pattern.sub(replacement, result)
-    return result
 
 
 def build_forward_url(base_url: str, envelope_type: str) -> str:
@@ -115,7 +99,7 @@ def build_flat_text(
     if room_context and room_context.member_count > 2:
         prefix_lines.append(_format_room_header(room_context))
     if room_context and room_context.rule:
-        sanitized_rule = _sanitize_room_rule(room_context.rule)
+        sanitized_rule = strip_injection_markers(room_context.rule)
         prefix_lines.append(f"[房间规则] {sanitized_rule}")
         prefix_lines.append("[系统提示] 你在该群聊中的行为和回复必须遵循上述房间规则。")
     if prefix_lines:
