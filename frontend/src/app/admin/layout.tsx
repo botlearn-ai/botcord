@@ -20,7 +20,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
       try {
         const me = await userApi.getMe();
-        // @ts-expect-error beta_admin not yet in UserProfile type
         if (!me.beta_admin) {
           router.replace("/");
           return;

@@ -387,6 +387,8 @@ async def get_me(
         "avatar_url": user.avatar_url,
         "status": user.status,
         "max_agents": user.max_agents,
+        "beta_access": user.beta_access,
+        "beta_admin": user.beta_admin,
         "roles": roles,
         "agents": [
             {
