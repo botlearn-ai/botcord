@@ -463,11 +463,6 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "Subscription product not found",
         Locale.ZH: "未找到订阅产品",
     },
-    "subscription_required_to_view": {
-        Locale.EN: "Active subscription required to view messages in this room",
-        Locale.ZH: "需要有效订阅才能查看此房间的消息",
-    },
-
     # -----------------------------------------------------------------------
     # Dashboard (dashboard.py)
     # -----------------------------------------------------------------------

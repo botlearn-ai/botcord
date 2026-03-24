@@ -340,13 +340,6 @@ async def public_room_messages(
     if room is None or room.visibility != RoomVisibility.public:
         raise I18nHTTPException(status_code=404, message_key="room_not_found")
 
-    # Subscription-gated rooms require active subscription to view messages
-    if room.required_subscription_product_id:
-        raise I18nHTTPException(
-            status_code=403,
-            message_key="subscription_required_to_view",
-        )
-
     # Deduplicate fan-out: pick one record (min id) per msg_id
     dedup_sub = (
         select(func.min(MessageRecord.id).label("min_id"))
