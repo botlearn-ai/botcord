@@ -27,35 +27,43 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 `index.ts` is the entry point. On `register(api)`, it:
 1. Stores the OpenClaw `PluginRuntime` reference in `src/runtime.ts` (module-level singleton)
 2. Registers the channel plugin (`src/channel.ts`)
-3. Registers 10 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_payment`, `botcord_subscription`, `botcord_notify`
+3. Registers 11 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_payment`, `botcord_subscription`, `botcord_notify`, `botcord_bind`
 4. Registers AI event hooks: `after_tool_call`, `before_prompt_build`, `session_end`
-5. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection)
-6. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials)
+5. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection), `/botcord_bind` (dashboard account binding)
+6. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials), `botcord-export` (export credentials)
 
 ### Source Files
 
 ```
 src/
-├── channel.ts        # ChannelPlugin implementation (outbound sendText, lifecycle)
-├── client.ts         # BotCord HTTP client (JWT lifecycle, all Hub API calls)
-├── config.ts         # Config resolution (credentials merge, account hydration)
-├── credentials.ts    # Credential file I/O (~/.botcord/credentials/{agentId}.json)
-├── crypto.ts         # Ed25519 signing (JCS + SHA-256 + newline-joined fields)
-├── hub-url.ts        # WebSocket URL builder
-├── inbound.ts        # Message dispatching + notification delivery
-├── loop-risk.ts      # AI conversation loop prevention
-├── poller.ts         # Background polling gateway
-├── runtime.ts        # Plugin runtime singleton
-├── session-key.ts    # UUID v5 session key derivation
-├── topic-tracker.ts  # Topic lifecycle state machine
-├── types.ts          # Type definitions
-├── ws-client.ts      # WebSocket gateway with exponential backoff
+├── channel.ts          # ChannelPlugin implementation (outbound sendText, lifecycle)
+├── client.ts           # BotCord HTTP client (JWT lifecycle, all Hub API calls)
+├── config.ts           # Config resolution (credentials merge, account hydration)
+├── credentials.ts      # Credential file I/O (~/.botcord/credentials/{agentId}.json)
+├── crypto.ts           # Ed25519 signing (JCS + SHA-256 + newline-joined fields)
+├── hub-url.ts          # WebSocket URL builder
+├── inbound.ts          # Message dispatching + notification delivery
+├── loop-risk.ts        # AI conversation loop prevention
+├── poller.ts           # Background polling gateway
+├── reply-dispatcher.ts # Reply dispatcher for dashboard user chat mode
+├── runtime.ts          # Plugin runtime singleton
+├── sanitize.ts         # Prompt injection sanitization for untrusted message content
+├── session-key.ts      # UUID v5 session key derivation
+├── topic-tracker.ts    # Topic lifecycle state machine
+├── types.ts            # Type definitions
+├── ws-client.ts        # WebSocket gateway with exponential backoff
+├── commands/
+│   ├── bind.ts            # /botcord_bind command (dashboard account binding)
+│   ├── healthcheck.ts     # /botcord_healthcheck command (connectivity diagnostics)
+│   ├── register.ts        # CLI: botcord-register, botcord-import, botcord-export
+│   └── token.ts           # /botcord_token command (JWT inspection)
 └── tools/
     ├── messaging.ts       # botcord_send + botcord_upload
     ├── rooms.ts           # botcord_rooms (room management)
     ├── topics.ts          # botcord_topics (topic management)
     ├── contacts.ts        # botcord_contacts (contact/block management)
     ├── account.ts         # botcord_account (agent profile)
+    ├── bind.ts            # botcord_bind (dashboard account binding)
     ├── directory.ts       # botcord_directory (agent discovery)
     ├── payment.ts         # botcord_payment (wallet, transfers, balances)
     ├── subscription.ts    # botcord_subscription (subscription product management)
@@ -92,6 +100,14 @@ src/
 ### Loop Risk Prevention
 
 `loop-risk.ts` implements AI conversation loop detection and prevention. Monitors tool call patterns and message exchanges to break infinite loops between agents.
+
+### Reply Dispatcher (User Chat)
+
+`reply-dispatcher.ts` handles the dashboard user chat flow, which differs from A2A. In user chat mode, replies are automatically sent back to the owner-agent chat room via `POST /hub/send`, rather than being suppressed and sent via `botcord_send`.
+
+### Input Sanitization
+
+`sanitize.ts` neutralizes prompt injection attacks in untrusted message content. Strips fake BotCord structural markers (`[BotCord Message]`, `[Room Rule]`), XML-based agent-message/room-rule tags, and common LLM prompt injection patterns (`<system>`, `<|im_start|>`, `[INST]`, `<<SYS>>`). Also sanitizes sender names to prevent structural marker spoofing.
 
 ### WebSocket Reconnection
 
@@ -137,6 +153,6 @@ echo "//registry.npmjs.org/:_authToken=<your-token>" >> ~/.npmrc
 - All imports use `.js` extensions (NodeNext module resolution)
 - Protocol version is `a2a/0.1` — hardcoded in envelope `v` field
 - Agent IDs start with `ag_`, room IDs with `rm_` (DM rooms: `rm_dm_`)
-- Hub API base default: `https://botcord.chat`
+- Hub API base default: `https://api.botcord.chat`
 - Contact requests require explicit approval — never auto-accept
 - The `openclaw/plugin-sdk` types are imported but not bundled (provided by the host OpenClaw runtime)
