@@ -250,3 +250,89 @@ async def test_dashboard_overview_agent_not_owned(
         },
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/dashboard/chat/room
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_chat_room_creates_on_first_call(
+    client: AsyncClient, seed_data: dict
+):
+    """First call to chat/room should create and return a room."""
+    token = seed_data["token"]
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Active-Agent": "ag_dashtest001",
+    }
+
+    resp = await client.get("/api/dashboard/chat/room", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "room_id" in data
+    assert data["agent_id"] == "ag_dashtest001"
+    assert "Chat with" in data["name"]
+
+    # Store room_id for idempotency check
+    room_id = data["room_id"]
+    assert room_id  # non-empty
+
+
+@pytest.mark.asyncio
+async def test_chat_room_idempotent(
+    client: AsyncClient, seed_data: dict
+):
+    """Second call to chat/room should return the same room_id."""
+    token = seed_data["token"]
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Active-Agent": "ag_dashtest001",
+    }
+
+    resp1 = await client.get("/api/dashboard/chat/room", headers=headers)
+    assert resp1.status_code == 200
+    room_id_1 = resp1.json()["room_id"]
+
+    resp2 = await client.get("/api/dashboard/chat/room", headers=headers)
+    assert resp2.status_code == 200
+    room_id_2 = resp2.json()["room_id"]
+
+    assert room_id_1 == room_id_2
+
+
+# ---------------------------------------------------------------------------
+# POST /api/dashboard/chat/send
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_chat_send_success(
+    client: AsyncClient, seed_data: dict, monkeypatch
+):
+    """Successful send returns 202 with hub_msg_id."""
+    token = seed_data["token"]
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Active-Agent": "ag_dashtest001",
+    }
+
+    # Mock notify_inbox and _publish_agent_realtime_event so we don't need
+    # the full hub WebSocket infrastructure.
+    from hub.routers import hub as hub_router
+
+    monkeypatch.setattr(hub_router, "notify_inbox", AsyncMock())
+    monkeypatch.setattr(hub_router, "_publish_agent_realtime_event", AsyncMock())
+
+    resp = await client.post(
+        "/api/dashboard/chat/send",
+        json={"text": "Hello from dashboard"},
+        headers=headers,
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert "hub_msg_id" in data
+    assert data["hub_msg_id"].startswith("h_")
+    assert "room_id" in data
+    assert data["status"] == "queued"

@@ -5,7 +5,7 @@ import json
 import logging
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from hub.models import (
     ContactRequest,
     ContactRequestState,
     MessageRecord,
+    MessageState,
     Room,
     RoomJoinPolicy,
     RoomMember,
@@ -752,6 +753,38 @@ async def join_room(
 
 
 # ---------------------------------------------------------------------------
+# Leave room
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rooms/{room_id}/leave")
+async def leave_room(
+    room_id: str,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Leave a room. Owner cannot leave."""
+    agent_id = ctx.active_agent_id
+
+    result = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == agent_id,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(status_code=404, detail="Not a member of this room")
+    if member.role == RoomRole.owner:
+        raise HTTPException(status_code=400, detail="Owner cannot leave the room")
+
+    await db.delete(member)
+    await db.commit()
+
+    return {"room_id": room_id, "left": True}
+
+
+# ---------------------------------------------------------------------------
 # Mark room as read
 # ---------------------------------------------------------------------------
 
@@ -1121,3 +1154,143 @@ async def get_inbox(
         "count": len(messages),
         "has_more": has_more,
     }
+
+
+# ---------------------------------------------------------------------------
+# Owner-agent chat
+# ---------------------------------------------------------------------------
+
+
+class ChatSendBody(BaseModel):
+    text: str
+
+
+@router.get("/chat/room")
+async def get_chat_room(
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return (or create) the owner-agent chat room for the authenticated user."""
+    from hub.routers.dashboard_chat import _ensure_owner_chat_room
+
+    agent_id = ctx.active_agent_id
+
+    # Fetch agent display name
+    result = await db.execute(
+        select(Agent.display_name).where(Agent.agent_id == agent_id)
+    )
+    display_name = result.scalar_one_or_none() or agent_id
+
+    room_id = await _ensure_owner_chat_room(db, str(ctx.user_id), agent_id, display_name)
+    await db.commit()
+
+    return {"room_id": room_id, "name": f"Chat with {display_name}", "agent_id": agent_id}
+
+
+@router.post("/chat/send", status_code=202)
+async def send_chat_message(
+    body: ChatSendBody,
+    request: Request,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message from the dashboard user to their own agent.
+
+    Creates a MessageRecord with source_type='dashboard_user_chat' and delivers
+    it into the agent's inbox so the plugin can pick it up.
+    """
+    import time
+    import uuid
+
+    from sqlalchemy.exc import IntegrityError
+
+    from hub.id_generators import generate_hub_msg_id
+    from hub.routers.dashboard_chat import _ensure_owner_chat_room
+    from hub.routers.hub import (
+        build_agent_realtime_event,
+        build_message_realtime_event,
+        notify_inbox,
+        _publish_agent_realtime_event,
+    )
+
+    agent_id = ctx.active_agent_id
+    user_id = str(ctx.user_id)
+
+    # Fetch agent display name
+    agent_result = await db.execute(
+        select(Agent.display_name).where(Agent.agent_id == agent_id)
+    )
+    agent_display_name = agent_result.scalar_one_or_none() or agent_id
+
+    # Ensure room exists
+    room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)
+
+    # Build a synthetic envelope JSON
+    msg_id = str(uuid.uuid4())
+    ts = int(time.time())
+    payload = {"text": body.text}
+    envelope_data = {
+        "v": "a2a/0.1",
+        "msg_id": msg_id,
+        "ts": ts,
+        "from": agent_id,
+        "to": agent_id,
+        "type": "message",
+        "reply_to": None,
+        "ttl_sec": 3600,
+        "payload": payload,
+        "payload_hash": "",
+        "sig": {"alg": "ed25519", "key_id": "dashboard", "value": ""},
+    }
+    envelope_json = json.dumps(envelope_data)
+
+    hub_msg_id = generate_hub_msg_id()
+    record = MessageRecord(
+        hub_msg_id=hub_msg_id,
+        msg_id=msg_id,
+        sender_id=agent_id,
+        receiver_id=agent_id,
+        room_id=room_id,
+        state=MessageState.queued,
+        envelope_json=envelope_json,
+        ttl_sec=3600,
+        mentioned=True,
+        source_type="dashboard_user_chat",
+        source_user_id=user_id,
+        source_session_kind="owner_chat",
+        source_ip=request.client.host if request.client else None,
+        source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
+    )
+    try:
+        async with db.begin_nested():
+            db.add(record)
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="Duplicate message")
+
+    await db.commit()
+
+    # Notify inbox listeners so the plugin picks up the message
+    await notify_inbox(
+        agent_id,
+        db=db,
+        realtime_event=build_message_realtime_event(
+            type="message",
+            agent_id=agent_id,
+            sender_id=agent_id,
+            room_id=room_id,
+            hub_msg_id=hub_msg_id,
+            created_at=record.created_at,
+            payload=payload,
+        ),
+    )
+
+    # Publish a typing indicator so the dashboard shows the agent is processing
+    typing_event = build_agent_realtime_event(
+        type="typing",
+        agent_id=agent_id,
+        room_id=room_id,
+    )
+    await _publish_agent_realtime_event(db, typing_event)
+
+    return {"hub_msg_id": hub_msg_id, "room_id": room_id, "status": "queued"}
