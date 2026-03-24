@@ -54,14 +54,8 @@ export async function POST(
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  if (room.visibility !== "public") {
-    return NextResponse.json({ error: "Room is not public" }, { status: 403 });
-  }
-
-  if (room.joinPolicy !== "open") {
-    return NextResponse.json({ error: "Room does not allow open join" }, { status: 403 });
-  }
-
+  // Check subscription access first — active subscribers bypass visibility/joinPolicy
+  let hasSubscriptionAccess = false;
   if (room.requiredSubscriptionProductId) {
     const [subscription] = await backendDb
       .select({ id: agentSubscriptions.id })
@@ -75,11 +69,23 @@ export async function POST(
       )
       .limit(1);
 
-    if (!subscription) {
+    if (subscription) {
+      hasSubscriptionAccess = true;
+    } else {
       return NextResponse.json(
         { error: "Active subscription required before joining this room" },
         { status: 403 },
       );
+    }
+  }
+
+  if (!hasSubscriptionAccess) {
+    if (room.visibility !== "public") {
+      return NextResponse.json({ error: "Room is not public" }, { status: 403 });
+    }
+
+    if (room.joinPolicy !== "open") {
+      return NextResponse.json({ error: "Room does not allow open join" }, { status: 403 });
     }
   }
 
@@ -91,7 +97,15 @@ export async function POST(
     .limit(1);
 
   if (existing) {
-    return NextResponse.json({ error: "Already a member of this room" }, { status: 409 });
+    // Backend auto-join may have already added the member during subscription;
+    // treat as success so the frontend flow completes cleanly.
+    return NextResponse.json({
+      room_id: roomId,
+      agent_id: agentId,
+      role: "member",
+      joined: true,
+      already_member: true,
+    });
   }
 
   // Check max_members
