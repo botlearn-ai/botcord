@@ -25,8 +25,7 @@ import {
 } from "../config.js";
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { getBotCordRuntime } from "../runtime.js";
-
-const DEFAULT_HUB = "https://api.botcord.chat";
+import { DEFAULT_HUB } from "../constants.js";
 
 interface RegisterResult {
   agentId: string;
