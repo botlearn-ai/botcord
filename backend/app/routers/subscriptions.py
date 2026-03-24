@@ -166,7 +166,7 @@ async def archive_product(
 @router.post("/products/{product_id}/subscribe", status_code=201)
 async def subscribe(
     product_id: str,
-    body: SubscriptionCreateRequest,
+    body: SubscriptionCreateRequest | None = None,
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
@@ -175,7 +175,7 @@ async def subscribe(
             db,
             product_id=product_id,
             subscriber_agent_id=ctx.active_agent_id,
-            idempotency_key=body.idempotency_key,
+            idempotency_key=body.idempotency_key if body else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
