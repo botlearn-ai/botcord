@@ -8,12 +8,14 @@
  */
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { SubscriptionProduct } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 
 interface SubscriptionBadgeProps {
   productId?: string | null;
@@ -34,6 +36,7 @@ export default function SubscriptionBadge({
   triggerLabel,
   loginHref,
 }: SubscriptionBadgeProps) {
+  const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productData, setProductData] = useState<SubscriptionProduct | null>(null);
@@ -46,7 +49,15 @@ export default function SubscriptionBadge({
     activeAgentId: state.activeAgentId,
     sessionMode: state.sessionMode,
   })));
-  const joinRoom = useDashboardChatStore((state) => state.joinRoom);
+  const { joinRoom, loadRoomMessages } = useDashboardChatStore(useShallow((state) => ({
+    joinRoom: state.joinRoom,
+    loadRoomMessages: state.loadRoomMessages,
+  })));
+  const { setOpenedRoomId, setFocusedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
+    setOpenedRoomId: state.setOpenedRoomId,
+    setFocusedRoomId: state.setFocusedRoomId,
+    setSidebarTab: state.setSidebarTab,
+  })));
   const {
     getActiveSubscription,
     ensureSubscriptions,
@@ -132,6 +143,12 @@ export default function SubscriptionBadge({
       }
       if (roomId) {
         await joinRoom(roomId);
+        // Navigate into the room immediately
+        setFocusedRoomId(roomId);
+        setOpenedRoomId(roomId);
+        setSidebarTab("messages");
+        loadRoomMessages(roomId);
+        router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
       }
       setShowModal(false);
     } catch (err) {
