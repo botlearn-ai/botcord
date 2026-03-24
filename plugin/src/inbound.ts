@@ -5,7 +5,20 @@
 import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
 import { buildSessionKey } from "./session-key.js";
-import { loadSessionStore } from "openclaw/plugin-sdk/mattermost";
+import { readFileSync } from "node:fs";
+
+// Simplified inline replacement for loadSessionStore from openclaw/plugin-sdk/mattermost.
+// Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
+function loadSessionStore(storePath: string): Record<string, any> {
+  try {
+    const raw = readFileSync(storePath, "utf-8");
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 import { sanitizeUntrustedContent, sanitizeSenderName } from "./sanitize.js";
 import { BotCordClient } from "./client.js";
 import { createBotCordReplyDispatcher } from "./reply-dispatcher.js";

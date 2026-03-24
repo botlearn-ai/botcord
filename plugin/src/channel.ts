@@ -4,11 +4,35 @@
  * security, messaging, and status adapters.
  */
 import type { ChannelPlugin, OpenClawConfig as ClawdbotConfig } from "openclaw/plugin-sdk/core";
-import {
-  buildBaseChannelStatusSummary,
-  createDefaultChannelRuntimeState,
-} from "openclaw/plugin-sdk/status-helpers";
-import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
+// Inlined from openclaw/plugin-sdk/status-helpers and account-id to avoid
+// missing dist artifacts in npm-installed openclaw (see openclaw#53685).
+const DEFAULT_ACCOUNT_ID = "default";
+
+function createDefaultChannelRuntimeState(accountId: string) {
+  return {
+    accountId,
+    running: false as const,
+    lastStartAt: null,
+    lastStopAt: null,
+    lastError: null,
+  };
+}
+
+function buildBaseChannelStatusSummary(snapshot: {
+  configured?: boolean | null;
+  running?: boolean | null;
+  lastStartAt?: number | null;
+  lastStopAt?: number | null;
+  lastError?: string | null;
+}) {
+  return {
+    configured: snapshot.configured ?? false,
+    running: snapshot.running ?? false,
+    lastStartAt: snapshot.lastStartAt ?? null,
+    lastStopAt: snapshot.lastStopAt ?? null,
+    lastError: snapshot.lastError ?? null,
+  };
+}
 import {
   resolveChannelConfig,
   resolveAccounts,
