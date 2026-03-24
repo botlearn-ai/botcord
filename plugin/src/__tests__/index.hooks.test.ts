@@ -10,6 +10,7 @@ describe("botcord plugin hooks", () => {
       name: "BotCord",
       description: "BotCord",
       source: "test",
+      registrationMode: "full" as const,
       config: {},
       runtime: {} as never,
       logger: {

@@ -3,12 +3,12 @@
  * outbound (send via signed envelopes), gateway (start websocket/polling),
  * security, messaging, and status adapters.
  */
-import type { ChannelPlugin, ClawdbotConfig } from "openclaw/plugin-sdk";
+import type { ChannelPlugin, ClawdbotConfig } from "openclaw/plugin-sdk/core";
 import {
   buildBaseChannelStatusSummary,
   createDefaultChannelRuntimeState,
-  DEFAULT_ACCOUNT_ID,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/status-helpers";
+import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import {
   resolveChannelConfig,
   resolveAccounts,

@@ -7,6 +7,9 @@
   "license": "MIT",
   "files": [
     "index.ts",
+    "setup-entry.ts",
+    "api.ts",
+    "runtime-api.ts",
     "src/",
     "!src/__tests__/",
     "skills/",
@@ -39,7 +42,7 @@
   },
   "devDependencies": {
     "@types/ws": "^8.5.0",
-    "openclaw": ">=2026.1.0",
+    "openclaw": "^2026.3.23",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
@@ -47,6 +50,12 @@
     "extensions": [
       "./index.ts"
     ],
+    "setupEntry": "./setup-entry.ts",
+    "install": {
+      "npmSpec": "@botcord/botcord",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.3.22"
+    },
     "channel": {
       "id": "botcord",
       "label": "BotCord",
