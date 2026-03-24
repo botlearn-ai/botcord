@@ -12,6 +12,7 @@ import { getConfig as getAppConfig } from "../runtime.js";
 export function createContactsTool() {
   return {
     name: "botcord_contacts",
+    label: "Manage Contacts",
     description: "Manage BotCord contacts: list/remove contacts, send/accept/reject requests, block/unblock agents.",
     parameters: {
       type: "object" as const,

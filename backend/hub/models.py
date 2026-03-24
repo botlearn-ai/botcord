@@ -129,6 +129,21 @@ class UsedNonce(Base):
     agent: Mapped["Agent"] = relationship(back_populates="used_nonces")
 
 
+class UsedBindTicket(Base):
+    """Tracks consumed bind ticket JTIs to prevent replay attacks.
+
+    No FK to agents — the ticket may be consumed before the agent row exists.
+    Rows can be periodically cleaned where created_at < now - 10 minutes.
+    """
+    __tablename__ = "used_bind_tickets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Endpoint(Base):
     __tablename__ = "endpoints"
 

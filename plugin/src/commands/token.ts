@@ -15,7 +15,7 @@ export function createTokenCommand() {
     description: "Fetch and display the current BotCord JWT token.",
     acceptsArgs: false,
     requireAuth: true,
-    handler: async () => {
+    handler: async (_ctx: any) => {
       const cfg = getAppConfig();
       if (!cfg) {
         return { text: "[FAIL] No OpenClaw configuration available" };

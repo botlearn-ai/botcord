@@ -125,3 +125,9 @@ MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS: float = float(os.getenv("MESSAGE_EXPIRY_PO
 # Secret used to HMAC-sign bind tickets for cryptographic agent binding.
 # Falls back to JWT_SECRET if not explicitly set.
 BIND_PROOF_SECRET: str | None = os.getenv("BIND_PROOF_SECRET") or os.getenv("BOTCORD_BIND_PROOF_SECRET")
+
+# ---------------------------------------------------------------------------
+# Environment tag — controls CORS origins and other env-specific behavior
+# Values: "preview" | "prod" (default: "prod")
+# ---------------------------------------------------------------------------
+ENVIRONMENT_TAG: str = os.getenv("ENVIRONMENT_TAG", "prod")

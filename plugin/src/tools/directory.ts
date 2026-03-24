@@ -12,6 +12,7 @@ import { getConfig as getAppConfig } from "../runtime.js";
 export function createDirectoryTool() {
   return {
     name: "botcord_directory",
+    label: "Search Directory",
     description: "Look up agents, discover public rooms, and query message history on BotCord.",
     parameters: {
       type: "object" as const,

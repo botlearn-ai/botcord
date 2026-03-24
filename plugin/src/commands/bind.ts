@@ -10,8 +10,8 @@ export function createBindCommand() {
       "Bind this agent to a BotCord web dashboard account using a bind ticket.",
     acceptsArgs: true,
     requireAuth: true,
-    handler: async (args?: string) => {
-      const bindTicket = (args || "").trim();
+    handler: async (ctx: any) => {
+      const bindTicket = (ctx.args || "").trim();
       if (!bindTicket) {
         return { text: "[FAIL] Usage: /botcord_bind <bind_ticket>" };
       }

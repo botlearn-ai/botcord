@@ -2,6 +2,8 @@
 
 import base64
 import datetime
+import hashlib
+import hmac
 import json
 import uuid
 
@@ -10,9 +12,10 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from unittest.mock import AsyncMock
+from sqlalchemy.pool import StaticPool
+from unittest.mock import AsyncMock, patch
 
-from hub.models import Agent, Base, MessagePolicy, Role, User, UserRole
+from hub.models import Agent, Base, KeyState, MessagePolicy, Role, SigningKey, User, UserRole
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
@@ -30,24 +33,37 @@ def _make_supabase_token(sub: str, secret: str = TEST_SUPABASE_SECRET) -> str:
 
 
 @pytest_asyncio.fixture
-async def db_session():
-    from tests.test_app.conftest import create_test_engine; engine = create_test_engine()
+async def db_engine():
+    """Create a shared in-memory SQLite engine using StaticPool.
+
+    StaticPool reuses the same connection for all sessions, so both the
+    test session and the independent jti session see the same tables.
+    """
+    engine = create_async_engine(
+        TEST_DB_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        execution_options={"schema_translate_map": {"public": None}},
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    session_factory = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with session_factory() as session:
-        yield session
-
+    yield engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession, monkeypatch):
+async def db_session(db_engine):
+    session_factory = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with session_factory() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession, db_engine, monkeypatch):
     import hub.config
     monkeypatch.setattr(hub.config, "SUPABASE_JWT_SECRET", TEST_SUPABASE_SECRET)
     import app.auth
@@ -55,12 +71,19 @@ async def client(db_session: AsyncSession, monkeypatch):
 
     from hub.main import app
     from hub.database import get_db
+    import app.routers.users as users_mod
 
     async def _override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
     app.state.http_client = AsyncMock(spec=AsyncClient)
+
+    # Point the jti session factory at the same in-memory SQLite engine
+    jti_factory = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    monkeypatch.setattr(users_mod, "_jti_session_factory", jti_factory)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -335,3 +358,452 @@ async def test_claim_resolve_quota_exceeded(client: AsyncClient, seed_user: dict
     )
     assert resp.status_code == 400
     assert "quota" in resp.json()["error"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Helpers for bind ticket creation
+# ---------------------------------------------------------------------------
+
+TEST_JWT_SECRET = "change-me-in-production"
+
+
+def _make_bind_ticket(
+    user_id: str, secret: str = TEST_JWT_SECRET, ttl: int = 300
+) -> str:
+    """Create a valid bind ticket HMAC-signed with the given secret."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    exp = now + datetime.timedelta(seconds=ttl)
+    payload = {
+        "uid": user_id,
+        "nonce": uuid.uuid4().hex,
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+        "jti": uuid.uuid4().hex,
+    }
+    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
+    sig = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).decode()
+    return f"{payload_b64}.{sig_b64}"
+
+
+def _mock_verify_agent_control(return_value: bool = True):
+    """Patch _verify_agent_control to return a fixed bool."""
+    return patch(
+        "app.routers.users._verify_agent_control", return_value=return_value
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fixture: seed_user_for_claim — user with no agents yet, with bind secret patched
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def seed_user_for_claim(db_session: AsyncSession, monkeypatch):
+    """Create a user with no agents for testing claim/bind flows."""
+    import app.routers.users as users_mod
+    import hub.config
+
+    monkeypatch.setattr(users_mod, "BIND_PROOF_SECRET", None)
+    monkeypatch.setattr(users_mod, "JWT_SECRET", TEST_JWT_SECRET)
+    monkeypatch.setattr(hub.config, "BIND_PROOF_SECRET", None)
+    monkeypatch.setattr(hub.config, "JWT_SECRET", TEST_JWT_SECRET)
+
+    supabase_uuid = uuid.uuid4()
+    supabase_uid = str(supabase_uuid)
+    user_id = uuid.uuid4()
+
+    user = User(
+        id=user_id,
+        display_name="Claim User",
+        email="claim@example.com",
+        status="active",
+        supabase_user_id=supabase_uuid,
+        max_agents=3,
+    )
+    db_session.add(user)
+
+    role = Role(
+        id=uuid.uuid4(),
+        name="member",
+        display_name="Member",
+        is_system=True,
+        priority=0,
+    )
+    db_session.add(role)
+    await db_session.flush()
+
+    user_role = UserRole(id=uuid.uuid4(), user_id=user_id, role_id=role.id)
+    db_session.add(user_role)
+    await db_session.commit()
+
+    return {
+        "user": user,
+        "user_id": user_id,
+        "supabase_uid": supabase_uid,
+        "token": _make_supabase_token(supabase_uid),
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/users/me/agents — claim via agent_token
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_claim_agent_with_token_success(
+    client: AsyncClient, seed_user_for_claim: dict
+):
+    """Successful claim with agent_token (mock verify returns True)."""
+    token = seed_user_for_claim["token"]
+
+    with _mock_verify_agent_control(True):
+        resp = await client.post(
+            "/api/users/me/agents",
+            json={
+                "agent_id": "ag_newagent0001",
+                "display_name": "New Agent",
+                "agent_token": "tok_valid",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["agent_id"] == "ag_newagent0001"
+    assert data["display_name"] == "New Agent"
+    assert data["is_default"] is True  # first agent for this user
+    assert data["claimed_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_claim_agent_already_claimed(
+    client: AsyncClient, seed_user_for_claim: dict, db_session: AsyncSession
+):
+    """Agent already claimed returns 409."""
+    token = seed_user_for_claim["token"]
+
+    agent = Agent(
+        agent_id="ag_claimed00001",
+        display_name="Already Claimed",
+        user_id=seed_user_for_claim["user_id"],
+        claimed_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    db_session.add(agent)
+    await db_session.commit()
+
+    with _mock_verify_agent_control(True):
+        resp = await client.post(
+            "/api/users/me/agents",
+            json={
+                "agent_id": "ag_claimed00001",
+                "display_name": "Already Claimed",
+                "agent_token": "tok_valid",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 409
+    assert "already claimed" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_claim_agent_quota_exceeded(
+    client: AsyncClient, seed_user_for_claim: dict, db_session: AsyncSession
+):
+    """Quota exceeded returns 400."""
+    token = seed_user_for_claim["token"]
+    user_id = seed_user_for_claim["user_id"]
+
+    # Set max_agents to 1 and create one agent already
+    seed_user_for_claim["user"].max_agents = 1
+    agent = Agent(
+        agent_id="ag_existing0001",
+        display_name="Existing",
+        user_id=user_id,
+        claimed_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    db_session.add(agent)
+    await db_session.commit()
+
+    with _mock_verify_agent_control(True):
+        resp = await client.post(
+            "/api/users/me/agents",
+            json={
+                "agent_id": "ag_newquota0001",
+                "display_name": "Over Quota",
+                "agent_token": "tok_valid",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 400
+    assert "quota" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_claim_agent_missing_token_and_proof(
+    client: AsyncClient, seed_user_for_claim: dict
+):
+    """Missing both agent_token and bind_proof returns 400."""
+    token = seed_user_for_claim["token"]
+
+    resp = await client.post(
+        "/api/users/me/agents",
+        json={
+            "agent_id": "ag_notoken00001",
+            "display_name": "No Token",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"].lower()
+    assert "agent_token" in detail or "bind_proof" in detail
+
+
+@pytest.mark.asyncio
+async def test_claim_agent_invalid_agent_id(
+    client: AsyncClient, seed_user_for_claim: dict
+):
+    """Invalid agent_id format returns 400."""
+    token = seed_user_for_claim["token"]
+
+    resp = await client.post(
+        "/api/users/me/agents",
+        json={
+            "agent_id": "bad_format_id",
+            "display_name": "Bad ID",
+            "agent_token": "tok_valid",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 400
+    assert "ag_" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/users/me/agents — claim via bind_proof (Ed25519 flow)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_claim_agent_with_bind_proof_success(
+    client: AsyncClient, seed_user_for_claim: dict, db_session: AsyncSession
+):
+    """Successful claim with bind_proof: ticket verified, Ed25519 proof verified."""
+    token = seed_user_for_claim["token"]
+    user_id = str(seed_user_for_claim["user_id"])
+    agent_id = "ag_proofagent01"
+
+    # Create SigningKey for the agent
+    signing_key = SigningKey(
+        key_id="k_testkey001",
+        agent_id=agent_id,
+        pubkey="ed25519:dGVzdHB1YmtleQ==",  # dummy
+        state=KeyState.active,
+    )
+    db_session.add(signing_key)
+    await db_session.commit()
+
+    ticket = _make_bind_ticket(user_id)
+
+    # Mock the Ed25519 verification and token creation
+    with patch("app.routers.users.verify_challenge_sig", return_value=True), \
+         patch("app.routers.users.create_agent_token", return_value=("tok_new_agent", 9999)):
+        resp = await client.post(
+            "/api/users/me/agents",
+            json={
+                "agent_id": agent_id,
+                "display_name": "Proof Agent",
+                "bind_proof": {
+                    "key_id": "k_testkey001",
+                    "nonce": "testnonce123",
+                    "sig": "testsig123",
+                },
+                "bind_ticket": ticket,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["agent_id"] == agent_id
+    assert data["display_name"] == "Proof Agent"
+    assert data["is_default"] is True
+
+
+# ---------------------------------------------------------------------------
+# POST /api/users/me/agents/bind — agent bind via ticket (no user auth)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agent_bind_success(
+    client: AsyncClient, seed_user_for_claim: dict
+):
+    """Successful bind with valid ticket + token."""
+    user_id = str(seed_user_for_claim["user_id"])
+    ticket = _make_bind_ticket(user_id)
+
+    with _mock_verify_agent_control(True):
+        resp = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_bindagent001",
+                "display_name": "Bound Agent",
+                "agent_token": "tok_valid",
+                "bind_ticket": ticket,
+            },
+        )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["agent_id"] == "ag_bindagent001"
+    assert data["display_name"] == "Bound Agent"
+    assert data["is_default"] is True  # first agent for this user
+    assert data["claimed_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_agent_bind_invalid_ticket(
+    client: AsyncClient, seed_user_for_claim: dict
+):
+    """Invalid bind_ticket returns 401."""
+    resp = await client.post(
+        "/api/users/me/agents/bind",
+        json={
+            "agent_id": "ag_bindagent002",
+            "display_name": "Bind Agent 2",
+            "agent_token": "tok_valid",
+            "bind_ticket": "invalid.ticket",
+        },
+    )
+
+    assert resp.status_code == 401
+    detail = resp.json()["detail"].lower()
+    assert "invalid" in detail or "expired" in detail
+
+
+@pytest.mark.asyncio
+async def test_agent_bind_ticket_replay_rejected(
+    client: AsyncClient, seed_user_for_claim: dict
+):
+    """Replaying the same bind_ticket returns 401 on second use."""
+    user_id = str(seed_user_for_claim["user_id"])
+    ticket = _make_bind_ticket(user_id)
+
+    # First use succeeds
+    with _mock_verify_agent_control(True):
+        resp1 = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_replay00001",
+                "display_name": "First Bind",
+                "agent_token": "tok_valid",
+                "bind_ticket": ticket,
+            },
+        )
+    assert resp1.status_code == 201
+
+    # Same ticket again (different agent) should be rejected
+    with _mock_verify_agent_control(True):
+        resp2 = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_replay00002",
+                "display_name": "Replay Bind",
+                "agent_token": "tok_valid",
+                "bind_ticket": ticket,
+            },
+        )
+    assert resp2.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_agent_bind_ticket_burned_on_failure(
+    client: AsyncClient, seed_user_for_claim: dict
+):
+    """A ticket is consumed even when the bind fails (e.g. bad agent_token).
+
+    After the first attempt fails (jti consumed but agent_token rejected),
+    the same ticket must not be accepted on a second attempt, even with a
+    valid agent_token. This verifies the independent-transaction jti burn.
+    """
+    user_id = str(seed_user_for_claim["user_id"])
+    ticket = _make_bind_ticket(user_id)
+
+    # First attempt: ticket is valid but agent_token verification fails.
+    # The jti should still be burned.
+    with _mock_verify_agent_control(False):
+        resp1 = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_burntest0001",
+                "display_name": "Burn Test",
+                "agent_token": "tok_bad",
+                "bind_ticket": ticket,
+            },
+        )
+    assert resp1.status_code == 401
+    assert "token" in resp1.json()["detail"].lower()
+
+    # Second attempt: same ticket, now with valid token. Should still be rejected
+    # because the jti was already consumed in the first (failed) attempt.
+    with _mock_verify_agent_control(True):
+        resp2 = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_burntest0001",
+                "display_name": "Burn Test",
+                "agent_token": "tok_valid",
+                "bind_ticket": ticket,
+            },
+        )
+    assert resp2.status_code == 401
+    assert "already used" in resp2.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_bind_already_claimed(
+    client: AsyncClient, seed_user_for_claim: dict, db_session: AsyncSession
+):
+    """Agent already claimed returns 409."""
+    user_id = str(seed_user_for_claim["user_id"])
+    ticket = _make_bind_ticket(user_id)
+
+    # Pre-create a claimed agent owned by another user
+    other_user = User(
+        id=uuid.uuid4(),
+        display_name="Other User",
+        email="other@example.com",
+        status="active",
+        supabase_user_id=uuid.uuid4(),
+        max_agents=10,
+    )
+    db_session.add(other_user)
+
+    agent = Agent(
+        agent_id="ag_bindclaim001",
+        display_name="Already Bound",
+        user_id=other_user.id,
+        claimed_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    db_session.add(agent)
+    await db_session.commit()
+
+    with _mock_verify_agent_control(True):
+        resp = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_bindclaim001",
+                "display_name": "Already Bound",
+                "agent_token": "tok_valid",
+                "bind_ticket": ticket,
+            },
+        )
+
+    assert resp.status_code == 409
+    assert "already claimed" in resp.json()["detail"].lower()

@@ -12,6 +12,7 @@ import { getConfig as getAppConfig } from "../runtime.js";
 export function createRoomsTool() {
   return {
     name: "botcord_rooms",
+    label: "Manage Rooms",
     description:
       "Manage BotCord rooms: create, list, join, leave, update, invite/remove members, " +
       "set permissions, promote/transfer/dissolve, discover public rooms.",

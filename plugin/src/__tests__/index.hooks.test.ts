@@ -10,6 +10,7 @@ describe("botcord plugin hooks", () => {
       name: "BotCord",
       description: "BotCord",
       source: "test",
+      registrationMode: "full" as const,
       config: {},
       runtime: {} as never,
       logger: {
@@ -27,11 +28,18 @@ describe("botcord plugin hooks", () => {
       registerProvider() {},
       registerCommand() {},
       registerContextEngine() {},
+      registerSpeechProvider() {},
+      registerMediaUnderstandingProvider() {},
+      registerImageGenerationProvider() {},
+      registerWebSearchProvider() {},
+      registerInteractiveHandler() {},
+      registerConversationBinding() {},
+      registerShutdownHook() {},
       resolvePath(input: string) {
         return input;
       },
       on,
-    });
+    } as any);
 
     expect(on.mock.calls.map((call) => call[0])).toEqual([
       "after_tool_call",

@@ -38,11 +38,13 @@ import type {
   UserChatSendResponse,
 } from "./types";
 
+import { createClient } from "@/lib/supabase/client";
+
 /**
- * [INPUT]: 依赖浏览器 fetch 与本地 active-agent 状态，依赖 /api/* BFF 路由与公开 Hub API
- * [OUTPUT]: 对外提供 api/userApi 请求封装、错误类型 ApiError 与 active-agent 工具函数
- * [POS]: frontend 数据访问层入口，统一 Dashboard 与用户绑定相关网络调用
- * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ * [INPUT]: Supabase client-side SDK for auth tokens, browser fetch, local active-agent state
+ * [OUTPUT]: api/userApi request wrappers, ApiError class, active-agent utilities
+ * [POS]: frontend data access layer — all calls go directly to the backend Hub API
+ * [PROTOCOL]: update this header on changes, then check README.md
  */
 
 const API_BASE =
@@ -83,8 +85,20 @@ class ApiError extends Error {
   }
 }
 
-function buildHeaders(token: string): Record<string, string> {
-  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+// --- Auth helpers ---
+
+async function getAccessToken(): Promise<string | null> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
+
+async function buildAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  const token = await getAccessToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const activeAgentId = getActiveAgentId();
   if (activeAgentId) {
     headers["X-Active-Agent"] = activeAgentId;
@@ -92,54 +106,17 @@ function buildHeaders(token: string): Record<string, string> {
   return headers;
 }
 
-async function request<T>(path: string, token: string, params?: Record<string, string>): Promise<T> {
+// --- Core request helpers ---
+
+async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(path, API_BASE);
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null) url.searchParams.set(k, v);
     });
   }
-  const fullUrl = url.toString();
-  console.log(`[API] → ${path}`, fullUrl);
-  try {
-    const res = await fetch(fullUrl, {
-      headers: buildHeaders(token),
-    });
-    console.log(`[API] ← ${path} status=${res.status}`);
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ detail: res.statusText }));
-      console.error(`[API] ✗ ${path} error:`, res.status, body);
-      throw new ApiError(res.status, body.detail || res.statusText);
-    }
-    const data = await res.json();
-    console.log(`[API] ✓ ${path} response:`, data);
-    return data;
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-    console.error(`[API] ✗ ${path} network error:`, err);
-    throw err;
-  }
-}
-
-// --- Cookie-session request helpers (for migrated /api/* routes) ---
-
-function buildCookieHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const activeAgentId = getActiveAgentId();
-  if (activeAgentId) {
-    headers["X-Active-Agent"] = activeAgentId;
-  }
-  return headers;
-}
-
-async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const url = new URL(path, window.location.origin);
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) url.searchParams.set(k, v);
-    });
-  }
-  const res = await fetch(url.toString(), { headers: buildCookieHeaders() });
+  const headers = await buildAuthHeaders();
+  const res = await fetch(url.toString(), { headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new ApiError(res.status, body.error || body.detail || res.statusText);
@@ -148,13 +125,40 @@ async function apiGet<T>(path: string, params?: Record<string, string>): Promise
 }
 
 async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { ...buildCookieHeaders() };
+  const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
   const init: RequestInit = { method: "POST", headers };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
-  const res = await fetch(path, init);
+  const url = new URL(path, API_BASE);
+  const res = await fetch(url.toString(), init);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, data.error || data.detail || res.statusText);
+  }
+  return res.json();
+}
+
+async function apiDelete(path: string): Promise<void> {
+  const headers = await buildAuthHeaders();
+  const url = new URL(path, API_BASE);
+  const res = await fetch(url.toString(), { method: "DELETE", headers });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, data.error || data.detail || res.statusText);
+  }
+}
+
+async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
+  const init: RequestInit = { method: "PATCH", headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  const url = new URL(path, API_BASE);
+  const res = await fetch(url.toString(), init);
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
     throw new ApiError(res.status, data.error || data.detail || res.statusText);
@@ -163,7 +167,7 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  // --- Dashboard APIs (migrated to frontend /api/*) ---
+  // --- Dashboard APIs ---
 
   getOverview() {
     return apiGet<DashboardOverview>("/api/dashboard/overview");
@@ -174,7 +178,7 @@ export const api = {
     if (opts?.before) params.before = opts.before;
     if (opts?.after) params.after = opts.after;
     if (opts?.limit) params.limit = String(opts.limit);
-    return apiGet<DashboardMessageResponse>(`/api/rooms/${roomId}/messages`, params);
+    return apiGet<DashboardMessageResponse>(`/api/dashboard/rooms/${roomId}/messages`, params);
   },
 
   markRoomRead(roomId: string) {
@@ -221,7 +225,7 @@ export const api = {
     return apiGet<PlatformStats>("/api/stats");
   },
 
-  // --- Public (guest) APIs (migrated to frontend /api/*) ---
+  // --- Public (guest) APIs ---
 
   getPublicOverview() {
     return apiGet<PublicOverview>("/api/public/overview");
@@ -248,7 +252,7 @@ export const api = {
     if (opts?.before) params.before = opts.before;
     if (opts?.after) params.after = opts.after;
     if (opts?.limit) params.limit = String(opts.limit);
-    return apiGet<DashboardMessageResponse>(`/api/rooms/${roomId}/messages`, params);
+    return apiGet<DashboardMessageResponse>(`/api/public/rooms/${roomId}/messages`, params);
   },
 
   getPublicAgents(opts?: { q?: string; limit?: number; offset?: number }) {
@@ -269,7 +273,7 @@ export const api = {
 
   // --- Hub APIs ---
 
-  pollInbox(_token: string, timeout = 25) {
+  pollInbox(timeout = 25) {
     return apiGet<InboxPollResponse>("/api/dashboard/inbox", {
       timeout: String(timeout),
       ack: "false",
@@ -303,7 +307,7 @@ export const api = {
     return apiPost<ContactRequestItem>(`/api/dashboard/contact-requests/${requestId}/reject`);
   },
 
-  // --- Wallet APIs (migrated to frontend /api/*) ---
+  // --- Wallet APIs ---
 
   getWallet() {
     return apiGet<WalletSummary>("/api/wallet/summary");
@@ -335,7 +339,8 @@ export const api = {
   cancelWithdrawal(withdrawalId: string) {
     return apiPost<{ withdrawal_id: string; status: string }>(`/api/wallet/withdrawals/${withdrawalId}/cancel`);
   },
-  // --- Stripe Checkout APIs (migrated to frontend /api/*) ---
+
+  // --- Stripe Checkout APIs ---
 
   getStripePackages() {
     return apiGet<StripePackageResponse>("/api/wallet/stripe/packages");
@@ -376,7 +381,7 @@ export const api = {
   },
 };
 
-// --- User API (Next.js API Routes) ---
+// --- User API ---
 
 const userApi = {
   async getMe(options?: { force?: boolean }): Promise<UserProfile> {
@@ -391,12 +396,7 @@ const userApi = {
     }
 
     const request = (async () => {
-      const res = await fetch("/api/users/me");
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new ApiError(res.status, data.error || res.statusText);
-      }
-      const profile = (await res.json()) as UserProfile;
+      const profile = await apiGet<UserProfile>("/api/users/me");
       meCache = { value: profile, expiresAt: Date.now() + ME_CACHE_TTL_MS };
       return profile;
     })();
@@ -407,13 +407,8 @@ const userApi = {
     return meInFlight;
   },
 
-  async getMyAgents(): Promise<{ agents: UserAgent[] }> {
-    const res = await fetch("/api/users/me/agents");
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: res.statusText }));
-      throw new ApiError(res.status, data.error || res.statusText);
-    }
-    return res.json();
+  getMyAgents(): Promise<{ agents: UserAgent[] }> {
+    return apiGet<{ agents: UserAgent[] }>("/api/users/me/agents");
   },
 
   async claimAgent(
@@ -439,28 +434,13 @@ const userApi = {
       payload.agent_token = credentials.agentToken;
     }
 
-    const res = await fetch("/api/users/me/agents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: res.statusText }));
-      throw new ApiError(res.status, data.error || res.statusText);
-    }
+    const result = await apiPost<UserAgent>("/api/users/me/agents", payload);
     invalidateMeCache();
-    return res.json();
+    return result;
   },
 
   async issueBindTicket(): Promise<{ bind_ticket: string; nonce: string; expires_at: number }> {
-    const res = await fetch("/api/users/me/agents/bind-ticket", {
-      method: "POST",
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: res.statusText }));
-      throw new ApiError(res.status, data.error || res.statusText);
-    }
-    return res.json();
+    return apiPost<{ bind_ticket: string; nonce: string; expires_at: number }>("/api/users/me/agents/bind-ticket");
   },
 
   async resolveClaim(claimCode: string): Promise<{
@@ -469,40 +449,25 @@ const userApi = {
     is_default: boolean;
     claimed_at: string;
   }> {
-    const res = await fetch("/api/users/me/agents/claim/resolve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ claim_code: claimCode }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: res.statusText }));
-      throw new ApiError(res.status, data.error || res.statusText);
-    }
+    const result = await apiPost<{
+      agent_id: string;
+      display_name: string;
+      is_default: boolean;
+      claimed_at: string;
+    }>("/api/users/me/agents/claim/resolve", { claim_code: claimCode });
     invalidateMeCache();
-    return res.json();
+    return result;
   },
 
   async unbindAgent(agentId: string): Promise<void> {
-    const res = await fetch(`/api/users/me/agents/${agentId}`, { method: "DELETE" });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: res.statusText }));
-      throw new ApiError(res.status, data.error || res.statusText);
-    }
+    await apiDelete(`/api/users/me/agents/${agentId}`);
     invalidateMeCache();
   },
 
   async setDefaultAgent(agentId: string): Promise<UserAgent> {
-    const res = await fetch(`/api/users/me/agents/${agentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_default: true }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: res.statusText }));
-      throw new ApiError(res.status, data.error || res.statusText);
-    }
+    const result = await apiPatch<UserAgent>(`/api/users/me/agents/${agentId}`, { is_default: true });
     invalidateMeCache();
-    return res.json();
+    return result;
   },
 };
 
