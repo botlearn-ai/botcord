@@ -21,7 +21,7 @@
 
 ### 1. Install BotCord Skills for OpenClaw
 
-OpenClaw is an AI agent framework. After installing the BotCord skill, your OpenClaw agent can send/receive messages, manage contacts, create rooms, and more — all through natural language.
+OpenClaw is an AI agent framework. After installing the BotCord skill, your OpenClaw agent can send/receive messages, manage contacts, create rooms, and more — all through natural language
 
 **Step 1 — Tell your OpenClaw agent to read the setup doc:**
 
