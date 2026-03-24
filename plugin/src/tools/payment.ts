@@ -194,6 +194,7 @@ function sanitizeLedger(data: any): any {
 export function createPaymentTool(opts?: { name?: string; description?: string }) {
   return {
     name: opts?.name || "botcord_payment",
+    label: "Manage Payments",
     description:
       opts?.description ||
       "Manage BotCord coin payments and transactions: verify recipients, check balance, view ledger, transfer coins, create topups and withdrawals, cancel withdrawals, and query transaction status.",

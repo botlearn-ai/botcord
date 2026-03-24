@@ -1,14 +1,7 @@
 /**
  * @botcord/botcord — OpenClaw plugin for BotCord A2A messaging protocol.
- *
- * Registers:
- * - Channel plugin (botcord) with WebSocket + polling gateway
- * - Agent tools: botcord_send, botcord_upload, botcord_rooms, botcord_topics, botcord_contacts, botcord_account, botcord_directory, botcord_payment, botcord_subscription, botcord_bind
- * - Commands: /botcord_healthcheck, /botcord_token, /botcord_bind
- * - CLI: openclaw botcord-register, openclaw botcord-import, openclaw botcord-export
  */
-import type { ChannelPlugin, OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
+import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { botCordPlugin } from "./src/channel.js";
 import { setBotCordRuntime, setConfigGetter } from "./src/runtime.js";
 import { createMessagingTool, createUploadTool } from "./src/tools/messaging.js";
@@ -33,33 +26,34 @@ import {
   shouldRunBotCordLoopRiskCheck,
 } from "./src/loop-risk.js";
 
-const plugin = {
+export default defineChannelPluginEntry({
   id: "botcord",
   name: "BotCord",
   description: "BotCord A2A messaging protocol — secure agent-to-agent communication with Ed25519 signing",
-  configSchema: emptyPluginConfigSchema(),
+  plugin: botCordPlugin,
 
-  register(api: OpenClawPluginApi) {
-    // Store runtime reference and config getter
-    setBotCordRuntime(api.runtime);
+  setRuntime(runtime) {
+    setBotCordRuntime(runtime);
+  },
+
+  registerFull(api) {
     setConfigGetter(() => api.config);
 
-    // Register channel plugin
-    api.registerChannel({ plugin: botCordPlugin as ChannelPlugin });
-
-    // Register agent tools
+    // Agent tools — `as any` needed until tool execute() return types are
+    // migrated to the AgentToolResult<T> shape (P2 task).
     api.registerTool(createMessagingTool() as any);
+    api.registerTool(createUploadTool() as any);
     api.registerTool(createRoomsTool() as any);
     api.registerTool(createTopicsTool() as any);
     api.registerTool(createContactsTool() as any);
     api.registerTool(createAccountTool() as any);
     api.registerTool(createDirectoryTool() as any);
-    api.registerTool(createUploadTool() as any);
     api.registerTool(createPaymentTool() as any);
     api.registerTool(createSubscriptionTool() as any);
     api.registerTool(createNotifyTool() as any);
     api.registerTool(createBindTool() as any);
 
+    // Hooks
     api.on("after_tool_call", async (event, ctx) => {
       if (ctx.toolName !== "botcord_send") return;
       if (!didBotCordSendSucceed(event.result, event.error)) return;
@@ -92,18 +86,16 @@ const plugin = {
       clearBotCordLoopRiskSession(ctx.sessionKey);
     });
 
-    // Register commands
-    api.registerCommand(createHealthcheckCommand() as any);
-    api.registerCommand(createTokenCommand() as any);
-    api.registerCommand(createBindCommand() as any);
+    // Commands
+    api.registerCommand(createHealthcheckCommand());
+    api.registerCommand(createTokenCommand());
+    api.registerCommand(createBindCommand());
 
-    // Register CLI command
+    // CLI
     const registerCli = createRegisterCli();
     api.registerCli(registerCli.setup, { commands: registerCli.commands });
   },
-};
+});
 
 export { TopicTracker } from "./src/topic-tracker.js";
 export type { TopicState, TopicInfo } from "./src/topic-tracker.js";
-
-export default plugin;

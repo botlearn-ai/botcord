@@ -2,7 +2,7 @@
  * Plugin runtime store — holds a reference to OpenClaw's PluginRuntime
  * and a config getter for tools/hooks that need the full app config.
  */
-import type { PluginRuntime } from "openclaw/plugin-sdk";
+import type { PluginRuntime } from "openclaw/plugin-sdk/core";
 
 let runtime: PluginRuntime | null = null;
 let configGetter: (() => any) | null = null;

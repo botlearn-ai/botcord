@@ -3,27 +3,31 @@
  * outbound (send via signed envelopes), gateway (start websocket/polling),
  * security, messaging, and status adapters.
  */
-import type { ChannelPlugin, ClawdbotConfig } from "openclaw/plugin-sdk";
+import type { ChannelPlugin, OpenClawConfig as ClawdbotConfig } from "openclaw/plugin-sdk/core";
 import {
   buildBaseChannelStatusSummary,
   createDefaultChannelRuntimeState,
-  DEFAULT_ACCOUNT_ID,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/status-helpers";
+import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import {
   resolveChannelConfig,
   resolveAccounts,
   isAccountConfigured,
   displayPrefix,
 } from "./config.js";
-import { BotCordClient } from "./client.js";
-import { getBotCordRuntime } from "./runtime.js";
-import { startPoller, stopPoller } from "./poller.js";
-import { startWsClient, stopWsClient } from "./ws-client.js";
 import type {
   BotCordAccountConfig,
   BotCordChannelConfig,
   MessageAttachment,
 } from "./types.js";
+
+// runtime.js is lightweight (no ws/network deps) — safe for static import.
+// Heavy deps (client, poller, ws-client) are lazy-loaded so that setup-entry.ts
+// can import botCordPlugin without pulling in ws at module level.
+import { getBotCordRuntime } from "./runtime.js";
+const lazyClient = () => import("./client.js").then((m) => m.BotCordClient);
+const lazyPoller = () => import("./poller.js");
+const lazyWsClient = () => import("./ws-client.js");
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -291,7 +295,8 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       const account = resolveBotCordAccount({ cfg: cfg as CoreConfig, accountId });
       if (!account.configured || !account.agentId) return null;
       try {
-        const client = new BotCordClient(account.config);
+        const Client = await lazyClient();
+        const client = new Client(account.config);
         const info = await client.resolve(account.agentId);
         return { kind: "user", id: info.agent_id, name: info.display_name || info.agent_id };
       } catch {
@@ -302,7 +307,8 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       const account = resolveBotCordAccount({ cfg: cfg as CoreConfig, accountId });
       if (!account.configured) return [];
       try {
-        const client = new BotCordClient(account.config);
+        const Client = await lazyClient();
+        const client = new Client(account.config);
         const contacts = await client.listContacts();
         const q = query?.trim().toLowerCase() ?? "";
         return contacts
@@ -326,7 +332,8 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       const account = resolveBotCordAccount({ cfg: cfg as CoreConfig, accountId });
       if (!account.configured) return [];
       try {
-        const client = new BotCordClient(account.config);
+        const Client = await lazyClient();
+        const client = new Client(account.config);
         const rooms = await client.listMyRooms();
         const q = query?.trim().toLowerCase() ?? "";
         return rooms
@@ -345,7 +352,8 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
     textChunkLimit: 4000,
     sendText: async ({ cfg, to, text, accountId }) => {
       const account = resolveBotCordAccount({ cfg: cfg as CoreConfig, accountId: accountId ?? undefined });
-      const client = new BotCordClient(account.config);
+      const Client = await lazyClient();
+      const client = new Client(account.config);
       const result = await client.sendMessage(to, text);
       return {
         channel: "botcord",
@@ -355,7 +363,8 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
     },
     sendMedia: async ({ cfg, to, text, mediaUrl, accountId }) => {
       const account = resolveBotCordAccount({ cfg: cfg as CoreConfig, accountId: accountId ?? undefined });
-      const client = new BotCordClient(account.config);
+      const Client = await lazyClient();
+      const client = new Client(account.config);
       const attachments: MessageAttachment[] = [];
       if (mediaUrl) {
         const filename = mediaUrl.split("/").pop() || "attachment";
@@ -402,11 +411,13 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       const dp = displayPrefix(account.accountId, ctx.cfg);
       ctx.log?.info(`[${dp}] starting BotCord gateway (${account.deliveryMode} mode)`);
 
-      const client = new BotCordClient(account.config);
+      const Client = await lazyClient();
+      const client = new Client(account.config);
       const mode = account.deliveryMode || "websocket";
 
       if (mode === "websocket") {
         ctx.log?.info(`[${dp}] starting WebSocket connection to Hub`);
+        const { startWsClient } = await lazyWsClient();
         startWsClient({
           client,
           accountId: account.accountId,
@@ -415,6 +426,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
           log: ctx.log,
         });
       } else {
+        const { startPoller } = await lazyPoller();
         startPoller({
           client,
           accountId: account.accountId,
@@ -438,6 +450,8 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
         ctx.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
       });
 
+      const { stopWsClient } = await lazyWsClient();
+      const { stopPoller } = await lazyPoller();
       stopWsClient(account.accountId);
       stopPoller(account.accountId);
       ctx.setStatus({ accountId: ctx.accountId, running: false, lastStopAt: Date.now() });

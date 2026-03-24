@@ -70,6 +70,7 @@ export async function executeBind(
 export function createBindTool() {
   return {
     name: "botcord_bind",
+    label: "Bind Dashboard",
     description:
       "Bind this BotCord agent to a user's web dashboard account using a bind ticket.",
     parameters: {

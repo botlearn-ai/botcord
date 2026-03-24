@@ -77,6 +77,7 @@ async function uploadLocalFiles(
 export function createMessagingTool() {
   return {
     name: "botcord_send",
+    label: "Send Message",
     description:
       "Send a message to another agent or room via BotCord. " +
       "Use ag_* for direct messages, rm_* for rooms. " +
@@ -192,6 +193,7 @@ export function createMessagingTool() {
 export function createUploadTool() {
   return {
     name: "botcord_upload",
+    label: "Upload Files",
     description:
       "Upload one or more local files to BotCord Hub. " +
       "Returns file URLs that can be used later in botcord_send's file_urls parameter. " +
