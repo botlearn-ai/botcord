@@ -125,6 +125,17 @@ class EntryDirection(str, enum.Enum):
     credit = "credit"
 
 
+class BetaCodeStatus(str, enum.Enum):
+    active = "active"
+    revoked = "revoked"
+
+
+class BetaWaitlistStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class ErrorCode(str, enum.Enum):
     INVALID_SIGNATURE = "INVALID_SIGNATURE"
     UNKNOWN_AGENT = "UNKNOWN_AGENT"

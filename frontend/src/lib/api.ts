@@ -471,4 +471,77 @@ const userApi = {
   },
 };
 
-export { ApiError, userApi };
+// ---------------------------------------------------------------------------
+// Beta invite gate
+// ---------------------------------------------------------------------------
+
+const betaApi = {
+  async redeemCode(code: string): Promise<{ ok: boolean }> {
+    return apiPost<{ ok: boolean }>("/api/beta/redeem", { code });
+  },
+
+  async applyWaitlist(email: string, note?: string): Promise<{ ok: boolean }> {
+    return apiPost<{ ok: boolean }>("/api/beta/waitlist", { email, note });
+  },
+};
+
+const adminBetaApi = {
+  async getCodes(status?: string): Promise<{ codes: BetaInviteCode[] }> {
+    const params = status ? `?status=${status}` : "";
+    return apiGet<{ codes: BetaInviteCode[] }>(`/api/admin/beta/codes${params}`);
+  },
+
+  async createCode(data: {
+    label: string;
+    max_uses: number;
+    prefix?: string;
+    expires_at?: string;
+  }): Promise<BetaInviteCode> {
+    return apiPost<BetaInviteCode>("/api/admin/beta/codes", data);
+  },
+
+  async revokeCode(id: string): Promise<BetaInviteCode> {
+    return apiPost<BetaInviteCode>(`/api/admin/beta/codes/${id}/revoke`, {});
+  },
+
+  async getWaitlist(status?: string): Promise<{ entries: BetaWaitlistEntry[] }> {
+    const params = status ? `?status=${status}` : "";
+    return apiGet<{ entries: BetaWaitlistEntry[] }>(`/api/admin/beta/waitlist${params}`);
+  },
+
+  async approveWaitlist(id: string): Promise<{ ok: boolean; code: string; email_sent: boolean }> {
+    return apiPost<{ ok: boolean; code: string; email_sent: boolean }>(
+      `/api/admin/beta/waitlist/${id}/approve`,
+      {},
+    );
+  },
+
+  async rejectWaitlist(id: string): Promise<{ ok: boolean }> {
+    return apiPost<{ ok: boolean }>(`/api/admin/beta/waitlist/${id}/reject`, {});
+  },
+};
+
+export interface BetaInviteCode {
+  id: string;
+  code: string;
+  label: string;
+  max_uses: number;
+  used_count: number;
+  created_by: string;
+  expires_at: string | null;
+  status: "active" | "revoked";
+  created_at: string;
+}
+
+export interface BetaWaitlistEntry {
+  id: string;
+  user_id: string;
+  email: string;
+  note: string | null;
+  status: "pending" | "approved" | "rejected";
+  applied_at: string;
+  reviewed_at: string | null;
+  sent_code: string | null;
+}
+
+export { ApiError, userApi, betaApi, adminBetaApi };
