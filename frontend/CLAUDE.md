@@ -45,21 +45,22 @@ src/
 │   ├── agents/claim/             # Agent claim ticket resolution
 │   ├── login/                    # Supabase auth entry
 │   ├── auth/callback/            # OAuth callback handler
-│   └── api/                      # 48 API routes (BFF layer)
+│   └── api/                      # 51 API routes (BFF layer)
 │       ├── _helpers.ts           # Shared auth helpers (requireAgent, requireUser)
 │       ├── _hub-proxy.ts         # Hub API proxy utilities
 │       ├── _room-messages.ts     # Shared room message fetching logic
-│       ├── dashboard/            # Rooms, messages, agents, contacts, inbox, overview
-│       ├── public/               # Guest views of rooms, agents, members, messages
+│       ├── dashboard/            # Rooms, messages, chat, agents, contacts, inbox, overview
+│       ├── public/               # Guest views of rooms, agents, members, messages, overview
+│       ├── rooms/                # Room message endpoints (by roomId)
 │       ├── wallet/               # Balance, ledger, transfers, topups, withdrawals, stripe
 │       ├── users/                # User profile, agent management (bind, claim, CRUD)
-│       ├── subscriptions/        # Products, subscriber management, cancellation
+│       ├── subscriptions/        # Products, subscriber management, subscribe, cancellation
 │       ├── share/                # Public share endpoint
 │       └── stats/                # Public statistics
 ├── components/
 │   ├── auth/                     # LoginPage
 │   ├── claim/                    # ClaimAgentPage
-│   ├── dashboard/                # DashboardApp, ChatPane, Sidebar, MessageBubble, WalletPanel, etc.
+│   ├── dashboard/                # DashboardApp, ChatPane, UserChatPane, Sidebar, MessageBubble, WalletPanel, etc.
 │   ├── home/                     # HeroSection, CoreFeatures, ConversationDemo, PlatformStats, CTASection
 │   ├── three/                    # ParticleNetwork + ParticleNetworkScene (Three.js)
 │   ├── ui/                       # NeonButton, GlassCard, CopyableId, etc.
@@ -93,6 +94,7 @@ src/
 │   ├── useDashboardRealtimeStore.ts # Supabase channel status + meta-event sync strategy
 │   ├── useDashboardUnreadStore.ts # Frontend-only unread state
 │   ├── useDashboardContactStore.ts # Contact requests + pending state
+│   ├── useDashboardSubscriptionStore.ts # Subscription products + subscriber management
 │   ├── useDashboardWalletStore.ts # Wallet summary, ledger, withdrawals
 │   └── useAppStore.ts            # Language preference + UI state
 └── data/                         # Static data (features, protocol primitives, roadmap, demo script)
@@ -101,10 +103,10 @@ db/
 ├── client.ts                     # Drizzle client configuration
 ├── index.ts                      # ORM exports
 ├── seed.ts                       # Database seeding
-├── functions/                    # Custom SQL functions (room previews)
+├── functions/                    # Custom SQL functions (room previews, realtime auth)
 │   ├── 001_get_agent_room_previews.sql
 │   ├── 002_get_public_room_previews.sql
-│   └── 003_setup_agent_realtime_broadcast_auth.sql
+│   └── 004_setup_agent_realtime_auth_function.sql
 └── schema/                       # Drizzle ORM schema definitions
     ├── users.ts, agents.ts, rooms.ts, contacts.ts, messages.ts
     ├── topics.ts, shares.ts, wallet.ts, subscriptions.ts, roles.ts
@@ -159,6 +161,7 @@ Dashboard state is split by responsibility:
 - `useDashboardRealtimeStore`: Supabase realtime connection + meta-event sync policy
 - `useDashboardUnreadStore`: frontend-only unread markers
 - `useDashboardContactStore`: contact request flows
+- `useDashboardSubscriptionStore`: subscription products + subscriber management
 - `useDashboardWalletStore`: wallet domain
 
 `DashboardApp/useDashboard()` is the aggregation layer consumed by components.
