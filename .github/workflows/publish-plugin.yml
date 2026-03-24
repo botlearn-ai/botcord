@@ -11,6 +11,14 @@ on:
           - patch
           - minor
           - major
+      channel:
+        description: "Release channel (stable → latest, beta → test hub)"
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+        default: stable
 
 jobs:
   publish:
@@ -45,6 +53,13 @@ jobs:
         id: bump
         run: |
           NEW_VERSION=$(npm version ${{ github.event.inputs.bump }} --no-git-tag-version)
+          if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
+            # Append -beta.<timestamp> prerelease suffix
+            BASE="${NEW_VERSION#v}"
+            BETA_VERSION="${BASE}-beta.$(date +%Y%m%d%H%M%S)"
+            npm version "$BETA_VERSION" --no-git-tag-version --allow-same-version
+            NEW_VERSION="v${BETA_VERSION}"
+          fi
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Sync version to openclaw.plugin.json
@@ -53,12 +68,23 @@ jobs:
           VERSION="${VERSION#v}"
           jq --arg v "$VERSION" '.version = $v' openclaw.plugin.json > tmp.json && mv tmp.json openclaw.plugin.json
 
+      - name: Set release channel in source
+        if: github.event.inputs.channel == 'beta'
+        run: |
+          sed -i 's/RELEASE_CHANNEL: ReleaseChannel = "stable"/RELEASE_CHANNEL: ReleaseChannel = "beta"/' src/constants.ts
+
       - name: Publish to npm
-        run: npm publish --access public
+        run: |
+          if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
+            npm publish --access public --tag beta
+          else
+            npm publish --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Commit and tag
+        if: github.event.inputs.channel == 'stable'
         run: |
           git add package.json package-lock.json openclaw.plugin.json
           git commit -m "chore: release ${{ steps.bump.outputs.new_version }}"
@@ -93,6 +119,7 @@ jobs:
               {"label": "状态", "value": "${{ steps.notify-data.outputs.status_desc }}"},
               {"label": "版本", "value": "${{ steps.bump.outputs.new_version }}"},
               {"label": "Bump 类型", "value": "${{ github.event.inputs.bump }}"},
+              {"label": "渠道", "value": "${{ github.event.inputs.channel }}"},
               {"label": "触发者", "value": "${{ github.actor }}"}
             ]
           buttons: |
