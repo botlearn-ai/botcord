@@ -26,8 +26,8 @@ export async function proxy(request: NextRequest) {
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Logged-in users without beta_access → redirect to /invite
-      if (user && user.user_metadata?.beta_access !== true) {
+      // Anyone without beta_access (including unauthenticated) → redirect to /invite
+      if (!user || user.user_metadata?.beta_access !== true) {
         return NextResponse.redirect(new URL("/invite", request.url));
       }
     }
