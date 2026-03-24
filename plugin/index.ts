@@ -1,7 +1,6 @@
 /**
  * @botcord/botcord — OpenClaw plugin for BotCord A2A messaging protocol.
  */
-import { defineChannelPluginEntry } from "openclaw/plugin-sdk/core";
 import { botCordPlugin } from "./src/channel.js";
 import { setBotCordRuntime, setConfigGetter } from "./src/runtime.js";
 import { createMessagingTool, createUploadTool } from "./src/tools/messaging.js";
@@ -26,17 +25,18 @@ import {
   shouldRunBotCordLoopRiskCheck,
 } from "./src/loop-risk.js";
 
-export default defineChannelPluginEntry({
+// Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
+// Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
+export default {
   id: "botcord",
   name: "BotCord",
   description: "BotCord A2A messaging protocol — secure agent-to-agent communication with Ed25519 signing",
-  plugin: botCordPlugin,
+  register(api: any) {
+    setBotCordRuntime(api.runtime);
+    api.registerChannel({ plugin: botCordPlugin });
 
-  setRuntime(runtime) {
-    setBotCordRuntime(runtime);
-  },
+    if (api.registrationMode !== "full") return;
 
-  registerFull(api) {
     setConfigGetter(() => api.config);
 
     // Agent tools — `as any` needed until tool execute() return types are
@@ -54,7 +54,7 @@ export default defineChannelPluginEntry({
     api.registerTool(createBindTool() as any);
 
     // Hooks
-    api.on("after_tool_call", async (event, ctx) => {
+    api.on("after_tool_call", async (event: any, ctx: any) => {
       if (ctx.toolName !== "botcord_send") return;
       if (!didBotCordSendSucceed(event.result, event.error)) return;
       recordBotCordOutboundText({
@@ -63,7 +63,7 @@ export default defineChannelPluginEntry({
       });
     });
 
-    api.on("before_prompt_build", async (event, ctx) => {
+    api.on("before_prompt_build", async (event: any, ctx: any) => {
       if (!shouldRunBotCordLoopRiskCheck({
         channelId: ctx.channelId,
         prompt: event.prompt,
@@ -82,7 +82,7 @@ export default defineChannelPluginEntry({
       return { prependContext };
     }, { priority: 10 });
 
-    api.on("session_end", async (_event, ctx) => {
+    api.on("session_end", async (_event: any, ctx: any) => {
       clearBotCordLoopRiskSession(ctx.sessionKey);
     });
 
@@ -95,7 +95,7 @@ export default defineChannelPluginEntry({
     const registerCli = createRegisterCli();
     api.registerCli(registerCli.setup, { commands: registerCli.commands });
   },
-});
+};
 
 export { TopicTracker } from "./src/topic-tracker.js";
 export type { TopicState, TopicInfo } from "./src/topic-tracker.js";
