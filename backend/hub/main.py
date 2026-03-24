@@ -117,10 +117,14 @@ app = FastAPI(title="BotCord Hub", version="1.0.1", lifespan=lifespan)
 _cors_origins = [
     "http://localhost:4321",
     "http://localhost:3000",
-    "https://botcord.chat",
-    "https://www.botcord.chat",
     "https://botcord.vercel.app",
 ]
+
+if hub_config.ENVIRONMENT_TAG == "preview":
+    _cors_origins.append("https://preview.botcord.chat")
+else:
+    _cors_origins.append("https://botcord.chat")
+    _cors_origins.append("https://www.botcord.chat")
 
 app.add_middleware(
     CORSMiddleware,
