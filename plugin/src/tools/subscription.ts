@@ -47,6 +47,7 @@ function formatSubscriptionList(subscriptions: any[]): string {
 export function createSubscriptionTool() {
   return {
     name: "botcord_subscription",
+    label: "Manage Subscriptions",
     description:
       "Create subscription products priced in BotCord coin, subscribe to products, list active subscriptions, and manage cancellation or product archiving.",
     parameters: {

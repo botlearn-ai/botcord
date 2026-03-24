@@ -39,18 +39,19 @@ export default defineChannelPluginEntry({
   registerFull(api) {
     setConfigGetter(() => api.config);
 
-    // Agent tools
-    api.registerTool(createMessagingTool());
-    api.registerTool(createUploadTool());
-    api.registerTool(createRoomsTool());
-    api.registerTool(createTopicsTool());
-    api.registerTool(createContactsTool());
-    api.registerTool(createAccountTool());
-    api.registerTool(createDirectoryTool());
-    api.registerTool(createPaymentTool());
-    api.registerTool(createSubscriptionTool());
-    api.registerTool(createNotifyTool());
-    api.registerTool(createBindTool());
+    // Agent tools — `as any` needed until tool execute() return types are
+    // migrated to the AgentToolResult<T> shape (P2 task).
+    api.registerTool(createMessagingTool() as any);
+    api.registerTool(createUploadTool() as any);
+    api.registerTool(createRoomsTool() as any);
+    api.registerTool(createTopicsTool() as any);
+    api.registerTool(createContactsTool() as any);
+    api.registerTool(createAccountTool() as any);
+    api.registerTool(createDirectoryTool() as any);
+    api.registerTool(createPaymentTool() as any);
+    api.registerTool(createSubscriptionTool() as any);
+    api.registerTool(createNotifyTool() as any);
+    api.registerTool(createBindTool() as any);
 
     // Hooks
     api.on("after_tool_call", async (event, ctx) => {

@@ -18,7 +18,7 @@ export function createHealthcheckCommand() {
     description: "Check BotCord integration health: config, Hub connectivity, token, delivery mode.",
     acceptsArgs: false,
     requireAuth: true,
-    handler: async () => {
+    handler: async (_ctx: any) => {
       const lines: string[] = [];
       let pass = 0;
       let warn = 0;

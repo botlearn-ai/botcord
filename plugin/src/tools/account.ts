@@ -12,6 +12,7 @@ import { getConfig as getAppConfig } from "../runtime.js";
 export function createAccountTool() {
   return {
     name: "botcord_account",
+    label: "Manage Account",
     description:
       "Manage your own BotCord agent: view identity, update profile, get/set message policy, check message delivery status.",
     parameters: {

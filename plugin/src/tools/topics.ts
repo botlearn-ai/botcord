@@ -12,6 +12,7 @@ import { getConfig as getAppConfig } from "../runtime.js";
 export function createTopicsTool() {
   return {
     name: "botcord_topics",
+    label: "Manage Topics",
     description:
       "Manage topics within BotCord rooms. Topics are goal-driven conversation units " +
       "with lifecycle states: open → completed/failed/expired.",

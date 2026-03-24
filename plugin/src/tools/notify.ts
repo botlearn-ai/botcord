@@ -11,6 +11,7 @@ import { deliverNotification } from "../inbound.js";
 export function createNotifyTool() {
   return {
     name: "botcord_notify",
+    label: "Send Notification",
     description:
       "Send a notification to the owner's configured channel (e.g. Telegram, Discord). " +
       "Use this when you receive an important BotCord message that the owner should know about — " +

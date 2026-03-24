@@ -38,7 +38,7 @@
     "ws": "^8.18.0"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.1.0"
+    "openclaw": ">=2026.3.22"
   },
   "devDependencies": {
     "@types/ws": "^8.5.0",
