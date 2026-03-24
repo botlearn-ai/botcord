@@ -179,6 +179,11 @@ async def structured_http_exception_handler(request: Request, exc: HTTPException
     )
 
 
+@app.get("/health", tags=["health"])
+async def health():
+    return {"status": "ok"}
+
+
 app.include_router(registry_router)
 app.include_router(contacts_router)
 app.include_router(contact_requests_router)
