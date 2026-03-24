@@ -2,7 +2,7 @@ name: Deploy Backend
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "preview"]
     paths:
       - "backend/**"
   pull_request:
@@ -16,18 +16,36 @@ env:
   PROJECT: botcord-backend
 
 jobs:
-  deploy:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+  setup:
     runs-on: self-hosted
+    outputs:
+      env_name: ${{ steps.set-env.outputs.env_name }}
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "env_name=test" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" = "preview" ]; then
+            echo "env_name=preview" >> $GITHUB_OUTPUT
+          else
+            echo "env_name=prod" >> $GITHUB_OUTPUT
+          fi
+
+  deploy:
+    needs: setup
+    runs-on: self-hosted
+    env:
+      ENV_NAME: ${{ needs.setup.outputs.env_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Build docker image
         run: |
-          echo "Branch: ${{ github.head_ref || github.ref_name }}, Project: $PROJECT"
+          echo "Branch: ${{ github.head_ref || github.ref_name }}, Project: $PROJECT, Env: $ENV_NAME"
           if [ -f "backend/Dockerfile" ]; then
-            docker build -f backend/Dockerfile -t $PROJECT:test backend/
+            docker build -f backend/Dockerfile -t $PROJECT:$ENV_NAME backend/
           else
             echo "No Dockerfile found, skipping build."
             exit 0
@@ -37,23 +55,25 @@ jobs:
         run: |
           if [ -f "backend/Dockerfile" ]; then
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
-            docker tag $PROJECT:test $ECR_REGISTRY/botlearn-ai/$PROJECT:test
-            docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:test
+            docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
+            docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
           fi
 
   restart:
-    needs: deploy
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [setup, deploy]
+    if: needs.setup.outputs.env_name != 'prod'
     runs-on: self-hosted
+    env:
+      ENV_NAME: ${{ needs.setup.outputs.env_name }}
     steps:
       - name: Restart service
         run: |
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml down
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml up -d
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-$ENV_NAME/docker-compose.yaml down
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-$ENV_NAME/docker-compose.yaml up -d
 
   report:
-    needs: [deploy, restart]
-    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [setup, deploy, restart]
+    if: always()
     runs-on: self-hosted
     steps:
       - name: Checkout
@@ -62,20 +82,33 @@ jobs:
       - name: Prepare notification data
         id: notify-data
         env:
+          ENV_NAME: ${{ needs.setup.outputs.env_name }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
           RESTART_RESULT: ${{ needs.restart.result }}
         run: |
-          if [ "$DEPLOY_RESULT" = "success" ] && [ "$RESTART_RESULT" = "success" ]; then
+          if [ "$ENV_NAME" = "prod" ]; then
+            EFFECTIVE_RESULT="$DEPLOY_RESULT"
+          elif [ "$DEPLOY_RESULT" = "success" ] && [ "$RESTART_RESULT" = "success" ]; then
+            EFFECTIVE_RESULT="success"
+          elif [ "$DEPLOY_RESULT" = "failure" ] || [ "$RESTART_RESULT" = "failure" ]; then
+            EFFECTIVE_RESULT="failure"
+          elif [ "$DEPLOY_RESULT" = "skipped" ] || [ "$RESTART_RESULT" = "skipped" ]; then
+            EFFECTIVE_RESULT="skipped"
+          else
+            EFFECTIVE_RESULT="cancelled"
+          fi
+
+          if [ "$EFFECTIVE_RESULT" = "success" ]; then
             echo "status_icon=✅" >> $GITHUB_OUTPUT
             echo "status_text=成功" >> $GITHUB_OUTPUT
             echo "status_color=green" >> $GITHUB_OUTPUT
             echo "status_desc=部署成功" >> $GITHUB_OUTPUT
-          elif [ "$DEPLOY_RESULT" = "failure" ] || [ "$RESTART_RESULT" = "failure" ]; then
+          elif [ "$EFFECTIVE_RESULT" = "failure" ]; then
             echo "status_icon=❌" >> $GITHUB_OUTPUT
             echo "status_text=失败" >> $GITHUB_OUTPUT
             echo "status_color=red" >> $GITHUB_OUTPUT
             echo "status_desc=部署失败" >> $GITHUB_OUTPUT
-          elif [ "$DEPLOY_RESULT" = "skipped" ] || [ "$RESTART_RESULT" = "skipped" ]; then
+          elif [ "$EFFECTIVE_RESULT" = "skipped" ]; then
             echo "status_icon=⏭️" >> $GITHUB_OUTPUT
             echo "status_text=跳过" >> $GITHUB_OUTPUT
             echo "status_color=grey" >> $GITHUB_OUTPUT
@@ -98,10 +131,11 @@ jobs:
         uses: ./.github/actions/feishu-notify
         with:
           webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          title: '${{ steps.notify-data.outputs.status_icon }}「BotCord Hub」Deploy - ${{ steps.notify-data.outputs.status_text }}'
+          title: '${{ steps.notify-data.outputs.status_icon }}「BotCord Hub」Deploy (${{ needs.setup.outputs.env_name }}) - ${{ steps.notify-data.outputs.status_text }}'
           color: ${{ steps.notify-data.outputs.status_color }}
           fields: |
             [
+              {"label": "环境", "value": "${{ needs.setup.outputs.env_name }}"},
               {"label": "状态", "value": "${{ steps.notify-data.outputs.status_desc }}"},
               {"label": "分支", "value": "${{ github.head_ref || github.ref_name }}"},
               {"label": "提交", "value": "[${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"},
