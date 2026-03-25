@@ -20,6 +20,7 @@ export default function AdminWaitlistPage() {
 
   // Stores { entryId: { code, emailSent } } for failed email cases
   const [failedEmailCodes, setFailedEmailCodes] = useState<Record<string, string>>({});
+  const [recentFailedApprovals, setRecentFailedApprovals] = useState<BetaWaitlistEntry[]>([]);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -42,6 +43,10 @@ export default function AdminWaitlistPage() {
       const result = await adminBetaApi.approveWaitlist(id);
       if (!result.email_sent) {
         setFailedEmailCodes((prev) => ({ ...prev, [id]: result.code }));
+        setRecentFailedApprovals((prev) => [
+          result.entry,
+          ...prev.filter((entry) => entry.id !== result.entry.id),
+        ]);
       }
       await fetchEntries();
     } catch (err: any) {
@@ -92,6 +97,33 @@ export default function AdminWaitlistPage() {
 
       {error && (
         <p className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">{error}</p>
+      )}
+
+      {recentFailedApprovals.length > 0 && (
+        <div className="space-y-3 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4">
+          <div>
+            <p className="text-sm font-medium text-amber-200">以下审批未能完成邮件发送</p>
+            <p className="text-xs text-amber-300/80">请复制激活码，通过其他渠道手动发送给申请人。</p>
+          </div>
+          <div className="space-y-2">
+            {recentFailedApprovals.map((entry) => (
+              <div
+                key={entry.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400/20 bg-black/20 px-3 py-2"
+              >
+                <span className="text-xs text-text-primary">{entry.email}</span>
+                <span className="text-xs text-amber-300">激活码：</span>
+                <span className="font-mono text-xs text-neon-cyan">{failedEmailCodes[entry.id]}</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(failedEmailCodes[entry.id])}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  <Copy className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {loading ? (

@@ -257,6 +257,49 @@ async def test_admin_approve_waitlist(client: AsyncClient, db_session: AsyncSess
 
 
 @pytest.mark.asyncio
+async def test_admin_approve_waitlist_keeps_manual_fallback_when_email_fails(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    _, admin_sub = await _create_user(db_session, beta_admin=True)
+    applicant, _ = await _create_user(db_session)
+    entry = BetaWaitlistEntry(user_id=applicant.id, email="fallback@example.com")
+    db_session.add(entry)
+    await db_session.commit()
+
+    with patch("app.routers.admin_beta._send_approval_email", new=AsyncMock(return_value=False)):
+        resp = await client.post(
+            f"/api/admin/beta/waitlist/{entry.id}/approve",
+            headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["email_sent"] is False
+    assert data["code"].startswith("INVITE-")
+    assert data["entry"]["sent_code"] == data["code"]
+
+
+@pytest.mark.asyncio
+async def test_redeem_exhausted_code_does_not_activate_user(client: AsyncClient, db_session: AsyncSession):
+    user, sub = await _create_user(db_session)
+    code = BetaInviteCode(code="TEST-ROLLBACK1", label="test", max_uses=1, used_count=1)
+    db_session.add(code)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/beta/redeem",
+        json={"code": "TEST-ROLLBACK1"},
+        headers={"Authorization": f"Bearer {_make_token(sub)}"},
+    )
+
+    assert resp.status_code == 400
+    await db_session.refresh(user)
+    assert user.beta_access is False
+
+
+@pytest.mark.asyncio
 async def test_admin_non_admin_forbidden(client: AsyncClient, db_session: AsyncSession):
     _, sub = await _create_user(db_session, beta_admin=False)
     resp = await client.get(

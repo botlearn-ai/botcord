@@ -13,7 +13,7 @@ import string
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
@@ -88,6 +88,8 @@ async def redeem_invite_code(
     """Redeem an invite code and activate beta access for the current user."""
     code_val = body.code.strip().upper()
 
+    now = datetime.datetime.now(datetime.timezone.utc)
+
     # Fetch the invite code
     result = await db.execute(
         select(BetaInviteCode).where(BetaInviteCode.code == code_val)
@@ -97,28 +99,38 @@ async def redeem_invite_code(
     if invite_code is None or invite_code.status == BetaCodeStatus.revoked:
         raise HTTPException(status_code=400, detail="邀请码无效")
 
-    if invite_code.expires_at and invite_code.expires_at < datetime.datetime.now(datetime.timezone.utc):
+    if invite_code.expires_at and invite_code.expires_at < now:
         raise HTTPException(status_code=400, detail="邀请码已过期")
 
     if invite_code.used_count >= invite_code.max_uses:
         raise HTTPException(status_code=400, detail="邀请码已被使用完")
 
-    # Idempotent: if user already has beta_access, return success without double-counting
-    user_result = await db.execute(select(User).where(User.id == ctx.user_id))
-    user = user_result.scalar_one()
-    if user.beta_access:
+    user_activation = await db.execute(
+        update(User)
+        .where(User.id == ctx.user_id, User.beta_access.is_(False))
+        .values(beta_access=True)
+    )
+    if user_activation.rowcount == 0:
         return {"ok": True}
 
-    # Record redemption
+    code_claim = await db.execute(
+        update(BetaInviteCode)
+        .where(
+            and_(
+                BetaInviteCode.id == invite_code.id,
+                BetaInviteCode.status == BetaCodeStatus.active,
+                BetaInviteCode.used_count < BetaInviteCode.max_uses,
+                or_(BetaInviteCode.expires_at.is_(None), BetaInviteCode.expires_at >= now),
+            )
+        )
+        .values(used_count=BetaInviteCode.used_count + 1)
+    )
+    if code_claim.rowcount == 0:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="邀请码已被使用完")
+
     redemption = BetaCodeRedemption(code_id=invite_code.id, user_id=ctx.user_id)
     db.add(redemption)
-
-    # Increment used_count
-    invite_code.used_count += 1
-
-    # Activate user beta_access
-    user.beta_access = True
-
     await db.commit()
 
     # Sync to Supabase user_metadata (best-effort, non-blocking)

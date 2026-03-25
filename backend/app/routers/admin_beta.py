@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
-from hub.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from hub.config import BETA_APPROVAL_EMAIL_WEBHOOK_URL, FRONTEND_BASE_URL
 from hub.database import get_db
 from hub.enums import BetaCodeStatus, BetaWaitlistStatus
 from hub.models import BetaCodeRedemption, BetaInviteCode, BetaWaitlistEntry, User
@@ -89,59 +89,44 @@ def _entry_response(e: BetaWaitlistEntry, code: BetaInviteCode | None = None) ->
 
 
 async def _send_approval_email(email: str, code: str) -> bool:
-    """Send activation code email via Supabase SMTP. Returns True on success."""
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-        _logger.warning("Supabase config missing, cannot send email")
+    """Send approval email through a real mail relay. Returns True only on delivery handoff."""
+    activate_url = f"{FRONTEND_BASE_URL.rstrip('/')}/invite?code={code}"
+
+    if not BETA_APPROVAL_EMAIL_WEBHOOK_URL:
+        _logger.warning("Approval email relay not configured; falling back to manual code sharing")
+        _logger.info("BETA_APPROVAL_FALLBACK to=%s code=%s url=%s", email, code, activate_url)
         return False
 
-    activate_url = f"https://botcord.chat/invite?code={code}"
     subject = "你的 BotCord 公测邀请码"
     body = (
         f"你好，\n\n"
         f"你的 BotCord 公测申请已通过审核！\n\n"
         f"激活码：{code}\n\n"
         f"点击以下链接直接激活：\n{activate_url}\n\n"
-        f"或登录后前往 https://botcord.chat/invite 手动输入激活码。\n\n"
+        f"或登录后前往 {FRONTEND_BASE_URL.rstrip('/')}/invite 手动输入激活码。\n\n"
         f"— BotCord 团队"
     )
 
-    url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/send-email"
-    # Supabase doesn't have a generic send-email admin API, so we use their
-    # SMTP integration via the management API or a custom SMTP relay.
-    # Here we attempt via the Supabase Auth Admin "invite" endpoint which
-    # sends a magic link — for custom content we call the SMTP proxy if available.
-    # For now, log the email content as fallback if SMTP not configured.
-    _logger.info("BETA_APPROVAL_EMAIL to=%s code=%s url=%s", email, code, activate_url)
-
-    # Try Supabase Auth Admin invite endpoint (sends email to the address)
     try:
-        invite_url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
-        headers = {
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Content-Type": "application/json",
-        }
         async with httpx.AsyncClient(timeout=10) as client:
-            # Use Supabase admin email via their OTP/magic link mechanism
-            otp_url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/admin/generate_link"
             resp = await client.post(
-                otp_url,
+                BETA_APPROVAL_EMAIL_WEBHOOK_URL,
                 json={
-                    "type": "magiclink",
                     "email": email,
-                    "options": {
-                        "data": {"beta_invite_code": code},
-                        "redirect_to": activate_url,
+                    "subject": subject,
+                    "text": body,
+                    "metadata": {
+                        "beta_invite_code": code,
+                        "activate_url": activate_url,
                     },
                 },
-                headers=headers,
             )
             if resp.status_code in (200, 201):
                 return True
-            _logger.warning("Supabase email send failed: %s %s", resp.status_code, resp.text)
+            _logger.warning("Approval email relay failed: %s %s", resp.status_code, resp.text)
             return False
     except Exception as exc:
-        _logger.warning("Email send error: %s", exc)
+        _logger.warning("Approval email relay error: %s", exc)
         return False
 
 

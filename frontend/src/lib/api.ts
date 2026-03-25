@@ -509,8 +509,8 @@ const adminBetaApi = {
     return apiGet<{ entries: BetaWaitlistEntry[] }>(`/api/admin/beta/waitlist${params}`);
   },
 
-  async approveWaitlist(id: string): Promise<{ ok: boolean; code: string; email_sent: boolean }> {
-    return apiPost<{ ok: boolean; code: string; email_sent: boolean }>(
+  async approveWaitlist(id: string): Promise<{ ok: boolean; code: string; email_sent: boolean; entry: BetaWaitlistEntry }> {
+    return apiPost<{ ok: boolean; code: string; email_sent: boolean; entry: BetaWaitlistEntry }>(
       `/api/admin/beta/waitlist/${id}/approve`,
       {},
     );
