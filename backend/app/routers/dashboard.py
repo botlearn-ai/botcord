@@ -851,8 +851,9 @@ async def get_room_messages(
     if authorization and authorization.startswith("Bearer ") and x_active_agent:
         token = authorization[len("Bearer "):]
         try:
-            supabase_uid = _decode_supabase_token(token)
-            user, _roles = await _load_user_and_roles(supabase_uid, db)
+            jwt_payload = _decode_supabase_token(token)
+            supabase_uid = jwt_payload["sub"]
+            user, _roles = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
             # Verify agent belongs to authenticated user
             agent_check = await db.execute(
                 select(Agent).where(

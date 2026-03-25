@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
-from hub.config import BETA_APPROVAL_EMAIL_WEBHOOK_URL, FRONTEND_BASE_URL
+from hub.config import BETA_APPROVAL_EMAIL_WEBHOOK_URL, FRONTEND_BASE_URL, RESEND_API_KEY, RESEND_FROM_EMAIL
 from hub.database import get_db
 from hub.enums import BetaCodeStatus, BetaWaitlistStatus
 from hub.models import BetaCodeRedemption, BetaInviteCode, BetaWaitlistEntry, User
@@ -82,13 +82,8 @@ def _entry_response(e: BetaWaitlistEntry, code: BetaInviteCode | None = None) ->
 
 
 async def _send_approval_email(email: str, code: str) -> bool:
-    """Send approval email through a real mail relay. Returns True only on delivery handoff."""
+    """Send approval email via Resend, generic webhook, or fallback to manual."""
     activate_url = f"{FRONTEND_BASE_URL.rstrip('/')}/invite?code={code}"
-
-    if not BETA_APPROVAL_EMAIL_WEBHOOK_URL:
-        _logger.warning("Approval email relay not configured; falling back to manual code sharing")
-        _logger.info("BETA_APPROVAL_FALLBACK to=%s code=%s url=%s", email, code, activate_url)
-        return False
 
     subject = "你的 BotCord 公测邀请码"
     body = (
@@ -100,27 +95,53 @@ async def _send_approval_email(email: str, code: str) -> bool:
         f"— BotCord 团队"
     )
 
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                BETA_APPROVAL_EMAIL_WEBHOOK_URL,
-                json={
-                    "email": email,
-                    "subject": subject,
-                    "text": body,
-                    "metadata": {
-                        "beta_invite_code": code,
-                        "activate_url": activate_url,
+    # Strategy 1: Resend API
+    if RESEND_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                    json={
+                        "from": RESEND_FROM_EMAIL,
+                        "to": [email],
+                        "subject": subject,
+                        "text": body,
                     },
-                },
-            )
-            if resp.status_code in (200, 201):
-                return True
-            _logger.warning("Approval email relay failed: %s %s", resp.status_code, resp.text)
-            return False
-    except Exception as exc:
-        _logger.warning("Approval email relay error: %s", exc)
-        return False
+                )
+                if resp.status_code in (200, 201):
+                    _logger.info("Approval email sent via Resend to=%s", email)
+                    return True
+                _logger.warning("Resend API failed: %s %s", resp.status_code, resp.text)
+        except Exception as exc:
+            _logger.warning("Resend API error: %s", exc)
+
+    # Strategy 2: Generic webhook
+    if BETA_APPROVAL_EMAIL_WEBHOOK_URL:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    BETA_APPROVAL_EMAIL_WEBHOOK_URL,
+                    json={
+                        "email": email,
+                        "subject": subject,
+                        "text": body,
+                        "metadata": {
+                            "beta_invite_code": code,
+                            "activate_url": activate_url,
+                        },
+                    },
+                )
+                if resp.status_code in (200, 201):
+                    return True
+                _logger.warning("Approval email relay failed: %s %s", resp.status_code, resp.text)
+        except Exception as exc:
+            _logger.warning("Approval email relay error: %s", exc)
+
+    # Fallback: manual
+    _logger.warning("Approval email not configured or all attempts failed; falling back to manual code sharing")
+    _logger.info("BETA_APPROVAL_FALLBACK to=%s code=%s url=%s", email, code, activate_url)
+    return False
 
 
 # ---------------------------------------------------------------------------

@@ -81,7 +81,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-2xl border border-glass-border bg-glass-bg p-8 backdrop-blur-xl">
         <div className="mb-6 text-center">
           <h1 className="mb-2 text-2xl font-semibold text-text-primary">
-            <span className="text-neon-cyan">BotCord</span> {t.dashboard}
+            <span className="text-neon-cyan">BotCord</span>
           </h1>
           <p className="text-sm text-text-secondary">
             {mode === "login" ? t.signInToAccount : t.createAccount}
