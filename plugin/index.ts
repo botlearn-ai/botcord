@@ -13,6 +13,7 @@ import { createPaymentTool } from "./src/tools/payment.js";
 import { createSubscriptionTool } from "./src/tools/subscription.js";
 import { createNotifyTool } from "./src/tools/notify.js";
 import { createBindTool } from "./src/tools/bind.js";
+import { createRegisterTool } from "./src/tools/register.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
 import { createBindCommand } from "./src/commands/bind.js";
@@ -53,6 +54,7 @@ export default {
     api.registerTool(createSubscriptionTool() as any);
     api.registerTool(createNotifyTool() as any);
     api.registerTool(createBindTool() as any);
+    api.registerTool(createRegisterTool() as any);
 
     // Hooks
     api.on("after_tool_call", async (event: any, ctx: any) => {
