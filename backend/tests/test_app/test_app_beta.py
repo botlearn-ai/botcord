@@ -307,3 +307,162 @@ async def test_admin_non_admin_forbidden(client: AsyncClient, db_session: AsyncS
         headers={"Authorization": f"Bearer {_make_token(sub)}"},
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: missing branches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redeem_expired_code(client: AsyncClient, db_session: AsyncSession):
+    """Expired code returns 400."""
+    _, sub = await _create_user(db_session)
+    past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
+    code = BetaInviteCode(code="TEST-EXPIRED1", label="test", max_uses=10, expires_at=past)
+    db_session.add(code)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/beta/redeem",
+        json={"code": "TEST-EXPIRED1"},
+        headers={"Authorization": f"Bearer {_make_token(sub)}"},
+    )
+    assert resp.status_code == 400
+    assert "过期" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_apply_waitlist_already_has_beta_access(client: AsyncClient, db_session: AsyncSession):
+    """User with beta_access cannot join waitlist."""
+    _, sub = await _create_user(db_session, beta_access=True)
+    resp = await client.post(
+        "/api/beta/waitlist",
+        json={"email": "active@example.com"},
+        headers={"Authorization": f"Bearer {_make_token(sub)}"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_apply_waitlist_duplicate_approved(client: AsyncClient, db_session: AsyncSession):
+    """User with an approved entry cannot reapply."""
+    user, sub = await _create_user(db_session)
+    entry = BetaWaitlistEntry(user_id=user.id, email="user@example.com", status=BetaWaitlistStatus.approved)
+    db_session.add(entry)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/beta/waitlist",
+        json={"email": "user@example.com"},
+        headers={"Authorization": f"Bearer {_make_token(sub)}"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_apply_waitlist_rejected_cannot_reapply(client: AsyncClient, db_session: AsyncSession):
+    """Rejected users may not reapply."""
+    user, sub = await _create_user(db_session)
+    entry = BetaWaitlistEntry(user_id=user.id, email="user@example.com", status=BetaWaitlistStatus.rejected)
+    db_session.add(entry)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/beta/waitlist",
+        json={"email": "user@example.com"},
+        headers={"Authorization": f"Bearer {_make_token(sub)}"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_admin_reject_waitlist(client: AsyncClient, db_session: AsyncSession):
+    """Admin can reject a pending entry."""
+    _, admin_sub = await _create_user(db_session, beta_admin=True)
+    applicant, _ = await _create_user(db_session)
+    entry = BetaWaitlistEntry(user_id=applicant.id, email="reject@example.com")
+    db_session.add(entry)
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/admin/beta/waitlist/{entry.id}/reject",
+        headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    assert resp.json()["entry"]["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_admin_reject_waitlist_not_pending(client: AsyncClient, db_session: AsyncSession):
+    """Rejecting an already-approved entry returns 400."""
+    _, admin_sub = await _create_user(db_session, beta_admin=True)
+    applicant, _ = await _create_user(db_session)
+    entry = BetaWaitlistEntry(user_id=applicant.id, email="approved@example.com", status=BetaWaitlistStatus.approved)
+    db_session.add(entry)
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/admin/beta/waitlist/{entry.id}/reject",
+        headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_admin_revoke_nonexistent_code(client: AsyncClient, db_session: AsyncSession):
+    """Revoking a non-existent code returns 404."""
+    _, admin_sub = await _create_user(db_session, beta_admin=True)
+    resp = await client.post(
+        f"/api/admin/beta/codes/{uuid.uuid4()}/revoke",
+        headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_approve_nonexistent_entry(client: AsyncClient, db_session: AsyncSession):
+    """Approving a non-existent waitlist entry returns 404."""
+    _, admin_sub = await _create_user(db_session, beta_admin=True)
+    with patch("app.routers.admin_beta._send_approval_email", new=AsyncMock(return_value=True)):
+        resp = await client.post(
+            f"/api/admin/beta/waitlist/{uuid.uuid4()}/approve",
+            headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+        )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_reject_nonexistent_entry(client: AsyncClient, db_session: AsyncSession):
+    """Rejecting a non-existent waitlist entry returns 404."""
+    _, admin_sub = await _create_user(db_session, beta_admin=True)
+    resp = await client.post(
+        f"/api/admin/beta/waitlist/{uuid.uuid4()}/reject",
+        headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_waitlist_pagination(client: AsyncClient, db_session: AsyncSession):
+    """list_waitlist respects limit/offset pagination."""
+    _, admin_sub = await _create_user(db_session, beta_admin=True)
+    for i in range(5):
+        applicant, _ = await _create_user(db_session)
+        db_session.add(BetaWaitlistEntry(user_id=applicant.id, email=f"p{i}@example.com"))
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/admin/beta/waitlist?status=pending&limit=3&offset=0",
+        headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()["entries"]) == 3
+
+    resp2 = await client.get(
+        "/api/admin/beta/waitlist?status=pending&limit=3&offset=3",
+        headers={"Authorization": f"Bearer {_make_token(admin_sub)}"},
+    )
+    assert resp2.status_code == 200
+    assert len(resp2.json()["entries"]) == 2

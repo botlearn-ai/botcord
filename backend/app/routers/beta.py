@@ -5,10 +5,9 @@ User-facing endpoints:
   POST /api/beta/waitlist — submit a waitlist application
 """
 
+import asyncio
 import datetime
 import logging
-import secrets
-import string
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +20,7 @@ from hub.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from hub.database import get_db
 from hub.enums import BetaCodeStatus, BetaWaitlistStatus
 from hub.models import BetaCodeRedemption, BetaInviteCode, BetaWaitlistEntry, User
+from hub.utils import generate_beta_code  # noqa: F401 (available for tests)
 
 _logger = logging.getLogger(__name__)
 
@@ -30,14 +30,6 @@ router = APIRouter(prefix="/api/beta", tags=["app-beta"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-_CODE_ALPHABET = string.ascii_uppercase + string.digits
-
-
-def _generate_code(prefix: str = "BETA") -> str:
-    """Generate a random invite code like BETA-A3X9Z2."""
-    suffix = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(6))
-    return f"{prefix}-{suffix}"
 
 
 async def _sync_beta_access_to_supabase(supabase_user_id: str) -> None:
@@ -133,8 +125,8 @@ async def redeem_invite_code(
     db.add(redemption)
     await db.commit()
 
-    # Sync to Supabase user_metadata (best-effort, non-blocking)
-    await _sync_beta_access_to_supabase(ctx.supabase_user_id)
+    # Sync to Supabase user_metadata (best-effort, fire-and-forget)
+    asyncio.create_task(_sync_beta_access_to_supabase(ctx.supabase_user_id))
 
     return {"ok": True}
 
@@ -152,11 +144,15 @@ async def apply_waitlist(
     if user.beta_access:
         raise HTTPException(status_code=400, detail="你已开通公测资格")
 
-    # Check for existing pending/approved application
+    # Check for existing non-rejected application (rejected users may not re-apply)
     existing = await db.execute(
         select(BetaWaitlistEntry).where(
             BetaWaitlistEntry.user_id == ctx.user_id,
-            BetaWaitlistEntry.status.in_([BetaWaitlistStatus.pending, BetaWaitlistStatus.approved]),
+            BetaWaitlistEntry.status.in_([
+                BetaWaitlistStatus.pending,
+                BetaWaitlistStatus.approved,
+                BetaWaitlistStatus.rejected,
+            ]),
         )
     )
     if existing.scalar_one_or_none() is not None:

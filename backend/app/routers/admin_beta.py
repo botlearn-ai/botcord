@@ -12,8 +12,6 @@ Requires beta_admin=true on the requesting user.
 
 import datetime
 import logging
-import secrets
-import string
 import uuid
 
 import httpx
@@ -27,12 +25,11 @@ from hub.config import BETA_APPROVAL_EMAIL_WEBHOOK_URL, FRONTEND_BASE_URL
 from hub.database import get_db
 from hub.enums import BetaCodeStatus, BetaWaitlistStatus
 from hub.models import BetaCodeRedemption, BetaInviteCode, BetaWaitlistEntry, User
+from hub.utils import generate_beta_code
 
 _logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/beta", tags=["app-admin-beta"])
-
-_CODE_ALPHABET = string.ascii_uppercase + string.digits
 
 
 # ---------------------------------------------------------------------------
@@ -54,11 +51,6 @@ async def require_beta_admin(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_code(prefix: str = "BETA") -> str:
-    suffix = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(8))
-    return f"{prefix}-{suffix}"
 
 
 def _code_response(c: BetaInviteCode) -> dict:
@@ -165,11 +157,15 @@ async def create_code(
     ctx: RequestContext = Depends(require_beta_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    code_val = _make_code(body.prefix.upper())
-    # Ensure uniqueness (retry once on collision)
-    existing = await db.execute(select(BetaInviteCode).where(BetaInviteCode.code == code_val))
-    if existing.scalar_one_or_none():
-        code_val = _make_code(body.prefix.upper())
+    # Ensure uniqueness with retry loop (collision probability is negligible but not zero)
+    prefix_upper = body.prefix.upper()
+    for _ in range(10):
+        code_val = generate_beta_code(prefix_upper)
+        existing = await db.execute(select(BetaInviteCode).where(BetaInviteCode.code == code_val))
+        if existing.scalar_one_or_none() is None:
+            break
+    else:
+        raise HTTPException(status_code=500, detail="Failed to generate unique invite code")
 
     invite_code = BetaInviteCode(
         code=code_val,
@@ -207,6 +203,8 @@ async def revoke_code(
 @router.get("/waitlist")
 async def list_waitlist(
     status: str = Query(default="pending"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     ctx: RequestContext = Depends(require_beta_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -219,6 +217,8 @@ async def list_waitlist(
         select(BetaWaitlistEntry)
         .where(BetaWaitlistEntry.status == status_enum)
         .order_by(BetaWaitlistEntry.applied_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     result = await db.execute(stmt)
     entries = result.scalars().all()
@@ -248,7 +248,7 @@ async def approve_waitlist(
         raise HTTPException(status_code=400, detail="Entry is not pending")
 
     # Generate one-time code
-    code_val = _make_code("INVITE")
+    code_val = generate_beta_code("INVITE")
     invite_code = BetaInviteCode(
         code=code_val,
         label=f"waitlist:{entry.email}",
