@@ -727,19 +727,18 @@ async def _send_room_message(
         if m.agent_id != envelope.from_ and not m.muted and m.agent_id not in blocked_by
     }
 
-    # Owner-chat rooms (rm_oc_*): the agent is typically the sole member, so
-    # receivers would be empty after excluding the sender.  Create a self-
-    # delivery record so the reply appears in the room's message history for
-    # the dashboard, but skip inbox notification to avoid re-triggering the
-    # plugin.
-    _owner_chat_self_delivery = False
-    if not receivers and room_id.startswith("rm_oc_"):
+    # When the sender is the only member (or all others are muted/blocking),
+    # receivers would be empty.  Create a self-delivery record so the message
+    # appears in room history, but skip inbox notification to avoid the plugin
+    # re-processing its own message.
+    _self_delivery = False
+    if not receivers:
         receivers = {envelope.from_}
-        _owner_chat_self_delivery = True
+        _self_delivery = True
 
     logger.info(
         "ROOM fan-out msg_id=%s from=%s room=%s topic=%s receivers=%s owner_chat_self=%s",
-        envelope.msg_id, envelope.from_, room_id, topic, receivers, _owner_chat_self_delivery,
+        envelope.msg_id, envelope.from_, room_id, topic, receivers, _self_delivery,
     )
     envelope_json = json.dumps(envelope.model_dump(by_alias=True))
 
@@ -759,10 +758,10 @@ async def _send_room_message(
             receiver_id in mentioned_set or "@all" in mentioned_set
         )
 
-        # Owner-chat self-delivery records are marked as 'delivered' immediately
-        # so they never appear in the agent's inbox poll.  They exist solely for
-        # room history queries (dashboard get_room_messages).
-        _is_self_delivery = _owner_chat_self_delivery and receiver_id == envelope.from_
+        # Self-delivery records are marked as 'delivered' immediately so they
+        # never appear in the agent's inbox poll.  They exist solely for room
+        # history queries.
+        _is_self_delivery = _self_delivery and receiver_id == envelope.from_
         record = MessageRecord(
             hub_msg_id=hub_msg_id,
             msg_id=envelope.msg_id,
@@ -808,10 +807,10 @@ async def _send_room_message(
             mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
             payload=envelope.payload,
         )
-        if _owner_chat_self_delivery and receiver_id == envelope.from_:
-            # Self-delivery in owner-chat: publish realtime event for the
-            # dashboard frontend but do NOT wake the agent's inbox/WS to
-            # avoid the plugin re-processing its own reply.
+        if _self_delivery and receiver_id == envelope.from_:
+            # Self-delivery: publish realtime event for the dashboard
+            # frontend but do NOT wake the agent's inbox/WS to avoid
+            # the plugin re-processing its own message.
             await _publish_agent_realtime_event(db, rt_event)
         else:
             await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
