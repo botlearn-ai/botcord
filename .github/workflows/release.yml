@@ -19,7 +19,7 @@ jobs:
         id: backup
         run: |
           DATE=$(date +%Y-%m-%d)
-          BACKUP_BRANCH="release/${DATE}"
+          BACKUP_BRANCH="release-backup-${DATE}"
 
           # Check if remote release branch exists
           if ! git ls-remote --exit-code origin release >/dev/null 2>&1; then
@@ -28,7 +28,7 @@ jobs:
             exit 0
           fi
 
-          # Handle naming collision: release/2026-03-25, release/2026-03-25-2, ...
+          # Handle naming collision: release-backup-2026-03-25, release-backup-2026-03-25-2, ...
           CANDIDATE="$BACKUP_BRANCH"
           SEQ=2
           while git ls-remote --exit-code origin "$CANDIDATE" >/dev/null 2>&1; do
