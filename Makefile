@@ -21,7 +21,7 @@ backend:
 	cd backend && uv run uvicorn hub.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)
 
 frontend:
-	cd frontend && pnpm dev -- -p $(FRONTEND_PORT)
+	cd frontend && pnpm dev --port $(FRONTEND_PORT)
 
 # Runs both processes; requires GNU Make jobserver (default on macOS/Linux make).
 dev:
