@@ -876,7 +876,7 @@ class BetaWaitlistEntry(Base):
 
     id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
     user_id: Mapped[_uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("public.users.id"), nullable=False, index=True
+        Uuid, ForeignKey("public.users.id"), nullable=False, unique=True, index=True
     )
     email: Mapped[str] = mapped_column(String(256), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

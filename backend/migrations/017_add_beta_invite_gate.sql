@@ -38,7 +38,7 @@ create table if not exists beta_waitlist_entries (
     sent_code_id uuid references beta_invite_codes(id)
 );
 
-create index if not exists ix_beta_waitlist_entries_user_id on beta_waitlist_entries (user_id);
+create unique index if not exists ix_beta_waitlist_entries_user_id on beta_waitlist_entries (user_id);
 create index if not exists ix_beta_waitlist_entries_status on beta_waitlist_entries (status);
 
 alter table public.users

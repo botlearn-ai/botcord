@@ -11,8 +11,10 @@ import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+import pydantic
 from pydantic import BaseModel
 from sqlalchemy import and_, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
@@ -20,7 +22,6 @@ from hub.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from hub.database import get_db
 from hub.enums import BetaCodeStatus, BetaWaitlistStatus
 from hub.models import BetaCodeRedemption, BetaInviteCode, BetaWaitlistEntry, User
-from hub.utils import generate_beta_code  # noqa: F401 (available for tests)
 
 _logger = logging.getLogger(__name__)
 
@@ -62,8 +63,8 @@ class RedeemRequest(BaseModel):
 
 
 class WaitlistRequest(BaseModel):
-    email: str
-    note: str | None = None
+    email: str = pydantic.Field(max_length=256, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    note: str | None = pydantic.Field(default=None, max_length=500)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +165,10 @@ async def apply_waitlist(
         note=body.note,
     )
     db.add(entry)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="你已提交过申请")
 
     return {"ok": True}

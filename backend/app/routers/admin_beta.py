@@ -15,6 +15,7 @@ import logging
 import uuid
 
 import httpx
+import pydantic
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -128,9 +129,9 @@ async def _send_approval_email(email: str, code: str) -> bool:
 
 
 class CreateCodeRequest(BaseModel):
-    label: str
-    max_uses: int = 1
-    prefix: str = "BETA"
+    label: str = pydantic.Field(max_length=128)
+    max_uses: int = pydantic.Field(default=1, ge=1, le=100000)
+    prefix: str = pydantic.Field(default="BETA", max_length=20, pattern=r"^[A-Za-z0-9]+$")
     expires_at: datetime.datetime | None = None
 
 
@@ -247,8 +248,14 @@ async def approve_waitlist(
     if entry.status != BetaWaitlistStatus.pending:
         raise HTTPException(status_code=400, detail="Entry is not pending")
 
-    # Generate one-time code
-    code_val = generate_beta_code("INVITE")
+    # Generate one-time code with uniqueness retry
+    for _ in range(10):
+        code_val = generate_beta_code("INVITE")
+        existing = await db.execute(select(BetaInviteCode).where(BetaInviteCode.code == code_val))
+        if existing.scalar_one_or_none() is None:
+            break
+    else:
+        raise HTTPException(status_code=500, detail="Failed to generate unique invite code")
     invite_code = BetaInviteCode(
         code=code_val,
         label=f"waitlist:{entry.email}",

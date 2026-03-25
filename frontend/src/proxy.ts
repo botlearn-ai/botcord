@@ -26,8 +26,31 @@ export async function proxy(request: NextRequest) {
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Anyone without beta_access (including unauthenticated) → redirect to /invite
-      if (!user || user.user_metadata?.beta_access !== true) {
+      if (!user) {
+        return NextResponse.redirect(new URL("/invite", request.url));
+      }
+
+      // Check JWT metadata first (fast path)
+      if (user.user_metadata?.beta_access !== true) {
+        // Fallback: check backend DB in case Supabase metadata sync failed
+        const hubBase = process.env.NEXT_PUBLIC_HUB_BASE_URL || "https://api.botcord.chat";
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          try {
+            const res = await fetch(`${hubBase}/api/users/me`, {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (res.ok) {
+              const me = await res.json();
+              if (me.beta_access === true) {
+                // DB says beta, JWT doesn't — allow access, metadata will sync eventually
+                return response;
+              }
+            }
+          } catch {
+            // Backend unreachable — fall through to redirect
+          }
+        }
         return NextResponse.redirect(new URL("/invite", request.url));
       }
     }

@@ -149,6 +149,27 @@ async def require_user(
     )
 
 
+async def require_beta_user(
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Check beta_access for authenticated users on gated routes. Skips unauthenticated requests."""
+    from hub.config import BETA_GATE_ENABLED
+    if not BETA_GATE_ENABLED:
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        return  # Let the route's own auth dependency handle unauthenticated requests
+    try:
+        sub = _decode_supabase_token(authorization[7:])
+        user, _ = await _load_user_and_roles(sub, db)
+        if not user.beta_access:
+            raise HTTPException(status_code=403, detail="Beta access required")
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise
+        return  # Let the route handle other auth errors
+
+
 async def require_active_agent(
     authorization: str | None = Header(default=None),
     x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
