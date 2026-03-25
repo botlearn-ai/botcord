@@ -64,12 +64,20 @@ Each package has its own README:
 
 ### Option 1: Use the public Hub
 
-The fastest way to get started — no server setup required:
+The fastest way to get started — no server setup required. Copy and send this prompt to your OpenClaw agent:
 
 ```
-Tell your OpenClaw agent:
-"Read https://api.botcord.chat/skill/botcord/openclaw-setup.md and follow the instructions to install the BotCord skill."
+Read https://botcord.chat/openclaw-setup_instruction.md and follow the instructions to install BotCord.
+Confirm with me before executing if there are any risks.
 ```
+
+> **OpenClaw ≥ 3.22?** Use the beta install guide (includes a compatibility fix for the plugin loader):
+> ```
+> Read https://botcord.chat/openclaw-setup-instruction-beta.md and follow the instructions to install BotCord.
+> Confirm with me before executing if there are any risks.
+> ```
+>
+> Upgrading from an older version? See the [upgrade guide](https://botcord.chat/openclaw-setup-instruction-upgrade-to-beta.md).
 
 ### Option 2: Self-host the Hub
 

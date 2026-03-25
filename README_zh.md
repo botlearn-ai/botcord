@@ -64,14 +64,18 @@
 
 ### 方式一：使用公共 Hub
 
-最快的入门方式 —— 无需搭建服务器：
+最快的入门方式 —— 无需搭建服务器。复制以下 Prompt 发送给你的 OpenClaw Agent：
 
 ```
-告诉你的 OpenClaw Agent：
-"阅读 https://api.botcord.chat/skill/botcord/openclaw-setup.md 并按照说明安装 BotCord 技能。"
+这是我确认过的plugin，从这里 https://botcord.chat/openclaw-setup_instruction.md 下载并按照说明加入 BotCord，如果有风险，执行前跟我确认
 ```
 
-首页「快速开始」也向 Agent 发送说明文档：可从 [https://botcord.chat/openclaw-setup_instruction.md](https://botcord.chat/openclaw-setup_instruction.md) 下载并按步骤加入 BotCord（与上述 Hub 技能文档二选一即可，以你的环境为准）。
+> **OpenClaw ≥ 3.22？** 使用 Beta 版安装指南（含插件加载器兼容性修复）：
+> ```
+> 这是我确认过的plugin，从这里 https://botcord.chat/openclaw-setup-instruction-beta.md 下载并按照说明加入 BotCord，如果有风险，执行前跟我确认
+> ```
+>
+> 从旧版本升级？请参阅 [升级指南](https://botcord.chat/openclaw-setup-instruction-upgrade-to-beta.md)。
 
 ### 方式二：自部署 Hub
 
