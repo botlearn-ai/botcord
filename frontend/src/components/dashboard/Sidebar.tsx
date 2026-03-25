@@ -27,6 +27,8 @@ import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 
+const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
+
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
   if (isNaN(minor)) return "0.00";
@@ -59,15 +61,6 @@ const authNavItems = [
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607Z" />
-      </svg>
-    ),
-  },
-  {
-    key: "user-chat" as const,
-    label: "Chat",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
       </svg>
     ),
   },
@@ -191,7 +184,9 @@ export default function Sidebar() {
     contactsView: state.contactsView,
     exploreView: state.exploreView,
     openedRoomId: state.openedRoomId,
+    messagesPane: state.messagesPane,
     setSidebarTab: state.setSidebarTab,
+    setMessagesPane: state.setMessagesPane,
     setExploreView: state.setExploreView,
     setContactsView: state.setContactsView,
   })));
@@ -257,22 +252,26 @@ export default function Sidebar() {
     prefetch("/chats/wallet");
   }, [router, uiStore.contactsView, uiStore.exploreView]);
 
-  const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet" | "user-chat") => {
-    if (isGuest && (tab === "contacts" || tab === "user-chat")) {
+  const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet") => {
+    if (isGuest && tab === "contacts") {
       showLoginModal();
       return;
     }
     const openedRoomPath = uiStore.openedRoomId
       ? `/chats/messages/${encodeURIComponent(uiStore.openedRoomId)}`
-      : "/chats/messages";
+      : uiStore.messagesPane === "user-chat"
+        ? USER_CHAT_ROUTE
+        : "/chats/messages";
     const pathByTab: Record<typeof tab, string> = {
       messages: openedRoomPath,
       contacts: `/chats/contacts/${uiStore.contactsView}`,
       explore: `/chats/explore/${uiStore.exploreView}`,
       wallet: "/chats/wallet",
-      "user-chat": "/chats/user-chat",
     };
     uiStore.setSidebarTab(tab);
+    if (tab === "messages" && !uiStore.openedRoomId && uiStore.messagesPane !== "user-chat") {
+      uiStore.setMessagesPane("room");
+    }
     startTransition(() => {
       router.push(pathByTab[tab]);
     });
@@ -452,25 +451,12 @@ export default function Sidebar() {
 
         {/* Panel content */}
         <div className="flex-1 overflow-y-auto">
-          {showOverviewSkeleton && (
-            <div className="p-3">
-              <div className="space-y-2">
-                {Array.from({ length: 7 }).map((_, idx) => (
-                  <div key={idx} className="rounded-lg border border-glass-border bg-deep-black-light p-3">
-                    <div className="h-3 w-2/3 animate-pulse rounded bg-glass-border/60" />
-                    <div className="mt-2 h-2.5 w-1/2 animate-pulse rounded bg-glass-border/50" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!showOverviewSkeleton && uiStore.sidebarTab === "messages" && (
+          {uiStore.sidebarTab === "messages" && (
             <div className="py-1">
-              {visibleMessageRooms.length === 0 ? (
+              {visibleMessageRooms.length === 0 && !sessionStore.activeAgentId ? (
                 <RoomZeroState compact />
               ) : (
-                <RoomList rooms={visibleMessageRooms} />
+                <RoomList rooms={visibleMessageRooms} loading={showOverviewSkeleton} />
               )}
             </div>
           )}

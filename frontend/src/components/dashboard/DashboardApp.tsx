@@ -30,6 +30,8 @@ import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 
+const USER_CHAT_SUBTAB = "__user-chat__";
+
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
   authResolved: boolean;
@@ -197,7 +199,8 @@ export default function DashboardApp() {
           : null;
 
     if (normalizedTab) {
-      if (uiStore.sidebarTab !== normalizedTab) uiStore.setSidebarTab(normalizedTab);
+      const nextSidebarTab = normalizedTab === "user-chat" ? "messages" : normalizedTab;
+      if (uiStore.sidebarTab !== nextSidebarTab) uiStore.setSidebarTab(nextSidebarTab);
 
       if (tab === "explore" && (subtab === "rooms" || subtab === "agents") && uiStore.exploreView !== subtab) {
         uiStore.setExploreView(subtab);
@@ -211,7 +214,15 @@ export default function DashboardApp() {
         uiStore.setContactsView(subtab);
       }
 
-      if (normalizedTab === "messages") {
+      if (normalizedTab === "messages" || normalizedTab === "user-chat") {
+        const opensUserChat = tab === "user-chat" || subtab === USER_CHAT_SUBTAB;
+        if (opensUserChat) {
+          if (uiStore.messagesPane !== "user-chat") uiStore.setMessagesPane("user-chat");
+          if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
+          if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
+          return;
+        }
+        if (uiStore.messagesPane !== "room") uiStore.setMessagesPane("room");
         const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
         if (roomIdFromPath) {
           if (uiStore.focusedRoomId !== roomIdFromPath) uiStore.setFocusedRoomId(roomIdFromPath);
@@ -242,11 +253,13 @@ export default function DashboardApp() {
     uiStore.focusedRoomId,
     uiStore.openedRoomId,
     uiStore.sidebarTab,
+    uiStore.messagesPane,
     uiStore.exploreView,
     uiStore.contactsView,
     uiStore.setFocusedRoomId,
     uiStore.setOpenedRoomId,
     uiStore.setSidebarTab,
+    uiStore.setMessagesPane,
     uiStore.setExploreView,
     uiStore.setContactsView,
     chatStore.getRoomSummary,
@@ -506,7 +519,7 @@ export default function DashboardApp() {
       <Sidebar />
       {uiStore.sidebarTab === "wallet" ? (
         <WalletPanel />
-      ) : uiStore.sidebarTab === "user-chat" ? (
+      ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
         <div className="flex-1 min-w-0">
           <UserChatPane />
         </div>

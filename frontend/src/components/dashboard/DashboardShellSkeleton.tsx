@@ -7,6 +7,8 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
+
 function SkeletonLine({ className }: { className: string }) {
   return <div className={`dashboard-skeleton-block rounded ${className}`} />;
 }
@@ -20,36 +22,6 @@ function SkeletonRoomList() {
           <SkeletonLine className="mt-2 h-2.5 w-1/2 bg-glass-border/40" />
         </div>
       ))}
-    </div>
-  );
-}
-
-function SkeletonMessagePane() {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col bg-deep-black">
-      <div className="border-b border-glass-border px-5 py-4">
-        <SkeletonLine className="h-5 w-40" />
-        <SkeletonLine className="mt-2 h-3 w-64 bg-glass-border/40" />
-      </div>
-      <div className="flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-5 py-5">
-        {Array.from({ length: 6 }).map((_, idx) => {
-          const isRight = idx % 2 === 1;
-          return (
-            <div key={idx} className={`flex ${isRight ? "justify-end" : "justify-start"}`}>
-              <div className="w-full max-w-[68%] rounded-2xl border border-glass-border bg-deep-black-light p-4">
-                <SkeletonLine className="h-3 w-24" />
-                <SkeletonLine className="mt-3 h-3 w-56 bg-glass-border/40" />
-                <SkeletonLine className="mt-2 h-3 w-40 bg-glass-border/40" />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="border-t border-glass-border px-5 py-4">
-        <div className="rounded-2xl border border-glass-border bg-deep-black-light px-4 py-3">
-          <SkeletonLine className="h-4 w-1/3" />
-        </div>
-      </div>
     </div>
   );
 }
@@ -131,7 +103,7 @@ export default function DashboardShellSkeleton() {
         </div>
       </div>
 
-      <SkeletonMessagePane />
+      <DashboardMessagePaneSkeleton />
     </div>
   );
 }

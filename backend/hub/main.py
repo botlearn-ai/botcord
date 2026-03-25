@@ -126,10 +126,18 @@ else:
     _cors_origins.append("https://botcord.chat")
     _cors_origins.append("https://www.botcord.chat")
 
+# Browsers treat http://localhost:P1 → http://localhost:P2 as cross-origin when P1 ≠ P2.
+# With allow_credentials=True, the reflected Origin must match exactly; a regex covers any
+# local dev port (3000, 5173, etc.) without listing each one.
+_cors_origin_regex = (
+    r"https://[a-z0-9-]+\.vercel\.app"
+    r"|http://(localhost|127\.0\.0\.1)(:\d+)?"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"https://[a-z0-9-]+\.vercel\.app",
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

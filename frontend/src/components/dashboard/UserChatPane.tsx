@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖 dashboard session/chat/ui store 与 user-chat API，维护“用户 <-> 当前 active agent”私聊房间的初始化、消息发送与轻量流式感知
+ * [OUTPUT]: 对外提供 UserChatPane 组件，渲染固定私聊入口对应的一对一会话正文与输入框
+ * [POS]: dashboard messages 视图里的特殊会话面板，被 `messages/__user-chat__` 深链与左侧固定入口消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
@@ -7,6 +14,7 @@ import type { DashboardMessage, UserChatRoom } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import { useShallow } from "zustand/react/shallow";
 
@@ -196,10 +204,14 @@ export default function UserChatPane() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        <p>Loading chat...</p>
-      </div>
+      <DashboardMessagePaneSkeleton
+        headerIcon={<MessageSquare className="h-4 w-4" />}
+        headerPaddingClassName="px-4 py-3"
+        bodyPaddingClassName="px-4 py-4"
+        composerPaddingClassName="px-4 py-3"
+        messageMaxWidthClassName="max-w-[75%]"
+        roundedClassName="rounded-lg"
+      />
     );
   }
 
