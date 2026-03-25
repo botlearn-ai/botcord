@@ -9,6 +9,7 @@
 `[tab]/[subtab]/page.tsx`: 二级 tab 路由占位，保留深链地址语义但不重复挂载 dashboard
 
 变更日志
+2026-03-25: `messages/__user-chat__` 成为固定私聊深链，原 `user-chat` 一级入口下沉到 `messages` 列表首项，刷新与分享都保持同一持久 layout 语义。
 2026-03-19: 删除 `loading.tsx`，改由 `layout.tsx` 的动态导入 fallback 承载首屏骨架，避免 tab 切换误触发整页刷新。
 2026-03-19: `/chats` 改为 layout 持久挂载 `DashboardApp`，切换 tab/subtab 不再触发全局重挂载与首屏 loading 闪烁。
 

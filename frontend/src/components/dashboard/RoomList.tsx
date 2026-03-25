@@ -14,13 +14,17 @@ import { useShallow } from "zustand/react/shallow";
 
 import { DashboardRoom } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
+  loading?: boolean;
 }
+
+const USER_CHAT_PATH = "/chats/messages/__user-chat__";
 
 function buildRoomAvatarLabel(roomName: string): string {
   const normalized = roomName.trim();
@@ -49,7 +53,7 @@ function formatLastMessageTime(isoTime: string | null): string {
     : date.toLocaleDateString();
 }
 
-export default function RoomList({ rooms: propsRooms }: RoomListProps) {
+export default function RoomList({ rooms: propsRooms, loading = false }: RoomListProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = roomList[locale];
@@ -58,15 +62,20 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
     messages: state.messages,
     loadRoomMessages: state.loadRoomMessages,
   })));
-  const { focusedRoomId, setFocusedRoomId, setOpenedRoomId } = useDashboardUIStore(useShallow((state) => ({
+  const { focusedRoomId, messagesPane, setFocusedRoomId, setOpenedRoomId, setMessagesPane } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
+    messagesPane: state.messagesPane,
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
+    setMessagesPane: state.setMessagesPane,
   })));
+  const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
   const rooms = propsRooms || overview?.rooms || [];
+  const showUserChatEntry = Boolean(activeAgentId);
 
   const handleSelect = (roomId: string) => {
+    setMessagesPane("room");
     setFocusedRoomId(roomId);
     setOpenedRoomId(roomId);
     router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
@@ -86,18 +95,81 @@ export default function RoomList({ rooms: propsRooms }: RoomListProps) {
     handleSelect(roomId);
   };
 
-  if (rooms.length === 0) {
-    return (
-      <div className="p-4 text-center text-xs text-text-secondary">
-        {t.noRooms}
-      </div>
-    );
-  }
+  const handleSelectUserChat = () => {
+    if (!showUserChatEntry) return;
+    setMessagesPane("user-chat");
+    setFocusedRoomId(null);
+    setOpenedRoomId(null);
+    router.push(USER_CHAT_PATH);
+  };
+
+  const handleUserChatKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    handleSelectUserChat();
+  };
 
   return (
     <div className="py-1">
-      {rooms.map((room) => {
-        const isSelected = focusedRoomId === room.room_id;
+      {showUserChatEntry && (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={t.userChatAriaLabel}
+          aria-current={messagesPane === "user-chat" ? "page" : undefined}
+          title={t.userChatTooltip}
+          onClick={handleSelectUserChat}
+          onKeyDown={handleUserChatKeyDown}
+          className={`w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
+            messagesPane === "user-chat"
+              ? "border-neon-cyan bg-neon-cyan/10"
+              : "border-transparent hover:bg-glass-bg"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className={`truncate text-sm font-medium flex items-center gap-2 ${messagesPane === "user-chat" ? "text-neon-cyan" : "text-text-primary"}`}>
+                  {t.userChatTitle}
+                  <span className="rounded-full border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neon-cyan">
+                    {t.userChatBadge}
+                  </span>
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-xs text-text-secondary">
+                {t.userChatPreview}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {loading && (
+        <div className="space-y-2 px-3 py-2">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div key={idx} className="rounded-lg border border-glass-border bg-deep-black-light p-3">
+              <div className="h-3 w-2/3 animate-pulse rounded bg-glass-border/60" />
+              <div className="mt-2 h-2.5 w-1/2 animate-pulse rounded bg-glass-border/50" />
+            </div>
+          ))}
+        </div>
+      )}
+      {!loading && rooms.length === 0 && !showUserChatEntry && (
+        <div className="p-4 text-center text-xs text-text-secondary">
+          {t.noRooms}
+        </div>
+      )}
+      {!loading && rooms.map((room) => {
+        const isSelected = messagesPane === "room" && focusedRoomId === room.room_id;
         const roomMessages = messages[room.room_id] || [];
         const cachedLatestMessage = roomMessages[roomMessages.length - 1];
         const previewText = room.last_message_preview || cachedLatestMessage?.text || t.noMessagesYet;

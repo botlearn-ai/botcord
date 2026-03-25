@@ -16,7 +16,9 @@ export interface DashboardUIState {
   userChatAgentTyping: boolean;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
-  sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "user-chat";
+  sidebarTab: "messages" | "contacts" | "explore" | "wallet";
+  /** Distinguish the fixed user-chat entry from ordinary message rooms. */
+  messagesPane: "room" | "user-chat";
   exploreView: "rooms" | "agents";
   contactsView: "agents" | "requests" | "rooms";
 
@@ -25,6 +27,7 @@ export interface DashboardUIState {
   setUserChatRoomId: (roomId: string | null) => void;
   setUserChatAgentTyping: (typing: boolean) => void;
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
+  setMessagesPane: (pane: DashboardUIState["messagesPane"]) => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
   toggleRightPanel: () => void;
@@ -42,6 +45,7 @@ const initialUIState = {
   rightPanelOpen: false,
   agentCardOpen: false,
   sidebarTab: "messages" as const,
+  messagesPane: "room" as const,
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
 };
@@ -59,6 +63,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.userChatAgentTyping === userChatAgentTyping ? state : { userChatAgentTyping })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
+  setMessagesPane: (messagesPane) =>
+    set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
   setExploreView: (exploreView) =>
     set((state) => (state.exploreView === exploreView ? state : { exploreView })),
   setContactsView: (contactsView) =>

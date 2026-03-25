@@ -10,10 +10,10 @@
 dashboard/
 ├── DashboardApp.tsx          # 顶层编排：鉴权初始化 + agent 门禁 + Supabase Realtime 生命周期 + 三栏布局骨架
 ├── DashboardShellSkeleton.tsx # `/chats` 应用级骨架屏，统一路由切入与鉴权等待视觉
-├── Sidebar.tsx               # 一级/二级导航与左侧业务入口
+├── Sidebar.tsx               # 一级/二级导航与左侧业务入口，`messages` 侧栏统一承载固定私聊入口 + 会话列表
 ├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区）
 ├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
-├── RoomList.tsx              # 房间列表（传统列表样式 + 未读蓝点）
+├── RoomList.tsx              # 消息入口列表：固定“我和 Agent”私聊项 + 普通房间会话（未读蓝点/最近消息）
 ├── PublicRoomList.tsx        # 公开房间列表（用于二级内容场景）
 ├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
 ├── AgentBrowser.tsx          # 右侧 agent/成员浏览器，含成员面板底部的退出房间与退订动作
@@ -49,6 +49,7 @@ dashboard/
 - 消息会话状态拆为 `focusedRoomId` 与 `openedRoomId`：前者只在显式选中房间时驱动左侧高亮，后者负责会话头部与正文消息加载；`/chats/messages` 根路由不默认聚焦任何房间。
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
+- 用户与自己 active agent 的私聊不再占用一级 tab，而是固定插入 `messages` 列表首项，并使用特殊标记与 tooltip 明示“这是给自己 Agent 发消息的入口”。
 - 登录但无 agent 时由 `AgentGateModal.tsx` 顶层强制拦截；在身份准备好之前不渲染主工作区，也不触发 rooms/messages API。
 - 话题分组语义统一从消息流派生：未加入成员或游客只要拿到公开消息，就能得到一致的 topic 分组视图，避免 message/topics 双接口时序竞争。
 - agent 绑定流程收敛为 Prompt 驱动：浏览器签发临时 `bind_ticket` → 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
@@ -69,6 +70,7 @@ dashboard/
 - 2026-03-22: `DashboardApp.tsx` 在订阅 Supabase private channel 前显式执行 `supabase.realtime.setAuth(session.access_token)`，并扩展 `window.botcordDebugRealtime()` 输出 access token 的 `sub/role`，修复业务登录态与 Realtime 鉴权上下文可能分裂的问题。
 - 2026-03-22: `DashboardApp.tsx` 新增浏览器全局 `window.botcordDebugRealtime()` 调试入口，并把 realtime 订阅状态、topic 与事件脉冲打印到控制台，便于排查 Supabase private channel 授权问题。
 - 2026-03-22: `Sidebar.tsx` 抽出一级 `PrimaryNavButton` 与二级 `SecondaryNavButton`，收敛导航按钮样式/高亮/badge 重复逻辑，后续扩展提醒状态不再复制分支。
+- 2026-03-25: `user-chat` 从一级导航下沉到 `messages` 列表首项；`RoomList.tsx` 新增固定私聊入口与 tooltip，`DashboardApp.tsx` 用 `messages/__user-chat__` 深链恢复该特殊会话。
 - 2026-03-22: `Sidebar.tsx` 为一级 `Contacts` 导航与二级 `Requests` 入口补上未处理联系人申请 badge，提醒直接复用 `overview.pending_requests`，避免再造联系人计数状态。
 - 2026-03-21: `DashboardApp.tsx` 改为直接编排 `ui/chat/realtime/unread` 四个拆分 store，并删除 `useDashboardChannelStore.ts` / `useDashboardStore.ts` 历史 facade，结束单文件混合消息缓存、未读、导航和连接状态的坏味道。
 - 2026-03-22: `MessageList.tsx` 在看到最新位置时通过 BFF 持久化 `room_members.last_viewed_at`，`RoomList.tsx` / `Sidebar.tsx` 的未读蓝点改读后端 SQL 返回的 `has_unread`。

@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: 依赖 TranslationMap 约束 dashboard 各分区文案结构
+ * [OUTPUT]: 对外提供 dashboard 相关 i18n 文案映射
+ * [POS]: frontend dashboard 文案源，供 Sidebar、RoomList、ChatPane 等组件复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import type { TranslationMap } from '../types'
 
 export const sidebar: TranslationMap<{
@@ -197,6 +204,11 @@ export const roomList: TranslationMap<{
   shareRoom: string
   guest: string
   viewMembers: string
+  userChatTitle: string
+  userChatBadge: string
+  userChatPreview: string
+  userChatTooltip: string
+  userChatAriaLabel: string
 }> = {
   en: {
     noRooms: 'No rooms yet',
@@ -212,6 +224,11 @@ export const roomList: TranslationMap<{
     shareRoom: 'Share room',
     guest: 'Guest',
     viewMembers: 'View members',
+    userChatTitle: 'Me & My Agent',
+    userChatBadge: 'Direct',
+    userChatPreview: 'Private 1:1 entry for chatting with your current agent.',
+    userChatTooltip: 'Open the private chat between you and your current active agent.',
+    userChatAriaLabel: 'Open private chat between you and your current active agent',
   },
   zh: {
     noRooms: '暂无房间',
@@ -227,6 +244,11 @@ export const roomList: TranslationMap<{
     shareRoom: '分享房间',
     guest: '访客',
     viewMembers: '查看成员',
+    userChatTitle: '我和 Agent',
+    userChatBadge: '私聊',
+    userChatPreview: '你和当前 Agent 的一对一聊天入口。',
+    userChatTooltip: '打开你与当前 Agent 的私聊，用于直接给自己的 Agent 发消息。',
+    userChatAriaLabel: '打开你与当前 Agent 的私聊入口',
   },
 }
 
