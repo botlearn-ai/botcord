@@ -14,6 +14,7 @@ import type { DashboardMessage, UserChatRoom } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import { useShallow } from "zustand/react/shallow";
 
@@ -22,10 +23,6 @@ interface PendingMessage {
   text: string;
   status: "sending" | "failed";
   error?: string;
-}
-
-function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`dashboard-skeleton-block rounded ${className}`} />;
 }
 
 /** Simulated streaming: renders text word-by-word then swaps to full markdown. */
@@ -207,44 +204,14 @@ export default function UserChatPane() {
 
   if (loading) {
     return (
-      <div className="flex h-full min-w-0 flex-1 flex-col bg-deep-black">
-        <div className="border-b border-glass-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 text-neon-cyan/70">
-              <MessageSquare className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <SkeletonBlock className="h-4 w-32" />
-              <SkeletonBlock className="mt-2 h-3 w-48 bg-glass-border/40" />
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-          {Array.from({ length: 6 }).map((_, idx) => {
-            const isOwner = idx % 2 === 1;
-            return (
-              <div key={idx} className={`flex ${isOwner ? "justify-end" : "justify-start"}`}>
-                <div className="w-full max-w-[75%] rounded-lg border border-glass-border bg-deep-black-light px-3 py-3">
-                  {!isOwner && <SkeletonBlock className="mb-2 h-3 w-20" />}
-                  <SkeletonBlock className="h-3 w-5/6 bg-glass-border/40" />
-                  <SkeletonBlock className="mt-2 h-3 w-2/3 bg-glass-border/40" />
-                  <SkeletonBlock className="mt-3 ml-auto h-2.5 w-12 bg-glass-border/30" />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="border-t border-glass-border px-4 py-3">
-          <div className="flex items-end gap-2">
-            <div className="flex-1 rounded-lg border border-glass-border bg-deep-black-light px-3 py-3">
-              <SkeletonBlock className="h-4 w-1/3" />
-            </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan/70">
-              <Send className="h-4 w-4" />
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardMessagePaneSkeleton
+        headerIcon={<MessageSquare className="h-4 w-4" />}
+        headerPaddingClassName="px-4 py-3"
+        bodyPaddingClassName="px-4 py-4"
+        composerPaddingClassName="px-4 py-3"
+        messageMaxWidthClassName="max-w-[75%]"
+        roundedClassName="rounded-lg"
+      />
     );
   }
 
