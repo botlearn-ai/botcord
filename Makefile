@@ -23,6 +23,9 @@ backend:
 frontend:
 	cd frontend && pnpm dev --port $(FRONTEND_PORT)
 
-# Runs both processes; requires GNU Make jobserver (default on macOS/Linux make).
+# Runs both processes; trap ensures all children are killed on Ctrl+C.
 dev:
-	$(MAKE) -j2 backend frontend
+	trap 'kill 0' INT TERM; \
+	(cd backend && uv run uvicorn hub.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
+	(cd frontend && pnpm dev --port $(FRONTEND_PORT)) & \
+	wait

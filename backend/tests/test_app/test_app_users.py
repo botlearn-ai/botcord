@@ -181,11 +181,13 @@ async def test_get_my_agents(client: AsyncClient, seed_user: dict):
 
 
 @pytest.mark.asyncio
-async def test_get_me_user_not_found(client: AsyncClient):
-    """Token with valid format but user does not exist in DB."""
+async def test_get_me_auto_creates_user(client: AsyncClient):
+    """Token with valid format but user does not exist — auto-creates."""
     token = _make_supabase_token(str(uuid.uuid4()))
     resp = await client.get(
         "/api/users/me",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["display_name"] == "User"  # fallback display name

@@ -486,6 +486,8 @@ export interface UserProfile {
   avatar_url: string | null;
   status: string;
   max_agents: number;
+  beta_access: boolean;
+  beta_admin: boolean;
   roles: string[];
   agents: UserAgent[];
 }

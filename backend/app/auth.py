@@ -47,8 +47,8 @@ def _get_jwks_client(issuer: str) -> PyJWKClient:
     return _jwks_clients[issuer]
 
 
-def _decode_supabase_token(token: str) -> str:
-    """Decode a Supabase JWT and return the ``sub`` claim.
+def _decode_supabase_token(token: str) -> dict:
+    """Decode a Supabase JWT and return the full payload dict.
 
     Raises ``HTTPException(401)`` on any verification failure.
     """
@@ -95,14 +95,16 @@ def _decode_supabase_token(token: str) -> str:
     if not sub:
         raise HTTPException(status_code=401, detail="Invalid token: missing sub claim")
 
-    return sub
+    return payload
 
 
 async def _load_user_and_roles(
     supabase_user_id: str,
     db: AsyncSession,
+    *,
+    jwt_payload: dict | None = None,
 ) -> tuple[User, list[str]]:
-    """Look up local User by supabase_user_id and load role names."""
+    """Look up local User by supabase_user_id, auto-creating if missing."""
     # Convert string to UUID for proper column comparison (needed for SQLite)
     try:
         uid = _uuid.UUID(supabase_user_id)
@@ -113,8 +115,40 @@ async def _load_user_and_roles(
         select(User).where(User.supabase_user_id == uid)
     )
     user = result.scalar_one_or_none()
+
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        # Auto-create: the user exists in Supabase (JWT is valid) but the
+        # local record was never created (e.g. email-verify callback landed
+        # on a different origin).
+        from hub.config import BETA_GATE_ENABLED
+        email = (jwt_payload or {}).get("email")
+        metadata = (jwt_payload or {}).get("user_metadata", {})
+        display_name = (
+            metadata.get("full_name")
+            or metadata.get("name")
+            or metadata.get("preferred_username")
+            or (email.split("@")[0] if email else "User")
+        )
+        user = User(
+            supabase_user_id=uid,
+            email=email,
+            display_name=display_name,
+            avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
+            beta_access=not BETA_GATE_ENABLED,
+        )
+        db.add(user)
+
+        # Assign "member" role if it exists
+        role_result = await db.execute(
+            select(Role).where(Role.name == "member")
+        )
+        member_role = role_result.scalar_one_or_none()
+        if member_role:
+            db.add(UserRole(user_id=user.id, role_id=member_role.id))
+
+        await db.commit()
+        await db.refresh(user)
+        _logger.info("Auto-created local user %s for supabase_user_id %s", user.id, supabase_user_id)
 
     if user.banned_at is not None:
         raise HTTPException(status_code=403, detail="User is banned")
@@ -139,14 +173,37 @@ async def require_user(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     token = authorization[len("Bearer "):]
-    supabase_user_id = _decode_supabase_token(token)
-    user, roles = await _load_user_and_roles(supabase_user_id, db)
+    jwt_payload = _decode_supabase_token(token)
+    supabase_user_id = jwt_payload["sub"]
+    user, roles = await _load_user_and_roles(supabase_user_id, db, jwt_payload=jwt_payload)
 
     return RequestContext(
         user_id=user.id,
         supabase_user_id=supabase_user_id,
         roles=roles,
     )
+
+
+async def require_beta_user(
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Check beta_access for authenticated users on gated routes. Skips unauthenticated requests."""
+    from hub.config import BETA_GATE_ENABLED
+    if not BETA_GATE_ENABLED:
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        return  # Let the route's own auth dependency handle unauthenticated requests
+    try:
+        jwt_payload = _decode_supabase_token(authorization[7:])
+        sub = jwt_payload["sub"]
+        user, _ = await _load_user_and_roles(sub, db, jwt_payload=jwt_payload)
+        if not user.beta_access:
+            raise HTTPException(status_code=403, detail="Beta access required")
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise
+        return  # Let the route handle other auth errors
 
 
 async def require_active_agent(
@@ -162,8 +219,9 @@ async def require_active_agent(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     token = authorization[len("Bearer "):]
-    supabase_user_id = _decode_supabase_token(token)
-    user, roles = await _load_user_and_roles(supabase_user_id, db)
+    jwt_payload = _decode_supabase_token(token)
+    supabase_user_id = jwt_payload["sub"]
+    user, roles = await _load_user_and_roles(supabase_user_id, db, jwt_payload=jwt_payload)
 
     if not x_active_agent:
         raise HTTPException(status_code=400, detail="X-Active-Agent header is required")
