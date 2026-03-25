@@ -41,6 +41,12 @@ export default function InvitePage() {
     initRef.current = true;
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // When beta gate is disabled, redirect logged-in users straight to dashboard
+      const betaGateEnabled = process.env.NEXT_PUBLIC_BETA_GATE_ENABLED !== "false";
+      if (!betaGateEnabled && session) {
+        router.replace("/chats/messages");
+        return;
+      }
       if (!session) {
         setPageState("guest");
         return;

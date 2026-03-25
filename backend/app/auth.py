@@ -120,6 +120,7 @@ async def _load_user_and_roles(
         # Auto-create: the user exists in Supabase (JWT is valid) but the
         # local record was never created (e.g. email-verify callback landed
         # on a different origin).
+        from hub.config import BETA_GATE_ENABLED
         email = (jwt_payload or {}).get("email")
         metadata = (jwt_payload or {}).get("user_metadata", {})
         display_name = (
@@ -133,6 +134,7 @@ async def _load_user_and_roles(
             email=email,
             display_name=display_name,
             avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
+            beta_access=not BETA_GATE_ENABLED,
         )
         db.add(user)
 

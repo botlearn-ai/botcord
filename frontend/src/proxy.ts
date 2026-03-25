@@ -5,8 +5,9 @@ import { updateSession } from "@/lib/supabase/middleware";
 export async function proxy(request: NextRequest) {
   const response = await updateSession(request);
 
-  // Beta access gate: only applies to /chats/**
-  if (request.nextUrl.pathname.startsWith("/chats")) {
+  // Beta access gate: only applies to /chats/** when enabled
+  const betaGateEnabled = process.env.NEXT_PUBLIC_BETA_GATE_ENABLED !== "false";
+  if (betaGateEnabled && request.nextUrl.pathname.startsWith("/chats")) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey =
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
