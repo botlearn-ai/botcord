@@ -16,6 +16,7 @@ import { createBindTool } from "./src/tools/bind.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
 import { createBindCommand } from "./src/commands/bind.js";
+import { createEnvCommand } from "./src/commands/env.js";
 import { createRegisterCli } from "./src/commands/register.js";
 import {
   buildBotCordLoopRiskPrompt,
@@ -90,6 +91,7 @@ export default {
     api.registerCommand(createHealthcheckCommand());
     api.registerCommand(createTokenCommand());
     api.registerCommand(createBindCommand());
+    api.registerCommand(createEnvCommand());
 
     // CLI
     const registerCli = createRegisterCli();
