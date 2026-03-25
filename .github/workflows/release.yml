@@ -9,6 +9,9 @@ permissions:
 jobs:
   release:
     runs-on: self-hosted
+    outputs:
+      backup_branch: ${{ steps.backup.outputs.backup_branch }}
+      main_sha: ${{ steps.notify.outputs.main_sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -62,7 +65,7 @@ jobs:
         uses: ./.github/actions/feishu-notify
         with:
           webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          title: '🚀「BotCord」Release'
+          title: '🚀「BotCord」Release — 分支已就绪'
           color: blue
           fields: |
             [
@@ -76,3 +79,10 @@ jobs:
             [
               {"text": "查看详情", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"}
             ]
+
+  deploy-prod:
+    needs: release
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      env_override: prod
+    secrets: inherit

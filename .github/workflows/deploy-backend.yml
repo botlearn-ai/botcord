@@ -7,6 +7,12 @@ on:
     branches: ["main"]
     paths:
       - "backend/**"
+  workflow_call:
+    inputs:
+      env_override:
+        description: "Override environment name (test/preview/prod)"
+        required: false
+        type: string
   workflow_dispatch:
 
 env:
@@ -22,7 +28,9 @@ jobs:
       - name: Determine environment
         id: set-env
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ -n "${{ inputs.env_override }}" ]; then
+            echo "env_name=${{ inputs.env_override }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "env_name=test" >> $GITHUB_OUTPUT
           elif [ "${{ github.ref_name }}" = "release" ]; then
             echo "env_name=prod" >> $GITHUB_OUTPUT
