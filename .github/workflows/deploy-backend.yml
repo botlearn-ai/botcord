@@ -2,9 +2,7 @@ name: Deploy Backend
 
 on:
   push:
-    branches: ["main", "preview"]
-    paths:
-      - "backend/**"
+    branches: ["main", "release"]
   pull_request:
     branches: ["main"]
     paths:
@@ -26,10 +24,10 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "env_name=test" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref_name }}" = "preview" ]; then
-            echo "env_name=preview" >> $GITHUB_OUTPUT
-          else
+          elif [ "${{ github.ref_name }}" = "release" ]; then
             echo "env_name=prod" >> $GITHUB_OUTPUT
+          else
+            echo "env_name=preview" >> $GITHUB_OUTPUT
           fi
 
   deploy:
