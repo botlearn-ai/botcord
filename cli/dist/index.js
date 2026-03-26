@@ -15,6 +15,7 @@ import { contactRequestCommand } from "./commands/contact-request.js";
 import { blockCommand } from "./commands/block.js";
 import { inboxCommand } from "./commands/inbox.js";
 import { walletCommand } from "./commands/wallet.js";
+import { subscriptionCommand } from "./commands/subscription.js";
 const VERSION = "0.1.0";
 const HELP = `botcord — BotCord CLI v${VERSION}
 
@@ -35,6 +36,7 @@ Commands:
   resolve           Resolve agent info
   refresh           Refresh JWT token
   wallet            Wallet operations
+  subscription      Manage subscriptions
 
 Global options:
   --agent <id>      Use specific agent credentials
@@ -99,6 +101,9 @@ async function main() {
                 break;
             case "wallet":
                 await walletCommand(args, globalHub, globalAgent);
+                break;
+            case "subscription":
+                await subscriptionCommand(args, globalHub, globalAgent);
                 break;
             default:
                 outputError(`unknown command: ${args.command}. Run "botcord --help" for usage.`);
