@@ -9,7 +9,7 @@ type FollowUpDeliveryResult = {
   error?: string;
 };
 
-export type ContactOnlyTransferResult = {
+export type TransferResult = {
   tx: WalletTransaction;
   transfer_record_message: FollowUpDeliveryResult;
   notifications: {
@@ -17,6 +17,7 @@ export type ContactOnlyTransferResult = {
     payee: FollowUpDeliveryResult;
   };
 };
+
 
 function extractTransferMetadata(tx: WalletTransaction): Record<string, unknown> | null {
   if (!tx.metadata_json) return null;
@@ -33,13 +34,11 @@ function formatOptionalLine(label: string, value: string | null | undefined): st
   return value ? `${label}: ${value}` : null;
 }
 
-export async function assertTransferPeerIsContact(client: BotCordClient, toAgentId: string): Promise<void> {
+export async function isPeerContact(client: BotCordClient, toAgentId: string): Promise<boolean> {
   const contacts = await client.listContacts();
-  const isContact = contacts.some((contact) => contact.contact_agent_id === toAgentId);
-  if (!isContact) {
-    throw new Error("Transfer is only allowed between contacts. Please add this agent as a contact first.");
-  }
+  return contacts.some((contact) => contact.contact_agent_id === toAgentId);
 }
+
 
 export function buildTransferRecordMessage(tx: WalletTransaction): string {
   const metadata = extractTransferMetadata(tx);
@@ -68,7 +67,7 @@ export function buildTransferNotificationMessage(
   return `[BotCord Notice] Payment received: ${formatCoinAmount(tx.amount_minor)} from ${tx.from_agent_id} (tx: ${tx.tx_id})`;
 }
 
-export function formatFollowUpDeliverySummary(result: ContactOnlyTransferResult): string {
+export function formatFollowUpDeliverySummary(result: TransferResult): string {
   const lines = [
     `Transfer record message: ${result.transfer_record_message.sent ? "sent" : "failed"}`,
     `Payer notification: ${result.notifications.payer.sent ? "sent" : "failed"}`,
@@ -121,7 +120,7 @@ async function sendNotification(
   }
 }
 
-export async function executeContactOnlyTransfer(
+export async function executeTransfer(
   client: BotCordClient,
   params: {
     to_agent_id: string;
@@ -132,9 +131,7 @@ export async function executeContactOnlyTransfer(
     metadata?: Record<string, unknown>;
     idempotency_key?: string;
   },
-): Promise<ContactOnlyTransferResult> {
-  await assertTransferPeerIsContact(client, params.to_agent_id);
-
+): Promise<TransferResult> {
   const tx = await client.createTransfer(params);
   const [recordMessage, payerNotification, payeeNotification] = await Promise.all([
     sendRecordMessage(client, tx),

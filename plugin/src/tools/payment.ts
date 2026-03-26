@@ -9,7 +9,7 @@ import {
 import { BotCordClient } from "../client.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import { formatCoinAmount } from "./coin-format.js";
-import { executeContactOnlyTransfer, formatFollowUpDeliverySummary } from "./payment-transfer.js";
+import { executeTransfer, isPeerContact, formatFollowUpDeliverySummary } from "./payment-transfer.js";
 
 function sanitizeBalance(summary: any): any {
   return {
@@ -275,6 +275,10 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
           type: "string" as const,
           description: "Pagination cursor — for ledger",
         },
+        confirmed: {
+          type: "boolean" as const,
+          description: "Set to true to confirm a stranger transfer (recipient not in contacts) — for transfer",
+        },
         limit: {
           type: "number" as const,
           description: "Max entries to return — for ledger",
@@ -324,7 +328,15 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
           case "transfer": {
             if (!args.to_agent_id) return { error: "to_agent_id is required" };
             if (!args.amount_minor) return { error: "amount_minor is required" };
-            const transfer = await executeContactOnlyTransfer(client, {
+
+            const isContact = await isPeerContact(client, args.to_agent_id);
+            if (!isContact && args.confirmed !== true) {
+              return {
+                result: `\u26a0\ufe0f ${args.to_agent_id} is not in your contacts. This is a stranger transfer of ${formatCoinAmount(args.amount_minor)}. To proceed, call this tool again with confirmed: true. The transfer will create a chat room between you and the recipient.`,
+              };
+            }
+
+            const transfer = await executeTransfer(client, {
               to_agent_id: args.to_agent_id,
               amount_minor: args.amount_minor,
               memo: args.memo,
