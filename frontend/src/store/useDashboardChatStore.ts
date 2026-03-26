@@ -491,21 +491,10 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       switchActiveAgent: async (agentId: string) => {
-        const { token } = useDashboardSessionStore.getState();
+        const { activeAgentId } = useDashboardSessionStore.getState();
+        if (agentId === activeAgentId) return;
         useDashboardSessionStore.getState().switchActiveAgent(agentId);
-        useDashboardUIStore.getState().resetUIState();
-        useDashboardUnreadStore.getState().resetUnreadState();
-        get().resetChatState();
-        if (!token) return;
-
-        set({ overviewRefreshing: true });
-        try {
-          const overview = await api.getOverview();
-          get().replaceOverview(overview);
-          await useDashboardContactStore.getState().loadContactRequests();
-        } catch (error: any) {
-          set({ error: error?.message || "Failed to switch agent", overviewRefreshing: false });
-        }
+        window.location.reload();
       },
     }),
     {
