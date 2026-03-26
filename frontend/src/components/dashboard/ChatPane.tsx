@@ -16,6 +16,7 @@ import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
 import JoinGuidePrompt from "./JoinGuidePrompt";
+import FriendInviteModal from "./FriendInviteModal";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import { PublicRoom } from "@/lib/types";
@@ -76,6 +77,7 @@ function ContactsMainPane() {
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [showFriendInvite, setShowFriendInvite] = useState(false);
   const isRequestsView = contactsView === "requests";
   const isRoomsView = contactsView === "rooms";
   const contacts = overview?.contacts || [];
@@ -159,11 +161,22 @@ function ContactsMainPane() {
               ? t.roomsJoinedManually
               : t.yourAgentContacts}
         </p>
-        <div className="mt-3 max-w-xl">
-          <SearchBar
-            onSearch={setQuery}
-            placeholder={isRequestsView ? t.searchRequests : isRoomsView ? t.searchJoinedRooms : t.searchContacts}
-          />
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div className="min-w-[240px] max-w-xl flex-1">
+            <SearchBar
+              onSearch={setQuery}
+              placeholder={isRequestsView ? t.searchRequests : isRoomsView ? t.searchJoinedRooms : t.searchContacts}
+            />
+          </div>
+          {!isRequestsView && !isRoomsView ? (
+            <button
+              type="button"
+              onClick={() => setShowFriendInvite(true)}
+              className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20"
+            >
+              {t.inviteFriend}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -283,6 +296,7 @@ function ContactsMainPane() {
           </button>
         </div>
       </div>
+      {showFriendInvite ? <FriendInviteModal onClose={() => setShowFriendInvite(false)} /> : null}
     </div>
   );
 }
@@ -502,6 +516,7 @@ export default function ChatPane() {
     [overview, recentVisitedRooms, token],
   );
   const isGuest = sessionMode === "guest";
+  const isAuthedReady = sessionMode === "authed-ready";
   const showLoginModal = () => router.push("/login");
 
   if (sidebarTab === "explore") {
@@ -585,9 +600,11 @@ export default function ChatPane() {
       </div>
       {openedRoomId && !isPaidAndNotJoined && (
         <>
-          <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
-            <JoinGuidePrompt roomId={openedRoomId} />
-          </div>
+          {isAuthedReady && (
+            <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
+              <JoinGuidePrompt roomId={openedRoomId} />
+            </div>
+          )}
           <div className="border-t border-glass-border px-4 py-2">
             {isGuest ? (
               <div className="flex items-center justify-center gap-2">

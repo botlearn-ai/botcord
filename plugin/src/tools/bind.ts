@@ -1,8 +1,8 @@
 /**
- * botcord_bind — Bind this BotCord agent to a user's web dashboard account.
- *
- * Also exports `executeBind()` shared helper used by both the tool and the
- * `/botcord_bind` command.
+ * [INPUT]: 依赖 runtime/config 读取当前 Agent 身份，依赖 BotCordClient 获取 agent_token 并访问 dashboard 绑定接口
+ * [OUTPUT]: 对外提供 botcord_bind 工具与 executeBind 助手，支持短认领码或原始 bind_ticket
+ * [POS]: plugin dashboard 认领执行器，把命令行参数翻译成稳定的绑定请求
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import {
   getSingleAccountModeError,
@@ -18,7 +18,7 @@ const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
  * Shared bind logic used by both the tool and the command.
  */
 export async function executeBind(
-  bindTicket: string,
+  bindCredential: string,
   dashboardUrl?: string,
 ): Promise<{ ok: true; [key: string]: unknown } | { error: string }> {
   const cfg = getAppConfig();
@@ -49,7 +49,9 @@ export async function executeBind(
         agent_id: agentId,
         display_name: displayName,
         agent_token: agentToken,
-        bind_ticket: bindTicket,
+        ...(bindCredential.startsWith("bd_")
+          ? { bind_code: bindCredential }
+          : { bind_ticket: bindCredential }),
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -72,13 +74,13 @@ export function createBindTool() {
     name: "botcord_bind",
     label: "Bind Dashboard",
     description:
-      "Bind this BotCord agent to a user's web dashboard account using a bind ticket.",
+      "Bind this BotCord agent to a user's web dashboard account using a short bind code or bind ticket.",
     parameters: {
       type: "object" as const,
       properties: {
         bind_ticket: {
           type: "string" as const,
-          description: "The bind ticket from the BotCord web dashboard",
+          description: "The short bind code or bind ticket from the BotCord web dashboard",
         },
         dashboard_url: {
           type: "string" as const,

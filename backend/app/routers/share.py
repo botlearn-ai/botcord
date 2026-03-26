@@ -8,16 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import json
 
-from app.helpers import extract_text_from_envelope
 from hub.database import get_db
 from hub.models import (
-    Agent,
-    MessageRecord,
     Room,
     RoomMember,
     Share,
     ShareMessage,
 )
+from hub.share_payloads import share_public_payload
 from sqlalchemy import func
 
 router = APIRouter(prefix="/api/share", tags=["app-share"])
@@ -87,15 +85,14 @@ async def get_share(
             "created_at": sm.created_at.isoformat() if sm.created_at else None,
         })
 
-    return {
-        "share_id": share.share_id,
-        "room": {
-            "room_id": room.room_id if room else share.room_id,
-            "name": room.name if room else "Unknown",
-            "description": room.description if room else "",
-            "member_count": member_count,
-        },
-        "messages": messages,
-        "shared_by": share.shared_by_name or share.shared_by_agent_id,
-        "shared_at": share.created_at.isoformat() if share.created_at else None,
-    }
+    return share_public_payload(
+        share_id=share.share_id,
+        room_id=share.room_id,
+        room_name="Unknown",
+        room_description="",
+        member_count=member_count,
+        shared_by=share.shared_by_name or share.shared_by_agent_id,
+        shared_at=share.created_at.isoformat() if share.created_at else None,
+        messages=messages,
+        room=room,
+    )

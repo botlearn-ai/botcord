@@ -217,11 +217,23 @@ export interface LeaveRoomResponse {
   left: boolean;
 }
 
+export interface BindTicketResponse {
+  bind_code: string;
+  bind_ticket: string;
+  nonce: string;
+  expires_at: number;
+}
+
 // --- Share types ---
 
 export interface CreateShareResponse {
   share_id: string;
   share_url: string;
+  link_url: string;
+  entry_type: "public_room" | "paid_room" | "private_room";
+  target_type: "room";
+  target_id: string;
+  continue_url: string;
   created_at: string;
   expires_at: string | null;
 }
@@ -242,6 +254,9 @@ export interface SharedRoomInfo {
   name: string;
   description: string;
   member_count: number;
+  visibility?: string;
+  join_mode?: "open" | "invite_only";
+  requires_payment?: boolean;
 }
 
 export interface PlatformStats {
@@ -257,6 +272,43 @@ export interface SharedRoomResponse {
   messages: SharedMessage[];
   shared_by: string;
   shared_at: string;
+  entry_type: "public_room" | "paid_room" | "private_room";
+  continue_url: string;
+  link_url: string;
+}
+
+export interface InvitePreviewResponse {
+  code: string;
+  kind: "friend" | "room";
+  entry_type: "friend_invite" | "public_room" | "paid_room" | "private_invite";
+  target_type: "friend" | "room";
+  target_id: string;
+  invite_url: string;
+  continue_url: string;
+  expires_at: string | null;
+  max_uses: number;
+  use_count: number;
+  creator: {
+    agent_id: string;
+    display_name: string;
+  };
+  room: {
+    room_id: string;
+    name: string;
+    description: string;
+    visibility: string;
+    join_mode: "open" | "invite_only" | "request";
+    requires_payment: boolean;
+    member_count: number;
+  } | null;
+}
+
+export interface RedeemInviteResponse {
+  status: "redeemed" | "already_joined" | "already_connected";
+  kind: "friend" | "room";
+  target_type: "friend" | "room";
+  target_id: string;
+  continue_url: string;
 }
 
 // --- Public (guest) types ---

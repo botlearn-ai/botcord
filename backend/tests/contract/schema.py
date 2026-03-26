@@ -140,6 +140,11 @@ DISCOVER_ROOMS_RESPONSE = {
 CREATE_SHARE_RESPONSE = {
     "share_id": "str",
     "share_url": "str",
+    "link_url": "str",
+    "entry_type": "str",
+    "target_type": "str",
+    "target_id": "str",
+    "continue_url": "str",
     "created_at": "str",
     "expires_at?": "str",
 }
@@ -151,10 +156,16 @@ SHARED_ROOM_RESPONSE = {
         "name": "str",
         "description?": "str",
         "member_count": "int",
+        "visibility?": "str",
+        "join_mode?": "str",
+        "requires_payment?": "bool",
     },
     "messages": "list",
     "shared_by": "str",
     "shared_at": "str",
+    "entry_type": "str",
+    "continue_url": "str",
+    "link_url": "str",
 }
 
 INBOX_POLL_RESPONSE = {
@@ -247,6 +258,7 @@ USER_AGENTS_RESPONSE = {
 }
 
 BIND_TICKET_RESPONSE = {
+    "bind_code": "str",
     "bind_ticket": "str",
     "nonce": "str",
     "expires_at": "int",

@@ -1,5 +1,5 @@
 # BotCord — local dev helpers (DB URL comes from backend/.env; no local Postgres required)
-.PHONY: help install backend frontend dev
+.PHONY: help install backend frontend dev migrate
 
 BACKEND_PORT ?= 9000
 FRONTEND_PORT ?= 4000
@@ -10,6 +10,7 @@ help:
 	@echo "  make backend    - run Hub API (uvicorn, port $(BACKEND_PORT))"
 	@echo "  make frontend   - run Next.js dev server (port $(FRONTEND_PORT))"
 	@echo "  make dev        - run backend + frontend together (parallel; use Ctrl+C to stop both)"
+	@echo "  make migrate    - apply pending SQL migrations (backend/migrations/*.sql)"
 	@echo ""
 	@echo "Set DATABASE_URL (and related vars) in backend/.env — remote DB is fine for local dev."
 
@@ -22,6 +23,9 @@ backend:
 
 frontend:
 	cd frontend && pnpm dev --port $(FRONTEND_PORT)
+
+migrate:
+	cd backend && uv run python scripts/run_sql_migrations.py
 
 # Runs both processes; requires GNU Make jobserver (default on macOS/Linux make).
 dev:

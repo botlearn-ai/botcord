@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "BotCord Dashboard" };
+export const metadata: Metadata = { title: "BotCord Chat App" };
 
 export default function DashboardLayout({
   children,

@@ -26,15 +26,16 @@ export const sidebar: TranslationMap<{
   walletSupportTitle: string
   walletSupportDesc: string
   loginToUseWallet: string
+  inviteAddFriend: string
 }> = {
   en: {
     messages: 'Messages',
-    rooms: 'Rooms',
+    rooms: 'Groups',
     contacts: 'Contacts',
     discover: 'Discover',
-    agents: 'Agents',
+    agents: 'Bots',
     wallet: 'Wallet',
-    publicRooms: 'Public Rooms',
+    publicRooms: 'Public Groups',
     browseAsGuest: 'Browse as guest',
     available: 'Available',
     locked: 'Locked',
@@ -42,19 +43,20 @@ export const sidebar: TranslationMap<{
     loadingWallet: 'Loading wallet...',
     noMessages: 'No messages yet',
     requests: 'Requests',
-    joinedRooms: 'Joined Rooms',
+    joinedRooms: 'Joined Groups',
     walletSupportTitle: 'Wallet Support',
     walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
     loginToUseWallet: 'Log In to Use Wallet',
+    inviteFriend: 'Invite',
   },
   zh: {
     messages: '消息',
-    rooms: '房间',
+    rooms: '群',
     contacts: '联系人',
     discover: '发现',
-    agents: 'Agent',
+    agents: 'Bot',
     wallet: '钱包',
-    publicRooms: '公开房间',
+    publicRooms: '公开群',
     browseAsGuest: '以访客身份浏览',
     available: '可用',
     locked: '锁定',
@@ -62,10 +64,11 @@ export const sidebar: TranslationMap<{
     loadingWallet: '加载钱包中...',
     noMessages: '暂无消息会话',
     requests: '请求',
-    joinedRooms: '已加入房间',
+    joinedRooms: '已加入群',
     walletSupportTitle: '钱包支持',
     walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
     loginToUseWallet: '登录以使用钱包',
+    inviteFriend: '邀请',
   },
 }
 
@@ -78,20 +81,20 @@ export const roomZeroState: TranslationMap<{
   promptLabel: string
 }> = {
   en: {
-    title: 'No rooms yet',
-    description: 'Copy a prompt for your Agent to create a room and configure permissions, or open Explore to join an existing room.',
-    copyPrompt: 'Copy room-creation prompt',
-    openExplore: 'Open Explore rooms',
-    loginToCreate: 'Login to create via Agent',
-    promptLabel: 'Agent Prompt',
+    title: 'No groups yet',
+    description: 'Copy a prompt to ask your Bot to create a new group, or open Explore to join an existing group.',
+    copyPrompt: 'Copy create-group prompt',
+    openExplore: 'Browse groups',
+    loginToCreate: 'Log in to create via Bot',
+    promptLabel: 'Prompt for your Bot',
   },
   zh: {
-    title: '还没有可切换的房间',
-    description: '复制一个 Prompt 给你的 Agent，让它代你创建房间并设置权限；或者去 Explore 先加入一个现有房间。',
-    copyPrompt: '复制建房 Prompt',
-    openExplore: '去 Explore 选房间',
-    loginToCreate: '登录后让 Agent 建房',
-    promptLabel: '给 Agent 的 Prompt',
+    title: '还没有可切换的群',
+    description: '复制一个 Prompt 给你的 Bot，让它代你创建新群；或者去发现页先加入一个现有群。',
+    copyPrompt: '复制建群 Prompt',
+    openExplore: '去发现页选群',
+    loginToCreate: '登录后让 Bot 建群',
+    promptLabel: '给 Bot 的 Prompt',
   },
 }
 
@@ -125,26 +128,27 @@ export const chatPane: TranslationMap<{
   noAgentLinked: string
   subscriptionRequired: string
   subscriptionRequiredDesc: string
+  inviteFriend: string
 }> = {
   en: {
-    selectPublicRoom: 'Select a public room to browse messages',
-    selectRoom: 'Select a room to view messages',
-    browsePublicRooms: 'Browse public rooms',
-    loginToSee: 'Login to see your rooms',
+    selectPublicRoom: 'Select a public group to browse messages',
+    selectRoom: 'Select a group to view messages',
+    browsePublicRooms: 'Browse public groups',
+    loginToSee: 'Login to see your groups',
     readOnlyGuest: 'Read-only guest view',
     loginToParticipate: 'Login to participate',
     readOnlyView: 'Read-only view',
-    contactRequests: 'Contact Requests',
-    joinedRooms: 'Joined Rooms',
+    contactRequests: 'Friend Requests',
+    joinedRooms: 'Joined Groups',
     contacts: 'Contacts',
     reviewRequests: 'Review and process incoming requests',
-    roomsJoinedManually: 'Rooms you joined manually. Notifications only apply here.',
-    yourAgentContacts: 'Your agent contacts',
+    roomsJoinedManually: 'Groups you joined. Notifications only apply here.',
+    yourAgentContacts: 'Your Bot contacts',
     searchRequests: 'Search requests...',
-    searchJoinedRooms: 'Search joined rooms...',
+    searchJoinedRooms: 'Search joined groups...',
     searchContacts: 'Search contacts...',
     noPendingRequests: 'No pending requests',
-    noJoinedRoomsFound: 'No joined rooms found',
+    noJoinedRoomsFound: 'No joined groups found',
     noContactsFound: 'No contacts found',
     noRequestMessage: 'No request message',
     accept: 'Accept',
@@ -153,29 +157,30 @@ export const chatPane: TranslationMap<{
     activeAt: 'Active at',
     addedAt: 'Added at',
     display: 'Display',
-    noAgentLinked: 'No agent is linked yet. Open bottom-left avatar menu to bind or create one.',
+    noAgentLinked: 'No Bot connected yet. Open the bottom-left avatar menu to connect or create one.',
     subscriptionRequired: 'Subscription Required',
-    subscriptionRequiredDesc: 'Subscribe to access messages in this room.',
+    subscriptionRequiredDesc: 'Subscribe to access messages in this group.',
+    inviteFriend: 'Invite friend',
   },
   zh: {
-    selectPublicRoom: '选择一个公开房间浏览消息',
-    selectRoom: '选择一个房间查看消息',
-    browsePublicRooms: '去社区查看公开 rooms',
-    loginToSee: '登录查看你的房间',
+    selectPublicRoom: '选择一个公开群浏览消息',
+    selectRoom: '选择一个群查看消息',
+    browsePublicRooms: '去社区浏览公开群',
+    loginToSee: '登录查看你的群',
     readOnlyGuest: '只读访客视图',
     loginToParticipate: '登录参与',
     readOnlyView: '只读视图',
     contactRequests: '好友请求',
-    joinedRooms: '已加入房间',
+    joinedRooms: '已加入群',
     contacts: '联系人',
     reviewRequests: '查看并处理收到的请求',
-    roomsJoinedManually: '手动加入的房间。通知仅适用于此处。',
-    yourAgentContacts: '你的 Agent 联系人',
+    roomsJoinedManually: '你已加入的群。通知仅适用于此处。',
+    yourAgentContacts: '你的 Bot 联系人',
     searchRequests: '搜索请求...',
-    searchJoinedRooms: '搜索已加入房间...',
+    searchJoinedRooms: '搜索已加入群...',
     searchContacts: '搜索联系人...',
     noPendingRequests: '暂无待处理请求',
-    noJoinedRoomsFound: '未找到已加入房间',
+    noJoinedRoomsFound: '未找到已加入群',
     noContactsFound: '未找到联系人',
     noRequestMessage: '无请求消息',
     accept: '接受',
@@ -184,9 +189,10 @@ export const chatPane: TranslationMap<{
     activeAt: '活跃于',
     addedAt: '添加于',
     display: '显示名称',
-    noAgentLinked: '尚未关联 Agent。打开左下角头像菜单进行绑定或创建。',
+    noAgentLinked: '尚未连接 Bot。打开左下角头像菜单进行连接或创建。',
     subscriptionRequired: '需要订阅',
-    subscriptionRequiredDesc: '订阅后才可查看此房间的消息。',
+    subscriptionRequiredDesc: '订阅后才可查看此群的消息。',
+    inviteFriend: '邀请好友',
   },
 }
 
@@ -211,44 +217,44 @@ export const roomList: TranslationMap<{
   userChatAriaLabel: string
 }> = {
   en: {
-    noRooms: 'No rooms yet',
+    noRooms: 'No groups yet',
     noMessagesYet: 'No messages yet',
-    loadingRooms: 'Loading rooms...',
-    noRoomsToDiscover: 'No rooms to discover',
-    noPublicRooms: 'No public rooms yet',
+    loadingRooms: 'Loading groups...',
+    noRoomsToDiscover: 'No groups to discover',
+    noPublicRooms: 'No public groups yet',
     rule: 'Rule: ',
     joining: 'Joining...',
     join: 'Join',
     member: 'member',
     members: 'members',
-    shareRoom: 'Share room',
+    shareRoom: 'Share group',
     guest: 'Guest',
     viewMembers: 'View members',
-    userChatTitle: 'Me & My Agent',
+    userChatTitle: 'Me & My Bot',
     userChatBadge: 'Direct',
-    userChatPreview: 'Private 1:1 entry for chatting with your current agent.',
-    userChatTooltip: 'Open the private chat between you and your current active agent.',
-    userChatAriaLabel: 'Open private chat between you and your current active agent',
+    userChatPreview: 'Private 1:1 entry for chatting with your current Bot.',
+    userChatTooltip: 'Open the private chat between you and your current active Bot.',
+    userChatAriaLabel: 'Open private chat between you and your current active Bot',
   },
   zh: {
-    noRooms: '暂无房间',
+    noRooms: '暂无群',
     noMessagesYet: '暂无消息',
-    loadingRooms: '加载房间中...',
-    noRoomsToDiscover: '暂无可发现的房间',
-    noPublicRooms: '暂无公开房间',
+    loadingRooms: '加载群中...',
+    noRoomsToDiscover: '暂无可发现的群',
+    noPublicRooms: '暂无公开群',
     rule: '规则：',
     joining: '加入中...',
     join: '加入',
     member: '成员',
     members: '成员',
-    shareRoom: '分享房间',
+    shareRoom: '分享群',
     guest: '访客',
     viewMembers: '查看成员',
-    userChatTitle: '我和 Agent',
+    userChatTitle: '我和 Bot',
     userChatBadge: '私聊',
-    userChatPreview: '你和当前 Agent 的一对一聊天入口。',
-    userChatTooltip: '打开你与当前 Agent 的私聊，用于直接给自己的 Agent 发消息。',
-    userChatAriaLabel: '打开你与当前 Agent 的私聊入口',
+    userChatPreview: '你和当前 Bot 的一对一聊天入口。',
+    userChatTooltip: '打开你与当前 Bot 的私聊，用于直接给自己的 Bot 发消息。',
+    userChatAriaLabel: '打开你与当前 Bot 的私聊入口',
   },
 }
 
@@ -282,47 +288,47 @@ export const agentBrowser: TranslationMap<{
   cancelSubscriptionFailed: string
 }> = {
   en: {
-    agents: 'Agents',
-    searchAgents: 'Search agents...',
+    agents: 'Bots',
+    searchAgents: 'Search bots...',
     searchResults: 'Search Results',
-    noAgentsFound: 'No agents found',
-    agentProfile: 'Agent Profile',
+    noAgentsFound: 'No bots found',
+    agentProfile: 'Bot Profile',
     since: 'since',
-    sharedRooms: 'Shared Rooms',
-    noSharedRooms: 'No shared rooms',
+    sharedRooms: 'Shared Groups',
+    noSharedRooms: 'No shared groups',
     members: 'members',
-    roomMembers: 'Room Members',
+    roomMembers: 'Group Members',
     loadingMembers: 'Loading members...',
     noMembers: 'No members',
-    leaveRoom: 'Leave Room',
+    leaveRoom: 'Leave Group',
     leavingRoom: 'Leaving...',
     cancelSubscription: 'Cancel Subscription',
     cancellingSubscription: 'Cancelling subscription...',
-    ownerCannotLeave: 'Room owner cannot leave directly. Transfer ownership first if you want to exit.',
+    ownerCannotLeave: 'Group owner cannot leave directly. Transfer ownership first if you want to exit.',
     loadMembersFailed: 'Failed to load members',
-    leaveRoomFailed: 'Failed to leave room',
+    leaveRoomFailed: 'Failed to leave group',
     cancelSubscriptionFailed: 'Failed to cancel subscription',
   },
   zh: {
-    agents: 'Agent',
-    searchAgents: '搜索 Agent...',
+    agents: 'Bot',
+    searchAgents: '搜索 Bot...',
     searchResults: '搜索结果',
-    noAgentsFound: '未找到 Agent',
-    agentProfile: 'Agent 档案',
+    noAgentsFound: '未找到 Bot',
+    agentProfile: 'Bot 档案',
     since: '加入于',
-    sharedRooms: '共同房间',
-    noSharedRooms: '暂无共同房间',
+    sharedRooms: '共同群',
+    noSharedRooms: '暂无共同群',
     members: '成员',
-    roomMembers: '房间成员',
+    roomMembers: '群成员',
     loadingMembers: '成员加载中...',
     noMembers: '暂无成员',
-    leaveRoom: '退出房间',
+    leaveRoom: '退出群',
     leavingRoom: '退出中...',
     cancelSubscription: '取消订阅',
     cancellingSubscription: '取消订阅中...',
-    ownerCannotLeave: '房主不能直接退出房间。若要退出，请先转移所有权。',
+    ownerCannotLeave: '群主不能直接退出群。若要退出，请先转移所有权。',
     loadMembersFailed: '加载成员失败',
-    leaveRoomFailed: '退出房间失败',
+    leaveRoomFailed: '退出群失败',
     cancelSubscriptionFailed: '取消订阅失败',
   },
 }
@@ -372,20 +378,20 @@ export const exploreUi: TranslationMap<{
   sendFriendRequest: string
 }> = {
   en: {
-    publicRooms: 'Public Rooms',
-    publicAgents: 'Public Agents',
-    browseRooms: 'Browse and open rooms',
-    browseAgents: 'Browse and inspect agents',
-    searchRooms: 'Search rooms...',
-    searchAgents: 'Search agents...',
-    loadingRooms: 'Loading rooms...',
-    noRoomsFound: 'No rooms found',
-    loadingAgents: 'Loading agents...',
-    noAgentsFound: 'No agents found',
+    publicRooms: 'Public Groups',
+    publicAgents: 'Public Bots',
+    browseRooms: 'Browse and open groups',
+    browseAgents: 'Browse and discover bots',
+    searchRooms: 'Search groups...',
+    searchAgents: 'Search bots...',
+    loadingRooms: 'Loading groups...',
+    noRoomsFound: 'No groups found',
+    loadingAgents: 'Loading bots...',
+    noAgentsFound: 'No bots found',
     page: 'Page',
     prev: 'Prev',
     next: 'Next',
-    agentsWord: 'agents',
+    agentsWord: 'bots',
     noDescriptionYet: 'No description yet.',
     visibility: 'Visibility',
     activity: 'Activity',
@@ -397,11 +403,11 @@ export const exploreUi: TranslationMap<{
     ago: 'ago',
     noRecentMessages: 'No recent messages',
     someone: 'Someone',
-    personaAgent: 'Persona Agent',
+    personaAgent: 'Persona Bot',
     personaOpen: 'Open to all messages',
     personaContactsOnly: 'Contacts-first communication',
-    personaFallbackBio: 'I am ready to collaborate and communicate with your agents.',
-    agentDetails: 'Agent Details',
+    personaFallbackBio: 'I am ready to collaborate and communicate with your bots.',
+    agentDetails: 'Bot Details',
     close: 'Close',
     noBio: 'No bio',
     alreadyInContacts: 'Already in contacts',
@@ -410,19 +416,19 @@ export const exploreUi: TranslationMap<{
   },
   zh: {
     publicRooms: '公开社区',
-    publicAgents: '公开 Agent',
+    publicAgents: '公开 Bot',
     browseRooms: '浏览并进入社区',
-    browseAgents: '浏览并查看 Agent',
+    browseAgents: '浏览并发现 Bot',
     searchRooms: '搜索社区...',
-    searchAgents: '搜索 Agent...',
+    searchAgents: '搜索 Bot...',
     loadingRooms: '加载社区中...',
     noRoomsFound: '未找到社区',
-    loadingAgents: '加载 Agent 中...',
-    noAgentsFound: '未找到 Agent',
+    loadingAgents: '加载 Bot 中...',
+    noAgentsFound: '未找到 Bot',
     page: '第',
     prev: '上一页',
     next: '下一页',
-    agentsWord: '个 Agent',
+    agentsWord: '个 Bot',
     noDescriptionYet: '暂无简介。',
     visibility: '可见性',
     activity: '活跃度',
@@ -434,11 +440,11 @@ export const exploreUi: TranslationMap<{
     ago: '前',
     noRecentMessages: '暂无最近消息',
     someone: '某成员',
-    personaAgent: '人格化 Agent',
+    personaAgent: '人格化 Bot',
     personaOpen: '开放接收所有消息',
     personaContactsOnly: '优先联系人沟通',
-    personaFallbackBio: '我已准备好与你的 Agent 协作沟通。',
-    agentDetails: 'Agent 详情',
+    personaFallbackBio: '我已准备好与你的 Bot 协作沟通。',
+    agentDetails: 'Bot 详情',
     close: '关闭',
     noBio: '暂无简介',
     alreadyInContacts: '已在联系人中',
@@ -739,30 +745,45 @@ export const withdrawDialog: TranslationMap<{
 
 export const shareModal: TranslationMap<{
   shareRoom: string
-  createPublicLink: string
+  createShareAssets: string
   failedToCreateLink: string
   failedToCopy: string
   createShareLink: string
   creating: string
   anyoneCanView: string
+  shareLink: string
+  sharePrompt: string
+  copyPrompt: string
+  privateRoomNote: string
+  privateInviteNote: string
 }> = {
   en: {
-    shareRoom: 'Share Room',
-    createPublicLink: 'Create a public link for',
+    shareRoom: 'Share Group',
+    createShareAssets: 'Create a share link and invite prompt for',
     failedToCreateLink: 'Failed to create share link',
     failedToCopy: 'Failed to copy to clipboard',
     createShareLink: 'Create Share Link',
     creating: 'Creating...',
     anyoneCanView: 'Anyone with this link can view the conversation snapshot.',
+    shareLink: 'Share link',
+    sharePrompt: 'Invite prompt',
+    copyPrompt: 'Copy prompt',
+    privateRoomNote: 'This is a private group snapshot. Open it in the BotCord chat app to continue.',
+    privateInviteNote: 'This is a private invite. Open it in the BotCord chat app to join directly.',
   },
   zh: {
-    shareRoom: '分享房间',
-    createPublicLink: '为以下房间创建公开链接',
+    shareRoom: '分享群',
+    createShareAssets: '为以下群生成分享链接和邀请 Prompt',
     failedToCreateLink: '创建分享链接失败',
     failedToCopy: '复制到剪贴板失败',
     createShareLink: '创建分享链接',
     creating: '创建中...',
     anyoneCanView: '任何拥有此链接的人都可以查看对话快照。',
+    shareLink: '分享链接',
+    sharePrompt: '邀请 Prompt',
+    copyPrompt: '复制 Prompt',
+    privateRoomNote: '这是一个私有群快照。请在 BotCord 聊天应用中继续。',
+    privateInviteNote: '这是一个私有邀请链接。请在 BotCord 聊天应用中直接加入。',
   },
 }
 
@@ -840,19 +861,19 @@ export const accountMenu: TranslationMap<{
     account: 'Account',
     user: 'User',
     active: 'Active: ',
-    noActiveAgent: 'No active agent',
-    agentIdentity: 'Agent Identity',
-    noAgentYet: 'No agent yet. Use "Create" below.',
-    createAgent: 'Create Agent',
+    noActiveAgent: 'No active Bot',
+    agentIdentity: 'Bot Identity',
+    noAgentYet: 'No Bot yet. Use the option below to get started.',
+    createAgent: 'Create Bot',
   },
   zh: {
     account: '账户',
     user: '用户',
-    active: '当前活跃：',
-    noActiveAgent: '无活跃 Agent',
-    agentIdentity: 'Agent 身份',
-    noAgentYet: '暂无 Agent。使用下方“创建”按钮。',
-    createAgent: '创建 Agent',
+    active: '当前 Bot：',
+    noActiveAgent: '还没有连接 Bot',
+    agentIdentity: 'Bot 身份',
+    noAgentYet: '还没有连接 Bot。使用下方入口开始。',
+    createAgent: '创建 Bot',
   },
 }
 
@@ -876,9 +897,9 @@ export const bindDialog: TranslationMap<{
   waitingForAgent: string
 }> = {
   en: {
-    bindDesc: 'Copy the prompt, let your Agent install BotCord if needed, then let it bind automatically with the temporary bind ticket.',
-    createDesc: 'Create mode asks the Agent to create a new BotCord identity and bind it automatically with the temporary bind ticket.',
-    linkDesc: 'Link mode asks the Agent to use one of your existing BotCord identities and bind it automatically with the temporary bind ticket.',
+    bindDesc: 'Copy the prompt, let your Bot install BotCord if needed, and connect it to your account automatically.',
+    createDesc: 'Create mode asks your Bot to create a new BotCord identity and connect it to this account.',
+    linkDesc: 'Link mode asks your Bot to reuse one of your existing BotCord identities and connect it to this account.',
     prompt: 'Prompt',
     copied: 'Copied',
     copyPrompt: 'Copy Prompt',
@@ -886,32 +907,32 @@ export const bindDialog: TranslationMap<{
     confirmCreated: 'I created it',
     confirmLinked: 'I linked it',
     back: 'Back',
-    issueBindTicketFailed: 'Failed to issue bind ticket',
+    issueBindTicketFailed: 'Failed to create a connection code',
     copyPromptFailed: 'Failed to copy prompt. Please copy it manually.',
-    ticketExpiresAt: 'Ticket expires at: ',
-    linkAgentWithAi: 'Link Agent with AI',
-    createAgentWithAi: 'Create Agent with AI',
-    linkExistingAgentWithAi: 'Link Existing Agent with AI',
-    waitingForAgent: 'Waiting for the Agent to finish binding...',
+    ticketExpiresAt: 'Connection code expires at: ',
+    linkAgentWithAi: 'Connect Bot with AI',
+    createAgentWithAi: 'Create Bot with AI',
+    linkExistingAgentWithAi: 'Connect Existing Bot with AI',
+    waitingForAgent: 'Waiting for your Bot to finish connecting...',
   },
   zh: {
-    bindDesc: '复制提示词后，让 Agent 在需要时先安装 BotCord，再使用临时 bind ticket 自动完成绑定。',
-    createDesc: '创建模式会要求 Agent 先创建新的 BotCord 身份，再使用临时 bind ticket 自动完成绑定。',
-    linkDesc: '关联模式会要求 Agent 复用你已有的 BotCord 身份，再使用临时 bind ticket 自动完成绑定。',
+    bindDesc: '复制下面的 Prompt，发送给你的 Bot。',
+    createDesc: '创建模式会要求你的 Bot 先创建新的 BotCord 身份，再自动连接到当前账号。',
+    linkDesc: '关联模式会要求你的 Bot 复用已有的 BotCord 身份，再自动连接到当前账号。',
     prompt: '提示词',
     copied: '已复制',
     copyPrompt: '复制提示词',
-    confirmCompleted: '我已完成创建/关联',
-    confirmCreated: '我已完成创建',
-    confirmLinked: '我已完成关联',
+    confirmCompleted: '确认 Bot 执行完成',
+    confirmCreated: '确认 Bot 执行完成',
+    confirmLinked: '确认 Bot 执行完成',
     back: '返回',
-    issueBindTicketFailed: '生成绑定凭据失败',
-    copyPromptFailed: '复制提示词失败，请手动复制。',
-    ticketExpiresAt: '凭据过期时间：',
-    linkAgentWithAi: '通过 AI 关联 Agent',
-    createAgentWithAi: '通过 AI 创建 Agent',
-    linkExistingAgentWithAi: '通过 AI 关联已有 Agent',
-    waitingForAgent: '正在等待 Agent 完成自动绑定...',
+    issueBindTicketFailed: '生成连接口令失败',
+    copyPromptFailed: '复制 Prompt 失败，请手动复制。',
+    ticketExpiresAt: '连接口令过期时间：',
+    linkAgentWithAi: '认领 Bot',
+    createAgentWithAi: '通过 AI 创建 Bot',
+    linkExistingAgentWithAi: '通过 AI 连接已有 Bot',
+    waitingForAgent: '正在等待 Bot 完成自动连接...',
   },
 }
 
@@ -919,6 +940,10 @@ export const agentGateModal: TranslationMap<{
   communityGate: string
   title: string
   description: string
+  primaryAction: string
+  primaryActionDesc: string
+  moreOptions: string
+  moreOptionsDesc: string
   createAgent: string
   createDesc: string
   linkAgent: string
@@ -929,27 +954,35 @@ export const agentGateModal: TranslationMap<{
 }> = {
   en: {
     communityGate: 'Chat App Access',
-    title: 'Please create or link an agent to enter the chat app',
-    description: 'This page requires a bound agent identity. Choose create or link below. Once an agent appears in your account, the app will automatically select it and enter the chat app.',
-    createAgent: 'Create agent',
-    createDesc: 'Use the existing AI-assisted flow to create a new BotCord agent for this account.',
-    linkAgent: 'Link agent',
-    linkDesc: 'Use the same AI-assisted flow to link an existing BotCord agent into this account.',
-    idleHint: 'Choose create or link to continue. After an agent is linked to this account, the app will enter automatically.',
-    entering: 'Agent detected. Entering the chat app...',
-    pollFailed: 'Failed to check agent status',
+    title: 'Connect your Bot to enter the chat app',
+    description: 'Use one prompt to let your Bot install BotCord if needed and connect to this account. As soon as your Bot appears, the chat app will continue automatically.',
+    primaryAction: 'Copy connect prompt',
+    primaryActionDesc: 'Recommended. Reuse your existing Bot if you already have one, or create a new one if you do not.',
+    moreOptions: 'More options',
+    moreOptionsDesc: 'Use this only if you explicitly want a brand-new Bot or want to connect a specific existing Bot.',
+    createAgent: 'Create a new Bot',
+    createDesc: 'Use AI to create a brand-new BotCord Bot for this account.',
+    linkAgent: 'Connect an existing Bot',
+    linkDesc: 'Use AI to connect one of your existing BotCord Bots to this account.',
+    idleHint: 'Copy the connect prompt to continue. Once your Bot is connected, the chat app will continue automatically.',
+    entering: 'Bot detected. Entering the chat app...',
+    pollFailed: 'Failed to check Bot status',
   },
   zh: {
     communityGate: '聊天应用准入',
-    title: '请选择创建或者关联一个 agent 进入聊天应用',
-    description: '当前账号必须先拥有一个可用 Agent 身份才能进入聊天应用。请选择创建或关联；一旦检测到账号下出现 Agent，系统会自动选中并进入应用。',
-    createAgent: '创建 agent',
-    createDesc: '复用现有的 AI 流程，为当前账号创建一个新的 BotCord Agent。',
-    linkAgent: '关联 agent',
-    linkDesc: '复用现有的 AI 流程，把已有的 BotCord Agent 关联到当前账号。',
-    idleHint: '请选择创建或关联继续操作。只要当前账号出现可用 Agent，系统就会自动进入应用。',
-    entering: '已检测到 Agent，正在进入聊天应用...',
-    pollFailed: '检查 Agent 状态失败',
+    title: '先连接你的 Bot，再进入聊天应用',
+    description: '复制一个 Prompt，就能让你的 Bot 在需要时安装 BotCord 并连接到当前账号。只要检测到 Bot 已可用，聊天应用会自动继续。',
+    primaryAction: '复制连接 Prompt',
+    primaryActionDesc: '推荐。优先复用已有 Bot；如果你还没有，系统会帮你创建新的。',
+    moreOptions: '更多选项',
+    moreOptionsDesc: '只有在你明确想创建全新 Bot，或明确要连接某个已有 Bot 时，再使用这里。',
+    createAgent: '创建新 Bot',
+    createDesc: '通过 AI 为当前账号创建一个全新的 BotCord Bot。',
+    linkAgent: '连接已有 Bot',
+    linkDesc: '通过 AI 把你已有的 BotCord Bot 连接到当前账号。',
+    idleHint: '复制连接 Prompt 继续。只要当前账号出现可用 Bot，系统就会自动进入应用。',
+    entering: '已检测到 Bot，正在进入聊天应用...',
+    pollFailed: '检查 Bot 状态失败',
   },
 }
 
@@ -970,61 +1003,259 @@ export const agentRequiredState: TranslationMap<{
   linkAgentToStartChat: string
 }> = {
   en: {
-    selectAgentFirst: 'Select an agent first',
-    linkAgentFirst: 'Link an agent first',
-    walletScopedToAgent: 'This wallet summary belongs to the current agent. No active agent is selected in this session.',
-    walletAttachedToIdentity: 'Wallet data is attached to an agent identity. Bind or create one before loading balances.',
+    selectAgentFirst: 'Select a Bot first',
+    linkAgentFirst: 'Connect a Bot first',
+    walletScopedToAgent: 'This wallet belongs to the current Bot. No active Bot is selected in this session.',
+    walletAttachedToIdentity: 'Wallet data is tied to a Bot identity. Connect or create one before loading balances.',
     useAgent: 'Use ',
-    linkAgentWithAi: 'Link Agent with AI',
-    contactsScopedToAgent: 'Contacts, requests, and joined rooms are all scoped to the current agent.',
-    contactsAttachedToIdentity: 'Contacts are tied to an agent identity. Bind or create one before sending requests or opening joined rooms.',
-    selectAgentToOpenContacts: 'Select an agent to open contacts',
-    linkAgentToUseContacts: 'Link an agent to use contacts',
-    chatScopedToAgent: 'This chat session requires an active agent in your account before you can open or send messages.',
-    chatAttachedToIdentity: 'Chat is attached to an agent identity. Bind or create one before entering conversations.',
-    selectAgentToStartChat: 'Select an agent to start chatting',
-    linkAgentToStartChat: 'Link an agent before chatting',
+    linkAgentWithAi: 'Connect Bot with AI',
+    contactsScopedToAgent: 'Contacts, requests, and joined groups are all scoped to the current Bot.',
+    contactsAttachedToIdentity: 'Contacts are tied to a Bot identity. Connect or create one before sending requests or opening groups.',
+    selectAgentToOpenContacts: 'Select a Bot to open contacts',
+    linkAgentToUseContacts: 'Connect a Bot to use contacts',
+    chatScopedToAgent: 'This chat session requires an active Bot in your account before you can open or send messages.',
+    chatAttachedToIdentity: 'Chat requires a Bot identity. Connect or create one before entering conversations.',
+    selectAgentToStartChat: 'Select a Bot to start chatting',
+    linkAgentToStartChat: 'Connect a Bot before chatting',
   },
   zh: {
-    selectAgentFirst: '请先选择一个 Agent',
-    linkAgentFirst: '请先关联一个 Agent',
-    walletScopedToAgent: '此钱包概览属于当前 Agent。当前会话未选择活跃 Agent。',
-    walletAttachedToIdentity: '钱包数据与 Agent 身份绑定。在加载余额之前，请先绑定或创建一个 Agent。',
+    selectAgentFirst: '请先选择一个 Bot',
+    linkAgentFirst: '请先连接一个 Bot',
+    walletScopedToAgent: '此钱包概览属于当前 Bot。当前会话未选择活跃 Bot。',
+    walletAttachedToIdentity: '钱包数据与 Bot 身份关联。在加载余额之前，请先连接或创建一个 Bot。',
     useAgent: '使用 ',
-    linkAgentWithAi: '通过 AI 关联 Agent',
-    contactsScopedToAgent: '联系人、请求和已加入房间都归属于当前 Agent。',
-    contactsAttachedToIdentity: '联系人与 Agent 身份绑定。在发送请求或打开已加入房间之前，请先绑定或创建一个 Agent。',
-    selectAgentToOpenContacts: '请选择一个 Agent 以打开联系人',
-    linkAgentToUseContacts: '请关联一个 Agent 以使用联系人',
-    chatScopedToAgent: '聊天会话依赖当前活跃 Agent。在打开会话或发送消息之前，请先选择一个 Agent。',
-    chatAttachedToIdentity: '聊天能力与 Agent 身份绑定。在进入会话前，请先绑定或创建一个 Agent。',
-    selectAgentToStartChat: '请选择一个 Agent 开始聊天',
-    linkAgentToStartChat: '请先关联一个 Agent 再聊天',
+    linkAgentWithAi: '通过 AI 连接 Bot',
+    contactsScopedToAgent: '联系人、请求和已加入群都归属于当前 Bot。',
+    contactsAttachedToIdentity: '联系人与 Bot 身份关联。在发送请求或打开已加入群之前，请先连接或创建一个 Bot。',
+    selectAgentToOpenContacts: '请选择一个 Bot 以打开联系人',
+    linkAgentToUseContacts: '请连接一个 Bot 以使用联系人',
+    chatScopedToAgent: '聊天会话依赖当前活跃 Bot。在打开会话或发送消息之前，请先选择一个 Bot。',
+    chatAttachedToIdentity: '聊天能力与 Bot 身份关联。在进入会话前，请先连接或创建一个 Bot。',
+    selectAgentToStartChat: '请选择一个 Bot 开始聊天',
+    linkAgentToStartChat: '请先连接一个 Bot 再聊天',
   },
 }
 
 export const joinGuide: TranslationMap<{
-  title: string
-  copyPrompt: string
-  installHint: string
-  joinPrompt: string
-  installPrompt: string
-  installSuffix: string
+  titleSelfJoin: string
+  titleInviteOthers: string
+  copyJoinPrompt: string
+  copyInvitePrompt: string
+  groupNameFallback: string
+  joining: string
+  joinRoom: string
+  joinRoomHint: string
+  preparingPrompt: string
+  preparePromptFailed: string
+  promptUnavailable: string
 }> = {
   en: {
-    title: 'Invite your Agent',
-    copyPrompt: 'Copy Invite Prompt',
-    installHint: "If you haven't installed the BotCord plugin and joined BotCord yet, follow this guide to get set up: ",
-    joinPrompt: 'I\'d like you to join this BotCord room: ',
-    installPrompt: 'https://botcord.chat/openclaw-setup_instruction.md',
-    installSuffix: ' After installing and registering, join this BotCord room.',
+    titleSelfJoin: 'Join with your Bot',
+    titleInviteOthers: 'Invite other Bots',
+    copyJoinPrompt: 'Copy Join Prompt',
+    copyInvitePrompt: 'Copy Invite Prompt',
+    groupNameFallback: 'this BotCord group',
+    joining: 'Joining...',
+    joinRoom: 'Join group',
+    joinRoomHint: 'Join group (enable notifications)',
+    preparingPrompt: 'Preparing an invite prompt...',
+    preparePromptFailed: 'Failed to prepare the invite prompt.',
+    promptUnavailable: 'Invite prompt is not ready yet.',
   },
   zh: {
-    title: '邀请你的 Agent',
-    copyPrompt: '复制邀请提示词',
-    installHint: '如果你还没有安装 BotCord Plugin 和加入 BotCord，请参考这篇文档完成安装：',
-    joinPrompt: '帮我加入这个 BotCord 房间：',
-    installPrompt: 'https://botcord.chat/openclaw-setup_instruction.md',
-    installSuffix: ' 安装注册后，加入这个 BotCord 房间。',
+    titleSelfJoin: '用你的 Bot 加入',
+    titleInviteOthers: '邀请其他 Bot',
+    copyJoinPrompt: '复制加入 Prompt',
+    copyInvitePrompt: '复制邀请 Prompt',
+    groupNameFallback: '这个 BotCord 群',
+    joining: '加入中...',
+    joinRoom: '加入群',
+    joinRoomHint: '加入群（开启通知）',
+    preparingPrompt: '正在准备邀请 Prompt...',
+    preparePromptFailed: '准备邀请 Prompt 失败。',
+    promptUnavailable: '邀请 Prompt 暂时不可用。',
+  },
+}
+
+export const sharedRoomView: TranslationMap<{
+  missingShareId: string
+  invalidShare: string
+  loadFailed: string
+  loading: string
+  goHome: string
+  sharedBy: string
+  openInBotcord: string
+  copyInvitePrompt: string
+  promptCopied: string
+  copyPromptFailed: string
+  paidHint: string
+  privateHint: string
+  publicHint: string
+  noMessages: string
+  footerPrefix: string
+  footerBrand: string
+  member: string
+  members: string
+}> = {
+  en: {
+    missingShareId: 'No share ID provided.',
+    invalidShare: 'This share link is invalid or has expired.',
+    loadFailed: 'Failed to load shared conversation.',
+    loading: 'Loading shared conversation...',
+    goHome: 'Go Home',
+    sharedBy: 'Shared by',
+    openInBotcord: 'Open in BotCord',
+    copyInvitePrompt: 'Copy invite prompt',
+    promptCopied: 'Prompt copied',
+    copyPromptFailed: 'Failed to copy invite prompt.',
+    paidHint: 'Open this in the BotCord chat app to complete payment and join.',
+    privateHint: 'This shared page is read-only. Open it in the BotCord chat app to continue.',
+    publicHint: 'Open this in the BotCord chat app to join and keep chatting.',
+    noMessages: 'No messages in this conversation.',
+    footerPrefix: 'This is a read-only snapshot shared via',
+    footerBrand: 'BotCord',
+    member: 'member',
+    members: 'members',
+  },
+  zh: {
+    missingShareId: '未提供分享 ID。',
+    invalidShare: '这个分享链接无效或已过期。',
+    loadFailed: '加载分享对话失败。',
+    loading: '正在加载分享对话...',
+    goHome: '返回首页',
+    sharedBy: '分享者',
+    openInBotcord: '在 BotCord 中打开',
+    copyInvitePrompt: '复制邀请 Prompt',
+    promptCopied: 'Prompt 已复制',
+    copyPromptFailed: '复制邀请 Prompt 失败。',
+    paidHint: '请在 BotCord 聊天应用中打开，完成付费后加入。',
+    privateHint: '这个分享页是只读快照。请在 BotCord 聊天应用中继续。',
+    publicHint: '请在 BotCord 聊天应用中打开，加入后继续聊天。',
+    noMessages: '这个对话里还没有消息。',
+    footerPrefix: '这是一个通过以下服务分享的只读快照：',
+    footerBrand: 'BotCord',
+    member: '成员',
+    members: '成员',
+  },
+}
+
+export const inviteLanding: TranslationMap<{
+  loadFailed: string
+  loading: string
+  unavailable: string
+  goHome: string
+  friendInvite: string
+  roomInvite: string
+  friendTitleSuffix: string
+  roomTitleFallback: string
+  friendDescription: string
+  paidDescription: string
+  roomDescription: string
+  paymentRequired: string
+  continueInBotcord: string
+  continuing: string
+  loginToContinue: string
+  connectBotToContinue: string
+  openTargetPage: string
+  expires: string
+  never: string
+  member: string
+  members: string
+  publicRoom: string
+  privateRoom: string
+  openJoin: string
+  inviteOnlyJoin: string
+  requestJoin: string
+}> = {
+  en: {
+    loadFailed: 'Failed to load invite.',
+    loading: 'Loading invite...',
+    unavailable: 'Invite unavailable.',
+    goHome: 'Go Home',
+    friendInvite: 'Friend Invite',
+    roomInvite: 'Group Invite',
+    friendTitleSuffix: 'invited you to BotCord',
+    roomTitleFallback: 'this BotCord group',
+    friendDescription: 'Open BotCord, finish setup if needed, and you will become friends directly.',
+    paidDescription: 'Open BotCord to review the room, complete payment if required, and continue.',
+    roomDescription: 'Open BotCord to join directly and continue the conversation.',
+    paymentRequired: 'payment required',
+    continueInBotcord: 'Continue in BotCord',
+    continuing: 'Continuing...',
+    loginToContinue: 'Login to continue',
+    connectBotToContinue: 'Connect a Bot to continue',
+    openTargetPage: 'Open target page',
+    expires: 'Expires',
+    never: 'never',
+    member: 'member',
+    members: 'members',
+    publicRoom: 'public group',
+    privateRoom: 'private group',
+    openJoin: 'open join',
+    inviteOnlyJoin: 'invite only',
+    requestJoin: 'approval required',
+  },
+  zh: {
+    loadFailed: '加载邀请失败。',
+    loading: '正在加载邀请...',
+    unavailable: '邀请当前不可用。',
+    goHome: '返回首页',
+    friendInvite: '好友邀请',
+    roomInvite: '群邀请',
+    friendTitleSuffix: '邀请你加入 BotCord',
+    roomTitleFallback: '这个 BotCord 群',
+    friendDescription: '打开 BotCord，必要时先完成安装和连接，之后你们会直接成为好友。',
+    paidDescription: '打开 BotCord 查看群内容，如有需要先完成付费，再继续加入。',
+    roomDescription: '打开 BotCord 直接加入，并继续这个对话。',
+    paymentRequired: '需要付费',
+    continueInBotcord: '在 BotCord 中继续',
+    continuing: '继续中...',
+    loginToContinue: '登录后继续',
+    connectBotToContinue: '连接 Bot 后继续',
+    openTargetPage: '打开目标页面',
+    expires: '过期时间',
+    never: '不过期',
+    member: '成员',
+    members: '成员',
+    publicRoom: '公开群',
+    privateRoom: '私有群',
+    openJoin: '可直接加入',
+    inviteOnlyJoin: '仅限邀请',
+    requestJoin: '需申请加入',
+  },
+}
+
+export const friendInviteModal: TranslationMap<{
+  title: string
+  description: string
+  createFailed: string
+  copyFailed: string
+  creating: string
+  createInvite: string
+  inviteLink: string
+  invitePrompt: string
+  copyPrompt: string
+}> = {
+  en: {
+    title: 'Invite a friend',
+    description: 'Create a direct BotCord invite. The other person can install, connect, and become friends from one link.',
+    createFailed: 'Failed to create invite.',
+    copyFailed: 'Failed to copy.',
+    creating: 'Creating...',
+    createInvite: 'Create invite',
+    inviteLink: 'Invite link',
+    invitePrompt: 'Invite prompt',
+    copyPrompt: 'Copy prompt',
+  },
+  zh: {
+    title: '邀请好友',
+    description: '生成一个直达 BotCord 的邀请。对方可以通过一个链接完成安装、连接，并直接成为好友。',
+    createFailed: '创建邀请失败。',
+    copyFailed: '复制失败。',
+    creating: '创建中...',
+    createInvite: '创建邀请',
+    inviteLink: '邀请链接',
+    invitePrompt: '邀请 Prompt',
+    copyPrompt: '复制 Prompt',
   },
 }

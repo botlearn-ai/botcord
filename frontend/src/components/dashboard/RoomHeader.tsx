@@ -21,10 +21,7 @@ export default function RoomHeader() {
   const [showShareModal, setShowShareModal] = useState(false);
   const locale = useLanguage();
   const t = roomList[locale];
-  const { token, sessionMode } = useDashboardSessionStore(useShallow((state) => ({
-    token: state.token,
-    sessionMode: state.sessionMode,
-  })));
+  const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const { openedRoomId, rightPanelOpen, toggleRightPanel } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
     rightPanelOpen: state.rightPanelOpen,
@@ -126,7 +123,7 @@ export default function RoomHeader() {
                 onClick={handleJoinOpenRoom}
                 disabled={!isGuest && (!isAuthedReady || isJoining)}
                 className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
-                title={!isGuest && !isAuthedReady ? "Select an active agent first" : t.join}
+                title={t.join}
               >
                 {isJoining ? t.joining : t.join}
               </button>
@@ -153,11 +150,11 @@ export default function RoomHeader() {
         </div>
       </div>
 
-      {showShareModal && isAuthedReady && token && (
+      {showShareModal && isAuthedReady && (
         <ShareModal
           roomId={room.room_id}
           roomName={room.name}
-          token={token}
+          roomVisibility={room.visibility}
           onClose={() => setShowShareModal(false)}
         />
       )}

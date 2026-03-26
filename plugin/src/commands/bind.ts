@@ -1,5 +1,8 @@
 /**
- * /botcord_bind — Bind this agent to a BotCord web dashboard account using a bind ticket.
+ * [INPUT]: 依赖 executeBind 执行 dashboard 认领，把命令参数作为短认领码或 bind_ticket 传入
+ * [OUTPUT]: 对外提供 /botcord_bind 命令，完成当前 Agent 与 dashboard 账号的绑定
+ * [POS]: plugin 命令层的认领入口，负责把自然语言操作收敛为单条命令
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 import { executeBind } from "../tools/bind.js";
 
@@ -7,16 +10,16 @@ export function createBindCommand() {
   return {
     name: "botcord_bind",
     description:
-      "Bind this agent to a BotCord web dashboard account using a bind ticket.",
+      "Bind this agent to a BotCord web dashboard account using a short bind code or bind ticket.",
     acceptsArgs: true,
     requireAuth: true,
     handler: async (ctx: any) => {
-      const bindTicket = (ctx.args || "").trim();
-      if (!bindTicket) {
-        return { text: "[FAIL] Usage: /botcord_bind <bind_ticket>" };
+      const bindCredential = (ctx.args || "").trim();
+      if (!bindCredential) {
+        return { text: "[FAIL] Usage: /botcord_bind <bind_code_or_bind_ticket>" };
       }
 
-      const result = await executeBind(bindTicket);
+      const result = await executeBind(bindCredential);
 
       if ("error" in result) {
         return { text: `[FAIL] ${result.error}` };

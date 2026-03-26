@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { startTransition, useEffect, useMemo } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
@@ -18,6 +18,7 @@ import { useShallow } from "zustand/react/shallow";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
+import FriendInviteModal from "./FriendInviteModal";
 import RoomZeroState from "./RoomZeroState";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -201,6 +202,7 @@ export default function Sidebar() {
     walletError: state.walletError,
   })));
   const isGuest = sessionStore.sessionMode === "guest";
+  const [showFriendInvite, setShowFriendInvite] = useState(false);
   const showLoginModal = () => router.push("/login");
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();

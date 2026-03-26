@@ -1,3 +1,10 @@
+"""
+[INPUT]: 依赖 SQLAlchemy Base、枚举与关系定义，承载 Hub 与 dashboard 的持久化真相源
+[OUTPUT]: 对外提供 Agent、Invite、ShortCode 等领域模型，供路由与服务共享
+[POS]: backend 数据模型中枢，负责把身份、社交、支付、绑定等状态收敛到统一 schema
+[PROTOCOL]: 变更时更新此头部，然后检查 README.md
+"""
+
 import datetime
 
 import uuid as _uuid
@@ -139,6 +146,30 @@ class UsedBindTicket(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ShortCode(Base):
+    """Generic short-lived code table for bind and future URL/token flows."""
+
+    __tablename__ = "short_codes"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_short_codes_code"),
+        Index("ix_short_codes_kind_created", "kind", "created_at"),
+        Index("ix_short_codes_owner_created", "owner_user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    owner_user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    max_uses: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consumed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -383,6 +414,53 @@ class ShareMessage(Base):
     )
 
     share: Mapped["Share"] = relationship(back_populates="messages")
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_invites_code"),
+        Index("ix_invites_creator_kind", "creator_agent_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    creator_agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    room_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("rooms.room_id"), nullable=True, index=True
+    )
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    max_uses: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class InviteRedemption(Base):
+    __tablename__ = "invite_redemptions"
+    __table_args__ = (
+        UniqueConstraint("code", "redeemer_agent_id", name="uq_invite_redemption"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(
+        String(32), ForeignKey("invites.code"), nullable=False, index=True
+    )
+    redeemer_agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class ContactRequest(Base):

@@ -5,29 +5,32 @@ import { useLanguage } from '@/lib/i18n';
 import { shareModal } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import { api } from "@/lib/api";
-import type { CreateShareResponse } from "@/lib/types";
+import type { CreateShareResponse, InvitePreviewResponse } from "@/lib/types";
+import { buildSharePrompt } from "@/lib/onboarding";
 
 interface ShareModalProps {
   roomId: string;
   roomName: string;
-  token: string;
+  roomVisibility?: string;
   onClose: () => void;
 }
 
-export default function ShareModal({ roomId, roomName, token, onClose }: ShareModalProps) {
+export default function ShareModal({ roomId, roomName, roomVisibility, onClose }: ShareModalProps) {
   const locale = useLanguage();
   const t = shareModal[locale];
   const tc = common[locale];
-  const [shareData, setShareData] = useState<CreateShareResponse | null>(null);
+  const [shareData, setShareData] = useState<(CreateShareResponse | InvitePreviewResponse) | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedField, setCopiedField] = useState<"link" | "prompt" | null>(null);
 
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.createShareLink(roomId);
+      const data = roomVisibility === "private"
+        ? await api.createRoomInvite(roomId)
+        : await api.createShareLink(roomId);
       setShareData(data);
     } catch (err: any) {
       setError(err.message || t.failedToCreateLink);
@@ -36,16 +39,40 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
     }
   };
 
-  const handleCopy = async () => {
+  const handleCopyLink = async () => {
     if (!shareData) return;
     try {
-      await navigator.clipboard.writeText(shareData.share_url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText("link_url" in shareData ? shareData.link_url : shareData.invite_url);
+      setCopiedField("link");
+      setTimeout(() => setCopiedField(null), 2000);
     } catch {
       setError(t.failedToCopy);
     }
   };
+
+  const handleCopyPrompt = async () => {
+    if (!shareData) return;
+    try {
+      const linkUrl = "link_url" in shareData ? shareData.link_url : shareData.invite_url;
+      const entryType = shareData.entry_type;
+      await navigator.clipboard.writeText(
+        buildSharePrompt({
+          shareUrl: linkUrl,
+          roomName,
+          requiresPayment: shareData.entry_type === "paid_room",
+          isReadOnly: entryType === "private_room",
+          locale,
+        }),
+      );
+      setCopiedField("prompt");
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      setError(t.failedToCopy);
+    }
+  };
+
+  const shareUrl = shareData ? ("link_url" in shareData ? shareData.link_url : shareData.invite_url) : "";
+  const entryType = shareData?.entry_type;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -55,7 +82,7 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
       >
         <h2 className="mb-1 text-lg font-semibold text-text-primary">{t.shareRoom}</h2>
         <p className="mb-4 text-sm text-text-secondary">
-          {t.createPublicLink} <span className="text-neon-cyan">{roomName}</span>
+          {t.createShareAssets} <span className="text-neon-cyan">{roomName}</span>
         </p>
 
         {error && (
@@ -82,22 +109,54 @@ export default function ShareModal({ roomId, roomName, token, onClose }: ShareMo
           </div>
         ) : (
           <div>
-            <div className="mb-4 flex items-center gap-2 rounded border border-glass-border bg-glass-bg px-3 py-2">
-              <input
-                type="text"
-                readOnly
-                value={shareData.share_url}
-                className="flex-1 bg-transparent font-mono text-sm text-text-primary outline-none"
-              />
-              <button
-                onClick={handleCopy}
-                className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
-              >
-                {copied ? tc.copied : tc.copy}
-              </button>
+            <div className="space-y-4">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                  {t.shareLink}
+                </p>
+                <div className="flex items-center gap-2 rounded border border-glass-border bg-glass-bg px-3 py-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={shareUrl}
+                    className="flex-1 bg-transparent font-mono text-sm text-text-primary outline-none"
+                  />
+                  <button
+                    onClick={handleCopyLink}
+                    className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
+                  >
+                    {copiedField === "link" ? tc.copied : tc.copy}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                    {t.sharePrompt}
+                  </p>
+                  <button
+                    onClick={handleCopyPrompt}
+                    className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
+                  >
+                    {copiedField === "prompt" ? tc.copied : t.copyPrompt}
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  value={buildSharePrompt({
+                    shareUrl,
+                    roomName,
+                    requiresPayment: entryType === "paid_room",
+                    isReadOnly: entryType === "private_room",
+                    locale,
+                  })}
+                  rows={6}
+                  className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
+                />
+              </div>
             </div>
-            <p className="mb-4 text-xs text-text-secondary">
-              {t.anyoneCanView}
+            <p className="mt-3 mb-4 text-xs text-text-secondary">
+              {entryType === "private_invite" ? t.privateInviteNote : t.anyoneCanView}
             </p>
             <div className="flex justify-end">
               <button
