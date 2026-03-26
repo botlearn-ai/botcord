@@ -322,6 +322,10 @@ export const api = {
     return apiGet<PublicRoomMembersResponse>(`/api/public/rooms/${roomId}/members`);
   },
 
+  getRoomMembers(roomId: string) {
+    return apiGet<PublicRoomMembersResponse>(`/api/dashboard/rooms/${roomId}/members`);
+  },
+
   // --- Hub APIs ---
 
   pollInbox(timeout = 25) {

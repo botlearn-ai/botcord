@@ -20,6 +20,7 @@ export interface DashboardRoom {
   owner_id: string;
   visibility: string;
   join_policy?: string;
+  can_invite?: boolean;
   member_count: number;
   my_role: string;
   rule: string | null;

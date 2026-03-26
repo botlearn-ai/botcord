@@ -143,10 +143,12 @@ async def _build_rooms_from_membership(
 ) -> list[dict]:
     # --- ORM fallback /补齐缺失 membership ---
     member_result = await db.execute(
-        select(RoomMember.room_id, RoomMember.role)
+        select(RoomMember.room_id, RoomMember.role, RoomMember.can_invite)
         .where(RoomMember.agent_id == agent_id)
     )
-    memberships = {row[0]: row[1] for row in member_result.all()}
+    _member_rows = member_result.all()
+    memberships = {row[0]: row[1] for row in _member_rows}
+    invite_overrides = {row[0]: row[2] for row in _member_rows}
     room_ids = list(memberships.keys())
     if not room_ids:
         return []
@@ -219,6 +221,16 @@ async def _build_rooms_from_membership(
         role_val = memberships.get(rid)
         my_role = role_val.value if hasattr(role_val, "value") else str(role_val) if role_val else "member"
 
+        member_can_invite = invite_overrides.get(rid)
+        if my_role == "owner":
+            computed_can_invite = True
+        elif member_can_invite is not None:
+            computed_can_invite = member_can_invite
+        elif my_role == "admin":
+            computed_can_invite = True
+        else:
+            computed_can_invite = room.default_invite
+
         result_rooms.append({
             "room_id": room.room_id,
             "name": room.name,
@@ -230,6 +242,7 @@ async def _build_rooms_from_membership(
             "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
             "member_count": member_counts.get(rid, 0),
             "my_role": my_role,
+            "can_invite": computed_can_invite,
             "last_message_preview": last_preview,
             "last_message_at": last_at.isoformat() if last_at else None,
             "last_sender_name": last_sender,
@@ -1213,6 +1226,75 @@ async def get_room_messages(
         messages.append(msg)
 
     return {"messages": messages, "has_more": has_more}
+
+
+# ---------------------------------------------------------------------------
+# Room members (authenticated — works for any room the user has access to)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/rooms/{room_id}/members")
+async def get_room_members(
+    room_id: str,
+    authorization: str | None = Header(default=None),
+    x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get room members. Authenticated members can see any room they belong to;
+    unauthenticated requests fall back to public-only."""
+    from app.auth import _decode_supabase_token, _load_user_and_roles
+
+    room_result = await db.execute(select(Room).where(Room.room_id == room_id))
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    is_member = False
+    if authorization and authorization.startswith("Bearer ") and x_active_agent:
+        token = authorization[len("Bearer "):]
+        try:
+            jwt_payload = _decode_supabase_token(token)
+            supabase_uid = jwt_payload["sub"]
+            user, _ = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
+            agent_result = await db.execute(
+                select(Agent).where(Agent.agent_id == x_active_agent)
+            )
+            agent = agent_result.scalar_one_or_none()
+            if agent and str(agent.user_id) == str(user.id):
+                mem = await db.execute(
+                    select(RoomMember).where(
+                        RoomMember.room_id == room_id,
+                        RoomMember.agent_id == x_active_agent,
+                    )
+                )
+                if mem.scalar_one_or_none() is not None:
+                    is_member = True
+        except Exception:
+            pass
+
+    if not is_member and room.visibility != RoomVisibility.public:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    result = await db.execute(
+        select(RoomMember, Agent)
+        .outerjoin(Agent, Agent.agent_id == RoomMember.agent_id)
+        .where(RoomMember.room_id == room_id)
+    )
+    rows = result.all()
+
+    members = [
+        {
+            "agent_id": m.agent_id,
+            "display_name": a.display_name if a else m.agent_id,
+            "bio": a.bio if a else None,
+            "message_policy": (a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy)) if a else None,
+            "created_at": a.created_at.isoformat() if a and a.created_at else None,
+            "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+            "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+        }
+        for m, a in rows
+    ]
+    return {"room_id": room_id, "members": members, "total": len(members)}
 
 
 # ---------------------------------------------------------------------------

@@ -98,7 +98,8 @@ export default function AgentBrowser() {
     let cancelled = false;
     setRoomMembersLoading(true);
     setRoomMembersError(null);
-    api.getPublicRoomMembers(focusedRoomId)
+    api.getRoomMembers(focusedRoomId)
+      .catch(() => api.getPublicRoomMembers(focusedRoomId))
       .then((result) => {
         if (cancelled) return;
         setRoomMembers(result.members);
