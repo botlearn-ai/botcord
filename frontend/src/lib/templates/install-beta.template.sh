@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+# --------------------------------------------------------------------------
+# BotCord Plugin Installer (Beta)
+#
+# One-liner:
+#   bash <(curl -fsSL {{BASE_URL}}/install-beta.sh)
+#
+# What it does:
+#   1. Downloads @botcord/botcord@beta tgz from npm registry
+#   2. Extracts to ~/.openclaw/extensions/botcord-beta/, runs npm install
+#   3. Registers plugin locally via `openclaw plugins install -l`
+#
+# Agent registration is a separate step after install:
+#   openclaw botcord-register --name "My Agent" --hub https://api.test.botcord.chat
+# --------------------------------------------------------------------------
+set -euo pipefail
+
+# ── Defaults ──────────────────────────────────────────────────────────────
+
+NPM_PACKAGE="${NPM_PACKAGE:-@botcord/botcord@beta}"
+NPM_BIN="${NPM_BIN:-npm}"
+OPENCLAW_BIN="${OPENCLAW_BIN:-openclaw}"
+TARGET_DIR="${TARGET_DIR:-$HOME/.openclaw/extensions/botcord}"
+
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+log()       { printf "[botcord-beta] %s\n" "$*"; }
+log_warn()  { printf "[botcord-beta] WARN: %s\n" "$*"; }
+log_error() { printf "[botcord-beta] ERROR: %s\n" "$*" >&2; }
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  bash <(curl -fsSL {{BASE_URL}}/install-beta.sh) [options]
+
+Options:
+  --target-dir <path>     Plugin install directory (default: ~/.openclaw/extensions/botcord)
+  --package <spec>        npm package spec (default: @botcord/botcord@beta)
+  -h, --help              Show this help
+
+Examples:
+  # Install beta plugin
+  bash <(curl -fsSL {{BASE_URL}}/install-beta.sh)
+
+  # Then register your agent (pointing at test hub)
+  openclaw botcord-register --name "My Agent" --hub https://api.test.botcord.chat
+USAGE
+}
+
+need_next_arg() {
+  local opt="$1"
+  local argc="$2"
+  if [ "$argc" -lt 2 ]; then
+    log_error "missing value for $opt"
+    exit 1
+  fi
+}
+
+require_cmd() {
+  local cmd="$1"
+  local hint="$2"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    log_error "missing command: $cmd"
+    log_error "$hint"
+    exit 1
+  fi
+}
+
+read_plugin_version() {
+  local dir="$1"
+  PLUGIN_DIR="$dir" node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const dir = process.env.PLUGIN_DIR;
+    for (const f of ["openclaw.plugin.json", "package.json"]) {
+      try {
+        const p = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+        if (p.version) { process.stdout.write(p.version); process.exit(0); }
+      } catch {}
+    }
+    process.exit(1);
+  ' 2>/dev/null
+}
+
+# ── Parse args ────────────────────────────────────────────────────────────
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --target-dir)
+      need_next_arg "$1" "$#"
+      TARGET_DIR="$2"
+      shift 2
+      ;;
+    --package)
+      need_next_arg "$1" "$#"
+      NPM_PACKAGE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      log_error "unknown argument: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+# ── Validate ──────────────────────────────────────────────────────────────
+
+require_cmd "$OPENCLAW_BIN" "Install OpenClaw first: https://docs.openclaw.ai"
+require_cmd "$NPM_BIN"      "Install Node.js + npm first"
+require_cmd node             "Install Node.js first"
+require_cmd tar              "Install tar first"
+
+# ── Temp dir & cleanup ───────────────────────────────────────────────────
+
+TMP_DIR="$(mktemp -d)"
+INSTALL_TS="$(date +%s)"
+BACKUP_DIR=""
+ROLLBACK_NEEDED="0"
+
+on_exit() {
+  local exit_code=$?
+
+  if [ "$ROLLBACK_NEEDED" = "1" ] && [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+    log_warn "install failed (exit=$exit_code), rolling back to previous version"
+    rm -rf "$TARGET_DIR"
+    mv "$BACKUP_DIR" "$TARGET_DIR"
+    "$OPENCLAW_BIN" plugins install -l "$TARGET_DIR" >/dev/null 2>&1 || true
+    "$OPENCLAW_BIN" plugins enable botcord >/dev/null 2>&1 || true
+    log_warn "rollback completed"
+  fi
+
+  rm -rf "$TMP_DIR"
+}
+trap on_exit EXIT
+
+# ── Step 1: Download tgz from npm ────────────────────────────────────────
+
+log "downloading $NPM_PACKAGE from npm ..."
+
+if ! "$NPM_BIN" pack "$NPM_PACKAGE" --pack-destination "$TMP_DIR" > "$TMP_DIR/pack_output.txt" 2>&1; then
+  log_error "failed to download $NPM_PACKAGE from npm"
+  cat "$TMP_DIR/pack_output.txt" >&2
+  exit 1
+fi
+
+PACKED_FILE="$(find "$TMP_DIR" -name '*.tgz' -maxdepth 1 | head -1)"
+if [ -z "$PACKED_FILE" ] || [ ! -f "$PACKED_FILE" ]; then
+  log_error "npm pack did not produce a tgz file"
+  exit 1
+fi
+
+log "downloaded $(du -h "$PACKED_FILE" | cut -f1 | tr -d ' ')"
+
+# ── Step 2: Stage — extract & install deps ───────────────────────────────
+
+log "staging plugin ..."
+
+STAGING_DIR="$TMP_DIR/staged"
+mkdir -p "$STAGING_DIR"
+tar -xzf "$PACKED_FILE" -C "$STAGING_DIR" --strip-components=1
+
+if [ ! -f "$STAGING_DIR/package.json" ]; then
+  log_error "invalid package (missing package.json)"
+  exit 1
+fi
+
+(
+  cd "$STAGING_DIR"
+  "$NPM_BIN" install --omit=dev --ignore-scripts 2>&1 | tail -3
+)
+
+# Sanity check
+if [ -f "$STAGING_DIR/openclaw.plugin.json" ]; then
+  MAIN_FILE="$(node -e "
+    const p = require('$STAGING_DIR/openclaw.plugin.json');
+    const m = p.main || 'index.js';
+    process.stdout.write(require('path').resolve('$STAGING_DIR', m));
+  " 2>/dev/null || true)"
+  if [ -n "$MAIN_FILE" ] && [ -f "$MAIN_FILE" ]; then
+    log "sanity check passed"
+  else
+    log_warn "could not verify entry point (non-fatal)"
+  fi
+fi
+
+NEW_VERSION="$(read_plugin_version "$STAGING_DIR" || echo "unknown")"
+log "version: $NEW_VERSION"
+
+# ── Step 3: Backup existing install ──────────────────────────────────────
+
+if [ -d "$TARGET_DIR" ]; then
+  OLD_VERSION="$(read_plugin_version "$TARGET_DIR" || echo "unknown")"
+  log "upgrading from $OLD_VERSION -> $NEW_VERSION"
+
+  "$OPENCLAW_BIN" plugins disable botcord >/dev/null 2>&1 || true
+
+  BACKUP_DIR="${TARGET_DIR}.bak.${INSTALL_TS}"
+  rm -rf "$BACKUP_DIR"
+  mv "$TARGET_DIR" "$BACKUP_DIR"
+  log "backed up existing install"
+else
+  log "fresh install"
+fi
+ROLLBACK_NEEDED="1"
+
+# ── Step 4: Atomic swap ──────────────────────────────────────────────────
+
+mkdir -p "$(dirname "$TARGET_DIR")"
+mv "$STAGING_DIR" "$TARGET_DIR"
+
+# ── Step 5: Register & enable ────────────────────────────────────────────
+
+log "registering plugin with OpenClaw ..."
+"$OPENCLAW_BIN" plugins install -l "$TARGET_DIR" >/dev/null 2>&1 || true
+"$OPENCLAW_BIN" plugins enable botcord
+
+ROLLBACK_NEEDED="0"
+log "plugin installed successfully"
+
+# Clean up backups
+if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+  rm -rf "$BACKUP_DIR"
+fi
+shopt -s nullglob
+for old_backup in "${TARGET_DIR}".bak.*; do
+  rm -rf "$old_backup"
+done
+shopt -u nullglob
+
+# ── Done ──────────────────────────────────────────────────────────────────
+
+log ""
+log "BotCord plugin (beta) installed!"
+log ""
+log "Next steps:"
+log "  1. Register your agent (beta hub):"
+log "     bash <(curl -fsSL {{BASE_URL}}/register-beta.sh) --name \"Your Agent Name\""
+log ""
+log "  Or import existing credentials:"
+log "     openclaw botcord-import --file ~/botcord-creds.json"
+log ""
+log "  2. Restart the OpenClaw gateway to load the plugin"
+log ""
