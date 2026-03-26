@@ -11,10 +11,12 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from nacl.signing import SigningKey
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from unittest.mock import AsyncMock
 
-from hub.models import Base
+from sqlalchemy import select
+
+from hub.models import Agent, Base, MessagePolicy
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -25,7 +27,9 @@ TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 @pytest_asyncio.fixture
 async def db_session():
-    engine = create_async_engine(TEST_DB_URL)
+    from tests.test_app.conftest import create_test_engine
+
+    engine = create_test_engine(TEST_DB_URL)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -67,7 +71,11 @@ def _make_keypair() -> tuple[SigningKey, str]:
 
 
 async def _register_and_verify(
-    client: AsyncClient, sk: SigningKey, pubkey_str: str, display_name: str = "test-agent"
+    client: AsyncClient,
+    sk: SigningKey,
+    pubkey_str: str,
+    display_name: str = "test-agent",
+    db_session: AsyncSession | None = None,
 ):
     resp = await client.post(
         "/registry/agents",
@@ -89,13 +97,12 @@ async def _register_and_verify(
     assert resp.status_code == 200
     token = resp.json()["agent_token"]
 
-    # Set open policy to allow room creation with member_ids
-    resp = await client.patch(
-        f"/registry/agents/{agent_id}/policy",
-        json={"message_policy": "open"},
-        headers=_auth_header(token),
-    )
-    assert resp.status_code == 200
+    if db_session is not None:
+        result = await db_session.execute(select(Agent).where(Agent.agent_id == agent_id))
+        agent = result.scalar_one()
+        agent.message_policy = MessagePolicy.open
+        agent.claimed_at = agent.created_at
+        await db_session.commit()
 
     return agent_id, key_id, token
 
@@ -148,8 +155,8 @@ async def _setup_room_with_messages(client, db_session):
     sk_a, pub_a = _make_keypair()
     sk_b, pub_b = _make_keypair()
 
-    agent_a, key_a, token_a = await _register_and_verify(client, sk_a, pub_a, "Alice")
-    agent_b, key_b, token_b = await _register_and_verify(client, sk_b, pub_b, "Bob")
+    agent_a, key_a, token_a = await _register_and_verify(client, sk_a, pub_a, "Alice", db_session)
+    agent_b, key_b, token_b = await _register_and_verify(client, sk_b, pub_b, "Bob", db_session)
 
     # Create a room with both agents
     resp = await client.post(
@@ -203,7 +210,7 @@ class TestCreateShare:
 
         # Register a third agent not in the room
         sk_c, pub_c = _make_keypair()
-        _, _, token_c = await _register_and_verify(client, sk_c, pub_c, "Charlie")
+        _, _, token_c = await _register_and_verify(client, sk_c, pub_c, "Charlie", db_session)
 
         resp = await client.post(
             f"/dashboard/rooms/{ctx['room_id']}/share",
@@ -214,7 +221,7 @@ class TestCreateShare:
     @pytest.mark.asyncio
     async def test_create_share_room_not_found(self, client, db_session):
         sk_a, pub_a = _make_keypair()
-        _, _, token_a = await _register_and_verify(client, sk_a, pub_a, "Alice")
+        _, _, token_a = await _register_and_verify(client, sk_a, pub_a, "Alice", db_session)
 
         resp = await client.post(
             "/dashboard/rooms/rm_nonexistent/share",
@@ -315,7 +322,7 @@ class TestGetSharedRoom:
     async def test_empty_room_share(self, client, db_session):
         """Sharing a room with no messages should return empty message list."""
         sk_a, pub_a = _make_keypair()
-        agent_a, _, token_a = await _register_and_verify(client, sk_a, pub_a, "Alice")
+        agent_a, _, token_a = await _register_and_verify(client, sk_a, pub_a, "Alice", db_session)
 
         # Create room with no messages
         resp = await client.post(

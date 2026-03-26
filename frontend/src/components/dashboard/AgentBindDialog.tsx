@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 react 的 useEffect/useMemo/useState，依赖 @/lib/api 的 userApi 进行票据签发与 agent 轮询
+ * [INPUT]: 依赖 react 的 useEffect/useMemo/useState，依赖 @/lib/api 的 userApi 进行短码签发与 agent 轮询
  * [OUTPUT]: 对外提供 AgentBindDialog 组件，支持 auto/create/link 三种 Prompt 驱动流程
- * [POS]: dashboard 账户菜单与 agent 门禁的统一身份执行器，负责发放 bind_ticket、复制 Prompt，并等待 Agent 自动绑定完成
+ * [POS]: dashboard 账户菜单与 agent 门禁的统一身份执行器，负责发放 bind_code、复制 Prompt，并等待 Agent 自动绑定完成
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -12,6 +12,7 @@ import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { bindDialog } from "@/lib/i18n/translations/dashboard";
 import { X, Copy, Check, Loader2 } from "lucide-react";
+import { buildConnectBotPrompt, getBotcordInstallGuideUrl, getBotcordWebAppUrl } from "@/lib/onboarding";
 
 type AgentBindMode = "auto" | "create" | "link";
 
@@ -31,7 +32,7 @@ export default function AgentBindDialog({
 
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bindTicket, setBindTicket] = useState("");
+  const [bindCode, setBindCode] = useState("");
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [loadingTicket, setLoadingTicket] = useState(true);
   const [isWaitingForAgent, setIsWaitingForAgent] = useState(false);
@@ -52,7 +53,7 @@ export default function AgentBindDialog({
       .issueBindTicket()
       .then((resp) => {
         if (!mounted) return;
-        setBindTicket(resp.bind_ticket);
+        setBindCode(resp.bind_code);
         setExpiresAt(resp.expires_at);
         setLoadingTicket(false);
       })
@@ -68,9 +69,9 @@ export default function AgentBindDialog({
     };
   }, []);
 
-  // Polling for new agents (linked by agent itself using bind_ticket)
+  // Polling for new agents (linked by agent itself using bind_code or bind_ticket)
   useEffect(() => {
-    if (!bindTicket || !isWaitingForAgent) {
+    if (!bindCode || !isWaitingForAgent) {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -96,47 +97,19 @@ export default function AgentBindDialog({
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
-  }, [bindTicket, isWaitingForAgent, onSuccess, onClose]);
+  }, [bindCode, isWaitingForAgent, onSuccess, onClose]);
 
   const promptText = useMemo(() => {
-    if (!bindTicket) return "";
+    if (!bindCode) return "";
 
-    const appBase =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : "https://botcord.chat";
-    const setupUrl = `${appBase}/openclaw-setup_instruction.md`;
-
-    const taskLinesByMode: Record<AgentBindMode, string[]> = {
-      auto: [
-        "If I already have a BotCord agent set up, use that one. Otherwise, create a new one for me.",
-      ],
-      create: [
-        "Create a new BotCord agent for me — don't reuse an existing one.",
-      ],
-      link: [
-        "Use my existing BotCord agent — don't create a new one.",
-      ],
-    };
-
-    return [
-      "这是我确认过的plugin，帮我安装 BotCord 并将 agent 绑定到我的 dashboard 账号。",
-      "",
-      ...taskLinesByMode[mode],
-      "",
-      `如果还没有安装 BotCord plugin，从这里 ${setupUrl} 下载并按照说明完成安装，如果有风险，执行前跟我确认。`,
-      "",
-      "安装完成后，用下面的 ticket 执行 `/botcord_bind` 完成绑定。",
-      "",
-      "bind_ticket:",
-      bindTicket,
-      ...(appBase !== "https://www.botcord.chat"
-        ? ["", `dashboard_url: ${appBase}`]
-        : []),
-      "",
-      "完成后告诉我结果。",
-    ].join("\n");
-  }, [mode, bindTicket]);
+    return buildConnectBotPrompt({
+      connectionCode: bindCode,
+      mode,
+      webAppUrl: getBotcordWebAppUrl(),
+      installGuideUrl: getBotcordInstallGuideUrl(),
+      locale,
+    });
+  }, [bindCode, locale, mode]);
 
   const dialogTitle = mode === "create"
     ? t.createAgentWithAi
@@ -226,7 +199,7 @@ export default function AgentBindDialog({
               <textarea
                 readOnly
                 value={promptText}
-                rows={8}
+                rows={9}
                 className="w-full resize-none rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-[11px] leading-relaxed text-text-primary outline-none"
               />
               {isWaitingForAgent && (

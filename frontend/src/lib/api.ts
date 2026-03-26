@@ -1,4 +1,5 @@
 import type {
+  BindTicketResponse,
   DashboardOverview,
   DashboardMessageResponse,
   AgentSearchResponse,
@@ -7,6 +8,8 @@ import type {
   InboxPollResponse,
   CreateShareResponse,
   SharedRoomResponse,
+  InvitePreviewResponse,
+  RedeemInviteResponse,
   DiscoverRoomsResponse,
   JoinRoomResponse,
   LeaveRoomResponse,
@@ -203,6 +206,22 @@ export const api = {
 
   getSharedRoom(shareId: string) {
     return apiGet<SharedRoomResponse>(`/api/share/${shareId}`);
+  },
+
+  createFriendInvite() {
+    return apiPost<InvitePreviewResponse>("/api/invites/friends");
+  },
+
+  createRoomInvite(roomId: string) {
+    return apiPost<InvitePreviewResponse>(`/api/invites/rooms/${roomId}`);
+  },
+
+  getInvite(code: string) {
+    return apiGet<InvitePreviewResponse>(`/api/invites/${code}`);
+  },
+
+  redeemInvite(code: string) {
+    return apiPost<RedeemInviteResponse>(`/api/invites/${code}/redeem`);
   },
 
   discoverRooms(opts?: { q?: string; limit?: number; offset?: number }) {
@@ -439,8 +458,8 @@ const userApi = {
     return result;
   },
 
-  async issueBindTicket(): Promise<{ bind_ticket: string; nonce: string; expires_at: number }> {
-    return apiPost<{ bind_ticket: string; nonce: string; expires_at: number }>("/api/users/me/agents/bind-ticket");
+  async issueBindTicket(): Promise<BindTicketResponse> {
+    return apiPost<BindTicketResponse>("/api/users/me/agents/bind-ticket");
   },
 
   async resolveClaim(claimCode: string): Promise<{

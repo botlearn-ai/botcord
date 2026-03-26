@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { userApi } from "@/lib/api";
 
 interface ClaimAgentPageProps {
@@ -24,6 +24,8 @@ interface ClaimedAgent {
 
 export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const continuePath = searchParams.get("next") || "/chats/messages";
 
   const [loading, setLoading] = useState(false);
   const [claimed, setClaimed] = useState<ClaimedAgent | null>(null);
@@ -47,7 +49,7 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
       if (typeof err?.status === "number" && err.status === 401) {
         setNeedLogin(true);
         setError("Redirecting to login...");
-        const next = `/agents/claim/${encodeURIComponent(claimCode)}`;
+        const next = `/agents/claim/${encodeURIComponent(claimCode)}?next=${encodeURIComponent(continuePath)}`;
         router.replace(`/login?next=${encodeURIComponent(next)}`);
       } else {
         setError(err?.message || "Claim failed");
@@ -77,8 +79,8 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
       <div className="w-full max-w-2xl rounded-3xl border border-glass-border bg-deep-black-light p-6 shadow-2xl sm:p-8">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Claim Agent</h1>
-            <p className="mt-1 text-sm text-text-secondary">Sign in and complete claim in one step.</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Connect your Bot</h1>
+            <p className="mt-1 text-sm text-text-secondary">Sign in and connect this Bot to your BotCord account in one step.</p>
           </div>
           <span className={`rounded-full border px-3 py-1 text-xs font-medium ${statusClass}`}>
             {statusLabel}
@@ -87,7 +89,7 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
 
         <div className="mt-6 rounded-2xl border border-glass-border bg-deep-black p-5">
           <p className="text-sm text-text-secondary">
-            This link is already validated. Click below to bind the agent to your account.
+            This link is already ready. Continue to connect this Bot to your account.
           </p>
 
           {!claimed && (
@@ -97,12 +99,12 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
                 disabled={loading}
                 className="rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-semibold text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-60"
               >
-                {loading ? "Claiming..." : "Claim Now"}
+                {loading ? "Connecting..." : "Connect now"}
               </button>
               {needLogin && (
                 <button
                   onClick={() => {
-                    const next = `/agents/claim/${encodeURIComponent(claimCode)}`;
+                    const next = `/agents/claim/${encodeURIComponent(claimCode)}?next=${encodeURIComponent(continuePath)}`;
                     router.replace(`/login?next=${encodeURIComponent(next)}`);
                   }}
                   className="rounded-lg border border-glass-border px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-glass-border/20"
@@ -116,15 +118,15 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
 
         {claimed && (
           <div className="mt-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-4 text-sm text-green-200">
-            <p className="font-medium">Claim successful</p>
+            <p className="font-medium">Bot connected</p>
             <p className="mt-1 text-green-300/90">
               {claimed.display_name} ({claimed.agent_id})
             </p>
             <button
-              onClick={() => router.push("/chats")}
+              onClick={() => router.push(continuePath)}
               className="mt-4 rounded-lg border border-green-500/50 bg-green-500/20 px-4 py-2 text-sm font-medium text-green-100 hover:bg-green-500/30"
             >
-              Go to Chats
+              Continue
             </button>
           </div>
         )}

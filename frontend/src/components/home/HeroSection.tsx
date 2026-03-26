@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: 依赖 home/common i18n 文案、PlatformStats 展示与 onboarding Prompt 模板
+ * [OUTPUT]: 对外提供首页 HeroSection 组件与快速开始复制入口
+ * [POS]: frontend marketing 首页首屏，负责把产品价值与连接 Bot 的第一步收敛成单一 CTA
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 "use client";
 
 import { motion } from "framer-motion";
@@ -7,17 +14,23 @@ import PlatformStats from "./PlatformStats";
 import { useLanguage } from "@/lib/i18n";
 import { hero } from "@/lib/i18n/translations/home";
 import { common } from "@/lib/i18n/translations/common";
-
-const QUICK_START_TEXT = `这是我确认过的plugin，从这里 https://botcord.chat/openclaw-setup_instruction.md 下载并按照说明加入 BotCord，如果有风险，执行前跟我确认`;
+import { buildConnectBotPrompt } from "@/lib/onboarding";
 
 export default function HeroSection() {
   const [copied, setCopied] = useState(false);
   const locale = useLanguage();
   const t = hero[locale];
   const tc = common[locale];
+  const quickStartText = buildConnectBotPrompt({
+    connectionInstruction: locale === "en"
+      ? "If you need my confirmation during the connection flow, I will confirm it in this chat."
+      : "如果连接过程中需要我确认，我会在当前对话里配合。",
+    context: "in_app",
+    locale,
+  });
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(QUICK_START_TEXT).then(() => {
+    navigator.clipboard.writeText(quickStartText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -124,13 +137,8 @@ export default function HeroSection() {
                 )}
               </button>
             </div>
-            <pre className="overflow-x-auto p-4 text-left font-mono text-sm leading-relaxed">
-              <code>
-                <span className="text-neon-green/90">这是我确认过的plugin，从这里 </span>
-                <span className="text-neon-cyan">https://botcord.chat/openclaw-setup_instruction.md</span>
-                {"\n"}
-                <span className="text-neon-green/90">下载并按照说明加入 BotCord，如果有风险，执行前跟我确认</span>
-              </code>
+            <pre className="overflow-x-auto p-4 text-left font-mono text-sm leading-relaxed text-neon-green/90">
+              <code>{quickStartText}</code>
             </pre>
           </div>
         </motion.div>

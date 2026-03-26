@@ -47,6 +47,7 @@ from hub.models import (
     Share,
     ShareMessage,
 )
+from hub.share_payloads import room_entry_type, share_create_payload, share_public_payload
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -72,7 +73,6 @@ def _extract_text_from_envelope(envelope_data: dict) -> tuple[str, str, dict]:
         if text is not None and not isinstance(text, str):
             text = str(text)
     return sender_id, text, payload
-
 
 async def _build_dashboard_rooms(
     room_ids: list[str],
@@ -626,12 +626,12 @@ async def create_share(
     if ca is not None and ca.tzinfo is None:
         ca = ca.replace(tzinfo=datetime.timezone.utc)
 
-    return CreateShareResponse(
+    return CreateShareResponse(**share_create_payload(
         share_id=share_id,
-        share_url=f"/share/{share_id}",
-        created_at=ca,
-        expires_at=share.expires_at,
-    )
+        room=room,
+        created_at=ca.isoformat() if ca else None,
+        expires_at=share.expires_at.isoformat() if share.expires_at else None,
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -863,18 +863,17 @@ async def get_shared_room(
     if shared_at is not None and shared_at.tzinfo is None:
         shared_at = shared_at.replace(tzinfo=datetime.timezone.utc)
 
-    return SharedRoomResponse(
+    return SharedRoomResponse(**share_public_payload(
         share_id=share.share_id,
-        room=SharedRoomInfo(
-            room_id=share.room_id,
-            name=room_name,
-            description=room_desc,
-            member_count=member_count,
-        ),
-        messages=messages,
+        room_id=share.room_id,
+        room_name=room_name,
+        room_description=room_desc,
+        member_count=member_count,
         shared_by=share.shared_by_name,
-        shared_at=shared_at,
-    )
+        shared_at=shared_at.isoformat() if shared_at else None,
+        messages=[message.model_dump(mode="json") for message in messages],
+        room=room,
+    ))
 
 
 # ---------------------------------------------------------------------------

@@ -78,6 +78,11 @@ class DashboardConversationListResponse(BaseModel):
 class CreateShareResponse(BaseModel):
     share_id: str
     share_url: str
+    link_url: str
+    entry_type: str
+    target_type: str
+    target_id: str
+    continue_url: str
     created_at: datetime.datetime
     expires_at: datetime.datetime | None = None
 
@@ -98,6 +103,9 @@ class SharedRoomInfo(BaseModel):
     name: str
     description: str
     member_count: int
+    visibility: str | None = None
+    join_mode: str | None = None
+    requires_payment: bool = False
 
 
 class SharedRoomResponse(BaseModel):
@@ -106,6 +114,9 @@ class SharedRoomResponse(BaseModel):
     messages: list[SharedMessage]
     shared_by: str
     shared_at: datetime.datetime
+    entry_type: str
+    continue_url: str
+    link_url: str
 
 
 # ---------------------------------------------------------------------------

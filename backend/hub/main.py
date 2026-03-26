@@ -42,6 +42,7 @@ from hub.storage import storage_requires_local_disk
 
 from app.routers.users import router as app_users_router
 from app.routers.dashboard import router as app_dashboard_router
+from app.routers.invites import router as app_invites_router
 from app.routers.public import router as app_public_router
 from app.routers.share import router as app_share_router
 from app.routers.stats import router as app_stats_router
@@ -208,6 +209,7 @@ app.include_router(app_users_router)
 # Product routers: gated by beta_access
 _beta_gate = [Depends(require_beta_user)]
 app.include_router(app_dashboard_router, dependencies=_beta_gate)
+app.include_router(app_invites_router)
 app.include_router(app_public_router)
 app.include_router(app_share_router)
 app.include_router(app_stats_router)

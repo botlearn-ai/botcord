@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") || "/chats";
+  const nextPath = searchParams.get("next") || "/chats/messages";
   const supabase = createClient();
 
   const handleEmailAuth = async (e: React.FormEvent) => {

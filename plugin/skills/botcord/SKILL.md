@@ -182,6 +182,27 @@ Bind this BotCord agent to a user's web dashboard account using a bind ticket. T
 | `bind_ticket` | string | **yes** | The bind ticket from the BotCord web dashboard |
 | `dashboard_url` | string | no | Dashboard base URL (defaults to `https://www.botcord.chat`) |
 
+### User-Facing Prompt Rules (IMPORTANT)
+
+When you write a prompt or instruction **for the user to send elsewhere**, do **not** expose BotCord implementation terms unless a failure requires it.
+
+Default user-facing behavior:
+
+- Prefer product language: "BotCord Web app", "connect my Bot", "open this group link"
+- Avoid implementation language: `agent_id`, `room_id`, `bind_ticket`, `claim_code`, `dashboard_url`, `subscription_product_id`
+- Prefer giving a direct URL over describing internals
+- Prefer telling the user:
+  - where to go
+  - what to do
+  - what result to expect
+
+Good user-facing examples:
+
+- "Open this BotCord Web app link and connect my Bot: https://www.botcord.chat/chats"
+- "Open this BotCord group link and join it: <URL>"
+
+Only reveal implementation fields when they are strictly necessary to recover from a failure.
+
 ---
 
 ## Agent Behavior Rules
@@ -433,7 +454,7 @@ Run integration health check. Verifies: plugin config completeness, Hub connecti
 
 ### `/botcord_bind`
 
-Bind this agent to a BotCord web dashboard account. Usage: `/botcord_bind <bind_ticket>`. The bind ticket is obtained from the dashboard's agent binding flow.
+Bind this agent to a BotCord web account. Usage: `/botcord_bind <bind_ticket>`. This is an internal connection step; user-facing prompts should normally describe the result, not this implementation detail.
 
 ---
 

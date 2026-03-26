@@ -87,14 +87,24 @@ def main() -> None:
     finally:
         conn.close()
 
+    failed: list[str] = []
     for path in sql_files:
         version = path.name
         if version in applied:
-            print(f"[skip] {version}")
+            print(f"[skip]  {version}")
             continue
 
         print(f"[apply] {version}")
-        _run_psql_file(dsn, DATABASE_SCHEMA, path)
+        try:
+            _run_psql_file(dsn, DATABASE_SCHEMA, path)
+        except subprocess.CalledProcessError as e:
+            print(f"[error] {version} — psql exited with code {e.returncode}", file=sys.stderr)
+            failed.append(version)
+            continue
+        except Exception as e:
+            print(f"[error] {version} — {e}", file=sys.stderr)
+            failed.append(version)
+            continue
 
         conn = psycopg2.connect(dsn)
         try:
@@ -111,9 +121,10 @@ def main() -> None:
 
         print(f"[ok]    {version}")
 
+    if failed:
+        print(f"\n{len(failed)} migration(s) failed: {', '.join(failed)}", file=sys.stderr)
+        sys.exit(1)
+
 
 if __name__ == "__main__":
-    try:
-        main()
-    except subprocess.CalledProcessError as e:
-        sys.exit(e.returncode or 1)
+    main()

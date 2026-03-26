@@ -29,6 +29,7 @@ from hub.models import (
     ShareMessage,
     Topic,
 )
+from hub.share_payloads import share_create_payload
 
 _logger = logging.getLogger(__name__)
 
@@ -1050,12 +1051,12 @@ async def create_share(
 
     await db.commit()
 
-    return {
-        "share_id": share_id,
-        "share_url": f"/share/{share_id}",
-        "created_at": share.created_at.isoformat() if share.created_at else datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "expires_at": expires_at.isoformat() if expires_at else None,
-    }
+    return share_create_payload(
+        share_id=share_id,
+        room=room,
+        created_at=share.created_at.isoformat() if share.created_at else datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        expires_at=expires_at.isoformat() if expires_at else None,
+    )
 
 
 # ---------------------------------------------------------------------------

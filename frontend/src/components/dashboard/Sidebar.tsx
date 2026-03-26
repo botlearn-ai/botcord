@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { startTransition, useEffect, useMemo } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
@@ -18,6 +18,7 @@ import { useShallow } from "zustand/react/shallow";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
+import FriendInviteModal from "./FriendInviteModal";
 import RoomZeroState from "./RoomZeroState";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -201,6 +202,7 @@ export default function Sidebar() {
     walletError: state.walletError,
   })));
   const isGuest = sessionStore.sessionMode === "guest";
+  const [showFriendInvite, setShowFriendInvite] = useState(false);
   const showLoginModal = () => router.push("/login");
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -323,7 +325,7 @@ export default function Sidebar() {
           })}
         </div>
 
-        {/* Bottom: user avatar + actions */}
+        {/* Bottom: invite + user avatar */}
         <div className="flex flex-col items-center gap-2 border-t border-glass-border pt-3">
           {isGuest ? (
             /* Guest: Login button */
@@ -338,7 +340,18 @@ export default function Sidebar() {
               <span className="mt-0.5 text-[9px] font-medium leading-none">{tc.login}</span>
             </button>
           ) : (
-            <AccountMenu
+            <>
+              <button
+                onClick={() => setShowFriendInvite(true)}
+                className="flex h-12 w-12 flex-col items-center justify-center rounded-xl text-text-secondary transition-all duration-200 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+                title={t.inviteAddFriend}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+                </svg>
+                <span className="mt-0.5 text-[9px] font-medium leading-none">{t.inviteAddFriend}</span>
+              </button>
+              <AccountMenu
               user={sessionStore.user}
               agents={sessionStore.ownedAgents}
               activeAgentId={sessionStore.activeAgentId}
@@ -350,9 +363,12 @@ export default function Sidebar() {
                 await chatStore.switchActiveAgent(agentId);
               }}
             />
+            </>
           )}
         </div>
       </div>
+
+      {showFriendInvite && <FriendInviteModal onClose={() => setShowFriendInvite(false)} />}
 
       {/* Secondary panel */}
       <div className="flex h-full w-[260px] min-w-[260px] flex-col border-r border-glass-border bg-deep-black-light">

@@ -17,7 +17,7 @@ export const loginPage: TranslationMap<{
   checkEmail: string
 }> = {
   en: {
-    dashboard: 'Dashboard',
+    dashboard: 'Chat App',
     signIn: 'Sign In',
     signUp: 'Sign Up',
     signInToAccount: 'Sign in to your account',
@@ -33,7 +33,7 @@ export const loginPage: TranslationMap<{
     checkEmail: 'Check your email for a confirmation link.',
   },
   zh: {
-    dashboard: '控制台',
+    dashboard: '聊天应用',
     signIn: '登录',
     signUp: '注册',
     signInToAccount: '登录你的账户',

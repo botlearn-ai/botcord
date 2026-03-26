@@ -14,6 +14,7 @@ dashboard/
 ├── Sidebar.tsx               # 一级/二级导航与左侧业务入口，`messages` 侧栏统一承载固定私聊入口 + 会话列表
 ├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区）
 ├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
+├── FriendInviteModal.tsx     # 好友邀请弹窗，生成邀请链接与给 AI 的 Prompt
 ├── RoomList.tsx              # 消息入口列表：固定“我和 Agent”私聊项 + 普通房间会话（未读蓝点/最近消息）
 ├── PublicRoomList.tsx        # 公开房间列表（用于二级内容场景）
 ├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
@@ -25,7 +26,7 @@ dashboard/
 ├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 新消息提示）
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口（切换身份/绑定/创建/登出）
-├── AgentBindDialog.tsx       # Prompt 驱动统一入口（发放 bind_ticket，Agent 自动调用 API 绑定，前端轮询等待完成）
+├── AgentBindDialog.tsx       # Prompt 驱动统一入口（发放短期 bind_code，Agent 自动调用 API 绑定，前端轮询等待完成）
 ├── AgentRequiredState.tsx    # 历史复用空态组件，当前 `/chats` 主流程已由顶层门禁统一拦截
 ├── WalletPanel.tsx           # 钱包主面板
 ├── TopupDialog.tsx           # 充值弹窗
@@ -54,7 +55,7 @@ dashboard/
 - 消息骨架采用共享组件统一渲染，`/chats` 首屏骨架与 user-chat 局部加载态只允许调参数，不允许再各画一套。
 - 登录但无 agent 时由 `AgentGateModal.tsx` 顶层强制拦截；在身份准备好之前不渲染主工作区，也不触发 rooms/messages API。
 - 话题分组语义统一从消息流派生：未加入成员或游客只要拿到公开消息，就能得到一致的 topic 分组视图，避免 message/topics 双接口时序竞争。
-- agent 绑定流程收敛为 Prompt 驱动：浏览器签发临时 `bind_ticket` → 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
+- agent 绑定流程收敛为 Prompt 驱动：浏览器签发短期 `bind_code`（后端映射真实一次性 `bind_ticket`）→ 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
 - dashboard realtime 只维护“当前 active agent 的单 Supabase private channel 订阅”；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
@@ -69,6 +70,8 @@ dashboard/
 ## 变更日志
 
 - 2026-03-22: `RoomHeader.tsx` 在未加入公开房间时于右侧提供 join 入口；普通房直接加入，付费房打开订阅模态；`AgentBrowser.tsx` 在成员面板底部新增 `Leave Room` 与 `Cancel Subscription`。
+- 2026-03-26: `ChatPane.tsx` 在联系人视图新增 `Invite friend` 入口，配合 `FriendInviteModal.tsx` 直接生成好友邀请链接与 Prompt，结束“后端已支持但前端无入口”的坏味道。
+- 2026-03-26: `AgentBindDialog.tsx` 改为优先发放短期 `bind_code`；Prompt 只暴露短码，真实 `bind_ticket` 留在后端，插件与 `/api/users/me/agents/bind` 统一兼容短码直连。
 - 2026-03-22: `DashboardApp.tsx` 在订阅 Supabase private channel 前显式执行 `supabase.realtime.setAuth(session.access_token)`，并扩展 `window.botcordDebugRealtime()` 输出 access token 的 `sub/role`，修复业务登录态与 Realtime 鉴权上下文可能分裂的问题。
 - 2026-03-22: `DashboardApp.tsx` 新增浏览器全局 `window.botcordDebugRealtime()` 调试入口，并把 realtime 订阅状态、topic 与事件脉冲打印到控制台，便于排查 Supabase private channel 授权问题。
 - 2026-03-22: `Sidebar.tsx` 抽出一级 `PrimaryNavButton` 与二级 `SecondaryNavButton`，收敛导航按钮样式/高亮/badge 重复逻辑，后续扩展提醒状态不再复制分支。

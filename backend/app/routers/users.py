@@ -1,4 +1,9 @@
-"""User-facing API routes under /api/users."""
+"""
+[INPUT]: 依赖用户鉴权上下文、Hub token 校验、数据库会话与 Agent 模型完成 dashboard 身份流转
+[OUTPUT]: 对外提供 /api/users 用户资料、Agent 认领、短码绑定与默认身份切换接口
+[POS]: app BFF 用户入口，把浏览器态与 Agent 身份绑定协议收敛成单一边界
+[PROTOCOL]: 变更时更新此头部，然后检查 README.md
+"""
 
 import base64
 import datetime
@@ -10,7 +15,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func as sa_func, select, update
+from sqlalchemy import case, func as sa_func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +24,7 @@ from hub.auth import create_agent_token, verify_agent_token
 from hub.config import BIND_PROOF_SECRET, JWT_SECRET
 from hub.crypto import verify_challenge_sig
 from hub.database import async_session as _default_session_factory, get_db
-from hub.models import Agent, Role, User, UserRole
+from hub.models import Agent, Role, ShortCode, User, UserRole
 
 _logger = logging.getLogger(__name__)
 
@@ -27,6 +32,7 @@ _logger = logging.getLogger(__name__)
 # insert commits independently of the caller's transaction.  Tests can
 # override this to point at the in-memory SQLite engine.
 _jti_session_factory = _default_session_factory
+_short_code_session_factory = _default_session_factory
 
 router = APIRouter(prefix="/api/users", tags=["app-users"])
 
@@ -56,7 +62,8 @@ class AgentBindBody(BaseModel):
     agent_id: str
     display_name: str
     agent_token: str
-    bind_ticket: str
+    bind_ticket: str | None = None
+    bind_code: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +130,45 @@ def _verify_bind_ticket(ticket: str) -> dict | None:
         return None
 
     return payload
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+async def _consume_bind_code(code: str) -> str | None:
+    """Burn a bind short code and return its mapped bind ticket."""
+    async with _short_code_session_factory() as code_session:
+        now = _utc_now()
+        result = await code_session.execute(
+            update(ShortCode)
+            .where(
+                ShortCode.code == code,
+                ShortCode.kind == "bind",
+                ShortCode.consumed_at.is_(None),
+                ShortCode.use_count < ShortCode.max_uses,
+                ShortCode.expires_at > now,
+            )
+            .values(
+                use_count=ShortCode.use_count + 1,
+                consumed_at=case(
+                    (ShortCode.use_count + 1 >= ShortCode.max_uses, now),
+                    else_=ShortCode.consumed_at,
+                ),
+            )
+            .returning(ShortCode.payload_json)
+        )
+        payload_json = result.scalar_one_or_none()
+        if payload_json is None:
+            await code_session.rollback()
+            return None
+        await code_session.commit()
+        try:
+            payload = json.loads(payload_json)
+        except json.JSONDecodeError:
+            return None
+        bind_ticket = payload.get("bind_ticket")
+        return bind_ticket if isinstance(bind_ticket, str) else None
 
 
 async def _consume_bind_ticket_jti(jti: str) -> bool:
@@ -516,10 +562,11 @@ async def create_bind_ticket(
     ctx: RequestContext = Depends(require_user),
 ):
     """Issue a one-time bind ticket for cryptographic agent binding."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    exp = now + datetime.timedelta(seconds=300)
+    now = _utc_now()
+    exp = now + datetime.timedelta(minutes=30)
     nonce = uuid4().hex
     jti = uuid4().hex
+    bind_code = f"bd_{uuid4().hex[:12]}"
 
     payload = {
         "uid": str(ctx.user_id),
@@ -538,7 +585,19 @@ async def create_bind_ticket(
 
     ticket = f"{payload_b64}.{sig_b64}"
 
+    short_code = ShortCode(
+        code=bind_code,
+        kind="bind",
+        owner_user_id=ctx.user_id,
+        payload_json=json.dumps({"bind_ticket": ticket}, separators=(",", ":"), sort_keys=True),
+        expires_at=exp,
+    )
+    async with _short_code_session_factory() as code_session:
+        code_session.add(short_code)
+        await code_session.commit()
+
     return {
+        "bind_code": bind_code,
         "bind_ticket": ticket,
         "nonce": nonce,
         "expires_at": int(exp.timestamp()),
@@ -712,8 +771,21 @@ async def agent_bind(
     if not body.display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
 
+    # --- resolve bind credential to real bind_ticket ---
+    bind_ticket = body.bind_ticket
+    if body.bind_code:
+        bind_ticket = await _consume_bind_code(body.bind_code)
+        if bind_ticket is None:
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired bind code"
+            )
+    if bind_ticket is None:
+        raise HTTPException(
+            status_code=400, detail="bind_ticket or bind_code is required"
+        )
+
     # --- verify bind_ticket to extract user_id ---
-    ticket_payload = _verify_bind_ticket(body.bind_ticket)
+    ticket_payload = _verify_bind_ticket(bind_ticket)
     if ticket_payload is None:
         raise HTTPException(
             status_code=401, detail="Invalid or expired bind ticket"

@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Link2, Plus } from "lucide-react";
+import { ChevronDown, Loader2, Link2, Plus } from "lucide-react";
 import { userApi } from "@/lib/api";
 import type { UserAgent } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
@@ -29,9 +29,10 @@ function pickPreferredAgent(agents: UserAgent[]): UserAgent | null {
 export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
   const locale = useLanguage();
   const t = agentGateModal[locale];
-  const [bindMode, setBindMode] = useState<"create" | "link" | null>(null);
+  const [bindMode, setBindMode] = useState<"auto" | "create" | "link" | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const readyRef = useRef(false);
 
@@ -87,24 +88,51 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
             </p>
           </div>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
+          <div className="mt-8 space-y-3">
             <button
-              onClick={() => setBindMode("create")}
+              onClick={() => setBindMode("auto")}
               disabled={isResolving}
-              className="rounded-2xl border border-neon-cyan/40 bg-neon-cyan/10 p-5 text-left transition-all hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-2xl border border-neon-cyan/40 bg-neon-cyan/10 p-5 text-left transition-all hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus className="h-5 w-5 text-neon-cyan" />
-              <p className="mt-4 text-base font-semibold text-text-primary">{t.createAgent}</p>
+              <p className="mt-4 text-base font-semibold text-text-primary">{t.primaryAction}</p>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">{t.primaryActionDesc}</p>
             </button>
 
             <button
-              onClick={() => setBindMode("link")}
+              onClick={() => setShowOptions((value) => !value)}
               disabled={isResolving}
-              className="rounded-2xl border border-glass-border bg-glass-bg p-5 text-left transition-all hover:border-neon-cyan/40 hover:bg-glass-bg/80 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-between rounded-2xl border border-glass-border bg-glass-bg p-4 text-left transition-all hover:border-neon-cyan/40 hover:bg-glass-bg/80 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Link2 className="h-5 w-5 text-text-primary" />
-              <p className="mt-4 text-base font-semibold text-text-primary">{t.linkAgent}</p>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">{t.moreOptions}</p>
+                <p className="mt-1 text-xs text-text-secondary">{t.moreOptionsDesc}</p>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-text-secondary transition-transform ${showOptions ? "rotate-180" : ""}`} />
             </button>
+
+            {showOptions ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <button
+                  onClick={() => setBindMode("create")}
+                  disabled={isResolving}
+                  className="rounded-2xl border border-neon-cyan/30 bg-neon-cyan/5 p-5 text-left transition-all hover:bg-neon-cyan/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Plus className="h-5 w-5 text-neon-cyan" />
+                  <p className="mt-4 text-base font-semibold text-text-primary">{t.createAgent}</p>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t.createDesc}</p>
+                </button>
+                <button
+                  onClick={() => setBindMode("link")}
+                  disabled={isResolving}
+                  className="rounded-2xl border border-glass-border bg-glass-bg p-5 text-left transition-all hover:border-neon-cyan/40 hover:bg-glass-bg/80 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Link2 className="h-5 w-5 text-text-primary" />
+                  <p className="mt-4 text-base font-semibold text-text-primary">{t.linkAgent}</p>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t.linkDesc}</p>
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-6 rounded-2xl border border-glass-border bg-deep-black p-4">

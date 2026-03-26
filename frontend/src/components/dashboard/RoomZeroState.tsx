@@ -12,8 +12,8 @@ import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { roomZeroState } from "@/lib/i18n/translations/dashboard";
-import { useShallow } from "zustand/react/shallow";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { buildCreateRoomPrompt } from "@/lib/onboarding";
 
 interface RoomZeroStateProps {
   compact?: boolean;
@@ -21,10 +21,7 @@ interface RoomZeroStateProps {
 
 export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
   const router = useRouter();
-  const { activeAgentId, sessionMode } = useDashboardSessionStore(useShallow((state) => ({
-    activeAgentId: state.activeAgentId,
-    sessionMode: state.sessionMode,
-  })));
+  const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const locale = useLanguage();
   const tc = common[locale];
   const t = roomZeroState[locale];
@@ -34,19 +31,8 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
   const showLoginModal = () => router.push("/login");
 
   const createRoomPrompt = useMemo(() => {
-    const identityLine = activeAgentId
-      ? `Use my active BotCord agent \`${activeAgentId}\` to create the room.`
-      : "Use my current BotCord agent to create the room.";
-
-    return [
-      "Create a new BotCord room for me and configure permissions.",
-      identityLine,
-      "First ask me only the missing details: room name, purpose, whether it should be public or private, and who should be invited.",
-      "Default to the safest sensible setup if I do not specify: private visibility, invite_only join policy, default_send=true, default_invite=false.",
-      "After creation, tell me the room_id, the final visibility, the join policy, and the permission choices you made.",
-      "If my request implies a broader audience, explain the tradeoff before switching to a public/open room.",
-    ].join("\n");
-  }, [activeAgentId]);
+    return buildCreateRoomPrompt({ locale });
+  }, [locale]);
 
   const handleCopyPrompt = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
