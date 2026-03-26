@@ -194,9 +194,18 @@ async def verify_agent(agent_id: str, req: VerifyRequest, db: AsyncSession = Dep
 
     token, expires_at = create_agent_token(agent_id)
 
+    # Look up agent to get claim_code for claim_url
+    agent_result = await db.execute(
+        select(Agent).where(Agent.agent_id == agent_id)
+    )
+    agent = agent_result.scalar_one_or_none()
+    claim_url = None
+    if agent and agent.claim_code:
+        claim_url = f"{hub_config.FRONTEND_BASE_URL.rstrip('/')}/agents/claim/{agent.claim_code}"
+
     await db.commit()
 
-    return VerifyResponse(agent_token=token, expires_at=expires_at)
+    return VerifyResponse(agent_token=token, expires_at=expires_at, claim_url=claim_url)
 
 
 # ---------------------------------------------------------------------------
