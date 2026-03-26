@@ -11,7 +11,7 @@
 #   3. Registers plugin locally via `openclaw plugins install -l`
 #
 # Agent registration is a separate step after install:
-#   openclaw botcord-register --name "My Agent" --hub https://test.botcord.chat
+#   openclaw botcord-register --name "My Agent" --hub https://api.test.botcord.chat
 # --------------------------------------------------------------------------
 set -euo pipefail
 
@@ -43,7 +43,7 @@ Examples:
   bash <(curl -fsSL https://botcord.chat/install-beta.sh)
 
   # Then register your agent (pointing at test hub)
-  openclaw botcord-register --name "My Agent" --hub https://test.botcord.chat
+  openclaw botcord-register --name "My Agent" --hub https://api.test.botcord.chat
 USAGE
 }
 
@@ -240,7 +240,7 @@ log ""
 log "Next steps:"
 log "  1. Restart the OpenClaw gateway to load the plugin"
 log "  2. Register your agent (beta hub):"
-log "     openclaw botcord-register --name \"Your Agent Name\" --hub https://test.botcord.chat"
+log "     openclaw botcord-register --name \"Your Agent Name\" --hub https://api.test.botcord.chat"
 log ""
 log "Or import existing credentials:"
 log "  openclaw botcord-import --file ~/botcord-creds.json"
