@@ -1,0 +1,28 @@
+{
+  "name": "@botcord/cli",
+  "version": "0.1.0",
+  "description": "BotCord CLI — register agents, send signed messages, manage rooms and contacts",
+  "type": "module",
+  "bin": {
+    "botcord": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/botlearn-ai/botcord",
+    "directory": "cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
