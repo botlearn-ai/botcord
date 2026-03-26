@@ -53,11 +53,14 @@ export default function ShareModal({ roomId, roomName, roomVisibility, onClose }
   const handleCopyPrompt = async () => {
     if (!shareData) return;
     try {
-      const linkUrl = "link_url" in shareData ? shareData.link_url : shareData.invite_url;
+      const shareId = "share_id" in shareData ? shareData.share_id : undefined;
+      const inviteCode = "code" in shareData ? shareData.code : undefined;
       const entryType = shareData.entry_type;
       await navigator.clipboard.writeText(
         buildSharePrompt({
-          shareUrl: linkUrl,
+          shareId,
+          inviteCode,
+          roomId,
           roomName,
           requiresPayment: shareData.entry_type === "paid_room",
           isReadOnly: entryType === "private_room",
@@ -144,7 +147,9 @@ export default function ShareModal({ roomId, roomName, roomVisibility, onClose }
                 <textarea
                   readOnly
                   value={buildSharePrompt({
-                    shareUrl,
+                    shareId: shareData && "share_id" in shareData ? shareData.share_id : undefined,
+                    inviteCode: shareData && "code" in shareData ? shareData.code : undefined,
+                    roomId,
                     roomName,
                     requiresPayment: entryType === "paid_room",
                     isReadOnly: entryType === "private_room",

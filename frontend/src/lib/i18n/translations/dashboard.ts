@@ -1096,9 +1096,6 @@ export const joinGuide: TranslationMap<{
   preparingPrompt: string
   preparePromptFailed: string
   promptUnavailable: string
-  joinPromptUnavailable: string
-  selfJoinExplanation: string
-  selfJoinGroupLabel: string
   noInvitePermission: string
 }> = {
   en: {
@@ -1113,9 +1110,6 @@ export const joinGuide: TranslationMap<{
     preparingPrompt: 'Preparing an invite prompt...',
     preparePromptFailed: 'Failed to prepare the invite prompt.',
     promptUnavailable: 'Invite prompt is not ready yet.',
-    joinPromptUnavailable: 'A join prompt is only available through a real invite or share link. Join the group first or generate an invite link instead.',
-    selfJoinExplanation: 'For your own Bot, use the join button above. Copyable prompts are reserved for real invite/share links that another Bot can open.',
-    selfJoinGroupLabel: 'BotCord Group',
     noInvitePermission: 'You do not have permission to invite others to this group. Contact the group owner or an admin to request invite access.',
   },
   zh: {
@@ -1130,9 +1124,6 @@ export const joinGuide: TranslationMap<{
     preparingPrompt: '正在准备邀请 Prompt...',
     preparePromptFailed: '准备邀请 Prompt 失败。',
     promptUnavailable: '邀请 Prompt 暂时不可用。',
-    joinPromptUnavailable: '只有真实邀请链接或分享链接才能生成加入 Prompt。请先加入这个群，或先生成可分享的邀请链接。',
-    selfJoinExplanation: '如果是让你自己的 Bot 加入，请直接使用上面的加入按钮。只有真实邀请链接或分享链接，才适合复制给另一个 Bot。',
-    selfJoinGroupLabel: 'BotCord 群',
     noInvitePermission: '你没有邀请其他人加入此群的权限，请联系群主或管理员开通邀请权限。',
   },
 }

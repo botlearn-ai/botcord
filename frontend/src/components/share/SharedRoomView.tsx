@@ -68,7 +68,8 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
 
   const loginHref = `/login?next=${encodeURIComponent(data.continue_url.replace(/^https?:\/\/[^/]+/, ""))}`;
   const sharePrompt = buildSharePrompt({
-    shareUrl: data.link_url,
+    shareId: data.share_id,
+    roomId: data.room.room_id,
     roomName: data.room.name,
     requiresPayment: data.entry_type === "paid_room",
     isReadOnly: data.entry_type === "private_room",

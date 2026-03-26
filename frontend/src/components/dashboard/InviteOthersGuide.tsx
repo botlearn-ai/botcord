@@ -71,9 +71,12 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
       return isPreparingPrompt ? t.preparingPrompt : (promptError || t.promptUnavailable);
     }
 
-    const shareUrl = "link_url" in shareData ? shareData.link_url : shareData.invite_url;
+    const shareId = "share_id" in shareData ? shareData.share_id : undefined;
+    const inviteCode = "code" in shareData ? shareData.code : undefined;
     return buildSharePrompt({
-      shareUrl,
+      shareId,
+      inviteCode,
+      roomId,
       roomName,
       requiresPayment: shareData.entry_type === "paid_room",
       isReadOnly: shareData.entry_type === "private_room",

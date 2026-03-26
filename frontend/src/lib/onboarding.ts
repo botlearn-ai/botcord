@@ -16,14 +16,24 @@ function resolveLocale(locale?: PromptLocale): PromptLocale {
 }
 
 export function getBotcordWebAppUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl) return trimTrailingSlash(envUrl);
   if (typeof window !== "undefined" && window.location.origin) {
     return trimTrailingSlash(window.location.origin);
   }
-  return trimTrailingSlash(process.env.NEXT_PUBLIC_APP_URL || "https://botcord.chat");
+  return "https://botcord.chat";
 }
 
 export function getBotcordInstallGuideUrl(): string {
   return `${getBotcordWebAppUrl()}/openclaw-setup_instruction.md`;
+}
+
+export function getHubApiBaseUrl(): string {
+  const env = process.env.NEXT_PUBLIC_HUB_BASE_URL;
+  if (env) return trimTrailingSlash(env);
+  return process.env.NODE_ENV === "development"
+    ? "http://localhost:8000"
+    : "https://api.botcord.chat";
 }
 
 /**
@@ -31,7 +41,7 @@ export function getBotcordInstallGuideUrl(): string {
  * current webapp origin so that all prompt URLs stay consistent regardless of
  * which environment (localhost / preview / production) is running.
  */
-function rebaseToCurrentOrigin(url: string): string {
+export function rebaseToCurrentOrigin(url: string): string {
   const base = getBotcordWebAppUrl();
   try {
     const { pathname, search, hash } = new URL(url);
@@ -47,15 +57,15 @@ export function buildConnectBotPrompt(options: {
   connectionCode?: string;
   connectionInstruction?: string;
   mode?: ConnectPromptMode;
-  webAppUrl?: string;
+  hubApiBaseUrl?: string;
   installGuideUrl?: string;
   locale?: PromptLocale;
 }): string {
-  const webAppUrl = options.webAppUrl || getBotcordWebAppUrl();
+  const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const mode = options.mode || "auto";
   const locale = resolveLocale(options.locale);
-  const bindApiUrl = `${webAppUrl}/api/users/me/agents/bind`;
+  const bindApiUrl = `${hubApiBaseUrl}/api/users/me/agents/bind`;
 
   if (locale === "en") {
     const modeLine = mode === "create"
@@ -103,73 +113,141 @@ export function buildConnectBotPrompt(options: {
 }
 
 export function buildSharePrompt(options: {
-  shareUrl: string;
+  shareId?: string;
+  inviteCode?: string;
+  roomId?: string;
   roomName: string;
   requiresPayment?: boolean;
   isReadOnly?: boolean;
+  hubApiBaseUrl?: string;
   installGuideUrl?: string;
   locale?: PromptLocale;
 }): string {
-  const shareUrl = rebaseToCurrentOrigin(options.shareUrl);
+  const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const locale = resolveLocale(options.locale);
 
   if (locale === "en") {
-    const actionLine = options.isReadOnly
-      ? "Open this link first to preview the BotCord group."
-      : options.requiresPayment
-        ? "Open this link first, complete payment if needed, and join the BotCord group."
-        : "Open this link first and join the BotCord group.";
+    const lines: string[] = [
+      `This is an invitation to a BotCord group: ${options.roomName}`,
+    ];
 
-    return [
-      `I want to invite you to check out this BotCord group: ${options.roomName}`,
-      actionLine,
-      shareUrl,
+    if (options.inviteCode) {
+      const previewUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
+      const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
+      lines.push(`Preview invite details: GET ${previewUrl}`);
+      if (!options.isReadOnly) {
+        lines.push(
+          options.requiresPayment
+            ? `Accept the invite (payment may be required): POST ${redeemUrl}`
+            : `Accept the invite: POST ${redeemUrl}`,
+        );
+      }
+    } else if (options.roomId) {
+      lines.push(`Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`);
+      if (options.requiresPayment) {
+        lines.push("Note: this group requires a paid subscription. Complete the subscription before joining.");
+      }
+    } else if (options.shareId) {
+      const shareInfoUrl = `${hubApiBaseUrl}/api/share/${options.shareId}`;
+      lines.push(`View share details and find room_id: GET ${shareInfoUrl}`);
+    }
+
+    lines.push(
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
+      "Do not explain internal technical details. Just tell me when it is done.",
+    );
+    return lines.join("\n");
+  }
+
+  const lines: string[] = [
+    `这是一个 BotCord 群邀请：${options.roomName}`,
+  ];
+
+  if (options.inviteCode) {
+    const previewUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
+    const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
+    lines.push(`查看邀请详情：GET ${previewUrl}`);
+    if (!options.isReadOnly) {
+      lines.push(
+        options.requiresPayment
+          ? `接受邀请（可能需要付费）：POST ${redeemUrl}`
+          : `接受邀请：POST ${redeemUrl}`,
+      );
+    }
+  } else if (options.roomId) {
+    lines.push(`使用 botcord_rooms 工具，action 设为 "join"，room_id 设为 "${options.roomId}"。`);
+    if (options.requiresPayment) {
+      lines.push("注意：该群需要付费订阅，请先完成订阅再加入。");
+    }
+  } else if (options.shareId) {
+    const shareInfoUrl = `${hubApiBaseUrl}/api/share/${options.shareId}`;
+    lines.push(`查看分享详情并获取 room_id：GET ${shareInfoUrl}`);
+  }
+
+  lines.push(
+    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
+    "不要向我解释内部技术细节；完成后直接告诉我结果。",
+  );
+  return lines.join("\n");
+}
+
+export function buildFriendInvitePrompt(options: {
+  inviteCode: string;
+  hubApiBaseUrl?: string;
+  installGuideUrl?: string;
+  locale?: PromptLocale;
+}): string {
+  const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
+  const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
+  const locale = resolveLocale(options.locale);
+  const previewApiUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
+  const redeemApiUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
+
+  if (locale === "en") {
+    return [
+      "This is a BotCord friend invite.",
+      `Preview invite details: GET ${previewApiUrl}`,
+      `Accept the invite: POST ${redeemApiUrl}`,
+      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
+      "After accepting, just confirm it is done. Do not explain internal technical details.",
+    ].join("\n");
+  }
+
+  return [
+    "这是一个 BotCord 好友邀请。",
+    `查看邀请详情：GET ${previewApiUrl}`,
+    `接受邀请：POST ${redeemApiUrl}`,
+    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
+    "接受后直接告诉我结果，不要解释内部技术细节。",
+  ].join("\n");
+}
+
+export function buildSelfJoinPrompt(options: {
+  roomId: string;
+  roomName: string;
+  installGuideUrl?: string;
+  locale?: PromptLocale;
+}): string {
+  const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
+  const locale = resolveLocale(options.locale);
+
+  if (locale === "en") {
+    return [
+      `Help me join this BotCord group: ${options.roomName}`,
+      `Room ID: ${options.roomId}`,
+      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
+      `Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`,
       "Do not explain internal technical details. Just tell me when it is done.",
     ].join("\n");
   }
 
-  const actionLine = options.isReadOnly
-    ? "请先打开这个链接，了解这个 BotCord 群的内容。"
-    : options.requiresPayment
-      ? "请先打开这个链接，完成付费后加入这个 BotCord 群。"
-      : "请先打开这个链接，然后加入这个 BotCord 群。";
-
   return [
-    `我想邀请你看看这个 BotCord 群：${options.roomName}`,
-    actionLine,
-    shareUrl,
-    `如果你还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
+    `帮我加入这个 BotCord 群：${options.roomName}`,
+    `群 ID：${options.roomId}`,
+    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
+    `使用 botcord_rooms 工具，action 设为 "join"，room_id 设为 "${options.roomId}"。`,
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
-  ].join("\n");
-}
-
-export function buildFriendInvitePrompt(options: {
-  inviteUrl: string;
-  installGuideUrl?: string;
-  locale?: PromptLocale;
-}): string {
-  const inviteUrl = rebaseToCurrentOrigin(options.inviteUrl);
-  const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
-  const locale = resolveLocale(options.locale);
-
-  if (locale === "en") {
-    return [
-      "I want to invite you to join BotCord and become friends with me directly.",
-      "Open this invite link first:",
-      inviteUrl,
-      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
-      "When it is done, just tell me you joined. Do not explain internal technical details.",
-    ].join("\n");
-  }
-
-  return [
-    "我想邀请你加入 BotCord，并和我直接成为好友。",
-    "请先打开这个邀请链接：",
-    inviteUrl,
-    `如果你还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
-    "完成后直接告诉我你已经加入，不要解释内部技术细节。",
   ].join("\n");
 }
 
