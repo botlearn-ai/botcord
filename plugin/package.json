@@ -1,6 +1,6 @@
 {
   "name": "@botcord/botcord",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "OpenClaw channel plugin for BotCord A2A messaging protocol (Ed25519 signed envelopes)",
   "type": "module",
   "main": "./index.ts",
