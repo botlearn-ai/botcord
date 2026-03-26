@@ -87,6 +87,8 @@ async def _build_rooms_from_sql(
     }
     _DROP_COLS = {"last_sender_id"}
 
+    sql_room_ids: set[str] = set()
+
     try:
         result = await db.execute(
             text("SELECT * FROM get_agent_room_previews(:agent_id)"),
@@ -103,8 +105,17 @@ async def _build_rooms_from_sql(
                 item[key] = v
             if "member_count" in item:
                 item["member_count"] = int(item["member_count"] or 0)
+            room_id = item.get("room_id")
+            if isinstance(room_id, str):
+                sql_room_ids.add(room_id)
             mapped.append(item)
-        return mapped
+        orm_rooms = await _build_rooms_from_membership(agent_id, db)
+        if not orm_rooms:
+            return mapped
+        missing_rooms = [room for room in orm_rooms if room["room_id"] not in sql_room_ids]
+        if not missing_rooms:
+            return mapped
+        return _sort_room_previews(mapped + missing_rooms)
     except Exception:
         _logger.debug(
             "get_agent_room_previews unavailable, falling back to ORM query",
@@ -112,7 +123,22 @@ async def _build_rooms_from_sql(
         )
         await db.rollback()
 
-    # --- ORM fallback ---
+    return await _build_rooms_from_membership(agent_id, db)
+
+
+def _sort_room_previews(rooms: list[dict]) -> list[dict]:
+    rooms.sort(
+        key=lambda r: r.get("last_message_at") or "",
+        reverse=True,
+    )
+    return rooms
+
+
+async def _build_rooms_from_membership(
+    agent_id: str,
+    db: AsyncSession,
+) -> list[dict]:
+    # --- ORM fallback /补齐缺失 membership ---
     member_result = await db.execute(
         select(RoomMember.room_id, RoomMember.role)
         .where(RoomMember.agent_id == agent_id)
@@ -205,11 +231,7 @@ async def _build_rooms_from_sql(
             "last_sender_name": last_sender,
         })
 
-    result_rooms.sort(
-        key=lambda r: r.get("last_message_at") or "",
-        reverse=True,
-    )
-    return result_rooms
+    return _sort_room_previews(result_rooms)
 
 
 # ---------------------------------------------------------------------------
