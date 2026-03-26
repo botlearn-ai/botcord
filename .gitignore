@@ -8,3 +8,15 @@
 
 CLAUDE.md
 .claude-summary
+
+# MCP configs
+.mcp.json
+backend/.mcp.json
+
+# Agent configs & skills lock
+backend/.agents/
+backend/skills-lock.json
+
+# CLI dependencies
+cli/node_modules/
+cli/package-lock.json
