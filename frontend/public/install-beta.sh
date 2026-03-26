@@ -20,7 +20,7 @@ set -euo pipefail
 NPM_PACKAGE="${NPM_PACKAGE:-@botcord/botcord@beta}"
 NPM_BIN="${NPM_BIN:-npm}"
 OPENCLAW_BIN="${OPENCLAW_BIN:-openclaw}"
-TARGET_DIR="${TARGET_DIR:-$HOME/.openclaw/extensions/botcord-beta}"
+TARGET_DIR="${TARGET_DIR:-$HOME/.openclaw/extensions/botcord}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ Usage:
   bash <(curl -fsSL https://botcord.chat/install-beta.sh) [options]
 
 Options:
-  --target-dir <path>     Plugin install directory (default: ~/.openclaw/extensions/botcord-beta)
+  --target-dir <path>     Plugin install directory (default: ~/.openclaw/extensions/botcord)
   --package <spec>        npm package spec (default: @botcord/botcord@beta)
   -h, --help              Show this help
 
