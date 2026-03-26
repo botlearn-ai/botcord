@@ -82,3 +82,8 @@ def generate_subscription_id() -> str:
 def generate_subscription_charge_attempt_id() -> str:
     """Generate subscription charge attempt ID: 'sca_' + 16 random hex chars."""
     return "sca_" + secrets.token_hex(8)
+
+
+def generate_join_request_id() -> str:
+    """Generate room join request ID: 'jr_' + 16 random hex chars."""
+    return "jr_" + secrets.token_hex(8)

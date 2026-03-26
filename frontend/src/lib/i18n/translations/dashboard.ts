@@ -217,6 +217,10 @@ export const roomList: TranslationMap<{
   rule: string
   joining: string
   join: string
+  requestToJoin: string
+  requestPending: string
+  requestSent: string
+  requestRejected: string
   member: string
   members: string
   shareRoom: string
@@ -227,6 +231,12 @@ export const roomList: TranslationMap<{
   userChatPreview: string
   userChatTooltip: string
   userChatAriaLabel: string
+  joinRequests: string
+  noJoinRequests: string
+  accept: string
+  reject: string
+  accepting: string
+  rejecting: string
 }> = {
   en: {
     noRooms: 'No groups yet',
@@ -237,6 +247,10 @@ export const roomList: TranslationMap<{
     rule: 'Rule: ',
     joining: 'Joining...',
     join: 'Join',
+    requestToJoin: 'Request to Join',
+    requestPending: 'Request Pending',
+    requestSent: 'Join request sent!',
+    requestRejected: 'Request was rejected',
     member: 'member',
     members: 'members',
     shareRoom: 'Share group',
@@ -247,6 +261,12 @@ export const roomList: TranslationMap<{
     userChatPreview: 'Private 1:1 entry for chatting with your current Bot.',
     userChatTooltip: 'Open the private chat between you and your current active Bot.',
     userChatAriaLabel: 'Open private chat between you and your current active Bot',
+    joinRequests: 'Join Requests',
+    noJoinRequests: 'No pending requests',
+    accept: 'Accept',
+    reject: 'Reject',
+    accepting: 'Accepting...',
+    rejecting: 'Rejecting...',
   },
   zh: {
     noRooms: '暂无群',
@@ -257,6 +277,10 @@ export const roomList: TranslationMap<{
     rule: '规则：',
     joining: '加入中...',
     join: '加入',
+    requestToJoin: '申请加入',
+    requestPending: '申请审核中',
+    requestSent: '已提交入群申请！',
+    requestRejected: '申请已被拒绝',
     member: '成员',
     members: '成员',
     shareRoom: '分享群',
@@ -267,6 +291,12 @@ export const roomList: TranslationMap<{
     userChatPreview: '你和当前 Bot 的一对一聊天入口。',
     userChatTooltip: '打开你与当前 Bot 的私聊，用于直接给自己的 Bot 发消息。',
     userChatAriaLabel: '打开你与当前 Bot 的私聊入口',
+    joinRequests: '入群申请',
+    noJoinRequests: '暂无待处理申请',
+    accept: '通过',
+    reject: '拒绝',
+    accepting: '通过中...',
+    rejecting: '拒绝中...',
   },
 }
 
@@ -370,6 +400,7 @@ export const exploreUi: TranslationMap<{
   noDescriptionYet: string
   visibility: string
   activity: string
+  inviteOnly: string
   noRecentActivity: string
   justNow: string
   minuteShort: string
@@ -407,6 +438,7 @@ export const exploreUi: TranslationMap<{
     noDescriptionYet: 'No description yet.',
     visibility: 'Visibility',
     activity: 'Activity',
+    inviteOnly: 'Invite Only',
     noRecentActivity: 'No recent activity',
     justNow: 'Just now',
     minuteShort: 'm',
@@ -444,6 +476,7 @@ export const exploreUi: TranslationMap<{
     noDescriptionYet: '暂无简介。',
     visibility: '可见性',
     activity: '活跃度',
+    inviteOnly: '仅限邀请',
     noRecentActivity: '暂无活跃',
     justNow: '刚刚',
     minuteShort: '分钟',
@@ -1060,6 +1093,7 @@ export const joinGuide: TranslationMap<{
   preparingPrompt: string
   preparePromptFailed: string
   promptUnavailable: string
+  joinPromptUnavailable: string
 }> = {
   en: {
     titleSelfJoin: 'Join with your Bot',
@@ -1073,6 +1107,7 @@ export const joinGuide: TranslationMap<{
     preparingPrompt: 'Preparing an invite prompt...',
     preparePromptFailed: 'Failed to prepare the invite prompt.',
     promptUnavailable: 'Invite prompt is not ready yet.',
+    joinPromptUnavailable: 'A join prompt is only available through a real invite or share link. Join the group first or generate an invite link instead.',
   },
   zh: {
     titleSelfJoin: '用你的 Bot 加入',
@@ -1086,6 +1121,7 @@ export const joinGuide: TranslationMap<{
     preparingPrompt: '正在准备邀请 Prompt...',
     preparePromptFailed: '准备邀请 Prompt 失败。',
     promptUnavailable: '邀请 Prompt 暂时不可用。',
+    joinPromptUnavailable: '只有真实邀请链接或分享链接才能生成加入 Prompt。请先加入这个群，或先生成可分享的邀请链接。',
   },
 }
 

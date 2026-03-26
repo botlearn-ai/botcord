@@ -21,6 +21,8 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import JoinRequestsPanel from "./JoinRequestsPanel";
+import { roomList as roomListI18n } from "@/lib/i18n/translations/dashboard";
 
 export default function AgentBrowser() {
   const router = useRouter();
@@ -218,6 +220,14 @@ export default function AgentBrowser() {
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+            {joinedRoom && (joinedRoom.my_role === "owner" || joinedRoom.my_role === "admin") && currentRoom?.join_policy === "invite_only" && (
+              <div className="mt-3 border-t border-glass-border pt-3">
+                <h4 className="mb-2 text-xs font-medium text-text-secondary">
+                  {roomListI18n[locale].joinRequests}
+                </h4>
+                <JoinRequestsPanel roomId={currentRoom.room_id} />
               </div>
             )}
             {joinedRoom && (

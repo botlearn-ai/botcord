@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 dashboard chat/session store 获取当前群摘要与加入状态，依赖 share/invite API 生成真实入口（已加入时），依赖 onboarding 模板生成自加入 prompt（未加入时）
- * [OUTPUT]: 对外提供 JoinGuidePrompt 组件，展示给 AI 的入群/邀请 Prompt 并支持复制
- * [POS]: dashboard 群详情侧的邀请辅助层，区分"自己加入"与"邀请他人"两种模式
+ * [INPUT]: 依赖 dashboard chat/session store 获取当前群摘要与加入状态，依赖 share/invite API 生成真实入口
+ * [OUTPUT]: 对外提供 JoinGuidePrompt 组件，仅在拿到真实 share/invite asset 后展示给 AI 的邀请 Prompt 并支持复制
+ * [POS]: dashboard 群详情侧的邀请辅助层，避免把内部 room 路由伪装成可对外传播的加群入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -16,7 +16,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import type { CreateShareResponse, InvitePreviewResponse } from "@/lib/types";
-import { buildSharePrompt, buildJoinSelfPrompt } from "@/lib/onboarding";
+import { buildSharePrompt } from "@/lib/onboarding";
 
 interface JoinGuidePromptProps {
   roomId: string;
@@ -82,12 +82,8 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
   const combinedPrompt = useMemo(() => {
     const roomName = room?.name || t.groupNameFallback;
 
-    if (!isJoined) {
-      return buildJoinSelfPrompt({ roomName, roomId, locale });
-    }
-
     if (!shareData) {
-      return isPreparingPrompt ? t.preparingPrompt : (promptError || t.promptUnavailable);
+      return isPreparingPrompt ? t.preparingPrompt : (promptError || (isJoined ? t.promptUnavailable : t.joinPromptUnavailable));
     }
 
     const shareUrl = "link_url" in shareData ? shareData.link_url : shareData.invite_url;
@@ -98,9 +94,9 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
       isReadOnly: shareData.entry_type === "private_room",
       locale,
     });
-  }, [isJoined, isPreparingPrompt, locale, promptError, room?.name, roomId, shareData, t.groupNameFallback, t.preparingPrompt, t.promptUnavailable]);
+  }, [isJoined, isPreparingPrompt, locale, promptError, room?.name, shareData, t.groupNameFallback, t.joinPromptUnavailable, t.preparingPrompt, t.promptUnavailable]);
 
-  const canCopy = isJoined ? !!shareData : true;
+  const canCopy = !!shareData;
 
   const handleCopy = () => {
     if (!canCopy) return;
@@ -128,7 +124,7 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
           type="button"
           onClick={handleCopy}
           disabled={!canCopy}
-          className="flex items-center gap-1.5 rounded-md border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-1 text-[10px] font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 hover:border-neon-cyan/50"
+          className="flex items-center gap-1.5 rounded-md border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-1 text-[10px] font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 hover:border-neon-cyan/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {copied ? (
             <>

@@ -111,7 +111,11 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2 text-[10px] text-text-secondary/80">
           <div className="rounded border border-glass-border/60 px-2 py-1">
-            {t.visibility}: {room.visibility}
+            {room.join_policy === "invite_only" ? (
+              <span className="font-medium text-amber-400">{t.inviteOnly}</span>
+            ) : (
+              <>{t.visibility}: {room.visibility}</>
+            )}
           </div>
           <div className="rounded border border-glass-border/60 px-2 py-1">
             {t.activity}: {formatRelativeTime(room.last_message_at, locale, t)}

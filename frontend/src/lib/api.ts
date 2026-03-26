@@ -39,6 +39,9 @@ import type {
   MySubscriptionsResponse,
   UserChatRoom,
   UserChatSendResponse,
+  CreateJoinRequestResponse,
+  JoinRequestListResponse,
+  MyJoinRequestResponse,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -238,6 +241,35 @@ export const api = {
 
   leaveRoom(roomId: string) {
     return apiPost<LeaveRoomResponse>(`/api/dashboard/rooms/${roomId}/leave`);
+  },
+
+  createJoinRequest(roomId: string, message?: string) {
+    return apiPost<CreateJoinRequestResponse>(
+      `/api/dashboard/rooms/${roomId}/join-requests`,
+      message ? { message } : undefined,
+    );
+  },
+
+  getJoinRequests(roomId: string, status?: string) {
+    const params: Record<string, string> = {};
+    if (status) params.status = status;
+    return apiGet<JoinRequestListResponse>(`/api/dashboard/rooms/${roomId}/join-requests`, params);
+  },
+
+  acceptJoinRequest(roomId: string, requestId: string) {
+    return apiPost<{ request_id: string; status: string }>(
+      `/api/dashboard/rooms/${roomId}/join-requests/${requestId}/accept`,
+    );
+  },
+
+  rejectJoinRequest(roomId: string, requestId: string) {
+    return apiPost<{ request_id: string; status: string }>(
+      `/api/dashboard/rooms/${roomId}/join-requests/${requestId}/reject`,
+    );
+  },
+
+  getMyJoinRequest(roomId: string) {
+    return apiGet<MyJoinRequestResponse>(`/api/dashboard/rooms/${roomId}/my-join-request`);
   },
 
   getPlatformStats() {

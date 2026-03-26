@@ -37,6 +37,7 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     MessagePolicy,
     MessageState,
     RoomJoinPolicy,
+    RoomJoinRequestStatus,
     RoomRole,
     RoomVisibility,
     SubscriptionChargeAttemptStatus,
@@ -290,6 +291,34 @@ class RoomMember(Base):
     )
 
     room: Mapped["Room"] = relationship(back_populates="members")
+
+
+class RoomJoinRequest(Base):
+    __tablename__ = "room_join_requests"
+    __table_args__ = (
+        UniqueConstraint("room_id", "agent_id", "status", name="uq_room_join_request_pending"),
+        Index("ix_room_join_requests_room_status", "room_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    room_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("rooms.room_id"), nullable=False, index=True
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[RoomJoinRequestStatus] = mapped_column(
+        Enum(RoomJoinRequestStatus), nullable=False, default=RoomJoinRequestStatus.pending
+    )
+    responded_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class MessageRecord(Base):

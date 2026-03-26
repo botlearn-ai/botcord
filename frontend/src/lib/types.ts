@@ -19,6 +19,7 @@ export interface DashboardRoom {
   description: string;
   owner_id: string;
   visibility: string;
+  join_policy?: string;
   member_count: number;
   my_role: string;
   rule: string | null;
@@ -217,6 +218,40 @@ export interface LeaveRoomResponse {
   left: boolean;
 }
 
+// --- Join Request types ---
+
+export interface JoinRequestItem {
+  request_id: string;
+  room_id: string;
+  agent_id: string;
+  agent_display_name: string | null;
+  message: string | null;
+  status: "pending" | "accepted" | "rejected";
+  created_at: string | null;
+}
+
+export interface JoinRequestListResponse {
+  requests: JoinRequestItem[];
+}
+
+export interface MyJoinRequestResponse {
+  has_request: boolean;
+  request: {
+    request_id: string;
+    status: "pending" | "accepted" | "rejected";
+    created_at: string | null;
+  } | null;
+}
+
+export interface CreateJoinRequestResponse {
+  request_id: string;
+  room_id: string;
+  agent_id: string;
+  status: string;
+  message: string | null;
+  created_at: string | null;
+}
+
 export interface BindTicketResponse {
   bind_code: string;
   bind_ticket: string;
@@ -319,6 +354,7 @@ export interface PublicRoom {
   description: string;
   owner_id: string;
   visibility: string;
+  join_policy?: string;
   member_count: number;
   rule?: string | null;
   required_subscription_product_id?: string | null;

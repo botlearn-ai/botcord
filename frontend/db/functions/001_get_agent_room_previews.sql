@@ -27,6 +27,7 @@ returns table (
   required_subscription_product_id varchar,
   owner_id varchar,
   visibility varchar,
+  join_policy varchar,
   my_role varchar,
   last_viewed_at timestamptz,
   has_unread boolean,
@@ -49,6 +50,7 @@ as $$
       r.required_subscription_product_id,
       r.owner_id,
       r.visibility,
+      r.join_policy,
       rm.last_viewed_at
     from room_members rm
     inner join rooms r on r.room_id = rm.room_id
@@ -125,6 +127,7 @@ as $$
     m.required_subscription_product_id,
     m.owner_id,
     m.visibility,
+    m.join_policy,
     m.my_role,
     m.last_viewed_at,
     coalesce(ur.has_unread, false) as has_unread,

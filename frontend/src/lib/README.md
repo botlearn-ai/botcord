@@ -11,7 +11,7 @@
 `animations.ts`: 页面和组件复用动画参数。
 `fonts.ts`: 字体加载与字体变量入口。
 `id-generators.ts`: 前端本地生成的辅助 ID 逻辑。
-`onboarding.ts`: 连接 Bot、分享群链接、复制 Prompt 的统一模板层，负责隐藏技术词并直接输出关键服务 URL。
+`onboarding.ts`: 连接 Bot、真实邀请链接、复制 Prompt 的统一模板层，负责隐藏技术词并禁止把内部页面路由伪装成对外入口。
 
 法则: 成员完整·一行一文件·父级链接·技术词前置
 

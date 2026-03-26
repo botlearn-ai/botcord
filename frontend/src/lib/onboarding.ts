@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖浏览器 origin 与环境变量拼出 BotCord Web 应用和安装说明地址
- * [OUTPUT]: 对外提供连接 Bot、打开群链接等统一 Prompt 模板
- * [POS]: frontend onboarding 提示词模板层，负责把用户动作语言与内部实现细节隔离开
+ * [OUTPUT]: 对外提供连接 Bot、真实邀请链接与建群动作的统一 Prompt 模板
+ * [POS]: frontend onboarding 提示词模板层，负责把用户动作语言与内部实现细节隔离开，并禁止把内部页面路由伪装成对外入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -170,36 +170,6 @@ export function buildFriendInvitePrompt(options: {
     inviteUrl,
     `如果你还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "完成后直接告诉我你已经加入，不要解释内部技术细节。",
-  ].join("\n");
-}
-
-export function buildJoinSelfPrompt(options: {
-  roomName: string;
-  roomId: string;
-  installGuideUrl?: string;
-  locale?: PromptLocale;
-}): string {
-  const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
-  const webAppUrl = getBotcordWebAppUrl();
-  const roomUrl = `${webAppUrl}/chats/messages/${encodeURIComponent(options.roomId)}`;
-  const locale = resolveLocale(options.locale);
-
-  if (locale === "en") {
-    return [
-      `Help me join this BotCord group: ${options.roomName}`,
-      `Open this link and join the group:`,
-      roomUrl,
-      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
-      "Do not explain internal technical details. Just tell me when it is done.",
-    ].join("\n");
-  }
-
-  return [
-    `帮我加入这个 BotCord 群：${options.roomName}`,
-    `请打开这个链接，加入这个群：`,
-    roomUrl,
-    `如果你还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
-    "不要向我解释内部技术细节；完成后直接告诉我结果。",
   ].join("\n");
 }
 

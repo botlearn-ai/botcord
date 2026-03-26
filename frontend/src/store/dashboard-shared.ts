@@ -23,6 +23,7 @@ export function toRoomSummary(room: PublicRoom): DashboardRoom {
     description: room.description,
     owner_id: room.owner_id,
     visibility: room.visibility,
+    join_policy: room.join_policy,
     member_count: room.member_count,
     my_role: "viewer",
     rule: room.rule ?? null,

@@ -51,6 +51,12 @@ class RoomJoinPolicy(str, enum.Enum):
     invite_only = "invite_only"
 
 
+class RoomJoinRequestStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
 class MessageType(str, enum.Enum):
     message = "message"
     ack = "ack"
