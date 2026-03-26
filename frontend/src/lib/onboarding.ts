@@ -25,7 +25,7 @@ export function getBotcordWebAppUrl(): string {
 }
 
 export function getBotcordInstallGuideUrl(): string {
-  return `${getBotcordWebAppUrl()}/openclaw-setup_instruction.md`;
+  return `${getBotcordWebAppUrl()}/openclaw-setup-instruction-script.md`;
 }
 
 export function getHubApiBaseUrl(): string {
