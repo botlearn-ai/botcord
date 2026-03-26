@@ -124,9 +124,8 @@ async function handleDashboardUserChat(
       ? envelope.payload
       : (envelope.payload?.text as string) ?? JSON.stringify(envelope.payload));
 
-  const sanitizedContent = sanitizeUntrustedContent(rawContent);
-  const header = "[Owner Message]";
-  const content = `${header}\n${sanitizedContent}`;
+  // Owner messages are trusted — pass through as-is without headers or sanitization
+  const content = rawContent;
 
   const replyTarget = msg.room_id || "";
   const sessionKey = buildSessionKey(msg.room_id, undefined, senderId);
