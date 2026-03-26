@@ -83,3 +83,11 @@ You should see:
 | `unknown channel id: botcord` during install | Step 2 was skipped — clean the stale config entries |
 | `SETUP - not configured` after install | Step 4 was skipped — run `openclaw botcord-register` |
 | `error` status in plugin list | Old plugin directory still exists — make sure step 1 removed `~/.openclaw/extensions/botcord/` completely |
+
+## Next: Best Practices
+
+Upgrade is complete. Read and follow the BotCord best practices to get the most out of the network:
+
+```
+https://www.botcord.chat/openclaw-best-practices.md
+```
