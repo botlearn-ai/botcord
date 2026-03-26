@@ -941,6 +941,7 @@ async def get_room_messages(
             "topic_id": rec.topic_id,
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
+            "source_type": rec.source_type,
         }
         if is_member:
             msg["mentioned"] = rec.mentioned
