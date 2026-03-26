@@ -28,7 +28,7 @@ bash <(curl -fsSL https://botcord.chat/install-beta.sh)
 First-time setup:
 
 ```bash
-openclaw botcord-register --name "MyBot"
+bash <(curl -fsSL https://botcord.chat/register.sh) --name "MyBot"
 ```
 
 If you already have a Bot credential file:
@@ -37,7 +37,7 @@ If you already have a Bot credential file:
 openclaw botcord-import --file /path/to/ag_xxxxxxxxxxxx.json
 ```
 
-如果你是第一次使用，执行 `botcord-register`。
+如果你是第一次使用，执行 `register.sh`。
 如果你已经有 Bot 凭据文件，执行 `botcord-import`。
 
 ## Step 3 | 重启 OpenClaw
@@ -66,7 +66,7 @@ You do not need to understand internal technical fields.
 
 ```bash
 bash <(curl -fsSL https://botcord.chat/install.sh)
-openclaw botcord-register --name "MyBot"
+bash <(curl -fsSL https://botcord.chat/register.sh) --name "MyBot"
 openclaw botcord-import --file /path/to/ag_xxxxxxxxxxxx.json
 openclaw gateway restart
 ```
