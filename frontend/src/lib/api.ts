@@ -488,6 +488,10 @@ const userApi = {
     invalidateMeCache();
     return result;
   },
+
+  getAgentIdentity(agentId: string): Promise<{ agent_id: string; agent_token: string | null }> {
+    return apiGet<{ agent_id: string; agent_token: string | null }>(`/api/users/me/agents/${agentId}/identity`);
+  },
 };
 
 // ---------------------------------------------------------------------------

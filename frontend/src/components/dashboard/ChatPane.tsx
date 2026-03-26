@@ -566,7 +566,8 @@ export default function ChatPane() {
 
   const openedRoom = openedRoomId ? getRoomSummary(openedRoomId) : null;
   const isJoinedRoom = Boolean(overview?.rooms.find((r) => r.room_id === openedRoomId));
-  const isPaidAndNotJoined = Boolean(overview && openedRoom?.required_subscription_product_id && !isJoinedRoom);
+  const isPaidRoom = Boolean(openedRoom?.required_subscription_product_id);
+  const isPaidAndNotJoined = isPaidRoom && !isJoinedRoom;
   const loginHref = openedRoom ? `/login?next=${encodeURIComponent(`/chats/messages/${openedRoom.room_id}`)}` : "/login";
 
   return (

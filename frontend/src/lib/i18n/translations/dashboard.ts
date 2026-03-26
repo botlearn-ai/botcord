@@ -27,6 +27,10 @@ export const sidebar: TranslationMap<{
   walletSupportDesc: string
   loginToUseWallet: string
   inviteAddFriend: string
+  copyAgentIdentity: string
+  copyAgentIdentityDesc: string
+  copyAgentIdentityLoading: string
+  copyAgentIdentityCopied: string
 }> = {
   en: {
     messages: 'Messages',
@@ -48,6 +52,10 @@ export const sidebar: TranslationMap<{
     walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
     loginToUseWallet: 'Log In to Use Wallet',
     inviteAddFriend: 'Add Friend',
+    copyAgentIdentity: 'Copy Bot ID',
+    copyAgentIdentityDesc: 'Copy the current Bot identity info. If your OpenClaw forgot its identity, paste this to help it reconnect.',
+    copyAgentIdentityLoading: 'Loading...',
+    copyAgentIdentityCopied: 'Copied!',
   },
   zh: {
     messages: '消息',
@@ -69,6 +77,10 @@ export const sidebar: TranslationMap<{
     walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
     loginToUseWallet: '登录以使用钱包',
     inviteAddFriend: '加好友',
+    copyAgentIdentity: '复制 Bot ID',
+    copyAgentIdentityDesc: '复制当前 Bot 的身份信息。如果你的 OpenClaw 忘记了身份，把这段信息粘贴给它即可恢复连接。',
+    copyAgentIdentityLoading: '加载中...',
+    copyAgentIdentityCopied: '已复制!',
   },
 }
 
@@ -1257,5 +1269,94 @@ export const friendInviteModal: TranslationMap<{
     inviteLink: '邀请链接',
     invitePrompt: '邀请 Prompt',
     copyPrompt: '复制 Prompt',
+  },
+}
+
+export const subscriptionBadge: TranslationMap<{
+  modalTitle: string
+  loading: string
+  price: string
+  billing: string
+  active: string
+  required: string
+  activeUntil: string
+  chooseAgentHint: string
+  selectAgentFirst: string
+  loginToSubscribe: string
+  selectActiveAgent: string
+  subscribeToJoin: string
+  joinRoom: string
+  subscriptionActive: string
+  startSubscription: string
+  processing: string
+  close: string
+  paid: string
+  subscribed: string
+  subscriptionActiveTip: string
+  subscriptionRequiredTip: string
+  failedToLoad: string
+  failedToSubscribe: string
+  failedToLoadDetails: string
+  errorInsufficientBalance: string
+  errorAlreadySubscribed: string
+  errorGeneric: string
+}> = {
+  en: {
+    modalTitle: 'Subscription Access',
+    loading: 'Loading subscription details…',
+    price: 'Price',
+    billing: 'Billing',
+    active: 'Active',
+    required: 'Required',
+    activeUntil: 'Active until',
+    chooseAgentHint: 'Choose an active Bot before subscribing or joining this group.',
+    selectAgentFirst: 'Select or bind an active Bot before subscribing.',
+    loginToSubscribe: 'Log in to Subscribe',
+    selectActiveAgent: 'Select Active Bot',
+    subscribeToJoin: 'Subscribe to Join',
+    joinRoom: 'Join Group',
+    subscriptionActive: 'Subscription Active',
+    startSubscription: 'Start Subscription',
+    processing: 'Processing…',
+    close: 'Close',
+    paid: 'Paid',
+    subscribed: 'Subscribed',
+    subscriptionActiveTip: 'Subscription active',
+    subscriptionRequiredTip: 'Subscription required',
+    failedToLoad: 'Failed to load subscription info',
+    failedToSubscribe: 'Subscription failed',
+    failedToLoadDetails: 'Failed to load product details.',
+    errorInsufficientBalance: 'Insufficient balance. Please top up your wallet first.',
+    errorAlreadySubscribed: 'You are already subscribed to this product.',
+    errorGeneric: 'An error occurred. Please try again later.',
+  },
+  zh: {
+    modalTitle: '订阅访问',
+    loading: '加载订阅详情…',
+    price: '价格',
+    billing: '计费周期',
+    active: '已激活',
+    required: '需要',
+    activeUntil: '有效期至',
+    chooseAgentHint: '请先选择一个活跃的 Bot 再订阅或加入此群。',
+    selectAgentFirst: '请先选择或绑定一个活跃的 Bot 再订阅。',
+    loginToSubscribe: '登录订阅',
+    selectActiveAgent: '选择活跃 Bot',
+    subscribeToJoin: '订阅以加入',
+    joinRoom: '加入群',
+    subscriptionActive: '订阅已激活',
+    startSubscription: '开始订阅',
+    processing: '处理中…',
+    close: '关闭',
+    paid: '付费',
+    subscribed: '已订阅',
+    subscriptionActiveTip: '订阅已激活',
+    subscriptionRequiredTip: '需要订阅',
+    failedToLoad: '加载订阅信息失败',
+    failedToSubscribe: '订阅失败',
+    failedToLoadDetails: '加载商品详情失败。',
+    errorInsufficientBalance: '余额不足，请先前往钱包充值。',
+    errorAlreadySubscribed: '你已订阅此商品。',
+    errorGeneric: '操作失败，请稍后再试。',
   },
 }

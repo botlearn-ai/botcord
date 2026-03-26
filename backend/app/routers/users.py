@@ -475,6 +475,31 @@ async def get_my_agents(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/users/me/agents/{agent_id}/identity
+# ---------------------------------------------------------------------------
+
+
+@router.get("/me/agents/{agent_id}/identity")
+async def get_agent_identity(
+    agent_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return agent_id and agent_token for the specified agent owned by the user."""
+    result = await db.execute(
+        select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return {
+        "agent_id": agent.agent_id,
+        "agent_token": agent.agent_token,
+    }
+
+
+# ---------------------------------------------------------------------------
 # DELETE /api/users/me/agents/{agent_id}
 # ---------------------------------------------------------------------------
 

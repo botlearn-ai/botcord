@@ -15,6 +15,8 @@ import { useLanguage } from '@/lib/i18n';
 import { sidebar } from '@/lib/i18n/translations/dashboard';
 import { common, nav } from '@/lib/i18n/translations/common';
 import { useShallow } from "zustand/react/shallow";
+import { userApi } from "@/lib/api";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/Tooltip";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
@@ -203,7 +205,25 @@ export default function Sidebar() {
   })));
   const isGuest = sessionStore.sessionMode === "guest";
   const [showFriendInvite, setShowFriendInvite] = useState(false);
+  const [identityState, setIdentityState] = useState<"idle" | "loading" | "copied">("idle");
   const showLoginModal = () => router.push("/login");
+
+  const handleCopyAgentIdentity = async () => {
+    if (!sessionStore.activeAgentId || identityState === "loading") return;
+    setIdentityState("loading");
+    try {
+      const identity = await userApi.getAgentIdentity(sessionStore.activeAgentId);
+      const text = [
+        `agent_id: ${identity.agent_id}`,
+        `agent_token: ${identity.agent_token ?? "(none)"}`,
+      ].join("\n");
+      await navigator.clipboard.writeText(text);
+      setIdentityState("copied");
+      setTimeout(() => setIdentityState("idle"), 1600);
+    } catch {
+      setIdentityState("idle");
+    }
+  };
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -341,16 +361,76 @@ export default function Sidebar() {
             </button>
           ) : (
             <>
-              <button
-                onClick={() => setShowFriendInvite(true)}
-                className="flex h-12 w-12 flex-col items-center justify-center rounded-xl text-text-secondary transition-all duration-200 hover:bg-neon-cyan/10 hover:text-neon-cyan"
-                title={t.inviteAddFriend}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
-                </svg>
-                <span className="mt-0.5 text-[9px] font-medium leading-none">{t.inviteAddFriend}</span>
-              </button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowFriendInvite(true)}
+                      className="flex h-12 w-12 flex-col items-center justify-center rounded-xl text-text-secondary transition-all duration-200 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+                      </svg>
+                      <span className="mt-0.5 text-[9px] font-medium leading-none">{t.inviteAddFriend}</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{t.inviteAddFriend}</TooltipContent>
+                </Tooltip>
+
+                <Tooltip open={identityState !== "idle" || undefined}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleCopyAgentIdentity}
+                      disabled={identityState === "loading"}
+                      className={`flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
+                        identityState === "copied"
+                          ? "bg-neon-green/15 text-neon-green"
+                          : identityState === "loading"
+                            ? "animate-pulse text-neon-cyan"
+                            : "text-text-secondary hover:bg-neon-cyan/10 hover:text-neon-cyan"
+                      }`}
+                    >
+                      {identityState === "copied" ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        </svg>
+                      ) : identityState === "loading" ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5 animate-spin">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Zm6-10.125a1.875 1.875 0 1 1-3.75 0 1.875 1.875 0 0 1 3.75 0Zm1.294 6.336a6.721 6.721 0 0 1-3.17.789 6.721 6.721 0 0 1-3.168-.789 3.376 3.376 0 0 1 6.338 0Z" />
+                        </svg>
+                      )}
+                      <span className="mt-0.5 text-[9px] font-medium leading-none">
+                        {identityState === "copied" ? t.copyAgentIdentityCopied : t.copyAgentIdentity}
+                      </span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="right"
+                    className={`max-w-[220px] ${
+                      identityState === "copied"
+                        ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
+                        : identityState === "loading"
+                          ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
+                          : ""
+                    }`}
+                  >
+                    {identityState === "copied" ? (
+                      t.copyAgentIdentityCopied
+                    ) : identityState === "loading" ? (
+                      t.copyAgentIdentityLoading
+                    ) : (
+                      <div>
+                        <p className="font-semibold">{t.copyAgentIdentity}</p>
+                        <p className="mt-1 text-[10px] leading-relaxed text-text-secondary">{t.copyAgentIdentityDesc}</p>
+                      </div>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <AccountMenu
               user={sessionStore.user}
               agents={sessionStore.ownedAgents}
