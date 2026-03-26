@@ -737,9 +737,10 @@ async def test_agent_bind_invalid_bind_code(
 
 
 @pytest.mark.asyncio
-async def test_agent_bind_code_burned_on_first_use(
+async def test_agent_bind_code_survives_failed_attempt(
     client: AsyncClient, seed_user_for_claim: dict
 ):
+    """bind_code should NOT be burned when a later verification step fails."""
     token = seed_user_for_claim["token"]
     issue = await client.post(
         "/api/users/me/agents/bind-ticket",
@@ -747,6 +748,7 @@ async def test_agent_bind_code_burned_on_first_use(
     )
     bind_code = issue.json()["bind_code"]
 
+    # First attempt: agent_token verification fails → 401, but bind_code survives
     with _mock_verify_agent_control(False):
         first = await client.post(
             "/api/users/me/agents/bind",
@@ -759,6 +761,7 @@ async def test_agent_bind_code_burned_on_first_use(
         )
     assert first.status_code == 401
 
+    # Second attempt: same bind_code with valid token → should succeed
     with _mock_verify_agent_control(True):
         second = await client.post(
             "/api/users/me/agents/bind",
@@ -769,8 +772,21 @@ async def test_agent_bind_code_burned_on_first_use(
                 "bind_code": bind_code,
             },
         )
-    assert second.status_code == 401
-    assert "bind code" in second.json()["detail"].lower()
+    assert second.status_code == 201
+
+    # Third attempt: bind_code now consumed → 401
+    with _mock_verify_agent_control(True):
+        third = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_bindcodeburn2",
+                "display_name": "Burn Code 2",
+                "agent_token": "tok_valid",
+                "bind_code": bind_code,
+            },
+        )
+    assert third.status_code == 401
+    assert "bind code" in third.json()["detail"].lower() or "consumed" in third.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -809,20 +825,18 @@ async def test_agent_bind_ticket_replay_rejected(
 
 
 @pytest.mark.asyncio
-async def test_agent_bind_ticket_burned_on_failure(
+async def test_agent_bind_ticket_survives_failed_attempt(
     client: AsyncClient, seed_user_for_claim: dict
 ):
-    """A ticket is consumed even when the bind fails (e.g. bad agent_token).
+    """bind_ticket jti should NOT be consumed when agent_token verification fails.
 
-    After the first attempt fails (jti consumed but agent_token rejected),
-    the same ticket must not be accepted on a second attempt, even with a
-    valid agent_token. This verifies the independent-transaction jti burn.
+    After the first attempt fails (bad agent_token), the same ticket should
+    still be usable on a second attempt with a valid agent_token.
     """
     user_id = str(seed_user_for_claim["user_id"])
     ticket = _make_bind_ticket(user_id)
 
-    # First attempt: ticket is valid but agent_token verification fails.
-    # The jti should still be burned.
+    # First attempt: agent_token verification fails → 401, but ticket survives
     with _mock_verify_agent_control(False):
         resp1 = await client.post(
             "/api/users/me/agents/bind",
@@ -836,8 +850,7 @@ async def test_agent_bind_ticket_burned_on_failure(
     assert resp1.status_code == 401
     assert "token" in resp1.json()["detail"].lower()
 
-    # Second attempt: same ticket, now with valid token. Should still be rejected
-    # because the jti was already consumed in the first (failed) attempt.
+    # Second attempt: same ticket with valid token → should succeed
     with _mock_verify_agent_control(True):
         resp2 = await client.post(
             "/api/users/me/agents/bind",
@@ -848,8 +861,21 @@ async def test_agent_bind_ticket_burned_on_failure(
                 "bind_ticket": ticket,
             },
         )
-    assert resp2.status_code == 401
-    assert "already used" in resp2.json()["detail"].lower()
+    assert resp2.status_code == 201
+
+    # Third attempt: ticket now consumed → 401
+    with _mock_verify_agent_control(True):
+        resp3 = await client.post(
+            "/api/users/me/agents/bind",
+            json={
+                "agent_id": "ag_burntest0002",
+                "display_name": "Burn Test 2",
+                "agent_token": "tok_valid",
+                "bind_ticket": ticket,
+            },
+        )
+    assert resp3.status_code == 401
+    assert "already used" in resp3.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
