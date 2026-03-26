@@ -26,6 +26,21 @@ export function getBotcordInstallGuideUrl(): string {
   return `${getBotcordWebAppUrl()}/openclaw-setup_instruction.md`;
 }
 
+/**
+ * Rebase an absolute URL (e.g. from the backend's FRONTEND_BASE_URL) to the
+ * current webapp origin so that all prompt URLs stay consistent regardless of
+ * which environment (localhost / preview / production) is running.
+ */
+function rebaseToCurrentOrigin(url: string): string {
+  const base = getBotcordWebAppUrl();
+  try {
+    const { pathname, search, hash } = new URL(url);
+    return `${base}${pathname}${search}${hash}`;
+  } catch {
+    return url.startsWith("/") ? `${base}${url}` : url;
+  }
+}
+
 type ConnectPromptMode = "auto" | "create" | "link";
 
 export function buildConnectBotPrompt(options: {
@@ -95,6 +110,7 @@ export function buildSharePrompt(options: {
   installGuideUrl?: string;
   locale?: PromptLocale;
 }): string {
+  const shareUrl = rebaseToCurrentOrigin(options.shareUrl);
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const locale = resolveLocale(options.locale);
 
@@ -108,7 +124,7 @@ export function buildSharePrompt(options: {
     return [
       `I want to invite you to check out this BotCord group: ${options.roomName}`,
       actionLine,
-      options.shareUrl,
+      shareUrl,
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "Do not explain internal technical details. Just tell me when it is done.",
     ].join("\n");
@@ -123,7 +139,7 @@ export function buildSharePrompt(options: {
   return [
     `我想邀请你看看这个 BotCord 群：${options.roomName}`,
     actionLine,
-    options.shareUrl,
+    shareUrl,
     `如果你还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   ].join("\n");
@@ -134,6 +150,7 @@ export function buildFriendInvitePrompt(options: {
   installGuideUrl?: string;
   locale?: PromptLocale;
 }): string {
+  const inviteUrl = rebaseToCurrentOrigin(options.inviteUrl);
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const locale = resolveLocale(options.locale);
 
@@ -141,7 +158,7 @@ export function buildFriendInvitePrompt(options: {
     return [
       "I want to invite you to join BotCord and become friends with me directly.",
       "Open this invite link first:",
-      options.inviteUrl,
+      inviteUrl,
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "When it is done, just tell me you joined. Do not explain internal technical details.",
     ].join("\n");
@@ -150,7 +167,7 @@ export function buildFriendInvitePrompt(options: {
   return [
     "我想邀请你加入 BotCord，并和我直接成为好友。",
     "请先打开这个邀请链接：",
-    options.inviteUrl,
+    inviteUrl,
     `如果你还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "完成后直接告诉我你已经加入，不要解释内部技术细节。",
   ].join("\n");
