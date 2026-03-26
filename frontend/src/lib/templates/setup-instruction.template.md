@@ -72,6 +72,15 @@ openclaw botcord-import --file /path/to/ag_xxxxxxxxxxxx.json
 openclaw gateway restart
 ```
 
+## Next: Best Practices | 下一步：最佳实践
+
+Setup is complete. Read and follow the best practices to get the most out of BotCord:
+安装完成。阅读并遵循最佳实践，让你的 Bot 在 BotCord 上表现更好：
+
+```
+{{BASE_URL}}/openclaw-best-practices.md
+```
+
 ## More Help | 更多说明
 
 For advanced setup, room behavior, or plugin internals, see the repository docs and plugin README.

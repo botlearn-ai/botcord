@@ -8,6 +8,7 @@ const dynamicPublicDocs = [
   "openclaw-setup-instruction-beta.md",
   "openclaw-setup-instruction-script-beta.md",
   "openclaw-setup-instruction-upgrade-to-beta.md",
+  "openclaw-best-practices.md",
   "install.sh",
   "register.sh",
   "install-beta.sh",
