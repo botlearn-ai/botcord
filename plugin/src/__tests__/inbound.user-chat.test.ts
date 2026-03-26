@@ -106,7 +106,8 @@ describe("handleInboxMessage user chat dispatch", () => {
     const fmtCall = mockFormatAgentEnvelope.mock.calls[0][0];
     expect(fmtCall.body).not.toContain("NO_REPLY");
     expect(fmtCall.body).toContain("Hello agent!");
-    expect(fmtCall.body).toContain("[Owner Message]");
+    // Owner messages are trusted — no structural headers added
+    expect(fmtCall.body).toBe("Hello agent!");
   });
 
   it("routes regular agent messages through A2A path (with NO_REPLY)", async () => {
