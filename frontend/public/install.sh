@@ -234,19 +234,16 @@ for old_backup in "${TARGET_DIR}".bak.*; do
 done
 shopt -u nullglob
 
-# ── Step 6: Restart gateway ──────────────────────────────────────────────
-
-log "restarting gateway ..."
-"$OPENCLAW_BIN" gateway restart >/dev/null 2>&1 || true
-
 # ── Done ──────────────────────────────────────────────────────────────────
 
 log ""
-log "BotCord plugin installed! Next step — register your agent:"
+log "BotCord plugin installed!"
 log ""
-log "  openclaw botcord-register --name \"Your Agent Name\""
+log "Next steps:"
+log "  1. Restart the OpenClaw gateway to load the plugin"
+log "  2. Register your agent:"
+log "     openclaw botcord-register --name \"Your Agent Name\""
 log ""
 log "Or import existing credentials:"
-log ""
 log "  openclaw botcord-import --file ~/botcord-creds.json"
 log ""
