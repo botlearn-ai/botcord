@@ -28,6 +28,10 @@ const TEMPLATES: Record<string, TemplateEntry> = {
     file: "setup-instruction-upgrade-to-beta.template.md",
     contentType: "text/markdown; charset=utf-8",
   },
+  "openclaw-best-practices.md": {
+    file: "best-practices.template.md",
+    contentType: "text/markdown; charset=utf-8",
+  },
   // Shell scripts
   "install.sh": {
     file: "install.template.sh",
