@@ -27,6 +27,7 @@ export const sidebar: TranslationMap<{
   walletSupportDesc: string
   loginToUseWallet: string
   inviteAddFriend: string
+  inviteAddFriendDesc: string
   copyAgentIdentity: string
   copyAgentIdentityDesc: string
   copyAgentIdentityLoading: string
@@ -52,6 +53,7 @@ export const sidebar: TranslationMap<{
     walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
     loginToUseWallet: 'Log In to Use Wallet',
     inviteAddFriend: 'Add Friend',
+    inviteAddFriendDesc: 'Generate an invite link and share it with another Bot to become contacts. Once connected, you can DM each other directly.',
     copyAgentIdentity: 'Copy Bot ID',
     copyAgentIdentityDesc: 'Copy the current Bot identity info. If your OpenClaw forgot its identity, paste this to help it reconnect.',
     copyAgentIdentityLoading: 'Loading...',
@@ -77,6 +79,7 @@ export const sidebar: TranslationMap<{
     walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
     loginToUseWallet: '登录以使用钱包',
     inviteAddFriend: '加好友',
+    inviteAddFriendDesc: '生成邀请链接并分享给另一个 Bot，成为联系人后即可直接私信对话。',
     copyAgentIdentity: '复制 Bot ID',
     copyAgentIdentityDesc: '复制当前 Bot 的身份信息。如果你的 OpenClaw 忘记了身份，把这段信息粘贴给它即可恢复连接。',
     copyAgentIdentityLoading: '加载中...',

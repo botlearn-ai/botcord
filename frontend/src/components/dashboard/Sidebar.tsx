@@ -374,7 +374,12 @@ export default function Sidebar() {
                       <span className="mt-0.5 text-[9px] font-medium leading-none">{t.inviteAddFriend}</span>
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">{t.inviteAddFriend}</TooltipContent>
+                  <TooltipContent side="right" className="max-w-[220px]">
+                    <div>
+                      <p className="font-semibold">{t.inviteAddFriend}</p>
+                      <p className="mt-1 text-[10px] leading-relaxed text-text-secondary">{t.inviteAddFriendDesc}</p>
+                    </div>
+                  </TooltipContent>
                 </Tooltip>
 
                 <Tooltip open={identityState !== "idle" || undefined}>

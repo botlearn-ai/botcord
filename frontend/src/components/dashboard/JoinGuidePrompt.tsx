@@ -41,6 +41,7 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
   const room = getRoomSummary(roomId);
   const isJoined = !!overview?.rooms.find((room) => room.room_id === roomId);
   const isJoining = joiningRoomId === roomId;
+  const isInviteOnly = room?.join_policy === "invite_only";
 
   useEffect(() => {
     if (!isAuthedReady || !room || !isJoined) {
@@ -96,6 +97,8 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
     });
   }, [isJoined, isPreparingPrompt, locale, promptError, room?.name, shareData, t.groupNameFallback, t.joinPromptUnavailable, t.preparingPrompt, t.promptUnavailable]);
 
+  if (!isJoined && isInviteOnly) return null;
+
   const canCopy = !!shareData;
 
   const handleCopy = () => {
@@ -144,19 +147,6 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
         </button>
       </div>
 
-      {isAuthedReady && !isJoined && (
-        <div className="mb-2">
-          <button
-            type="button"
-            onClick={() => void joinRoom(roomId)}
-            disabled={isJoining}
-            className="rounded-md border border-neon-green/40 bg-neon-green/10 px-2 py-1 text-[10px] font-medium text-neon-green transition-all hover:bg-neon-green/20 disabled:opacity-50"
-          >
-            {isJoining ? t.joining : t.joinRoomHint}
-          </button>
-        </div>
-      )}
-      
       <div className="group relative overflow-hidden rounded border border-glass-border/50 bg-deep-black-light/50">
         <div className="p-2.5 font-mono text-[10px] leading-relaxed text-text-secondary/80 bg-deep-black/30 whitespace-pre-wrap break-all">
           <span className="text-text-primary/90">{combinedPrompt}</span>
