@@ -19,14 +19,24 @@ export async function roomCommand(args, globalHub, globalAgent) {
 
 Subcommands:
   create        Create a new room
+                  --name <name> [--description <text>] [--rule <text>]
+                  [--visibility <private|public>] [--join-policy <invite_only|open>]
+                  [--max-members <n>] [--members <id1,id2>]
+                  [--default-send <true|false>] [--default-invite <true|false>]
+                  [--slow-mode <seconds>] [--subscription-product <product_id>]
   get <id>      Get room info
   list          List my rooms
   discover      Discover public rooms
   update        Update room settings
+                  --room <id> [--name <name>] [--description <text>] [--rule <text>]
+                  [--visibility <private|public>] [--join-policy <invite_only|open>]
+                  [--max-members <n>] [--default-send <true|false>]
+                  [--default-invite <true|false>] [--slow-mode <seconds>]
+                  [--subscription-product <product_id>]
   dissolve      Dissolve a room
-  join          Join a room
+  join          Join a room --room <id> [--can-send <true|false>] [--can-invite <true|false>]
   leave         Leave a room
-  add-member    Add a member to a room
+  add-member    Add a member --room <id> --id <agent_id> [--can-send <true|false>] [--can-invite <true|false>]
   remove-member Remove a member
   transfer      Transfer room ownership
   promote       Change member role
@@ -51,12 +61,22 @@ Subcommands:
             const params = { name };
             if (typeof args.flags["description"] === "string")
                 params.description = args.flags["description"];
+            if (typeof args.flags["rule"] === "string")
+                params.rule = args.flags["rule"];
             if (typeof args.flags["visibility"] === "string")
                 params.visibility = args.flags["visibility"];
             if (typeof args.flags["join-policy"] === "string")
                 params.join_policy = args.flags["join-policy"];
+            if (typeof args.flags["subscription-product"] === "string")
+                params.required_subscription_product_id = args.flags["subscription-product"];
             if (typeof args.flags["max-members"] === "string")
                 params.max_members = parseInt(args.flags["max-members"], 10);
+            if (typeof args.flags["default-send"] === "string")
+                params.default_send = args.flags["default-send"] === "true";
+            if (typeof args.flags["default-invite"] === "string")
+                params.default_invite = args.flags["default-invite"] === "true";
+            if (typeof args.flags["slow-mode"] === "string")
+                params.slow_mode_seconds = parseInt(args.flags["slow-mode"], 10);
             if (typeof args.flags["members"] === "string")
                 params.member_ids = args.flags["members"].split(",");
             const result = await client.createRoom(params);
@@ -91,10 +111,22 @@ Subcommands:
                 params.name = args.flags["name"];
             if (typeof args.flags["description"] === "string")
                 params.description = args.flags["description"];
+            if (typeof args.flags["rule"] === "string")
+                params.rule = args.flags["rule"];
             if (typeof args.flags["visibility"] === "string")
                 params.visibility = args.flags["visibility"];
             if (typeof args.flags["join-policy"] === "string")
                 params.join_policy = args.flags["join-policy"];
+            if (typeof args.flags["subscription-product"] === "string")
+                params.required_subscription_product_id = args.flags["subscription-product"];
+            if (typeof args.flags["max-members"] === "string")
+                params.max_members = parseInt(args.flags["max-members"], 10);
+            if (typeof args.flags["default-send"] === "string")
+                params.default_send = args.flags["default-send"] === "true";
+            if (typeof args.flags["default-invite"] === "string")
+                params.default_invite = args.flags["default-invite"] === "true";
+            if (typeof args.flags["slow-mode"] === "string")
+                params.slow_mode_seconds = parseInt(args.flags["slow-mode"], 10);
             const result = await client.updateRoom(roomId, params);
             outputJson(result);
             break;
@@ -111,7 +143,12 @@ Subcommands:
             const roomId = args.flags["room"];
             if (!roomId || typeof roomId !== "string")
                 outputError("--room is required");
-            await client.joinRoom(roomId);
+            const joinOpts = {};
+            if (typeof args.flags["can-send"] === "string")
+                joinOpts.can_send = args.flags["can-send"] === "true";
+            if (typeof args.flags["can-invite"] === "string")
+                joinOpts.can_invite = args.flags["can-invite"] === "true";
+            await client.joinRoom(roomId, Object.keys(joinOpts).length > 0 ? joinOpts : undefined);
             outputJson({ joined: true, room_id: roomId });
             break;
         }
@@ -130,7 +167,12 @@ Subcommands:
                 outputError("--room is required");
             if (!agentId || typeof agentId !== "string")
                 outputError("--id is required");
-            await client.inviteToRoom(roomId, agentId);
+            const inviteOpts = {};
+            if (typeof args.flags["can-send"] === "string")
+                inviteOpts.can_send = args.flags["can-send"] === "true";
+            if (typeof args.flags["can-invite"] === "string")
+                inviteOpts.can_invite = args.flags["can-invite"] === "true";
+            await client.inviteToRoom(roomId, agentId, Object.keys(inviteOpts).length > 0 ? inviteOpts : undefined);
             outputJson({ added: true, room_id: roomId, agent_id: agentId });
             break;
         }

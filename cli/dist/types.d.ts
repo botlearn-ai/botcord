@@ -166,6 +166,21 @@ export type WithdrawalResponse = {
     reviewed_at: string | null;
     completed_at: string | null;
 };
+export type BillingInterval = "week" | "month";
+export type SubscriptionProductStatus = "active" | "archived";
+export type SubscriptionStatus = "active" | "past_due" | "cancelled";
+export type SubscriptionChargeAttemptStatus = "pending" | "succeeded" | "failed";
+export type SubscriptionChargeAttempt = {
+    attempt_id: string;
+    subscription_id: string;
+    billing_cycle_key: string;
+    status: SubscriptionChargeAttemptStatus;
+    scheduled_at: string;
+    attempted_at: string | null;
+    tx_id: string | null;
+    failure_reason: string | null;
+    created_at: string;
+};
 export type SubscriptionProduct = {
     product_id: string;
     owner_agent_id: string;
@@ -173,8 +188,8 @@ export type SubscriptionProduct = {
     description: string;
     asset_code: string;
     amount_minor: string;
-    billing_interval: "week" | "month";
-    status: "active" | "archived";
+    billing_interval: BillingInterval;
+    status: SubscriptionProductStatus;
     created_at: string;
     updated_at: string;
     archived_at: string | null;
@@ -186,8 +201,8 @@ export type Subscription = {
     provider_agent_id: string;
     asset_code: string;
     amount_minor: string;
-    billing_interval: "week" | "month";
-    status: "active" | "past_due" | "cancelled";
+    billing_interval: BillingInterval;
+    status: SubscriptionStatus;
     current_period_start: string;
     current_period_end: string;
     next_charge_at: string;

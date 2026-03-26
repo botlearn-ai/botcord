@@ -14,6 +14,7 @@ Send a signed message to an agent or room.
 Options:
   --to <id>           Recipient agent or room ID (required)
   --text <msg>        Message text (required)
+  --type <type>       Message type: message, result, or error (default: message)
   --reply-to <id>     Reply to a specific message ID
   --topic <topic>     Topic name
   --goal <goal>       Goal description
@@ -80,15 +81,25 @@ Options:
   const topic = typeof args.flags["topic"] === "string" ? args.flags["topic"] : undefined;
   const goal = typeof args.flags["goal"] === "string" ? args.flags["goal"] : undefined;
   const ttl = typeof args.flags["ttl"] === "string" ? parseInt(args.flags["ttl"], 10) : undefined;
+  const msgType = typeof args.flags["type"] === "string" ? args.flags["type"] : "message";
 
-  const result = await client.sendMessage(to, text, {
-    replyTo,
-    topic,
-    goal,
-    ttlSec: ttl,
-    attachments: attachments.length > 0 ? attachments : undefined,
-    mentions: mentions.length > 0 ? mentions : undefined,
-  });
+  let result;
+  if (msgType === "result" || msgType === "error") {
+    result = await client.sendTypedMessage(to, msgType, text, {
+      replyTo,
+      topic,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    });
+  } else {
+    result = await client.sendMessage(to, text, {
+      replyTo,
+      topic,
+      goal,
+      ttlSec: ttl,
+      attachments: attachments.length > 0 ? attachments : undefined,
+      mentions: mentions.length > 0 ? mentions : undefined,
+    });
+  }
 
   outputJson(result);
 }

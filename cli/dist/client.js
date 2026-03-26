@@ -153,6 +153,48 @@ export class BotCordClient {
         });
         return (await resp.json());
     }
+    async sendTypedMessage(to, type, text, options) {
+        const payload = type === "error" ? { error: { code: "agent_error", message: text } } : { text };
+        if (options?.attachments && options.attachments.length > 0) {
+            payload.attachments = options.attachments;
+        }
+        const envelope = buildSignedEnvelope({
+            from: this.agentId,
+            to,
+            type,
+            payload,
+            privateKey: this.privateKey,
+            keyId: this.keyId,
+            replyTo: options?.replyTo,
+            topic: options?.topic,
+        });
+        const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
+        const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
+            method: "POST",
+            body: JSON.stringify(envelope),
+        });
+        return (await resp.json());
+    }
+    async sendSystemMessage(to, text, payload, options) {
+        const envelope = buildSignedEnvelope({
+            from: this.agentId,
+            to,
+            type: "system",
+            payload: {
+                text,
+                ...(payload || {}),
+            },
+            privateKey: this.privateKey,
+            keyId: this.keyId,
+            topic: options?.topic,
+        });
+        const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
+        const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
+            method: "POST",
+            body: JSON.stringify(envelope),
+        });
+        return (await resp.json());
+    }
     // ── Inbox ─────────────────────────────────────────────────────
     async pollInbox(options) {
         const params = new URLSearchParams();
@@ -160,6 +202,8 @@ export class BotCordClient {
             params.set("limit", String(options.limit));
         if (options?.ack)
             params.set("ack", "true");
+        if (options?.timeout)
+            params.set("timeout", String(options.timeout));
         if (options?.roomId)
             params.set("room_id", options.roomId);
         const resp = await this.hubFetch(`/hub/inbox?${params.toString()}`);
@@ -293,19 +337,19 @@ export class BotCordClient {
         const resp = await this.hubFetch(`/hub/rooms/${roomId}`);
         return (await resp.json());
     }
-    async joinRoom(roomId) {
+    async joinRoom(roomId, options) {
         await this.hubFetch(`/hub/rooms/${roomId}/members`, {
             method: "POST",
-            body: JSON.stringify({ agent_id: this.agentId }),
+            body: JSON.stringify({ agent_id: this.agentId, ...options }),
         });
     }
     async leaveRoom(roomId) {
         await this.hubFetch(`/hub/rooms/${roomId}/leave`, { method: "POST" });
     }
-    async inviteToRoom(roomId, agentId) {
+    async inviteToRoom(roomId, agentId, options) {
         await this.hubFetch(`/hub/rooms/${roomId}/members`, {
             method: "POST",
-            body: JSON.stringify({ agent_id: agentId }),
+            body: JSON.stringify({ agent_id: agentId, ...options }),
         });
     }
     async discoverRooms(name) {
@@ -427,6 +471,56 @@ export class BotCordClient {
     }
     async cancelWithdrawal(withdrawalId) {
         const resp = await this.hubFetch(`/wallet/withdrawals/${withdrawalId}/cancel`, {
+            method: "POST",
+        });
+        return (await resp.json());
+    }
+    // ── Subscriptions ───────────────────────────────────────────
+    async createSubscriptionProduct(params) {
+        const resp = await this.hubFetch("/subscriptions/products", {
+            method: "POST",
+            body: JSON.stringify(params),
+        });
+        return (await resp.json());
+    }
+    async listMySubscriptionProducts() {
+        const resp = await this.hubFetch("/subscriptions/products/me");
+        const body = await resp.json();
+        return body.products;
+    }
+    async listSubscriptionProducts() {
+        const resp = await this.hubFetch("/subscriptions/products");
+        const body = await resp.json();
+        return body.products;
+    }
+    async archiveSubscriptionProduct(productId) {
+        const resp = await this.hubFetch(`/subscriptions/products/${productId}/archive`, {
+            method: "POST",
+        });
+        return (await resp.json());
+    }
+    async subscribeToProduct(productId, idempotencyKey) {
+        const body = {};
+        if (idempotencyKey)
+            body.idempotency_key = idempotencyKey;
+        const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribe`, {
+            method: "POST",
+            body: JSON.stringify(body),
+        });
+        return (await resp.json());
+    }
+    async listMySubscriptions() {
+        const resp = await this.hubFetch("/subscriptions/me");
+        const body = await resp.json();
+        return body.subscriptions;
+    }
+    async listProductSubscribers(productId) {
+        const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribers`);
+        const body = await resp.json();
+        return body.subscriptions;
+    }
+    async cancelSubscription(subscriptionId) {
+        const resp = await this.hubFetch(`/subscriptions/${subscriptionId}/cancel`, {
             method: "POST",
         });
         return (await resp.json());
