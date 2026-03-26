@@ -10,7 +10,8 @@ Poll inbox for new messages.
 Options:
   --limit <n>       Maximum number of messages to return
   --ack             Acknowledge messages after retrieval
-  --room <room_id>  Filter by room ID`);
+  --room <room_id>  Filter by room ID
+  --timeout <sec>   Long-poll timeout in seconds`);
         return;
     }
     const creds = loadDefaultCredentials(typeof globalAgent === "string" ? globalAgent : undefined);
@@ -26,6 +27,7 @@ Options:
     const limit = typeof args.flags["limit"] === "string" ? parseInt(args.flags["limit"], 10) : undefined;
     const ack = args.flags["ack"] === true;
     const roomId = typeof args.flags["room"] === "string" ? args.flags["room"] : undefined;
-    const result = await client.pollInbox({ limit, ack, roomId });
+    const timeout = typeof args.flags["timeout"] === "string" ? parseInt(args.flags["timeout"], 10) : undefined;
+    const result = await client.pollInbox({ limit, ack, roomId, timeout });
     outputJson(result);
 }

@@ -21,6 +21,8 @@ import type {
   WalletLedgerResponse,
   TopupResponse,
   WithdrawalResponse,
+  SubscriptionProduct,
+  Subscription,
 } from "./types.js";
 
 const MAX_RETRIES = 2;
@@ -224,16 +226,75 @@ export class BotCordClient {
     return (await resp.json()) as SendResponse;
   }
 
+  async sendTypedMessage(
+    to: string,
+    type: "result" | "error",
+    text: string,
+    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] },
+  ): Promise<SendResponse> {
+    const payload: Record<string, unknown> =
+      type === "error" ? { error: { code: "agent_error", message: text } } : { text };
+    if (options?.attachments && options.attachments.length > 0) {
+      payload.attachments = options.attachments;
+    }
+
+    const envelope = buildSignedEnvelope({
+      from: this.agentId,
+      to,
+      type,
+      payload,
+      privateKey: this.privateKey,
+      keyId: this.keyId,
+      replyTo: options?.replyTo,
+      topic: options?.topic,
+    });
+
+    const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
+    const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
+      method: "POST",
+      body: JSON.stringify(envelope),
+    });
+    return (await resp.json()) as SendResponse;
+  }
+
+  async sendSystemMessage(
+    to: string,
+    text: string,
+    payload?: Record<string, unknown>,
+    options?: { topic?: string },
+  ): Promise<SendResponse> {
+    const envelope = buildSignedEnvelope({
+      from: this.agentId,
+      to,
+      type: "system",
+      payload: {
+        text,
+        ...(payload || {}),
+      },
+      privateKey: this.privateKey,
+      keyId: this.keyId,
+      topic: options?.topic,
+    });
+    const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
+    const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
+      method: "POST",
+      body: JSON.stringify(envelope),
+    });
+    return (await resp.json()) as SendResponse;
+  }
+
   // ── Inbox ─────────────────────────────────────────────────────
 
   async pollInbox(options?: {
     limit?: number;
     ack?: boolean;
+    timeout?: number;
     roomId?: string;
   }): Promise<InboxPollResponse> {
     const params = new URLSearchParams();
     if (options?.limit) params.set("limit", String(options.limit));
     if (options?.ack) params.set("ack", "true");
+    if (options?.timeout) params.set("timeout", String(options.timeout));
     if (options?.roomId) params.set("room_id", options.roomId);
 
     const resp = await this.hubFetch(`/hub/inbox?${params.toString()}`);
@@ -385,7 +446,11 @@ export class BotCordClient {
     rule?: string;
     visibility?: "private" | "public";
     join_policy?: "invite_only" | "open";
+    required_subscription_product_id?: string;
     max_members?: number;
+    default_send?: boolean;
+    default_invite?: boolean;
+    slow_mode_seconds?: number;
     member_ids?: string[];
   }): Promise<RoomInfo> {
     const resp = await this.hubFetch("/hub/rooms", {
@@ -405,10 +470,13 @@ export class BotCordClient {
     return (await resp.json()) as RoomInfo;
   }
 
-  async joinRoom(roomId: string): Promise<void> {
+  async joinRoom(
+    roomId: string,
+    options?: { can_send?: boolean; can_invite?: boolean },
+  ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/members`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: this.agentId }),
+      body: JSON.stringify({ agent_id: this.agentId, ...options }),
     });
   }
 
@@ -416,10 +484,14 @@ export class BotCordClient {
     await this.hubFetch(`/hub/rooms/${roomId}/leave`, { method: "POST" });
   }
 
-  async inviteToRoom(roomId: string, agentId: string): Promise<void> {
+  async inviteToRoom(
+    roomId: string,
+    agentId: string,
+    options?: { can_send?: boolean; can_invite?: boolean },
+  ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/members`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: agentId }),
+      body: JSON.stringify({ agent_id: agentId, ...options }),
     });
   }
 
@@ -434,9 +506,14 @@ export class BotCordClient {
     params: {
       name?: string;
       description?: string;
+      rule?: string | null;
       visibility?: string;
       join_policy?: string;
+      required_subscription_product_id?: string | null;
       max_members?: number | null;
+      default_send?: boolean;
+      default_invite?: boolean;
+      slow_mode_seconds?: number | null;
     },
   ): Promise<RoomInfo> {
     const resp = await this.hubFetch(`/hub/rooms/${roomId}`, {
@@ -557,6 +634,10 @@ export class BotCordClient {
     to_agent_id: string;
     amount_minor: string;
     memo?: string;
+    reference_type?: string;
+    reference_id?: string;
+    metadata?: Record<string, unknown>;
+    idempotency_key?: string;
   }): Promise<WalletTransaction> {
     const resp = await this.hubFetch("/wallet/transfers", {
       method: "POST",
@@ -567,6 +648,9 @@ export class BotCordClient {
 
   async createTopup(params: {
     amount_minor: string;
+    channel?: string;
+    metadata?: Record<string, unknown>;
+    idempotency_key?: string;
   }): Promise<TopupResponse> {
     const resp = await this.hubFetch("/wallet/topups", {
       method: "POST",
@@ -577,6 +661,10 @@ export class BotCordClient {
 
   async createWithdrawal(params: {
     amount_minor: string;
+    fee_minor?: string;
+    destination_type?: string;
+    destination?: Record<string, unknown>;
+    idempotency_key?: string;
   }): Promise<WithdrawalResponse> {
     const resp = await this.hubFetch("/wallet/withdrawals", {
       method: "POST",
@@ -595,6 +683,70 @@ export class BotCordClient {
       method: "POST",
     });
     return (await resp.json()) as WithdrawalResponse;
+  }
+
+  // ── Subscriptions ───────────────────────────────────────────
+
+  async createSubscriptionProduct(params: {
+    name: string;
+    description?: string;
+    amount_minor: string;
+    billing_interval: "week" | "month";
+    asset_code?: string;
+  }): Promise<SubscriptionProduct> {
+    const resp = await this.hubFetch("/subscriptions/products", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+    return (await resp.json()) as SubscriptionProduct;
+  }
+
+  async listMySubscriptionProducts(): Promise<SubscriptionProduct[]> {
+    const resp = await this.hubFetch("/subscriptions/products/me");
+    const body = await resp.json();
+    return (body as any).products as SubscriptionProduct[];
+  }
+
+  async listSubscriptionProducts(): Promise<SubscriptionProduct[]> {
+    const resp = await this.hubFetch("/subscriptions/products");
+    const body = await resp.json();
+    return (body as any).products as SubscriptionProduct[];
+  }
+
+  async archiveSubscriptionProduct(productId: string): Promise<SubscriptionProduct> {
+    const resp = await this.hubFetch(`/subscriptions/products/${productId}/archive`, {
+      method: "POST",
+    });
+    return (await resp.json()) as SubscriptionProduct;
+  }
+
+  async subscribeToProduct(productId: string, idempotencyKey?: string): Promise<Subscription> {
+    const body: Record<string, string> = {};
+    if (idempotencyKey) body.idempotency_key = idempotencyKey;
+    const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribe`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return (await resp.json()) as Subscription;
+  }
+
+  async listMySubscriptions(): Promise<Subscription[]> {
+    const resp = await this.hubFetch("/subscriptions/me");
+    const body = await resp.json();
+    return (body as any).subscriptions as Subscription[];
+  }
+
+  async listProductSubscribers(productId: string): Promise<Subscription[]> {
+    const resp = await this.hubFetch(`/subscriptions/products/${productId}/subscribers`);
+    const body = await resp.json();
+    return (body as any).subscriptions as Subscription[];
+  }
+
+  async cancelSubscription(subscriptionId: string): Promise<Subscription> {
+    const resp = await this.hubFetch(`/subscriptions/${subscriptionId}/cancel`, {
+      method: "POST",
+    });
+    return (await resp.json()) as Subscription;
   }
 
   // ── Endpoint registration ─────────────────────────────────────
