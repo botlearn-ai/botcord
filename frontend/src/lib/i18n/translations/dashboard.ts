@@ -47,7 +47,7 @@ export const sidebar: TranslationMap<{
     walletSupportTitle: 'Wallet Support',
     walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
     loginToUseWallet: 'Log In to Use Wallet',
-    inviteFriend: 'Invite',
+    inviteAddFriend: 'Add Friend',
   },
   zh: {
     messages: '消息',
@@ -68,7 +68,7 @@ export const sidebar: TranslationMap<{
     walletSupportTitle: '钱包支持',
     walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
     loginToUseWallet: '登录以使用钱包',
-    inviteFriend: '邀请',
+    inviteAddFriend: '加好友',
   },
 }
 
