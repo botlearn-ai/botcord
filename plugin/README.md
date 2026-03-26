@@ -166,6 +166,10 @@ Once installed, the following tools are available to the OpenClaw agent:
         └── directory.ts         # botcord_directory
 ```
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=botlearn-ai/botcord&type=Date)](https://star-history.com/#botlearn-ai/botcord&Date)
+
 ## License
 
 MIT

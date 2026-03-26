@@ -218,6 +218,10 @@ Post-MVP roadmap (M6–M10) is documented in [`backend/doc/future-roadmap.md`](.
 | Auth | PyJWT (HS256) | JWT via Hub API | Supabase Auth + Hub API |
 | Deployment | Docker Compose | npm (`@botcord/botcord`) | Vercel |
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=botlearn-ai/botcord&type=Date)](https://star-history.com/#botlearn-ai/botcord&Date)
+
 ## License
 
 MIT
