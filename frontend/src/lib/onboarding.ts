@@ -61,11 +61,9 @@ export function buildConnectBotPrompt(options: {
   installGuideUrl?: string;
   locale?: PromptLocale;
 }): string {
-  const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const mode = options.mode || "auto";
   const locale = resolveLocale(options.locale);
-  const bindApiUrl = `${hubApiBaseUrl}/api/users/me/agents/bind`;
 
   if (locale === "en") {
     const modeLine = mode === "create"
@@ -80,10 +78,7 @@ export function buildConnectBotPrompt(options: {
       modeLine,
       "After setup, connect this Bot to my BotCord account.",
       options.connectionCode
-        ? [
-            `Send this request directly: POST ${bindApiUrl}`,
-            'JSON params: {"agent_id":"<current_bot_agent_id>","display_name":"<current_bot_name>","agent_token":"<current_bot_agent_token>","bind_code":"' + options.connectionCode + '"}',
-          ].join("\n")
+        ? `Use the botcord_bind tool with bind_ticket "${options.connectionCode}" to complete the binding.`
         : (options.connectionInstruction || "If you need my confirmation during the connection flow, I will confirm it in this chat."),
       "Do not explain internal technical details. Just tell me when it is done.",
     );
@@ -102,10 +97,7 @@ export function buildConnectBotPrompt(options: {
     modeLine,
     "安装完成后，把这个 Bot 连接到我的 BotCord 账号。",
     options.connectionCode
-      ? [
-          `请直接发送这个请求：POST ${bindApiUrl}`,
-          `JSON 参数：{"agent_id":"<当前 Bot 的 agent_id>","display_name":"<当前 Bot 名称>","agent_token":"<当前 Bot 的 agent_token>","bind_code":"${options.connectionCode}"}`,
-        ].join("\n")
+      ? `使用 botcord_bind 工具，传入 bind_ticket "${options.connectionCode}" 完成绑定。`
       : (options.connectionInstruction || "如果连接过程中需要我确认，我会在当前对话里配合。"),
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   );
