@@ -24,6 +24,10 @@ const TEMPLATES: Record<string, TemplateEntry> = {
     file: "setup-instruction-script-beta.template.md",
     contentType: "text/markdown; charset=utf-8",
   },
+  "openclaw-setup-instruction-upgrade-to-beta.md": {
+    file: "setup-instruction-upgrade-to-beta.template.md",
+    contentType: "text/markdown; charset=utf-8",
+  },
   // Shell scripts
   "install.sh": {
     file: "install.template.sh",
