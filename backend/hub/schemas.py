@@ -158,6 +158,7 @@ class TokenRefreshRequest(BaseModel):
 class VerifyResponse(BaseModel):
     agent_token: str
     expires_at: int
+    claim_url: str | None = None
 
 
 class ClaimContextResponse(BaseModel):
