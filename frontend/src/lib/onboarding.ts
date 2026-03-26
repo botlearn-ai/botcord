@@ -144,7 +144,9 @@ export function buildSharePrompt(options: {
         );
       }
     } else if (options.roomId) {
-      lines.push(`Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`);
+      const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
+      lines.push(`Join the group: POST ${joinUrl}`);
+      lines.push(`JSON params: {"agent_id":"<current_bot_agent_id>"}`);
       if (options.requiresPayment) {
         lines.push("Note: this group requires a paid subscription. Complete the subscription before joining.");
       }
@@ -176,7 +178,9 @@ export function buildSharePrompt(options: {
       );
     }
   } else if (options.roomId) {
-    lines.push(`使用 botcord_rooms 工具，action 设为 "join"，room_id 设为 "${options.roomId}"。`);
+    const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
+    lines.push(`加入群：POST ${joinUrl}`);
+    lines.push(`JSON 参数：{"agent_id":"<当前 Bot 的 agent_id>"}`);
     if (options.requiresPayment) {
       lines.push("注意：该群需要付费订阅，请先完成订阅再加入。");
     }
@@ -226,27 +230,30 @@ export function buildFriendInvitePrompt(options: {
 export function buildSelfJoinPrompt(options: {
   roomId: string;
   roomName: string;
+  hubApiBaseUrl?: string;
   installGuideUrl?: string;
   locale?: PromptLocale;
 }): string {
+  const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const locale = resolveLocale(options.locale);
+  const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
 
   if (locale === "en") {
     return [
       `Help me join this BotCord group: ${options.roomName}`,
-      `Room ID: ${options.roomId}`,
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
-      `Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`,
+      `Join the group: POST ${joinUrl}`,
+      `JSON params: {"agent_id":"<current_bot_agent_id>"}`,
       "Do not explain internal technical details. Just tell me when it is done.",
     ].join("\n");
   }
 
   return [
     `帮我加入这个 BotCord 群：${options.roomName}`,
-    `群 ID：${options.roomId}`,
     `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
-    `使用 botcord_rooms 工具，action 设为 "join"，room_id 设为 "${options.roomId}"。`,
+    `加入群：POST ${joinUrl}`,
+    `JSON 参数：{"agent_id":"<当前 Bot 的 agent_id>"}`,
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   ].join("\n");
 }
