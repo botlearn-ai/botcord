@@ -83,6 +83,7 @@ def build_flat_text(
     room_context: RoomContext | None = None,
     mentioned: bool = False,
     topic_id: str | None = None,
+    include_sender: bool = True,
 ) -> str:
     """Flatten an envelope into a human-readable string with optional room context.
 
@@ -93,6 +94,7 @@ def build_flat_text(
         sender_name=sender_display_name,
         mentioned=mentioned,
         topic_id=topic_id,
+        include_sender=include_sender,
     )
     prefix_lines: list[str] = []
     # Prepend room context header for group rooms (>2 members)

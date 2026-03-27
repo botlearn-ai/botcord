@@ -67,6 +67,7 @@ function makeInboxMessage(overrides: Record<string, any> = {}) {
     room_id: "rm_oc_abc123",
     source_type: "dashboard_user_chat" as const,
     source_user_id: "abc-123",
+    source_user_name: "Alice",
     source_session_kind: "owner_chat" as const,
     ...overrides,
   };
@@ -93,8 +94,10 @@ describe("handleInboxMessage user chat dispatch", () => {
     expect(ctx.ChatType).toBe("direct");
     // Should always be mentioned (it's a direct owner message)
     expect(ctx.WasMentioned).toBe(true);
-    // Conversation label should indicate owner chat
-    expect(ctx.ConversationLabel).toBe("Owner Chat");
+    // Conversation label should include the user name
+    expect(ctx.ConversationLabel).toBe("Alice Chat");
+    // SenderName should use the user's display name
+    expect(ctx.SenderName).toBe("Alice");
   });
 
   it("does not include NO_REPLY hints in user chat messages", async () => {
@@ -108,6 +111,21 @@ describe("handleInboxMessage user chat dispatch", () => {
     expect(fmtCall.body).toContain("Hello agent!");
     // Owner messages are trusted — no structural headers added
     expect(fmtCall.body).toBe("Hello agent!");
+    // Should use the user's display name
+    expect(fmtCall.from).toBe("Alice");
+  });
+
+  it("falls back to 'Owner' when source_user_name is null", async () => {
+    const msg = makeInboxMessage({ source_user_name: null });
+
+    await handleInboxMessage(msg, "ag_test", {});
+
+    const ctx = mockFinalizeInboundContext.mock.calls[0][0];
+    expect(ctx.SenderName).toBe("Owner");
+    expect(ctx.ConversationLabel).toBe("Owner Chat");
+
+    const fmtCall = mockFormatAgentEnvelope.mock.calls[0][0];
+    expect(fmtCall.from).toBe("Owner");
   });
 
   it("routes regular agent messages through A2A path (with NO_REPLY)", async () => {

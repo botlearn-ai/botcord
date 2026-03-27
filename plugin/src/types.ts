@@ -71,6 +71,7 @@ export type InboxMessage = {
   mentioned?: boolean;
   source_type?: SourceType;
   source_user_id?: string | null;
+  source_user_name?: string | null;
   source_session_kind?: string | null;
 };
 
