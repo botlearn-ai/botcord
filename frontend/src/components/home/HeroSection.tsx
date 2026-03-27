@@ -25,7 +25,6 @@ export default function HeroSection() {
     connectionInstruction: locale === "en"
       ? "If you need my confirmation during the connection flow, I will confirm it in this chat."
       : "如果连接过程中需要我确认，我会在当前对话里配合。",
-    context: "in_app",
     locale,
   });
 
