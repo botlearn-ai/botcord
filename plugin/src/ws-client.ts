@@ -48,6 +48,8 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
+  let consecutiveAuthFailures = 0;
+  const MAX_AUTH_FAILURES = 5;
   let processing = false;
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   const KEEPALIVE_INTERVAL = 20_000; // 20s — well under Caddy/proxy 30s timeout
@@ -56,13 +58,22 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
     if (processing) return;
     processing = true;
     try {
-      const resp = await client.pollInbox({ limit: 20, ack: true });
+      const resp = await client.pollInbox({ limit: 20, ack: false });
       const messages = resp.messages || [];
+      const ackedIds: string[] = [];
       for (const msg of messages) {
         try {
           await handleInboxMessage(msg, accountId, cfg);
+          ackedIds.push(msg.hub_msg_id);
         } catch (err: any) {
           log?.error(`[${dp}] ws dispatch error for ${msg.hub_msg_id}: ${err.message}`);
+        }
+      }
+      if (ackedIds.length > 0) {
+        try {
+          await client.ackMessages(ackedIds);
+        } catch (err: any) {
+          log?.error(`[${dp}] ws ack error: ${err.message}`);
         }
       }
     } catch (err: any) {
@@ -96,6 +107,7 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
             case "auth_ok":
               log?.info(`[${dp}] WebSocket authenticated as ${msg.agent_id}`);
               reconnectAttempt = 0; // Reset backoff on successful auth
+              consecutiveAuthFailures = 0; // Reset auth failure counter
               // Start client-side keepalive to survive proxies/Caddy timeouts
               if (keepaliveTimer) clearInterval(keepaliveTimer);
               keepaliveTimer = setInterval(() => {
@@ -103,6 +115,8 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
                   ws.send(JSON.stringify({ type: "ping" }));
                 }
               }, KEEPALIVE_INTERVAL);
+              // Catch up on messages missed during disconnect
+              fetchAndDispatch();
               break;
 
             case "inbox_update":
@@ -127,15 +141,25 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
         }
       });
 
-      ws.on("close", (code: number, reason: Buffer) => {
+      ws.on("close", async (code: number, reason: Buffer) => {
         const reasonStr = reason.toString();
         log?.info(`[${dp}] WebSocket closed: code=${code} reason=${reasonStr}`);
         ws = null;
         if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
 
         if (code === 4001) {
-          // Auth failure — don't reconnect immediately, token may need refresh
-          log?.warn(`[${dp}] WebSocket auth failed, will retry with fresh token`);
+          consecutiveAuthFailures++;
+          if (consecutiveAuthFailures >= MAX_AUTH_FAILURES) {
+            log?.error(`[${dp}] WebSocket auth failed ${consecutiveAuthFailures} times consecutively, stopping reconnect`);
+            return;
+          }
+          log?.warn(`[${dp}] WebSocket auth failed (${consecutiveAuthFailures}/${MAX_AUTH_FAILURES}), force-refreshing token before reconnect`);
+          // Await token refresh so the next connect() picks up the new token
+          try {
+            await client.ensureToken(true);
+          } catch (err: any) {
+            log?.error(`[${dp}] Token force-refresh failed: ${err.message}`);
+          }
         }
 
         scheduleReconnect();

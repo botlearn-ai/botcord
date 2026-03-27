@@ -50,6 +50,8 @@ from hub.prompt_guard import scan_content, InjectionRisk
 from hub.schemas import (
     HistoryMessage,
     HistoryResponse,
+    InboxAckRequest,
+    InboxAckResponse,
     InboxMessage,
     InboxPollResponse,
     MessageEnvelope,
@@ -239,8 +241,21 @@ async def notify_inbox(
         for ws in list(ws_set):
             try:
                 await ws.send_json({"type": "inbox_update"})
-            except Exception:
+            except (WebSocketDisconnect, RuntimeError) as exc:
+                # Permanent disconnect — mark connection as dead
+                logger.debug(
+                    "WS send failed (disconnect) for agent=%s: %s",
+                    agent_id,
+                    exc,
+                )
                 dead.append(ws)
+            except Exception as exc:
+                # Transient or unknown error — log warning but keep connection alive
+                logger.warning(
+                    "WS send failed (transient) for agent=%s: %s",
+                    agent_id,
+                    exc,
+                )
         for ws in dead:
             ws_set.discard(ws)
         if not ws_set:
@@ -1093,7 +1108,11 @@ def _build_delivery_note(last_error: str | None) -> str | None:
 async def _fetch_queued_messages(
     db: AsyncSession, agent_id: str, limit: int, room_id: str | None = None
 ) -> list[MessageRecord]:
-    """Return up to *limit* queued messages for *agent_id*, ordered oldest first."""
+    """Return up to *limit* queued messages for *agent_id*, ordered oldest first.
+
+    Uses FOR UPDATE SKIP LOCKED on PostgreSQL to prevent concurrent polls from
+    claiming the same rows. Falls back to a plain SELECT on SQLite (tests).
+    """
     stmt = (
         select(MessageRecord)
         .where(
@@ -1105,6 +1124,10 @@ async def _fetch_queued_messages(
     )
     if room_id is not None:
         stmt = stmt.where(MessageRecord.room_id == room_id)
+    # Atomic claim: skip rows already locked by a concurrent poll
+    dialect = db.bind.dialect.name if db.bind else ""
+    if dialect == "postgresql":
+        stmt = stmt.with_for_update(skip_locked=True)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -1258,8 +1281,14 @@ async def poll_inbox(
             rec.state = MessageState.delivered
             rec.delivered_at = now
             rec.next_retry_at = None  # prevent retry loop from picking it up
+        else:
+            # Two-phase ack: mark as processing so concurrent polls skip them.
+            # Set next_retry_at as the processing timeout — the expiry loop will
+            # revert stale processing records back to queued after this time.
+            rec.state = MessageState.processing
+            rec.next_retry_at = now + datetime.timedelta(seconds=120)
 
-    if ack and messages:
+    if messages:
         await db.commit()
 
     return InboxPollResponse(
@@ -1267,6 +1296,52 @@ async def poll_inbox(
         count=len(messages),
         has_more=has_more,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /hub/inbox/ack — explicit message acknowledgement
+# ---------------------------------------------------------------------------
+
+
+@router.post("/inbox/ack", response_model=InboxAckResponse)
+async def ack_inbox_messages(
+    body: InboxAckRequest,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_dashboard_claimed_agent),
+):
+    """Acknowledge specific messages by ID, marking them as delivered."""
+    if not body.message_ids:
+        return InboxAckResponse(acked=0)
+
+    # Fetch processing (two-phase ack) or queued messages belonging to the agent
+    stmt = (
+        select(MessageRecord)
+        .where(
+            MessageRecord.receiver_id == current_agent,
+            MessageRecord.hub_msg_id.in_(body.message_ids),
+            MessageRecord.state.in_([MessageState.processing, MessageState.queued]),
+        )
+    )
+    result = await db.execute(stmt)
+    rows = list(result.scalars().all())
+
+    if not rows:
+        return InboxAckResponse(acked=0)
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for rec in rows:
+        rec.state = MessageState.delivered
+        rec.delivered_at = now
+        rec.next_retry_at = None
+
+    await db.commit()
+    logger.info(
+        "Acked %d messages for agent=%s (requested %d)",
+        len(rows),
+        current_agent,
+        len(body.message_ids),
+    )
+    return InboxAckResponse(acked=len(rows))
 
 
 # ---------------------------------------------------------------------------

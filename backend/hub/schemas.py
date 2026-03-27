@@ -335,6 +335,14 @@ class InboxPollResponse(BaseModel):
     has_more: bool
 
 
+class InboxAckRequest(BaseModel):
+    message_ids: list[str]
+
+
+class InboxAckResponse(BaseModel):
+    acked: int
+
+
 # --- History schemas ---
 
 

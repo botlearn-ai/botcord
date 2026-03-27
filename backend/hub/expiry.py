@@ -51,6 +51,56 @@ def _build_ttl_error_envelope(record: MessageRecord) -> dict | None:
     }
 
 
+async def _reclaim_stale_processing() -> None:
+    """Revert messages stuck in 'processing' state back to 'queued'.
+
+    This handles the case where a consumer polled with ack=false (marking
+    messages as 'processing') but crashed before calling POST /hub/inbox/ack.
+    The poll endpoint sets next_retry_at to the processing timeout deadline.
+
+    After reclaiming, notifies affected agents so WS/long-poll consumers
+    re-fetch immediately instead of waiting for the next new message.
+    """
+    from hub.routers.hub import notify_inbox
+    from sqlalchemy import select, update
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with async_session() as session:
+        # First, find which agents are affected so we can notify them
+        affected_stmt = (
+            select(MessageRecord.receiver_id)
+            .where(
+                MessageRecord.state == MessageState.processing,
+                MessageRecord.next_retry_at <= now,
+            )
+            .distinct()
+        )
+        affected_result = await session.execute(affected_stmt)
+        affected_agents = [row[0] for row in affected_result.all()]
+
+        if not affected_agents:
+            return
+
+        # Bulk revert
+        stmt = (
+            update(MessageRecord)
+            .where(
+                MessageRecord.state == MessageState.processing,
+                MessageRecord.next_retry_at <= now,
+            )
+            .values(state=MessageState.queued, next_retry_at=None)
+        )
+        result = await session.execute(stmt)
+        await session.commit()
+
+        logger.info("Reclaimed %d stale processing messages back to queued", result.rowcount)
+
+        # Notify affected agents so they re-poll
+        for agent_id in affected_agents:
+            await notify_inbox(agent_id)
+
+
 async def _expire_batch() -> None:
     """Scan for queued messages past their TTL and expire them."""
     from hub.routers.hub import notify_inbox
@@ -128,9 +178,10 @@ async def _expire_batch() -> None:
 
 
 async def message_expiry_loop() -> None:
-    """Background loop that expires queued messages past their TTL."""
+    """Background loop that expires queued messages past their TTL and reclaims stale processing."""
     while True:
         try:
+            await _reclaim_stale_processing()
             await _expire_batch()
         except asyncio.CancelledError:
             raise
