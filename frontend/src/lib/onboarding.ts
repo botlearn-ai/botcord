@@ -15,6 +15,30 @@ function resolveLocale(locale?: PromptLocale): PromptLocale {
   return locale === "en" ? "en" : "zh";
 }
 
+function buildInviteRedeemRequestLines(
+  redeemUrl: string,
+  locale: PromptLocale,
+  options?: { requiresPayment?: boolean },
+): string[] {
+  if (locale === "en") {
+    return [
+      options?.requiresPayment
+        ? `Accept the invite (payment may be required): POST ${redeemUrl}`
+        : `Accept the invite: POST ${redeemUrl}`,
+      "Required headers: Authorization: Bearer <BotCord access token>, X-Active-Agent: <current_bot_agent_id>",
+      "JSON params: none",
+    ];
+  }
+
+  return [
+    options?.requiresPayment
+      ? `接受邀请（可能需要付费）：POST ${redeemUrl}`
+      : `接受邀请：POST ${redeemUrl}`,
+    "请求头参数：Authorization: Bearer <BotCord access token>, X-Active-Agent: <当前 Bot 的 agent_id>",
+    "JSON 参数：无",
+  ];
+}
+
 export function getBotcordWebAppUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (envUrl) return trimTrailingSlash(envUrl);
@@ -129,11 +153,9 @@ export function buildSharePrompt(options: {
       const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
       lines.push(`Preview invite details: GET ${previewUrl}`);
       if (!options.isReadOnly) {
-        lines.push(
-          options.requiresPayment
-            ? `Accept the invite (payment may be required): POST ${redeemUrl}`
-            : `Accept the invite: POST ${redeemUrl}`,
-        );
+        lines.push(...buildInviteRedeemRequestLines(redeemUrl, locale, {
+          requiresPayment: options.requiresPayment,
+        }));
       }
     } else if (options.roomId) {
       const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
@@ -163,11 +185,9 @@ export function buildSharePrompt(options: {
     const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
     lines.push(`查看邀请详情：GET ${previewUrl}`);
     if (!options.isReadOnly) {
-      lines.push(
-        options.requiresPayment
-          ? `接受邀请（可能需要付费）：POST ${redeemUrl}`
-          : `接受邀请：POST ${redeemUrl}`,
-      );
+      lines.push(...buildInviteRedeemRequestLines(redeemUrl, locale, {
+        requiresPayment: options.requiresPayment,
+      }));
     }
   } else if (options.roomId) {
     const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
@@ -204,7 +224,7 @@ export function buildFriendInvitePrompt(options: {
     return [
       "This is a BotCord friend invite.",
       `Preview invite details: GET ${previewApiUrl}`,
-      `Accept the invite: POST ${redeemApiUrl}`,
+      ...buildInviteRedeemRequestLines(redeemApiUrl, locale),
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "After accepting, just confirm it is done. Do not explain internal technical details.",
     ].join("\n");
@@ -213,7 +233,7 @@ export function buildFriendInvitePrompt(options: {
   return [
     "这是一个 BotCord 好友邀请。",
     `查看邀请详情：GET ${previewApiUrl}`,
-    `接受邀请：POST ${redeemApiUrl}`,
+    ...buildInviteRedeemRequestLines(redeemApiUrl, locale),
     `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "接受后直接告诉我结果，不要解释内部技术细节。",
   ].join("\n");

@@ -12,6 +12,7 @@
 `fonts.ts`: 字体加载与字体变量入口。
 `id-generators.ts`: 前端本地生成的辅助 ID 逻辑。
 `onboarding.ts`: 连接 Bot、真实邀请链接、复制 Prompt 的统一模板层，负责隐藏技术词并禁止把内部页面路由伪装成对外入口。
+`onboarding.test.ts`: 邀请与接入 Prompt 的回归测试，锁定请求头、JSON 参数与关键文案契约。
 
 法则: 成员完整·一行一文件·父级链接·技术词前置
 
