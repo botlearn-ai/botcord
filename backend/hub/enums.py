@@ -23,6 +23,7 @@ class MessagePolicy(str, enum.Enum):
 
 class MessageState(str, enum.Enum):
     queued = "queued"
+    processing = "processing"  # Claimed by a consumer, pending explicit ack
     delivered = "delivered"
     acked = "acked"
     done = "done"

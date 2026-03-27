@@ -27,14 +27,24 @@ export function startPoller(opts: PollerOptions): { stop: () => void } {
     if (!running || abortSignal?.aborted) return;
 
     try {
-      const resp = await client.pollInbox({ limit: 20, ack: true });
+      const resp = await client.pollInbox({ limit: 20, ack: false });
       const messages = resp.messages || [];
+      const ackedIds: string[] = [];
 
       for (const msg of messages) {
         try {
           await handleInboxMessage(msg, accountId, cfg);
+          ackedIds.push(msg.hub_msg_id);
         } catch (err: any) {
           log?.error(`[${dp}] failed to dispatch message ${msg.hub_msg_id}: ${err.message}`);
+        }
+      }
+
+      if (ackedIds.length > 0) {
+        try {
+          await client.ackMessages(ackedIds);
+        } catch (err: any) {
+          log?.error(`[${dp}] ack error: ${err.message}`);
         }
       }
     } catch (err: any) {

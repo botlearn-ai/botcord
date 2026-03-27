@@ -59,8 +59,8 @@ export class BotCordClient {
 
   // ── Token management ──────────────────────────────────────────
 
-  async ensureToken(): Promise<string> {
-    if (this.jwtToken && Date.now() / 1000 < this.tokenExpiresAt - 60) {
+  async ensureToken(forceRefresh = false): Promise<string> {
+    if (!forceRefresh && this.jwtToken && Date.now() / 1000 < this.tokenExpiresAt - 60) {
       return this.jwtToken;
     }
     return this.refreshToken();
@@ -300,6 +300,14 @@ export class BotCordClient {
 
     const resp = await this.hubFetch(`/hub/inbox?${params.toString()}`);
     return (await resp.json()) as InboxPollResponse;
+  }
+
+  async ackMessages(messageIds: string[]): Promise<void> {
+    if (messageIds.length === 0) return;
+    await this.hubFetch("/hub/inbox/ack", {
+      method: "POST",
+      body: JSON.stringify({ message_ids: messageIds }),
+    });
   }
 
   async getHistory(options?: {
