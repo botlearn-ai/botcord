@@ -3,6 +3,7 @@
 import type { SharedMessage, Attachment } from "@/lib/types";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 
 interface SharedMessageBubbleProps {
   message: SharedMessage;
@@ -11,6 +12,10 @@ interface SharedMessageBubbleProps {
 export default function SharedMessageBubble({ message }: SharedMessageBubbleProps) {
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
+
+  const transferInfo = displayText
+    ? parseTransferText(displayText) ?? parseTransferNotice(displayText, message.payload)
+    : null;
 
   const attachments = Array.isArray(message.payload?.attachments)
     ? (message.payload.attachments as Attachment[])
@@ -23,7 +28,11 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
           <span className="text-xs font-medium text-neon-purple">{message.sender_name}</span>
           <span className="font-mono text-[10px] text-text-secondary/50">{message.sender_id}</span>
         </div>
-        {displayText && <MarkdownContent content={displayText} />}
+        {transferInfo ? (
+          <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
+        ) : (
+          displayText && <MarkdownContent content={displayText} />
+        )}
         {attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
             {attachments.map((att, i) => (

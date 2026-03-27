@@ -7,6 +7,7 @@ import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 
 interface MessageBubbleProps {
@@ -79,6 +80,10 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
 
+  const transferInfo = displayText
+    ? parseTransferText(displayText) ?? parseTransferNotice(displayText, message.payload)
+    : null;
+
   const attachments = Array.isArray(message.payload?.attachments)
     ? (message.payload.attachments as Attachment[])
     : [];
@@ -125,7 +130,11 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
           </div>
         )}
 
-        {displayText && <MarkdownContent content={displayText} />}
+        {transferInfo ? (
+          <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
+        ) : (
+          displayText && <MarkdownContent content={displayText} />
+        )}
 
         {attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
