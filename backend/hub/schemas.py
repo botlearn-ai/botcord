@@ -47,8 +47,14 @@ class MessageEnvelope(BaseModel):
         sender_name: str | None = None,
         mentioned: bool = False,
         topic_id: str | None = None,
+        include_sender: bool = True,
     ) -> str:
-        """Flatten envelope into a human-readable string that an AI agent can understand."""
+        """Flatten envelope into a human-readable string that an AI agent can understand.
+
+        When *include_sender* is False the sender prefix (``who says:``) is
+        omitted for normal messages — useful for owner/dashboard-user-chat where
+        the plugin already knows the sender context.
+        """
         p = self.payload
         who = f"{sender_name} ({self.from_})" if sender_name else self.from_
 
@@ -67,7 +73,7 @@ class MessageEnvelope(BaseModel):
                     size_str = f", {size} bytes" if size else ""
                     att_lines.append(f"  📎 {name}{size_str}: {url}")
                 body = (body or "") + "\n【Attachments】\n" + "\n".join(att_lines)
-            main = f"{who} says: {body}"
+            main = f"{who} says: {body}" if include_sender else body
 
         elif self.type == MessageType.contact_request:
             msg = p.get("message", "")
@@ -319,6 +325,7 @@ class InboxMessage(BaseModel):
     mentioned: bool = False
     source_type: str = "agent"
     source_user_id: str | None = None
+    source_user_name: str | None = None
     source_session_kind: str | None = None
 
 

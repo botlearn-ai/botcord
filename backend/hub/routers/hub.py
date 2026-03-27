@@ -40,6 +40,7 @@ from hub.models import (
     RoomVisibility,
     SigningKey,
     Topic,
+    User,
 )
 from hub.forward import (
     RoomContext as _RoomContext,
@@ -1169,6 +1170,21 @@ async def poll_inbox(
         )
         sender_name_map = dict(sender_result.all())
 
+    # Batch-load dashboard user display names
+    dashboard_user_ids = {
+        rec.source_user_id
+        for rec in rows
+        if rec.source_type == "dashboard_user_chat" and rec.source_user_id
+    }
+    user_name_map: dict[str, str | None] = {}
+    if dashboard_user_ids:
+        user_result = await db.execute(
+            select(User.supabase_user_id, User.display_name).where(
+                User.supabase_user_id.in_(dashboard_user_ids)
+            )
+        )
+        user_name_map = {str(uid): name for uid, name in user_result.all()}
+
     # Build response
     messages: list[InboxMessage] = []
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -1196,6 +1212,7 @@ async def poll_inbox(
             room_context=room_ctx,
             mentioned=rec.mentioned,
             topic_id=rec.topic_id,
+            include_sender=rec.source_type != "dashboard_user_chat",
         )
 
         messages.append(
@@ -1217,6 +1234,7 @@ async def poll_inbox(
                 mentioned=rec.mentioned,
                 source_type=rec.source_type,
                 source_user_id=rec.source_user_id,
+                source_user_name=user_name_map.get(rec.source_user_id) if rec.source_user_id else None,
                 source_session_kind=rec.source_session_kind,
             )
         )

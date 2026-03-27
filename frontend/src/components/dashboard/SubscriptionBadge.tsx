@@ -29,6 +29,7 @@ interface SubscriptionBadgeProps {
 }
 
 const productCache = new Map<string, SubscriptionProduct>();
+const INSUFFICIENT_BALANCE_RE = /insufficient|balance|fund|not enough/i;
 
 const INSUFFICIENT_BALANCE_RE = /insufficient|balance|fund|not enough/i;
 const ALREADY_SUBSCRIBED_RE = /already.+subscri/i;
@@ -57,6 +58,7 @@ export default function SubscriptionBadge({
   const [loading, setLoading] = useState(false);
   const [productData, setProductData] = useState<SubscriptionProduct | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<"generic" | "insufficient_balance">("generic");
   const [subscribing, setSubscribing] = useState(false);
 
   if (!productId) return null;
@@ -92,6 +94,13 @@ export default function SubscriptionBadge({
     }
   };
   const alreadySubscribed = subscription?.status === "active";
+  const isInsufficientBalance = errorKind === "insufficient_balance";
+
+  const handleOpenWallet = () => {
+    setShowModal(false);
+    setSidebarTab("wallet");
+    router.push("/chats/wallet");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +140,7 @@ export default function SubscriptionBadge({
     setShowModal(true);
     setLoading(true);
     setError(null);
+    setErrorKind("generic");
     try {
       await loadData();
     } catch (err) {
@@ -154,6 +164,7 @@ export default function SubscriptionBadge({
 
     setSubscribing(true);
     setError(null);
+    setErrorKind("generic");
     try {
       if (!alreadySubscribed) {
         await subscribeToProduct(productId);
@@ -169,6 +180,7 @@ export default function SubscriptionBadge({
       setShowModal(false);
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
+      setErrorKind(INSUFFICIENT_BALANCE_RE.test(raw) ? "insufficient_balance" : "generic");
       setError(mapApiErrorToI18n(raw, t));
     } finally {
       setSubscribing(false);
@@ -296,7 +308,17 @@ export default function SubscriptionBadge({
                       <line x1="12" y1="8" x2="12" y2="12" />
                       <line x1="12" y1="16" x2="12.01" y2="16" />
                     </svg>
-                    <span>{error}</span>
+                    <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                      <span>{error}</span>
+                      {isInsufficientBalance ? (
+                        <button
+                          onClick={handleOpenWallet}
+                          className="shrink-0 rounded border border-red-400/40 bg-red-400/10 px-2.5 py-1 text-xs font-semibold text-red-200 transition-colors hover:bg-red-400/20"
+                        >
+                          Top up wallet
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
 

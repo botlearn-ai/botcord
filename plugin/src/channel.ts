@@ -51,6 +51,7 @@ import type {
 // Heavy deps (client, poller, ws-client) are lazy-loaded so that setup-entry.ts
 // can import botCordPlugin without pulling in ws at module level.
 import { getBotCordRuntime } from "./runtime.js";
+import { attachTokenPersistence } from "./credentials.js";
 const lazyClient = () => import("./client.js").then((m) => m.BotCordClient);
 const lazyPoller = () => import("./poller.js");
 const lazyWsClient = () => import("./ws-client.js");
@@ -325,6 +326,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       try {
         const Client = await lazyClient();
         const client = new Client(account.config);
+        attachTokenPersistence(client, account.config);
         const info = await client.resolve(account.agentId);
         return { kind: "user", id: info.agent_id, name: info.display_name || info.agent_id };
       } catch {
@@ -337,6 +339,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       try {
         const Client = await lazyClient();
         const client = new Client(account.config);
+        attachTokenPersistence(client, account.config);
         const contacts = await client.listContacts();
         const q = query?.trim().toLowerCase() ?? "";
         return contacts
@@ -362,6 +365,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       try {
         const Client = await lazyClient();
         const client = new Client(account.config);
+        attachTokenPersistence(client, account.config);
         const rooms = await client.listMyRooms();
         const q = query?.trim().toLowerCase() ?? "";
         return rooms
@@ -382,6 +386,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       const account = resolveBotCordAccount({ cfg: cfg as CoreConfig, accountId: accountId ?? undefined });
       const Client = await lazyClient();
       const client = new Client(account.config);
+      attachTokenPersistence(client, account.config);
       const result = await client.sendMessage(to, text);
       return {
         channel: "botcord",
@@ -393,6 +398,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       const account = resolveBotCordAccount({ cfg: cfg as CoreConfig, accountId: accountId ?? undefined });
       const Client = await lazyClient();
       const client = new Client(account.config);
+      attachTokenPersistence(client, account.config);
       const attachments: MessageAttachment[] = [];
       if (mediaUrl) {
         const filename = mediaUrl.split("/").pop() || "attachment";
@@ -441,6 +447,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
 
       const Client = await lazyClient();
       const client = new Client(account.config);
+      attachTokenPersistence(client, account.config);
       const mode = account.deliveryMode || "websocket";
 
       if (mode === "websocket") {

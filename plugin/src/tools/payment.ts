@@ -7,6 +7,7 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
+import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import { formatCoinAmount } from "./coin-format.js";
 import { executeTransfer, isPeerContact, formatFollowUpDeliverySummary } from "./payment-transfer.js";
@@ -302,6 +303,7 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
       }
 
       const client = new BotCordClient(acct);
+      attachTokenPersistence(client, acct);
 
       try {
         switch (args.action) {

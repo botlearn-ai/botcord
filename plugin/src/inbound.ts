@@ -4,6 +4,7 @@
  */
 import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
+import { attachTokenPersistence } from "./credentials.js";
 import { buildSessionKey } from "./session-key.js";
 import { readFileSync } from "node:fs";
 
@@ -143,7 +144,7 @@ async function handleDashboardUserChat(
   const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(cfg);
   const formattedBody = core.channel.reply.formatAgentEnvelope({
     channel: "BotCord",
-    from: "Owner",
+    from: msg.source_user_name || "Owner",
     timestamp: new Date(),
     envelope: envelopeOptions,
     body: content,
@@ -159,7 +160,7 @@ async function handleDashboardUserChat(
     SessionKey: route.sessionKey || sessionKey,
     AccountId: accountId,
     ChatType: "direct",
-    SenderName: "Owner",
+    SenderName: msg.source_user_name || "Owner",
     SenderId: senderId,
     Provider: "botcord" as const,
     Surface: "botcord" as const,
@@ -169,12 +170,13 @@ async function handleDashboardUserChat(
     CommandAuthorized: true,
     OriginatingChannel: "botcord" as const,
     OriginatingTo: to,
-    ConversationLabel: "Owner Chat",
+    ConversationLabel: msg.source_user_name ? `${msg.source_user_name} Chat` : "Owner Chat",
   });
 
   // Create the reply dispatcher that sends replies back to the chat room
   const acct = resolveAccountConfig(cfg, accountId);
   const client = new BotCordClient(acct);
+  attachTokenPersistence(client, acct);
   const replyDispatcher = createBotCordReplyDispatcher({
     client,
     replyTarget,
