@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 from collections import defaultdict, deque
 
@@ -48,6 +50,8 @@ from hub.schemas import (
     TransferRoomOwnerRequest,
     UpdateRoomRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/hub/rooms", tags=["rooms"])
 internal_router = APIRouter(prefix="/internal/rooms", tags=["rooms-internal"])
@@ -306,6 +310,39 @@ async def _ensure_existing_members_match_subscription_requirement(
             status_code=400,
             detail="All existing members must have an active subscription for this room",
         )
+
+
+# ---------------------------------------------------------------------------
+# Realtime broadcast helpers for room membership changes
+# ---------------------------------------------------------------------------
+
+
+async def _notify_room_member_change(
+    db: AsyncSession,
+    *,
+    event_type: str,
+    room_id: str,
+    changed_agent_id: str,
+    notify_agent_ids: list[str],
+) -> None:
+    """Broadcast a room membership event to each agent in *notify_agent_ids*.
+
+    Uses the same ``build_agent_realtime_event`` / ``notify_inbox`` pipeline
+    that message and contact events use, so the frontend Supabase channel
+    picks the event up automatically.
+    """
+    from hub.routers.hub import build_agent_realtime_event, notify_inbox
+
+    async def _send(agent_id: str) -> None:
+        event = build_agent_realtime_event(
+            type=event_type,
+            agent_id=agent_id,
+            room_id=room_id,
+            ext={"changed_agent_id": changed_agent_id},
+        )
+        await notify_inbox(agent_id, db=db, realtime_event=event)
+
+    await asyncio.gather(*[_send(aid) for aid in notify_agent_ids], return_exceptions=True)
 
 
 # ---------------------------------------------------------------------------
@@ -736,6 +773,17 @@ async def add_member(
 
     await db.commit()
     room = await _load_room(db, room.room_id, fresh=True)
+
+    # Notify the new member and all existing members about the addition
+    all_member_ids = [m.agent_id for m in room.members]
+    await _notify_room_member_change(
+        db,
+        event_type="room_member_added",
+        room_id=room.room_id,
+        changed_agent_id=target_agent_id,
+        notify_agent_ids=all_member_ids,
+    )
+
     return _build_room_response(room)
 
 
@@ -764,10 +812,22 @@ async def remove_member(
     if target.role == RoomRole.admin and caller.role != RoomRole.owner:
         raise I18nHTTPException(status_code=403, message_key="only_owner_can_remove_admins")
 
+    removed_agent_id = target.agent_id
     await db.delete(target)
     await db.commit()
 
     room = await _load_room(db, room.room_id, fresh=True)
+
+    # Notify the removed member and all remaining members
+    remaining_ids = [m.agent_id for m in room.members]
+    await _notify_room_member_change(
+        db,
+        event_type="room_member_removed",
+        room_id=room.room_id,
+        changed_agent_id=removed_agent_id,
+        notify_agent_ids=[removed_agent_id] + remaining_ids,
+    )
+
     return _build_room_response(room)
 
 
@@ -784,8 +844,21 @@ async def leave_room(
     if member.role == RoomRole.owner:
         raise I18nHTTPException(status_code=400, message_key="owner_cannot_leave")
 
+    # Capture remaining member IDs before deleting
+    remaining_ids = [m.agent_id for m in room.members if m.agent_id != current_agent]
+
     await db.delete(member)
     await db.commit()
+
+    # Notify remaining members about the departure
+    await _notify_room_member_change(
+        db,
+        event_type="room_member_removed",
+        room_id=room.room_id,
+        changed_agent_id=current_agent,
+        notify_agent_ids=remaining_ids,
+    )
+
     return {"ok": True}
 
 
