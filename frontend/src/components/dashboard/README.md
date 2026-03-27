@@ -69,6 +69,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-27: `SubscriptionBadge.tsx` 在订阅失败且命中余额不足时，直接在错误提示内提供 `Top up wallet` 入口并跳转 `/chats/wallet`，结束“知道该充值但没有出口”的坏味道。
 - 2026-03-22: `RoomHeader.tsx` 在未加入公开房间时于右侧提供 join 入口；普通房直接加入，付费房打开订阅模态；`AgentBrowser.tsx` 在成员面板底部新增 `Leave Room` 与 `Cancel Subscription`。
 - 2026-03-26: `ChatPane.tsx` 在联系人视图新增 `Invite friend` 入口，配合 `FriendInviteModal.tsx` 直接生成好友邀请链接与 Prompt，结束“后端已支持但前端无入口”的坏味道。
 - 2026-03-26: `AgentBindDialog.tsx` 改为优先发放短期 `bind_code`；Prompt 只暴露短码，真实 `bind_ticket` 留在后端，插件与 `/api/users/me/agents/bind` 统一兼容短码直连。

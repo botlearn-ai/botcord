@@ -27,6 +27,7 @@ interface SubscriptionBadgeProps {
 }
 
 const productCache = new Map<string, SubscriptionProduct>();
+const INSUFFICIENT_BALANCE_RE = /insufficient|balance|fund|not enough/i;
 
 export default function SubscriptionBadge({
   productId,
@@ -41,6 +42,7 @@ export default function SubscriptionBadge({
   const [loading, setLoading] = useState(false);
   const [productData, setProductData] = useState<SubscriptionProduct | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<"generic" | "insufficient_balance">("generic");
   const [subscribing, setSubscribing] = useState(false);
 
   if (!productId) return null;
@@ -76,6 +78,13 @@ export default function SubscriptionBadge({
     }
   };
   const alreadySubscribed = subscription?.status === "active";
+  const isInsufficientBalance = errorKind === "insufficient_balance";
+
+  const handleOpenWallet = () => {
+    setShowModal(false);
+    setSidebarTab("wallet");
+    router.push("/chats/wallet");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +124,7 @@ export default function SubscriptionBadge({
     setShowModal(true);
     setLoading(true);
     setError(null);
+    setErrorKind("generic");
     try {
       await loadData();
     } catch (err) {
@@ -137,6 +147,7 @@ export default function SubscriptionBadge({
 
     setSubscribing(true);
     setError(null);
+    setErrorKind("generic");
     try {
       if (!alreadySubscribed) {
         await subscribeToProduct(productId);
@@ -152,7 +163,9 @@ export default function SubscriptionBadge({
       }
       setShowModal(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to subscribe");
+      const raw = err instanceof Error ? err.message : "";
+      setErrorKind(INSUFFICIENT_BALANCE_RE.test(raw) ? "insufficient_balance" : "generic");
+      setError(raw || "Failed to subscribe");
     } finally {
       setSubscribing(false);
     }
@@ -273,8 +286,23 @@ export default function SubscriptionBadge({
                 ) : null}
 
                 {error ? (
-                  <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                    {error}
+                  <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400 animate-[shake_0.3s_ease-in-out]">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                      <span>{error}</span>
+                      {isInsufficientBalance ? (
+                        <button
+                          onClick={handleOpenWallet}
+                          className="shrink-0 rounded border border-red-400/40 bg-red-400/10 px-2.5 py-1 text-xs font-semibold text-red-200 transition-colors hover:bg-red-400/20"
+                        >
+                          Top up wallet
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
 
