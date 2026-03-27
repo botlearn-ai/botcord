@@ -264,32 +264,26 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       pollNewMessages: async (roomId: string, opts) => {
         if (roomPollInFlight.has(roomId)) return;
         roomPollInFlight.add(roomId);
-
-        const existing = get().messages[roomId];
-
-        if (!existing || existing.length === 0) {
-          try {
-            await get().loadRoomMessages(roomId);
-          } finally {
-            roomPollInFlight.delete(roomId);
-          }
-          return;
-        }
-
-        const newest = existing[existing.length - 1];
         try {
-          const result = await api.getRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 });
-          if (result.messages.length > 0) {
-            const newMsgs = result.messages.reverse();
-            set((state) => {
-              const current = state.messages[roomId] || [];
-              const existingIds = new Set(current.map((message) => message.hub_msg_id));
-              const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
-              if (deduped.length === 0) return state;
-              return {
-                messages: { ...state.messages, [roomId]: [...current, ...deduped] },
-              };
-            });
+          const existing = get().messages[roomId];
+
+          if (!existing || existing.length === 0) {
+            await get().loadRoomMessages(roomId);
+          } else {
+            const newest = existing[existing.length - 1];
+            const result = await api.getRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 });
+            if (result.messages.length > 0) {
+              const newMsgs = result.messages.reverse();
+              set((state) => {
+                const current = state.messages[roomId] || [];
+                const existingIds = new Set(current.map((message) => message.hub_msg_id));
+                const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
+                if (deduped.length === 0) return state;
+                return {
+                  messages: { ...state.messages, [roomId]: [...current, ...deduped] },
+                };
+              });
+            }
           }
         } catch (error) {
           console.error("[ChatStore] Failed to poll new messages:", error);
