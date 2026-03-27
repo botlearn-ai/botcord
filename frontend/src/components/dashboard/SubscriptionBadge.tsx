@@ -30,8 +30,6 @@ interface SubscriptionBadgeProps {
 
 const productCache = new Map<string, SubscriptionProduct>();
 const INSUFFICIENT_BALANCE_RE = /insufficient|balance|fund|not enough/i;
-
-const INSUFFICIENT_BALANCE_RE = /insufficient|balance|fund|not enough/i;
 const ALREADY_SUBSCRIBED_RE = /already.+subscri/i;
 
 function mapApiErrorToI18n(

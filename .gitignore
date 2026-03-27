@@ -20,3 +20,4 @@ backend/skills-lock.json
 # CLI dependencies
 cli/node_modules/
 cli/package-lock.json
+cli/dist/
