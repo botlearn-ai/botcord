@@ -33,6 +33,7 @@ Subcommands:
                   [--max-members <n>] [--default-send <true|false>]
                   [--default-invite <true|false>] [--slow-mode <seconds>]
                   [--subscription-product <product_id>]
+  members       List room members --room <id>
   dissolve      Dissolve a room
   join          Join a room --room <id> [--can-send <true|false>] [--can-invite <true|false>]
   leave         Leave a room
@@ -128,6 +129,14 @@ Subcommands:
             if (typeof args.flags["slow-mode"] === "string")
                 params.slow_mode_seconds = parseInt(args.flags["slow-mode"], 10);
             const result = await client.updateRoom(roomId, params);
+            outputJson(result);
+            break;
+        }
+        case "members": {
+            const roomId = args.flags["room"];
+            if (!roomId || typeof roomId !== "string")
+                outputError("--room is required");
+            const result = await client.getRoomMembers(roomId);
             outputJson(result);
             break;
         }
