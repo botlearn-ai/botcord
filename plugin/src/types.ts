@@ -42,6 +42,8 @@ export type BotCordAccountConfig = {
   keyId?: string;
   privateKey?: string;
   publicKey?: string;
+  token?: string;
+  tokenExpiresAt?: number;
   deliveryMode?: "polling" | "websocket";
   pollIntervalMs?: number;
   allowFrom?: string[];

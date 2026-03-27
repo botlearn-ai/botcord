@@ -7,6 +7,7 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
+import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 
 export function createContactsTool() {
@@ -65,6 +66,7 @@ export function createContactsTool() {
       }
 
       const client = new BotCordClient(acct);
+      attachTokenPersistence(client, acct);
 
       try {
         switch (args.action) {

@@ -36,6 +36,13 @@ export class BotCordClient {
   private jwtToken: string | null = null;
   private tokenExpiresAt = 0;
 
+  /**
+   * Called synchronously after a token refresh so credentials can be persisted.
+   * Must be a synchronous function — async persistence should be dispatched
+   * internally (e.g. fire-and-forget) by the callback itself.
+   */
+  onTokenRefresh?: (token: string, expiresAt: number) => void;
+
   constructor(config: BotCordAccountConfig) {
     if (!config.hubUrl || !config.agentId || !config.keyId || !config.privateKey) {
       throw new Error("BotCord client requires hubUrl, agentId, keyId, and privateKey");
@@ -44,6 +51,10 @@ export class BotCordClient {
     this.agentId = config.agentId;
     this.keyId = config.keyId;
     this.privateKey = config.privateKey;
+    if (config.token) {
+      this.jwtToken = config.token;
+      this.tokenExpiresAt = config.tokenExpiresAt ?? 0;
+    }
   }
 
   // ── Token management ──────────────────────────────────────────
@@ -81,13 +92,18 @@ export class BotCordClient {
     this.jwtToken = data.agent_token || data.token!;
     // Default 24h expiry if not provided
     this.tokenExpiresAt = data.expires_at ?? Date.now() / 1000 + 86400;
+    try {
+      this.onTokenRefresh?.(this.jwtToken, this.tokenExpiresAt);
+    } catch {
+      // Token persistence is best-effort — never block the request path
+    }
     return this.jwtToken;
   }
 
   // ── Authenticated fetch with rate-limit retry ─────────────────
 
   private async hubFetch(path: string, init: RequestInit = {}): Promise<Response> {
-    const token = await this.ensureToken();
+    let token = await this.ensureToken();
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const headers: Record<string, string> = {
@@ -107,9 +123,9 @@ export class BotCordClient {
 
       if (resp.ok) return resp;
 
-      // Token expired — refresh and retry
+      // Token expired — refresh and retry with the new token
       if (resp.status === 401 && attempt === 0) {
-        await this.refreshToken();
+        token = await this.refreshToken();
         continue;
       }
 

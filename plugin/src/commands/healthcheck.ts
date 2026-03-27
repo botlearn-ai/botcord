@@ -9,6 +9,7 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
+import { attachTokenPersistence } from "../credentials.js";
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 
@@ -97,6 +98,7 @@ export function createHealthcheckCommand() {
       let client: BotCordClient;
       try {
         client = new BotCordClient(acct);
+        attachTokenPersistence(client, acct);
       } catch (err: any) {
         error(err.message);
         lines.push("", `── Summary ──`);

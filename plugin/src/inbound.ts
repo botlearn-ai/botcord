@@ -4,6 +4,7 @@
  */
 import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
+import { attachTokenPersistence } from "./credentials.js";
 import { buildSessionKey } from "./session-key.js";
 import { readFileSync } from "node:fs";
 
@@ -175,6 +176,7 @@ async function handleDashboardUserChat(
   // Create the reply dispatcher that sends replies back to the chat room
   const acct = resolveAccountConfig(cfg, accountId);
   const client = new BotCordClient(acct);
+  attachTokenPersistence(client, acct);
   const replyDispatcher = createBotCordReplyDispatcher({
     client,
     replyTarget,

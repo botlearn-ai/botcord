@@ -10,6 +10,7 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
+import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 
 const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
@@ -32,6 +33,7 @@ export async function executeBind(
   }
 
   const client = new BotCordClient(acct);
+  attachTokenPersistence(client, acct);
 
   try {
     const agentToken = await client.ensureToken();
