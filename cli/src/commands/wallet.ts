@@ -10,6 +10,7 @@ export async function walletCommand(args: ParsedArgs, globalHub?: string, global
     console.log(`Usage: botcord wallet <subcommand> [options]
 
 Subcommands:
+  recipient-verify --id <agent_id>       Resolve a transfer recipient
   balance                          Show wallet balance
   ledger [--limit <n>] [--cursor <c>] [--type <type>]  Show ledger entries
   transfer --to <id> --amount <n> [--memo <text>]       Transfer funds
@@ -19,7 +20,9 @@ Subcommands:
         [--channel <channel>] [--metadata <json>] [--idempotency-key <key>]
   withdraw --amount <n>            Request a withdrawal
            [--fee <minor>] [--destination-type <type>]
-           [--destination <json>] [--idempotency-key <key>]`);
+           [--destination <json>] [--idempotency-key <key>]
+  cancel-withdrawal --id <withdrawal_id> Cancel a pending withdrawal
+  tx-status --id <tx_id>                 Show transaction status`);
     if (!sub && !args.flags["help"]) process.exit(1);
     return;
   }
@@ -37,6 +40,14 @@ Subcommands:
   });
 
   switch (sub) {
+    case "recipient-verify": {
+      const id = args.flags["id"];
+      if (!id || typeof id !== "string") outputError("--id is required");
+      const result = await client.resolve(id);
+      outputJson(result);
+      break;
+    }
+
     case "balance": {
       const result = await client.getWallet();
       outputJson(result);
@@ -105,6 +116,22 @@ Subcommands:
         destination,
         idempotency_key: idempotencyKey,
       });
+      outputJson(result);
+      break;
+    }
+
+    case "cancel-withdrawal": {
+      const id = args.flags["id"];
+      if (!id || typeof id !== "string") outputError("--id is required");
+      const result = await client.cancelWithdrawal(id);
+      outputJson(result);
+      break;
+    }
+
+    case "tx-status": {
+      const id = args.flags["id"];
+      if (!id || typeof id !== "string") outputError("--id is required");
+      const result = await client.getWalletTransaction(id);
       outputJson(result);
       break;
     }

@@ -4,7 +4,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { buildSignedEnvelope, generateKeypair, signChallenge } from "./crypto.js";
+import { buildSignedEnvelope, derivePublicKey, generateKeypair, signChallenge } from "./crypto.js";
 import { normalizeAndValidateHubUrl } from "./hub-url.js";
 import type {
   BotCordMessageEnvelope,
@@ -484,6 +484,12 @@ export class BotCordClient {
     await this.hubFetch(`/hub/rooms/${roomId}/leave`, { method: "POST" });
   }
 
+  async getRoomMembers(roomId: string): Promise<unknown[]> {
+    const resp = await this.hubFetch(`/hub/rooms/${roomId}`);
+    const data = await resp.json();
+    return ((data as any).members ?? []) as unknown[];
+  }
+
   async inviteToRoom(
     roomId: string,
     agentId: string,
@@ -775,6 +781,9 @@ export class BotCordClient {
     hubUrl: string,
     name: string,
     bio?: string,
+    options?: {
+      privateKey?: string;
+    },
   ): Promise<{
     agentId: string;
     keyId: string;
@@ -783,9 +792,16 @@ export class BotCordClient {
     token: string;
     expiresAt: number;
     hubUrl: string;
+    claimUrl?: string;
   }> {
     const normalizedHub = normalizeAndValidateHubUrl(hubUrl);
-    const keypair = generateKeypair();
+    const keypair = options?.privateKey
+      ? {
+          privateKey: options.privateKey,
+          publicKey: derivePublicKey(options.privateKey),
+          pubkeyFormatted: `ed25519:${derivePublicKey(options.privateKey)}`,
+        }
+      : generateKeypair();
 
     // Step 1: POST /registry/agents
     const regResp = await fetch(`${normalizedHub}/registry/agents`, {
@@ -840,6 +856,25 @@ export class BotCordClient {
 
     const token = verifyData.agent_token || verifyData.token!;
     const expiresAt = verifyData.expires_at ?? Date.now() / 1000 + 86400;
+    let claimUrl: string | undefined;
+
+    try {
+      const claimResp = await fetch(
+        `${normalizedHub}/registry/agents/${regData.agent_id}/claim-link`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(10000),
+        },
+      );
+      if (claimResp.ok) {
+        const claimData = (await claimResp.json()) as { claim_url?: string };
+        if (claimData.claim_url) {
+          claimUrl = claimData.claim_url;
+        }
+      }
+    } catch {
+      // Best effort only.
+    }
 
     return {
       agentId: regData.agent_id,
@@ -849,6 +884,7 @@ export class BotCordClient {
       token,
       expiresAt,
       hubUrl: normalizedHub,
+      claimUrl,
     };
   }
 }
