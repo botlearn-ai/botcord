@@ -16,6 +16,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
 
 interface PendingMessage {
@@ -273,11 +274,12 @@ export default function UserChatPane() {
                     : "bg-zinc-800 text-zinc-200 border border-zinc-700"
                 }`}
               >
-                {!isOwner && (
-                  <div className="text-xs text-zinc-400 mb-1 font-medium">
-                    {msg.sender_name}
-                  </div>
-                )}
+                <div className={`mb-1 flex items-center gap-1.5 ${isOwner ? "justify-end" : ""}`}>
+                  <span className="text-xs font-medium text-zinc-300">
+                    {msg.sender_name || msg.sender_id}
+                  </span>
+                  <CopyableId value={msg.sender_id} className="text-zinc-500 hover:text-zinc-300" />
+                </div>
                 {!isOwner && !animatedRef.current.has(msg.hub_msg_id) ? (
                   <TypewriterText
                     text={msg.text || ""}
