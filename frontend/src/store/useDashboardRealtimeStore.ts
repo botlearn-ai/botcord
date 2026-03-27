@@ -29,6 +29,10 @@ function isTypingRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
   return type === "typing";
 }
 
+function isMessageLikeRealtimeEvent(event: RealtimeMetaEvent | null): event is RealtimeMetaEvent {
+  return Boolean(event && isMessageRealtimeEvent(event.type) && event.room_id);
+}
+
 interface DashboardRealtimeState {
   realtimeStatus: "idle" | "connecting" | "connected" | "error";
   realtimeError: string | null;
@@ -116,7 +120,10 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
           openedRoomId
           && (!currentEvent || currentEvent.room_id === openedRoomId)
         ) {
-          await chatStore.pollNewMessages(openedRoomId);
+          await chatStore.pollNewMessages(openedRoomId, {
+            expectedHubMsgId: isMessageLikeRealtimeEvent(currentEvent) ? currentEvent.hub_msg_id : null,
+            retries: isMessageLikeRealtimeEvent(currentEvent) ? 2 : 0,
+          });
         }
 
         // User-chat pane has its own room slot so it doesn't clobber openedRoomId
@@ -125,7 +132,10 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
           && userChatRoomId !== openedRoomId
           && (!currentEvent || currentEvent.room_id === userChatRoomId)
         ) {
-          await chatStore.pollNewMessages(userChatRoomId);
+          await chatStore.pollNewMessages(userChatRoomId, {
+            expectedHubMsgId: isMessageLikeRealtimeEvent(currentEvent) ? currentEvent.hub_msg_id : null,
+            retries: isMessageLikeRealtimeEvent(currentEvent) ? 2 : 0,
+          });
         }
 
         nextEvent = queuedRealtimeEvent;

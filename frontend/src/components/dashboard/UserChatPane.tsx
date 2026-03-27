@@ -77,7 +77,7 @@ export default function UserChatPane() {
   const initialLoadRef = useRef(true);
   const [, forceRender] = useState(0);
 
-  // Initialize chat room and register userChatRoomId for realtime sync
+  // Initialize chat room and load messages (userChatRoomId is set eagerly by DashboardApp)
   useEffect(() => {
     if (!activeAgentId) return;
 
@@ -102,7 +102,6 @@ export default function UserChatPane() {
 
     return () => {
       cancelled = true;
-      setUserChatRoomId(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAgentId]);

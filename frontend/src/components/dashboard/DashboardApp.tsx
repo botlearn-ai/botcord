@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
 import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import type { RealtimeMetaEvent } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
@@ -355,6 +356,18 @@ export default function DashboardApp() {
     chatStore.refreshOverview,
   ]);
 
+  // Eagerly register userChatRoomId so realtime events are always routed to the user-chat pane
+  useEffect(() => {
+    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) return;
+
+    let cancelled = false;
+    api.getUserChatRoom().then((room) => {
+      if (!cancelled) uiStore.setUserChatRoomId(room.room_id);
+    }).catch(() => { /* ignore — UserChatPane will retry on mount */ });
+
+    return () => { cancelled = true; };
+  }, [sessionStore.sessionMode, sessionStore.activeAgentId, uiStore.setUserChatRoomId]);
+
   useEffect(() => {
     if (
       !sessionStore.authResolved
@@ -399,6 +412,14 @@ export default function DashboardApp() {
           if (!realtimeEvent?.type || realtimeEvent.agent_id !== sessionStore.activeAgentId) {
             return;
           }
+          const currentUIState = useDashboardUIStore.getState();
+          const isOpenedRoomEvent = Boolean(
+            realtimeEvent.room_id
+            && (
+              realtimeEvent.room_id === currentUIState.openedRoomId
+              || realtimeEvent.room_id === currentUIState.userChatRoomId
+            ),
+          );
           console.info("[BotCord][Realtime] event", {
             topic,
             type: realtimeEvent.type,
@@ -406,7 +427,9 @@ export default function DashboardApp() {
             hubMsgId: realtimeEvent.hub_msg_id,
           });
           chatStore.applyRealtimeEventHint(realtimeEvent);
-          unreadStore.applyRealtimeEvent(realtimeEvent);
+          if (!isOpenedRoomEvent) {
+            unreadStore.applyRealtimeEvent(realtimeEvent);
+          }
           void realtimeStore.syncRealtimeEvent(realtimeEvent);
         })
         .subscribe((status) => {

@@ -46,15 +46,20 @@ export function getIsoTimestampValue(isoTime: string | null | undefined): number
   return Number.isNaN(value) ? 0 : value;
 }
 
+/** Owner-chat rooms (rm_oc_*) are shown via the dedicated UserChatPane entry, not the room list. */
+function isOwnerChatRoom(roomId: string): boolean {
+  return roomId.startsWith("rm_oc_");
+}
+
 export function buildVisibleMessageRooms(state: {
   overview: DashboardOverview | null;
   recentVisitedRooms: PublicRoom[];
   token: string | null;
 }): DashboardRoom[] {
-  const joinedRooms = state.overview?.rooms || [];
+  const joinedRooms = (state.overview?.rooms || []).filter((room) => !isOwnerChatRoom(room.room_id));
   const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
   const recentUnjoinedRooms = state.recentVisitedRooms
-    .filter((room) => !joinedRoomIds.has(room.room_id))
+    .filter((room) => !joinedRoomIds.has(room.room_id) && !isOwnerChatRoom(room.room_id))
     .map(toRoomSummary);
   const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
     const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
