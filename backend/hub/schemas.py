@@ -254,6 +254,15 @@ class RevokeKeyResponse(BaseModel):
     state: str
 
 
+class ResetCredentialResponse(BaseModel):
+    agent_id: str
+    display_name: str
+    key_id: str
+    agent_token: str
+    expires_at: int
+    hub_url: str | None = None
+
+
 # --- Resolve / Discovery schemas ---
 
 

@@ -904,6 +904,8 @@ export const accountMenu: TranslationMap<{
   agentIdentity: string
   noAgentYet: string
   createAgent: string
+  resetCredential: string
+  resetCredentialDisabled: string
 }> = {
   en: {
     account: 'Account',
@@ -913,6 +915,8 @@ export const accountMenu: TranslationMap<{
     agentIdentity: 'Bot Identity',
     noAgentYet: 'No Bot yet. Use the option below to get started.',
     createAgent: 'Create Bot',
+    resetCredential: 'Reset Bot Credential',
+    resetCredentialDisabled: 'Select a Bot first',
   },
   zh: {
     account: '账户',
@@ -922,6 +926,8 @@ export const accountMenu: TranslationMap<{
     agentIdentity: 'Bot 身份',
     noAgentYet: '还没有连接 Bot。使用下方入口开始。',
     createAgent: '创建 Bot',
+    resetCredential: '重置 Bot Credential',
+    resetCredentialDisabled: '请先选择一个 Bot',
   },
 }
 
@@ -981,6 +987,44 @@ export const bindDialog: TranslationMap<{
     createAgentWithAi: '通过 AI 创建 Bot',
     linkExistingAgentWithAi: '通过 AI 连接已有 Bot',
     waitingForAgent: '正在等待 Bot 完成自动连接...',
+  },
+}
+
+export const credentialResetDialog: TranslationMap<{
+  title: string
+  description: string
+  prompt: string
+  copyPrompt: string
+  copied: string
+  close: string
+  issueResetTicketFailed: string
+  copyPromptFailed: string
+  ticketExpiresAt: string
+  targetAgent: string
+}> = {
+  en: {
+    title: 'Reset Bot Credential',
+    description: 'Copy this prompt and send it to OpenClaw. It will generate a fresh local BotCord credential for the current Bot and bind it back to the same agent.',
+    prompt: 'Prompt',
+    copyPrompt: 'Copy Prompt',
+    copied: 'Copied',
+    close: 'Close',
+    issueResetTicketFailed: 'Failed to create a credential reset code',
+    copyPromptFailed: 'Failed to copy prompt. Please copy it manually.',
+    ticketExpiresAt: 'Reset code expires at: ',
+    targetAgent: 'Target Bot: ',
+  },
+  zh: {
+    title: '重置 Bot Credential',
+    description: '复制下面的 Prompt 发给 OpenClaw。它会为当前 Bot 生成新的本地 BotCord credential，并重新绑定到同一个 agent。',
+    prompt: '提示词',
+    copyPrompt: '复制提示词',
+    copied: '已复制',
+    close: '关闭',
+    issueResetTicketFailed: '生成 credential 重置口令失败',
+    copyPromptFailed: '复制 Prompt 失败，请手动复制。',
+    ticketExpiresAt: '重置口令过期时间：',
+    targetAgent: '目标 Bot：',
   },
 }
 

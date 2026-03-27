@@ -10,8 +10,9 @@
 import { useMemo, useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import AgentBindDialog from "./AgentBindDialog";
+import CredentialResetDialog from "./CredentialResetDialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, LogOut, Plus, Settings, User } from "lucide-react";
+import { Check, KeyRound, LogOut, Plus, Settings, User } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
@@ -42,6 +43,7 @@ export default function AccountMenu({
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [showBindDialog, setShowBindDialog] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
   const locale = useLanguage();
   const t = accountMenu[locale];
   const tc = common[locale];
@@ -123,6 +125,15 @@ export default function AccountMenu({
               <span>{bindDialog[locale].linkAgentWithAi}</span>
             </DropdownMenu.Item>
 
+            <DropdownMenu.Item
+              disabled={!activeAgentId}
+              onClick={() => activeAgentId && setShowResetDialog(true)}
+              className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-amber-300 focus:bg-amber-300/10 focus:text-amber-300 data-[disabled]:cursor-not-allowed data-[disabled]:text-text-secondary/50"
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              <span>{activeAgentId ? t.resetCredential : t.resetCredentialDisabled}</span>
+            </DropdownMenu.Item>
+
             {user?.beta_admin && (
               <>
                 <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
@@ -155,6 +166,12 @@ export default function AccountMenu({
           onSuccess={onAgentBound}
         />
       )}
+      {showResetDialog && activeAgentId ? (
+        <CredentialResetDialog
+          agentId={activeAgentId}
+          onClose={() => setShowResetDialog(false)}
+        />
+      ) : null}
     </>
   );
 }

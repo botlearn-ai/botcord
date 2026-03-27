@@ -1,5 +1,6 @@
 import type {
   BindTicketResponse,
+  ResetTicketResponse,
   DashboardOverview,
   DashboardMessageResponse,
   AgentSearchResponse,
@@ -496,6 +497,10 @@ const userApi = {
 
   async issueBindTicket(): Promise<BindTicketResponse> {
     return apiPost<BindTicketResponse>("/api/users/me/agents/bind-ticket");
+  },
+
+  async issueCredentialResetTicket(agentId: string): Promise<ResetTicketResponse> {
+    return apiPost<ResetTicketResponse>(`/api/users/me/agents/${agentId}/credential-reset-ticket`);
   },
 
   async resolveClaim(claimCode: string): Promise<{

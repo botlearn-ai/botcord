@@ -10,7 +10,9 @@ import uuid
 import jwt
 import pytest
 import pytest_asyncio
+from nacl.signing import SigningKey as NaClSigningKey
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock, patch
@@ -270,6 +272,32 @@ async def test_bind_ticket_returns_valid_ticket(client: AsyncClient, seed_user: 
     assert payload["nonce"] == data["nonce"]
     assert payload["exp"] == data["expires_at"]
     assert "iat" in payload
+    assert "jti" in payload
+
+
+@pytest.mark.asyncio
+async def test_credential_reset_ticket_returns_valid_ticket(
+    client: AsyncClient, seed_user: dict
+):
+    token = seed_user["token"]
+
+    resp = await client.post(
+        "/api/users/me/agents/ag_agent001/credential-reset-ticket",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["agent_id"] == "ag_agent001"
+    assert data["reset_code"].startswith("rc_")
+    assert isinstance(data["expires_at"], int)
+
+    payload_json = base64.urlsafe_b64decode(data["reset_ticket"].split(".")[0]).decode()
+    payload = json.loads(payload_json)
+    assert payload["uid"] == str(seed_user["user_id"])
+    assert payload["agent_id"] == "ag_agent001"
+    assert payload["purpose"] == "credential_reset"
+    assert payload["exp"] == data["expires_at"]
     assert "jti" in payload
 
 
@@ -919,3 +947,100 @@ async def test_agent_bind_already_claimed(
 
     assert resp.status_code == 409
     assert "already claimed" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_reset_agent_credential_success(
+    client: AsyncClient, seed_user: dict, db_session: AsyncSession
+):
+    token = seed_user["token"]
+    existing_seed = NaClSigningKey.generate()._seed
+    existing_pubkey = base64.b64encode(bytes(NaClSigningKey(existing_seed).verify_key)).decode()
+    db_session.add(
+        SigningKey(
+            key_id="k_existing_reset",
+            agent_id="ag_agent001",
+            pubkey=f"ed25519:{existing_pubkey}",
+            state=KeyState.active,
+        )
+    )
+    await db_session.commit()
+
+    issue = await client.post(
+        "/api/users/me/agents/ag_agent001/credential-reset-ticket",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert issue.status_code == 200
+    reset_code = issue.json()["reset_code"]
+
+    new_seed = NaClSigningKey.generate()._seed
+    new_pubkey = base64.b64encode(bytes(NaClSigningKey(new_seed).verify_key)).decode()
+
+    with patch("app.routers.users.create_agent_token", return_value=("tok_reset_new", 2222222222)):
+        resp = await client.post(
+            "/api/users/me/agents/reset-credential",
+            json={
+                "agent_id": "ag_agent001",
+                "pubkey": f"ed25519:{new_pubkey}",
+                "reset_code": reset_code,
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent_id"] == "ag_agent001"
+    assert data["display_name"] == "Agent One"
+    assert data["agent_token"] == "tok_reset_new"
+    assert data["key_id"].startswith("k_")
+
+    keys = (
+        await db_session.execute(
+            select(SigningKey).where(SigningKey.agent_id == "ag_agent001")
+        )
+    ).scalars().all()
+    assert len(keys) == 2
+    assert sum(1 for key in keys if key.state == KeyState.active) == 1
+    assert any(key.pubkey == f"ed25519:{new_pubkey}" and key.state == KeyState.active for key in keys)
+    assert any(key.key_id == "k_existing_reset" and key.state == KeyState.revoked for key in keys)
+
+    agent = (
+        await db_session.execute(select(Agent).where(Agent.agent_id == "ag_agent001"))
+    ).scalar_one()
+    assert agent.agent_token == "tok_reset_new"
+
+
+@pytest.mark.asyncio
+async def test_reset_agent_credential_ticket_replay_rejected(
+    client: AsyncClient, seed_user: dict, db_session: AsyncSession
+):
+    token = seed_user["token"]
+    issue = await client.post(
+        "/api/users/me/agents/ag_agent001/credential-reset-ticket",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    reset_ticket = issue.json()["reset_ticket"]
+
+    pubkey_1 = base64.b64encode(bytes(NaClSigningKey.generate().verify_key)).decode()
+    pubkey_2 = base64.b64encode(bytes(NaClSigningKey.generate().verify_key)).decode()
+
+    with patch("app.routers.users.create_agent_token", return_value=("tok_reset_once", 2222222222)):
+        first = await client.post(
+            "/api/users/me/agents/reset-credential",
+            json={
+                "agent_id": "ag_agent001",
+                "pubkey": f"ed25519:{pubkey_1}",
+                "reset_ticket": reset_ticket,
+            },
+        )
+    assert first.status_code == 200
+
+    second = await client.post(
+        "/api/users/me/agents/reset-credential",
+        json={
+            "agent_id": "ag_agent001",
+            "pubkey": f"ed25519:{pubkey_2}",
+            "reset_ticket": reset_ticket,
+        },
+    )
+    assert second.status_code == 401
+    assert "already used" in second.json()["detail"].lower()
