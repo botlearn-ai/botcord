@@ -74,11 +74,30 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
   );
 }
 
+function formatMessageTimestamp(isoTime: string): string {
+  const date = new Date(isoTime);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const ageMs = Date.now() - date.getTime();
+  if (ageMs >= 0 && ageMs < 24 * 60 * 60 * 1000) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  return date.toLocaleString([], {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const stateConfig = useStateConfig();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
+  const timestampLabel = formatMessageTimestamp(message.created_at);
 
   const transferInfo = displayText
     ? parseTransferText(displayText) ?? parseTransferNotice(displayText, message.payload)
@@ -147,7 +166,7 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
         {/* Footer: time + type + state */}
         <div className={`mt-1 flex items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
           <span className="font-mono text-[10px] text-text-secondary/50">
-            {new Date(message.created_at).toLocaleTimeString()}
+            {timestampLabel}
           </span>
           {message.type !== "message" && (
             <span className="rounded bg-glass-bg px-1 font-mono text-[10px] text-text-secondary/70">
