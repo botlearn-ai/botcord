@@ -27,14 +27,19 @@ interface WsClientOptions {
   };
 }
 
-const activeWsClients = new Map<string, { stop: () => void }>();
+// Use lazy initialization to avoid TDZ errors when jiti resolves
+// the dynamic import("./ws-client.js") before the module body completes.
+let _activeWsClients: Map<string, { stop: () => void }> | undefined;
+function getActiveWsClients() {
+  return (_activeWsClients ??= new Map());
+}
 
 // Reconnect backoff: 1s, 2s, 4s, 8s, 16s, 30s max
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
 
 export function startWsClient(opts: WsClientOptions): { stop: () => void } {
   // Stop any existing client for this account before creating a new one
-  const existing = activeWsClients.get(opts.accountId);
+  const existing = getActiveWsClients().get(opts.accountId);
   if (existing) existing.stop();
 
   const { client, accountId, cfg, abortSignal, log } = opts;
@@ -167,14 +172,14 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
       }
       ws = null;
     }
-    activeWsClients.delete(accountId);
+    getActiveWsClients().delete(accountId);
   }
 
   // Start connection
   connect();
 
   const entry = { stop };
-  activeWsClients.set(accountId, entry);
+  getActiveWsClients().set(accountId, entry);
 
   abortSignal?.addEventListener("abort", stop, { once: true });
 
@@ -182,6 +187,6 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
 }
 
 export function stopWsClient(accountId: string): void {
-  const entry = activeWsClients.get(accountId);
+  const entry = getActiveWsClients().get(accountId);
   if (entry) entry.stop();
 }
