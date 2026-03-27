@@ -21,7 +21,7 @@ def extract_text_from_envelope(envelope_json: str | None) -> dict:
         text = payload.get("message", "")
     return {
         "sender_id": sender_id,
-        "text": text[:500] if text else None,
+        "text": text or None,
         "type": msg_type,
         "payload": payload,
     }
