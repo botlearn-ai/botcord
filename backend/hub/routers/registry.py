@@ -27,7 +27,6 @@ from hub.schemas import (
     AgentSummary,
     ClaimContextResponse,
     ClaimLinkResponse,
-    ClaimStatusResponse,
     EndpointHealthStatus,
     EndpointProbeReport,
     EndpointResponse,
@@ -637,51 +636,6 @@ async def get_claim_link(
         display_name=agent.display_name,
         claim_code=agent.claim_code,
         claim_url=f"{hub_config.FRONTEND_BASE_URL.rstrip('/')}/agents/claim/{agent.claim_code}",
-    )
-
-
-@router.get(
-    "/agents/{agent_id}/claim-status",
-    response_model=ClaimStatusResponse,
-)
-async def get_claim_status(
-    agent_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
-    agent = result.scalar_one_or_none()
-    if agent is None:
-        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
-
-    return ClaimStatusResponse(
-        agent_id=agent_id,
-        claimed=agent.claimed_at is not None,
-        claimed_at=agent.claimed_at,
-    )
-
-
-@router.post(
-    "/agents/{agent_id}/claim",
-    response_model=ClaimStatusResponse,
-)
-async def claim_agent(
-    agent_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_agent: str = Depends(get_current_agent),
-):
-    check_agent_ownership(agent_id, current_agent)
-    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
-    agent = result.scalar_one_or_none()
-    if agent is None:
-        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
-    if agent.claimed_at is None:
-        agent.claimed_at = datetime.datetime.now(datetime.timezone.utc)
-        await db.commit()
-        await db.refresh(agent)
-    return ClaimStatusResponse(
-        agent_id=agent_id,
-        claimed=True,
-        claimed_at=agent.claimed_at,
     )
 
 
