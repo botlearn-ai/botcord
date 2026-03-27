@@ -21,6 +21,7 @@ import { useShallow } from "zustand/react/shallow";
 interface PendingMessage {
   id: string;
   text: string;
+  createdAt: number;
   status: "sending" | "failed";
   error?: string;
 }
@@ -60,9 +61,10 @@ function isOwnerMessage(msg: DashboardMessage): boolean {
 export default function UserChatPane() {
   const { activeAgentId } = useDashboardSessionStore();
   const { setUserChatRoomId, userChatAgentTyping, setUserChatAgentTyping } = useDashboardUIStore();
-  const { messages: storeMessages, loadRoomMessages } = useDashboardChatStore(useShallow((s) => ({
+  const { messages: storeMessages, loadRoomMessages, pollNewMessages } = useDashboardChatStore(useShallow((s) => ({
     messages: s.messages,
     loadRoomMessages: s.loadRoomMessages,
+    pollNewMessages: s.pollNewMessages,
   })));
 
   const [chatRoom, setChatRoom] = useState<UserChatRoom | null>(null);
@@ -109,6 +111,14 @@ export default function UserChatPane() {
   // Derive messages from the chat store (populated by loadRoomMessages + realtime sync)
   const roomId = chatRoom?.room_id;
   const messages: DashboardMessage[] = roomId ? (storeMessages[roomId] ?? []) : [];
+  const visiblePending = pending.filter((item) => {
+    const matchingOwnerMessage = messages.find((message) => (
+      isOwnerMessage(message)
+      && (message.text || "") === item.text
+      && Date.parse(message.created_at) >= item.createdAt - 5_000
+    ));
+    return !matchingOwnerMessage;
+  });
 
   // Mark messages from initial load as already animated (skip typewriter)
   useEffect(() => {
@@ -152,10 +162,15 @@ export default function UserChatPane() {
 
   const sendMessage = useCallback(async (text: string, msgId: string) => {
     try {
-      await api.sendUserChatMessage(text);
-      // Remove pending message on success; realtime sync will bring the real one
+      const result = await api.sendUserChatMessage(text);
+      // Remove pending as soon as the server accepts it; targeted polling fills gaps if realtime lags.
       setPending((prev) => prev.filter((m) => m.id !== msgId));
-      if (roomId) await loadRoomMessages(roomId);
+      if (roomId) {
+        await pollNewMessages(roomId, {
+          expectedHubMsgId: result.hub_msg_id,
+          retries: 2,
+        });
+      }
     } catch (err: any) {
       setPending((prev) =>
         prev.map((m) =>
@@ -165,14 +180,19 @@ export default function UserChatPane() {
         )
       );
     }
-  }, [roomId, loadRoomMessages]);
+  }, [roomId, pollNewMessages]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text || !roomId) return;
 
     const msgId = crypto.randomUUID();
-    const pendingMsg: PendingMessage = { id: msgId, text, status: "sending" };
+    const pendingMsg: PendingMessage = {
+      id: msgId,
+      text,
+      createdAt: Date.now(),
+      status: "sending",
+    };
     setPending((prev) => [...prev, pendingMsg]);
     setInputText("");
 
@@ -296,7 +316,7 @@ export default function UserChatPane() {
             </div>
           );
         })}
-        {pending.map((msg) => (
+        {visiblePending.map((msg) => (
           <div key={msg.id} className="flex justify-end">
             <div className="max-w-[75%] rounded-lg px-3 py-2 text-sm bg-cyan-500/20 text-cyan-100 border border-cyan-500/30">
               <MarkdownContent content={msg.text} />
