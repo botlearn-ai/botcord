@@ -1,8 +1,15 @@
-name: Publish Plugin
+name: Publish Package
 
 on:
   workflow_dispatch:
     inputs:
+      package:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - plugin
+          - cli
       bump:
         description: "Version bump type"
         required: true
@@ -27,10 +34,20 @@ jobs:
       contents: write
     defaults:
       run:
-        working-directory: plugin
+        working-directory: ${{ github.event.inputs.package }}
+    env:
+      PKG: ${{ github.event.inputs.package }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve npm package name
+        id: meta
+        run: |
+          NPM_NAME=$(node -p "require('./package.json').name")
+          echo "npm_name=$NPM_NAME" >> $GITHUB_OUTPUT
+          DISPLAY_NAME=$([ "$PKG" = "plugin" ] && echo "Plugin" || echo "CLI")
+          echo "display_name=$DISPLAY_NAME" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -39,9 +56,19 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build
+        if: env.PKG == 'cli'
+        run: npm run build
 
       - name: Run tests
+        if: env.PKG == 'plugin'
         run: npm test
 
       - name: Configure git
@@ -52,13 +79,14 @@ jobs:
       - name: Bump version
         id: bump
         run: |
+          NPM_NAME="${{ steps.meta.outputs.npm_name }}"
           if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
             # For beta: use the higher of package.json version and latest npm beta base
             LOCAL_VERSION=$(node -p "require('./package.json').version")
 
             # Find highest base version among all published beta versions
             # (dist-tags.beta only points to the most recently published, not the highest)
-            NPM_BASE=$(npm view @botcord/botcord versions --json 2>/dev/null | node -e "
+            NPM_BASE=$(npm view "$NPM_NAME" versions --json 2>/dev/null | node -e "
               const versions = JSON.parse(require('fs').readFileSync(0, 'utf8'));
               const bases = versions
                 .filter(v => v.includes('-beta.'))
@@ -93,13 +121,14 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Sync version to openclaw.plugin.json
+        if: env.PKG == 'plugin'
         run: |
           VERSION="${{ steps.bump.outputs.new_version }}"
           VERSION="${VERSION#v}"
           jq --arg v "$VERSION" '.version = $v' openclaw.plugin.json > tmp.json && mv tmp.json openclaw.plugin.json
 
       - name: Set release channel in source
-        if: github.event.inputs.channel == 'beta'
+        if: env.PKG == 'plugin' && github.event.inputs.channel == 'beta'
         run: |
           sed -i 's/RELEASE_CHANNEL: ReleaseChannel = "stable"/RELEASE_CHANNEL: ReleaseChannel = "beta"/' src/constants.ts
 
@@ -116,9 +145,14 @@ jobs:
       - name: Commit and tag
         if: github.event.inputs.channel == 'stable'
         run: |
-          git add package.json package-lock.json openclaw.plugin.json
-          git commit -m "chore: release ${{ steps.bump.outputs.new_version }}"
-          git tag ${{ steps.bump.outputs.new_version }}
+          if [ "$PKG" = "plugin" ]; then
+            git add package.json package-lock.json openclaw.plugin.json
+          else
+            git add package.json
+          fi
+          TAG_PREFIX=$([ "$PKG" = "plugin" ] && echo "" || echo "cli-")
+          git commit -m "chore: release ${PKG} ${{ steps.bump.outputs.new_version }}"
+          git tag "${TAG_PREFIX}${{ steps.bump.outputs.new_version }}"
           git push origin HEAD:main --tags
 
       - name: Prepare notification data
@@ -142,11 +176,12 @@ jobs:
         uses: ./.github/actions/feishu-notify
         with:
           webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          title: '${{ steps.notify-data.outputs.status_icon }}「BotCord Plugin」Publish - ${{ steps.notify-data.outputs.status_text }}'
+          title: '${{ steps.notify-data.outputs.status_icon }}「BotCord ${{ steps.meta.outputs.display_name }}」Publish - ${{ steps.notify-data.outputs.status_text }}'
           color: ${{ steps.notify-data.outputs.status_color }}
           fields: |
             [
               {"label": "状态", "value": "${{ steps.notify-data.outputs.status_desc }}"},
+              {"label": "包", "value": "${{ steps.meta.outputs.npm_name }}"},
               {"label": "版本", "value": "${{ steps.bump.outputs.new_version }}"},
               {"label": "Bump 类型", "value": "${{ github.event.inputs.bump }}"},
               {"label": "渠道", "value": "${{ github.event.inputs.channel }}"},
@@ -155,5 +190,5 @@ jobs:
           buttons: |
             [
               {"text": "查看详情", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"},
-              {"text": "npm 页面", "url": "https://www.npmjs.com/package/@botcord/botcord", "type": "default"}
+              {"text": "npm 页面", "url": "https://www.npmjs.com/package/${{ steps.meta.outputs.npm_name }}", "type": "default"}
             ]
