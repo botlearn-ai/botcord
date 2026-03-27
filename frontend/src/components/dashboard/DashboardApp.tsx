@@ -56,6 +56,14 @@ function decodeRoomIdFromPath(segment: string | undefined): string | null {
   }
 }
 
+function getCurrentMessageRoomFromPath(pathname: string): string | null {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts[0] !== "chats" || parts[1] !== "messages") return null;
+  const subtab = parts[2];
+  if (!subtab || subtab === USER_CHAT_SUBTAB) return null;
+  return decodeRoomIdFromPath(subtab);
+}
+
 export default function DashboardApp() {
   const sessionStore = useDashboardSessionStore();
   const uiStore = useDashboardUIStore();
@@ -241,6 +249,8 @@ export default function DashboardApp() {
           }
           if (!chatStore.messages[roomIdFromPath]) {
             void chatStore.loadRoomMessages(roomIdFromPath);
+          } else {
+            void chatStore.pollNewMessages(roomIdFromPath);
           }
         } else {
           if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
@@ -271,6 +281,7 @@ export default function DashboardApp() {
     chatStore.messages,
     chatStore.loadPublicRoomDetail,
     chatStore.loadRoomMessages,
+    chatStore.pollNewMessages,
   ]);
 
   useEffect(() => {
@@ -413,10 +424,12 @@ export default function DashboardApp() {
             return;
           }
           const currentUIState = useDashboardUIStore.getState();
+          const currentPathRoomId = getCurrentMessageRoomFromPath(window.location.pathname);
           const isOpenedRoomEvent = Boolean(
             realtimeEvent.room_id
             && (
               realtimeEvent.room_id === currentUIState.openedRoomId
+              || realtimeEvent.room_id === currentPathRoomId
               || realtimeEvent.room_id === currentUIState.userChatRoomId
             ),
           );

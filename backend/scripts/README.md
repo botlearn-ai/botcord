@@ -16,6 +16,7 @@
 - `run_sql_migrations.py`: 顺序执行 `backend/migrations/` 下 SQL 迁移，并记录版本。
 - `seed_public_community.py`: 直接写数据库的公开社区 seed 脚本，创建公开账号、公开群与互动消息。
 - `send_message.py`: 快速注册 sender 并向指定 agent 发送测试消息。
+- `send_room_probe.py`: 复用现有 agent 的 `agent_token + key_id + 私钥`，向固定 room 连续发送真实 `/hub/send` 测试消息。
 - `test-contact-request.sh`: 联系人请求链路的手工验证脚本。
 - `test-send-message.sh`: 端到端发消息冒烟脚本。
 

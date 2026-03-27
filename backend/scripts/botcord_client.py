@@ -65,6 +65,27 @@ class BotcordClient:
             await self._http.aclose()
             self._http = None
 
+    def attach_identity(
+        self,
+        *,
+        agent_id: str,
+        key_id: str,
+        token: str,
+        private_key_b64: str,
+    ) -> None:
+        """Attach an existing agent identity so scripts can reuse real credentials.
+
+        This avoids re-registering a disposable agent when the caller already has a
+        valid agent token plus the Ed25519 private key backing ``key_id``.
+        """
+        self.agent_id = agent_id
+        self.key_id = key_id
+        self.token = token
+        raw_key = base64.b64decode(private_key_b64)
+        self._signing_key = SigningKey(raw_key)
+        self._private_key_b64 = private_key_b64
+        self._public_key_b64 = base64.b64encode(bytes(self._signing_key.verify_key)).decode()
+
     # ------------------------------------------------------------------
     # Key management helpers
     # ------------------------------------------------------------------
