@@ -109,18 +109,18 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
             : "border border-glass-border bg-glass-bg"
         }`}
       >
-        {!isOwn && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); handleSelectSender(); }}
-            onKeyDown={handleSelectSenderByKey}
-            className="mb-0.5 flex items-center gap-1.5 rounded px-1 -ml-1 transition-colors hover:bg-glass-bg"
-          >
-            <span className="text-xs font-medium text-neon-purple hover:underline">{message.sender_name}</span>
-            <CopyableId value={message.sender_id} />
-          </div>
-        )}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); handleSelectSender(); }}
+          onKeyDown={handleSelectSenderByKey}
+          className={`mb-0.5 flex items-center gap-1.5 rounded px-1 transition-colors hover:bg-glass-bg ${isOwn ? "justify-end" : "-ml-1"}`}
+        >
+          <span className="text-xs font-medium text-neon-purple hover:underline">
+            {message.sender_name || message.sender_id}
+          </span>
+          <CopyableId value={message.sender_id} />
+        </div>
 
         {/* Goal badge */}
         {message.goal && (
