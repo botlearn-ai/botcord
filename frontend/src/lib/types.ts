@@ -170,6 +170,8 @@ export type RealtimeMetaEventType =
   | "contact_request"
   | "contact_request_response"
   | "contact_removed"
+  | "room_member_added"
+  | "room_member_removed"
   | "ack"
   | "result"
   | "error"
