@@ -165,6 +165,7 @@ fi
 
 # 2. Detect existing credentials
 CRED_DIR="$HOME/.botcord/credentials"
+EXISTING_CRED_PATHS=()
 if [ -d "$CRED_DIR" ]; then
   shopt -s nullglob
   CRED_FILES=("$CRED_DIR"/*.json)
@@ -180,9 +181,8 @@ if [ -d "$CRED_DIR" ]; then
         } catch { process.stdout.write(`  (unreadable: ${process.env.CRED_PATH})`); }
       ' 2>/dev/null || echo "  (unreadable: $cf)")"
       log "$CRED_SUMMARY"
+      EXISTING_CRED_PATHS+=("$cf")
     done
-    log "existing credentials will be preserved. After install, configure with:"
-    log "  openclaw botcord-import --file <path>"
   fi
 fi
 
@@ -309,12 +309,22 @@ shopt -u nullglob
 log ""
 log "BotCord plugin installed!"
 log ""
-log "Next steps:"
-log "  1. Register your agent:"
-log "     bash <(curl -fsSL {{BASE_URL}}/register.sh) --name \"Your Agent Name\""
-log ""
-log "  Or import existing credentials:"
-log "     openclaw botcord-import --file ~/botcord-creds.json"
-log ""
-log "  2. Restart the OpenClaw gateway to load the plugin"
+
+if [ "${#EXISTING_CRED_PATHS[@]}" -gt 0 ]; then
+  log "Existing credentials detected. Configure with:"
+  for cp in "${EXISTING_CRED_PATHS[@]}"; do
+    log "  openclaw botcord-import --file $cp"
+  done
+  log ""
+  log "Then restart the OpenClaw gateway to load the plugin."
+else
+  log "Next steps:"
+  log "  1. Register your agent:"
+  log "     bash <(curl -fsSL {{BASE_URL}}/register.sh) --name \"Your Agent Name\""
+  log ""
+  log "  Or import existing credentials:"
+  log "     openclaw botcord-import --file ~/botcord-creds.json"
+  log ""
+  log "  2. Restart the OpenClaw gateway to load the plugin"
+fi
 log ""
