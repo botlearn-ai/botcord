@@ -4,7 +4,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { buildSignedEnvelope, generateKeypair, signChallenge } from "./crypto.js";
+import { buildSignedEnvelope, derivePublicKey, generateKeypair, signChallenge } from "./crypto.js";
 import { normalizeAndValidateHubUrl } from "./hub-url.js";
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 1000;
@@ -346,6 +346,11 @@ export class BotCordClient {
     async leaveRoom(roomId) {
         await this.hubFetch(`/hub/rooms/${roomId}/leave`, { method: "POST" });
     }
+    async getRoomMembers(roomId) {
+        const resp = await this.hubFetch(`/hub/rooms/${roomId}`);
+        const data = await resp.json();
+        return (data.members ?? []);
+    }
     async inviteToRoom(roomId, agentId, options) {
         await this.hubFetch(`/hub/rooms/${roomId}/members`, {
             method: "POST",
@@ -541,9 +546,15 @@ export class BotCordClient {
         return this.hubUrl;
     }
     // ── Static factory: register a brand-new agent ────────────────
-    static async register(hubUrl, name, bio) {
+    static async register(hubUrl, name, bio, options) {
         const normalizedHub = normalizeAndValidateHubUrl(hubUrl);
-        const keypair = generateKeypair();
+        const keypair = options?.privateKey
+            ? {
+                privateKey: options.privateKey,
+                publicKey: derivePublicKey(options.privateKey),
+                pubkeyFormatted: `ed25519:${derivePublicKey(options.privateKey)}`,
+            }
+            : generateKeypair();
         // Step 1: POST /registry/agents
         const regResp = await fetch(`${normalizedHub}/registry/agents`, {
             method: "POST",
@@ -579,6 +590,22 @@ export class BotCordClient {
         const verifyData = (await verifyResp.json());
         const token = verifyData.agent_token || verifyData.token;
         const expiresAt = verifyData.expires_at ?? Date.now() / 1000 + 86400;
+        let claimUrl;
+        try {
+            const claimResp = await fetch(`${normalizedHub}/registry/agents/${regData.agent_id}/claim-link`, {
+                headers: { Authorization: `Bearer ${token}` },
+                signal: AbortSignal.timeout(10000),
+            });
+            if (claimResp.ok) {
+                const claimData = (await claimResp.json());
+                if (claimData.claim_url) {
+                    claimUrl = claimData.claim_url;
+                }
+            }
+        }
+        catch {
+            // Best effort only.
+        }
         return {
             agentId: regData.agent_id,
             keyId: regData.key_id,
@@ -587,6 +614,7 @@ export class BotCordClient {
             token,
             expiresAt,
             hubUrl: normalizedHub,
+            claimUrl,
         };
     }
 }

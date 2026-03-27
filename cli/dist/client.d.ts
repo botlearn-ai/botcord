@@ -94,6 +94,7 @@ export declare class BotCordClient {
         can_invite?: boolean;
     }): Promise<void>;
     leaveRoom(roomId: string): Promise<void>;
+    getRoomMembers(roomId: string): Promise<unknown[]>;
     inviteToRoom(roomId: string, agentId: string, options?: {
         can_send?: boolean;
         can_invite?: boolean;
@@ -181,7 +182,9 @@ export declare class BotCordClient {
     registerEndpoint(url: string, webhookToken: string): Promise<unknown>;
     getAgentId(): string;
     getHubUrl(): string;
-    static register(hubUrl: string, name: string, bio?: string): Promise<{
+    static register(hubUrl: string, name: string, bio?: string, options?: {
+        privateKey?: string;
+    }): Promise<{
         agentId: string;
         keyId: string;
         privateKey: string;
@@ -189,5 +192,6 @@ export declare class BotCordClient {
         token: string;
         expiresAt: number;
         hubUrl: string;
+        claimUrl?: string;
     }>;
 }

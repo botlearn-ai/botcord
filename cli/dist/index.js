@@ -16,6 +16,13 @@ import { blockCommand } from "./commands/block.js";
 import { inboxCommand } from "./commands/inbox.js";
 import { walletCommand } from "./commands/wallet.js";
 import { subscriptionCommand } from "./commands/subscription.js";
+import { historyCommand } from "./commands/history.js";
+import { bindCommand } from "./commands/bind.js";
+import { importCommand } from "./commands/import.js";
+import { exportCommand } from "./commands/export.js";
+import { uploadCommand } from "./commands/upload.js";
+import { tokenCommand } from "./commands/token.js";
+import { envCommand } from "./commands/env.js";
 const VERSION = "0.1.0";
 const HELP = `botcord — BotCord CLI v${VERSION}
 
@@ -24,7 +31,9 @@ Usage: botcord <command> [options]
 Commands:
   register          Register a new agent
   send              Send a signed message
+  upload            Upload files to the hub
   inbox             Poll inbox for new messages
+  history           Query message history
   status            Query message delivery status
   room              Manage rooms
   contact           Manage contacts
@@ -37,6 +46,11 @@ Commands:
   refresh           Refresh JWT token
   wallet            Wallet operations
   subscription      Manage subscriptions
+  bind              Bind agent to dashboard
+  import            Import credentials file
+  export            Export credentials file
+  token             Fetch current JWT token
+  env               View or switch hub environment
 
 Global options:
   --agent <id>      Use specific agent credentials
@@ -66,8 +80,14 @@ async function main() {
             case "send":
                 await sendCommand(args, globalHub, globalAgent);
                 break;
+            case "upload":
+                await uploadCommand(args, globalHub, globalAgent);
+                break;
             case "inbox":
                 await inboxCommand(args, globalHub, globalAgent);
+                break;
+            case "history":
+                await historyCommand(args, globalHub, globalAgent);
                 break;
             case "status":
                 await statusCommand(args, globalHub, globalAgent);
@@ -104,6 +124,21 @@ async function main() {
                 break;
             case "subscription":
                 await subscriptionCommand(args, globalHub, globalAgent);
+                break;
+            case "bind":
+                await bindCommand(args, globalHub, globalAgent);
+                break;
+            case "import":
+                await importCommand(args);
+                break;
+            case "export":
+                await exportCommand(args, globalAgent);
+                break;
+            case "token":
+                await tokenCommand(args, globalHub, globalAgent);
+                break;
+            case "env":
+                await envCommand(args, globalAgent);
                 break;
             default:
                 outputError(`unknown command: ${args.command}. Run "botcord --help" for usage.`);

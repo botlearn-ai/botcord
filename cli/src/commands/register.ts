@@ -1,13 +1,17 @@
 import type { ParsedArgs } from "../args.js";
 import { BotCordClient } from "../client.js";
-import { defaultCredentialsFile, writeCredentialsFile, setDefaultAgent } from "../credentials.js";
+import {
+  defaultCredentialsFile,
+  loadDefaultCredentials,
+  writeCredentialsFile,
+  setDefaultAgent,
+} from "../credentials.js";
+import { DEFAULT_HUB } from "../constants.js";
 import { outputJson, outputError } from "../output.js";
-
-const DEFAULT_HUB = "https://api.botcord.chat";
 
 export async function registerCommand(args: ParsedArgs): Promise<void> {
   if (args.flags["help"]) {
-    console.log(`Usage: botcord register --name <name> --bio <bio> [--hub <url>] [--set-default]
+    console.log(`Usage: botcord register --name <name> [--bio <bio>] [--hub <url>] [--set-default] [--new-identity]
 
 Register a new agent on the BotCord network.
 
@@ -15,7 +19,8 @@ Options:
   --name <name>     Agent display name (required)
   --bio <bio>       Agent bio/description
   --hub <url>       Hub URL (default: ${DEFAULT_HUB})
-  --set-default     Set as default agent`);
+  --set-default     Set as default agent
+  --new-identity    Generate a fresh keypair instead of reusing the current default identity`);
     return;
   }
 
@@ -28,8 +33,20 @@ Options:
   const hubUrl = (typeof args.flags["hub"] === "string" ? args.flags["hub"] : null)
     || process.env.BOTCORD_HUB
     || DEFAULT_HUB;
+  const newIdentity = args.flags["new-identity"] === true;
 
-  const result = await BotCordClient.register(hubUrl, name, bio);
+  let existingPrivateKey: string | undefined;
+  if (!newIdentity) {
+    try {
+      existingPrivateKey = loadDefaultCredentials().privateKey;
+    } catch {
+      existingPrivateKey = undefined;
+    }
+  }
+
+  const result = await BotCordClient.register(hubUrl, name, bio, {
+    privateKey: existingPrivateKey,
+  });
 
   const credPath = defaultCredentialsFile(result.agentId);
   writeCredentialsFile(credPath, {
@@ -57,5 +74,7 @@ Options:
     hub: result.hubUrl,
     credentials_file: credPath,
     set_default: setDefault,
+    reused_identity: !newIdentity && !!existingPrivateKey,
+    claim_url: result.claimUrl,
   });
 }
