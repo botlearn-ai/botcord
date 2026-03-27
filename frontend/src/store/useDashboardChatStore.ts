@@ -78,11 +78,12 @@ interface DashboardChatState {
   closeAgentCardState: () => void;
   getRoomSummary: (roomId: string) => DashboardRoom | null;
   getVisibleMessageRooms: () => DashboardRoom[];
+  hasMessage: (roomId: string, hubMsgId: string) => boolean;
   applyRealtimeEventHint: (event: RealtimeMetaEvent) => void;
   replaceOverview: (overview: DashboardOverview) => void;
 
   loadRoomMessages: (roomId: string) => Promise<void>;
-  pollNewMessages: (roomId: string) => Promise<void>;
+  pollNewMessages: (roomId: string, opts?: { expectedHubMsgId?: string | null; retries?: number }) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
   selectAgent: (agentId: string) => Promise<void>;
   searchAgents: (q: string) => Promise<void>;
@@ -208,6 +209,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           token: useDashboardSessionStore.getState().token,
         }),
 
+      hasMessage: (roomId, hubMsgId) => {
+        if (!hubMsgId) return false;
+        return (get().messages[roomId] || []).some((message) => message.hub_msg_id === hubMsgId);
+      },
+
       applyRealtimeEventHint: (event) =>
         set((state) => ({
           overview: state.overview
@@ -255,7 +261,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
       },
 
-      pollNewMessages: async (roomId: string) => {
+      pollNewMessages: async (roomId: string, opts) => {
         if (roomPollInFlight.has(roomId)) return;
         roomPollInFlight.add(roomId);
 
@@ -273,21 +279,36 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         const newest = existing[existing.length - 1];
         try {
           const result = await api.getRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 });
-          if (result.messages.length === 0) return;
-          const newMsgs = result.messages.reverse();
-          set((state) => {
-            const current = state.messages[roomId] || [];
-            const existingIds = new Set(current.map((message) => message.hub_msg_id));
-            const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
-            if (deduped.length === 0) return state;
-            return {
-              messages: { ...state.messages, [roomId]: [...current, ...deduped] },
-            };
-          });
+          if (result.messages.length > 0) {
+            const newMsgs = result.messages.reverse();
+            set((state) => {
+              const current = state.messages[roomId] || [];
+              const existingIds = new Set(current.map((message) => message.hub_msg_id));
+              const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
+              if (deduped.length === 0) return state;
+              return {
+                messages: { ...state.messages, [roomId]: [...current, ...deduped] },
+              };
+            });
+          }
         } catch (error) {
           console.error("[ChatStore] Failed to poll new messages:", error);
         } finally {
           roomPollInFlight.delete(roomId);
+        }
+
+        const expectedHubMsgId = opts?.expectedHubMsgId ?? null;
+        const retries = opts?.retries ?? 0;
+        if (
+          expectedHubMsgId
+          && retries > 0
+          && !get().hasMessage(roomId, expectedHubMsgId)
+        ) {
+          await new Promise((resolve) => window.setTimeout(resolve, 250));
+          await get().pollNewMessages(roomId, {
+            expectedHubMsgId,
+            retries: retries - 1,
+          });
         }
       },
 
