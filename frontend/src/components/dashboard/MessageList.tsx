@@ -44,35 +44,45 @@ function useTopicStatusConfig() {
 interface TopicGroup {
   topicId: string | null;
   topicInfo: TopicInfo | null;
-  topicName: string | null;
+  topicName: string;
   messages: DashboardMessage[];
 }
 
-function groupMessagesByTopic(
+type TimelineItem =
+  | { kind: "message"; message: DashboardMessage }
+  | { kind: "topic"; group: TopicGroup };
+
+function buildTimelineItems(
   messages: DashboardMessage[],
   topicsMap: Map<string, TopicInfo>,
-): TopicGroup[] {
-  const groupMap = new Map<string, DashboardMessage[]>();
-  const order: string[] = [];
+): TimelineItem[] {
+  const groupMap = new Map<string, TopicGroup>();
+  const items: TimelineItem[] = [];
 
   for (const msg of messages) {
-    const key = msg.topic_id || "__no_topic__";
-    if (!groupMap.has(key)) {
-      groupMap.set(key, []);
-      order.push(key);
+    if (!msg.topic_id) {
+      items.push({ kind: "message", message: msg });
+      continue;
     }
-    groupMap.get(key)!.push(msg);
+
+    const existing = groupMap.get(msg.topic_id);
+    if (existing) {
+      existing.messages.push(msg);
+      continue;
+    }
+
+    const info = topicsMap.get(msg.topic_id) || null;
+    const group: TopicGroup = {
+      topicId: msg.topic_id,
+      topicInfo: info,
+      topicName: info?.title || msg.topic || msg.topic_id,
+      messages: [msg],
+    };
+    groupMap.set(msg.topic_id, group);
+    items.push({ kind: "topic", group });
   }
 
-  return order.map((key) => {
-    const msgs = groupMap.get(key)!;
-    if (key === "__no_topic__") {
-      return { topicId: null, topicInfo: null, topicName: null, messages: msgs };
-    }
-    const info = topicsMap.get(key) || null;
-    const topicName = info?.title || msgs[0]?.topic || key;
-    return { topicId: key, topicInfo: info, topicName, messages: msgs };
-  });
+  return items;
 }
 
 function TopicHeader({ group, isCollapsed, onToggle }: {
@@ -93,7 +103,7 @@ function TopicHeader({ group, isCollapsed, onToggle }: {
       <span className="text-xs text-text-secondary/60">{isCollapsed ? "▶" : "▼"}</span>
 
       <span className="text-sm font-medium text-text-primary truncate">
-        {group.topicName || t.general}
+        {group.topicName}
       </span>
 
       {sc && (
@@ -208,12 +218,7 @@ export default function MessageList() {
     return m;
   }, [messages, roomId]);
 
-  const hasTopics = messages.some((m) => m.topic_id);
-
-  const groups = useMemo(() => {
-    if (!hasTopics) return null;
-    return groupMessagesByTopic(messages, topicsMap);
-  }, [messages, topicsMap, hasTopics]);
+  const timelineItems = useMemo(() => buildTimelineItems(messages, topicsMap), [messages, topicsMap]);
 
   // Auto-scroll or show "new messages" banner when new messages arrive.
   // Uses wasNearBottomRef (snapshotted on scroll events, before DOM changes)
@@ -320,35 +325,6 @@ export default function MessageList() {
     </button>
   );
 
-  // No topics — flat list (original behavior)
-  if (!groups) {
-    return (
-      <div className="relative flex-1">
-        <div
-          ref={containerRef}
-          onScroll={handleScroll}
-          className="absolute inset-0 overflow-y-auto px-4 py-3"
-        >
-          {hasMore && (
-            <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
-              {t.scrollUp}
-            </div>
-          )}
-          {messages.map((msg) => (
-            <MessageBubble
-              key={msg.hub_msg_id}
-              message={msg}
-              isOwn={msg.sender_id === currentAgentId}
-            />
-          ))}
-          <div ref={bottomRef} />
-        </div>
-        {newMessagesBanner}
-      </div>
-    );
-  }
-
-  // Grouped by topic
   return (
     <div className="relative flex-1">
       <div
@@ -361,7 +337,19 @@ export default function MessageList() {
             {t.scrollUp}
           </div>
         )}
-        {groups.map((group) => {
+        {timelineItems.map((item) => {
+          if (item.kind === "message") {
+            const msg = item.message;
+            return (
+              <MessageBubble
+                key={msg.hub_msg_id}
+                message={msg}
+                isOwn={msg.sender_id === currentAgentId}
+              />
+            );
+          }
+
+          const { group } = item;
           const key = group.topicId || "__no_topic__";
           const isCollapsed = collapsedTopics.has(key);
           const statusColor = group.topicInfo
@@ -369,7 +357,7 @@ export default function MessageList() {
             : "border-glass-border";
 
           return (
-            <div key={key} className={`mb-4 rounded-xl border border-glass-border/50 bg-glass-bg/30`}>
+            <div key={key} className="mb-4 rounded-xl border border-glass-border/50 bg-glass-bg/30">
               <TopicHeader
                 group={group}
                 isCollapsed={isCollapsed}
