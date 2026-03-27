@@ -1104,8 +1104,8 @@ async def mark_room_read(
 @router.get("/rooms/{room_id}/messages")
 async def get_room_messages(
     room_id: str,
-    before: int | None = Query(default=None),
-    after: int | None = Query(default=None),
+    before: str | None = Query(default=None),
+    after: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     authorization: str | None = Header(default=None),
     x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
@@ -1174,9 +1174,29 @@ async def get_room_messages(
     )
 
     if before is not None:
-        stmt = stmt.where(MessageRecord.id < before)
+        cursor_result = await db.execute(
+            select(MessageRecord.id).where(
+                MessageRecord.hub_msg_id == before,
+                MessageRecord.room_id == room_id,
+                MessageRecord.id.in_(select(dedup_sub.c.min_id)),
+            )
+        )
+        cursor_id = cursor_result.scalar_one_or_none()
+        if cursor_id is None:
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+        stmt = stmt.where(MessageRecord.id < cursor_id)
     if after is not None:
-        stmt = stmt.where(MessageRecord.id > after)
+        cursor_result = await db.execute(
+            select(MessageRecord.id).where(
+                MessageRecord.hub_msg_id == after,
+                MessageRecord.room_id == room_id,
+                MessageRecord.id.in_(select(dedup_sub.c.min_id)),
+            )
+        )
+        cursor_id = cursor_result.scalar_one_or_none()
+        if cursor_id is None:
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+        stmt = stmt.where(MessageRecord.id > cursor_id)
 
     stmt = stmt.order_by(MessageRecord.id.desc()).limit(limit + 1)
 
@@ -1210,9 +1230,10 @@ async def get_room_messages(
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
         msg = {
+            "hub_msg_id": rec.hub_msg_id,
             "msg_id": rec.msg_id,
             "sender_id": rec.sender_id,
-            "sender_display_name": sender_names.get(rec.sender_id),
+            "sender_name": sender_names.get(rec.sender_id),
             "text": parsed["text"],
             "type": parsed["type"],
             "payload": parsed["payload"],
