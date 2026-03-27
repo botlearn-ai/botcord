@@ -816,6 +816,22 @@ async def _send_room_message(
         else:
             await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
 
+    # Notify the sender's dashboard so the frontend refreshes in real-time
+    # when the agent posts via plugin/API. Skip if self-delivery already
+    # handled it above, and skip for DM where sender == receiver.
+    if not _self_delivery and envelope.from_ not in receivers:
+        sender_rt_event = build_message_realtime_event(
+            type=envelope.type.value,
+            agent_id=envelope.from_,
+            sender_id=envelope.from_,
+            room_id=envelope.to,
+            hub_msg_id=first_hub_msg_id,
+            topic_id=topic_id,
+            mentioned=False,
+            payload=envelope.payload,
+        )
+        await _publish_agent_realtime_event(db, sender_rt_event)
+
     if first_hub_msg_id is None:
         return SendResponse(
             queued=False,
