@@ -15,6 +15,26 @@ function resolveLocale(locale?: PromptLocale): PromptLocale {
   return locale === "en" ? "en" : "zh";
 }
 
+function buildHttpRequestParamLines(
+  locale: PromptLocale,
+  options?: {
+    headers?: string;
+    jsonParams?: string;
+  },
+): string[] {
+  if (locale === "en") {
+    return [
+      `Required headers: ${options?.headers || "none"}`,
+      `JSON params: ${options?.jsonParams || "none"}`,
+    ];
+  }
+
+  return [
+    `请求头参数：${options?.headers || "无"}`,
+    `JSON 参数：${options?.jsonParams || "无"}`,
+  ];
+}
+
 function buildInviteRedeemRequestLines(
   redeemUrl: string,
   locale: PromptLocale,
@@ -25,8 +45,9 @@ function buildInviteRedeemRequestLines(
       options?.requiresPayment
         ? `Accept the invite (payment may be required): POST ${redeemUrl}`
         : `Accept the invite: POST ${redeemUrl}`,
-      "Required headers: Authorization: Bearer <BotCord access token>, X-Active-Agent: <current_bot_agent_id>",
-      "JSON params: none",
+      ...buildHttpRequestParamLines(locale, {
+        headers: "Authorization: Bearer <BotCord access token>, X-Active-Agent: <current_bot_agent_id>",
+      }),
     ];
   }
 
@@ -34,8 +55,9 @@ function buildInviteRedeemRequestLines(
     options?.requiresPayment
       ? `接受邀请（可能需要付费）：POST ${redeemUrl}`
       : `接受邀请：POST ${redeemUrl}`,
-    "请求头参数：Authorization: Bearer <BotCord access token>, X-Active-Agent: <当前 Bot 的 agent_id>",
-    "JSON 参数：无",
+    ...buildHttpRequestParamLines(locale, {
+      headers: "Authorization: Bearer <BotCord access token>, X-Active-Agent: <当前 Bot 的 agent_id>",
+    }),
   ];
 }
 
@@ -151,7 +173,10 @@ export function buildSharePrompt(options: {
     if (options.inviteCode) {
       const previewUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
       const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
-      lines.push(`Preview invite details: GET ${previewUrl}`);
+      lines.push(
+        `Preview invite details: GET ${previewUrl}`,
+        ...buildHttpRequestParamLines(locale),
+      );
       if (!options.isReadOnly) {
         lines.push(...buildInviteRedeemRequestLines(redeemUrl, locale, {
           requiresPayment: options.requiresPayment,
@@ -160,13 +185,19 @@ export function buildSharePrompt(options: {
     } else if (options.roomId) {
       const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
       lines.push(`Join the group: POST ${joinUrl}`);
-      lines.push(`JSON params: {"agent_id":"<current_bot_agent_id>"}`);
+      lines.push(...buildHttpRequestParamLines(locale, {
+        headers: "Authorization: Bearer <current_bot_agent_token>",
+        jsonParams: "{\"agent_id\":\"<current_bot_agent_id>\"}",
+      }));
       if (options.requiresPayment) {
         lines.push("Note: this group requires a paid subscription. Complete the subscription before joining.");
       }
     } else if (options.shareId) {
       const shareInfoUrl = `${hubApiBaseUrl}/api/share/${options.shareId}`;
-      lines.push(`View share details and find room_id: GET ${shareInfoUrl}`);
+      lines.push(
+        `View share details and find room_id: GET ${shareInfoUrl}`,
+        ...buildHttpRequestParamLines(locale),
+      );
     }
 
     lines.push(
@@ -183,7 +214,10 @@ export function buildSharePrompt(options: {
   if (options.inviteCode) {
     const previewUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
     const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
-    lines.push(`查看邀请详情：GET ${previewUrl}`);
+    lines.push(
+      `查看邀请详情：GET ${previewUrl}`,
+      ...buildHttpRequestParamLines(locale),
+    );
     if (!options.isReadOnly) {
       lines.push(...buildInviteRedeemRequestLines(redeemUrl, locale, {
         requiresPayment: options.requiresPayment,
@@ -192,13 +226,19 @@ export function buildSharePrompt(options: {
   } else if (options.roomId) {
     const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
     lines.push(`加入群：POST ${joinUrl}`);
-    lines.push(`JSON 参数：{"agent_id":"<当前 Bot 的 agent_id>"}`);
+    lines.push(...buildHttpRequestParamLines(locale, {
+      headers: "Authorization: Bearer <当前 Bot 的 agent token>",
+      jsonParams: "{\"agent_id\":\"<当前 Bot 的 agent_id>\"}",
+    }));
     if (options.requiresPayment) {
       lines.push("注意：该群需要付费订阅，请先完成订阅再加入。");
     }
   } else if (options.shareId) {
     const shareInfoUrl = `${hubApiBaseUrl}/api/share/${options.shareId}`;
-    lines.push(`查看分享详情并获取 room_id：GET ${shareInfoUrl}`);
+    lines.push(
+      `查看分享详情并获取 room_id：GET ${shareInfoUrl}`,
+      ...buildHttpRequestParamLines(locale),
+    );
   }
 
   lines.push(
@@ -224,6 +264,7 @@ export function buildFriendInvitePrompt(options: {
     return [
       "This is a BotCord friend invite.",
       `Preview invite details: GET ${previewApiUrl}`,
+      ...buildHttpRequestParamLines(locale),
       ...buildInviteRedeemRequestLines(redeemApiUrl, locale),
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "After accepting, just confirm it is done. Do not explain internal technical details.",
@@ -233,6 +274,7 @@ export function buildFriendInvitePrompt(options: {
   return [
     "这是一个 BotCord 好友邀请。",
     `查看邀请详情：GET ${previewApiUrl}`,
+    ...buildHttpRequestParamLines(locale),
     ...buildInviteRedeemRequestLines(redeemApiUrl, locale),
     `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "接受后直接告诉我结果，不要解释内部技术细节。",
@@ -256,7 +298,10 @@ export function buildSelfJoinPrompt(options: {
       `Help me join this BotCord group: ${options.roomName}`,
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       `Join the group: POST ${joinUrl}`,
-      `JSON params: {"agent_id":"<current_bot_agent_id>"}`,
+      ...buildHttpRequestParamLines(locale, {
+        headers: "Authorization: Bearer <current_bot_agent_token>",
+        jsonParams: "{\"agent_id\":\"<current_bot_agent_id>\"}",
+      }),
       "Do not explain internal technical details. Just tell me when it is done.",
     ].join("\n");
   }
@@ -265,7 +310,10 @@ export function buildSelfJoinPrompt(options: {
     `帮我加入这个 BotCord 群：${options.roomName}`,
     `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     `加入群：POST ${joinUrl}`,
-    `JSON 参数：{"agent_id":"<当前 Bot 的 agent_id>"}`,
+    ...buildHttpRequestParamLines(locale, {
+      headers: "Authorization: Bearer <当前 Bot 的 agent token>",
+      jsonParams: "{\"agent_id\":\"<当前 Bot 的 agent_id>\"}",
+    }),
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   ].join("\n");
 }
