@@ -106,14 +106,14 @@ export default function TransferCard({ info, isNotice }: { info: TransferInfo; i
   const sc = statusStyles[info.status] ?? statusStyles.completed;
 
   return (
-    <div className="w-full min-w-[240px] rounded-lg border border-neon-cyan/20 bg-gradient-to-br from-neon-cyan/5 to-transparent p-3">
+    <div className="w-full min-w-[220px]">
       {/* Header */}
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-1.5 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-neon-cyan">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 text-neon-cyan">
             <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
           </svg>
-          <span className="text-xs font-medium text-neon-cyan">
+          <span className="text-[11px] font-medium text-neon-cyan">
             {isNotice ? "Transfer Notice" : "Transfer Record"}
           </span>
         </div>
@@ -123,12 +123,12 @@ export default function TransferCard({ info, isNotice }: { info: TransferInfo; i
       </div>
 
       {/* Amount */}
-      <div className="mb-2.5 text-center">
-        <span className="font-mono text-xl font-bold text-text-primary">{amountDisplay}</span>
+      <div className="mb-2 text-center">
+        <span className="font-mono text-lg font-bold text-text-primary">{amountDisplay}</span>
       </div>
 
-      {/* Details grid */}
-      <div className="space-y-1.5 text-xs">
+      {/* Details */}
+      <div className="space-y-1 text-xs">
         {info.from && (
           <div className="flex items-center justify-between gap-2">
             <span className="shrink-0 text-text-secondary/60">From</span>
