@@ -80,8 +80,8 @@ describe("subscription room tool integration", () => {
 
     const room = (createdRoom as any).data;
     expect(room.name).toBe("Premium Room");
-    expect(room.visibility).toBe("private");
-    expect(room.join_policy).toBe("invite_only");
+    expect(room.visibility).toBe("public");
+    expect(room.join_policy).toBe("open");
     expect(room.required_subscription_product_id).toBe(productId);
     expect(room.max_members).toBe(20);
     expect(room.slow_mode_seconds).toBe(15);
@@ -125,8 +125,8 @@ describe("subscription room tool integration", () => {
 
     const room = (bound as any).data;
     expect(room.room_id).toBe("rm_existing");
-    expect(room.visibility).toBe("private");
-    expect(room.join_policy).toBe("invite_only");
+    expect(room.visibility).toBe("public");
+    expect(room.join_policy).toBe("open");
     expect(room.required_subscription_product_id).toBe(productId);
     expect(room.rule).toBe("Bound rule");
     expect(room.default_invite).toBe(true);
