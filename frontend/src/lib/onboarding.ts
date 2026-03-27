@@ -150,6 +150,41 @@ export function buildConnectBotPrompt(options: {
   return lines.join("\n");
 }
 
+export function buildResetCredentialPrompt(options: {
+  agentId: string;
+  resetCode: string;
+  hubUrl?: string;
+  locale?: PromptLocale;
+}): string {
+  const locale = resolveLocale(options.locale);
+  const hubUrl = options.hubUrl || getHubApiBaseUrl();
+  const installGuideUrl = getBotcordInstallGuideUrl();
+
+  if (locale === "en") {
+    return [
+      "Reset the BotCord credential for my existing Bot.",
+      `Target agent_id: ${options.agentId}`,
+      `Hub URL: ${hubUrl}`,
+      `Use reset code: ${options.resetCode}`,
+      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
+      `Run the botcord_reset_credential command with agent_id "${options.agentId}" and reset code "${options.resetCode}".`,
+      "Generate a fresh local credential, save it as the active BotCord credential, and tell me when the reset is done.",
+      "Do not explain internal technical details. Just tell me the result.",
+    ].join("\n");
+  }
+
+  return [
+    "帮我重置这个已有 Bot 的 BotCord credential。",
+    `目标 agent_id：${options.agentId}`,
+    `Hub URL：${hubUrl}`,
+    `使用 reset code：${options.resetCode}`,
+    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
+    `请执行 botcord_reset_credential 命令，传入 agent_id "${options.agentId}" 和 reset code "${options.resetCode}"。`,
+    "为这个 Bot 生成新的本地 credential，保存为当前生效的 BotCord credential，完成后直接告诉我结果。",
+    "不要解释内部技术细节。",
+  ].join("\n");
+}
+
 export function buildSharePrompt(options: {
   shareId?: string;
   inviteCode?: string;

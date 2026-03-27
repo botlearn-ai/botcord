@@ -264,6 +264,13 @@ BIND_TICKET_RESPONSE = {
     "expires_at": "int",
 }
 
+RESET_TICKET_RESPONSE = {
+    "agent_id": "str",
+    "reset_code": "str",
+    "reset_ticket": "str",
+    "expires_at": "int",
+}
+
 WITHDRAWAL_LIST_RESPONSE = {
     "withdrawals": "list",
 }

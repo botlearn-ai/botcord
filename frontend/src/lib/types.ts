@@ -262,6 +262,13 @@ export interface BindTicketResponse {
   expires_at: number;
 }
 
+export interface ResetTicketResponse {
+  agent_id: string;
+  reset_code: string;
+  reset_ticket: string;
+  expires_at: number;
+}
+
 // --- Share types ---
 
 export interface CreateShareResponse {

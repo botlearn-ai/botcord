@@ -24,7 +24,11 @@ from hub.auth import create_agent_token, verify_agent_token
 from hub.config import BIND_PROOF_SECRET, JWT_SECRET
 from hub.crypto import verify_challenge_sig
 from hub.database import async_session as _default_session_factory, get_db
-from hub.models import Agent, Role, ShortCode, User, UserRole
+from hub.models import Agent, Role, ShortCode, SigningKey, User, UserRole
+from hub.id_generators import generate_key_id
+from hub.enums import KeyState
+from hub.schemas import ResetCredentialResponse
+from hub.validators import parse_pubkey
 
 _logger = logging.getLogger(__name__)
 
@@ -64,6 +68,20 @@ class AgentBindBody(BaseModel):
     agent_token: str
     bind_ticket: str | None = None
     bind_code: str | None = None
+
+
+class ResetCredentialTicketResponse(BaseModel):
+    agent_id: str
+    reset_code: str
+    reset_ticket: str
+    expires_at: int
+
+
+class ResetCredentialBody(BaseModel):
+    agent_id: str
+    pubkey: str
+    reset_ticket: str | None = None
+    reset_code: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -136,14 +154,14 @@ def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-async def _peek_bind_code(code: str) -> str | None:
-    """Validate a bind short code and return its bind_ticket WITHOUT consuming it."""
+async def _peek_short_code(code: str, kind: str, payload_key: str) -> str | None:
+    """Validate a short code and return a payload field WITHOUT consuming it."""
     async with _short_code_session_factory() as code_session:
         now = _utc_now()
         result = await code_session.execute(
             select(ShortCode.payload_json).where(
                 ShortCode.code == code,
-                ShortCode.kind == "bind",
+                ShortCode.kind == kind,
                 ShortCode.consumed_at.is_(None),
                 ShortCode.use_count < ShortCode.max_uses,
                 ShortCode.expires_at > now,
@@ -156,19 +174,19 @@ async def _peek_bind_code(code: str) -> str | None:
             payload = json.loads(payload_json)
         except json.JSONDecodeError:
             return None
-        bind_ticket = payload.get("bind_ticket")
-        return bind_ticket if isinstance(bind_ticket, str) else None
+        ticket = payload.get(payload_key)
+        return ticket if isinstance(ticket, str) else None
 
 
-async def _consume_bind_code(code: str) -> bool:
-    """Atomically consume a bind short code. Returns True on success."""
+async def _consume_short_code(code: str, kind: str) -> bool:
+    """Atomically consume a short code. Returns True on success."""
     async with _short_code_session_factory() as code_session:
         now = _utc_now()
         result = await code_session.execute(
             update(ShortCode)
             .where(
                 ShortCode.code == code,
-                ShortCode.kind == "bind",
+                ShortCode.kind == kind,
                 ShortCode.consumed_at.is_(None),
                 ShortCode.use_count < ShortCode.max_uses,
                 ShortCode.expires_at > now,
@@ -186,6 +204,33 @@ async def _consume_bind_code(code: str) -> bool:
             return False
         await code_session.commit()
         return True
+
+
+async def _peek_bind_code(code: str) -> str | None:
+    return await _peek_short_code(code, "bind", "bind_ticket")
+
+
+async def _consume_bind_code(code: str) -> bool:
+    return await _consume_short_code(code, "bind")
+
+
+async def _peek_reset_code(code: str) -> str | None:
+    return await _peek_short_code(code, "credential_reset", "reset_ticket")
+
+
+async def _consume_reset_code(code: str) -> bool:
+    return await _consume_short_code(code, "credential_reset")
+
+
+def _build_signed_ticket(payload: dict) -> str:
+    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
+
+    secret = BIND_PROOF_SECRET or JWT_SECRET
+    sig = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).decode()
+
+    return f"{payload_b64}.{sig_b64}"
 
 
 async def _consume_bind_ticket_jti(jti: str) -> bool:
@@ -227,6 +272,16 @@ def _verify_agent_control(agent_id: str, agent_token: str) -> bool:
         return token_agent_id == agent_id
     except Exception:
         return False
+
+
+def _verify_reset_ticket(ticket: str) -> dict | None:
+    payload = _verify_bind_ticket(ticket)
+    if payload is None:
+        return None
+    if payload.get("purpose") != "credential_reset":
+        return None
+    agent_id = payload.get("agent_id")
+    return payload if isinstance(agent_id, str) and agent_id.startswith("ag_") else None
 
 
 # ---------------------------------------------------------------------------
@@ -618,14 +673,7 @@ async def create_bind_ticket(
         "jti": jti,
     }
 
-    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-    payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
-
-    secret = BIND_PROOF_SECRET or JWT_SECRET
-    sig = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
-    sig_b64 = base64.urlsafe_b64encode(sig).decode()
-
-    ticket = f"{payload_b64}.{sig_b64}"
+    ticket = _build_signed_ticket(payload)
 
     short_code = ShortCode(
         code=bind_code,
@@ -644,6 +692,57 @@ async def create_bind_ticket(
         "nonce": nonce,
         "expires_at": int(exp.timestamp()),
     }
+
+
+@router.post(
+    "/me/agents/{agent_id}/credential-reset-ticket",
+    response_model=ResetCredentialTicketResponse,
+)
+async def create_credential_reset_ticket(
+    agent_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Issue a one-time credential reset ticket for an owned agent."""
+    result = await db.execute(
+        select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    now = _utc_now()
+    exp = now + datetime.timedelta(minutes=30)
+    jti = uuid4().hex
+    reset_code = f"rc_{uuid4().hex[:12]}"
+
+    payload = {
+        "uid": str(ctx.user_id),
+        "agent_id": agent_id,
+        "purpose": "credential_reset",
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+        "jti": jti,
+    }
+    ticket = _build_signed_ticket(payload)
+
+    short_code = ShortCode(
+        code=reset_code,
+        kind="credential_reset",
+        owner_user_id=ctx.user_id,
+        payload_json=json.dumps({"reset_ticket": ticket}, separators=(",", ":"), sort_keys=True),
+        expires_at=exp,
+    )
+    async with _short_code_session_factory() as code_session:
+        code_session.add(short_code)
+        await code_session.commit()
+
+    return ResetCredentialTicketResponse(
+        agent_id=agent_id,
+        reset_code=reset_code,
+        reset_ticket=ticket,
+        expires_at=int(exp.timestamp()),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -869,3 +968,102 @@ async def agent_bind(
         db, user_id, body.agent_id, body.display_name, body.agent_token
     )
     return _agent_meta(agent)
+
+
+@router.post(
+    "/me/agents/reset-credential",
+    response_model=ResetCredentialResponse,
+)
+async def reset_agent_credential(
+    body: ResetCredentialBody,
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace an owned agent's active signing credential via a user-issued reset ticket."""
+    if not body.agent_id.startswith("ag_"):
+        raise HTTPException(status_code=400, detail="agent_id must start with 'ag_'")
+
+    reset_ticket = body.reset_ticket
+    has_reset_code = bool(body.reset_code)
+    if has_reset_code:
+        reset_ticket = await _peek_reset_code(body.reset_code)
+        if reset_ticket is None:
+            raise HTTPException(status_code=401, detail="Invalid or expired reset code")
+    if reset_ticket is None:
+        raise HTTPException(status_code=400, detail="reset_ticket or reset_code is required")
+
+    ticket_payload = _verify_reset_ticket(reset_ticket)
+    if ticket_payload is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired reset ticket")
+    if ticket_payload["agent_id"] != body.agent_id:
+        raise HTTPException(status_code=403, detail="Reset ticket does not match agent")
+
+    uid_str = ticket_payload.get("uid")
+    if not uid_str:
+        raise HTTPException(status_code=401, detail="Reset ticket missing uid")
+
+    try:
+        user_id = UUID(uid_str)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Reset ticket has invalid uid")
+
+    result = await db.execute(
+        select(Agent).where(Agent.agent_id == body.agent_id, Agent.user_id == user_id)
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    pubkey = body.pubkey.strip()
+    parse_pubkey(pubkey)
+
+    existing_key_result = await db.execute(
+        select(SigningKey).where(
+            SigningKey.agent_id == body.agent_id,
+            SigningKey.pubkey == pubkey,
+        )
+    )
+    if existing_key_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Public key already exists for agent")
+
+    if has_reset_code:
+        if not await _consume_reset_code(body.reset_code):
+            raise HTTPException(status_code=401, detail="Reset code already consumed")
+    if not await _consume_bind_ticket_jti(ticket_payload["jti"]):
+        raise HTTPException(status_code=401, detail="Reset ticket already used")
+
+    key_id = generate_key_id()
+    active_keys_result = await db.execute(
+        select(SigningKey).where(
+            SigningKey.agent_id == body.agent_id,
+            SigningKey.state == KeyState.active,
+        )
+    )
+    for signing_key in active_keys_result.scalars().all():
+        signing_key.state = KeyState.revoked
+
+    db.add(
+        SigningKey(
+            agent_id=body.agent_id,
+            key_id=key_id,
+            pubkey=pubkey,
+            state=KeyState.active,
+        )
+    )
+
+    agent_token, expires_at = create_agent_token(body.agent_id)
+    agent.agent_token = agent_token
+    agent.token_expires_at = datetime.datetime.fromtimestamp(
+        expires_at, tz=datetime.timezone.utc
+    )
+
+    await db.commit()
+    await db.refresh(agent)
+
+    return ResetCredentialResponse(
+        agent_id=agent.agent_id,
+        display_name=agent.display_name,
+        key_id=key_id,
+        agent_token=agent_token,
+        expires_at=expires_at,
+        hub_url=None,
+    )
