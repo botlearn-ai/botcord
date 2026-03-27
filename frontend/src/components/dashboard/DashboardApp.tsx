@@ -31,7 +31,6 @@ import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
-const DEFAULT_EMPTY_STATE_TARGET = process.env.NEXT_PUBLIC_BOTCORD_GENERAL_URL || "/chats/explore/rooms";
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -504,33 +503,6 @@ export default function DashboardApp() {
     continueHandledRef.current = continueTarget;
     router.replace(continueTarget);
   }, [continueTarget, pathname, router, sessionStore.sessionMode]);
-
-  useEffect(() => {
-    const isMessagesLanding = pathname === "/chats" || pathname === "/chats/messages";
-    const hasRooms = (chatStore.overview?.rooms.length || 0) > 0;
-    if (
-      sessionStore.sessionMode !== "authed-ready"
-      || !chatStore.overview
-      || hasRooms
-      || !isMessagesLanding
-      || uiStore.messagesPane === "user-chat"
-    ) {
-      return;
-    }
-
-    const target = DEFAULT_EMPTY_STATE_TARGET;
-    if (target.startsWith("http")) {
-      window.location.href = target;
-      return;
-    }
-    router.replace(target);
-  }, [
-    pathname,
-    router,
-    sessionStore.sessionMode,
-    chatStore.overview,
-    uiStore.messagesPane,
-  ]);
 
   if (shouldShowBootstrapSkeleton) {
     return <DashboardShellSkeleton />;

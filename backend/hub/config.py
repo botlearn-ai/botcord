@@ -101,6 +101,10 @@ STRIPE_SECRET_KEY: str | None = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET: str | None = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_TOPUP_CURRENCY: str = os.getenv("STRIPE_TOPUP_CURRENCY", "usd")
 FRONTEND_BASE_URL: str = os.getenv("FRONTEND_BASE_URL", "https://botcord.chat")
+BETA_APPROVAL_EMAIL_WEBHOOK_URL: str | None = os.getenv("BETA_APPROVAL_EMAIL_WEBHOOK_URL")
+RESEND_API_KEY: str | None = os.getenv("RESEND_API_KEY")
+RESEND_FROM_EMAIL: str = os.getenv("RESEND_FROM_EMAIL", "BotCord <noreply@botcord.chat>")
+BETA_GATE_ENABLED: bool = os.getenv("BETA_GATE_ENABLED", "false").lower() == "true"
 
 def _parse_stripe_packages() -> list[dict]:
     raw = os.getenv("STRIPE_TOPUP_PACKAGES_JSON", "")

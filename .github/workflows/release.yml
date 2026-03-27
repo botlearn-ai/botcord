@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: self-hosted
+    outputs:
+      backup_branch: ${{ steps.backup.outputs.backup_branch }}
+      main_sha: ${{ steps.notify.outputs.main_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Backup current release branch
+        id: backup
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          BACKUP_BRANCH="release-backup-${DATE}"
+
+          # Check if remote release branch exists
+          if ! git ls-remote --exit-code origin release >/dev/null 2>&1; then
+            echo "No existing release branch to backup"
+            echo "backup_branch=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Handle naming collision: release-backup-2026-03-25, release-backup-2026-03-25-2, ...
+          CANDIDATE="$BACKUP_BRANCH"
+          SEQ=2
+          while git ls-remote --exit-code origin "$CANDIDATE" >/dev/null 2>&1; do
+            CANDIDATE="${BACKUP_BRANCH}-${SEQ}"
+            SEQ=$((SEQ + 1))
+          done
+          BACKUP_BRANCH="$CANDIDATE"
+
+          git push origin origin/release:refs/heads/${BACKUP_BRANCH}
+          echo "backup_branch=${BACKUP_BRANCH}" >> $GITHUB_OUTPUT
+          echo "Backed up release → ${BACKUP_BRANCH}"
+
+      - name: Push main to release
+        run: |
+          git push origin main:refs/heads/release --force
+          echo "Release branch now points to main ($(git rev-parse origin/main))"
+
+      - name: Prepare notification data
+        id: notify
+        run: |
+          MAIN_SHA=$(git rev-parse origin/main)
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s%n%n%b" origin/main | sed '/^$/d')
+          EOF_MARKER="EOF_$(date +%s)"
+          echo "commit_msg<<$EOF_MARKER" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "$EOF_MARKER" >> $GITHUB_OUTPUT
+          echo "main_sha=${MAIN_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Send Feishu notification
+        if: always()
+        uses: ./.github/actions/feishu-notify
+        with:
+          webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          title: '🚀「BotCord」Release — 分支已就绪'
+          color: blue
+          fields: |
+            [
+              {"label": "操作", "value": "main → release (prod)"},
+              {"label": "备份", "value": "${{ steps.backup.outputs.backup_branch || '无（首次 release）' }}"},
+              {"label": "提交", "value": "[${{ steps.notify.outputs.main_sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ steps.notify.outputs.main_sha }})"},
+              {"label": "触发者", "value": "${{ github.actor }}"}
+            ]
+          commit_msg: ${{ steps.notify.outputs.commit_msg }}
+          buttons: |
+            [
+              {"text": "查看详情", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"}
+            ]
+
+  deploy-prod:
+    needs: release
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      env_override: prod
+    secrets: inherit

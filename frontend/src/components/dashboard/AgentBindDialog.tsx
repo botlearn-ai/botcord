@@ -12,7 +12,7 @@ import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { bindDialog } from "@/lib/i18n/translations/dashboard";
 import { X, Copy, Check, Loader2 } from "lucide-react";
-import { buildConnectBotPrompt, getBotcordInstallGuideUrl, getBotcordWebAppUrl } from "@/lib/onboarding";
+import { buildConnectBotPrompt, getBotcordInstallGuideUrl } from "@/lib/onboarding";
 
 type AgentBindMode = "auto" | "create" | "link";
 
@@ -105,7 +105,6 @@ export default function AgentBindDialog({
     return buildConnectBotPrompt({
       connectionCode: bindCode,
       mode,
-      webAppUrl: getBotcordWebAppUrl(),
       installGuideUrl: getBotcordInstallGuideUrl(),
       locale,
     });

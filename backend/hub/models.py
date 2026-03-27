@@ -27,6 +27,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
+    BetaCodeStatus,
+    BetaWaitlistStatus,
     BillingInterval,
     ContactRequestState,
     EndpointState,
@@ -35,6 +37,7 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     MessagePolicy,
     MessageState,
     RoomJoinPolicy,
+    RoomJoinRequestStatus,
     RoomRole,
     RoomVisibility,
     SubscriptionChargeAttemptStatus,
@@ -288,6 +291,34 @@ class RoomMember(Base):
     )
 
     room: Mapped["Room"] = relationship(back_populates="members")
+
+
+class RoomJoinRequest(Base):
+    __tablename__ = "room_join_requests"
+    __table_args__ = (
+        UniqueConstraint("room_id", "agent_id", "status", name="uq_room_join_request_pending"),
+        Index("ix_room_join_requests_room_status", "room_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    room_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("rooms.room_id"), nullable=False, index=True
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+    )
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[RoomJoinRequestStatus] = mapped_column(
+        Enum(RoomJoinRequestStatus), nullable=False, default=RoomJoinRequestStatus.pending
+    )
+    responded_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class MessageRecord(Base):
@@ -837,6 +868,8 @@ class User(Base):
     last_login_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    beta_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    beta_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     user_roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
 
@@ -907,3 +940,60 @@ class UserRole(Base):
 
     user: Mapped["User"] = relationship(back_populates="user_roles")
     role: Mapped["Role"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Beta invite gate
+# ---------------------------------------------------------------------------
+
+
+class BetaInviteCode(Base):
+    __tablename__ = "beta_invite_codes"
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    max_uses: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    used_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[BetaCodeStatus] = mapped_column(
+        Enum(BetaCodeStatus, name="betacodestatus"), nullable=False, default=BetaCodeStatus.active
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    redemptions: Mapped[list["BetaCodeRedemption"]] = relationship(back_populates="invite_code")
+
+
+class BetaCodeRedemption(Base):
+    __tablename__ = "beta_code_redemptions"
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    code_id: Mapped[_uuid.UUID] = mapped_column(Uuid, ForeignKey("beta_invite_codes.id"), nullable=False, index=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("public.users.id"), nullable=False, unique=True, index=True
+    )
+    redeemed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    invite_code: Mapped["BetaInviteCode"] = relationship(back_populates="redemptions")
+
+
+class BetaWaitlistEntry(Base):
+    __tablename__ = "beta_waitlist_entries"
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    user_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("public.users.id"), nullable=False, unique=True, index=True
+    )
+    email: Mapped[str] = mapped_column(String(256), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[BetaWaitlistStatus] = mapped_column(
+        Enum(BetaWaitlistStatus, name="betawaitliststatus"),
+        nullable=False,
+        default=BetaWaitlistStatus.pending,
+    )
+    applied_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_code_id: Mapped[_uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("beta_invite_codes.id"), nullable=True
+    )

@@ -1,0 +1,216 @@
+export type BotCordSignature = {
+    alg: "ed25519";
+    key_id: string;
+    value: string;
+};
+export type MessageType = "message" | "ack" | "result" | "error" | "contact_request" | "contact_request_response" | "contact_removed" | "system";
+export type BotCordMessageEnvelope = {
+    v: string;
+    msg_id: string;
+    ts: number;
+    from: string;
+    to: string;
+    type: MessageType;
+    reply_to: string | null;
+    ttl_sec: number;
+    topic?: string | null;
+    goal?: string | null;
+    payload: Record<string, unknown>;
+    payload_hash: string;
+    sig: BotCordSignature;
+    mentions?: string[] | null;
+};
+export type InboxMessage = {
+    hub_msg_id: string;
+    envelope: BotCordMessageEnvelope;
+    text?: string;
+    room_id?: string;
+    room_name?: string;
+    room_rule?: string | null;
+    room_member_count?: number;
+    room_member_names?: string[];
+    my_role?: string;
+    my_can_send?: boolean;
+    topic?: string;
+    topic_id?: string;
+    goal?: string;
+    mentioned?: boolean;
+    source_type?: string;
+    source_user_id?: string | null;
+    source_session_kind?: string | null;
+};
+export type InboxPollResponse = {
+    messages: InboxMessage[];
+    count: number;
+    has_more: boolean;
+};
+export type SendResponse = {
+    queued: boolean;
+    hub_msg_id: string;
+    status: string;
+    topic_id?: string;
+};
+export type RoomInfo = {
+    room_id: string;
+    name: string;
+    description?: string;
+    rule?: string | null;
+    visibility: "private" | "public";
+    join_policy: "invite_only" | "open";
+    required_subscription_product_id?: string | null;
+    max_members?: number | null;
+    default_send: boolean;
+    default_invite?: boolean;
+    slow_mode_seconds?: number | null;
+    member_count: number;
+    created_at: string;
+};
+export type AgentInfo = {
+    agent_id: string;
+    display_name?: string;
+    bio?: string;
+    message_policy: string;
+    endpoints: Array<{
+        url: string;
+        state: string;
+    }>;
+};
+export type ContactInfo = {
+    contact_agent_id: string;
+    display_name?: string;
+    created_at: string;
+};
+export type ContactRequestInfo = {
+    request_id: string;
+    from_agent_id: string;
+    to_agent_id: string;
+    state: "pending" | "accepted" | "rejected";
+    created_at: string;
+};
+export type FileUploadResponse = {
+    file_id: string;
+    url: string;
+    original_filename: string;
+    content_type: string;
+    size_bytes: number;
+    expires_at: string;
+};
+export type MessageAttachment = {
+    filename: string;
+    url: string;
+    content_type?: string;
+    size_bytes?: number;
+};
+export type WalletSummary = {
+    agent_id: string;
+    asset_code: string;
+    available_balance_minor: string;
+    locked_balance_minor: string;
+    total_balance_minor: string;
+    updated_at: string;
+};
+export type WalletTransaction = {
+    tx_id: string;
+    type: "topup" | "withdrawal" | "transfer";
+    status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+    asset_code: string;
+    amount_minor: string;
+    fee_minor: string;
+    from_agent_id: string | null;
+    to_agent_id: string | null;
+    reference_type: string | null;
+    reference_id: string | null;
+    idempotency_key: string | null;
+    metadata_json: string | null;
+    created_at: string;
+    updated_at: string;
+    completed_at: string | null;
+};
+export type WalletLedgerEntry = {
+    entry_id: string;
+    tx_id: string;
+    agent_id: string;
+    asset_code: string;
+    direction: "debit" | "credit";
+    amount_minor: string;
+    balance_after_minor: string;
+    created_at: string;
+};
+export type WalletLedgerResponse = {
+    entries: WalletLedgerEntry[];
+    next_cursor: string | null;
+    has_more: boolean;
+};
+export type TopupResponse = {
+    topup_id: string;
+    tx_id: string | null;
+    agent_id: string;
+    asset_code: string;
+    amount_minor: string;
+    status: string;
+    channel: string;
+    created_at: string;
+    completed_at: string | null;
+};
+export type WithdrawalResponse = {
+    withdrawal_id: string;
+    tx_id: string | null;
+    agent_id: string;
+    asset_code: string;
+    amount_minor: string;
+    fee_minor: string;
+    status: string;
+    destination_type: string | null;
+    review_note: string | null;
+    created_at: string;
+    reviewed_at: string | null;
+    completed_at: string | null;
+};
+export type BillingInterval = "week" | "month";
+export type SubscriptionProductStatus = "active" | "archived";
+export type SubscriptionStatus = "active" | "past_due" | "cancelled";
+export type SubscriptionChargeAttemptStatus = "pending" | "succeeded" | "failed";
+export type SubscriptionChargeAttempt = {
+    attempt_id: string;
+    subscription_id: string;
+    billing_cycle_key: string;
+    status: SubscriptionChargeAttemptStatus;
+    scheduled_at: string;
+    attempted_at: string | null;
+    tx_id: string | null;
+    failure_reason: string | null;
+    created_at: string;
+};
+export type SubscriptionProduct = {
+    product_id: string;
+    owner_agent_id: string;
+    name: string;
+    description: string;
+    asset_code: string;
+    amount_minor: string;
+    billing_interval: BillingInterval;
+    status: SubscriptionProductStatus;
+    created_at: string;
+    updated_at: string;
+    archived_at: string | null;
+};
+export type Subscription = {
+    subscription_id: string;
+    product_id: string;
+    subscriber_agent_id: string;
+    provider_agent_id: string;
+    asset_code: string;
+    amount_minor: string;
+    billing_interval: BillingInterval;
+    status: SubscriptionStatus;
+    current_period_start: string;
+    current_period_end: string;
+    next_charge_at: string;
+    cancel_at_period_end: boolean;
+    cancelled_at: string | null;
+    last_charged_at: string | null;
+    last_charge_tx_id: string | null;
+    consecutive_failed_attempts: number;
+    created_at: string;
+    updated_at: string;
+};

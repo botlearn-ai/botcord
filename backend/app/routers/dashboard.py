@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import RequestContext, require_active_agent
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
+from hub.id_generators import generate_join_request_id
 from hub.models import (
     Agent,
     Contact,
@@ -22,6 +23,8 @@ from hub.models import (
     MessageState,
     Room,
     RoomJoinPolicy,
+    RoomJoinRequest,
+    RoomJoinRequestStatus,
     RoomMember,
     RoomRole,
     RoomVisibility,
@@ -87,6 +90,8 @@ async def _build_rooms_from_sql(
     }
     _DROP_COLS = {"last_sender_id"}
 
+    sql_room_ids: set[str] = set()
+
     try:
         result = await db.execute(
             text("SELECT * FROM get_agent_room_previews(:agent_id)"),
@@ -103,8 +108,17 @@ async def _build_rooms_from_sql(
                 item[key] = v
             if "member_count" in item:
                 item["member_count"] = int(item["member_count"] or 0)
+            room_id = item.get("room_id")
+            if isinstance(room_id, str):
+                sql_room_ids.add(room_id)
             mapped.append(item)
-        return mapped
+        orm_rooms = await _build_rooms_from_membership(agent_id, db)
+        if not orm_rooms:
+            return mapped
+        missing_rooms = [room for room in orm_rooms if room["room_id"] not in sql_room_ids]
+        if not missing_rooms:
+            return mapped
+        return _sort_room_previews(mapped + missing_rooms)
     except Exception:
         _logger.debug(
             "get_agent_room_previews unavailable, falling back to ORM query",
@@ -112,12 +126,29 @@ async def _build_rooms_from_sql(
         )
         await db.rollback()
 
-    # --- ORM fallback ---
+    return await _build_rooms_from_membership(agent_id, db)
+
+
+def _sort_room_previews(rooms: list[dict]) -> list[dict]:
+    rooms.sort(
+        key=lambda r: r.get("last_message_at") or "",
+        reverse=True,
+    )
+    return rooms
+
+
+async def _build_rooms_from_membership(
+    agent_id: str,
+    db: AsyncSession,
+) -> list[dict]:
+    # --- ORM fallback /补齐缺失 membership ---
     member_result = await db.execute(
-        select(RoomMember.room_id, RoomMember.role)
+        select(RoomMember.room_id, RoomMember.role, RoomMember.can_invite)
         .where(RoomMember.agent_id == agent_id)
     )
-    memberships = {row[0]: row[1] for row in member_result.all()}
+    _member_rows = member_result.all()
+    memberships = {row[0]: row[1] for row in _member_rows}
+    invite_overrides = {row[0]: row[2] for row in _member_rows}
     room_ids = list(memberships.keys())
     if not room_ids:
         return []
@@ -190,6 +221,16 @@ async def _build_rooms_from_sql(
         role_val = memberships.get(rid)
         my_role = role_val.value if hasattr(role_val, "value") else str(role_val) if role_val else "member"
 
+        member_can_invite = invite_overrides.get(rid)
+        if my_role == "owner":
+            computed_can_invite = True
+        elif member_can_invite is not None:
+            computed_can_invite = member_can_invite
+        elif my_role == "admin":
+            computed_can_invite = True
+        else:
+            computed_can_invite = room.default_invite
+
         result_rooms.append({
             "room_id": room.room_id,
             "name": room.name,
@@ -198,18 +239,16 @@ async def _build_rooms_from_sql(
             "required_subscription_product_id": room.required_subscription_product_id,
             "owner_id": room.owner_id,
             "visibility": room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
+            "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
             "member_count": member_counts.get(rid, 0),
             "my_role": my_role,
+            "can_invite": computed_can_invite,
             "last_message_preview": last_preview,
             "last_message_at": last_at.isoformat() if last_at else None,
             "last_sender_name": last_sender,
         })
 
-    result_rooms.sort(
-        key=lambda r: r.get("last_message_at") or "",
-        reverse=True,
-    )
-    return result_rooms
+    return _sort_room_previews(result_rooms)
 
 
 # ---------------------------------------------------------------------------
@@ -786,6 +825,244 @@ async def leave_room(
 
 
 # ---------------------------------------------------------------------------
+# Room join requests
+# ---------------------------------------------------------------------------
+
+
+class _JoinRequestBody(BaseModel):
+    message: str | None = None
+
+
+@router.post("/rooms/{room_id}/join-requests", status_code=201)
+async def create_join_request(
+    room_id: str,
+    body: _JoinRequestBody | None = None,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit a join request for an invite-only public room."""
+    agent_id = ctx.active_agent_id
+
+    room_result = await db.execute(select(Room).where(Room.room_id == room_id))
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.visibility != RoomVisibility.public:
+        raise HTTPException(status_code=403, detail="Room is not public")
+    if room.join_policy != RoomJoinPolicy.invite_only:
+        raise HTTPException(status_code=400, detail="Room is open — use the join endpoint instead")
+
+    existing_member = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+    )
+    if existing_member.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Already a member")
+
+    existing_pending = await db.execute(
+        select(RoomJoinRequest).where(
+            RoomJoinRequest.room_id == room_id,
+            RoomJoinRequest.agent_id == agent_id,
+            RoomJoinRequest.status == RoomJoinRequestStatus.pending,
+        )
+    )
+    if existing_pending.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Join request already pending")
+
+    req = RoomJoinRequest(
+        request_id=generate_join_request_id(),
+        room_id=room_id,
+        agent_id=agent_id,
+        message=body.message if body else None,
+        status=RoomJoinRequestStatus.pending,
+    )
+    db.add(req)
+    await db.commit()
+
+    return {
+        "request_id": req.request_id,
+        "room_id": room_id,
+        "agent_id": agent_id,
+        "status": "pending",
+        "message": req.message,
+        "created_at": req.created_at.isoformat() if req.created_at else None,
+    }
+
+
+@router.get("/rooms/{room_id}/join-requests")
+async def list_join_requests(
+    room_id: str,
+    status: str | None = Query(default=None),
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """List join requests for a room. Owner/admin only."""
+    agent_id = ctx.active_agent_id
+
+    member_result = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+    )
+    member = member_result.scalar_one_or_none()
+    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Owner or admin required")
+
+    stmt = (
+        select(RoomJoinRequest, Agent.display_name)
+        .outerjoin(Agent, Agent.agent_id == RoomJoinRequest.agent_id)
+        .where(RoomJoinRequest.room_id == room_id)
+    )
+    if status:
+        stmt = stmt.where(RoomJoinRequest.status == status)
+    else:
+        stmt = stmt.where(RoomJoinRequest.status == RoomJoinRequestStatus.pending)
+    stmt = stmt.order_by(RoomJoinRequest.created_at.desc())
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    return {
+        "requests": [
+            {
+                "request_id": jr.request_id,
+                "room_id": jr.room_id,
+                "agent_id": jr.agent_id,
+                "agent_display_name": display_name,
+                "message": jr.message,
+                "status": jr.status.value if hasattr(jr.status, "value") else str(jr.status),
+                "created_at": jr.created_at.isoformat() if jr.created_at else None,
+            }
+            for jr, display_name in rows
+        ]
+    }
+
+
+@router.post("/rooms/{room_id}/join-requests/{request_id}/accept", status_code=200)
+async def accept_join_request(
+    room_id: str,
+    request_id: str,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept a join request. Owner/admin only."""
+    agent_id = ctx.active_agent_id
+
+    member_result = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+    )
+    member = member_result.scalar_one_or_none()
+    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Owner or admin required")
+
+    jr_result = await db.execute(
+        select(RoomJoinRequest).where(
+            RoomJoinRequest.request_id == request_id,
+            RoomJoinRequest.room_id == room_id,
+        )
+    )
+    jr = jr_result.scalar_one_or_none()
+    if jr is None:
+        raise HTTPException(status_code=404, detail="Join request not found")
+    if jr.status != RoomJoinRequestStatus.pending:
+        raise HTTPException(status_code=409, detail="Request already resolved")
+
+    room_result = await db.execute(select(Room).where(Room.room_id == room_id))
+    room = room_result.scalar_one_or_none()
+    if room and room.max_members is not None:
+        count_result = await db.execute(
+            select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)
+        )
+        if (count_result.scalar() or 0) >= room.max_members:
+            raise HTTPException(status_code=409, detail="Room is full")
+
+    jr.status = RoomJoinRequestStatus.accepted
+    jr.responded_by = agent_id
+    jr.resolved_at = func.now()
+
+    new_member = RoomMember(
+        room_id=room_id,
+        agent_id=jr.agent_id,
+        role=RoomRole.member,
+    )
+    db.add(new_member)
+    await db.commit()
+
+    return {
+        "request_id": request_id,
+        "room_id": room_id,
+        "agent_id": jr.agent_id,
+        "status": "accepted",
+    }
+
+
+@router.post("/rooms/{room_id}/join-requests/{request_id}/reject", status_code=200)
+async def reject_join_request(
+    room_id: str,
+    request_id: str,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject a join request. Owner/admin only."""
+    agent_id = ctx.active_agent_id
+
+    member_result = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+    )
+    member = member_result.scalar_one_or_none()
+    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Owner or admin required")
+
+    jr_result = await db.execute(
+        select(RoomJoinRequest).where(
+            RoomJoinRequest.request_id == request_id,
+            RoomJoinRequest.room_id == room_id,
+        )
+    )
+    jr = jr_result.scalar_one_or_none()
+    if jr is None:
+        raise HTTPException(status_code=404, detail="Join request not found")
+    if jr.status != RoomJoinRequestStatus.pending:
+        raise HTTPException(status_code=409, detail="Request already resolved")
+
+    jr.status = RoomJoinRequestStatus.rejected
+    jr.responded_by = agent_id
+    jr.resolved_at = func.now()
+    await db.commit()
+
+    return {
+        "request_id": request_id,
+        "room_id": room_id,
+        "agent_id": jr.agent_id,
+        "status": "rejected",
+    }
+
+
+@router.get("/rooms/{room_id}/my-join-request")
+async def get_my_join_request(
+    room_id: str,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if the current agent has a pending join request for this room."""
+    agent_id = ctx.active_agent_id
+    result = await db.execute(
+        select(RoomJoinRequest).where(
+            RoomJoinRequest.room_id == room_id,
+            RoomJoinRequest.agent_id == agent_id,
+        ).order_by(RoomJoinRequest.created_at.desc()).limit(1)
+    )
+    jr = result.scalar_one_or_none()
+    if jr is None:
+        return {"has_request": False, "request": None}
+    return {
+        "has_request": True,
+        "request": {
+            "request_id": jr.request_id,
+            "status": jr.status.value if hasattr(jr.status, "value") else str(jr.status),
+            "created_at": jr.created_at.isoformat() if jr.created_at else None,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Mark room as read
 # ---------------------------------------------------------------------------
 
@@ -852,8 +1129,9 @@ async def get_room_messages(
     if authorization and authorization.startswith("Bearer ") and x_active_agent:
         token = authorization[len("Bearer "):]
         try:
-            supabase_uid = _decode_supabase_token(token)
-            user, _roles = await _load_user_and_roles(supabase_uid, db)
+            jwt_payload = _decode_supabase_token(token)
+            supabase_uid = jwt_payload["sub"]
+            user, _roles = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
             # Verify agent belongs to authenticated user
             agent_check = await db.execute(
                 select(Agent).where(
@@ -941,12 +1219,82 @@ async def get_room_messages(
             "topic_id": rec.topic_id,
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
+            "source_type": rec.source_type,
         }
         if is_member:
             msg["mentioned"] = rec.mentioned
         messages.append(msg)
 
     return {"messages": messages, "has_more": has_more}
+
+
+# ---------------------------------------------------------------------------
+# Room members (authenticated — works for any room the user has access to)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/rooms/{room_id}/members")
+async def get_room_members(
+    room_id: str,
+    authorization: str | None = Header(default=None),
+    x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get room members. Authenticated members can see any room they belong to;
+    unauthenticated requests fall back to public-only."""
+    from app.auth import _decode_supabase_token, _load_user_and_roles
+
+    room_result = await db.execute(select(Room).where(Room.room_id == room_id))
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    is_member = False
+    if authorization and authorization.startswith("Bearer ") and x_active_agent:
+        token = authorization[len("Bearer "):]
+        try:
+            jwt_payload = _decode_supabase_token(token)
+            supabase_uid = jwt_payload["sub"]
+            user, _ = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
+            agent_result = await db.execute(
+                select(Agent).where(Agent.agent_id == x_active_agent)
+            )
+            agent = agent_result.scalar_one_or_none()
+            if agent and str(agent.user_id) == str(user.id):
+                mem = await db.execute(
+                    select(RoomMember).where(
+                        RoomMember.room_id == room_id,
+                        RoomMember.agent_id == x_active_agent,
+                    )
+                )
+                if mem.scalar_one_or_none() is not None:
+                    is_member = True
+        except Exception:
+            pass
+
+    if not is_member and room.visibility != RoomVisibility.public:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    result = await db.execute(
+        select(RoomMember, Agent)
+        .outerjoin(Agent, Agent.agent_id == RoomMember.agent_id)
+        .where(RoomMember.room_id == room_id)
+    )
+    rows = result.all()
+
+    members = [
+        {
+            "agent_id": m.agent_id,
+            "display_name": a.display_name if a else m.agent_id,
+            "bio": a.bio if a else None,
+            "message_policy": (a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy)) if a else None,
+            "created_at": a.created_at.isoformat() if a and a.created_at else None,
+            "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+            "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+        }
+        for m, a in rows
+    ]
+    return {"room_id": room_id, "members": members, "total": len(members)}
 
 
 # ---------------------------------------------------------------------------

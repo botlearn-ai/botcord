@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { common } from "@/lib/i18n/translations/common";
 import { useLanguage } from "@/lib/i18n";
 import type { InvitePreviewResponse } from "@/lib/types";
-import { buildFriendInvitePrompt } from "@/lib/onboarding";
+import { buildFriendInvitePrompt, rebaseToCurrentOrigin } from "@/lib/onboarding";
 import { friendInviteModal } from "@/lib/i18n/translations/dashboard";
 
 export default function FriendInviteModal({ onClose }: { onClose: () => void }) {
@@ -40,8 +40,8 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
     if (!invite) return;
     try {
       const text = kind === "link"
-        ? invite.invite_url
-        : buildFriendInvitePrompt({ inviteUrl: invite.invite_url, locale });
+        ? rebaseToCurrentOrigin(invite.invite_url)
+        : buildFriendInvitePrompt({ inviteCode: invite.code, locale });
       await navigator.clipboard.writeText(text);
       setCopied(kind);
       setTimeout(() => setCopied(null), 1600);
@@ -86,25 +86,6 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
         ) : (
           <div className="space-y-4">
             <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                {t.inviteLink}
-              </p>
-              <div className="flex items-center gap-2 rounded border border-glass-border bg-glass-bg px-3 py-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={invite.invite_url}
-                  className="flex-1 bg-transparent font-mono text-sm text-text-primary outline-none"
-                />
-                <button
-                  onClick={() => copyField("link")}
-                  className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
-                >
-                  {copied === "link" ? tc.copied : tc.copy}
-                </button>
-              </div>
-            </div>
-            <div>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.invitePrompt}
@@ -119,7 +100,7 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
               <textarea
                 readOnly
                 rows={6}
-                value={buildFriendInvitePrompt({ inviteUrl: invite.invite_url, locale })}
+                value={buildFriendInvitePrompt({ inviteCode: invite.code, locale })}
                 className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
               />
             </div>

@@ -3,12 +3,14 @@
 /**
  * [INPUT]: 依赖 subscriptions BFF、session/chat/subscription store 与可选 roomId，动态加载商品详情与当前 agent 订阅状态
  * [OUTPUT]: 对外提供 SubscriptionBadge 组件，渲染订阅 badge/按钮并在弹层里展示价格、周期、状态与订阅操作
- * [POS]: dashboard 各类房间卡片与消息头的统一订阅入口，连接“看见门槛”与“立即订阅”
+ * [POS]: dashboard 各类房间卡片与消息头的统一订阅入口，连接"看见门槛"与"立即订阅"
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/lib/i18n";
+import { subscriptionBadge } from "@/lib/i18n/translations/dashboard";
 import { api } from "@/lib/api";
 import type { SubscriptionProduct } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
@@ -29,6 +31,18 @@ interface SubscriptionBadgeProps {
 const productCache = new Map<string, SubscriptionProduct>();
 const INSUFFICIENT_BALANCE_RE = /insufficient|balance|fund|not enough/i;
 
+const INSUFFICIENT_BALANCE_RE = /insufficient|balance|fund|not enough/i;
+const ALREADY_SUBSCRIBED_RE = /already.+subscri/i;
+
+function mapApiErrorToI18n(
+  raw: string,
+  t: (typeof subscriptionBadge)["en"],
+): string {
+  if (INSUFFICIENT_BALANCE_RE.test(raw)) return t.errorInsufficientBalance;
+  if (ALREADY_SUBSCRIBED_RE.test(raw)) return t.errorAlreadySubscribed;
+  return raw || t.errorGeneric;
+}
+
 export default function SubscriptionBadge({
   productId,
   roomId,
@@ -38,6 +52,8 @@ export default function SubscriptionBadge({
   loginHref,
 }: SubscriptionBadgeProps) {
   const router = useRouter();
+  const locale = useLanguage();
+  const t = subscriptionBadge[locale];
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productData, setProductData] = useState<SubscriptionProduct | null>(null);
@@ -128,7 +144,8 @@ export default function SubscriptionBadge({
     try {
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load subscription info");
+      const raw = err instanceof Error ? err.message : "";
+      setError(raw || t.failedToLoad);
       setProductData(null);
     } finally {
       setLoading(false);
@@ -141,7 +158,7 @@ export default function SubscriptionBadge({
       return;
     }
     if (!isAuthedReady || !activeAgentId) {
-      setError("Select or bind an active agent before subscribing.");
+      setError(t.selectAgentFirst);
       return;
     }
 
@@ -154,7 +171,6 @@ export default function SubscriptionBadge({
       }
       if (roomId) {
         await joinRoom(roomId);
-        // Navigate into the room immediately
         setFocusedRoomId(roomId);
         setOpenedRoomId(roomId);
         setSidebarTab("messages");
@@ -165,27 +181,27 @@ export default function SubscriptionBadge({
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
       setErrorKind(INSUFFICIENT_BALANCE_RE.test(raw) ? "insufficient_balance" : "generic");
-      setError(raw || "Failed to subscribe");
+      setError(mapApiErrorToI18n(raw, t));
     } finally {
       setSubscribing(false);
     }
   };
 
-  const badgeLabel = alreadySubscribed ? "Subscribed" : "Paid";
+  const badgeLabel = alreadySubscribed ? t.subscribed : t.paid;
   const badgeClasses = alreadySubscribed
     ? "bg-neon-green/15 text-neon-green hover:bg-neon-green/20"
     : "bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30";
   const primaryLabel = isGuest
-    ? "Log in to Subscribe"
+    ? t.loginToSubscribe
     : !isAuthedReady || !activeAgentId
-      ? "Select Active Agent"
+      ? t.selectActiveAgent
       : roomId
         ? alreadySubscribed
-          ? "Join Room"
-          : "Subscribe to Join"
+          ? t.joinRoom
+          : t.subscribeToJoin
         : alreadySubscribed
-          ? "Subscription Active"
-          : "Start Subscription";
+          ? t.subscriptionActive
+          : t.startSubscription;
 
   const formatAmount = (minor: number, assetCode: string) =>
     `${(minor / 100).toFixed(2)} ${assetCode}`;
@@ -194,15 +210,15 @@ export default function SubscriptionBadge({
     <button
       onClick={handleOpen}
       className={`rounded border border-yellow-500/40 bg-yellow-500/12 px-3 py-1.5 text-xs font-medium text-yellow-400 transition-colors hover:bg-yellow-500/20 ${className}`}
-      title={alreadySubscribed ? "Subscription active" : "Subscription required"}
+      title={alreadySubscribed ? t.subscriptionActiveTip : t.subscriptionRequiredTip}
     >
-      {triggerLabel || "Join"}
+      {triggerLabel || t.joinRoom}
     </button>
   ) : (
     <button
       onClick={handleOpen}
       className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${badgeClasses} ${className}`}
-      title={alreadySubscribed ? "Subscription active" : "Subscription required"}
+      title={alreadySubscribed ? t.subscriptionActiveTip : t.subscriptionRequiredTip}
     >
       <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
@@ -231,12 +247,12 @@ export default function SubscriptionBadge({
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
-              Subscription Access
+              {t.modalTitle}
             </h2>
 
             {loading ? (
               <div className="py-8 text-center text-sm text-text-secondary animate-pulse">
-                Loading subscription details...
+                {t.loading}
               </div>
             ) : productData ? (
               <div className="space-y-4">
@@ -254,19 +270,19 @@ export default function SubscriptionBadge({
                         : "border-yellow-500/40 bg-yellow-500/10 text-yellow-400"
                     }`}
                   >
-                    {alreadySubscribed ? "Active" : "Required"}
+                    {alreadySubscribed ? t.active : t.required}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
                   <div>
-                    <div className="text-xs uppercase tracking-wider text-text-secondary">Price</div>
+                    <div className="text-xs uppercase tracking-wider text-text-secondary">{t.price}</div>
                     <div className="text-xl font-bold text-yellow-500">
                       {formatAmount(productData.amount_minor, productData.asset_code)}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs uppercase tracking-wider text-text-secondary">Billing</div>
+                    <div className="text-xs uppercase tracking-wider text-text-secondary">{t.billing}</div>
                     <div className="font-medium capitalize text-text-primary">
                       {productData.billing_interval}
                     </div>
@@ -275,13 +291,13 @@ export default function SubscriptionBadge({
 
                 {subscription ? (
                   <div className="rounded border border-neon-green/30 bg-neon-green/5 px-3 py-2 text-xs text-neon-green">
-                    Active until {new Date(subscription.current_period_end).toLocaleString()}
+                    {t.activeUntil} {new Date(subscription.current_period_end).toLocaleString()}
                   </div>
                 ) : null}
 
                 {!subscription && !isGuest && !activeAgentId ? (
                   <div className="rounded border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
-                    Choose an active agent before subscribing or joining this room.
+                    {t.chooseAgentHint}
                   </div>
                 ) : null}
 
@@ -311,28 +327,33 @@ export default function SubscriptionBadge({
                     onClick={() => setShowModal(false)}
                     className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
                   >
-                    Close
+                    {t.close}
                   </button>
                   <button
                     onClick={handlePrimaryAction}
                     disabled={subscribing || (!isGuest && !activeAgentId)}
                     className="rounded border border-yellow-500/50 bg-yellow-500/20 px-4 py-2 text-sm font-medium text-yellow-500 hover:bg-yellow-500/30 disabled:opacity-50"
                   >
-                    {subscribing ? "Processing..." : primaryLabel}
+                    {subscribing ? t.processing : primaryLabel}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                  {error || "Failed to load product details."}
+                <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <span>{error || t.failedToLoadDetails}</span>
                 </div>
                 <div className="flex justify-end">
                   <button
                     onClick={() => setShowModal(false)}
                     className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
                   >
-                    Close
+                    {t.close}
                   </button>
                 </div>
               </div>

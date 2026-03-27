@@ -152,6 +152,7 @@ async def _get_public_room_previews(
             "required_subscription_product_id": r.required_subscription_product_id,
             "owner_id": r.owner_id,
             "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
+            "join_policy": r.join_policy.value if hasattr(r.join_policy, "value") else str(r.join_policy),
             "member_count": int(mc),
             "last_message_preview": last_msg_map.get(r.room_id, {}).get("last_message_preview"),
             "last_message_at": last_msg_map.get(r.room_id, {}).get("last_message_at"),

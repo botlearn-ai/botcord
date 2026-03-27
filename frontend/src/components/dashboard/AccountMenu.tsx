@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import AgentBindDialog from "./AgentBindDialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, LogOut, Plus, User } from "lucide-react";
+import { Check, LogOut, Plus, Settings, User } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
@@ -122,6 +122,19 @@ export default function AccountMenu({
               <Plus className="mr-2 h-4 w-4" />
               <span>{bindDialog[locale].linkAgentWithAi}</span>
             </DropdownMenu.Item>
+
+            {user?.beta_admin && (
+              <>
+                <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
+                <DropdownMenu.Item
+                  onClick={() => { window.location.href = "/admin"; }}
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-neon-purple focus:bg-neon-purple/10 focus:text-neon-purple"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>{locale === "zh" ? "管理后台" : "Admin"}</span>
+                </DropdownMenu.Item>
+              </>
+            )}
 
             <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
 

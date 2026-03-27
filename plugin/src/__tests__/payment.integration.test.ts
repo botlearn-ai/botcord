@@ -171,22 +171,64 @@ describe("payment tool integration", () => {
     expect(balance.result).toContain("Available: 180.00 COIN");
   });
 
-  it("rejects transfers to non-contacts", async () => {
+  it("transfers to contacts without requiring confirmation", async () => {
+    const sender = makeClient("ag_sender", senderKeys.privateKey);
+    const tool = createPaymentTool();
+
+    await seedBalance(sender, "25000");
+    hub.state.contacts = [
+      { contact_agent_id: "ag_receiver", display_name: "Receiver", created_at: new Date().toISOString() },
+    ];
+    makeToolConfig("ag_sender", senderKeys.privateKey);
+
+    // No confirmed param needed — recipient is a contact
+    const transfer: any = await tool.execute("tool-contact-transfer", {
+      action: "transfer",
+      to_agent_id: "ag_receiver",
+      amount_minor: "5000",
+    });
+
+    expect(transfer.data.tx.type).toBe("transfer");
+    expect(transfer.data.tx.to_agent_id).toBe("ag_receiver");
+    expect(transfer.result).not.toContain("is not in your contacts");
+    expect(transfer.data.transfer_record_message.sent).toBe(true);
+    expect(transfer.data.notifications.payer.sent).toBe(true);
+    expect(transfer.data.notifications.payee.sent).toBe(true);
+    expect(hub.state.messages).toHaveLength(3);
+  });
+
+  it("requires confirmation for stranger transfers", async () => {
     const sender = makeClient("ag_sender", senderKeys.privateKey);
     const tool = createPaymentTool();
 
     await seedBalance(sender, "25000");
     makeToolConfig("ag_sender", senderKeys.privateKey);
 
-    const transfer: any = await tool.execute("tool-non-contact", {
+    // First call without confirmed — should return a warning, no transfer executed
+    const warning: any = await tool.execute("tool-non-contact", {
       action: "transfer",
       to_agent_id: "ag_receiver",
       amount_minor: "7000",
     });
 
-    expect(transfer.error).toContain("only allowed between contacts");
-    expect(hub.state.walletTransactions).toHaveLength(1);
+    expect(warning.result).toContain("is not in your contacts");
+    expect(warning.result).toContain("stranger transfer");
+    expect(warning.result).toContain("confirmed: true");
+    expect(warning.data).toBeUndefined();
+    expect(hub.state.walletTransactions).toHaveLength(1); // only the topup
     expect(hub.state.messages).toHaveLength(0);
+
+    // Second call with confirmed: true — should proceed
+    const transfer: any = await tool.execute("tool-non-contact-confirm", {
+      action: "transfer",
+      to_agent_id: "ag_receiver",
+      amount_minor: "7000",
+      confirmed: true,
+    });
+
+    expect(transfer.data.tx.type).toBe("transfer");
+    expect(transfer.data.tx.to_agent_id).toBe("ag_receiver");
+    expect(hub.state.messages).toHaveLength(3); // record + 2 notifications
   });
 
   it("keeps transfer successful when follow-up messages fail", async () => {

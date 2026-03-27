@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -13,4 +13,6 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  betaAccess: boolean("beta_access").default(false).notNull(),
+  betaAdmin: boolean("beta_admin").default(false).notNull(),
 });

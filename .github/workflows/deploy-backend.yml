@@ -2,13 +2,17 @@ name: Deploy Backend
 
 on:
   push:
-    branches: ["main", "preview"]
-    paths:
-      - "backend/**"
+    branches: ["main", "release"]
   pull_request:
     branches: ["main"]
     paths:
       - "backend/**"
+  workflow_call:
+    inputs:
+      env_override:
+        description: "Override environment name (test/preview/prod)"
+        required: false
+        type: string
   workflow_dispatch:
 
 env:
@@ -24,12 +28,14 @@ jobs:
       - name: Determine environment
         id: set-env
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ -n "${{ inputs.env_override }}" ]; then
+            echo "env_name=${{ inputs.env_override }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "env_name=test" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref_name }}" = "preview" ]; then
-            echo "env_name=preview" >> $GITHUB_OUTPUT
-          else
+          elif [ "${{ github.ref_name }}" = "release" ]; then
             echo "env_name=prod" >> $GITHUB_OUTPUT
+          else
+            echo "env_name=preview" >> $GITHUB_OUTPUT
           fi
 
   deploy:
@@ -71,8 +77,31 @@ jobs:
           docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-$ENV_NAME/docker-compose.yaml down
           docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-$ENV_NAME/docker-compose.yaml up -d
 
+  restart-prod:
+    needs: [setup, deploy]
+    if: needs.setup.outputs.env_name == 'prod'
+    runs-on: self-hosted
+    steps:
+      - name: Apply k8s config
+        run: kubectl apply -f ${{ secrets.K8S_PROD_CONFIG }}
+
+      - name: Rollout restart
+        run: kubectl rollout restart deployment/${{ env.PROJECT }} -n prod
+
+      - name: Wait for rollout
+        run: |
+          if ! kubectl rollout status deployment/${{ env.PROJECT }} -n prod --timeout=300s; then
+            echo "Rollout timed out"
+            exit 1
+          fi
+
+      - name: Check pod status
+        run: |
+          kubectl get pods -n prod -l app=${{ env.PROJECT }}
+          kubectl logs -n prod -l app=${{ env.PROJECT }} --tail=20 || true
+
   report:
-    needs: [setup, deploy, restart]
+    needs: [setup, deploy, restart, restart-prod]
     if: always()
     runs-on: self-hosted
     steps:
@@ -85,9 +114,16 @@ jobs:
           ENV_NAME: ${{ needs.setup.outputs.env_name }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
           RESTART_RESULT: ${{ needs.restart.result }}
+          RESTART_PROD_RESULT: ${{ needs.restart-prod.result }}
         run: |
           if [ "$ENV_NAME" = "prod" ]; then
-            EFFECTIVE_RESULT="$DEPLOY_RESULT"
+            if [ "$DEPLOY_RESULT" = "success" ] && [ "$RESTART_PROD_RESULT" = "success" ]; then
+              EFFECTIVE_RESULT="success"
+            elif [ "$DEPLOY_RESULT" = "failure" ] || [ "$RESTART_PROD_RESULT" = "failure" ]; then
+              EFFECTIVE_RESULT="failure"
+            else
+              EFFECTIVE_RESULT="$DEPLOY_RESULT"
+            fi
           elif [ "$DEPLOY_RESULT" = "success" ] && [ "$RESTART_RESULT" = "success" ]; then
             EFFECTIVE_RESULT="success"
           elif [ "$DEPLOY_RESULT" = "failure" ] || [ "$RESTART_RESULT" = "failure" ]; then

@@ -24,9 +24,13 @@ backend:
 frontend:
 	cd frontend && pnpm dev --port $(FRONTEND_PORT)
 
+# Runs both processes; trap ensures all children are killed on Ctrl+C.
 migrate:
 	cd backend && uv run python scripts/run_sql_migrations.py
 
 # Runs both processes; requires GNU Make jobserver (default on macOS/Linux make).
 dev:
-	$(MAKE) -j2 backend frontend
+	trap 'kill 0' INT TERM; \
+	(cd backend && uv run uvicorn hub.main:app --reload --host 0.0.0.0 --port $(BACKEND_PORT)) & \
+	(cd frontend && pnpm dev --port $(FRONTEND_PORT)) & \
+	wait

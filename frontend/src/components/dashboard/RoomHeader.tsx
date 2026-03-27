@@ -6,12 +6,13 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
 import ShareModal from "./ShareModal";
 import CopyableId from "@/components/ui/CopyableId";
+import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -19,6 +20,7 @@ import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function RoomHeader() {
   const [showShareModal, setShowShareModal] = useState(false);
+  const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
   const locale = useLanguage();
   const t = roomList[locale];
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
@@ -42,7 +44,22 @@ export default function RoomHeader() {
   const isAuthedReady = sessionMode === "authed-ready";
   const isJoined = Boolean(authRoom);
   const isJoining = joiningRoomId === room?.room_id;
+  const isInviteOnly = room?.join_policy === "invite_only" && !room?.required_subscription_product_id;
   const loginHref = room ? `/login?next=${encodeURIComponent(`/chats/messages/${room.room_id}`)}` : "/login";
+
+  useEffect(() => {
+    if (!isAuthedReady || !room?.room_id || isJoined || !isInviteOnly) return;
+    setJoinRequestStatus("idle");
+    let cancelled = false;
+    api.getMyJoinRequest(room.room_id).then((res) => {
+      if (cancelled) return;
+      if (res.has_request && res.request) {
+        if (res.request.status === "pending") setJoinRequestStatus("pending");
+        else if (res.request.status === "rejected") setJoinRequestStatus("rejected");
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isAuthedReady, room?.room_id, isJoined, isInviteOnly]);
 
   const handleOpenMembersPanel = () => {
     if (!rightPanelOpen) {
@@ -62,7 +79,72 @@ export default function RoomHeader() {
     void joinRoom(room.room_id);
   };
 
+  const handleRequestJoin = useCallback(async () => {
+    if (!room?.room_id || !isAuthedReady) return;
+    setJoinRequestStatus("sending");
+    try {
+      await api.createJoinRequest(room.room_id);
+      setJoinRequestStatus("pending");
+    } catch {
+      setJoinRequestStatus("idle");
+    }
+  }, [room?.room_id, isAuthedReady]);
+
   if (!room) return null;
+
+  const renderJoinButton = () => {
+    if (isJoined) return null;
+
+    if (room.required_subscription_product_id) {
+      return (
+        <SubscriptionBadge
+          productId={room.required_subscription_product_id}
+          roomId={room.room_id}
+          variant="button"
+          triggerLabel={t.join}
+          loginHref={loginHref}
+        />
+      );
+    }
+
+    if (isInviteOnly) {
+      if (joinRequestStatus === "pending") {
+        return (
+          <span className="rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400">
+            {t.requestPending}
+          </span>
+        );
+      }
+      if (joinRequestStatus === "rejected") {
+        return (
+          <span className="rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs font-medium text-red-400">
+            {t.requestRejected}
+          </span>
+        );
+      }
+      return (
+        <button
+          onClick={() => void handleRequestJoin()}
+          disabled={!isAuthedReady || joinRequestStatus === "sending"}
+          className="rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+          title={t.requestToJoin}
+        >
+          {joinRequestStatus === "sending" ? t.joining : t.requestToJoin}
+        </button>
+      );
+    }
+
+    return (
+      <button
+        onClick={handleJoinOpenRoom}
+        disabled={!isGuest && (!isAuthedReady || isJoining)}
+        className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+        title={t.join}
+      >
+        {isJoining ? t.joining : t.join}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -109,32 +191,12 @@ export default function RoomHeader() {
               </button>
             </>
           )}
-          {!isJoined && (
-            room.required_subscription_product_id ? (
-              <SubscriptionBadge
-                productId={room.required_subscription_product_id}
-                roomId={room.room_id}
-                variant="button"
-                triggerLabel={t.join}
-                loginHref={loginHref}
-              />
-            ) : (
-              <button
-                onClick={handleJoinOpenRoom}
-                disabled={!isGuest && (!isAuthedReady || isJoining)}
-                className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
-                title={t.join}
-              >
-                {isJoining ? t.joining : t.join}
-              </button>
-            )
-          )}
+          {renderJoinButton()}
           {isGuest && (
             <span className="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
               {t.guest}
             </span>
           )}
-          {/* Members toggle */}
           <button
             onClick={handleOpenMembersPanel}
             className="rounded p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"

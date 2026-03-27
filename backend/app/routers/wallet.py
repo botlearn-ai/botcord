@@ -182,6 +182,7 @@ async def create_transfer(
             metadata=body.metadata,
             idempotency_key=body.idempotency_key,
         )
+        await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -213,6 +214,7 @@ async def create_topup(
             metadata=body.metadata,
             idempotency_key=body.idempotency_key,
         )
+        await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -263,6 +265,7 @@ async def create_withdrawal(
             destination_json=destination_json,
             idempotency_key=body.idempotency_key,
         )
+        await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -279,6 +282,7 @@ async def cancel_withdrawal(
         wd = await wallet_svc.cancel_withdrawal_request(
             db, withdrawal_id, ctx.active_agent_id,
         )
+        await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -347,6 +351,7 @@ async def create_stripe_checkout(
             body.idempotency_key,
             quantity=body.quantity,
         )
+        await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -368,6 +373,7 @@ async def get_stripe_session_status(
         result = await stripe_svc.get_checkout_status(
             db, session_id, agent_id=ctx.active_agent_id,
         )
+        await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except PermissionError as exc:

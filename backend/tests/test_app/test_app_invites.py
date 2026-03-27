@@ -2,14 +2,15 @@
 
 import datetime
 import uuid
+from unittest.mock import AsyncMock
 
 import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.sql.elements import TextClause
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from unittest.mock import AsyncMock
 
 from hub.models import (
     Agent,
@@ -236,6 +237,52 @@ async def test_create_and_redeem_private_room_invite(client: AsyncClient, seed: 
     assert redeem_resp.status_code == 200
     assert redeem_resp.json()["status"] == "redeemed"
     assert redeem_resp.json()["continue_url"].endswith("/chats/messages/rm_private01")
+
+
+@pytest.mark.asyncio
+async def test_private_room_redeem_still_appears_in_overview_when_sql_preview_omits_it(
+    client: AsyncClient,
+    seed: dict,
+    db_session: AsyncSession,
+    monkeypatch,
+):
+    from app.routers import dashboard as dashboard_router
+
+    create_resp = await client.post(
+        "/api/invites/rooms/rm_private01",
+        headers=_headers(seed["owner"]["token"], seed["owner"]["agent_id"]),
+    )
+    code = create_resp.json()["code"]
+
+    redeem_resp = await client.post(
+        f"/api/invites/{code}/redeem",
+        headers=_headers(seed["invitee"]["token"], seed["invitee"]["agent_id"]),
+    )
+    assert redeem_resp.status_code == 200
+
+    real_execute = db_session.execute
+
+    class _EmptyMappingsResult:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return []
+
+    async def execute_with_missing_sql_preview(statement, *args, **kwargs):
+        if isinstance(statement, TextClause) and "get_agent_room_previews" in str(statement):
+            return _EmptyMappingsResult()
+        return await real_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "execute", execute_with_missing_sql_preview)
+
+    overview_resp = await client.get(
+        "/api/dashboard/overview",
+        headers=_headers(seed["invitee"]["token"], seed["invitee"]["agent_id"]),
+    )
+    assert overview_resp.status_code == 200
+    room_ids = {room["room_id"] for room in overview_resp.json()["rooms"]}
+    assert "rm_private01" in room_ids
 
 
 @pytest.mark.asyncio

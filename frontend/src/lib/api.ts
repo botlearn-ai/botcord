@@ -39,6 +39,9 @@ import type {
   MySubscriptionsResponse,
   UserChatRoom,
   UserChatSendResponse,
+  CreateJoinRequestResponse,
+  JoinRequestListResponse,
+  MyJoinRequestResponse,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -240,6 +243,35 @@ export const api = {
     return apiPost<LeaveRoomResponse>(`/api/dashboard/rooms/${roomId}/leave`);
   },
 
+  createJoinRequest(roomId: string, message?: string) {
+    return apiPost<CreateJoinRequestResponse>(
+      `/api/dashboard/rooms/${roomId}/join-requests`,
+      message ? { message } : undefined,
+    );
+  },
+
+  getJoinRequests(roomId: string, status?: string) {
+    const params: Record<string, string> = {};
+    if (status) params.status = status;
+    return apiGet<JoinRequestListResponse>(`/api/dashboard/rooms/${roomId}/join-requests`, params);
+  },
+
+  acceptJoinRequest(roomId: string, requestId: string) {
+    return apiPost<{ request_id: string; status: string }>(
+      `/api/dashboard/rooms/${roomId}/join-requests/${requestId}/accept`,
+    );
+  },
+
+  rejectJoinRequest(roomId: string, requestId: string) {
+    return apiPost<{ request_id: string; status: string }>(
+      `/api/dashboard/rooms/${roomId}/join-requests/${requestId}/reject`,
+    );
+  },
+
+  getMyJoinRequest(roomId: string) {
+    return apiGet<MyJoinRequestResponse>(`/api/dashboard/rooms/${roomId}/my-join-request`);
+  },
+
   getPlatformStats() {
     return apiGet<PlatformStats>("/api/stats");
   },
@@ -288,6 +320,10 @@ export const api = {
 
   getPublicRoomMembers(roomId: string) {
     return apiGet<PublicRoomMembersResponse>(`/api/public/rooms/${roomId}/members`);
+  },
+
+  getRoomMembers(roomId: string) {
+    return apiGet<PublicRoomMembersResponse>(`/api/dashboard/rooms/${roomId}/members`);
   },
 
   // --- Hub APIs ---
@@ -488,6 +524,83 @@ const userApi = {
     invalidateMeCache();
     return result;
   },
+
+  getAgentIdentity(agentId: string): Promise<{ agent_id: string; agent_token: string | null }> {
+    return apiGet<{ agent_id: string; agent_token: string | null }>(`/api/users/me/agents/${agentId}/identity`);
+  },
 };
 
-export { ApiError, userApi };
+// ---------------------------------------------------------------------------
+// Beta invite gate
+// ---------------------------------------------------------------------------
+
+const betaApi = {
+  async redeemCode(code: string): Promise<{ ok: boolean }> {
+    return apiPost<{ ok: boolean }>("/api/beta/redeem", { code });
+  },
+
+  async applyWaitlist(email: string, note?: string): Promise<{ ok: boolean }> {
+    return apiPost<{ ok: boolean }>("/api/beta/waitlist", { email, note });
+  },
+};
+
+const adminBetaApi = {
+  async getCodes(status?: string): Promise<{ codes: BetaInviteCode[] }> {
+    const params = status ? `?status=${status}` : "";
+    return apiGet<{ codes: BetaInviteCode[] }>(`/api/admin/beta/codes${params}`);
+  },
+
+  async createCode(data: {
+    label: string;
+    max_uses: number;
+    prefix?: string;
+    expires_at?: string;
+  }): Promise<BetaInviteCode> {
+    return apiPost<BetaInviteCode>("/api/admin/beta/codes", data);
+  },
+
+  async revokeCode(id: string): Promise<BetaInviteCode> {
+    return apiPost<BetaInviteCode>(`/api/admin/beta/codes/${id}/revoke`, {});
+  },
+
+  async getWaitlist(status?: string): Promise<{ entries: BetaWaitlistEntry[] }> {
+    const params = status ? `?status=${status}` : "";
+    return apiGet<{ entries: BetaWaitlistEntry[] }>(`/api/admin/beta/waitlist${params}`);
+  },
+
+  async approveWaitlist(id: string): Promise<{ ok: boolean; code: string; email_sent: boolean; entry: BetaWaitlistEntry }> {
+    return apiPost<{ ok: boolean; code: string; email_sent: boolean; entry: BetaWaitlistEntry }>(
+      `/api/admin/beta/waitlist/${id}/approve`,
+      {},
+    );
+  },
+
+  async rejectWaitlist(id: string): Promise<{ ok: boolean }> {
+    return apiPost<{ ok: boolean }>(`/api/admin/beta/waitlist/${id}/reject`, {});
+  },
+};
+
+export interface BetaInviteCode {
+  id: string;
+  code: string;
+  label: string;
+  max_uses: number;
+  used_count: number;
+  created_by: string;
+  expires_at: string | null;
+  status: "active" | "revoked";
+  created_at: string;
+}
+
+export interface BetaWaitlistEntry {
+  id: string;
+  user_id: string;
+  email: string;
+  note: string | null;
+  status: "pending" | "approved" | "rejected";
+  applied_at: string;
+  reviewed_at: string | null;
+  sent_code: string | null;
+}
+
+export { ApiError, userApi, betaApi, adminBetaApi };

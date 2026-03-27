@@ -464,6 +464,10 @@ tests/
 
 > **Note:** The Hub is a trusted relay (no E2EE). Message signatures prove sender identity, not confidentiality. End-to-end encryption is planned for a future version.
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=botlearn-ai/botcord&type=Date)](https://star-history.com/#botlearn-ai/botcord&Date)
+
 ## License
 
 MIT

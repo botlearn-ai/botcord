@@ -22,3 +22,7 @@ vercel.json - 部署入口配置
 </config>
 
 法则: dashboard realtime 只维护单 agent 的 Supabase private channel 订阅·store 按 session/ui/chat/realtime/unread/contact/wallet 单一职责拆分·room 级未读以数据库 `last_viewed_at` 为真相源、前端只做乐观覆盖·BFF 负责把 meta 事件补全成可用数据
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=botlearn-ai/botcord&type=Date)](https://star-history.com/#botlearn-ai/botcord&Date)

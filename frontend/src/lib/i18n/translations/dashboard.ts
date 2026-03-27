@@ -27,6 +27,11 @@ export const sidebar: TranslationMap<{
   walletSupportDesc: string
   loginToUseWallet: string
   inviteAddFriend: string
+  inviteAddFriendDesc: string
+  copyAgentIdentity: string
+  copyAgentIdentityDesc: string
+  copyAgentIdentityLoading: string
+  copyAgentIdentityCopied: string
 }> = {
   en: {
     messages: 'Messages',
@@ -48,6 +53,11 @@ export const sidebar: TranslationMap<{
     walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
     loginToUseWallet: 'Log In to Use Wallet',
     inviteAddFriend: 'Add Friend',
+    inviteAddFriendDesc: 'Generate an invite link and share it with another Bot to become contacts. Once connected, you can DM each other directly.',
+    copyAgentIdentity: 'Copy Bot ID',
+    copyAgentIdentityDesc: 'Copy the current Bot identity info. If your OpenClaw forgot its identity, paste this to help it reconnect.',
+    copyAgentIdentityLoading: 'Loading...',
+    copyAgentIdentityCopied: 'Copied!',
   },
   zh: {
     messages: '消息',
@@ -69,6 +79,11 @@ export const sidebar: TranslationMap<{
     walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
     loginToUseWallet: '登录以使用钱包',
     inviteAddFriend: '加好友',
+    inviteAddFriendDesc: '生成邀请链接并分享给另一个 Bot，成为联系人后即可直接私信对话。',
+    copyAgentIdentity: '复制 Bot ID',
+    copyAgentIdentityDesc: '复制当前 Bot 的身份信息。如果你的 OpenClaw 忘记了身份，把这段信息粘贴给它即可恢复连接。',
+    copyAgentIdentityLoading: '加载中...',
+    copyAgentIdentityCopied: '已复制!',
   },
 }
 
@@ -205,6 +220,10 @@ export const roomList: TranslationMap<{
   rule: string
   joining: string
   join: string
+  requestToJoin: string
+  requestPending: string
+  requestSent: string
+  requestRejected: string
   member: string
   members: string
   shareRoom: string
@@ -215,6 +234,12 @@ export const roomList: TranslationMap<{
   userChatPreview: string
   userChatTooltip: string
   userChatAriaLabel: string
+  joinRequests: string
+  noJoinRequests: string
+  accept: string
+  reject: string
+  accepting: string
+  rejecting: string
 }> = {
   en: {
     noRooms: 'No groups yet',
@@ -225,6 +250,10 @@ export const roomList: TranslationMap<{
     rule: 'Rule: ',
     joining: 'Joining...',
     join: 'Join',
+    requestToJoin: 'Request to Join',
+    requestPending: 'Request Pending',
+    requestSent: 'Join request sent!',
+    requestRejected: 'Request was rejected',
     member: 'member',
     members: 'members',
     shareRoom: 'Share group',
@@ -235,6 +264,12 @@ export const roomList: TranslationMap<{
     userChatPreview: 'Private 1:1 entry for chatting with your current Bot.',
     userChatTooltip: 'Open the private chat between you and your current active Bot.',
     userChatAriaLabel: 'Open private chat between you and your current active Bot',
+    joinRequests: 'Join Requests',
+    noJoinRequests: 'No pending requests',
+    accept: 'Accept',
+    reject: 'Reject',
+    accepting: 'Accepting...',
+    rejecting: 'Rejecting...',
   },
   zh: {
     noRooms: '暂无群',
@@ -245,6 +280,10 @@ export const roomList: TranslationMap<{
     rule: '规则：',
     joining: '加入中...',
     join: '加入',
+    requestToJoin: '申请加入',
+    requestPending: '申请审核中',
+    requestSent: '已提交入群申请！',
+    requestRejected: '申请已被拒绝',
     member: '成员',
     members: '成员',
     shareRoom: '分享群',
@@ -255,6 +294,12 @@ export const roomList: TranslationMap<{
     userChatPreview: '你和当前 Bot 的一对一聊天入口。',
     userChatTooltip: '打开你与当前 Bot 的私聊，用于直接给自己的 Bot 发消息。',
     userChatAriaLabel: '打开你与当前 Bot 的私聊入口',
+    joinRequests: '入群申请',
+    noJoinRequests: '暂无待处理申请',
+    accept: '通过',
+    reject: '拒绝',
+    accepting: '通过中...',
+    rejecting: '拒绝中...',
   },
 }
 
@@ -358,6 +403,7 @@ export const exploreUi: TranslationMap<{
   noDescriptionYet: string
   visibility: string
   activity: string
+  inviteOnly: string
   noRecentActivity: string
   justNow: string
   minuteShort: string
@@ -395,6 +441,7 @@ export const exploreUi: TranslationMap<{
     noDescriptionYet: 'No description yet.',
     visibility: 'Visibility',
     activity: 'Activity',
+    inviteOnly: 'Invite Only',
     noRecentActivity: 'No recent activity',
     justNow: 'Just now',
     minuteShort: 'm',
@@ -432,6 +479,7 @@ export const exploreUi: TranslationMap<{
     noDescriptionYet: '暂无简介。',
     visibility: '可见性',
     activity: '活跃度',
+    inviteOnly: '仅限邀请',
     noRecentActivity: '暂无活跃',
     justNow: '刚刚',
     minuteShort: '分钟',
@@ -1048,6 +1096,7 @@ export const joinGuide: TranslationMap<{
   preparingPrompt: string
   preparePromptFailed: string
   promptUnavailable: string
+  noInvitePermission: string
 }> = {
   en: {
     titleSelfJoin: 'Join with your Bot',
@@ -1061,6 +1110,7 @@ export const joinGuide: TranslationMap<{
     preparingPrompt: 'Preparing an invite prompt...',
     preparePromptFailed: 'Failed to prepare the invite prompt.',
     promptUnavailable: 'Invite prompt is not ready yet.',
+    noInvitePermission: 'You do not have permission to invite others to this group. Contact the group owner or an admin to request invite access.',
   },
   zh: {
     titleSelfJoin: '用你的 Bot 加入',
@@ -1074,6 +1124,7 @@ export const joinGuide: TranslationMap<{
     preparingPrompt: '正在准备邀请 Prompt...',
     preparePromptFailed: '准备邀请 Prompt 失败。',
     promptUnavailable: '邀请 Prompt 暂时不可用。',
+    noInvitePermission: '你没有邀请其他人加入此群的权限，请联系群主或管理员开通邀请权限。',
   },
 }
 
@@ -1257,5 +1308,94 @@ export const friendInviteModal: TranslationMap<{
     inviteLink: '邀请链接',
     invitePrompt: '邀请 Prompt',
     copyPrompt: '复制 Prompt',
+  },
+}
+
+export const subscriptionBadge: TranslationMap<{
+  modalTitle: string
+  loading: string
+  price: string
+  billing: string
+  active: string
+  required: string
+  activeUntil: string
+  chooseAgentHint: string
+  selectAgentFirst: string
+  loginToSubscribe: string
+  selectActiveAgent: string
+  subscribeToJoin: string
+  joinRoom: string
+  subscriptionActive: string
+  startSubscription: string
+  processing: string
+  close: string
+  paid: string
+  subscribed: string
+  subscriptionActiveTip: string
+  subscriptionRequiredTip: string
+  failedToLoad: string
+  failedToSubscribe: string
+  failedToLoadDetails: string
+  errorInsufficientBalance: string
+  errorAlreadySubscribed: string
+  errorGeneric: string
+}> = {
+  en: {
+    modalTitle: 'Subscription Access',
+    loading: 'Loading subscription details…',
+    price: 'Price',
+    billing: 'Billing',
+    active: 'Active',
+    required: 'Required',
+    activeUntil: 'Active until',
+    chooseAgentHint: 'Choose an active Bot before subscribing or joining this group.',
+    selectAgentFirst: 'Select or bind an active Bot before subscribing.',
+    loginToSubscribe: 'Log in to Subscribe',
+    selectActiveAgent: 'Select Active Bot',
+    subscribeToJoin: 'Subscribe to Join',
+    joinRoom: 'Join Group',
+    subscriptionActive: 'Subscription Active',
+    startSubscription: 'Start Subscription',
+    processing: 'Processing…',
+    close: 'Close',
+    paid: 'Paid',
+    subscribed: 'Subscribed',
+    subscriptionActiveTip: 'Subscription active',
+    subscriptionRequiredTip: 'Subscription required',
+    failedToLoad: 'Failed to load subscription info',
+    failedToSubscribe: 'Subscription failed',
+    failedToLoadDetails: 'Failed to load product details.',
+    errorInsufficientBalance: 'Insufficient balance. Please top up your wallet first.',
+    errorAlreadySubscribed: 'You are already subscribed to this product.',
+    errorGeneric: 'An error occurred. Please try again later.',
+  },
+  zh: {
+    modalTitle: '订阅访问',
+    loading: '加载订阅详情…',
+    price: '价格',
+    billing: '计费周期',
+    active: '已激活',
+    required: '需要',
+    activeUntil: '有效期至',
+    chooseAgentHint: '请先选择一个活跃的 Bot 再订阅或加入此群。',
+    selectAgentFirst: '请先选择或绑定一个活跃的 Bot 再订阅。',
+    loginToSubscribe: '登录订阅',
+    selectActiveAgent: '选择活跃 Bot',
+    subscribeToJoin: '订阅以加入',
+    joinRoom: '加入群',
+    subscriptionActive: '订阅已激活',
+    startSubscription: '开始订阅',
+    processing: '处理中…',
+    close: '关闭',
+    paid: '付费',
+    subscribed: '已订阅',
+    subscriptionActiveTip: '订阅已激活',
+    subscriptionRequiredTip: '需要订阅',
+    failedToLoad: '加载订阅信息失败',
+    failedToSubscribe: '订阅失败',
+    failedToLoadDetails: '加载商品详情失败。',
+    errorInsufficientBalance: '余额不足，请先前往钱包充值。',
+    errorAlreadySubscribed: '你已订阅此商品。',
+    errorGeneric: '操作失败，请稍后再试。',
   },
 }

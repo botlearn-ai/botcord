@@ -4,7 +4,7 @@ import pathlib
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -48,6 +48,9 @@ from app.routers.share import router as app_share_router
 from app.routers.stats import router as app_stats_router
 from app.routers.wallet import router as app_wallet_router
 from app.routers.subscriptions import router as app_subscriptions_router
+from app.routers.beta import router as app_beta_router
+from app.routers.admin_beta import router as app_admin_beta_router
+from app.auth import require_beta_user
 
 logging.basicConfig(level=logging.INFO)
 
@@ -203,10 +206,14 @@ app.include_router(dashboard_chat_router)
 app.include_router(public_router)
 app.include_router(share_public_router)
 app.include_router(app_users_router)
-app.include_router(app_dashboard_router)
+# Product routers: gated by beta_access
+_beta_gate = [Depends(require_beta_user)]
+app.include_router(app_dashboard_router, dependencies=_beta_gate)
 app.include_router(app_invites_router)
 app.include_router(app_public_router)
 app.include_router(app_share_router)
 app.include_router(app_stats_router)
-app.include_router(app_wallet_router)
-app.include_router(app_subscriptions_router)
+app.include_router(app_wallet_router, dependencies=_beta_gate)
+app.include_router(app_subscriptions_router, dependencies=_beta_gate)
+app.include_router(app_beta_router)
+app.include_router(app_admin_beta_router)

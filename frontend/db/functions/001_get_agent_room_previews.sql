@@ -27,7 +27,9 @@ returns table (
   required_subscription_product_id varchar,
   owner_id varchar,
   visibility varchar,
+  join_policy varchar,
   my_role varchar,
+  can_invite boolean,
   last_viewed_at timestamptz,
   has_unread boolean,
   member_count bigint,
@@ -49,6 +51,13 @@ as $$
       r.required_subscription_product_id,
       r.owner_id,
       r.visibility,
+      r.join_policy,
+      case
+        when rm.role = 'owner' then true
+        when rm.can_invite is not null then rm.can_invite
+        when rm.role = 'admin' then true
+        else r.default_invite
+      end as can_invite,
       rm.last_viewed_at
     from room_members rm
     inner join rooms r on r.room_id = rm.room_id
@@ -125,7 +134,9 @@ as $$
     m.required_subscription_product_id,
     m.owner_id,
     m.visibility,
+    m.join_policy,
     m.my_role,
+    m.can_invite,
     m.last_viewed_at,
     coalesce(ur.has_unread, false) as has_unread,
     coalesce(mc.member_count, 0) as member_count,

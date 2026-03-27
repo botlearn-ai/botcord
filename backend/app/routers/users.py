@@ -136,8 +136,32 @@ def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-async def _consume_bind_code(code: str) -> str | None:
-    """Burn a bind short code and return its mapped bind ticket."""
+async def _peek_bind_code(code: str) -> str | None:
+    """Validate a bind short code and return its bind_ticket WITHOUT consuming it."""
+    async with _short_code_session_factory() as code_session:
+        now = _utc_now()
+        result = await code_session.execute(
+            select(ShortCode.payload_json).where(
+                ShortCode.code == code,
+                ShortCode.kind == "bind",
+                ShortCode.consumed_at.is_(None),
+                ShortCode.use_count < ShortCode.max_uses,
+                ShortCode.expires_at > now,
+            )
+        )
+        payload_json = result.scalar_one_or_none()
+        if payload_json is None:
+            return None
+        try:
+            payload = json.loads(payload_json)
+        except json.JSONDecodeError:
+            return None
+        bind_ticket = payload.get("bind_ticket")
+        return bind_ticket if isinstance(bind_ticket, str) else None
+
+
+async def _consume_bind_code(code: str) -> bool:
+    """Atomically consume a bind short code. Returns True on success."""
     async with _short_code_session_factory() as code_session:
         now = _utc_now()
         result = await code_session.execute(
@@ -156,19 +180,12 @@ async def _consume_bind_code(code: str) -> str | None:
                     else_=ShortCode.consumed_at,
                 ),
             )
-            .returning(ShortCode.payload_json)
         )
-        payload_json = result.scalar_one_or_none()
-        if payload_json is None:
+        if result.rowcount == 0:
             await code_session.rollback()
-            return None
+            return False
         await code_session.commit()
-        try:
-            payload = json.loads(payload_json)
-        except json.JSONDecodeError:
-            return None
-        bind_ticket = payload.get("bind_ticket")
-        return bind_ticket if isinstance(bind_ticket, str) else None
+        return True
 
 
 async def _consume_bind_ticket_jti(jti: str) -> bool:
@@ -433,6 +450,8 @@ async def get_me(
         "avatar_url": user.avatar_url,
         "status": user.status,
         "max_agents": user.max_agents,
+        "beta_access": user.beta_access,
+        "beta_admin": user.beta_admin,
         "roles": roles,
         "agents": [
             {
@@ -469,6 +488,31 @@ async def get_my_agents(
             }
             for a in agents
         ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/users/me/agents/{agent_id}/identity
+# ---------------------------------------------------------------------------
+
+
+@router.get("/me/agents/{agent_id}/identity")
+async def get_agent_identity(
+    agent_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return agent_id and agent_token for the specified agent owned by the user."""
+    result = await db.execute(
+        select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return {
+        "agent_id": agent.agent_id,
+        "agent_token": agent.agent_token,
     }
 
 
@@ -769,10 +813,11 @@ async def agent_bind(
     if not body.display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
 
-    # --- resolve bind credential to real bind_ticket ---
+    # --- resolve bind credential to real bind_ticket (peek, don't consume yet) ---
     bind_ticket = body.bind_ticket
-    if body.bind_code:
-        bind_ticket = await _consume_bind_code(body.bind_code)
+    has_bind_code = bool(body.bind_code)
+    if has_bind_code:
+        bind_ticket = await _peek_bind_code(body.bind_code)
         if bind_ticket is None:
             raise HTTPException(
                 status_code=401, detail="Invalid or expired bind code"
@@ -798,16 +843,25 @@ async def agent_bind(
     except ValueError:
         raise HTTPException(status_code=401, detail="Bind ticket has invalid uid")
 
-    # Consume jti (one-time use, DB-backed)
-    if not await _consume_bind_ticket_jti(ticket_payload["jti"]):
-        raise HTTPException(
-            status_code=401, detail="Bind ticket already used"
-        )
-
     # --- verify agent_token directly via hub JWT verification ---
     if not _verify_agent_control(body.agent_id, body.agent_token):
         raise HTTPException(
             status_code=401, detail="Agent token verification failed"
+        )
+
+    # --- All validations passed, now consume the one-time credentials ---
+
+    # Consume bind_code (atomic UPDATE)
+    if has_bind_code:
+        if not await _consume_bind_code(body.bind_code):
+            raise HTTPException(
+                status_code=401, detail="Bind code already consumed (race condition)"
+            )
+
+    # Consume jti (one-time use, DB-backed)
+    if not await _consume_bind_ticket_jti(ticket_payload["jti"]):
+        raise HTTPException(
+            status_code=401, detail="Bind ticket already used"
         )
 
     # Bind agent to user (shared logic)

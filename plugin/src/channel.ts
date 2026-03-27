@@ -39,6 +39,8 @@ import {
   isAccountConfigured,
   displayPrefix,
 } from "./config.js";
+import { botCordSetupAdapter } from "./setup-core.js";
+import { botCordSetupWizard } from "./setup-surface.js";
 import type {
   BotCordAccountConfig,
   BotCordChannelConfig,
@@ -192,6 +194,8 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
   configSchema: {
     schema: botCordConfigSchema,
   },
+  setup: botCordSetupAdapter,
+  setupWizard: botCordSetupWizard,
   config: {
     listAccountIds: (cfg) => listBotCordAccountIds(cfg as CoreConfig),
     resolveAccount: (cfg, accountId) =>
