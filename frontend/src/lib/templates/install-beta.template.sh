@@ -115,6 +115,76 @@ require_cmd "$NPM_BIN"      "Install Node.js + npm first"
 require_cmd node             "Install Node.js first"
 require_cmd tar              "Install tar first"
 
+# ── Pre-flight checks ──────────────────────────────────────────────────
+
+# 1. Detect and clean stale botcord config in openclaw.json
+OPENCLAW_JSON=""
+if [ -n "${OPENCLAW_CONFIG_PATH:-}" ] && [ -f "$OPENCLAW_CONFIG_PATH" ]; then
+  OPENCLAW_JSON="$OPENCLAW_CONFIG_PATH"
+elif command -v "$OPENCLAW_BIN" >/dev/null 2>&1; then
+  OPENCLAW_JSON="$("$OPENCLAW_BIN" config path 2>/dev/null || true)"
+  if [ -n "$OPENCLAW_JSON" ] && [ ! -f "$OPENCLAW_JSON" ]; then
+    OPENCLAW_JSON=""
+  fi
+fi
+if [ -z "$OPENCLAW_JSON" ]; then
+  for candidate in "$HOME/.openclaw/openclaw.json" "./openclaw.json"; do
+    if [ -f "$candidate" ]; then
+      OPENCLAW_JSON="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -n "$OPENCLAW_JSON" ]; then
+  OPENCLAW_JSON="$OPENCLAW_JSON" node --input-type=module <<'NODE' || true
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+
+const configPath = process.env.OPENCLAW_JSON;
+let config;
+try {
+  config = JSON.parse(readFileSync(configPath, "utf8"));
+} catch { process.exit(0); }
+
+const bc = config?.channels?.botcord;
+if (!bc) process.exit(0);
+
+const credFile = bc.credentialsFile;
+if (credFile && !existsSync(credFile)) {
+  console.log(`[botcord-beta] WARN: stale channel config found — credentialsFile missing: ${credFile}`);
+  console.log(`[botcord-beta] removing stale channels.botcord entry from ${configPath}`);
+  delete config.channels.botcord;
+  if (Object.keys(config.channels).length === 0) delete config.channels;
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+} else if (credFile) {
+  console.log(`[botcord-beta] existing channel config found in ${configPath} — will be preserved`);
+}
+NODE
+fi
+
+# 2. Detect existing credentials
+CRED_DIR="$HOME/.botcord/credentials"
+EXISTING_CRED_PATHS=()
+if [ -d "$CRED_DIR" ]; then
+  shopt -s nullglob
+  CRED_FILES=("$CRED_DIR"/*.json)
+  shopt -u nullglob
+  if [ "${#CRED_FILES[@]}" -gt 0 ]; then
+    log "found existing credentials:"
+    for cf in "${CRED_FILES[@]}"; do
+      CRED_SUMMARY="$(CRED_PATH="$cf" node -e '
+        const fs = require("fs");
+        try {
+          const c = JSON.parse(fs.readFileSync(process.env.CRED_PATH, "utf8"));
+          process.stdout.write(`  ${c.agentId || "unknown"} (${c.displayName || "unnamed"})`);
+        } catch { process.stdout.write(`  (unreadable: ${process.env.CRED_PATH})`); }
+      ' 2>/dev/null || echo "  (unreadable: $cf)")"
+      log "$CRED_SUMMARY"
+      EXISTING_CRED_PATHS+=("$cf")
+    done
+  fi
+fi
+
 # ── Temp dir & cleanup ───────────────────────────────────────────────────
 
 TMP_DIR="$(mktemp -d)"
@@ -237,12 +307,22 @@ shopt -u nullglob
 log ""
 log "BotCord plugin (beta) installed!"
 log ""
-log "Next steps:"
-log "  1. Register your agent (beta hub):"
-log "     bash <(curl -fsSL {{BASE_URL}}/register-beta.sh) --name \"Your Agent Name\""
-log ""
-log "  Or import existing credentials:"
-log "     openclaw botcord-import --file ~/botcord-creds.json"
-log ""
-log "  2. Restart the OpenClaw gateway to load the plugin"
+
+if [ "${#EXISTING_CRED_PATHS[@]}" -gt 0 ]; then
+  log "Existing credentials detected. Configure with:"
+  for cp in "${EXISTING_CRED_PATHS[@]}"; do
+    log "  openclaw botcord-import --file $cp"
+  done
+  log ""
+  log "Then restart the OpenClaw gateway to load the plugin."
+else
+  log "Next steps:"
+  log "  1. Register your agent (beta hub):"
+  log "     bash <(curl -fsSL {{BASE_URL}}/register-beta.sh) --name \"Your Agent Name\""
+  log ""
+  log "  Or import existing credentials:"
+  log "     openclaw botcord-import --file ~/botcord-creds.json"
+  log ""
+  log "  2. Restart the OpenClaw gateway to load the plugin"
+fi
 log ""
