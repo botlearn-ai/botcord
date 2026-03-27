@@ -142,6 +142,90 @@ describe("token management", () => {
     // Token was refreshed on the 401
     expect(hub.state.tokenRefreshCount).toBeGreaterThanOrEqual(2);
   });
+
+  it("seeds token from config and skips initial refresh", async () => {
+    // Pre-register a token in the mock hub so it's accepted
+    const preToken = "pre-seeded-jwt-token";
+    hub.state.tokens.set(preToken, "ag_testclient00");
+
+    const client = new BotCordClient({
+      hubUrl,
+      agentId: "ag_testclient00",
+      keyId: "k_test",
+      privateKey: kp.privateKey,
+      token: preToken,
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    await client.pollInbox();
+    // No refresh needed — token was seeded from config
+    expect(hub.state.tokenRefreshCount).toBe(0);
+  });
+
+  it("refreshes when seeded token is expired", async () => {
+    const client = new BotCordClient({
+      hubUrl,
+      agentId: "ag_testclient00",
+      keyId: "k_test",
+      privateKey: kp.privateKey,
+      token: "expired-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) - 100, // already expired
+    });
+    await client.pollInbox();
+    // Expired token triggers a refresh
+    expect(hub.state.tokenRefreshCount).toBe(1);
+  });
+
+  it("invokes onTokenRefresh callback after refresh", async () => {
+    const client = makeClient();
+    const calls: Array<{ token: string; expiresAt: number }> = [];
+    client.onTokenRefresh = (token, expiresAt) => {
+      calls.push({ token, expiresAt });
+    };
+    await client.pollInbox();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].token).toMatch(/^mock-jwt-token-/);
+    expect(calls[0].expiresAt).toBeGreaterThan(Date.now() / 1000);
+  });
+
+  it("does not block request when onTokenRefresh throws", async () => {
+    const client = makeClient();
+    client.onTokenRefresh = () => {
+      throw new Error("persistence failure");
+    };
+    // Should succeed despite callback throwing
+    const result = await client.pollInbox();
+    expect(result).toBeDefined();
+  });
+
+  it("401 retry uses refreshed token, not the stale one", async () => {
+    const client = makeClient();
+    // First call: get token #1
+    await client.pollInbox();
+    expect(hub.state.tokenRefreshCount).toBe(1);
+
+    // Track tokens seen by onTokenRefresh.
+    // When the callback fires, the 401 override has already been consumed
+    // and we can safely remove it so the retry succeeds.
+    const refreshedTokens: string[] = [];
+    client.onTokenRefresh = (token) => {
+      refreshedTokens.push(token);
+      hub.state.overrides.delete("/hub/inbox");
+    };
+
+    // Set a persistent 401 override. The onTokenRefresh callback above
+    // deletes it after the refresh, so the retry sees no override.
+    hub.state.overrides.set("/hub/inbox", {
+      status: 401,
+      body: { error: "unauthorized" },
+    });
+
+    const result = await client.pollInbox();
+    expect(result).toBeDefined();
+    // Refresh happened and onTokenRefresh was called with new token
+    expect(hub.state.tokenRefreshCount).toBe(2);
+    expect(refreshedTokens).toHaveLength(1);
+    expect(refreshedTokens[0]).toMatch(/^mock-jwt-token-2-/);
+  });
 });
 
 // ── Messaging ────────────────────────────────────────────────────

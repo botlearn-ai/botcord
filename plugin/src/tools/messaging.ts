@@ -10,6 +10,7 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
+import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import type { MessageAttachment } from "../types.js";
 
@@ -142,6 +143,7 @@ export function createMessagingTool() {
 
       try {
         const client = new BotCordClient(acct);
+        attachTokenPersistence(client, acct);
         const msgType = args.type || "message";
 
         // Collect attachments from both file_paths (upload first) and file_urls
@@ -226,6 +228,7 @@ export function createUploadTool() {
 
       try {
         const client = new BotCordClient(acct);
+        attachTokenPersistence(client, acct);
         const uploaded = await uploadLocalFiles(client, args.file_paths);
         return { ok: true, files: uploaded };
       } catch (err: any) {

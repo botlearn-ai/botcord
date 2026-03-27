@@ -1,9 +1,10 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { derivePublicKey } from "./crypto.js";
 import { normalizeAndValidateHubUrl } from "./hub-url.js";
 import type { BotCordAccountConfig } from "./types.js";
+import type { BotCordClient as BotCordClientType } from "./client.js";
 
 export interface StoredBotCordCredentials {
   version: 1;
@@ -14,6 +15,8 @@ export interface StoredBotCordCredentials {
   publicKey: string;
   displayName?: string;
   savedAt: string;
+  token?: string;
+  tokenExpiresAt?: number;
 }
 
 function normalizeCredentialValue(raw: any, keys: string[]): string | undefined {
@@ -57,6 +60,12 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
   const publicKey = normalizeCredentialValue(raw, ["publicKey", "public_key"]);
   const displayName = normalizeCredentialValue(raw, ["displayName", "display_name"]);
   const savedAt = normalizeCredentialValue(raw, ["savedAt", "saved_at"]);
+  const token = normalizeCredentialValue(raw, ["token"]);
+  const tokenExpiresAt = typeof raw.tokenExpiresAt === "number"
+    ? raw.tokenExpiresAt
+    : typeof raw.token_expires_at === "number"
+      ? raw.token_expires_at
+      : undefined;
 
   if (!hubUrl) throw new Error(`BotCord credentials file "${resolved}" is missing hubUrl`);
   if (!agentId) throw new Error(`BotCord credentials file "${resolved}" is missing agentId`);
@@ -86,6 +95,8 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     publicKey: publicKey || derivedPublicKey,
     displayName,
     savedAt: savedAt || new Date().toISOString(),
+    token,
+    tokenExpiresAt,
   };
 }
 
@@ -100,6 +111,8 @@ export function readCredentialFileData(credentialsFile?: string): Partial<BotCor
       keyId: raw.keyId,
       privateKey: raw.privateKey,
       publicKey: raw.publicKey,
+      token: raw.token,
+      tokenExpiresAt: raw.tokenExpiresAt,
     };
   } catch {
     return {};
@@ -122,4 +135,47 @@ export function writeCredentialsFile(
   });
   chmodSync(resolved, 0o600);
   return resolved;
+}
+
+/**
+ * Atomically update only the token fields in an existing credentials file.
+ * Reads current file, merges new token/expiresAt, writes back.
+ * Returns false if the file does not exist or the write fails.
+ */
+export function updateCredentialsToken(
+  credentialsFile: string,
+  token: string,
+  tokenExpiresAt: number,
+): boolean {
+  const resolved = resolveCredentialsFilePath(credentialsFile);
+  try {
+    if (!existsSync(resolved)) return false;
+    const raw = JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
+    raw.token = token;
+    raw.tokenExpiresAt = tokenExpiresAt;
+    writeFileSync(resolved, JSON.stringify(raw, null, 2) + "\n", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    chmodSync(resolved, 0o600);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Attach token persistence to a BotCordClient.
+ * If the account was loaded from a credentialsFile, refreshed tokens
+ * are automatically written back to that file.
+ */
+export function attachTokenPersistence(
+  client: BotCordClientType,
+  acct: BotCordAccountConfig,
+): void {
+  if (!acct.credentialsFile) return;
+  const credFile = acct.credentialsFile;
+  client.onTokenRefresh = (token, expiresAt) => {
+    updateCredentialsToken(credFile, token, expiresAt);
+  };
 }

@@ -7,6 +7,7 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
+import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 
 export function createTokenCommand() {
@@ -32,6 +33,7 @@ export function createTokenCommand() {
 
       try {
         const client = new BotCordClient(acct);
+        attachTokenPersistence(client, acct);
         const token = await client.ensureToken();
         return { text: token };
       } catch (err: any) {
