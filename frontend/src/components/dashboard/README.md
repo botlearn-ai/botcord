@@ -71,6 +71,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-03-27: `SubscriptionBadge.tsx` 在订阅失败且命中余额不足时，直接在错误提示内提供 `Top up wallet` 入口并跳转 `/chats/wallet`，结束“知道该充值但没有出口”的坏味道。
 - 2026-03-26: `JoinGuidePrompt.tsx` 不再为未加入群生成 `/chats/messages/{roomId}` 伪入口 Prompt；现在只有拿到真实 invite/share asset 时才允许复制给 AI，避免把内部路由伪装成加群入口。
 - 2026-03-26: `JoinGuidePrompt.tsx` 拆成 `SelfJoinGuide.tsx` 与 `InviteOthersGuide.tsx` 两条独立流程，结束一个组件同时承担“自己加入”和“邀请别人”两套状态机的坏味道。
 - 2026-03-22: `RoomHeader.tsx` 在未加入公开房间时于右侧提供 join 入口；普通房直接加入，付费房打开订阅模态；`AgentBrowser.tsx` 在成员面板底部新增 `Leave Room` 与 `Cancel Subscription`。
