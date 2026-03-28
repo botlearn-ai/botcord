@@ -136,6 +136,7 @@ def build_message_realtime_event(
     topic_id: str | None = None,
     mentioned: bool = False,
     payload: dict[str, Any] | None = None,
+    sender_name: str | None = None,
 ) -> dict[str, Any]:
     return build_agent_realtime_event(
         type=type,
@@ -145,6 +146,7 @@ def build_message_realtime_event(
         created_at=created_at,
         ext={
             "sender_id": sender_id,
+            "sender_name": sender_name,
             "topic_id": topic_id,
             "preview": _message_preview(payload or {}),
             "mentioned": mentioned,
@@ -597,6 +599,12 @@ async def _send_direct_message(
 
     await db.commit()
 
+    # Resolve sender display name for realtime event
+    _sender_name_result = await db.execute(
+        select(Agent.display_name).where(Agent.agent_id == envelope.from_)
+    )
+    _sender_display_name = _sender_name_result.scalar_one_or_none()
+
     # Notify inbox listeners
     await notify_inbox(
         envelope.to,
@@ -611,6 +619,7 @@ async def _send_direct_message(
             topic_id=topic_id,
             mentioned=True,
             payload=envelope.payload,
+            sender_name=_sender_display_name,
         ),
     )
 
@@ -743,6 +752,12 @@ async def _send_room_message(
         if m.agent_id != envelope.from_ and not m.muted and m.agent_id not in blocked_by
     }
 
+    # Resolve sender display name for realtime events
+    _sender_name_result = await db.execute(
+        select(Agent.display_name).where(Agent.agent_id == envelope.from_)
+    )
+    _sender_display_name = _sender_name_result.scalar_one_or_none()
+
     # When the sender is the only member (or all others are muted/blocking),
     # receivers would be empty.  Create a self-delivery record so the message
     # appears in room history, but skip inbox notification to avoid the plugin
@@ -822,6 +837,7 @@ async def _send_room_message(
             topic_id=topic_id,
             mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
             payload=envelope.payload,
+            sender_name=_sender_display_name,
         )
         if _self_delivery and receiver_id == envelope.from_:
             # Self-delivery: publish realtime event for the dashboard
@@ -844,6 +860,7 @@ async def _send_room_message(
             topic_id=topic_id,
             mentioned=False,
             payload=envelope.payload,
+            sender_name=_sender_display_name,
         )
         await _publish_agent_realtime_event(db, sender_rt_event)
 
