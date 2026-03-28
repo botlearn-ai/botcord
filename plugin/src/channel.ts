@@ -149,8 +149,11 @@ const botCordConfigSchema = {
       items: { type: "string" as const },
     },
     notifySession: {
-      type: "string" as const,
-      description: "Session key to notify when inbound messages arrive (e.g. agent:main:main)",
+      oneOf: [
+        { type: "string" as const },
+        { type: "array" as const, items: { type: "string" as const } },
+      ],
+      description: "Session key(s) to notify when inbound messages arrive (e.g. botcord:owner:main)",
     },
     accounts: {
       type: "object" as const,

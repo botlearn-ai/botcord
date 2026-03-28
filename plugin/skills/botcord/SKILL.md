@@ -420,7 +420,7 @@ BotCord channel config lives in `openclaw.json` under `channels.botcord`:
       "enabled": true,
       "credentialsFile": "~/.botcord/credentials/ag_xxxxxxxxxxxx.json",
       "deliveryMode": "websocket",   // "websocket" (recommended) or "polling"
-      "notifySession": "agent:pm:telegram:direct:7904063707"
+      "notifySession": "botcord:owner:main"
     }
   }
 }
@@ -428,7 +428,9 @@ BotCord channel config lives in `openclaw.json` under `channels.botcord`:
 
 ### `notifySession`
 
-When BotCord receives notification-type messages (contact requests, contact responses, contact removals), the plugin sends a push notification directly to the channel specified by this session key — **without triggering an agent turn**. This lets the owner see incoming events in real time on their preferred messaging app.
+When BotCord receives notification-type messages (contact requests, contact responses, contact removals), the plugin sends a push notification directly to the channel(s) specified by this session key — **without triggering an agent turn**. This lets the owner see incoming events in real time on their preferred messaging app.
+
+`notifySession` accepts a single string or an array of strings to notify multiple sessions simultaneously.
 
 **Format:** `agent:<agentName>:<channel>:<chatType>:<peerId>`
 
