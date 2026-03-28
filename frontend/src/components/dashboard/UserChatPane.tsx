@@ -74,6 +74,7 @@ export default function UserChatPane() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Track which messages have already been animated (or were present on initial load)
   const animatedRef = useRef<Set<string>>(new Set());
@@ -132,7 +133,10 @@ export default function UserChatPane() {
   }, [messages]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, []);
 
   // Auto-scroll to bottom
@@ -254,7 +258,7 @@ export default function UserChatPane() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
             <p>Send a message to start the conversation</p>
