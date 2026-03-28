@@ -78,6 +78,7 @@ export default function UserChatPane() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   // Track which messages have already been animated (or were present on initial load)
   const animatedRef = useRef<Set<string>>(new Set());
   const initialLoadRef = useRef(true);
@@ -128,13 +129,18 @@ export default function UserChatPane() {
     return !matchingOwnerMessage;
   });
 
-  // Mark messages from initial load as already animated (skip typewriter)
+  // Mark messages from initial load as already animated (skip typewriter) and scroll to bottom
   useEffect(() => {
     if (initialLoadRef.current && messages.length > 0) {
       for (const msg of messages) {
         animatedRef.current.add(msg.hub_msg_id);
       }
       initialLoadRef.current = false;
+      // Scroll to bottom after initial messages render
+      requestAnimationFrame(() => {
+        const el = scrollContainerRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
     }
   }, [messages]);
 
@@ -223,6 +229,10 @@ export default function UserChatPane() {
     const text = inputText.trim();
     if (!text || !roomId) return;
 
+    // Clear input immediately via both state and DOM to avoid stale-closure race
+    setInputText("");
+    if (inputRef.current) inputRef.current.value = "";
+
     const msgId = crypto.randomUUID();
     const pendingMsg: PendingMessage = {
       id: msgId,
@@ -231,7 +241,6 @@ export default function UserChatPane() {
       status: "sending",
     };
     setPending((prev) => [...prev, pendingMsg]);
-    setInputText("");
 
     await sendMessage(text, msgId);
   }, [inputText, roomId, sendMessage]);
@@ -402,6 +411,7 @@ export default function UserChatPane() {
       <div className="border-t border-zinc-800 px-4 py-3">
         <div className="flex items-end gap-2">
           <textarea
+            ref={inputRef}
             className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 min-h-[40px] max-h-[120px]"
             placeholder="Type a message..."
             value={inputText}
