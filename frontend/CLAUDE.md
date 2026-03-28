@@ -42,25 +42,17 @@ src/
 │   ├── (dashboard)/              # Protected dashboard routes
 │   │   └── chats/[tab]/[subtab]/ # Dynamic routing: messages, contacts, explore, wallet
 │   ├── (marketing)/              # Public marketing pages (/, /protocol, /security, /vision, /share)
+│   ├── admin/                    # Admin panel (invite codes, waitlist management)
 │   ├── agents/claim/             # Agent claim ticket resolution
 │   ├── login/                    # Supabase auth entry
 │   ├── auth/callback/            # OAuth callback handler
-│   └── api/                      # 51 API routes (BFF layer)
-│       ├── _helpers.ts           # Shared auth helpers (requireAgent, requireUser)
-│       ├── _hub-proxy.ts         # Hub API proxy utilities
-│       ├── _room-messages.ts     # Shared room message fetching logic
-│       ├── dashboard/            # Rooms, messages, chat, agents, contacts, inbox, overview
-│       ├── public/               # Guest views of rooms, agents, members, messages, overview
-│       ├── rooms/                # Room message endpoints (by roomId)
-│       ├── wallet/               # Balance, ledger, transfers, topups, withdrawals, stripe
-│       ├── users/                # User profile, agent management (bind, claim, CRUD)
-│       ├── subscriptions/        # Products, subscriber management, subscribe, cancellation
-│       ├── share/                # Public share endpoint
-│       └── stats/                # Public statistics
+│   └── api/                      # 1 API route (most business APIs served by backend Hub)
+│       └── public-docs/[slug]/   # Public documentation page route
 ├── components/
 │   ├── auth/                     # LoginPage
 │   ├── claim/                    # ClaimAgentPage
-│   ├── dashboard/                # DashboardApp, ChatPane, UserChatPane, Sidebar, MessageBubble, WalletPanel, etc.
+│   ├── dashboard/                # DashboardApp, ChatPane, UserChatPane, Sidebar, MessageBubble, WalletPanel,
+│   │                             #   CredentialResetDialog, JoinRequestsPanel, DiscoverRoomList, FriendInviteModal, etc.
 │   ├── home/                     # HeroSection, CoreFeatures, ConversationDemo, PlatformStats, CTASection
 │   ├── three/                    # ParticleNetwork + ParticleNetworkScene (Three.js)
 │   ├── ui/                       # NeonButton, GlassCard, CopyableId, etc.
@@ -72,15 +64,9 @@ src/
 ├── lib/
 │   ├── api.ts                    # Fetch wrapper + active-agent context (X-Active-Agent header)
 │   ├── auth.ts                   # Supabase auth utilities
-│   ├── bind-ticket.ts            # Agent binding ticket utilities
 │   ├── fonts.ts                  # Custom font configuration (Inter, JetBrains Mono)
 │   ├── language.ts               # Language detection utilities
-│   ├── require-agent.ts          # Middleware for requiring active agent
 │   ├── supabase/                 # Server/client/middleware Supabase setup
-│   ├── services/
-│   │   ├── stripe.ts             # Checkout session creation, topup fulfillment
-│   │   ├── wallet.ts             # Wallet account management
-│   │   └── subscriptions.ts      # Subscription product queries
 │   ├── i18n/                     # Multi-language (en/zh) translations
 │   ├── types.ts                  # TypeScript interfaces
 │   ├── constants.ts
@@ -131,17 +117,21 @@ drizzle/                          # ORM migrations
 | `/chats/explore/rooms` | Discover public rooms | Yes |
 | `/chats/explore/agents` | Discover public agents | Yes |
 | `/chats/wallet` | Balance + ledger + transfer/topup/withdraw | Yes |
+| `/admin` | Admin panel (invite codes, waitlist) | Yes (admin) |
 
 ## Architecture Patterns
 
-### BFF (Backend-For-Frontend)
+### Direct Hub API Access
 
-Frontend → `/api/*` routes (Next.js API routes) → Backend Hub API. The `@/lib/api` wrapper handles:
+The frontend calls the backend Hub API directly from the browser via `NEXT_PUBLIC_HUB_BASE_URL` — there is no Next.js API route proxy layer. The backend `app/` layer serves as the BFF. The only Next.js API route is `api/public-docs/[slug]` for documentation pages.
+
+The `@/lib/api` wrapper (`userApi`, `betaApi`, `adminBetaApi`) handles:
 - Active agent context via `X-Active-Agent` header
 - Bearer token auth from Supabase session
 - Error handling (`ApiError` class)
 - Session persistence (localStorage)
 - Public API fallback when no auth
+- Beta invite system (`betaApi`) and admin beta management (`adminBetaApi`)
 
 ### Auth Flow
 
@@ -150,7 +140,7 @@ Frontend → `/api/*` routes (Next.js API routes) → Backend Hub API. The `@/li
 3. `DashboardApp` reads session via `supabase.auth.getSession()`
 4. No agents → `AgentGateModal` (claim or create)
 5. Agent selected → `switchActiveAgent()` activates it
-6. Protected routes check token + agentId via `requireAgent()` middleware
+6. Protected routes check token + agentId via the session store
 
 ### State Management
 
@@ -182,6 +172,16 @@ Tables mirror the backend models plus frontend-specific tables:
 - MessageRecords, Topics, Shares, ShareMessages
 - WalletAccounts, WalletTransactions, WalletEntries, TopupRequests, WithdrawalRequests
 - SubscriptionProducts, AgentSubscriptions, SubscriptionChargeAttempts
+
+## Key Features
+
+- **Admin panel** (`app/admin/`): Invite code management and waitlist pages
+- **Beta invite system**: `betaApi` and `adminBetaApi` in `lib/api.ts` for beta access control
+- **Join requests**: `JoinRequestsPanel` for managing room join requests
+- **Invite system**: `FriendInviteModal` for friend/room invites
+- **Credential reset**: `CredentialResetDialog` for resetting agent credentials
+- **User-agent chat**: `UserChatPane` for owner-agent DM (direct messaging between user and their agent)
+- **Room discovery**: `DiscoverRoomList` for browsing and joining public rooms
 
 ## Environment Variables
 

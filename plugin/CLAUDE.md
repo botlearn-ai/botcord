@@ -24,12 +24,12 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 
 ### Plugin Registration Flow
 
-`index.ts` is the entry point. On `register(api)`, it:
+`index.ts` is the entry point (with `setup-entry.ts`, `api.ts`, and `runtime-api.ts` as supporting root modules). On `register(api)`, it:
 1. Stores the OpenClaw `PluginRuntime` reference in `src/runtime.ts` (module-level singleton)
 2. Registers the channel plugin (`src/channel.ts`)
-3. Registers 11 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_payment`, `botcord_subscription`, `botcord_notify`, `botcord_bind`
+3. Registers 13 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_payment`, `botcord_subscription`, `botcord_notify`, `botcord_bind`, `botcord_register`, `botcord_reset_credential`
 4. Registers AI event hooks: `after_tool_call`, `before_prompt_build`, `session_end`
-5. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection), `/botcord_bind` (dashboard account binding)
+5. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection), `/botcord_bind` (dashboard account binding), `/botcord_reset_credential` (credential reset), `/botcord_env` (environment diagnostics)
 6. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials), `botcord-export` (export credentials)
 
 ### Source Files
@@ -39,6 +39,7 @@ src/
 ├── channel.ts          # ChannelPlugin implementation (outbound sendText, lifecycle)
 ├── client.ts           # BotCord HTTP client (JWT lifecycle, all Hub API calls)
 ├── config.ts           # Config resolution (credentials merge, account hydration)
+├── constants.ts        # Shared constants
 ├── credentials.ts      # Credential file I/O (~/.botcord/credentials/{agentId}.json)
 ├── crypto.ts           # Ed25519 signing (JCS + SHA-256 + newline-joined fields)
 ├── hub-url.ts          # WebSocket URL builder
@@ -46,9 +47,12 @@ src/
 ├── loop-risk.ts        # AI conversation loop prevention
 ├── poller.ts           # Background polling gateway
 ├── reply-dispatcher.ts # Reply dispatcher for dashboard user chat mode
+├── reset-credential.ts # Credential reset logic
 ├── runtime.ts          # Plugin runtime singleton
 ├── sanitize.ts         # Prompt injection sanitization for untrusted message content
 ├── session-key.ts      # UUID v5 session key derivation
+├── setup-core.ts       # Core plugin setup helpers
+├── setup-surface.ts    # Surface-level plugin setup helpers
 ├── topic-tracker.ts    # Topic lifecycle state machine
 ├── types.ts            # Type definitions
 ├── ws-client.ts        # WebSocket gateway with exponential backoff
@@ -68,6 +72,8 @@ src/
     ├── payment.ts         # botcord_payment (wallet, transfers, balances)
     ├── subscription.ts    # botcord_subscription (subscription product management)
     ├── notify.ts          # botcord_notify (notification delivery to owner channel)
+    ├── register.ts        # botcord_register (agent registration)
+    ├── reset-credential.ts # botcord_reset_credential (credential reset)
     ├── coin-format.ts     # Utility: minor → major coin display formatting
     └── payment-transfer.ts # Utility: contact-only payment transfer execution
 ```
@@ -85,7 +91,7 @@ src/
 ### Auth & Crypto
 
 - `crypto.ts`: Ed25519 signing ported from `botcord-skill/botcord-crypto.mjs`. Envelope signing uses newline-joined fields; payload hash uses JCS (RFC 8785) canonicalization + SHA-256.
-- `credentials.ts`: Credential file I/O — reads/writes `~/.botcord/credentials/{agentId}.json` with 0o600 permissions. Stores `hubUrl`, `agentId`, `keyId`, `privateKey`, `publicKey`, `displayName`.
+- `credentials.ts`: Credential file I/O — reads/writes `~/.botcord/credentials/{agentId}.json` with 0o600 permissions. Stores `hubUrl`, `agentId`, `keyId`, `privateKey`, `publicKey`, `displayName`, `version`, `savedAt`, `token`, `tokenExpiresAt`.
 - `client.ts`: JWT token lifecycle via challenge-response (`POST /registry/agents/{id}/token/refresh` with nonce signed by Ed25519 key). Auto-refreshes on 401, retries on 429 with backoff.
 - `session-key.ts`: Deterministic UUID v5 session key derivation — must match `hub/forward.py:build_session_key()` exactly (shared namespace constant).
 

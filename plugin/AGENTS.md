@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`index.ts` is the plugin entry point and registers the channel, tools, commands, and CLI. Core implementation lives in `src/`: protocol and config helpers (`types.ts`, `config.ts`, `crypto.ts`, `credentials.ts`), runtime and transport code (`client.ts`, `channel.ts`, `inbound.ts`, `poller.ts`, `ws-client.ts`), topic lifecycle (`topic-tracker.ts`), tool handlers in `src/tools/` (`messaging.ts`, `rooms.ts`, `topics.ts`, `contacts.ts`, `account.ts`, `directory.ts`, `wallet.ts`, `notify.ts`), and CLI/command handlers in `src/commands/` (`healthcheck.ts`, `register.ts`, `token.ts`). Tests live in `src/__tests__/`. Supporting docs are in `docs/`, and packaged skill assets are in `skills/`.
+`index.ts` is the plugin entry point and registers the channel, tools, commands, and CLI. Core implementation lives in `src/`: protocol and config helpers (`types.ts`, `config.ts`, `crypto.ts`, `credentials.ts`), runtime and transport code (`client.ts`, `channel.ts`, `inbound.ts`, `poller.ts`, `ws-client.ts`), topic lifecycle (`topic-tracker.ts`), tool handlers in `src/tools/` (`messaging.ts`, `rooms.ts`, `topics.ts`, `contacts.ts`, `account.ts`, `bind.ts`, `directory.ts`, `payment.ts`, `subscription.ts`, `notify.ts`, `register.ts`, `reset-credential.ts`), and CLI/command handlers in `src/commands/` (`healthcheck.ts`, `register.ts`, `token.ts`). Tests live in `src/__tests__/`. Supporting docs are in `docs/`, and packaged skill assets are in `skills/`.
 
 ## Build, Test, and Development Commands
 There is no required build step for local OpenClaw use; the plugin loads TypeScript sources directly.
