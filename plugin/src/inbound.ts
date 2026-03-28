@@ -129,7 +129,9 @@ async function handleDashboardUserChat(
   const content = rawContent;
 
   const replyTarget = msg.room_id || "";
-  const sessionKey = buildSessionKey(msg.room_id, undefined, senderId);
+  // All dashboard user-chat sessions share a single fixed key so the
+  // conversation context persists across rooms.
+  const sessionKey = "botcord:owner:main";
 
   const route = core.channel.routing.resolveAgentRoute({
     cfg,
