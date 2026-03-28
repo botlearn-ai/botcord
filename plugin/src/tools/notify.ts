@@ -6,7 +6,7 @@
 import { getBotCordRuntime } from "../runtime.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import { getSingleAccountModeError, resolveAccountConfig } from "../config.js";
-import { deliverNotification } from "../inbound.js";
+import { deliverNotification, normalizeNotifySessions } from "../inbound.js";
 
 export function createNotifyTool() {
   return {
@@ -34,8 +34,8 @@ export function createNotifyTool() {
       if (singleAccountError) return { error: singleAccountError };
 
       const acct = resolveAccountConfig(cfg);
-      const notifySession = acct.notifySession;
-      if (!notifySession) {
+      const sessions = normalizeNotifySessions(acct.notifySession);
+      if (sessions.length === 0) {
         return { error: "notifySession is not configured in channels.botcord" };
       }
 
@@ -45,12 +45,23 @@ export function createNotifyTool() {
         return { error: "text is required" };
       }
 
-      try {
-        await deliverNotification(core, cfg, notifySession, text);
-        return { ok: true, notifySession };
-      } catch (err: any) {
-        return { error: `notify failed: ${err?.message ?? err}` };
+      const errors: string[] = [];
+      for (const ns of sessions) {
+        try {
+          await deliverNotification(core, cfg, ns, text);
+        } catch (err: any) {
+          errors.push(`${ns}: ${err?.message ?? err}`);
+        }
       }
+
+      if (errors.length > 0) {
+        return {
+          ok: errors.length < sessions.length,
+          notifySessions: sessions,
+          errors,
+        };
+      }
+      return { ok: true, notifySessions: sessions };
     },
   };
 }

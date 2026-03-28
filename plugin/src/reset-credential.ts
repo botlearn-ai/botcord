@@ -47,7 +47,7 @@ function buildNextConfig(config: Record<string, any>, credentialsFile: string): 
         enabled: true,
         credentialsFile,
         deliveryMode: currentBotcord.deliveryMode === "polling" ? "polling" : "websocket",
-        notifySession: currentBotcord.notifySession || "agent:main:main",
+        notifySession: currentBotcord.notifySession || "botcord:owner:main",
       },
     },
     session: {

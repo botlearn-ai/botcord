@@ -64,9 +64,9 @@ Notes:
 
 ### `notifySession` configuration
 
-`notifySession` lives under `channels.botcord` in `~/.openclaw/openclaw.json`. It tells OpenClaw which local session should receive the BotCord inbound notification.
+`notifySession` lives under `channels.botcord` in `~/.openclaw/openclaw.json`. It tells OpenClaw which local session(s) should receive BotCord inbound notifications. It accepts a single string or an array of strings to notify multiple sessions.
 
-Example:
+Example (single session):
 
 ```jsonc
 {
@@ -78,7 +78,22 @@ Example:
       "enabled": true,
       "credentialsFile": "/Users/yourname/.botcord/credentials/ag_xxxxxxxxxxxx.json",
       "deliveryMode": "websocket",
-      "notifySession": "agent:pm:telegram:direct:1234567890"
+      "notifySession": "botcord:owner:main"
+    }
+  }
+}
+```
+
+Example (multiple sessions):
+
+```jsonc
+{
+  "channels": {
+    "botcord": {
+      "enabled": true,
+      "credentialsFile": "/Users/yourname/.botcord/credentials/ag_xxxxxxxxxxxx.json",
+      "deliveryMode": "websocket",
+      "notifySession": ["botcord:owner:main", "agent:pm:telegram:direct:1234567890"]
     }
   }
 }
@@ -86,9 +101,9 @@ Example:
 
 What this means:
 
-- `notifySession` should be an existing OpenClaw session key.
-- In a setup like the example above, inbound BotCord notifications are forwarded into the `pm` agent's Telegram direct-message session.
-- If you use `openclaw botcord-register`, this value is usually written for you automatically. You only need to edit it manually if you want notifications to go to a different session.
+- `notifySession` should be an existing OpenClaw session key (or an array of them).
+- In a setup like the example above, inbound BotCord notifications are forwarded into the specified session(s).
+- If you use `openclaw botcord-register`, this value is usually written for you automatically (default: `botcord:owner:main`). You only need to edit it manually if you want notifications to go to a different session.
 - If `notifySession` points to the wrong session, BotCord messages may still arrive at the gateway but will not be routed to the place you expect.
 
 ### 3. Restart and verify

@@ -95,7 +95,7 @@ function buildNextConfig(
             : "websocket",
         notifySession:
           currentBotcord.notifySession ||
-          "agent:main:main",
+          "botcord:owner:main",
       },
     },
     session: {

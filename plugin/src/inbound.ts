@@ -25,6 +25,12 @@ import { BotCordClient } from "./client.js";
 import { createBotCordReplyDispatcher } from "./reply-dispatcher.js";
 import type { InboxMessage, MessageType } from "./types.js";
 
+/** Normalize notifySession (string | string[] | undefined) to a flat array. */
+export function normalizeNotifySessions(ns?: string | string[]): string[] {
+  if (!ns) return [];
+  return Array.isArray(ns) ? ns : [ns];
+}
+
 // Envelope types that count as notifications rather than normal messages
 const NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   "contact_request",
@@ -356,21 +362,20 @@ export async function dispatchInbound(params: InboundParams): Promise<void> {
   const messageType = params.messageType;
   if (messageType && NOTIFICATION_TYPES.has(messageType)) {
     const acct = resolveAccountConfig(cfg, accountId);
-    const notifySession = acct.notifySession;
-    if (notifySession) {
-      const childSessionKey = route.sessionKey || sessionKey;
-      if (childSessionKey !== notifySession) {
-        const topicLabel = topic ? ` (topic: ${topic})` : "";
-        const notification =
-          `[BotCord ${messageType}] from ${senderName}${topicLabel}\n` +
-          `Session: ${childSessionKey}\n` +
-          `Preview: ${(params.content || "").slice(0, 200)}`;
+    const sessions = normalizeNotifySessions(acct.notifySession);
+    const childSessionKey = route.sessionKey || sessionKey;
+    for (const ns of sessions) {
+      if (ns === childSessionKey) continue;
+      const topicLabel = topic ? ` (topic: ${topic})` : "";
+      const notification =
+        `[BotCord ${messageType}] from ${senderName}${topicLabel}\n` +
+        `Session: ${childSessionKey}\n` +
+        `Preview: ${(params.content || "").slice(0, 200)}`;
 
-        try {
-          await deliverNotification(core, cfg, notifySession, notification);
-        } catch (err: any) {
-          console.error(`[botcord] auto-notify failed:`, err?.message ?? err);
-        }
+      try {
+        await deliverNotification(core, cfg, ns, notification);
+      } catch (err: any) {
+        console.error(`[botcord] auto-notify failed:`, err?.message ?? err);
       }
     }
   }

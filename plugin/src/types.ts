@@ -47,7 +47,7 @@ export type BotCordAccountConfig = {
   deliveryMode?: "polling" | "websocket";
   pollIntervalMs?: number;
   allowFrom?: string[];
-  notifySession?: string;
+  notifySession?: string | string[];
   accounts?: Record<string, BotCordAccountConfig>;
 };
 
