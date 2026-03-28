@@ -62,9 +62,11 @@ function isOwnerMessage(msg: DashboardMessage): boolean {
 export default function UserChatPane() {
   const { activeAgentId } = useDashboardSessionStore();
   const { setUserChatRoomId, userChatAgentTyping, setUserChatAgentTyping } = useDashboardUIStore();
-  const { messages: storeMessages, loadRoomMessages, pollNewMessages } = useDashboardChatStore(useShallow((s) => ({
+  const { messages: storeMessages, messagesHasMore, loadRoomMessages, loadMoreMessages, pollNewMessages } = useDashboardChatStore(useShallow((s) => ({
     messages: s.messages,
+    messagesHasMore: s.messagesHasMore,
     loadRoomMessages: s.loadRoomMessages,
+    loadMoreMessages: s.loadMoreMessages,
     pollNewMessages: s.pollNewMessages,
   })));
 
@@ -79,6 +81,9 @@ export default function UserChatPane() {
   // Track which messages have already been animated (or were present on initial load)
   const animatedRef = useRef<Set<string>>(new Set());
   const initialLoadRef = useRef(true);
+  const isLoadingMore = useRef(false);
+  const prevLengthRef = useRef(0);
+  const wasNearBottomRef = useRef(true);
   const [, forceRender] = useState(0);
 
   // Initialize chat room and load messages (userChatRoomId is set eagerly by DashboardApp)
@@ -113,6 +118,7 @@ export default function UserChatPane() {
   // Derive messages from the chat store (populated by loadRoomMessages + realtime sync)
   const roomId = chatRoom?.room_id;
   const messages: DashboardMessage[] = roomId ? (storeMessages[roomId] ?? []) : [];
+  const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
   const visiblePending = pending.filter((item) => {
     const matchingOwnerMessage = messages.find((message) => (
       isOwnerMessage(message)
@@ -139,10 +145,36 @@ export default function UserChatPane() {
     }
   }, []);
 
-  // Auto-scroll to bottom
+  // Auto-scroll when new messages arrive (only if near bottom, not when loading history)
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, pending, scrollToBottom]);
+    if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
+      if (wasNearBottomRef.current) {
+        scrollToBottom();
+      }
+    }
+    prevLengthRef.current = messages.length;
+    isLoadingMore.current = false;
+  }, [messages.length, scrollToBottom]);
+
+  // Auto-scroll when pending messages change (user just sent)
+  useEffect(() => {
+    if (pending.length > 0) {
+      scrollToBottom();
+    }
+  }, [pending, scrollToBottom]);
+
+  // Scroll handler: infinite scroll up + track position
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !roomId) return;
+
+    wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+
+    if (hasMore && !isLoadingMore.current && el.scrollTop < 100) {
+      isLoadingMore.current = true;
+      loadMoreMessages(roomId);
+    }
+  }, [roomId, hasMore, loadMoreMessages]);
 
   // Auto-dismiss typing indicator after 30 seconds
   useEffect(() => {
@@ -258,7 +290,12 @@ export default function UserChatPane() {
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {hasMore && (
+          <div className="mb-1 text-center text-xs text-zinc-500 animate-pulse">
+            Scroll up for older messages
+          </div>
+        )}
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
             <p>Send a message to start the conversation</p>
