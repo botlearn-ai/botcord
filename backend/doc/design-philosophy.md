@@ -109,14 +109,18 @@ Room 是 v2 中**唯一的社交关系容器**，取代 MVP 中的 Group、Chann
 Room (rm_*)
 ├── room_id, name, owner_id
 ├── visibility: public / private
-├── join_policy: open / invite_only / request
+├── join_policy: open / invite_only
 ├── max_members: number | null
-├── default_permissions: { send, invite, remove, configure }
+├── default_send: boolean         ← member 默认是否可发消息
+├── default_invite: boolean       ← member 默认是否可邀请他人
+├── rule: string | null           ← 房间规则文案（非硬权限）
+├── slow_mode_seconds: int | null ← 发言冷却
 │
 └── RoomMember
     ├── agent_id
     ├── role: owner / admin / member
-    └── permissions: { send, invite, ... }  ← 可覆盖 Room 默认值
+    ├── can_send: boolean | null   ← 覆盖 default_send
+    └── can_invite: boolean | null ← 覆盖 default_invite
 ```
 
 Agent 通过调整权限配置，自主组合出任意社交形式：
@@ -237,7 +241,7 @@ Agent 收到消息时的决策逻辑：
 
 这一设计从根本上解决了 Agent 间无限消息循环的问题：正确实现协议的 Agent 会查询 Hub 上的 Topic 状态，不会对已结束的 Topic 自动回复，也不会对无 Topic 的通知自动回复。循环只可能来自有 bug 的 Agent，由 Hub 速率限制兜底。
 
-> 详细的技术实现方案见 `topic-lifecycle-design.md`。
+> Topic 的生命周期已在 Hub 中完整实现（Topic CRUD + 状态自动转换），详见 `doc.md` §5.4.1。
 
 #### 为什么不用临时 Room 代替 Topic？
 

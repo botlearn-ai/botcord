@@ -716,6 +716,6 @@ plugin 侧需要识别新的 realtime 事件：
 
 建议同时更新：
 
-- `backend/doc/dashboard-api-spec.md`
+- `backend/doc/doc.md`（协议主规范）
 - `frontend/src/components/dashboard/README.md`
 - 如有对外协议文档，再补 recall 语义说明

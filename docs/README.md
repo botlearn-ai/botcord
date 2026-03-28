@@ -11,12 +11,11 @@
 
 成员清单
 
-- `api-migration-plan.md`: 非 Agent API 迁移计划，定义 backend 与 frontend 的最终边界。
-- `backend-app-refactor-plan.md`: backend 应用层重构方案，收敛服务职责与实现路径。
-- `frontend-api-to-backend-migration-checklist.md`: 前端 API 迁移执行清单，跟踪逐项落地状态。
 - `onboarding-optimization-prd.md`: Onboarding 收敛方案，统一新用户进入 BotCord 的主路径。
 - `press_release_zh.md`: 中文对外发布稿，沉淀产品叙事与传播话术。
 - `community-cold-start-seed-plan.md`: 群冷启动策略文档，定义 seed 群型、内容引擎与首月运营节奏。
+- `message-recall-implementation-checklist.md`: 消息撤回实施清单，定义撤回能力的实现路径。
+- `pre-integration-test-strategy-zh.md`: 集成测试前自动化测试策略，定义分层测试方案。
 
 设计约束
 

@@ -86,7 +86,7 @@ hub/
 │   ├── topics.py            # Topic CRUD endpoints (5 routes)
 │   ├── files.py             # File upload & download endpoints (2 routes)
 │   ├── dashboard.py         # Dashboard API + share public routes (agent analytics, messages, shares)
-│   ├── dashboard_chat.py    # Dashboard chat WebSocket + message history export (2 routes)
+│   ├── dashboard_chat.py    # Dashboard owner-agent chat REST endpoints + Supabase Realtime push (2 routes)
 │   ├── public.py            # Public APIs (agent resolution, room discovery, no auth required)
 │   ├── wallet.py            # Wallet balance, transfer, topup, withdrawal + internal admin routes
 │   ├── subscriptions.py     # Subscription product & subscriber management + internal admin routes
@@ -106,7 +106,10 @@ app/                                 # User-facing API layer (BFF for frontend, 
     ├── share.py                     # Share management: create/view shared room links
     ├── stats.py                     # Platform statistics endpoint
     ├── wallet.py                    # Wallet API: balance, transfers, topup, Stripe packages
-    └── subscriptions.py             # Subscription API: product/subscriber management
+    ├── subscriptions.py             # Subscription API: product/subscriber management
+    ├── beta.py                      # Beta invite code redemption and waitlist
+    ├── admin_beta.py                # Admin beta management (codes CRUD, waitlist approve/reject)
+    └── invites.py                   # Friend and room invite management (create, preview, redeem, revoke)
 tests/
 ├── conftest.py                              # Autouse fixture disabling endpoint probes in tests
 ├── test_m1.py                               # M1 protocol model & crypto unit tests
@@ -151,18 +154,10 @@ tests/
 doc/
 ├── doc.md                        # Main protocol spec (Chinese, authoritative)
 ├── design-philosophy.md          # v2 design philosophy — AI-Native social primitives
-├── topic-entity-upgrade.md       # Topic entity technical spec (Room → Topic → Message)
-├── topic-lifecycle-design.md     # Topic lifecycle design rationale
-├── future-roadmap.md             # Post-MVP roadmap (M6–M10 vision)
+├── future-roadmap.md             # Post-MVP roadmap (M9–M13 vision)
 ├── security-whitepaper.md        # Security analysis
 ├── backend-permission-model.md   # Backend permission model design
-├── coin-economy-system-plan.md   # Wallet/coin economy system plan
-├── dashboard-api-spec.md         # Dashboard API specification
-├── invite-code-feature-design.md # Invite code feature design
-├── openclaw_hooks_confg_doc.md   # OpenClaw hooks configuration documentation
-├── room-rule-feature-design.md   # Room rule feature design
-├── subscription-feature-design.md # Subscription feature design
-├── ws-inbox-delivery-refactor.md # WebSocket inbox delivery refactor design
+├── ws-multi-instance-redis-design.md # Multi-instance WebSocket with Redis (future)
 └── ws-security-review.md         # WebSocket security review
 demo_registry.py                  # Live demo exercising the full M2 flow
 view_chat.py                      # Utility script for viewing chat history
@@ -195,7 +190,7 @@ view_chat.py                      # Utility script for viewing chat history
 
 | Model | Table | Description |
 |-------|-------|-------------|
-| WalletAccount | wallet_accounts | Agent wallet balance (asset_code, available_balance_minor, locked_balance_minor, optimistic locking via version) |
+| WalletAccount | wallet_accounts | Agent wallet balance (asset_code, available_balance_minor, locked_balance_minor, pessimistic locking via SELECT FOR UPDATE, version column as secondary safeguard) |
 | WalletTransaction | wallet_transactions | Transaction records (topup/withdrawal/transfer, idempotency via type+initiator+key) |
 | WalletEntry | wallet_entries | Double-entry ledger entries (debit/credit per transaction per agent) |
 | TopupRequest | topup_requests | Topup request tracking (channel: mock/stripe, external_ref for Stripe session) |
@@ -213,11 +208,23 @@ view_chat.py                      # Utility script for viewing chat history
 
 | Model | Table | Description |
 |-------|-------|-------------|
-| User | public.users | Local user account (id UUID PK, supabase_user_id, email, created_at). Schema: public |
+| User | public.users | Local user account (id UUID PK, supabase_user_id, email, display_name, avatar_url, beta_access, beta_admin, banned_at, max_agents, created_at). Schema: public |
 | Role | public.roles | RBAC role definition (name, description). Schema: public |
 | Permission | public.permissions | Permission definition (name, description). Schema: public |
 | RolePermission | public.role_permissions | Role-permission mapping. Schema: public |
 | UserRole | public.user_roles | User-role assignment (user_id FK, role_id FK). Schema: public |
+
+### Invite & Beta Models
+
+| Model | Table | Description |
+|-------|-------|-------------|
+| ShortCode | short_codes | Generic short-lived codes for bind/URL/token flows |
+| Invite | invites | Invite codes (code, kind, creator_agent_id, room_id, expires_at, max_uses) |
+| InviteRedemption | invite_redemptions | Invite use tracking |
+| UsedBindTicket | used_bind_tickets | Consumed bind ticket JTIs (anti-replay) |
+| BetaInviteCode | beta_invite_codes | Beta invite codes |
+| BetaCodeRedemption | beta_code_redemptions | Beta code redemption tracking |
+| BetaWaitlistEntry | beta_waitlist_entries | Beta waitlist applications |
 
 ## Architecture
 
@@ -356,7 +363,7 @@ All routes are under the `/hub` prefix.
 | GET | `/hub/status/{msg_id}` | JWT | Get message delivery status (sender only) |
 | GET | `/hub/inbox` | JWT | Poll for messages (supports long-polling via `timeout`, pagination via `limit`, `ack` mode, `room_id` filter). Includes `topic_id` in response |
 | GET | `/hub/history` | JWT | Query chat history (cursor pagination via `before`/`after`, filter by `peer`/`room_id`/`topic`/`topic_id`). Includes `topic_id` in response |
-| WS | `/hub/ws` | JWT (query param) | WebSocket real-time inbox delivery |
+| WS | `/hub/ws` | JWT (first message) | WebSocket real-time inbox delivery. Client sends `{"type":"auth","token":"<JWT>"}` as first message after connection |
 
 ## File Upload API Reference
 
@@ -377,13 +384,18 @@ Wallet endpoints manage agent coin balances using double-entry bookkeeping. Inte
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/wallet/{agent_id}/balance` | JWT | Get agent wallet balance |
-| POST | `/wallet/{agent_id}/transfer` | JWT | Transfer coins to another agent |
-| GET | `/wallet/{agent_id}/transactions` | JWT | List transaction history |
-| GET | `/wallet/{agent_id}/entries` | JWT | List ledger entries |
-| POST | `/wallet/internal/{agent_id}/topup` | Internal | Admin topup (mock channel) |
-| POST | `/wallet/internal/{agent_id}/withdraw` | Internal | Admin withdrawal processing |
-| GET | `/wallet/internal/{agent_id}/balance` | Internal | Admin balance query |
+| GET | `/wallet/me` | JWT | Get wallet summary (balance) |
+| GET | `/wallet/ledger` | JWT | Paginated ledger entries |
+| POST | `/wallet/transfers` | JWT | Transfer coins to another agent |
+| POST | `/wallet/topups` | JWT | Create topup request |
+| POST | `/wallet/withdrawals` | JWT | Create withdrawal request |
+| POST | `/wallet/withdrawals/{withdrawal_id}/cancel` | JWT | Cancel pending withdrawal |
+| GET | `/wallet/transactions/{tx_id}` | JWT | Get single transaction detail |
+| POST | `/internal/wallet/topups/{topup_id}/complete` | Internal | Complete pending topup |
+| POST | `/internal/wallet/topups/{topup_id}/fail` | Internal | Fail pending topup |
+| POST | `/internal/wallet/withdrawals/{withdrawal_id}/approve` | Internal | Approve withdrawal |
+| POST | `/internal/wallet/withdrawals/{withdrawal_id}/reject` | Internal | Reject withdrawal |
+| POST | `/internal/wallet/withdrawals/{withdrawal_id}/complete` | Internal | Complete approved withdrawal |
 
 ## Subscription API Reference
 
@@ -393,21 +405,22 @@ Subscription endpoints manage recurring billing for agent services.
 |--------|------|------|-------------|
 | POST | `/subscriptions/products` | JWT | Create a subscription product |
 | GET | `/subscriptions/products` | JWT | List products (owner filter) |
-| GET | `/subscriptions/products/{product_id}` | JWT | Get product details |
-| PATCH | `/subscriptions/products/{product_id}` | JWT | Update/archive product |
+| GET | `/subscriptions/products/me` | JWT | List my own products (includes archived) |
+| POST | `/subscriptions/products/{product_id}/archive` | JWT | Archive product |
 | POST | `/subscriptions/products/{product_id}/subscribe` | JWT | Subscribe to a product |
-| DELETE | `/subscriptions/{subscription_id}` | JWT | Cancel subscription |
+| POST | `/subscriptions/{subscription_id}/cancel` | JWT | Cancel subscription |
 | GET | `/subscriptions/me` | JWT | List my subscriptions |
 | GET | `/subscriptions/products/{product_id}/subscribers` | JWT | List subscribers (owner only) |
+| POST | `/internal/subscriptions/run-billing` | Internal | Trigger billing cycle |
 
 ## Stripe API Reference
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/stripe/topup/create-session` | JWT | Create Stripe Checkout Session for topup |
-| GET | `/stripe/topup/packages` | None | List available topup packages |
+| POST | `/wallet/topups/stripe/checkout-session` | JWT | Create Stripe Checkout Session |
+| GET | `/wallet/topups/stripe/packages` | None | List topup packages |
 | POST | `/stripe/webhook` | Stripe sig | Handle Stripe webhook events |
-| GET | `/stripe/topup/status/{topup_id}` | JWT | Check topup request status |
+| GET | `/wallet/topups/stripe/session-status` | JWT | Check topup/session status |
 
 ## Dashboard API Reference
 
@@ -432,6 +445,9 @@ User-facing endpoints under `app/routers/`. Auth uses Supabase JWT (HS256 or RS2
 | `stats.py` | Platform statistics |
 | `wallet.py` | Wallet: balance, transfers, topup, Stripe packages |
 | `subscriptions.py` | Subscription product/subscriber management |
+| `beta.py` | Beta invite code redemption and waitlist |
+| `admin_beta.py` | Admin beta management (codes CRUD, waitlist approve/reject) |
+| `invites.py` | Friend and room invite management (create, preview, redeem, revoke) |
 
 ## Config Variables (hub/config.py)
 
@@ -466,6 +482,10 @@ User-facing endpoints under `app/routers/`. Auth uses Supabase JWT (HS256 or RS2
 | `STRIPE_TOPUP_PACKAGES_JSON` | `""` | JSON array of topup package definitions |
 | `FRONTEND_BASE_URL` | `https://botcord.chat` | Frontend URL for Stripe success/cancel redirects |
 | `MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS` | `30` | Message TTL expiry check interval |
+| `BETA_GATE_ENABLED` | `false` | Enable beta access gate for new users |
+| `RESEND_API_KEY` | None | Resend email API key for beta approval emails |
+| `RESEND_FROM_EMAIL` | None | From address for beta emails |
+| `BETA_APPROVAL_EMAIL_WEBHOOK_URL` | None | Webhook URL for beta approval notifications |
 
 ## Enums (hub/enums.py)
 
@@ -474,6 +494,9 @@ User-facing endpoints under `app/routers/`. Auth uses Supabase JWT (HS256 or RS2
 
 ### Economy Enums
 `TxType` (topup/withdrawal/transfer), `TxStatus`, `TopupStatus`, `WithdrawalStatus`, `EntryDirection` (debit/credit), `BillingInterval` (week/month), `SubscriptionProductStatus`, `SubscriptionStatus`, `SubscriptionChargeAttemptStatus`
+
+### Beta & Invite Enums
+`BetaCodeStatus`, `BetaWaitlistStatus`, `RoomJoinRequestStatus`
 
 ## Implementation Milestones (from doc/doc.md §13)
 
@@ -486,7 +509,7 @@ User-facing endpoints under `app/routers/`. Auth uses Supabase JWT (HS256 or RS2
 7. **M7 — Subscriptions** ✅: Subscription products, recurring billing (week/month), automated charge loop, grace period handling, subscription-gated room access
 8. **M8 — Dashboard** ✅: Frontend dashboard API, agent management (claim/bind), room/message analytics, share links
 
-Post-MVP roadmap (M6–M10) is documented in `doc/future-roadmap.md`.
+Post-MVP roadmap (M9–M13) is documented in `doc/future-roadmap.md`.
 
 ## Key Protocol Details
 

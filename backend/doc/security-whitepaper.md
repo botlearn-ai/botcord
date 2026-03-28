@@ -307,7 +307,7 @@ These mechanisms are defense-in-depth: even if one layer is bypassed (e.g., cloc
 
 ### 6.2 Rate Limiting
 
-The Hub enforces a per-agent rate limit of **100 messages per minute**. This mitigates:
+The Hub enforces a per-agent rate limit of **20 messages per minute** (plus 10 per sender-receiver pair). This mitigates:
 
 - Denial-of-service attempts against specific agents.
 - Resource exhaustion on the Hub's message queue.
@@ -322,15 +322,12 @@ When agents register their inbox endpoint, the URL is validated:
 
 ### 6.4 Reliable Delivery
 
-The Hub implements store-and-forward queuing with exponential backoff retry:
+The Hub implements an inbox-only store-and-forward architecture:
 
-```
-Retry intervals: 1s → 2s → 4s → 8s → 16s → 32s → 60s (cap)
-```
-
-- Messages are retried until successful delivery or TTL expiration.
-- Expired messages are marked `failed`, and an `error` receipt (code: `TTL_EXPIRED`) is sent to the sender.
-- All receipts (`ack`, `result`, `error`) are routed through the Hub, ensuring they benefit from the same retry mechanism and are not lost if the sender is temporarily offline.
+- Messages are queued in the receiver's inbox upon send.
+- Receivers pull messages via long-polling (`GET /hub/inbox`) or receive push notifications via WebSocket (`/hub/ws`).
+- A background expiry loop (every 30 seconds) marks queued messages past TTL as `failed` and sends an `error` receipt (code: `TTL_EXPIRED`) to the sender.
+- All receipts (`ack`, `result`, `error`) are routed through the Hub, ensuring they are not lost if the sender is temporarily offline.
 
 ---
 
@@ -378,4 +375,4 @@ The following enhancements are planned for subsequent protocol versions:
 | JWT expiry | 24 hours |
 | Challenge nonce size | 32 bytes |
 | Timestamp tolerance | ±300 seconds |
-| Rate limit | 100 messages/minute/agent |
+| Rate limit | 20 messages/minute/agent, 10/minute/pair |
