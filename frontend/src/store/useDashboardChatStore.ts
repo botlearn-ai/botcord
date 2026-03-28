@@ -33,6 +33,7 @@ function applyRealtimeRoomHint<T extends {
   room_id: string;
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_sender_name: string | null;
 }>(room: T, event: RealtimeMetaEvent): T {
   if (room.room_id !== event.room_id) return room;
 
@@ -40,10 +41,15 @@ function applyRealtimeRoomHint<T extends {
     ? event.ext.preview
     : room.last_message_preview;
 
+  const senderName = typeof event.ext.sender_name === "string"
+    ? event.ext.sender_name
+    : room.last_sender_name;
+
   return {
     ...room,
     last_message_at: event.created_at > (room.last_message_at ?? "") ? event.created_at : room.last_message_at,
     last_message_preview: preview,
+    last_sender_name: senderName,
   };
 }
 

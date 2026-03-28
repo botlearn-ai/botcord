@@ -233,6 +233,7 @@ async def send_chat_message(
             hub_msg_id=hub_msg_id,
             created_at=record.created_at,
             payload=payload,
+            sender_name=agent_display_name,
         ),
     )
 
