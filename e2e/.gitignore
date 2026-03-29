@@ -1,0 +1,15 @@
+# Secrets - never commit
+shared/vertex-sa-key.json
+
+# Runtime state
+instances/*/.openclaw/workspace/
+instances/*/.openclaw/.sessions/
+instances/*/.openclaw/.state/
+instances/*/.openclaw/plugins/
+instances/*/.openclaw/extensions/
+instances/*/.botcord/
+
+# Build outputs
+node_modules/
+dist/
+artifacts/

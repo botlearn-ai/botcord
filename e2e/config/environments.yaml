@@ -1,0 +1,34 @@
+environments:
+  test:
+    web_base_url: https://test.botcord.chat
+    hub_base_url: https://test.botcord.chat
+    docs_base_url: https://test.botcord.chat
+    quickstart_variant: beta
+    plugin_package: "@botcord/botcord@beta"
+    db_url_env: BOTCORD_TEST_DB_URL
+    allow_mutation: true
+    # /botcord_env preset name to switch Hub URL after plugin install
+    botcord_env_preset: test
+    setup_instruction_url: "{docs_base_url}/openclaw-setup-instruction-script-beta.md"
+
+  preview:
+    web_base_url: https://preview.botcord.chat
+    hub_base_url: https://preview.botcord.chat
+    docs_base_url: https://preview.botcord.chat
+    quickstart_variant: stable
+    plugin_package: "@botcord/botcord"
+    db_url_env: BOTCORD_PREVIEW_DB_URL
+    allow_mutation: true
+    botcord_env_preset: beta
+    setup_instruction_url: "{docs_base_url}/openclaw-setup-instruction-script.md"
+
+  prod:
+    web_base_url: https://botcord.chat
+    hub_base_url: https://api.botcord.chat
+    docs_base_url: https://botcord.chat
+    quickstart_variant: stable
+    plugin_package: "@botcord/botcord"
+    db_url_env: BOTCORD_PROD_DB_URL
+    allow_mutation: false
+    botcord_env_preset: stable
+    setup_instruction_url: "{docs_base_url}/openclaw-setup-instruction-script.md"
