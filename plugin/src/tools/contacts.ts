@@ -59,13 +59,13 @@ export function createContactsTool() {
           switch (args.action) {
             case "send_request":
               if (!args.agent_id) return validationError("agent_id is required");
-              return dryRunResult("POST", `/registry/agents/${args.agent_id}/contact-request`, { message: args.message }) as any;
+              return dryRunResult("POST", "/hub/send", { to: args.agent_id, type: "contact_request", payload: args.message ? { text: args.message } : {} }) as any;
             case "remove":
               if (!args.agent_id) return validationError("agent_id is required");
-              return dryRunResult("DELETE", `/registry/contacts/${args.agent_id}`) as any;
+              return dryRunResult("DELETE", `/registry/agents/{self}/contacts/${args.agent_id}`) as any;
             case "block":
               if (!args.agent_id) return validationError("agent_id is required");
-              return dryRunResult("POST", `/registry/blocks/${args.agent_id}`) as any;
+              return dryRunResult("POST", `/registry/agents/{self}/blocks`, { blocked_agent_id: args.agent_id }) as any;
             default:
               break;
           }

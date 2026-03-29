@@ -297,13 +297,13 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
             case "transfer":
               if (!args.to_agent_id) return validationError("to_agent_id is required");
               if (!args.amount_minor) return validationError("amount_minor is required");
-              return dryRunResult("POST", "/wallet/transfer", { to_agent_id: args.to_agent_id, amount_minor: args.amount_minor, memo: args.memo }) as any;
+              return dryRunResult("POST", "/wallet/transfers", { to_agent_id: args.to_agent_id, amount_minor: args.amount_minor, memo: args.memo }) as any;
             case "topup":
               if (!args.amount_minor) return validationError("amount_minor is required");
-              return dryRunResult("POST", "/wallet/topup", { amount_minor: args.amount_minor, channel: args.channel }) as any;
+              return dryRunResult("POST", "/wallet/topups", { amount_minor: args.amount_minor, channel: args.channel }) as any;
             case "withdraw":
               if (!args.amount_minor) return validationError("amount_minor is required");
-              return dryRunResult("POST", "/wallet/withdraw", { amount_minor: args.amount_minor, destination_type: args.destination_type }) as any;
+              return dryRunResult("POST", "/wallet/withdrawals", { amount_minor: args.amount_minor, destination_type: args.destination_type }) as any;
             default:
               break;
           }
