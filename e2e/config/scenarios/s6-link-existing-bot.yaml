@@ -1,0 +1,78 @@
+id: s6_link_existing_bot
+description: >
+  Verify that the "link" connect mode re-connects to an existing bot
+  identity instead of creating a new one.  The scenario first installs
+  BotCord (seeding an identity), then simulates a re-connect by sending
+  a second connect prompt with mode=link.  The key assertion is that the
+  agent ID after the link operation is identical to the original.
+
+  Dependency note: the dependency graph lists S6 under S1 because it
+  only needs the plugin installed (not a bound user).  It is classified
+  as "seeded" at Layer 1 because an existing bot identity must already
+  be present for the link prompt to have something to reconnect to.
+  The standalone YAML replays S1 to produce that seed.
+runtime:
+  instance_count: 1
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 90
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide to install and configure BotCord:
+    {setup_guide_url}
+steps:
+  # -- Seed: install to produce an existing bot identity --------------
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Install BotCord plugin and register initial identity
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+  - id: switch_env
+    action: openclaw.agent_prompt
+    description: Switch Hub URL to target environment via /botcord_env
+    params:
+      message: "/botcord_env {botcord_env_preset}"
+  - id: restart_after_env_switch
+    action: runtime.restart_and_wait
+    description: Restart gateway for env switch to take effect
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read original BotCord credentials (the identity to link back to)
+    params:
+      glob: .botcord/credentials/*.json
+  # -- Link-specific steps --------------------------------------------
+  - id: backup_credentials
+    action: filesystem.backup_credentials
+    description: Snapshot original identity so we can compare after link
+  - id: send_link_prompt
+    action: openclaw.dynamic_prompt
+    description: >
+      Send a connect prompt with mode=link.  The bot already has
+      credentials on disk; the link prompt should detect and reuse them
+      rather than creating a new agent.
+    params:
+      kind: connect_bot
+      mode: link
+  - id: wait_after_link
+    action: runtime.wait_healthy
+    description: Wait for gateway to stabilize after link
+    params:
+      delay_seconds: 5
+  - id: read_credentials_after_link
+    action: filesystem.read_credentials
+    description: Read credentials after link operation
+    params:
+      glob: .botcord/credentials/*.json
+assertions:
+  - id: credentials.has_agent_id
+    description: Credentials present after link
+  - id: identity.agent_id_unchanged
+    description: Agent ID is the same as the original (linked, not recreated)
+  - id: credentials.hub_matches_environment
+    description: Hub URL in credentials matches target environment

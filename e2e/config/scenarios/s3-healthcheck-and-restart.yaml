@@ -1,0 +1,51 @@
+id: s3_healthcheck_and_restart
+description: Healthcheck passes and credentials survive container restart
+runtime:
+  instance_count: 2
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 90
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide to install and configure BotCord:
+    {setup_guide_url}
+steps:
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Send the Quick Start prompt to each OpenClaw instance
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+  - id: switch_env
+    action: openclaw.agent_prompt
+    description: Switch Hub URL to target environment via /botcord_env
+    params:
+      message: "/botcord_env {botcord_env_preset}"
+  - id: restart_after_env_switch
+    action: runtime.restart_and_wait
+    description: Restart gateway for env switch to take effect
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read BotCord credentials from each instance
+    params:
+      glob: .botcord/credentials/*.json
+  - id: run_healthcheck
+    action: openclaw.agent_prompt
+    description: Run /botcord_healthcheck command
+    params:
+      message: "/botcord_healthcheck"
+  - id: restart_and_verify
+    action: runtime.restart_and_verify
+    description: Restart container and verify credentials persist
+assertions:
+  - id: healthcheck.connection_ok
+    description: Healthcheck reports Hub connection is active
+  - id: restart.credentials_persist
+    description: Credentials file survives container restart
+  - id: restart.healthcheck_ok
+    description: Healthcheck passes after container restart

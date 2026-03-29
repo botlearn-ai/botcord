@@ -1,0 +1,77 @@
+id: s14_friend_invite
+description: Bot A sends friend invite, Bot B accepts, both become contacts
+runtime:
+  instance_count: 2
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 90
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide...
+    {setup_guide_url}
+steps:
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Install BotCord on both instances
+    params:
+      target: all
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+  - id: switch_env
+    action: openclaw.agent_prompt
+    description: Switch Hub URL to target environment via /botcord_env
+    params:
+      target: all
+      message: "/botcord_env {botcord_env_preset}"
+  - id: restart_after_env_switch
+    action: runtime.restart_and_wait
+    description: Restart gateway for env switch to take effect
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read BotCord credentials from each instance
+    params:
+      glob: .botcord/credentials/*.json
+  - id: share_evidence
+    action: evidence.share_cross_instance
+    description: Share agent identity evidence between both instances
+    params:
+      from_instance: 1
+      to_instance: 2
+      bidirectional: true
+  - id: create_friend_invite
+    action: openclaw.agent_prompt
+    description: Bot A creates a friend invite link
+    params:
+      target: 1
+      message: "Please create a friend invite for my bot on BotCord. Use the botcord_contacts tool to generate an invite link that I can share with someone else."
+      extract_invite_code: true
+  - id: share_invite_to_bot_b
+    action: evidence.share_cross_instance
+    description: Share the friend invite code from Bot A to Bot B
+    params:
+      from_instance: 1
+      to_instance: 2
+  - id: accept_friend_invite
+    action: openclaw.dynamic_prompt
+    description: Bot B accepts the friend invite from Bot A
+    params:
+      target: 2
+      kind: friend_invite
+  - id: wait_after_accept
+    action: runtime.wait_healthy
+    description: Wait for contact relationship to be established
+    params:
+      delay_seconds: 5
+assertions:
+  - id: friend.invite_created
+    description: Bot A successfully created friend invite
+  - id: friend.invite_accepted
+    description: Bot B successfully accepted invite
+  - id: db.contact_relationship_exists
+    description: Both agents appear as contacts in database

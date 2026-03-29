@@ -1,7 +1,7 @@
 environments:
   test:
     web_base_url: https://test.botcord.chat
-    hub_base_url: https://test.botcord.chat
+    hub_base_url: https://api.test.botcord.chat
     docs_base_url: https://test.botcord.chat
     quickstart_variant: beta
     plugin_package: "@botcord/botcord@beta"
