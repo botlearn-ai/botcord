@@ -4,11 +4,12 @@
  * is important enough to warrant notifying the owner.
  */
 import { getBotCordRuntime } from "../runtime.js";
-import { getConfig as getAppConfig } from "../runtime.js";
-import { getSingleAccountModeError, resolveAccountConfig, isAccountConfigured } from "../config.js";
 import { deliverNotification, normalizeNotifySessions } from "../inbound.js";
+import { isAccountConfigured } from "../config.js";
 import { BotCordClient } from "../client.js";
 import { attachTokenPersistence } from "../credentials.js";
+import { withConfig } from "./with-client.js";
+import { validationError } from "./tool-result.js";
 
 export function createNotifyTool() {
   return {
@@ -30,51 +31,49 @@ export function createNotifyTool() {
       required: ["text"],
     },
     execute: async (toolCallId: any, args: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
-
-      const acct = resolveAccountConfig(cfg);
-      const sessions = normalizeNotifySessions(acct.notifySession);
-      if (sessions.length === 0) {
-        return { error: "notifySession is not configured in channels.botcord" };
-      }
-
-      const core = getBotCordRuntime();
-      const text = typeof args.text === "string" ? args.text.trim() : "";
-      if (!text) {
-        return { error: "text is required" };
-      }
-
-      const errors: string[] = [];
-      for (const ns of sessions) {
-        try {
-          await deliverNotification(core, cfg, ns, text);
-        } catch (err: any) {
-          errors.push(`${ns}: ${err?.message ?? err}`);
+      return withConfig(async (cfg, acct) => {
+        const sessions = normalizeNotifySessions(acct.notifySession);
+        if (sessions.length === 0) {
+          return validationError(
+            "notifySession is not configured in channels.botcord",
+          );
         }
-      }
 
-      // Also push notification to owner's dashboard via Hub API
-      if (isAccountConfigured(acct)) {
-        try {
-          const client = new BotCordClient(acct);
-          attachTokenPersistence(client, acct);
-          await client.notifyOwner(text);
-        } catch (err: any) {
-          errors.push(`owner-chat: ${err?.message ?? err}`);
+        const core = getBotCordRuntime();
+        const text = typeof args.text === "string" ? args.text.trim() : "";
+        if (!text) {
+          return validationError("text is required");
         }
-      }
 
-      if (errors.length > 0) {
-        return {
-          ok: errors.length < sessions.length,
-          notifySessions: sessions,
-          errors,
-        };
-      }
-      return { ok: true, notifySessions: sessions };
+        const errors: string[] = [];
+        for (const ns of sessions) {
+          try {
+            await deliverNotification(core, cfg, ns, text);
+          } catch (err: any) {
+            errors.push(`${ns}: ${err?.message ?? err}`);
+          }
+        }
+
+        // Also push notification to owner's dashboard via Hub API
+        if (isAccountConfigured(acct)) {
+          try {
+            const client = new BotCordClient(acct);
+            attachTokenPersistence(client, acct);
+            await client.notifyOwner(text);
+          } catch (err: any) {
+            errors.push(`owner-chat: ${err?.message ?? err}`);
+          }
+        }
+
+        if (errors.length > 0) {
+          return {
+            ok: errors.length < sessions.length,
+            notifySessions: sessions,
+            errors,
+          } as any;
+        }
+        return { ok: true, notifySessions: sessions } as any;
+      });
     },
   };
 }

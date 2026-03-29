@@ -70,7 +70,8 @@ describe("directory tool integration", () => {
       limit: 15,
     });
 
-    expect((result as any).messages).toEqual([]);
+    expect((result as any).ok).toBe(true);
+    expect((result as any).history.messages).toEqual([]);
     expect(hub.state.lastHistoryQuery).toEqual({
       peer: "ag_peer",
       room_id: "rm_room",

@@ -1,14 +1,8 @@
 /**
  * botcord_topics — Topic lifecycle management within rooms.
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError, dryRunResult } from "./tool-result.js";
 
 export function createTopicsTool() {
   return {
@@ -50,60 +44,66 @@ export function createTopicsTool() {
           enum: ["open", "completed", "failed", "expired"],
           description: "Topic status — for list (filter) or update (transition)",
         },
+        dry_run: {
+          type: "boolean" as const,
+          description: "Preview the request without executing. Returns the API call that would be made.",
+        },
       },
       required: ["action", "room_id"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
+      return withClient(async (client) => {
+        // Dry-run for write operations
+        if (args.dry_run) {
+          switch (args.action) {
+            case "create":
+              if (!args.title) return validationError("title is required");
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/topics`, { title: args.title, description: args.description, goal: args.goal }) as any;
+            case "update":
+              if (!args.topic_id) return validationError("topic_id is required");
+              return dryRunResult("PATCH", `/hub/rooms/${args.room_id}/topics/${args.topic_id}`, { title: args.title, status: args.status, goal: args.goal }) as any;
+            case "delete":
+              if (!args.topic_id) return validationError("topic_id is required");
+              return dryRunResult("DELETE", `/hub/rooms/${args.room_id}/topics/${args.topic_id}`) as any;
+            default:
+              break;
+          }
+        }
 
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured." };
-      }
-
-      const client = new BotCordClient(acct);
-      attachTokenPersistence(client, acct);
-
-      try {
         switch (args.action) {
           case "create":
-            if (!args.title) return { error: "title is required" };
+            if (!args.title) return validationError("title is required");
             return await client.createTopic(args.room_id, {
               title: args.title,
               description: args.description,
               goal: args.goal,
-            });
+            }) as any;
 
           case "list":
-            return await client.listTopics(args.room_id, args.status);
+            return { topics: await client.listTopics(args.room_id, args.status) } as any;
 
           case "get":
-            if (!args.topic_id) return { error: "topic_id is required" };
-            return await client.getTopic(args.room_id, args.topic_id);
+            if (!args.topic_id) return validationError("topic_id is required");
+            return await client.getTopic(args.room_id, args.topic_id) as any;
 
           case "update":
-            if (!args.topic_id) return { error: "topic_id is required" };
+            if (!args.topic_id) return validationError("topic_id is required");
             return await client.updateTopic(args.room_id, args.topic_id, {
               title: args.title,
               description: args.description,
               status: args.status,
               goal: args.goal,
-            });
+            }) as any;
 
           case "delete":
-            if (!args.topic_id) return { error: "topic_id is required" };
+            if (!args.topic_id) return validationError("topic_id is required");
             await client.deleteTopic(args.room_id, args.topic_id);
-            return { ok: true, deleted: args.topic_id, room: args.room_id };
+            return { ok: true, deleted: args.topic_id, room: args.room_id } as any;
 
           default:
-            return { error: `Unknown action: ${args.action}` };
+            return validationError(`Unknown action: ${args.action}`);
         }
-      } catch (err: any) {
-        return { error: `Topic action failed: ${err.message}` };
-      }
+      });
     },
   };
 }
