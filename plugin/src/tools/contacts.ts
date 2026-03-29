@@ -1,14 +1,8 @@
 /**
  * botcord_contacts — Manage social relationships: contacts, requests, blocks.
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError, dryRunResult } from "./tool-result.js";
 
 export function createContactsTool() {
   return {
@@ -51,73 +45,79 @@ export function createContactsTool() {
           enum: ["pending", "accepted", "rejected"],
           description: "Filter by state — for received_requests, sent_requests",
         },
+        dry_run: {
+          type: "boolean" as const,
+          description: "Preview the request without executing. Returns the API call that would be made.",
+        },
       },
       required: ["action"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
+      return withClient(async (client) => {
+        // Dry-run for write operations
+        if (args.dry_run) {
+          switch (args.action) {
+            case "send_request":
+              if (!args.agent_id) return validationError("agent_id is required");
+              return dryRunResult("POST", `/registry/agents/${args.agent_id}/contact-request`, { message: args.message }) as any;
+            case "remove":
+              if (!args.agent_id) return validationError("agent_id is required");
+              return dryRunResult("DELETE", `/registry/contacts/${args.agent_id}`) as any;
+            case "block":
+              if (!args.agent_id) return validationError("agent_id is required");
+              return dryRunResult("POST", `/registry/blocks/${args.agent_id}`) as any;
+            default:
+              break;
+          }
+        }
 
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured." };
-      }
-
-      const client = new BotCordClient(acct);
-      attachTokenPersistence(client, acct);
-
-      try {
         switch (args.action) {
           case "list":
-            return await client.listContacts();
+            return { contacts: await client.listContacts() } as any;
 
           case "remove":
-            if (!args.agent_id) return { error: "agent_id is required" };
+            if (!args.agent_id) return validationError("agent_id is required");
             await client.removeContact(args.agent_id);
-            return { ok: true, removed: args.agent_id };
+            return { ok: true, removed: args.agent_id } as any;
 
           case "send_request":
-            if (!args.agent_id) return { error: "agent_id is required" };
+            if (!args.agent_id) return validationError("agent_id is required");
             await client.sendContactRequest(args.agent_id, args.message);
-            return { ok: true, sent_to: args.agent_id };
+            return { ok: true, sent_to: args.agent_id } as any;
 
           case "received_requests":
-            return await client.listReceivedRequests(args.state);
+            return { requests: await client.listReceivedRequests(args.state) } as any;
 
           case "sent_requests":
-            return await client.listSentRequests(args.state);
+            return { requests: await client.listSentRequests(args.state) } as any;
 
           case "accept_request":
-            if (!args.request_id) return { error: "request_id is required" };
+            if (!args.request_id) return validationError("request_id is required");
             await client.acceptRequest(args.request_id);
-            return { ok: true, accepted: args.request_id };
+            return { ok: true, accepted: args.request_id } as any;
 
           case "reject_request":
-            if (!args.request_id) return { error: "request_id is required" };
+            if (!args.request_id) return validationError("request_id is required");
             await client.rejectRequest(args.request_id);
-            return { ok: true, rejected: args.request_id };
+            return { ok: true, rejected: args.request_id } as any;
 
           case "block":
-            if (!args.agent_id) return { error: "agent_id is required" };
+            if (!args.agent_id) return validationError("agent_id is required");
             await client.blockAgent(args.agent_id);
-            return { ok: true, blocked: args.agent_id };
+            return { ok: true, blocked: args.agent_id } as any;
 
           case "unblock":
-            if (!args.agent_id) return { error: "agent_id is required" };
+            if (!args.agent_id) return validationError("agent_id is required");
             await client.unblockAgent(args.agent_id);
-            return { ok: true, unblocked: args.agent_id };
+            return { ok: true, unblocked: args.agent_id } as any;
 
           case "list_blocks":
-            return await client.listBlocks();
+            return { blocks: await client.listBlocks() } as any;
 
           default:
-            return { error: `Unknown action: ${args.action}` };
+            return validationError(`Unknown action: ${args.action}`);
         }
-      } catch (err: any) {
-        return { error: `Contact action failed: ${err.message}` };
-      }
+      });
     },
   };
 }
