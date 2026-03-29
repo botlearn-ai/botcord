@@ -304,6 +304,9 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
             case "withdraw":
               if (!args.amount_minor) return validationError("amount_minor is required");
               return dryRunResult("POST", "/wallet/withdrawals", { amount_minor: args.amount_minor, destination_type: args.destination_type }) as any;
+            case "cancel_withdrawal":
+              if (!args.withdrawal_id) return validationError("withdrawal_id is required");
+              return dryRunResult("POST", `/wallet/withdrawals/${args.withdrawal_id}/cancel`) as any;
             default:
               break;
           }

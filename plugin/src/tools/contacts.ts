@@ -63,9 +63,18 @@ export function createContactsTool() {
             case "remove":
               if (!args.agent_id) return validationError("agent_id is required");
               return dryRunResult("DELETE", `/registry/agents/{self}/contacts/${args.agent_id}`) as any;
+            case "accept_request":
+              if (!args.request_id) return validationError("request_id is required");
+              return dryRunResult("POST", `/registry/agents/{self}/contact-requests/${args.request_id}/accept`) as any;
+            case "reject_request":
+              if (!args.request_id) return validationError("request_id is required");
+              return dryRunResult("POST", `/registry/agents/{self}/contact-requests/${args.request_id}/reject`) as any;
             case "block":
               if (!args.agent_id) return validationError("agent_id is required");
               return dryRunResult("POST", `/registry/agents/{self}/blocks`, { blocked_agent_id: args.agent_id }) as any;
+            case "unblock":
+              if (!args.agent_id) return validationError("agent_id is required");
+              return dryRunResult("DELETE", `/registry/agents/{self}/blocks/${args.agent_id}`) as any;
             default:
               break;
           }

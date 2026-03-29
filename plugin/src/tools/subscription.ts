@@ -147,6 +147,14 @@ export function createSubscriptionTool() {
             case "cancel":
               if (!args.subscription_id) return validationError("subscription_id is required");
               return dryRunResult("POST", `/subscriptions/${args.subscription_id}/cancel`) as any;
+            case "create_subscription_room":
+              if (!args.product_id) return validationError("product_id is required");
+              if (!args.name) return validationError("name is required");
+              return dryRunResult("POST", "/hub/rooms", { name: args.name, description: args.description, visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id }) as any;
+            case "bind_room_to_product":
+              if (!args.room_id) return validationError("room_id is required");
+              if (!args.product_id) return validationError("product_id is required");
+              return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id }) as any;
             default:
               break;
           }

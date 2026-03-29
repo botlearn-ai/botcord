@@ -135,6 +135,12 @@ export function createRoomsTool() {
             case "permissions":
               if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
               return dryRunResult("POST", `/hub/rooms/${args.room_id}/permissions`, { agent_id: args.agent_id, can_send: args.can_send, can_invite: args.can_invite }) as any;
+            case "leave":
+              if (!args.room_id) return validationError("room_id is required");
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/leave`) as any;
+            case "mute":
+              if (!args.room_id) return validationError("room_id is required");
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/mute`, { muted: args.muted ?? true }) as any;
             default:
               // Read actions don't support dry-run, fall through to normal execution
               break;
