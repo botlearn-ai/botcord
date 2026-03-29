@@ -23,20 +23,17 @@ steps:
     description: Wait for gateway to recover after plugin installation
     params:
       delay_seconds: 10
-  - id: switch_env
-    action: openclaw.agent_prompt
-    description: Switch Hub URL to target environment via /botcord_env
-    params:
-      target: all
-      message: "/botcord_env {botcord_env_preset}"
-  - id: restart_after_env_switch
-    action: runtime.restart_and_wait
-    description: Restart gateway for env switch to take effect
   - id: read_credentials
     action: filesystem.read_credentials
     description: Read BotCord credentials from each instance
     params:
       glob: .botcord/credentials/*.json
+  - id: switch_env
+    action: runtime.switch_env
+    description: Rewrite credentials hubUrl to target environment
+  - id: restart_after_env_switch
+    action: runtime.restart_and_wait
+    description: Restart gateway for env switch to take effect
   - id: share_evidence
     action: evidence.share_cross_instance
     description: Share agent identity evidence between both instances
