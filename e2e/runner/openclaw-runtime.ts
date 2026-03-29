@@ -174,9 +174,13 @@ export class OpenClawRuntime {
     }
   }
 
-  async execAgent(instance: InstanceState, message: string): Promise<AgentResult> {
+  async execAgent(instance: InstanceState, message: string, stepId?: string): Promise<AgentResult> {
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 0;
+
     try {
-      const { stdout, stderr } = await execFileAsync(
+      const result = await execFileAsync(
         "docker",
         [
           "exec",
@@ -189,15 +193,26 @@ export class OpenClawRuntime {
           message,
           "--json",
         ],
-        { timeout: 300_000 } // 5 min timeout for agent execution
+        { timeout: 300_000, maxBuffer: 10 * 1024 * 1024 },
       );
+      stdout = result.stdout;
+      stderr = result.stderr;
+    } catch (err: unknown) {
+      // openclaw agent --json returns non-zero exit codes in gateway mode
+      // even on success (e.g. 255). The real status is in the JSON output.
+      const error = err as { stdout?: string; stderr?: string; code?: number };
+      stdout = error.stdout ?? "";
+      stderr = error.stderr ?? "";
+      exitCode = error.code ?? 1;
+    }
 
-      let json: Record<string, unknown> | undefined;
-      let status: string | undefined;
-      let text: string | undefined;
+    // Parse JSON from stdout regardless of exit code
+    let json: Record<string, unknown> | undefined;
+    let status: string | undefined;
+    let text: string | undefined;
 
+    if (stdout.trim()) {
       try {
-        // Try to parse the last JSON line (openclaw outputs JSON)
         const lines = stdout.trim().split("\n");
         for (let i = lines.length - 1; i >= 0; i--) {
           try {
@@ -209,10 +224,16 @@ export class OpenClawRuntime {
         }
         if (json) {
           status = json["status"] as string | undefined;
-          // Extract text from result - openclaw JSON format varies
+          // Extract text from result.payloads[0].text (openclaw --json format)
           const result = json["result"] as Record<string, unknown> | undefined;
           if (result) {
-            text = (result["text"] as string) ?? (result["message"] as string);
+            const payloads = result["payloads"] as Array<Record<string, unknown>> | undefined;
+            if (payloads && payloads.length > 0) {
+              text = payloads[0]["text"] as string | undefined;
+            }
+            if (!text) {
+              text = (result["text"] as string) ?? (result["message"] as string);
+            }
           }
           if (!text && json["text"]) {
             text = json["text"] as string;
@@ -221,27 +242,23 @@ export class OpenClawRuntime {
       } catch {
         // JSON parse failed, use raw output
       }
-
-      // Save raw output as artifact
-      await writeFile(
-        resolve(instance.artifactDir, `agent-output-${instance.sessionId}.json`),
-        stdout
-      );
-      if (stderr) {
-        await writeFile(
-          resolve(instance.artifactDir, `agent-stderr-${instance.sessionId}.txt`),
-          stderr
-        );
-      }
-
-      return { raw: stdout, json, status, text, exitCode: 0 };
-    } catch (err: unknown) {
-      const error = err as { stdout?: string; stderr?: string; code?: number };
-      return {
-        raw: error.stdout ?? "",
-        exitCode: error.code ?? 1,
-      };
     }
+
+    // Save raw output as artifact
+    if (stdout) {
+      await writeFile(
+        resolve(instance.artifactDir, `agent-output-${stepId ?? "default"}-${instance.sessionId}.json`),
+        stdout,
+      );
+    }
+    if (stderr) {
+      await writeFile(
+        resolve(instance.artifactDir, `agent-stderr-${stepId ?? "default"}-${instance.sessionId}.txt`),
+        stderr,
+      );
+    }
+
+    return { raw: stdout, json, status, text, exitCode };
   }
 
   async restartInstance(instance: InstanceState): Promise<void> {

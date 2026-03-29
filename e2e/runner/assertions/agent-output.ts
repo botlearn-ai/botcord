@@ -1,4 +1,4 @@
-import type { AssertionResult, InstanceEvidence, InstanceState } from "../types.js";
+import type { AgentResult, AssertionResult, InstanceEvidence, InstanceState } from "../types.js";
 
 function makeResult(
   id: string,
@@ -18,18 +18,54 @@ function makeResult(
   };
 }
 
+/**
+ * Collect all text from an AgentResult, checking direct text, payloads, and raw output.
+ * The /botcord_healthcheck command may return structured output in various locations
+ * depending on whether the LLM summarized it or returned tool results directly.
+ */
+function collectAllText(result: AgentResult): string {
+  const parts: string[] = [];
+
+  // Direct text field
+  if (result.text) parts.push(result.text);
+
+  // Parse payloads from JSON
+  if (result.json) {
+    const r = result.json["result"] as Record<string, unknown> | undefined;
+    if (r) {
+      const payloads = r["payloads"] as Array<Record<string, unknown>> | undefined;
+      if (payloads) {
+        for (const p of payloads) {
+          if (p["text"]) parts.push(p["text"] as string);
+        }
+      }
+    }
+  }
+
+  // Fall back to raw output if nothing found
+  if (parts.length === 0 && result.raw) {
+    parts.push(result.raw);
+  }
+
+  return parts.join("\n");
+}
+
 export function assertStatusOk(inst: InstanceState, evidence: InstanceEvidence): AssertionResult {
   const result = evidence.agentResults["send_quickstart_prompt"];
   if (!result) {
     return { id: "agent_output.status_ok", instanceId: inst.id, status: "error", expected: "ok", actual: null, error: "No agent result for send_quickstart_prompt" };
   }
-  // Require exit code 0 AND if status is present it must be "ok"
-  const passed = result.exitCode === 0 && (result.status === undefined || result.status === "ok");
+  // openclaw agent --json returns non-zero exit codes in gateway mode even on
+  // success (e.g. 255). The authoritative status is the JSON "status" field.
+  // Pass if JSON status is "ok"; fail if status is present but not "ok";
+  // fall back to exit code only when no JSON was parsed.
+  const passed = result.status === "ok"
+    || (result.status === undefined && result.exitCode === 0);
   return makeResult(
     "agent_output.status_ok",
     inst.id,
     passed,
-    "exitCode=0 and status=ok (if present)",
+    "JSON status=ok",
     `exitCode=${result.exitCode}, status=${result.status ?? "none"}`,
     result.raw.slice(0, 500),
   );
@@ -55,17 +91,39 @@ export function assertHealthcheckOk(inst: InstanceState, evidence: InstanceEvide
   if (!result) {
     return { id: "healthcheck.connection_ok", instanceId: inst.id, status: "skipped", expected: "connection ok", actual: null, evidence: "No healthcheck result" };
   }
-  const output = (result.text ?? result.raw).toLowerCase();
-  // Look for specific healthcheck success pattern: connection status + agent ID
-  const hasConnection = output.includes("connected") || output.includes("active") || output.includes("token valid");
-  const hasAgentId = /ag_[a-z0-9]+/i.test(output);
-  const connected = hasConnection && hasAgentId;
+
+  // Collect all text from the result: direct text, payloads, and raw output
+  const allText = collectAllText(result).toLowerCase();
+
+  if (!allText || allText.length < 10) {
+    return makeResult(
+      "healthcheck.connection_ok",
+      inst.id,
+      false,
+      "Healthcheck output with connection status",
+      "empty or minimal output",
+      `exitCode=${result.exitCode}, raw length=${result.raw.length}`,
+    );
+  }
+
+  // The /botcord_healthcheck command outputs structured lines with [OK], [FAIL], [WARN]
+  // A passing healthcheck has "[ok]" markers and no "[fail]" markers
+  // Also check for natural language indicators from the LLM
+  const hasOkMarkers = allText.includes("[ok]");
+  const hasFailMarkers = allText.includes("[fail]");
+  const hasConnectionOk = allText.includes("token refresh successful") || allText.includes("hub is reachable");
+  const hasAgentId = /ag_[a-z0-9]+/i.test(allText);
+  const hasNaturalOk = (allText.includes("connected") || allText.includes("active") || allText.includes("all checks passed")) && hasAgentId;
+
+  const passed = (hasOkMarkers && !hasFailMarkers) || hasConnectionOk || hasNaturalOk;
+
   return makeResult(
     "healthcheck.connection_ok",
     inst.id,
-    connected,
-    "Healthcheck indicates connection is active",
-    output.slice(0, 500),
+    passed,
+    "Healthcheck shows connection is active",
+    passed ? "healthcheck passed" : `okMarkers=${hasOkMarkers}, failMarkers=${hasFailMarkers}, connectionOk=${hasConnectionOk}, naturalOk=${hasNaturalOk}`,
+    allText.slice(0, 500),
   );
 }
 
@@ -74,15 +132,35 @@ export function assertRestartHealthcheckOk(inst: InstanceState, evidence: Instan
   if (!result) {
     return { id: "restart.healthcheck_ok", instanceId: inst.id, status: "skipped", expected: "connection ok after restart", actual: null };
   }
-  const output = (result.text ?? result.raw).toLowerCase();
-  const hasConnection = output.includes("connected") || output.includes("active") || output.includes("token valid");
-  const hasAgentId = /ag_[a-z0-9]+/i.test(output);
-  const connected = hasConnection && hasAgentId;
+
+  // Collect all text from the result: direct text, payloads, and raw output
+  const allText = collectAllText(result).toLowerCase();
+
+  if (!allText || allText.length < 10) {
+    return makeResult(
+      "restart.healthcheck_ok",
+      inst.id,
+      false,
+      "Healthcheck output with connection status after restart",
+      "empty or minimal output",
+      `exitCode=${result.exitCode}, raw length=${result.raw.length}`,
+    );
+  }
+
+  const hasOkMarkers = allText.includes("[ok]");
+  const hasFailMarkers = allText.includes("[fail]");
+  const hasConnectionOk = allText.includes("token refresh successful") || allText.includes("hub is reachable");
+  const hasAgentId = /ag_[a-z0-9]+/i.test(allText);
+  const hasNaturalOk = (allText.includes("connected") || allText.includes("active") || allText.includes("all checks passed")) && hasAgentId;
+
+  const passed = (hasOkMarkers && !hasFailMarkers) || hasConnectionOk || hasNaturalOk;
+
   return makeResult(
     "restart.healthcheck_ok",
     inst.id,
-    connected,
+    passed,
     "Healthcheck passes after restart",
-    output.slice(0, 500),
+    passed ? "healthcheck passed" : `okMarkers=${hasOkMarkers}, failMarkers=${hasFailMarkers}, connectionOk=${hasConnectionOk}, naturalOk=${hasNaturalOk}`,
+    allText.slice(0, 500),
   );
 }

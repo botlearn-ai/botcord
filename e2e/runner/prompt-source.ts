@@ -21,58 +21,6 @@ export function getSetupGuideUrl(env: EnvironmentConfig): string {
 }
 
 /**
- * Dynamically import the real buildConnectBotPrompt from the frontend source.
- * This ensures the E2E platform always tests the actual product prompt,
- * not a local copy that can drift.
- */
-async function callFrontendPromptBuilder(env: EnvironmentConfig): Promise<string> {
-  // Set NEXT_PUBLIC_APP_URL so getBotcordWebAppUrl() inside onboarding.ts
-  // resolves to the correct environment URL.
-  const prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
-  process.env.NEXT_PUBLIC_APP_URL = env.web_base_url;
-
-  try {
-    // tsx handles TypeScript imports natively
-    const mod = await import(FRONTEND_ONBOARDING_PATH);
-    const buildConnectBotPrompt = mod.buildConnectBotPrompt as (options: {
-      connectionCode?: string;
-      connectionInstruction?: string;
-      mode?: string;
-      hubApiBaseUrl?: string;
-      installGuideUrl?: string;
-      locale?: string;
-    }) => string;
-
-    if (typeof buildConnectBotPrompt !== "function") {
-      throw new Error(
-        `buildConnectBotPrompt not found or not a function in ${FRONTEND_ONBOARDING_PATH}`,
-      );
-    }
-
-    // Call with the same parameters the homepage HeroSection uses,
-    // but explicitly pass installGuideUrl for the target environment.
-    //
-    // Without this, buildConnectBotPrompt falls back to
-    // getBotcordInstallGuideUrl() which always returns the stable URL
-    // (/openclaw-setup-instruction-script.md), even when the env is beta.
-    const installGuideUrl = getSetupGuideUrl(env);
-    const prompt = buildConnectBotPrompt({
-      installGuideUrl,
-      locale: "en",
-    });
-
-    return prompt;
-  } finally {
-    // Restore previous env
-    if (prevAppUrl === undefined) {
-      delete process.env.NEXT_PUBLIC_APP_URL;
-    } else {
-      process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
-    }
-  }
-}
-
-/**
  * Build a fallback prompt from the scenario override template.
  */
 function buildOverridePrompt(scenario: ScenarioConfig, env: EnvironmentConfig): string {
@@ -85,10 +33,97 @@ function buildOverridePrompt(scenario: ScenarioConfig, env: EnvironmentConfig): 
 }
 
 /**
+ * Call a named frontend prompt builder with the given options.
+ * Supports all prompt types defined in frontend/src/lib/onboarding.ts.
+ */
+async function callFrontendPromptBuilderByKind(
+  kind: string,
+  env: EnvironmentConfig,
+  params?: Record<string, unknown>,
+): Promise<string> {
+  const prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.NEXT_PUBLIC_APP_URL = env.web_base_url;
+
+  try {
+    const mod = await import(FRONTEND_ONBOARDING_PATH);
+    const installGuideUrl = getSetupGuideUrl(env);
+
+    switch (kind) {
+      case "homepage_quickstart":
+      case "connect_bot": {
+        const fn = mod.buildConnectBotPrompt as Function;
+        return fn({
+          installGuideUrl,
+          locale: "en",
+          mode: params?.["mode"] as string | undefined,
+          connectionCode: params?.["connectionCode"] as string | undefined,
+          connectionInstruction: params?.["connectionInstruction"] as string | undefined,
+          hubApiBaseUrl: env.hub_base_url,
+        });
+      }
+      case "create_room": {
+        const fn = mod.buildCreateRoomPrompt as Function;
+        return fn({ locale: "en" });
+      }
+      case "self_join": {
+        const fn = mod.buildSelfJoinPrompt as Function;
+        return fn({
+          roomId: params?.["roomId"] as string,
+          roomName: params?.["roomName"] as string ?? "Test Room",
+          hubApiBaseUrl: env.hub_base_url,
+          installGuideUrl,
+          locale: "en",
+        });
+      }
+      case "share_invite": {
+        const fn = mod.buildSharePrompt as Function;
+        return fn({
+          shareId: params?.["shareId"] as string | undefined,
+          inviteCode: params?.["inviteCode"] as string | undefined,
+          roomId: params?.["roomId"] as string | undefined,
+          roomName: params?.["roomName"] as string | undefined,
+          requiresPayment: params?.["requiresPayment"] as boolean | undefined,
+          isReadOnly: params?.["isReadOnly"] as boolean | undefined,
+          hubApiBaseUrl: env.hub_base_url,
+          installGuideUrl,
+          locale: "en",
+        });
+      }
+      case "friend_invite": {
+        const fn = mod.buildFriendInvitePrompt as Function;
+        return fn({
+          inviteCode: params?.["inviteCode"] as string,
+          hubApiBaseUrl: env.hub_base_url,
+          installGuideUrl,
+          locale: "en",
+        });
+      }
+      case "reset_credential": {
+        const fn = mod.buildResetCredentialPrompt as Function;
+        return fn({
+          agentId: params?.["agentId"] as string,
+          resetCode: params?.["resetCode"] as string,
+          hubUrl: env.hub_base_url,
+          locale: "en",
+        });
+      }
+      default:
+        throw new Error(`Unknown prompt kind: ${kind}`);
+    }
+  } finally {
+    if (prevAppUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_APP_URL;
+    } else {
+      process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
+    }
+  }
+}
+
+/**
  * Resolve the prompt to send to OpenClaw.
  *
- * For "frontend-derived": imports and calls the real buildConnectBotPrompt()
- * from frontend/src/lib/onboarding.ts — the same function the homepage uses.
+ * For "frontend-derived": imports and calls the real prompt builder
+ * from frontend/src/lib/onboarding.ts — the same functions the UI uses.
  * This guarantees that prompt regressions in the frontend break E2E.
  *
  * For "scenario-override": uses the template from scenario config.
@@ -99,6 +134,7 @@ export async function resolvePrompt(
   scenario: ScenarioConfig,
   env: EnvironmentConfig,
   artifactDir: string,
+  params?: Record<string, unknown>,
 ): Promise<{ prompt: string; source: string; url?: string }> {
   let prompt: string;
   let source: string;
@@ -107,9 +143,9 @@ export async function resolvePrompt(
   if (scenario.prompt.source === "frontend-derived") {
     url = getSetupGuideUrl(env);
     try {
-      prompt = await callFrontendPromptBuilder(env);
+      prompt = await callFrontendPromptBuilderByKind(scenario.prompt.kind, env, params);
       source = "frontend-derived";
-      console.log(`  Called real buildConnectBotPrompt() from frontend (${prompt.length} chars)`);
+      console.log(`  Called frontend prompt builder (kind=${scenario.prompt.kind}, ${prompt.length} chars)`);
     } catch (err) {
       console.warn(`  Failed to import frontend prompt builder: ${err}`);
       if (scenario.prompt.fallback === "scenario-override") {
@@ -129,8 +165,25 @@ export async function resolvePrompt(
   await writeFile(resolve(artifactDir, "prompt.md"), prompt);
   await writeFile(
     resolve(artifactDir, "prompt-metadata.json"),
-    JSON.stringify({ source, url, length: prompt.length, timestamp: new Date().toISOString() }, null, 2),
+    JSON.stringify({ source, kind: scenario.prompt.kind, url, length: prompt.length, timestamp: new Date().toISOString() }, null, 2),
   );
 
   return { prompt, source, url };
+}
+
+/**
+ * Resolve a prompt by kind with dynamic parameters.
+ * Used by scenario steps that need to build prompts mid-execution
+ * (e.g. after discovering a roomId or inviteCode from a previous step).
+ */
+export async function resolvePromptByKind(
+  kind: string,
+  env: EnvironmentConfig,
+  params: Record<string, unknown>,
+): Promise<string> {
+  try {
+    return await callFrontendPromptBuilderByKind(kind, env, params);
+  } catch (err) {
+    throw new Error(`Failed to build prompt (kind=${kind}): ${err}`);
+  }
 }

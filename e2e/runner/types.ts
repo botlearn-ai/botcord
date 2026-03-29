@@ -104,7 +104,35 @@ export interface InstanceEvidence {
   openclawConfig?: Record<string, unknown>;
   credentials?: Record<string, unknown>;
   credentialsPath?: string;
+  /** Backup of credentials before a destructive step (e.g. reset) */
+  credentialsBackup?: Record<string, unknown>;
   dbQueryResults?: Record<string, unknown>;
   healthcheckResult?: AgentResult;
   restartHealthcheckResult?: AgentResult;
+
+  // Room & group evidence
+  /** Room ID created or joined during the scenario */
+  roomId?: string;
+  /** Room details fetched from Hub API */
+  roomDetails?: Record<string, unknown>;
+  /** Share/invite code generated for a room */
+  inviteCode?: string;
+  /** Share ID generated for a room */
+  shareId?: string;
+
+  // Social evidence
+  /** Friend invite code generated */
+  friendInviteCode?: string;
+
+  // Cross-instance references (populated by runner for multi-bot scenarios)
+  /** Agent ID of the peer instance (for 2-bot scenarios) */
+  peerAgentId?: string;
+  /** Room ID from a peer instance (e.g. Bot A creates room, Bot B joins) */
+  peerRoomId?: string;
+  /** Invite code from a peer instance */
+  peerInviteCode?: string;
+  /** Share ID from a peer instance */
+  peerShareId?: string;
+  /** Friend invite code from a peer instance */
+  peerFriendInviteCode?: string;
 }

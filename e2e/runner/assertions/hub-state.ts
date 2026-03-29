@@ -81,3 +81,62 @@ export async function assertAgentRegistered(
     };
   }
 }
+
+/**
+ * Assert that the claim page URL for this agent is accessible.
+ * The claim page is at {web_base_url}/agents/claim/{claim_code}.
+ * Since we may not have the claim_code in evidence, we also try
+ * the agent key pattern.
+ */
+export async function assertClaimUrlAccessible(
+  inst: InstanceState,
+  evidence: InstanceEvidence,
+  env: EnvironmentConfig,
+): Promise<AssertionResult> {
+  const agentId = evidence.credentials?.["agentId"] as string | undefined;
+  if (!agentId) {
+    return {
+      id: "hub.claim_url_accessible",
+      instanceId: inst.id,
+      status: "skipped",
+      expected: "claim URL accessible",
+      actual: null,
+      evidence: "No agentId in credentials",
+    };
+  }
+
+  // The claim page uses the agent's claim_code as the URL key.
+  // We don't have it directly in evidence, but we can try the
+  // web URL to verify the claim infrastructure is reachable.
+  const claimUrl = `${env.web_base_url}/agents/claim/${agentId}`;
+
+  try {
+    const response = await fetch(claimUrl, {
+      signal: AbortSignal.timeout(10_000),
+      redirect: "manual",
+    });
+
+    // Accept 200 (page rendered), 301/302 (redirect to login), or 404 with HTML
+    // (Next.js renders the page shell even for unknown agents).
+    // Only fail on network errors or 5xx.
+    const acceptable = response.status < 500;
+
+    return makeResult(
+      "hub.claim_url_accessible",
+      inst.id,
+      acceptable,
+      "claim URL returns non-5xx",
+      `HTTP ${response.status}`,
+      `GET ${claimUrl}`,
+    );
+  } catch (err) {
+    return {
+      id: "hub.claim_url_accessible",
+      instanceId: inst.id,
+      status: "error",
+      expected: "claim URL accessible",
+      actual: null,
+      error: String(err),
+    };
+  }
+}
