@@ -85,8 +85,8 @@ export async function assertAgentRegistered(
 /**
  * Assert that the claim page URL for this agent is accessible.
  * The claim page is at {web_base_url}/agents/claim/{claim_code}.
- * Since we may not have the claim_code in evidence, we also try
- * the agent key pattern.
+ * We query the DB for the real claim_code so the URL matches
+ * the contract the ClaimAgentPage expects.
  */
 export async function assertClaimUrlAccessible(
   inst: InstanceState,
@@ -105,10 +105,57 @@ export async function assertClaimUrlAccessible(
     };
   }
 
-  // The claim page uses the agent's claim_code as the URL key.
-  // We don't have it directly in evidence, but we can try the
-  // web URL to verify the claim infrastructure is reachable.
-  const claimUrl = `${env.web_base_url}/agents/claim/${agentId}`;
+  // Look up the real claim_code from the database
+  const dbUrl = process.env[env.db_url_env];
+  if (!dbUrl) {
+    return {
+      id: "hub.claim_url_accessible",
+      instanceId: inst.id,
+      status: "skipped",
+      expected: "claim URL accessible",
+      actual: null,
+      evidence: `${env.db_url_env} not set — cannot look up claim_code`,
+    };
+  }
+
+  let claimCode: string | undefined;
+  try {
+    const { default: pg } = await import("pg");
+    const client = new pg.Client({ connectionString: dbUrl });
+    try {
+      await client.connect();
+      const result = await client.query(
+        "SELECT claim_code FROM agents WHERE agent_id = $1 AND claim_code IS NOT NULL AND claim_code != ''",
+        [agentId],
+      );
+      if (result.rows.length > 0) {
+        claimCode = result.rows[0]["claim_code"] as string;
+      }
+    } finally {
+      await client.end();
+    }
+  } catch (err) {
+    return {
+      id: "hub.claim_url_accessible",
+      instanceId: inst.id,
+      status: "error",
+      expected: "claim URL accessible",
+      actual: null,
+      error: `DB query for claim_code failed: ${err}`,
+    };
+  }
+
+  if (!claimCode) {
+    return makeResult(
+      "hub.claim_url_accessible",
+      inst.id,
+      false,
+      "claim_code exists to build URL",
+      "no claim_code found in DB",
+    );
+  }
+
+  const claimUrl = `${env.web_base_url}/agents/claim/${claimCode}`;
 
   try {
     const response = await fetch(claimUrl, {
@@ -116,18 +163,17 @@ export async function assertClaimUrlAccessible(
       redirect: "manual",
     });
 
-    // Accept 200 (page rendered), 301/302 (redirect to login), or 404 with HTML
-    // (Next.js renders the page shell even for unknown agents).
-    // Only fail on network errors or 5xx.
-    const acceptable = response.status < 500;
+    // 200 = page rendered, 301/302 = redirect to login (expected for
+    // unauthenticated requests). Only fail on 5xx or true 404.
+    const acceptable = response.status < 500 && response.status !== 404;
 
     return makeResult(
       "hub.claim_url_accessible",
       inst.id,
       acceptable,
-      "claim URL returns non-5xx",
+      "claim URL returns 2xx or redirect",
       `HTTP ${response.status}`,
-      `GET ${claimUrl}`,
+      `GET ${claimUrl} (claim_code=${claimCode})`,
     );
   } catch (err) {
     return {
