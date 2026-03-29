@@ -129,20 +129,20 @@ export default function UserChatPane() {
     return !matchingOwnerMessage;
   });
 
-  // Mark messages from initial load as already animated (skip typewriter) and scroll to bottom
+  // Mark messages from initial load as already animated (skip typewriter) and scroll to bottom.
+  // Must wait for loading=false so the real scroll container is in the DOM.
   useEffect(() => {
-    if (initialLoadRef.current && messages.length > 0) {
+    if (!loading && initialLoadRef.current && messages.length > 0) {
       for (const msg of messages) {
         animatedRef.current.add(msg.hub_msg_id);
       }
       initialLoadRef.current = false;
-      // Scroll to bottom after initial messages render
       requestAnimationFrame(() => {
         const el = scrollContainerRef.current;
         if (el) el.scrollTop = el.scrollHeight;
       });
     }
-  }, [messages]);
+  }, [loading, messages]);
 
   const scrollToBottom = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -206,14 +206,15 @@ export default function UserChatPane() {
   const sendMessage = useCallback(async (text: string, msgId: string) => {
     try {
       const result = await api.sendUserChatMessage(text);
-      // Remove pending as soon as the server accepts it; targeted polling fills gaps if realtime lags.
-      setPending((prev) => prev.filter((m) => m.id !== msgId));
+      // Poll first so the real message lands in the store, then remove pending.
+      // This avoids the flash where the message disappears between pending removal and poll completion.
       if (roomId) {
         await pollNewMessages(roomId, {
           expectedHubMsgId: result.hub_msg_id,
           retries: 2,
         });
       }
+      setPending((prev) => prev.filter((m) => m.id !== msgId));
     } catch (err: any) {
       setPending((prev) =>
         prev.map((m) =>
@@ -253,7 +254,7 @@ export default function UserChatPane() {
   }, [sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
