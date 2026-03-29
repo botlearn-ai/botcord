@@ -19,10 +19,11 @@ export function createBindCommand() {
         return { text: "[FAIL] Usage: /botcord_bind <bind_code_or_bind_ticket>" };
       }
 
-      const result = await executeBind(bindCredential);
+      const result = await executeBind(bindCredential) as any;
 
-      if ("error" in result) {
-        return { text: `[FAIL] ${result.error}` };
+      if (result.ok === false) {
+        const msg = result.error?.message ?? JSON.stringify(result.error);
+        return { text: `[FAIL] ${msg}` };
       }
 
       const agentId = result.agent_id || "unknown";

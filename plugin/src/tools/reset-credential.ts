@@ -3,6 +3,7 @@
  */
 import { getConfig as getAppConfig } from "../runtime.js";
 import { resetCredential } from "../reset-credential.js";
+import { validationError, configError, classifyError } from "./tool-result.js";
 
 export function createResetCredentialTool() {
   return {
@@ -30,9 +31,9 @@ export function createResetCredentialTool() {
     },
     execute: async (_toolCallId: any, args: any) => {
       const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      if (!args.agent_id) return { error: "agent_id is required" };
-      if (!args.reset_code) return { error: "reset_code is required" };
+      if (!cfg) return configError("No configuration available");
+      if (!args.agent_id) return validationError("agent_id is required");
+      if (!args.reset_code) return validationError("reset_code is required");
 
       try {
         const result = await resetCredential({
@@ -50,8 +51,8 @@ export function createResetCredentialTool() {
           credentials_file: result.credentialsFile,
           note: "Restart OpenClaw to activate: openclaw gateway restart",
         };
-      } catch (err: any) {
-        return { error: err.message };
+      } catch (err: unknown) {
+        return classifyError(err);
       }
     },
   };

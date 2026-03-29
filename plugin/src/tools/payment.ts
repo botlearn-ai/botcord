@@ -1,14 +1,8 @@
 /**
  * botcord_payment — Unified payment and transaction tool for BotCord coin flows.
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError, dryRunResult } from "./tool-result.js";
 import { formatCoinAmount } from "./coin-format.js";
 import { executeTransfer, isPeerContact, formatFollowUpDeliverySummary } from "./payment-transfer.js";
 
@@ -288,34 +282,46 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
           type: "string" as const,
           description: "Filter by transaction type — for ledger",
         },
+        dry_run: {
+          type: "boolean" as const,
+          description: "Preview the request without executing. Returns the API call that would be made.",
+        },
       },
       required: ["action"],
     },
     execute: async (_toolCallId: any, args: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
+      return withClient(async (client) => {
+        // Dry-run for write operations
+        if (args.dry_run) {
+          switch (args.action) {
+            case "transfer":
+              if (!args.to_agent_id) return validationError("to_agent_id is required");
+              if (!args.amount_minor) return validationError("amount_minor is required");
+              return dryRunResult("POST", "/wallet/transfers", { to_agent_id: args.to_agent_id, amount_minor: args.amount_minor, memo: args.memo }) as any;
+            case "topup":
+              if (!args.amount_minor) return validationError("amount_minor is required");
+              return dryRunResult("POST", "/wallet/topups", { amount_minor: args.amount_minor, channel: args.channel }) as any;
+            case "withdraw":
+              if (!args.amount_minor) return validationError("amount_minor is required");
+              return dryRunResult("POST", "/wallet/withdrawals", { amount_minor: args.amount_minor, destination_type: args.destination_type }) as any;
+            case "cancel_withdrawal":
+              if (!args.withdrawal_id) return validationError("withdrawal_id is required");
+              return dryRunResult("POST", `/wallet/withdrawals/${args.withdrawal_id}/cancel`) as any;
+            default:
+              break;
+          }
+        }
 
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured." };
-      }
-
-      const client = new BotCordClient(acct);
-      attachTokenPersistence(client, acct);
-
-      try {
         switch (args.action) {
           case "recipient_verify": {
-            if (!args.agent_id) return { error: "agent_id is required" };
+            if (!args.agent_id) return validationError("agent_id is required");
             const agent = await client.resolve(args.agent_id);
-            return { result: formatRecipient(agent), data: agent };
+            return { result: formatRecipient(agent), data: agent } as any;
           }
 
           case "balance": {
             const summary = await client.getWallet();
-            return { result: formatBalance(summary), data: sanitizeBalance(summary) };
+            return { result: formatBalance(summary), data: sanitizeBalance(summary) } as any;
           }
 
           case "ledger": {
@@ -324,18 +330,18 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
             if (args.limit) opts.limit = args.limit;
             if (args.type) opts.type = args.type;
             const ledger = await client.getWalletLedger(opts);
-            return { result: formatLedger(ledger), data: sanitizeLedger(ledger) };
+            return { result: formatLedger(ledger), data: sanitizeLedger(ledger) } as any;
           }
 
           case "transfer": {
-            if (!args.to_agent_id) return { error: "to_agent_id is required" };
-            if (!args.amount_minor) return { error: "amount_minor is required" };
+            if (!args.to_agent_id) return validationError("to_agent_id is required");
+            if (!args.amount_minor) return validationError("amount_minor is required");
 
             const isContact = await isPeerContact(client, args.to_agent_id);
             if (!isContact && args.confirmed !== true) {
               return {
                 result: `\u26a0\ufe0f ${args.to_agent_id} is not in your contacts. This is a stranger transfer of ${formatCoinAmount(args.amount_minor)}. To proceed, call this tool again with confirmed: true. The transfer will create a chat room between you and the recipient.`,
-              };
+              } as any;
             }
 
             const transfer = await executeTransfer(client, {
@@ -350,22 +356,22 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
             return {
               result: `${formatTransaction(transfer.tx)}\n${formatFollowUpDeliverySummary(transfer)}`,
               data: sanitizeTransferResult(transfer),
-            };
+            } as any;
           }
 
           case "topup": {
-            if (!args.amount_minor) return { error: "amount_minor is required" };
+            if (!args.amount_minor) return validationError("amount_minor is required");
             const topup = await client.createTopup({
               amount_minor: args.amount_minor,
               channel: args.channel,
               metadata: args.metadata,
               idempotency_key: args.idempotency_key,
             });
-            return { result: formatTopup(topup), data: sanitizeTopup(topup) };
+            return { result: formatTopup(topup), data: sanitizeTopup(topup) } as any;
           }
 
           case "withdraw": {
-            if (!args.amount_minor) return { error: "amount_minor is required" };
+            if (!args.amount_minor) return validationError("amount_minor is required");
             const withdrawal = await client.createWithdrawal({
               amount_minor: args.amount_minor,
               fee_minor: args.fee_minor,
@@ -373,27 +379,25 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
               destination: args.destination,
               idempotency_key: args.idempotency_key,
             });
-            return { result: formatWithdrawal(withdrawal), data: sanitizeWithdrawal(withdrawal) };
+            return { result: formatWithdrawal(withdrawal), data: sanitizeWithdrawal(withdrawal) } as any;
           }
 
           case "cancel_withdrawal": {
-            if (!args.withdrawal_id) return { error: "withdrawal_id is required" };
+            if (!args.withdrawal_id) return validationError("withdrawal_id is required");
             const withdrawal = await client.cancelWithdrawal(args.withdrawal_id);
-            return { result: formatWithdrawal(withdrawal), data: sanitizeWithdrawal(withdrawal) };
+            return { result: formatWithdrawal(withdrawal), data: sanitizeWithdrawal(withdrawal) } as any;
           }
 
           case "tx_status": {
-            if (!args.tx_id) return { error: "tx_id is required" };
+            if (!args.tx_id) return validationError("tx_id is required");
             const tx = await client.getWalletTransaction(args.tx_id);
-            return { result: formatTransaction(tx), data: sanitizeTransaction(tx) };
+            return { result: formatTransaction(tx), data: sanitizeTransaction(tx) } as any;
           }
 
           default:
-            return { error: `Unknown action: ${args.action}` };
+            return validationError(`Unknown action: ${args.action}`);
         }
-      } catch (err: any) {
-        return { error: `Payment action failed: ${err.message}` };
-      }
+      });
     },
   };
 }
