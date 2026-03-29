@@ -119,22 +119,22 @@ export function createRoomsTool() {
               return dryRunResult("DELETE", `/hub/rooms/${args.room_id}`) as any;
             case "join":
               if (!args.room_id) return validationError("room_id is required");
-              return dryRunResult("POST", `/hub/rooms/${args.room_id}/join`) as any;
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/members`, { agent_id: "{self}" }) as any;
             case "invite":
               if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
-              return dryRunResult("POST", `/hub/rooms/${args.room_id}/members`, { agent_id: args.agent_id }) as any;
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/members`, { agent_id: args.agent_id, can_send: args.can_send, can_invite: args.can_invite }) as any;
             case "remove_member":
               if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
               return dryRunResult("DELETE", `/hub/rooms/${args.room_id}/members/${args.agent_id}`) as any;
             case "promote":
               if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
-              return dryRunResult("PATCH", `/hub/rooms/${args.room_id}/members/${args.agent_id}`, { role: args.role || "admin" }) as any;
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/promote`, { agent_id: args.agent_id, role: args.role || "admin" }) as any;
             case "transfer":
               if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
-              return dryRunResult("POST", `/hub/rooms/${args.room_id}/transfer`, { agent_id: args.agent_id }) as any;
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/transfer`, { new_owner_id: args.agent_id }) as any;
             case "permissions":
               if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
-              return dryRunResult("PATCH", `/hub/rooms/${args.room_id}/members/${args.agent_id}`, { can_send: args.can_send, can_invite: args.can_invite }) as any;
+              return dryRunResult("POST", `/hub/rooms/${args.room_id}/permissions`, { agent_id: args.agent_id, can_send: args.can_send, can_invite: args.can_invite }) as any;
             default:
               // Read actions don't support dry-run, fall through to normal execution
               break;

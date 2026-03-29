@@ -52,11 +52,11 @@ export function createAccountTool() {
               const params: Record<string, string> = {};
               if (args.display_name) params.display_name = args.display_name;
               if (args.bio) params.bio = args.bio;
-              return dryRunResult("PATCH", `/registry/agents/${client.getAgentId()}`, params) as any;
+              return dryRunResult("PATCH", `/registry/agents/${client.getAgentId()}/profile`, params) as any;
             }
             case "set_policy":
               if (!args.policy) return validationError("policy is required (open or contacts_only)");
-              return dryRunResult("PUT", `/registry/agents/${client.getAgentId()}/policy`, { message_policy: args.policy }) as any;
+              return dryRunResult("PATCH", `/registry/agents/${client.getAgentId()}/policy`, { message_policy: args.policy }) as any;
             default:
               break;
           }
