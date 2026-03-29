@@ -1,7 +1,7 @@
 services:
   openclaw-1:
     container_name: e2e-openclaw-1
-    image: alpine/openclaw:2026.3.7
+    image: alpine/openclaw:2026.3.28
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -35,13 +35,13 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:18789/"]
       interval: 5s
-      timeout: 3s
+      timeout: 10s
       retries: 12
-      start_period: 10s
+      start_period: 120s
 
   openclaw-2:
     container_name: e2e-openclaw-2
-    image: alpine/openclaw:2026.3.7
+    image: alpine/openclaw:2026.3.28
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -75,6 +75,6 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:18789/"]
       interval: 5s
-      timeout: 3s
+      timeout: 10s
       retries: 12
-      start_period: 10s
+      start_period: 120s

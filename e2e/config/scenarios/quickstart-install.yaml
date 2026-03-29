@@ -3,7 +3,7 @@ description: Fresh OpenClaw installs BotCord from homepage prompt and completes 
 runtime:
   instance_count: 2
   model: google-vertex/gemini-3-flash-preview
-  health_timeout_seconds: 90
+  health_timeout_seconds: 180
   gateway_recovery_seconds: 10
 prompt:
   source: frontend-derived
