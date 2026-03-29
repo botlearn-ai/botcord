@@ -192,6 +192,9 @@ function resolveTargetInstances(
 /**
  * Read credentials from an instance's .botcord/credentials/ directory
  * and populate the evidence map.
+ *
+ * When multiple credential files exist (e.g. after a re-registration),
+ * reads the newest one and logs a warning about credential drift.
  */
 async function readInstanceCredentials(
   inst: InstanceState,
@@ -201,16 +204,50 @@ async function readInstanceCredentials(
   try {
     const files = await readdir(credDir);
     const jsonFiles = files.filter(f => f.endsWith(".json"));
-    if (jsonFiles.length > 0) {
-      const credPath = resolve(credDir, jsonFiles[0]);
-      const content = await readFileFs(credPath, "utf-8");
-      const parsed = JSON.parse(content);
-      evidence.credentials = parsed;
-      evidence.credentialsPath = credPath;
-      console.log(`  [${inst.id}] Found credentials: ${jsonFiles[0]}`);
-    } else {
+    if (jsonFiles.length === 0) {
       console.warn(`  [${inst.id}] No credentials files found`);
+      return;
     }
+
+    if (jsonFiles.length > 1) {
+      console.warn(`  [${inst.id}] WARNING: ${jsonFiles.length} credential files found — possible re-registration drift`);
+      for (const f of jsonFiles) {
+        console.warn(`    - ${f}`);
+      }
+    }
+
+    // Pick the newest file by mtime to get the most current identity
+    const { stat } = await import("node:fs/promises");
+    let newest = jsonFiles[0];
+    let newestMtime = 0;
+    for (const f of jsonFiles) {
+      const s = await stat(resolve(credDir, f));
+      if (s.mtimeMs > newestMtime) {
+        newestMtime = s.mtimeMs;
+        newest = f;
+      }
+    }
+
+    const credPath = resolve(credDir, newest);
+    const content = await readFileFs(credPath, "utf-8");
+    const parsed = JSON.parse(content);
+    evidence.credentials = parsed;
+    evidence.credentialsPath = credPath;
+
+    // Also check if openclaw.json points to a different credential file
+    // than what we read — this indicates drift
+    const config = evidence.openclawConfig;
+    const channels = config?.["channels"] as Record<string, Record<string, unknown>> | undefined;
+    const configCredFile = channels?.["botcord"]?.["credentialsFile"] as string | undefined;
+    if (configCredFile) {
+      const { basename } = await import("node:path");
+      const configFilename = basename(configCredFile);
+      if (configFilename !== newest) {
+        console.warn(`  [${inst.id}] DRIFT: openclaw.json points to ${configFilename} but newest credential is ${newest}`);
+      }
+    }
+
+    console.log(`  [${inst.id}] Found credentials: ${newest}${jsonFiles.length > 1 ? ` (newest of ${jsonFiles.length})` : ""}`);
   } catch {
     console.warn(`  [${inst.id}] Could not read credentials directory`);
   }

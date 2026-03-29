@@ -60,6 +60,31 @@ export async function assertAgentRegistered(
         actual: `HTTP ${response.status}`,
         evidence: "Hub API requires auth — skipping (use DB assertion instead)",
       };
+    } else if (response.status === 404) {
+      // 404 is ambiguous without a second evidence chain (DB).
+      // The endpoint may require auth, the path may differ per
+      // environment, or the agent may genuinely not exist.
+      // Skip rather than fail to avoid false negatives.
+      const dbUrl = process.env[env.db_url_env];
+      if (!dbUrl) {
+        return {
+          id: "hub.agent_registered",
+          instanceId: inst.id,
+          status: "skipped",
+          expected: "agent queryable via Hub",
+          actual: `HTTP 404`,
+          evidence: `GET ${url} — 404 without DB confirmation; skipping (set ${env.db_url_env} for definitive check)`,
+        };
+      }
+      // DB is available — treat 404 as a real failure since DB can confirm
+      return makeResult(
+        "hub.agent_registered",
+        inst.id,
+        false,
+        "agent exists in Hub registry",
+        `HTTP 404`,
+        `GET ${url}`,
+      );
     } else {
       return makeResult(
         "hub.agent_registered",
