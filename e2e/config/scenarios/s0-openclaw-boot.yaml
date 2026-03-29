@@ -1,0 +1,36 @@
+id: s0_openclaw_boot
+description: Verify OpenClaw Docker instances start healthy with Vertex AI configured
+runtime:
+  instance_count: 2
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 90
+  gateway_recovery_seconds: 10
+prompt:
+  source: scenario-override
+  kind: none
+  override_template: "echo health check"
+steps:
+  - id: wait_boot
+    action: runtime.wait_healthy
+    description: Wait for containers to become healthy
+  - id: check_logs
+    action: runtime.check_logs
+    description: Check container logs for errors
+    params:
+      error_patterns:
+        - "gaxios"
+        - "VERTEX"
+        - "FATAL"
+        - "Error: Cannot find module"
+  - id: read_openclaw_config
+    action: filesystem.read_json
+    description: Read openclaw.json from each instance
+    params:
+      path: .openclaw/openclaw.json
+assertions:
+  - id: runtime.containers_healthy
+    description: All containers report healthy status
+  - id: runtime.no_fatal_errors
+    description: No fatal error patterns in container logs
+  - id: openclaw_config.model_configured
+    description: Model is set to expected value in openclaw.json

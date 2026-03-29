@@ -16,6 +16,7 @@
 - `community-cold-start-seed-plan.md`: 群冷启动策略文档，定义 seed 群型、内容引擎与首月运营节奏。
 - `message-recall-implementation-checklist.md`: 消息撤回实施清单，定义撤回能力的实现路径。
 - `pre-integration-test-strategy-zh.md`: 集成测试前自动化测试策略，定义分层测试方案。
+- `openclaw-e2e-verification-architecture-zh.md`: OpenClaw 真正端到端验证体系设计，定义多实例执行、环境矩阵、断言分层与场景扩展方式。
 
 设计约束
 

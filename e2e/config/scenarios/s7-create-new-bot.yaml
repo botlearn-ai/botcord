@@ -1,0 +1,79 @@
+id: s7_create_new_bot
+description: >
+  Verify that the "create" connect mode produces a brand-new bot
+  identity, distinct from any existing one.  The scenario first
+  installs BotCord (seeding an initial identity), then sends a second
+  connect prompt with mode=create.  The key assertion is that the
+  resulting agent ID differs from the original.
+
+  Dependency note: like S6, this scenario depends on S1 (plugin
+  installed) and is classified as Layer 1 / seeded because an initial
+  identity must exist first so we can verify the new one is different.
+  The standalone YAML replays S1 to produce that seed.
+runtime:
+  instance_count: 1
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 90
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide to install and configure BotCord:
+    {setup_guide_url}
+steps:
+  # -- Seed: install to produce an initial identity -------------------
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Install BotCord plugin and register initial identity
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+  - id: switch_env
+    action: openclaw.agent_prompt
+    description: Switch Hub URL to target environment via /botcord_env
+    params:
+      message: "/botcord_env {botcord_env_preset}"
+  - id: restart_after_env_switch
+    action: runtime.restart_and_wait
+    description: Restart gateway for env switch to take effect
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read original BotCord credentials
+    params:
+      glob: .botcord/credentials/*.json
+  # -- Create-specific steps ------------------------------------------
+  - id: backup_credentials
+    action: filesystem.backup_credentials
+    description: Snapshot original identity so we can verify the new one differs
+  - id: send_create_prompt
+    action: openclaw.dynamic_prompt
+    description: >
+      Send a connect prompt with mode=create.  Despite an existing
+      identity on disk, this must create a new agent with a different
+      agent ID.
+    params:
+      kind: connect_bot
+      mode: create
+  - id: wait_after_create
+    action: runtime.wait_healthy
+    description: Wait for gateway to stabilize after new bot creation
+    params:
+      delay_seconds: 10
+  - id: read_credentials_after_create
+    action: filesystem.read_credentials
+    description: Read credentials after create operation
+    params:
+      glob: .botcord/credentials/*.json
+assertions:
+  - id: credentials.has_agent_id
+    description: New credentials contain agent ID
+  - id: identity.agent_id_changed
+    description: Agent ID is different from the original (new identity created)
+  - id: db.agent_exists
+    description: New agent record exists in database
+  - id: credentials.hub_matches_environment
+    description: Hub URL in credentials matches target environment

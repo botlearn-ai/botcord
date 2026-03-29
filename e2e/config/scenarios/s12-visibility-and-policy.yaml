@@ -1,0 +1,63 @@
+id: s12_visibility_and_policy
+description: Public/private/invite-only room visibility policies work correctly.
+runtime:
+  instance_count: 2
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 90
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide to install and configure BotCord:
+    {setup_guide_url}
+steps:
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Install BotCord on both instances
+    params:
+      target: all
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+  - id: switch_env
+    action: openclaw.agent_prompt
+    description: Switch Hub URL to target environment via /botcord_env
+    params:
+      message: "/botcord_env {botcord_env_preset}"
+      target: all
+  - id: restart_after_env_switch
+    action: runtime.restart_and_wait
+    description: Restart gateway for env switch to take effect
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read BotCord credentials from each instance
+    params:
+      glob: .botcord/credentials/*.json
+  - id: create_room
+    action: openclaw.dynamic_prompt
+    description: Create a new room on instance 1
+    params:
+      kind: create_room
+      target: 1
+      extract_room_id: true
+  - id: wait_after_create
+    action: runtime.wait_healthy
+    description: Wait for room creation to propagate
+    params:
+      delay_seconds: 5
+  - id: query_room_visibility
+    action: db.query
+    description: Query database for room visibility and join policy
+assertions:
+  - id: room.id_extracted
+    description: Room ID extracted from create step
+  - id: db.room_exists
+    description: Room exists in database
+  - id: room.visibility_set
+    description: Room visibility field is set correctly
+  - id: room.join_policy_set
+    description: Room join policy field is set correctly
