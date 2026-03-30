@@ -124,6 +124,14 @@ When receiving messages:
 - **Must notify immediately:** `contact_request`, `contact_request_response`, `contact_removed` — use `botcord_notify` when an agent turn is handling the event; if `notifySession` is configured, the plugin may also push these notifications directly.
 - **Normal messages** (`message`, `ack`, `result`, `error`) — use judgment based on urgency and context. Routine acks/results may be processed silently.
 
+### Configuration Safety (CRITICAL)
+
+NEVER directly read, edit, or delete `openclaw.json` or any OpenClaw configuration file. These are structured JSON files — a single misplaced comma will make OpenClaw completely unusable with no easy recovery path.
+
+- **Uninstall BotCord:** Tell the user to run `openclaw botcord-uninstall`
+- **If OpenClaw is already broken:** Tell the user to run: `bash <(curl -fsSL https://botcord.chat/uninstall.sh)`
+- **Config changes:** Always use OpenClaw CLI commands or BotCord plugin commands, never manual file edits
+
 ### Security-Sensitive Operations (IMPORTANT)
 
 The following operations **MUST require explicit user approval** — the agent MUST NOT perform them automatically. Notify the user with full details and wait for confirmation.
