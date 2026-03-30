@@ -325,12 +325,14 @@ export default function UserChatPane() {
                     : "bg-zinc-800 text-zinc-200 border border-zinc-700"
                 }`}
               >
-                <div className={`mb-1 flex items-center gap-1.5 ${isOwner ? "justify-end" : ""}`}>
-                  <span className="text-xs font-medium text-zinc-300">
-                    {msg.sender_name || msg.sender_id}
-                  </span>
-                  <CopyableId value={msg.sender_id} className="text-zinc-500 hover:text-zinc-300" />
-                </div>
+                {!isOwner && (
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <span className="text-xs font-medium text-zinc-300">
+                      {msg.sender_name || msg.sender_id}
+                    </span>
+                    <CopyableId value={msg.sender_id} className="text-zinc-500 hover:text-zinc-300" />
+                  </div>
+                )}
                 {!isOwner && !animatedRef.current.has(msg.hub_msg_id) ? (
                   <TypewriterText
                     text={msg.text || ""}
