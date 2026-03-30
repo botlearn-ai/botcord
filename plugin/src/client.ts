@@ -29,6 +29,36 @@ import type {
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 1000;
 
+/**
+ * Typed error thrown by BotCordClient for non-ok HTTP responses.
+ * Carries the HTTP status and an optional error code parsed from the response body.
+ */
+export class HubApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+
+  constructor(status: number, body: string, path: string) {
+    super(`BotCord ${path} failed: ${status} ${body}`);
+    this.name = "HubApiError";
+    this.status = status;
+    this.code = HubApiError.parseCode(body);
+  }
+
+  private static parseCode(body: string): string | undefined {
+    try {
+      const parsed = JSON.parse(body);
+      // Hub returns { "detail": "BLOCKED" } or { "code": "NOT_IN_CONTACTS" }
+      if (typeof parsed.code === "string") return parsed.code;
+      if (typeof parsed.detail === "string" && /^[A-Z_]+$/.test(parsed.detail)) return parsed.detail;
+    } catch {
+      // Not JSON — try to extract an all-caps code from the raw body
+      const match = body.match(/\b([A-Z][A-Z_]{2,})\b/);
+      if (match) return match[1];
+    }
+    return undefined;
+  }
+}
+
 export class BotCordClient {
   private hubUrl: string;
   private agentId: string;
@@ -177,9 +207,7 @@ export class BotCordClient {
       }
 
       const body = await resp.text().catch(() => "");
-      const err = new Error(`BotCord ${path} failed: ${resp.status} ${body}`);
-      (err as any).status = resp.status;
-      throw err;
+      throw new HubApiError(resp.status, body, path);
     }
     throw new Error(`BotCord ${path} failed: exhausted retries`);
   }

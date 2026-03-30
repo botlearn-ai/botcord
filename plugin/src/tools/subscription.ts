@@ -130,41 +130,12 @@ export function createSubscriptionTool() {
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       return withClient(async (client) => {
-        // Dry-run for write operations
-        if (args.dry_run) {
-          switch (args.action) {
-            case "create_product":
-              if (!args.name) return validationError("name is required");
-              if (!args.amount_minor) return validationError("amount_minor is required");
-              if (!args.billing_interval) return validationError("billing_interval is required");
-              return dryRunResult("POST", "/subscriptions/products", { name: args.name, amount_minor: args.amount_minor, billing_interval: args.billing_interval }) as any;
-            case "subscribe":
-              if (!args.product_id) return validationError("product_id is required");
-              return dryRunResult("POST", `/subscriptions/products/${args.product_id}/subscribe`) as any;
-            case "archive_product":
-              if (!args.product_id) return validationError("product_id is required");
-              return dryRunResult("POST", `/subscriptions/products/${args.product_id}/archive`) as any;
-            case "cancel":
-              if (!args.subscription_id) return validationError("subscription_id is required");
-              return dryRunResult("POST", `/subscriptions/${args.subscription_id}/cancel`) as any;
-            case "create_subscription_room":
-              if (!args.product_id) return validationError("product_id is required");
-              if (!args.name) return validationError("name is required");
-              return dryRunResult("POST", "/hub/rooms", { name: args.name, description: args.description, visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id }) as any;
-            case "bind_room_to_product":
-              if (!args.room_id) return validationError("room_id is required");
-              if (!args.product_id) return validationError("product_id is required");
-              return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id }) as any;
-            default:
-              break;
-          }
-        }
-
         switch (args.action) {
           case "create_product": {
             if (!args.name) return validationError("name is required");
             if (!args.amount_minor) return validationError("amount_minor is required");
             if (!args.billing_interval) return validationError("billing_interval is required");
+            if (args.dry_run) return dryRunResult("POST", "/subscriptions/products", { name: args.name, amount_minor: args.amount_minor, billing_interval: args.billing_interval });
             const product = await client.createSubscriptionProduct({
               name: args.name,
               description: args.description,
@@ -172,28 +143,30 @@ export function createSubscriptionTool() {
               billing_interval: args.billing_interval,
               asset_code: args.asset_code,
             });
-            return { result: formatProduct(product), data: product } as any;
+            return { result: formatProduct(product), data: product };
           }
 
           case "list_my_products": {
             const products = await client.listMySubscriptionProducts();
-            return { result: formatProductList(products), data: products } as any;
+            return { result: formatProductList(products), data: products };
           }
 
           case "list_products": {
             const products = await client.listSubscriptionProducts();
-            return { result: formatProductList(products), data: products } as any;
+            return { result: formatProductList(products), data: products };
           }
 
           case "archive_product": {
             if (!args.product_id) return validationError("product_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/subscriptions/products/${args.product_id}/archive`);
             const product = await client.archiveSubscriptionProduct(args.product_id);
-            return { result: formatProduct(product), data: product } as any;
+            return { result: formatProduct(product), data: product };
           }
 
           case "create_subscription_room": {
             if (!args.product_id) return validationError("product_id is required");
             if (!args.name) return validationError("name is required");
+            if (args.dry_run) return dryRunResult("POST", "/hub/rooms", { name: args.name, description: args.description, visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id });
             const room = await client.createRoom({
               name: args.name,
               description: args.description,
@@ -209,12 +182,13 @@ export function createSubscriptionTool() {
             return {
               result: `Subscription room created: ${room.room_id} bound to ${args.product_id}`,
               data: room,
-            } as any;
+            };
           }
 
           case "bind_room_to_product": {
             if (!args.room_id) return validationError("room_id is required");
             if (!args.product_id) return validationError("product_id is required");
+            if (args.dry_run) return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id });
             const room = await client.updateRoom(args.room_id, {
               name: args.name,
               description: args.description,
@@ -230,30 +204,32 @@ export function createSubscriptionTool() {
             return {
               result: `Room ${room.room_id} bound to subscription product ${args.product_id}`,
               data: room,
-            } as any;
+            };
           }
 
           case "subscribe": {
             if (!args.product_id) return validationError("product_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/subscriptions/products/${args.product_id}/subscribe`);
             const subscription = await client.subscribeToProduct(args.product_id, args.idempotency_key);
-            return { result: formatSubscription(subscription), data: subscription } as any;
+            return { result: formatSubscription(subscription), data: subscription };
           }
 
           case "list_my_subscriptions": {
             const subscriptions = await client.listMySubscriptions();
-            return { result: formatSubscriptionList(subscriptions), data: subscriptions } as any;
+            return { result: formatSubscriptionList(subscriptions), data: subscriptions };
           }
 
           case "list_subscribers": {
             if (!args.product_id) return validationError("product_id is required");
             const subscriptions = await client.listProductSubscribers(args.product_id);
-            return { result: formatSubscriptionList(subscriptions), data: subscriptions } as any;
+            return { result: formatSubscriptionList(subscriptions), data: subscriptions };
           }
 
           case "cancel": {
             if (!args.subscription_id) return validationError("subscription_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/subscriptions/${args.subscription_id}/cancel`);
             const subscription = await client.cancelSubscription(args.subscription_id);
-            return { result: formatSubscription(subscription), data: subscription } as any;
+            return { result: formatSubscription(subscription), data: subscription };
           }
 
           default:

@@ -1,6 +1,5 @@
 ---
 name: botcord-account
-version: 0.2.2
 description: "BotCord account and admin tools: agent identity, profile management, notifications, dashboard binding, registration, credential reset, and raw API access. Load when agent needs to manage its own profile, send owner notifications, bind to dashboard, register, reset credentials, or make raw Hub API calls."
 metadata:
   requires:
@@ -76,6 +75,8 @@ Escape hatch for making raw HTTP requests to the BotCord Hub API. Use this when 
 **Returns:** The raw JSON response from the Hub API.
 
 **Note:** Authentication is handled automatically — the plugin injects the agent's JWT token.
+
+**Security:** Write operations (POST/PUT/PATCH/DELETE) via `botcord_api` bypass structured tool guardrails and **MUST require explicit user approval** before execution. Treat these like any other security-sensitive operation.
 
 ---
 

@@ -53,52 +53,38 @@ export function createTopicsTool() {
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       return withClient(async (client) => {
-        // Dry-run for write operations
-        if (args.dry_run) {
-          switch (args.action) {
-            case "create":
-              if (!args.title) return validationError("title is required");
-              return dryRunResult("POST", `/hub/rooms/${args.room_id}/topics`, { title: args.title, description: args.description, goal: args.goal }) as any;
-            case "update":
-              if (!args.topic_id) return validationError("topic_id is required");
-              return dryRunResult("PATCH", `/hub/rooms/${args.room_id}/topics/${args.topic_id}`, { title: args.title, status: args.status, goal: args.goal }) as any;
-            case "delete":
-              if (!args.topic_id) return validationError("topic_id is required");
-              return dryRunResult("DELETE", `/hub/rooms/${args.room_id}/topics/${args.topic_id}`) as any;
-            default:
-              break;
-          }
-        }
-
         switch (args.action) {
           case "create":
             if (!args.title) return validationError("title is required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/topics`, { title: args.title, description: args.description, goal: args.goal });
             return await client.createTopic(args.room_id, {
               title: args.title,
               description: args.description,
               goal: args.goal,
-            }) as any;
+            });
 
           case "list":
-            return { topics: await client.listTopics(args.room_id, args.status) } as any;
+            return { topics: await client.listTopics(args.room_id, args.status) };
 
           case "get":
             if (!args.topic_id) return validationError("topic_id is required");
-            return await client.getTopic(args.room_id, args.topic_id) as any;
+            return await client.getTopic(args.room_id, args.topic_id);
 
           case "update":
             if (!args.topic_id) return validationError("topic_id is required");
+            if (args.dry_run) return dryRunResult("PATCH", `/hub/rooms/${args.room_id}/topics/${args.topic_id}`, { title: args.title, status: args.status, goal: args.goal });
             return await client.updateTopic(args.room_id, args.topic_id, {
               title: args.title,
               description: args.description,
               status: args.status,
               goal: args.goal,
-            }) as any;
+            });
 
           case "delete":
             if (!args.topic_id) return validationError("topic_id is required");
+            if (args.dry_run) return dryRunResult("DELETE", `/hub/rooms/${args.room_id}/topics/${args.topic_id}`);
             await client.deleteTopic(args.room_id, args.topic_id);
-            return { ok: true, deleted: args.topic_id, room: args.room_id } as any;
+            return { ok: true, deleted: args.topic_id, room: args.room_id };
 
           default:
             return validationError(`Unknown action: ${args.action}`);

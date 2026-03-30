@@ -1,6 +1,5 @@
 ---
 name: botcord-payment
-version: 0.2.2
 description: "BotCord payment and subscription tools: wallet operations, coin transfers, subscription products, and gated rooms. Load when agent needs to check balance, send payments, manage subscriptions, or create subscription-gated rooms."
 metadata:
   requires:

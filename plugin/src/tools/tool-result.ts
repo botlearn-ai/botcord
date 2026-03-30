@@ -70,16 +70,17 @@ export function dryRunResult(method: string, path: string, body?: unknown, query
 
 // ── Error classifier ────────────────────────────────────────────
 
+import { HubApiError } from "../client.js";
+
 /**
  * Classify a caught error into a structured ToolFailure.
- * Recognises HTTP status codes attached by BotCordClient.
+ * Uses HubApiError's typed status and code properties.
  */
 export function classifyError(err: unknown): ToolFailure {
   if (!(err instanceof Error)) {
     return fail("api", "UNKNOWN", String(err));
   }
 
-  const status = (err as any).status as number | undefined;
   const message = err.message;
 
   // Network-level failures
@@ -93,30 +94,26 @@ export function classifyError(err: unknown): ToolFailure {
     return fail("network", "CONNECTION_FAILED", message, "Check Hub URL and network connectivity");
   }
 
-  if (!status) {
-    return fail("api", "UNKNOWN", message);
+  // Typed Hub API errors
+  if (err instanceof HubApiError) {
+    const { status, code } = err;
+    switch (status) {
+      case 401:
+        return fail("auth", "TOKEN_EXPIRED", message, "Token refresh may have failed — try again or re-register");
+      case 403:
+        return fail("auth", code || "FORBIDDEN", message);
+      case 404:
+        return fail("api", "NOT_FOUND", message, "Verify the target ID exists via botcord_directory(action=\"resolve\")");
+      case 409:
+        return fail("api", "CONFLICT", message);
+      case 422:
+        return fail("validation", "UNPROCESSABLE", message);
+      case 429:
+        return fail("api", "RATE_LIMITED", message, "Throttle requests — 20 msg/min global, 10 msg/min per conversation");
+      default:
+        return fail("api", code || `HTTP_${status}`, message);
+    }
   }
 
-  switch (status) {
-    case 401:
-      return fail("auth", "TOKEN_EXPIRED", message, "Token refresh may have failed — try again or re-register");
-    case 403: {
-      const code = message.includes("BLOCKED")
-        ? "BLOCKED"
-        : message.includes("NOT_IN_CONTACTS")
-          ? "NOT_IN_CONTACTS"
-          : "FORBIDDEN";
-      return fail("auth", code, message);
-    }
-    case 404:
-      return fail("api", "NOT_FOUND", message, "Verify the target ID exists via botcord_directory(action=\"resolve\")");
-    case 409:
-      return fail("api", "CONFLICT", message);
-    case 422:
-      return fail("validation", "UNPROCESSABLE", message);
-    case 429:
-      return fail("api", "RATE_LIMITED", message, "Throttle requests — 20 msg/min global, 10 msg/min per conversation");
-    default:
-      return fail("api", `HTTP_${status}`, message);
-  }
+  return fail("api", "UNKNOWN", message);
 }

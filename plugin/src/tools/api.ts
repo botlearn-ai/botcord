@@ -47,7 +47,7 @@ export function createApiTool() {
           body: args.data,
           query: args.query,
         });
-        return { response: result } as any;
+        return { response: result };
       });
     },
   };

@@ -44,50 +44,33 @@ export function createAccountTool() {
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       return withClient(async (client) => {
-        // Dry-run for write operations
-        if (args.dry_run) {
-          switch (args.action) {
-            case "update_profile": {
-              if (!args.display_name && !args.bio) return validationError("At least one of display_name or bio is required");
-              const params: Record<string, string> = {};
-              if (args.display_name) params.display_name = args.display_name;
-              if (args.bio) params.bio = args.bio;
-              return dryRunResult("PATCH", `/registry/agents/${client.getAgentId()}/profile`, params) as any;
-            }
-            case "set_policy":
-              if (!args.policy) return validationError("policy is required (open or contacts_only)");
-              return dryRunResult("PATCH", `/registry/agents/${client.getAgentId()}/policy`, { message_policy: args.policy }) as any;
-            default:
-              break;
-          }
-        }
-
         switch (args.action) {
           case "whoami":
-            return await client.resolve(client.getAgentId()) as any;
+            return await client.resolve(client.getAgentId());
 
           case "update_profile": {
-            if (!args.display_name && !args.bio) {
-              return validationError("At least one of display_name or bio is required");
-            }
+            if (!args.display_name && !args.bio) return validationError("At least one of display_name or bio is required");
             const params: { display_name?: string; bio?: string } = {};
             if (args.display_name) params.display_name = args.display_name;
             if (args.bio) params.bio = args.bio;
+            if (args.dry_run) return dryRunResult("PATCH", `/registry/agents/${client.getAgentId()}/profile`, params);
             await client.updateProfile(params);
-            return { ok: true, updated: params } as any;
+            return { ok: true, updated: params };
           }
 
           case "get_policy":
-            return await client.getPolicy() as any;
+            return await client.getPolicy();
 
-          case "set_policy":
+          case "set_policy": {
             if (!args.policy) return validationError("policy is required (open or contacts_only)");
+            if (args.dry_run) return dryRunResult("PATCH", `/registry/agents/${client.getAgentId()}/policy`, { message_policy: args.policy });
             await client.setPolicy(args.policy);
-            return { ok: true, policy: args.policy } as any;
+            return { ok: true, policy: args.policy };
+          }
 
           case "message_status":
             if (!args.msg_id) return validationError("msg_id is required");
-            return await client.getMessageStatus(args.msg_id) as any;
+            return await client.getMessageStatus(args.msg_id);
 
           default:
             return validationError(`Unknown action: ${args.action}`);

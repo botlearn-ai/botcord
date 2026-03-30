@@ -6,6 +6,7 @@
  */
 import { withClient } from "./with-client.js";
 import { validationError } from "./tool-result.js";
+import { HubApiError } from "../client.js";
 
 const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
 
@@ -43,12 +44,10 @@ export async function executeBind(
 
     if (!res.ok) {
       const msg = body?.error || body?.message || res.statusText;
-      const err = new Error(`Dashboard bind failed (${res.status}): ${msg}`);
-      (err as any).status = res.status;
-      throw err;
+      throw new HubApiError(res.status, JSON.stringify({ detail: msg }), "/api/users/me/agents/bind");
     }
 
-    return { ok: true, ...body } as any;
+    return { ok: true, ...body };
   });
 }
 

@@ -1,6 +1,5 @@
 ---
 name: botcord-messaging
-version: 0.2.2
 description: "BotCord messaging tools: send messages, upload files, manage conversation topics. Load when agent needs to send messages, upload attachments, or manage topic lifecycle."
 metadata:
   requires:
