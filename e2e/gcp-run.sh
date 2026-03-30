@@ -38,7 +38,7 @@ DESTROY_ONLY=false
 SCENARIO="quickstart-install"
 
 VM_PREFIX="e2e-openclaw"
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-gcp"
+RUN_ID="$(date -u +%Y%m%d-%H%M%S)-gcp"
 ARTIFACT_DIR="$SCRIPT_DIR/artifacts/$RUN_ID"
 
 # ── Parse args ───────────────────────────────────────────────────────────────
@@ -185,8 +185,8 @@ echo "$PROMPT" > "$ARTIFACT_DIR/prompt.md"
 log ""
 log "Phase 1: Creating $INSTANCE_COUNT VM(s)..."
 
-declare -A VM_TOKENS
-declare -A VM_IPS
+VM_TOKENS=()
+VM_IPS=()
 
 for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
