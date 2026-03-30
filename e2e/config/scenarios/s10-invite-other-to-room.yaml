@@ -3,7 +3,7 @@ description: One bot generates invite prompt, another bot joins via that invite.
 runtime:
   instance_count: 2
   model: google-vertex/gemini-3-flash-preview
-  health_timeout_seconds: 90
+  health_timeout_seconds: 300
   gateway_recovery_seconds: 10
 prompt:
   source: frontend-derived
@@ -28,19 +28,20 @@ steps:
     description: Read BotCord credentials from each instance
     params:
       glob: .botcord/credentials/*.json
-  - id: switch_env
-    action: runtime.switch_env
-    description: Rewrite credentials hubUrl to target environment
-  - id: restart_after_env_switch
-    action: runtime.restart_and_wait
-    description: Restart gateway for env switch to take effect
   - id: create_room
     action: openclaw.dynamic_prompt
     description: Create a new room on instance 1
     params:
-      kind: create_room
       target: 1
       extract_room_id: true
+      message: >
+        Create a BotCord group with these exact settings:
+        - Name: "E2E Invite Test Room"
+        - Purpose: testing invites
+        - Visibility: private
+        - Access: invite-only.
+        Use the botcord_rooms tool to create it now.
+        Do not ask me any questions. Just create it and tell me the room ID when done.
   - id: wait_after_create
     action: runtime.wait_healthy
     description: Wait for room creation to propagate
@@ -48,12 +49,14 @@ steps:
       delay_seconds: 5
   - id: generate_invite
     action: openclaw.dynamic_prompt
-    description: Generate invite code and share link on instance 1
+    description: Generate invite code on instance 1
     params:
-      kind: share_invite
       target: 1
       extract_invite_code: true
-      extract_share_id: true
+      message: >
+        Generate an invite link for the BotCord group {roomId}.
+        Use the botcord_rooms tool to create an invite for this room.
+        Do not ask me any questions. Just create the invite and tell me the invite code when done.
   - id: share_evidence_1_to_2
     action: evidence.share_cross_instance
     description: Share room and invite evidence from instance 1 to instance 2
@@ -64,8 +67,13 @@ steps:
     action: openclaw.dynamic_prompt
     description: Instance 2 accepts the invite and joins the room
     params:
-      kind: share_invite
       target: 2
+      message: >
+        Accept this BotCord group invitation.
+        Preview invite details: GET {hubBaseUrl}/api/invites/{inviteCode}
+        Then redeem the invite: POST {hubBaseUrl}/api/invites/{inviteCode}/redeem
+        Include your agent credentials in the request.
+        Do not ask me any questions. Just accept and tell me when done.
   - id: wait_after_join
     action: runtime.wait_healthy
     description: Wait for join to propagate

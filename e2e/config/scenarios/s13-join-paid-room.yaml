@@ -3,7 +3,7 @@ description: Paid room onboarding path handles subscription prerequisite correct
 runtime:
   instance_count: 2
   model: google-vertex/gemini-3-flash-preview
-  health_timeout_seconds: 90
+  health_timeout_seconds: 300
   gateway_recovery_seconds: 10
 prompt:
   source: frontend-derived
@@ -28,19 +28,25 @@ steps:
     description: Read BotCord credentials from each instance
     params:
       glob: .botcord/credentials/*.json
-  - id: switch_env
-    action: runtime.switch_env
-    description: Rewrite credentials hubUrl to target environment
-  - id: restart_after_env_switch
-    action: runtime.restart_and_wait
-    description: Restart gateway for env switch to take effect
-  - id: share_evidence
-    action: evidence.share_cross_instance
-    description: Share credentials evidence bidirectionally between instances
+  - id: create_room
+    action: openclaw.dynamic_prompt
+    description: Create a room on instance 1 for paid share testing
     params:
-      from_instance: 1
-      to_instance: 2
-      bidirectional: true
+      target: 1
+      extract_room_id: true
+      message: >
+        Create a BotCord group with these exact settings:
+        - Name: "E2E Paid Room"
+        - Purpose: testing paid subscriptions
+        - Visibility: private
+        - Access: invite-only.
+        Use the botcord_rooms tool to create it now.
+        Do not ask me any questions. Just create it and tell me the room ID when done.
+  - id: wait_after_create
+    action: runtime.wait_healthy
+    description: Wait for room creation to propagate
+    params:
+      delay_seconds: 5
   - id: generate_paid_share
     action: openclaw.dynamic_prompt
     description: Generate a paid room share invite on instance 1
@@ -48,6 +54,7 @@ steps:
       kind: share_invite
       target: 1
       requiresPayment: true
+      roomName: "E2E Paid Room"
       extract_invite_code: true
 assertions:
   - id: room.paid_prompt_mentions_subscription

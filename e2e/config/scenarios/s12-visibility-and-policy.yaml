@@ -3,7 +3,7 @@ description: Public/private/invite-only room visibility policies work correctly.
 runtime:
   instance_count: 2
   model: google-vertex/gemini-3-flash-preview
-  health_timeout_seconds: 90
+  health_timeout_seconds: 300
   gateway_recovery_seconds: 10
 prompt:
   source: frontend-derived
@@ -28,19 +28,21 @@ steps:
     description: Read BotCord credentials from each instance
     params:
       glob: .botcord/credentials/*.json
-  - id: switch_env
-    action: runtime.switch_env
-    description: Rewrite credentials hubUrl to target environment
-  - id: restart_after_env_switch
-    action: runtime.restart_and_wait
-    description: Restart gateway for env switch to take effect
   - id: create_room
     action: openclaw.dynamic_prompt
-    description: Create a new room on instance 1
+    description: Create a new room on each instance
     params:
-      kind: create_room
-      target: 1
+      target: all
       extract_room_id: true
+      message: >
+        Create a BotCord group with these exact settings:
+        - Name: "E2E Visibility Test Room"
+        - Purpose: testing visibility policies
+        - Visibility: public
+        - Access: invite-only
+        - Members can send messages.
+        Use the botcord_rooms tool to create it now.
+        Do not ask me any questions. Just create it and tell me the room ID when done.
   - id: wait_after_create
     action: runtime.wait_healthy
     description: Wait for room creation to propagate

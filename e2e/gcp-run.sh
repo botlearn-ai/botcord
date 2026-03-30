@@ -38,7 +38,7 @@ DESTROY_ONLY=false
 SCENARIO="quickstart-install"
 
 VM_PREFIX="e2e-openclaw"
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-gcp"
+RUN_ID="$(date -u +%Y%m%d-%H%M%S)-gcp"
 ARTIFACT_DIR="$SCRIPT_DIR/artifacts/$RUN_ID"
 
 # ── Parse args ───────────────────────────────────────────────────────────────
@@ -64,7 +64,14 @@ log_err()  { printf "\033[31m[e2e-gcp]\033[0m %s\n" "$*" >&2; }
 ssh_vm() {
   local vm="$1"; shift
   gcloud compute ssh "$vm" --zone="$GCP_ZONE" --project="$GCP_PROJECT" \
-    --command="$*" --quiet 2>/dev/null
+    --command="$*" --quiet -- -o LogLevel=ERROR 2>/dev/null
+}
+
+# Like ssh_vm but captures stdout faithfully (for agent JSON output)
+ssh_vm_capture() {
+  local vm="$1"; shift
+  gcloud compute ssh "$vm" --zone="$GCP_ZONE" --project="$GCP_PROJECT" \
+    --command="$*" --quiet -- -o LogLevel=ERROR
 }
 
 scp_to_vm() {
@@ -185,13 +192,17 @@ echo "$PROMPT" > "$ARTIFACT_DIR/prompt.md"
 log ""
 log "Phase 1: Creating $INSTANCE_COUNT VM(s)..."
 
-declare -A VM_TOKENS
-declare -A VM_IPS
+# Store tokens/IPs in temp files (macOS bash 3 lacks declare -A)
+TOKENS_DIR="$ARTIFACT_DIR/.tokens"
+mkdir -p "$TOKENS_DIR"
+
+get_token() { cat "$TOKENS_DIR/token-$1" 2>/dev/null; }
+get_ip()    { cat "$TOKENS_DIR/ip-$1" 2>/dev/null; }
 
 for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
   TOKEN=$(openssl rand -hex 16)
-  VM_TOKENS[$i]="$TOKEN"
+  echo "$TOKEN" > "$TOKENS_DIR/token-$i"
 
   log "  Creating $VM..."
   gcloud compute instances create "$VM" \
@@ -213,8 +224,8 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
   for attempt in $(seq 1 20); do
     if ssh_vm "$VM" "echo ok" &>/dev/null; then
-      VM_IPS[$i]=$(get_vm_ip "$i")
-      log_ok "  $VM ready (${VM_IPS[$i]})"
+      get_vm_ip "$i" > "$TOKENS_DIR/ip-$i"
+      log_ok "  $VM ready ($(get_ip "$i"))"
       break
     fi
     sleep 5
@@ -229,7 +240,7 @@ log "Phase 2: Installing OpenClaw on VMs..."
 
 for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
-  TOKEN="${VM_TOKENS[$i]}"
+  TOKEN="$(get_token "$i")"
   INST_DIR="$ARTIFACT_DIR/instance-$i"
   mkdir -p "$INST_DIR"
 
@@ -350,8 +361,8 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   cat > "$ARTIFACT_DIR/instance-$i/vm-info.json" <<EOF
 {
   "vm": "$(vm_name "$i")",
-  "ip": "${VM_IPS[$i]:-unknown}",
-  "token": "${VM_TOKENS[$i]}",
+  "ip": "$(get_ip "$i")",
+  "token": "$(get_token "$i")",
   "port": $GATEWAY_PORT,
   "openclawVersion": "$OPENCLAW_VERSION",
   "model": "$OPENCLAW_MODEL"
@@ -372,24 +383,34 @@ log "  Step: send_quickstart_prompt"
 for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
   INST_DIR="$ARTIFACT_DIR/instance-$i"
-  TOKEN="${VM_TOKENS[$i]}"
+  TOKEN="$(get_token "$i")"
 
   log "    [$VM] Sending prompt..."
-  ssh_vm "$VM" "
+  ssh_vm_capture "$VM" "
     sudo -u openclaw \
       HOME=/home/openclaw \
       NODE_OPTIONS='--require /home/openclaw/.openclaw/gaxios-fetch-patch.cjs' \
       GOOGLE_APPLICATION_CREDENTIALS=/home/openclaw/.openclaw/vertex-sa-key.json \
       GOOGLE_CLOUD_PROJECT=${GCP_PROJECT} \
       GOOGLE_CLOUD_LOCATION=global \
-      openclaw agent --session-id ${SESSION_ID}-${i} -m '$(echo "$PROMPT" | sed "s/'/'\\\\''/g")' --json 2>/dev/null || true
+      openclaw agent --session-id ${SESSION_ID}-${i} -m '$(echo "$PROMPT" | sed "s/'/'\\\\''/g")' --json 2>&1 || true
   " > "$INST_DIR/agent-output-quickstart.json" 2>/dev/null
 
   STATUS=$(python3 -c "
 import json, sys
+def extract_json(path):
+    text = open(path).read()
+    start, end = text.find('{'), text.rfind('}')
+    if start >= 0 and end > start:
+        try: return json.loads(text[start:end+1])
+        except: pass
+    return None
 try:
-  d=json.load(open('$INST_DIR/agent-output-quickstart.json'))
-  print(d.get('status','unknown'))
+    d = extract_json('$INST_DIR/agent-output-quickstart.json')
+    if not d: print('no-json')
+    elif d.get('status'): print(d['status'])
+    elif d.get('payloads'): print('ok')
+    else: print('unknown')
 except: print('parse-error')
 " 2>/dev/null)
   log "    [$VM] status=$STATUS"
@@ -416,14 +437,14 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
   INST_DIR="$ARTIFACT_DIR/instance-$i"
 
-  ssh_vm "$VM" "
+  ssh_vm_capture "$VM" "
     sudo -u openclaw \
       HOME=/home/openclaw \
       NODE_OPTIONS='--require /home/openclaw/.openclaw/gaxios-fetch-patch.cjs' \
       GOOGLE_APPLICATION_CREDENTIALS=/home/openclaw/.openclaw/vertex-sa-key.json \
       GOOGLE_CLOUD_PROJECT=${GCP_PROJECT} \
       GOOGLE_CLOUD_LOCATION=global \
-      openclaw agent --session-id ${SESSION_ID}-${i} -m '/botcord_healthcheck' --json 2>/dev/null || true
+      openclaw agent --session-id ${SESSION_ID}-${i} -m '/botcord_healthcheck' --json 2>&1 || true
   " > "$INST_DIR/agent-output-healthcheck.json" 2>/dev/null
 done
 
@@ -433,14 +454,14 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
   INST_DIR="$ARTIFACT_DIR/instance-$i"
 
-  # openclaw.json
-  scp_from_vm "$VM" "/home/openclaw/.openclaw/openclaw.json" "$INST_DIR/openclaw.json" 2>/dev/null || true
+  # openclaw.json (use sudo cat — files owned by openclaw user)
+  ssh_vm "$VM" "sudo cat /home/openclaw/.openclaw/openclaw.json" > "$INST_DIR/openclaw.json" 2>/dev/null || true
 
   # credentials
-  CRED_FILES=$(ssh_vm "$VM" "ls /home/openclaw/.botcord/credentials/*.json 2>/dev/null" || true)
+  CRED_FILES=$(ssh_vm "$VM" "sudo ls /home/openclaw/.botcord/credentials/*.json 2>/dev/null" || true)
   for f in $CRED_FILES; do
     FNAME=$(basename "$f")
-    scp_from_vm "$VM" "$f" "$INST_DIR/credentials-$FNAME" 2>/dev/null || true
+    ssh_vm "$VM" "sudo cat $f" > "$INST_DIR/credentials-$FNAME" 2>/dev/null || true
   done
 
   # journal log
@@ -500,14 +521,14 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
   INST_DIR="$ARTIFACT_DIR/instance-$i"
 
-  ssh_vm "$VM" "
+  ssh_vm_capture "$VM" "
     sudo -u openclaw \
       HOME=/home/openclaw \
       NODE_OPTIONS='--require /home/openclaw/.openclaw/gaxios-fetch-patch.cjs' \
       GOOGLE_APPLICATION_CREDENTIALS=/home/openclaw/.openclaw/vertex-sa-key.json \
       GOOGLE_CLOUD_PROJECT=${GCP_PROJECT} \
       GOOGLE_CLOUD_LOCATION=global \
-      openclaw agent --session-id ${SESSION_ID}-${i}-post -m '/botcord_healthcheck' --json 2>/dev/null || true
+      openclaw agent --session-id ${SESSION_ID}-${i}-post -m '/botcord_healthcheck' --json 2>&1 || true
   " > "$INST_DIR/agent-output-post-restart-healthcheck.json" 2>/dev/null
 done
 
@@ -517,12 +538,13 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   VM=$(vm_name "$i")
   INST_DIR="$ARTIFACT_DIR/instance-$i"
 
-  scp_from_vm "$VM" "/home/openclaw/.openclaw/openclaw.json" "$INST_DIR/openclaw-final.json" 2>/dev/null || true
+  # Use sudo cat instead of scp (files are owned by openclaw user)
+  ssh_vm "$VM" "sudo cat /home/openclaw/.openclaw/openclaw.json" > "$INST_DIR/openclaw-final.json" 2>/dev/null || true
 
-  CRED_FILES=$(ssh_vm "$VM" "ls /home/openclaw/.botcord/credentials/*.json 2>/dev/null" || true)
+  CRED_FILES=$(ssh_vm "$VM" "sudo ls /home/openclaw/.botcord/credentials/*.json 2>/dev/null" || true)
   for f in $CRED_FILES; do
     FNAME=$(basename "$f")
-    scp_from_vm "$VM" "$f" "$INST_DIR/credentials-final-$FNAME" 2>/dev/null || true
+    ssh_vm "$VM" "sudo cat $f" > "$INST_DIR/credentials-final-$FNAME" 2>/dev/null || true
   done
 done
 
@@ -555,23 +577,40 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   INST_DIR="$ARTIFACT_DIR/instance-$i"
   log "--- instance-$i ---"
 
-  # Parse quickstart output
+  # Parse quickstart output (handles mixed non-JSON + JSON output from SSH)
   QS_STATUS=$(python3 -c "
 import json
+def extract_json(path):
+    text = open(path).read()
+    start, end = text.find('{'), text.rfind('}')
+    if start >= 0 and end > start:
+        try: return json.loads(text[start:end+1])
+        except: pass
+    return None
 try:
-  d=json.load(open('$INST_DIR/agent-output-quickstart.json'))
-  print(d.get('status','none'))
+    d = extract_json('$INST_DIR/agent-output-quickstart.json')
+    if not d: print('none')
+    elif d.get('status'): print(d['status'])
+    elif d.get('payloads'): print('ok')
+    else: print('none')
 except: print('none')
 " 2>/dev/null)
   assert "$i" "agent_output.status_ok" "ok" "$QS_STATUS" \
     "$([[ "$QS_STATUS" == "ok" ]] && echo true || echo false)"
 
   QS_TEXT=$(python3 -c "
-import json
+import json, sys
+def extract_json(path):
+    text = open(path).read()
+    start, end = text.find('{'), text.rfind('}')
+    if start >= 0 and end > start:
+        try: return json.loads(text[start:end+1])
+        except: pass
+    return {}
 try:
-  d=json.load(open('$INST_DIR/agent-output-quickstart.json'))
-  ps=d.get('result',{}).get('payloads',[])
-  print(ps[0].get('text','')[:100] if ps else '')
+    d = extract_json('$INST_DIR/agent-output-quickstart.json')
+    ps = d.get('payloads') or d.get('result',{}).get('payloads',[])
+    print(ps[0].get('text','')[:100] if ps else '')
 except: print('')
 " 2>/dev/null)
   assert "$i" "agent_output.payload_non_empty" "non-empty" "${QS_TEXT:-(empty)}" \
@@ -676,7 +715,7 @@ log "============================================"
 if [[ "$KEEP_VMS" == "true" ]]; then
   log_warn "VMs kept alive (--keep). Destroy with: ./gcp-run.sh --destroy"
   for i in $(seq 1 "$INSTANCE_COUNT"); do
-    log "  $(vm_name "$i"): ${VM_IPS[$i]:-unknown}:$GATEWAY_PORT"
+    log "  $(vm_name "$i"): $(get_ip "$i"):$GATEWAY_PORT"
   done
 else
   log "Destroying VMs..."

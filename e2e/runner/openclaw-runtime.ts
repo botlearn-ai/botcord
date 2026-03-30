@@ -48,27 +48,19 @@ export class OpenClawRuntime {
 
   async resetInstances(): Promise<void> {
     for (const inst of this.instances) {
-      // Clear runtime state directories
       const openclawDir = resolve(inst.instanceDir, ".openclaw");
       const botcordDir = resolve(inst.instanceDir, ".botcord");
 
-      // Remove session state, plugins, workspace but keep directory structure
-      for (const subdir of [".sessions", ".state", "plugins", "workspace", "extensions"]) {
-        const target = resolve(openclawDir, subdir);
-        try {
-          await execFileAsync("rm", ["-rf", target]);
-        } catch {
-          // directory may not exist
-        }
-      }
-
-      // Clear botcord credentials
+      // Nuke entire instance directory to prevent state accumulation
+      // (clobbered configs, old logs, device state, etc.)
       try {
-        await execFileAsync("rm", ["-rf", botcordDir]);
+        await execFileAsync("rm", ["-rf", inst.instanceDir]);
       } catch {
         // may not exist
       }
+
       await mkdir(resolve(botcordDir, "credentials"), { recursive: true });
+      await mkdir(resolve(openclawDir, "workspace"), { recursive: true });
 
       // Write fresh openclaw.json matching the proven deploy-npm.sh structure
       // from ~/openclaw_deploy/ — not a reduced variant that may behave differently.
@@ -125,6 +117,9 @@ export class OpenClawRuntime {
       const idx = inst.id.replace("openclaw-", "");
       composeEnv[`TOKEN_${idx}`] = inst.gatewayToken;
     }
+
+    // Ensure no stale containers from a previous run
+    await this.stop();
 
     await execFileAsync("docker", ["compose", "-f", COMPOSE_FILE, "up", "-d"], {
       cwd: E2E_DIR,
