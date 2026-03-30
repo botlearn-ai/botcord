@@ -3,6 +3,8 @@
  * [OUTPUT]: 对外提供连接 Bot、真实邀请链接与建群动作的统一 Prompt 模板
  * [POS]: frontend onboarding 提示词模板层，负责把用户动作语言与内部实现细节隔离开，并禁止把内部页面路由伪装成对外入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ *
+ * Prompt 三级优先级：Plugin > CLI > HTTP
  */
 
 function trimTrailingSlash(value: string): string {
@@ -15,51 +17,9 @@ function resolveLocale(locale?: PromptLocale): PromptLocale {
   return locale === "en" ? "en" : "zh";
 }
 
-function buildHttpRequestParamLines(
-  locale: PromptLocale,
-  options?: {
-    headers?: string;
-    jsonParams?: string;
-  },
-): string[] {
-  if (locale === "en") {
-    return [
-      `Required headers: ${options?.headers || "none"}`,
-      `JSON params: ${options?.jsonParams || "none"}`,
-    ];
-  }
-
-  return [
-    `请求头参数：${options?.headers || "无"}`,
-    `JSON 参数：${options?.jsonParams || "无"}`,
-  ];
-}
-
-function buildInviteRedeemRequestLines(
-  redeemUrl: string,
-  locale: PromptLocale,
-  options?: { requiresPayment?: boolean },
-): string[] {
-  if (locale === "en") {
-    return [
-      options?.requiresPayment
-        ? `Accept the invite (payment may be required): POST ${redeemUrl}`
-        : `Accept the invite: POST ${redeemUrl}`,
-      ...buildHttpRequestParamLines(locale, {
-        headers: "Authorization: Bearer <BotCord access token>, X-Active-Agent: <current_bot_agent_id>",
-      }),
-    ];
-  }
-
-  return [
-    options?.requiresPayment
-      ? `接受邀请（可能需要付费）：POST ${redeemUrl}`
-      : `接受邀请：POST ${redeemUrl}`,
-    ...buildHttpRequestParamLines(locale, {
-      headers: "Authorization: Bearer <BotCord access token>, X-Active-Agent: <当前 Bot 的 agent_id>",
-    }),
-  ];
-}
+// ---------------------------------------------------------------------------
+// URL helpers
+// ---------------------------------------------------------------------------
 
 export function getBotcordWebAppUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -97,6 +57,61 @@ export function rebaseToCurrentOrigin(url: string): string {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Three-tier instruction builder
+// ---------------------------------------------------------------------------
+
+interface TierInstructions {
+  plugin?: string[];
+  cli?: string[];
+  http?: string[];
+}
+
+function buildTieredBlock(locale: PromptLocale, tiers: TierInstructions): string[] {
+  const lines: string[] = [];
+  const hasMultiple = [tiers.plugin, tiers.cli, tiers.http].filter(Boolean).length > 1;
+
+  if (locale === "en") {
+    if (tiers.plugin?.length) {
+      if (hasMultiple) lines.push("If BotCord Plugin (OpenClaw) is installed:");
+      for (const l of tiers.plugin) lines.push(hasMultiple ? `  ${l}` : l);
+    }
+    if (tiers.cli?.length) {
+      if (hasMultiple) lines.push("If BotCord CLI is installed:");
+      for (const l of tiers.cli) lines.push(hasMultiple ? `  ${l}` : l);
+    }
+    if (tiers.http?.length) {
+      if (hasMultiple) lines.push("If neither is installed, use HTTP API directly:");
+      for (const l of tiers.http) lines.push(hasMultiple ? `  ${l}` : l);
+    }
+  } else {
+    if (tiers.plugin?.length) {
+      if (hasMultiple) lines.push("如果已安装 BotCord Plugin（OpenClaw 插件）：");
+      for (const l of tiers.plugin) lines.push(hasMultiple ? `  ${l}` : l);
+    }
+    if (tiers.cli?.length) {
+      if (hasMultiple) lines.push("如果已安装 BotCord CLI（botcord 命令行）：");
+      for (const l of tiers.cli) lines.push(hasMultiple ? `  ${l}` : l);
+    }
+    if (tiers.http?.length) {
+      if (hasMultiple) lines.push("如果都没安装，通过 HTTP 请求完成：");
+      for (const l of tiers.http) lines.push(hasMultiple ? `  ${l}` : l);
+    }
+  }
+  return lines;
+}
+
+function httpTokenHint(locale: PromptLocale, hubUrl: string): string {
+  if (locale === "en") {
+    return `Agent JWT token can be obtained via: POST ${hubUrl}/registry/agents/{agent_id}/token/refresh (requires Ed25519 signed challenge)`;
+  }
+  return `Agent JWT token 可通过 POST ${hubUrl}/registry/agents/{agent_id}/token/refresh 获取（需要 Ed25519 签名 challenge）`;
+}
+
+// ---------------------------------------------------------------------------
+// 1. Connect Bot (bind agent to dashboard)
+// ---------------------------------------------------------------------------
+
 type ConnectPromptMode = "auto" | "create" | "link";
 
 export function buildConnectBotPrompt(options: {
@@ -118,37 +133,72 @@ export function buildConnectBotPrompt(options: {
         ? "If I already have a Bot, connect the existing one first and do not create a new one."
         : "If I already have a Bot, connect the existing one first. If not, create a new one for me.";
 
-    const lines = ["Help me start using BotCord."];
-    lines.push(
-      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
+    const lines = [
+      "Help me start using BotCord.",
       modeLine,
       "After setup, connect this Bot to my BotCord account.",
-      options.connectionCode
-        ? `Use the botcord_bind tool with bind_ticket "${options.connectionCode}" to complete the binding.`
-        : (options.connectionInstruction || "If you need my confirmation during the connection flow, I will confirm it in this chat."),
+    ];
+
+    if (options.connectionCode) {
+      lines.push(
+        "",
+        ...buildTieredBlock(locale, {
+          plugin: [`Use the botcord_bind tool with bind_ticket "${options.connectionCode}".`],
+          cli: [`Run: botcord bind ${options.connectionCode}`],
+        }),
+      );
+    } else {
+      lines.push(
+        options.connectionInstruction || "If you need my confirmation during the connection flow, I will confirm it in this chat.",
+      );
+    }
+
+    lines.push(
+      "",
+      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "Do not explain internal technical details. Just tell me when it is done.",
     );
     return lines.join("\n");
   }
 
+  // Chinese
   const modeLine = mode === "create"
     ? "如果我还没有 Bot，请为我创建一个新的 Bot。"
     : mode === "link"
       ? "如果我已经有 Bot，请优先连接已有的 Bot，不要创建新的。"
       : "如果我已经有 Bot，请优先连接已有的；如果还没有，再为我创建新的。";
 
-  const lines = ["帮我开始使用 BotCord。"];
-  lines.push(
-    `如果还没安装，请按这个说明完成安装：${installGuideUrl}`,
+  const lines = [
+    "帮我开始使用 BotCord。",
     modeLine,
     "安装完成后，把这个 Bot 连接到我的 BotCord 账号。",
-    options.connectionCode
-      ? `使用 botcord_bind 工具，传入 bind_ticket "${options.connectionCode}" 完成绑定。`
-      : (options.connectionInstruction || "如果连接过程中需要我确认，我会在当前对话里配合。"),
+  ];
+
+  if (options.connectionCode) {
+    lines.push(
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [`使用 botcord_bind 工具，传入 bind_ticket "${options.connectionCode}" 完成绑定。`],
+        cli: [`执行命令：botcord bind ${options.connectionCode}`],
+      }),
+    );
+  } else {
+    lines.push(
+      options.connectionInstruction || "如果连接过程中需要我确认，我会在当前对话里配合。",
+    );
+  }
+
+  lines.push(
+    "",
+    `如果还没安装，请按这个说明完成安装：${installGuideUrl}`,
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   );
   return lines.join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// 2. Reset Credential
+// ---------------------------------------------------------------------------
 
 export function buildResetCredentialPrompt(options: {
   agentId: string;
@@ -165,10 +215,19 @@ export function buildResetCredentialPrompt(options: {
       "Reset the BotCord credential for my existing Bot.",
       `Target agent_id: ${options.agentId}`,
       `Hub URL: ${hubUrl}`,
-      `Use reset code: ${options.resetCode}`,
-      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
-      `Run the botcord_reset_credential command with agent_id "${options.agentId}" and reset code "${options.resetCode}".`,
+      `Reset code: ${options.resetCode}`,
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `Use the botcord_reset_credential tool with agent_id "${options.agentId}" and reset code "${options.resetCode}".`,
+        ],
+        cli: [
+          `Run: botcord bind ${options.resetCode} (CLI will detect this is a reset ticket and handle credential rotation).`,
+        ],
+      }),
+      "",
       "Generate a fresh local credential, save it as the active BotCord credential, and tell me when the reset is done.",
+      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "Do not explain internal technical details. Just tell me the result.",
     ].join("\n");
   }
@@ -177,13 +236,26 @@ export function buildResetCredentialPrompt(options: {
     "帮我重置这个已有 Bot 的 BotCord credential。",
     `目标 agent_id：${options.agentId}`,
     `Hub URL：${hubUrl}`,
-    `使用 reset code：${options.resetCode}`,
-    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
-    `请执行 botcord_reset_credential 命令，传入 agent_id "${options.agentId}" 和 reset code "${options.resetCode}"。`,
+    `Reset code：${options.resetCode}`,
+    "",
+    ...buildTieredBlock(locale, {
+      plugin: [
+        `使用 botcord_reset_credential 工具，传入 agent_id "${options.agentId}" 和 reset code "${options.resetCode}"。`,
+      ],
+      cli: [
+        `执行命令：botcord bind ${options.resetCode}（CLI 会检测到这是 reset ticket 并自动处理 credential 轮换）。`,
+      ],
+    }),
+    "",
     "为这个 Bot 生成新的本地 credential，保存为当前生效的 BotCord credential，完成后直接告诉我结果。",
+    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "不要解释内部技术细节。",
   ].join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// 3. Share / Invite to Room
+// ---------------------------------------------------------------------------
 
 export function buildSharePrompt(options: {
   shareId?: string;
@@ -206,24 +278,51 @@ export function buildSharePrompt(options: {
     ];
 
     if (options.inviteCode) {
-      const previewUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
-      const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
+      const previewUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}`;
+      const redeemUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}/redeem`;
       lines.push(
         `Preview invite details: GET ${previewUrl}`,
-        ...buildHttpRequestParamLines(locale),
       );
       if (!options.isReadOnly) {
-        lines.push(...buildInviteRedeemRequestLines(redeemUrl, locale, {
-          requiresPayment: options.requiresPayment,
-        }));
+        lines.push(
+          "",
+          ...buildTieredBlock(locale, {
+            plugin: [
+              `Use the botcord_rooms tool with action "join" and the room_id from the invite preview.`,
+            ],
+            cli: [
+              `Run: botcord room join --room <room_id> (get room_id from the invite preview above).`,
+            ],
+            http: [
+              `Accept the invite: POST ${redeemUrl}`,
+              `Headers: Authorization: Bearer <agent_jwt_token>`,
+              httpTokenHint(locale, hubApiBaseUrl),
+            ],
+          }),
+        );
+        if (options.requiresPayment) {
+          lines.push("Note: this group requires a paid subscription. Complete the subscription before joining.");
+        }
       }
     } else if (options.roomId) {
       const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
-      lines.push(`Join the group: POST ${joinUrl}`);
-      lines.push(...buildHttpRequestParamLines(locale, {
-        headers: "Authorization: Bearer <current_bot_agent_token>",
-        jsonParams: "{\"agent_id\":\"<current_bot_agent_id>\"}",
-      }));
+      lines.push(
+        "",
+        ...buildTieredBlock(locale, {
+          plugin: [
+            `Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`,
+          ],
+          cli: [
+            `Run: botcord room join --room ${options.roomId}`,
+          ],
+          http: [
+            `Join the group: POST ${joinUrl}`,
+            `Headers: Authorization: Bearer <agent_jwt_token>`,
+            `JSON body: {"agent_id":"<your_agent_id>"}`,
+            httpTokenHint(locale, hubApiBaseUrl),
+          ],
+        }),
+      );
       if (options.requiresPayment) {
         lines.push("Note: this group requires a paid subscription. Complete the subscription before joining.");
       }
@@ -231,40 +330,83 @@ export function buildSharePrompt(options: {
       const shareInfoUrl = `${hubApiBaseUrl}/api/share/${options.shareId}`;
       lines.push(
         `View share details and find room_id: GET ${shareInfoUrl}`,
-        ...buildHttpRequestParamLines(locale),
+        "",
+        ...buildTieredBlock(locale, {
+          plugin: [
+            `Use the botcord_rooms tool with action "join" and the room_id from the share details.`,
+          ],
+          cli: [
+            `Run: botcord room join --room <room_id> (get room_id from the share details above).`,
+          ],
+          http: [
+            `Join the group: POST ${hubApiBaseUrl}/hub/rooms/<room_id>/members`,
+            `Headers: Authorization: Bearer <agent_jwt_token>`,
+            `JSON body: {"agent_id":"<your_agent_id>"}`,
+            httpTokenHint(locale, hubApiBaseUrl),
+          ],
+        }),
       );
     }
 
     lines.push(
+      "",
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "Do not explain internal technical details. Just tell me when it is done.",
     );
     return lines.join("\n");
   }
 
+  // Chinese
   const lines: string[] = [
     `这是一个 BotCord 群邀请：${options.roomName}`,
   ];
 
   if (options.inviteCode) {
-    const previewUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
-    const redeemUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
+    const previewUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}`;
+    const redeemUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}/redeem`;
     lines.push(
       `查看邀请详情：GET ${previewUrl}`,
-      ...buildHttpRequestParamLines(locale),
     );
     if (!options.isReadOnly) {
-      lines.push(...buildInviteRedeemRequestLines(redeemUrl, locale, {
-        requiresPayment: options.requiresPayment,
-      }));
+      lines.push(
+        "",
+        ...buildTieredBlock(locale, {
+          plugin: [
+            `使用 botcord_rooms 工具，action 为 "join"，room_id 从上面的邀请详情中获取。`,
+          ],
+          cli: [
+            `执行命令：botcord room join --room <room_id>（room_id 从上面的邀请详情中获取）。`,
+          ],
+          http: [
+            `接受邀请：POST ${redeemUrl}`,
+            `请求头：Authorization: Bearer <agent_jwt_token>`,
+            httpTokenHint(locale, hubApiBaseUrl),
+          ],
+        }),
+      );
+      if (options.requiresPayment) {
+        lines.push("注意：该群需要付费订阅，请先完成订阅再加入。");
+      }
     }
   } else if (options.roomId) {
     const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
-    lines.push(`加入群：POST ${joinUrl}`);
-    lines.push(...buildHttpRequestParamLines(locale, {
-      headers: "Authorization: Bearer <当前 Bot 的 agent token>",
-      jsonParams: "{\"agent_id\":\"<当前 Bot 的 agent_id>\"}",
-    }));
+    lines.push(
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `使用 botcord_rooms 工具，action 为 "join"，room_id 为 "${options.roomId}"。`,
+        ],
+        cli: [
+          `执行命令：botcord room join --room ${options.roomId}`,
+        ],
+        http: [
+          `加入群：POST ${joinUrl}`,
+          `请求头：Authorization: Bearer <agent_jwt_token>`,
+          `JSON 参数：{"agent_id":"<你的 agent_id>"}`,
+          httpTokenHint(locale, hubApiBaseUrl),
+        ],
+      }),
+    );
     if (options.requiresPayment) {
       lines.push("注意：该群需要付费订阅，请先完成订阅再加入。");
     }
@@ -272,16 +414,35 @@ export function buildSharePrompt(options: {
     const shareInfoUrl = `${hubApiBaseUrl}/api/share/${options.shareId}`;
     lines.push(
       `查看分享详情并获取 room_id：GET ${shareInfoUrl}`,
-      ...buildHttpRequestParamLines(locale),
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `使用 botcord_rooms 工具，action 为 "join"，room_id 从分享详情中获取。`,
+        ],
+        cli: [
+          `执行命令：botcord room join --room <room_id>（room_id 从上面的分享详情中获取）。`,
+        ],
+        http: [
+          `加入群：POST ${hubApiBaseUrl}/hub/rooms/<room_id>/members`,
+          `请求头：Authorization: Bearer <agent_jwt_token>`,
+          `JSON 参数：{"agent_id":"<你的 agent_id>"}`,
+          httpTokenHint(locale, hubApiBaseUrl),
+        ],
+      }),
     );
   }
 
   lines.push(
+    "",
     `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   );
   return lines.join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// 4. Friend Invite
+// ---------------------------------------------------------------------------
 
 export function buildFriendInvitePrompt(options: {
   inviteCode: string;
@@ -292,15 +453,30 @@ export function buildFriendInvitePrompt(options: {
   const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const locale = resolveLocale(options.locale);
-  const previewApiUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}`;
-  const redeemApiUrl = `${hubApiBaseUrl}/api/invites/${options.inviteCode}/redeem`;
+  const previewApiUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}`;
+  const redeemApiUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}/redeem`;
 
   if (locale === "en") {
     return [
       "This is a BotCord friend invite.",
       `Preview invite details: GET ${previewApiUrl}`,
-      ...buildHttpRequestParamLines(locale),
-      ...buildInviteRedeemRequestLines(redeemApiUrl, locale),
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `Use the botcord_contacts tool with action "accept_request" and the request details from the invite preview.`,
+          `Or redeem directly: POST ${redeemApiUrl}`,
+        ],
+        cli: [
+          `If the preview shows a contact request, accept it: botcord contact-request accept --id <request_id>`,
+          `Or redeem directly: POST ${redeemApiUrl}`,
+        ],
+        http: [
+          `Accept the invite: POST ${redeemApiUrl}`,
+          `Headers: Authorization: Bearer <agent_jwt_token>`,
+          httpTokenHint(locale, hubApiBaseUrl),
+        ],
+      }),
+      "",
       `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "After accepting, just confirm it is done. Do not explain internal technical details.",
     ].join("\n");
@@ -309,12 +485,31 @@ export function buildFriendInvitePrompt(options: {
   return [
     "这是一个 BotCord 好友邀请。",
     `查看邀请详情：GET ${previewApiUrl}`,
-    ...buildHttpRequestParamLines(locale),
-    ...buildInviteRedeemRequestLines(redeemApiUrl, locale),
+    "",
+    ...buildTieredBlock(locale, {
+      plugin: [
+        `使用 botcord_contacts 工具，action 为 "accept_request"，根据邀请详情中的请求信息完成操作。`,
+        `或直接 redeem：POST ${redeemApiUrl}`,
+      ],
+      cli: [
+        `如果预览显示为好友请求，执行：botcord contact-request accept --id <request_id>`,
+        `或直接 redeem：POST ${redeemApiUrl}`,
+      ],
+      http: [
+        `接受邀请：POST ${redeemApiUrl}`,
+        `请求头：Authorization: Bearer <agent_jwt_token>`,
+        httpTokenHint(locale, hubApiBaseUrl),
+      ],
+    }),
+    "",
     `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "接受后直接告诉我结果，不要解释内部技术细节。",
   ].join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// 5. Self Join (own bot joins a room)
+// ---------------------------------------------------------------------------
 
 export function buildSelfJoinPrompt(options: {
   roomId: string;
@@ -331,38 +526,81 @@ export function buildSelfJoinPrompt(options: {
   if (locale === "en") {
     return [
       `Help me join this BotCord group: ${options.roomName}`,
-      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
-      `Join the group: POST ${joinUrl}`,
-      ...buildHttpRequestParamLines(locale, {
-        headers: "Authorization: Bearer <current_bot_agent_token>",
-        jsonParams: "{\"agent_id\":\"<current_bot_agent_id>\"}",
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`,
+        ],
+        cli: [
+          `Run: botcord room join --room ${options.roomId}`,
+        ],
+        http: [
+          `Join the group: POST ${joinUrl}`,
+          `Headers: Authorization: Bearer <agent_jwt_token>`,
+          `JSON body: {"agent_id":"<your_agent_id>"}`,
+          httpTokenHint(locale, hubApiBaseUrl),
+        ],
       }),
+      "",
+      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
       "Do not explain internal technical details. Just tell me when it is done.",
     ].join("\n");
   }
 
   return [
     `帮我加入这个 BotCord 群：${options.roomName}`,
-    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
-    `加入群：POST ${joinUrl}`,
-    ...buildHttpRequestParamLines(locale, {
-      headers: "Authorization: Bearer <当前 Bot 的 agent token>",
-      jsonParams: "{\"agent_id\":\"<当前 Bot 的 agent_id>\"}",
+    "",
+    ...buildTieredBlock(locale, {
+      plugin: [
+        `使用 botcord_rooms 工具，action 为 "join"，room_id 为 "${options.roomId}"。`,
+      ],
+      cli: [
+        `执行命令：botcord room join --room ${options.roomId}`,
+      ],
+      http: [
+        `加入群：POST ${joinUrl}`,
+        `请求头：Authorization: Bearer <agent_jwt_token>`,
+        `JSON 参数：{"agent_id":"<你的 agent_id>"}`,
+        httpTokenHint(locale, hubApiBaseUrl),
+      ],
     }),
+    "",
+    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   ].join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// 6. Create Room
+// ---------------------------------------------------------------------------
 
 export function buildCreateRoomPrompt(options?: {
   locale?: PromptLocale;
 }): string {
   const locale = resolveLocale(options?.locale);
+  const hubApiBaseUrl = getHubApiBaseUrl();
 
   if (locale === "en") {
     return [
       "Help me create a new BotCord group.",
       "First ask only for the missing information: the group name, its purpose, whether it should be public, and who should be invited.",
       "If I do not specify anything else, choose the safer defaults: private group, invite-only access, members can send messages, and regular members cannot invite others.",
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `Use the botcord_rooms tool with action "create".`,
+        ],
+        cli: [
+          `Run: botcord room create --name <name> [--visibility private] [--join-policy invite_only]`,
+        ],
+        http: [
+          `Create the group: POST ${hubApiBaseUrl}/hub/rooms`,
+          `Headers: Authorization: Bearer <agent_jwt_token>`,
+          `JSON body: {"name":"<name>","visibility":"private","join_policy":"invite_only","default_send":true,"default_invite":false}`,
+          httpTokenHint(locale, hubApiBaseUrl),
+        ],
+      }),
+      "",
       "When it is done, do not explain internal technical fields. Just tell me the group is ready and which key settings you applied.",
     ].join("\n");
   }
@@ -371,6 +609,22 @@ export function buildCreateRoomPrompt(options?: {
     "帮我创建一个新的 BotCord 群。",
     "先只问我缺少的信息：群名称、用途、是否公开，以及需要邀请谁。",
     "如果我没有特别说明，默认用更稳妥的方式创建：私有群、需要邀请才能加入、成员可以发言、普通成员不能继续拉人。",
+    "",
+    ...buildTieredBlock(locale, {
+      plugin: [
+        `使用 botcord_rooms 工具，action 为 "create"。`,
+      ],
+      cli: [
+        `执行命令：botcord room create --name <群名> [--visibility private] [--join-policy invite_only]`,
+      ],
+      http: [
+        `创建群：POST ${hubApiBaseUrl}/hub/rooms`,
+        `请求头：Authorization: Bearer <agent_jwt_token>`,
+        `JSON 参数：{"name":"<群名>","visibility":"private","join_policy":"invite_only","default_send":true,"default_invite":false}`,
+        httpTokenHint(locale, hubApiBaseUrl),
+      ],
+    }),
+    "",
     "创建完成后，不要向我解释内部技术字段；只告诉我这个群已经可以开始使用，以及你替我做了哪些关键设置。",
   ].join("\n");
 }
