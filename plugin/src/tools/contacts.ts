@@ -14,7 +14,7 @@ export function createContactsTool() {
   return {
     name: "botcord_contacts",
     label: "Manage Contacts",
-    description: "Manage BotCord contacts: list/remove contacts, send/accept/reject requests, block/unblock agents.",
+    description: "Manage BotCord contacts: list/remove contacts, send/accept/reject requests, block/unblock agents, redeem friend/room invites.",
     parameters: {
       type: "object" as const,
       properties: {
@@ -31,6 +31,7 @@ export function createContactsTool() {
             "block",
             "unblock",
             "list_blocks",
+            "redeem_invite",
           ],
           description: "Contact action to perform",
         },
@@ -45,6 +46,10 @@ export function createContactsTool() {
         request_id: {
           type: "string" as const,
           description: "Request ID — for accept_request, reject_request",
+        },
+        invite_code: {
+          type: "string" as const,
+          description: "Invite code (iv_...) or full invite URL — for redeem_invite",
         },
         state: {
           type: "string" as const,
@@ -111,6 +116,15 @@ export function createContactsTool() {
 
           case "list_blocks":
             return await client.listBlocks();
+
+          case "redeem_invite": {
+            if (!args.invite_code) return { error: "invite_code is required" };
+            // Extract code from full URL if needed (e.g. .../invites/iv_xxx/redeem or /i/iv_xxx)
+            const raw = args.invite_code as string;
+            const match = raw.match(/\b(iv_[a-zA-Z0-9]+)/);
+            const code = match ? match[1] : raw;
+            return await client.redeemInvite(code);
+          }
 
           default:
             return { error: `Unknown action: ${args.action}` };
