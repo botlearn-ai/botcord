@@ -28,6 +28,7 @@ from hub.routers.dashboard import share_public_router
 from hub.routers.dashboard_chat import router as dashboard_chat_router
 from hub.routers.files import router as files_router
 from hub.routers.hub import router as hub_router
+from hub.routers.invites import router as hub_invites_router
 from hub.routers.registry import router as registry_router
 from hub.routers.public import router as public_router
 from hub.routers.room import internal_router as room_internal_router
@@ -192,6 +193,7 @@ app.include_router(registry_router)
 app.include_router(contacts_router)
 app.include_router(contact_requests_router)
 app.include_router(hub_router)
+app.include_router(hub_invites_router)
 app.include_router(room_router)
 app.include_router(room_internal_router)
 app.include_router(topics_router)

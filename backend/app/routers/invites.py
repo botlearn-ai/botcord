@@ -11,13 +11,13 @@ import uuid as _uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent
 from hub.config import FRONTEND_BASE_URL
 from hub.database import get_db
 from hub.enums import RoomRole, RoomVisibility, SubscriptionStatus
+from hub.invite_ops import preview_invite, redeem_invite_for_agent
 from hub.models import Agent, AgentSubscription, Contact, Invite, InviteRedemption, Room, RoomMember
 from hub.share_payloads import frontend_url, room_continue_url, room_entry_type
 
@@ -30,14 +30,6 @@ class CreateInviteBody(BaseModel):
 
 def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
-
-
-def _continue_url_for_invite(invite: Invite, room: Room | None = None) -> str:
-    if invite.kind == "friend":
-        return frontend_url("/chats/contacts/agents")
-    if room is None or invite.room_id is None:
-        return frontend_url("/chats/messages")
-    return room_continue_url(invite.room_id)
 
 
 def _invite_url(code: str) -> str:
@@ -70,6 +62,24 @@ def _serialize_invite_preview(invite: Invite, creator: Agent, room: Room | None,
             "member_count": member_count,
         },
     }
+
+
+def _continue_url_for_invite(invite: Invite, room: Room | None = None) -> str:
+    if invite.kind == "friend":
+        return frontend_url("/chats/contacts/agents")
+    if room is None or invite.room_id is None:
+        return frontend_url("/chats/messages")
+    return room_continue_url(invite.room_id)
+
+
+def _can_invite(room: Room, member: RoomMember) -> bool:
+    if member.role == RoomRole.owner:
+        return True
+    if member.can_invite is not None:
+        return member.can_invite
+    if member.role == RoomRole.admin:
+        return True
+    return room.default_invite
 
 
 async def _load_invite_or_404(code: str, db: AsyncSession) -> Invite:
@@ -111,44 +121,6 @@ async def _load_membership(room_id: str, agent_id: str, db: AsyncSession) -> Roo
     if member is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
     return member
-
-
-def _can_invite(room: Room, member: RoomMember) -> bool:
-    if member.role == RoomRole.owner:
-        return True
-    if member.can_invite is not None:
-        return member.can_invite
-    if member.role == RoomRole.admin:
-        return True
-    return room.default_invite
-
-
-async def _ensure_subscription_access(room: Room, agent_id: str, db: AsyncSession) -> None:
-    if not room.required_subscription_product_id or room.owner_id == agent_id:
-        return
-    result = await db.execute(
-        select(AgentSubscription).where(
-            AgentSubscription.product_id == room.required_subscription_product_id,
-            AgentSubscription.subscriber_agent_id == agent_id,
-            AgentSubscription.status == SubscriptionStatus.active,
-        )
-    )
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="Active subscription required to join this room")
-
-
-async def _record_redemption(invite: Invite, redeemer_agent_id: str, db: AsyncSession) -> bool:
-    db.add(InviteRedemption(code=invite.code, redeemer_agent_id=redeemer_agent_id))
-    try:
-        await db.flush()
-    except IntegrityError:
-        await db.rollback()
-        refreshed = await _load_invite_or_404(invite.code, db)
-        invite.use_count = refreshed.use_count
-        return False
-    invite.use_count += 1
-    await db.flush()
-    return True
 
 
 @router.post("/friends", status_code=201)
@@ -205,22 +177,7 @@ async def get_invite(
     code: str,
     db: AsyncSession = Depends(get_db),
 ):
-    invite = await _load_invite_or_404(code, db)
-    _ensure_invite_active(invite)
-
-    creator = await db.scalar(select(Agent).where(Agent.agent_id == invite.creator_agent_id))
-    if creator is None:
-        raise HTTPException(status_code=404, detail="Invite creator not found")
-
-    room = None
-    member_count = 0
-    if invite.room_id:
-        room = await _load_room_or_404(invite.room_id, db)
-        member_count = await db.scalar(
-            select(func.count(RoomMember.id)).where(RoomMember.room_id == invite.room_id)
-        ) or 0
-
-    return _serialize_invite_preview(invite, creator=creator, room=room, member_count=member_count)
+    return await preview_invite(code, db)
 
 
 @router.post("/{code}/redeem")
@@ -229,80 +186,7 @@ async def redeem_invite(
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    invite = await _load_invite_or_404(code, db)
-
-    if invite.kind == "friend":
-        existing = await db.execute(
-            select(Contact).where(
-                Contact.owner_id == ctx.active_agent_id,
-                Contact.contact_agent_id == invite.creator_agent_id,
-            )
-        )
-        if existing.scalar_one_or_none() is not None:
-            return {
-                "status": "already_connected",
-                "kind": "friend",
-                "target_type": "friend",
-                "target_id": invite.creator_agent_id,
-                "continue_url": _continue_url_for_invite(invite),
-            }
-        if invite.creator_agent_id == ctx.active_agent_id:
-            raise HTTPException(status_code=400, detail="You cannot use your own friend invite")
-        _ensure_invite_active(invite)
-        db.add(Contact(owner_id=ctx.active_agent_id, contact_agent_id=invite.creator_agent_id))
-        db.add(Contact(owner_id=invite.creator_agent_id, contact_agent_id=ctx.active_agent_id))
-        await _record_redemption(invite, ctx.active_agent_id, db)
-        await db.commit()
-        return {
-            "status": "redeemed",
-            "kind": "friend",
-            "target_type": "friend",
-            "target_id": invite.creator_agent_id,
-            "continue_url": _continue_url_for_invite(invite),
-        }
-
-    room = await _load_room_or_404(invite.room_id or "", db)
-    existing_member = await db.execute(
-        select(RoomMember).where(
-            RoomMember.room_id == room.room_id,
-            RoomMember.agent_id == ctx.active_agent_id,
-        )
-    )
-    if existing_member.scalar_one_or_none() is not None:
-        return {
-            "status": "already_joined",
-            "kind": "room",
-            "target_type": "room",
-            "target_id": room.room_id,
-            "continue_url": _continue_url_for_invite(invite, room),
-        }
-
-    _ensure_invite_active(invite)
-    await _ensure_subscription_access(room, ctx.active_agent_id, db)
-
-    if room.max_members is not None:
-        member_count = await db.scalar(
-            select(func.count(RoomMember.id)).where(RoomMember.room_id == room.room_id)
-        ) or 0
-        if member_count >= room.max_members:
-            raise HTTPException(status_code=409, detail="Room is full")
-
-    db.add(
-        RoomMember(
-            room_id=room.room_id,
-            agent_id=ctx.active_agent_id,
-            role=RoomRole.member,
-        )
-    )
-    await _record_redemption(invite, ctx.active_agent_id, db)
-    await db.commit()
-    return {
-        "status": "redeemed",
-        "kind": "room",
-        "target_type": "room",
-        "target_id": room.room_id,
-        "continue_url": _continue_url_for_invite(invite, room),
-    }
+    return await redeem_invite_for_agent(code, ctx.active_agent_id, db)
 
 
 @router.delete("/{code}")
@@ -314,6 +198,7 @@ async def revoke_invite(
     invite = await _load_invite_or_404(code, db)
     if invite.creator_agent_id != ctx.active_agent_id:
         raise HTTPException(status_code=403, detail="You cannot revoke this invite")
+    _ensure_invite_active(invite)
     invite.revoked_at = _utc_now()
     await db.commit()
     return {"code": invite.code, "revoked": True}
