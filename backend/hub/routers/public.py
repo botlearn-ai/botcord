@@ -24,6 +24,7 @@ from hub.models import (
     Room,
     RoomMember,
     RoomVisibility,
+    SubscriptionProduct,
 )
 from hub.routers.dashboard import _extract_text_from_envelope, get_platform_stats
 
@@ -34,6 +35,14 @@ from pydantic import BaseModel
 # ---------------------------------------------------------------------------
 
 
+class PublicSubscriptionProduct(BaseModel):
+    product_id: str
+    name: str
+    description: str
+    amount_minor: str
+    billing_interval: str
+
+
 class PublicRoom(BaseModel):
     room_id: str
     name: str
@@ -42,6 +51,7 @@ class PublicRoom(BaseModel):
     visibility: str
     member_count: int
     required_subscription_product_id: str | None = None
+    subscription_product: PublicSubscriptionProduct | None = None
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None
     last_sender_name: str | None = None
@@ -149,6 +159,22 @@ async def _build_public_rooms(
         )
         sender_names = dict(agent_result.all())
 
+    # Resolve subscription products
+    sub_product_ids = {
+        r.required_subscription_product_id
+        for r, _ in rooms_with_counts
+        if r.required_subscription_product_id
+    }
+    sub_products: dict[str, SubscriptionProduct] = {}
+    if sub_product_ids:
+        sp_result = await db.execute(
+            select(SubscriptionProduct).where(
+                SubscriptionProduct.product_id.in_(sub_product_ids)
+            )
+        )
+        for sp in sp_result.scalars().all():
+            sub_products[sp.product_id] = sp
+
     result: list[PublicRoom] = []
     for room, count in rooms_with_counts:
         is_gated = bool(room.required_subscription_product_id)
@@ -164,6 +190,22 @@ async def _build_public_rooms(
             last_at = _ensure_utc(last_rec.created_at)
             last_sender = sender_names.get(sid)
 
+        # Build subscription product summary
+        sp_summary: PublicSubscriptionProduct | None = None
+        sp = sub_products.get(room.required_subscription_product_id or "")
+        if sp:
+            sp_summary = PublicSubscriptionProduct(
+                product_id=sp.product_id,
+                name=sp.name,
+                description=sp.description,
+                amount_minor=str(sp.amount_minor),
+                billing_interval=(
+                    sp.billing_interval.value
+                    if hasattr(sp.billing_interval, "value")
+                    else str(sp.billing_interval)
+                ),
+            )
+
         result.append(
             PublicRoom(
                 room_id=room.room_id,
@@ -177,6 +219,7 @@ async def _build_public_rooms(
                 ),
                 member_count=count or 0,
                 required_subscription_product_id=room.required_subscription_product_id,
+                subscription_product=sp_summary,
                 last_message_preview=last_preview,
                 last_message_at=last_at,
                 last_sender_name=last_sender,
