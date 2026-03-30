@@ -4,6 +4,7 @@
 import { registerAgent } from "../commands/register.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import { DEFAULT_HUB } from "../constants.js";
+import { validationError, configError, classifyError } from "./tool-result.js";
 
 export function createRegisterTool() {
   return {
@@ -35,11 +36,11 @@ export function createRegisterTool() {
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       if (!args.name) {
-        return { error: "name is required" };
+        return validationError("name is required");
       }
 
       const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
+      if (!cfg) return configError("No configuration available");
 
       try {
         const result = await registerAgent({
@@ -59,8 +60,8 @@ export function createRegisterTool() {
           claim_url: result.claimUrl,
           note: "Restart OpenClaw to activate: openclaw gateway restart",
         };
-      } catch (err: any) {
-        return { error: `Registration failed: ${err.message}` };
+      } catch (err: unknown) {
+        return classifyError(err);
       }
     },
   };

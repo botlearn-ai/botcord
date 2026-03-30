@@ -1,14 +1,8 @@
 /**
  * botcord_subscription — Create and manage coin-priced subscription products.
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError, dryRunResult } from "./tool-result.js";
 import { formatCoinAmount } from "./coin-format.js";
 
 function formatProduct(product: any): string {
@@ -127,29 +121,50 @@ export function createSubscriptionTool() {
           type: "number" as const,
           description: "Slow mode interval in seconds — for create_subscription_room or bind_room_to_product",
         },
+        dry_run: {
+          type: "boolean" as const,
+          description: "Preview the request without executing. Returns the API call that would be made.",
+        },
       },
       required: ["action"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
+      return withClient(async (client) => {
+        // Dry-run for write operations
+        if (args.dry_run) {
+          switch (args.action) {
+            case "create_product":
+              if (!args.name) return validationError("name is required");
+              if (!args.amount_minor) return validationError("amount_minor is required");
+              if (!args.billing_interval) return validationError("billing_interval is required");
+              return dryRunResult("POST", "/subscriptions/products", { name: args.name, amount_minor: args.amount_minor, billing_interval: args.billing_interval }) as any;
+            case "subscribe":
+              if (!args.product_id) return validationError("product_id is required");
+              return dryRunResult("POST", `/subscriptions/products/${args.product_id}/subscribe`) as any;
+            case "archive_product":
+              if (!args.product_id) return validationError("product_id is required");
+              return dryRunResult("POST", `/subscriptions/products/${args.product_id}/archive`) as any;
+            case "cancel":
+              if (!args.subscription_id) return validationError("subscription_id is required");
+              return dryRunResult("POST", `/subscriptions/${args.subscription_id}/cancel`) as any;
+            case "create_subscription_room":
+              if (!args.product_id) return validationError("product_id is required");
+              if (!args.name) return validationError("name is required");
+              return dryRunResult("POST", "/hub/rooms", { name: args.name, description: args.description, visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id }) as any;
+            case "bind_room_to_product":
+              if (!args.room_id) return validationError("room_id is required");
+              if (!args.product_id) return validationError("product_id is required");
+              return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { visibility: "public", join_policy: "open", required_subscription_product_id: args.product_id }) as any;
+            default:
+              break;
+          }
+        }
 
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured." };
-      }
-
-      const client = new BotCordClient(acct);
-      attachTokenPersistence(client, acct);
-
-      try {
         switch (args.action) {
           case "create_product": {
-            if (!args.name) return { error: "name is required" };
-            if (!args.amount_minor) return { error: "amount_minor is required" };
-            if (!args.billing_interval) return { error: "billing_interval is required" };
+            if (!args.name) return validationError("name is required");
+            if (!args.amount_minor) return validationError("amount_minor is required");
+            if (!args.billing_interval) return validationError("billing_interval is required");
             const product = await client.createSubscriptionProduct({
               name: args.name,
               description: args.description,
@@ -157,28 +172,28 @@ export function createSubscriptionTool() {
               billing_interval: args.billing_interval,
               asset_code: args.asset_code,
             });
-            return { result: formatProduct(product), data: product };
+            return { result: formatProduct(product), data: product } as any;
           }
 
           case "list_my_products": {
             const products = await client.listMySubscriptionProducts();
-            return { result: formatProductList(products), data: products };
+            return { result: formatProductList(products), data: products } as any;
           }
 
           case "list_products": {
             const products = await client.listSubscriptionProducts();
-            return { result: formatProductList(products), data: products };
+            return { result: formatProductList(products), data: products } as any;
           }
 
           case "archive_product": {
-            if (!args.product_id) return { error: "product_id is required" };
+            if (!args.product_id) return validationError("product_id is required");
             const product = await client.archiveSubscriptionProduct(args.product_id);
-            return { result: formatProduct(product), data: product };
+            return { result: formatProduct(product), data: product } as any;
           }
 
           case "create_subscription_room": {
-            if (!args.product_id) return { error: "product_id is required" };
-            if (!args.name) return { error: "name is required" };
+            if (!args.product_id) return validationError("product_id is required");
+            if (!args.name) return validationError("name is required");
             const room = await client.createRoom({
               name: args.name,
               description: args.description,
@@ -194,12 +209,12 @@ export function createSubscriptionTool() {
             return {
               result: `Subscription room created: ${room.room_id} bound to ${args.product_id}`,
               data: room,
-            };
+            } as any;
           }
 
           case "bind_room_to_product": {
-            if (!args.room_id) return { error: "room_id is required" };
-            if (!args.product_id) return { error: "product_id is required" };
+            if (!args.room_id) return validationError("room_id is required");
+            if (!args.product_id) return validationError("product_id is required");
             const room = await client.updateRoom(args.room_id, {
               name: args.name,
               description: args.description,
@@ -215,38 +230,36 @@ export function createSubscriptionTool() {
             return {
               result: `Room ${room.room_id} bound to subscription product ${args.product_id}`,
               data: room,
-            };
+            } as any;
           }
 
           case "subscribe": {
-            if (!args.product_id) return { error: "product_id is required" };
+            if (!args.product_id) return validationError("product_id is required");
             const subscription = await client.subscribeToProduct(args.product_id, args.idempotency_key);
-            return { result: formatSubscription(subscription), data: subscription };
+            return { result: formatSubscription(subscription), data: subscription } as any;
           }
 
           case "list_my_subscriptions": {
             const subscriptions = await client.listMySubscriptions();
-            return { result: formatSubscriptionList(subscriptions), data: subscriptions };
+            return { result: formatSubscriptionList(subscriptions), data: subscriptions } as any;
           }
 
           case "list_subscribers": {
-            if (!args.product_id) return { error: "product_id is required" };
+            if (!args.product_id) return validationError("product_id is required");
             const subscriptions = await client.listProductSubscribers(args.product_id);
-            return { result: formatSubscriptionList(subscriptions), data: subscriptions };
+            return { result: formatSubscriptionList(subscriptions), data: subscriptions } as any;
           }
 
           case "cancel": {
-            if (!args.subscription_id) return { error: "subscription_id is required" };
+            if (!args.subscription_id) return validationError("subscription_id is required");
             const subscription = await client.cancelSubscription(args.subscription_id);
-            return { result: formatSubscription(subscription), data: subscription };
+            return { result: formatSubscription(subscription), data: subscription } as any;
           }
 
           default:
-            return { error: `Unknown action: ${args.action}` };
+            return validationError(`Unknown action: ${args.action}`);
         }
-      } catch (err: any) {
-        return { error: `Subscription action failed: ${err.message}` };
-      }
+      });
     },
   };
 }

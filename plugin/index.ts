@@ -15,12 +15,14 @@ import { createNotifyTool } from "./src/tools/notify.js";
 import { createBindTool } from "./src/tools/bind.js";
 import { createRegisterTool } from "./src/tools/register.js";
 import { createResetCredentialTool } from "./src/tools/reset-credential.js";
+import { createApiTool } from "./src/tools/api.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
 import { createBindCommand } from "./src/commands/bind.js";
 import { createEnvCommand } from "./src/commands/env.js";
 import { createRegisterCli } from "./src/commands/register.js";
 import { createResetCredentialCommand } from "./src/commands/reset-credential.js";
+import { createUninstallCli } from "./src/commands/uninstall.js";
 import {
   buildBotCordLoopRiskPrompt,
   clearBotCordLoopRiskSession,
@@ -43,8 +45,7 @@ export default {
 
     setConfigGetter(() => api.config);
 
-    // Agent tools — `as any` needed until tool execute() return types are
-    // migrated to the AgentToolResult<T> shape (P2 task).
+    // Agent tools (14 total)
     api.registerTool(createMessagingTool() as any);
     api.registerTool(createUploadTool() as any);
     api.registerTool(createRoomsTool() as any);
@@ -58,6 +59,7 @@ export default {
     api.registerTool(createBindTool() as any);
     api.registerTool(createRegisterTool() as any);
     api.registerTool(createResetCredentialTool() as any);
+    api.registerTool(createApiTool() as any);
 
     // Hooks
     api.on("after_tool_call", async (event: any, ctx: any) => {
@@ -102,6 +104,8 @@ export default {
     // CLI
     const registerCli = createRegisterCli();
     api.registerCli(registerCli.setup, { commands: registerCli.commands });
+    const uninstallCli = createUninstallCli();
+    api.registerCli(uninstallCli.setup, { commands: uninstallCli.commands });
   },
 };
 

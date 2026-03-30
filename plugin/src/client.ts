@@ -145,6 +145,35 @@ export class BotCordClient {
     throw new Error(`BotCord ${path} failed: exhausted retries`);
   }
 
+  // ── Raw API access ──────────────────────────────────────────
+
+  /**
+   * Execute an arbitrary authenticated request against the Hub API.
+   * Returns the parsed JSON response body.
+   */
+  async request(
+    method: string,
+    path: string,
+    options?: { body?: unknown; query?: Record<string, string> },
+  ): Promise<unknown> {
+    let fullPath = path;
+    if (options?.query) {
+      const params = new URLSearchParams(options.query);
+      fullPath = `${path}?${params}`;
+    }
+    const init: RequestInit = { method };
+    if (options?.body !== undefined) {
+      init.body = JSON.stringify(options.body);
+    }
+    const resp = await this.hubFetch(fullPath, init);
+    const text = await resp.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
   // ── File upload ──────────────────────────────────────────────
 
   async uploadFile(

@@ -403,7 +403,9 @@ export function didBotCordSendSucceed(result: unknown, error?: string): boolean 
   if (error) return false;
   if (!result || typeof result !== "object") return true;
   const record = result as Record<string, unknown>;
+  if (record.ok === false) return false;
   if (record.ok === true) return true;
+  // Legacy: plain { error: "..." } format
   if (typeof record.error === "string" && record.error.trim()) return false;
   return true;
 }

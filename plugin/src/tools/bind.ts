@@ -4,14 +4,8 @@
  * [POS]: plugin dashboard 认领执行器，把命令行参数翻译成稳定的绑定请求
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError } from "./tool-result.js";
 
 const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
 
@@ -21,21 +15,8 @@ const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
 export async function executeBind(
   bindCredential: string,
   dashboardUrl?: string,
-): Promise<{ ok: true; [key: string]: unknown } | { error: string }> {
-  const cfg = getAppConfig();
-  if (!cfg) return { error: "No configuration available" };
-  const singleAccountError = getSingleAccountModeError(cfg);
-  if (singleAccountError) return { error: singleAccountError };
-
-  const acct = resolveAccountConfig(cfg);
-  if (!isAccountConfigured(acct)) {
-    return { error: "BotCord is not configured." };
-  }
-
-  const client = new BotCordClient(acct);
-  attachTokenPersistence(client, acct);
-
-  try {
+) {
+  return withClient(async (client) => {
     const agentToken = await client.ensureToken();
     const agentId = client.getAgentId();
 
@@ -62,13 +43,13 @@ export async function executeBind(
 
     if (!res.ok) {
       const msg = body?.error || body?.message || res.statusText;
-      return { error: `Dashboard bind failed (${res.status}): ${msg}` };
+      const err = new Error(`Dashboard bind failed (${res.status}): ${msg}`);
+      (err as any).status = res.status;
+      throw err;
     }
 
-    return { ok: true, ...body };
-  } catch (err: any) {
-    return { error: `Bind failed: ${err.message}` };
-  }
+    return { ok: true, ...body } as any;
+  });
 }
 
 export function createBindTool() {
@@ -93,7 +74,7 @@ export function createBindTool() {
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       if (!args.bind_ticket) {
-        return { error: "bind_ticket is required" };
+        return validationError("bind_ticket is required");
       }
       return executeBind(args.bind_ticket, args.dashboard_url);
     },
