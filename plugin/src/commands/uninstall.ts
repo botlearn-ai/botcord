@@ -4,7 +4,6 @@
  * Safe uninstall that uses OpenClaw's plugin API instead of editing JSON directly.
  * Prevents the common failure mode where AI agents corrupt openclaw.json.
  */
-import { getBotCordRuntime } from "../runtime.js";
 
 export function createUninstallCli() {
   return {
@@ -14,7 +13,9 @@ export function createUninstallCli() {
         .description("Safely uninstall the BotCord plugin")
         .option("--purge", "Also delete credentials from ~/.botcord/", false)
         .option("--keep-channel", "Keep channel config in openclaw.json", false)
-        .action(async (options: { purge?: boolean; keepChannel?: boolean }) => {
+        .option("--profile <name>", "OpenClaw profile to target")
+        .option("--dev", "Target the dev profile")
+        .action(async (options: { purge?: boolean; keepChannel?: boolean; profile?: string; dev?: boolean }) => {
           const { existsSync, rmSync, readdirSync } = await import("node:fs");
           const { join } = await import("node:path");
           const { execSync } = await import("node:child_process");
@@ -22,12 +23,29 @@ export function createUninstallCli() {
 
           const home = homedir();
           const credDir = join(home, ".botcord", "credentials");
-          const extensionDir = join(home, ".openclaw", "extensions", "botcord");
+
+          // Build profile flags to forward to openclaw CLI
+          const profileFlags: string[] = [];
+          if (options.dev) profileFlags.push("--dev");
+          else if (options.profile) profileFlags.push("--profile", options.profile);
+          const pfx = profileFlags.length > 0 ? ` ${profileFlags.join(" ")}` : "";
+
+          // Resolve extension dir from openclaw CLI if possible, else default
+          let extensionDir = join(home, ".openclaw", "extensions", "botcord");
+          try {
+            const configFile = execSync(`openclaw${pfx} config file`, { stdio: "pipe", encoding: "utf8" }).trim();
+            if (configFile) {
+              const configDir = join(configFile, "..");
+              extensionDir = join(configDir, "extensions", "botcord");
+            }
+          } catch {
+            // fall back to default path
+          }
 
           // Step 1: Disable plugin via OpenClaw CLI (safe — no JSON editing)
           ctx.logger.info("Disabling BotCord plugin ...");
           try {
-            execSync("openclaw plugins disable botcord", { stdio: "pipe" });
+            execSync(`openclaw${pfx} plugins disable botcord`, { stdio: "pipe" });
             ctx.logger.info("  Plugin disabled");
           } catch {
             ctx.logger.warn("  Plugin was not enabled (or already disabled)");
@@ -37,8 +55,8 @@ export function createUninstallCli() {
           if (!options.keepChannel) {
             ctx.logger.info("Removing channel configuration ...");
             try {
-              // Use openclaw config to safely remove the channel entry
-              execSync("openclaw config set channels.botcord --delete", { stdio: "pipe" });
+              // Use openclaw config unset to safely remove the channel entry
+              execSync(`openclaw${pfx} config unset channels.botcord`, { stdio: "pipe" });
               ctx.logger.info("  Channel config removed");
             } catch {
               ctx.logger.warn("  Could not remove channel config via CLI — may need manual cleanup");
