@@ -11,6 +11,8 @@
 `animations.ts`: 页面和组件复用动画参数。
 `fonts.ts`: 字体加载与字体变量入口。
 `id-generators.ts`: 前端本地生成的辅助 ID 逻辑。
+`invite-access.ts`: invite 准入判定真相层，统一融合 session metadata 与 `/api/users/me` 的后端资料。
+`invite-access.test.ts`: invite 准入回归测试，锁定“JWT 未同步但后端已开通”仍应自动放行。
 `onboarding.ts`: 连接 Bot、真实邀请链接、复制 Prompt 的统一模板层，负责隐藏技术词并禁止把内部页面路由伪装成对外入口。
 `onboarding.test.ts`: 邀请与接入 Prompt 的回归测试，锁定请求头、JSON 参数与关键文案契约。
 
