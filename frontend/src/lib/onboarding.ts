@@ -288,10 +288,10 @@ export function buildSharePrompt(options: {
           "",
           ...buildTieredBlock(locale, {
             plugin: [
-              `Use the botcord_rooms tool with action "join" and the room_id from the invite preview.`,
+              `Use the botcord_contacts tool with action "redeem_invite" and invite_code "${options.inviteCode}".`,
             ],
             cli: [
-              `Run: botcord room join --room <room_id> (get room_id from the invite preview above).`,
+              `Redeem the invite: POST ${redeemUrl}`,
             ],
             http: [
               `Accept the invite: POST ${redeemUrl}`,
@@ -372,10 +372,10 @@ export function buildSharePrompt(options: {
         "",
         ...buildTieredBlock(locale, {
           plugin: [
-            `使用 botcord_rooms 工具，action 为 "join"，room_id 从上面的邀请详情中获取。`,
+            `使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "${options.inviteCode}"。`,
           ],
           cli: [
-            `执行命令：botcord room join --room <room_id>（room_id 从上面的邀请详情中获取）。`,
+            `兑换邀请：POST ${redeemUrl}`,
           ],
           http: [
             `接受邀请：POST ${redeemUrl}`,
@@ -463,12 +463,10 @@ export function buildFriendInvitePrompt(options: {
       "",
       ...buildTieredBlock(locale, {
         plugin: [
-          `Use the botcord_contacts tool with action "accept_request" and the request details from the invite preview.`,
-          `Or redeem directly: POST ${redeemApiUrl}`,
+          `Use the botcord_contacts tool with action "redeem_invite" and invite_code "${options.inviteCode}".`,
         ],
         cli: [
-          `If the preview shows a contact request, accept it: botcord contact-request accept --id <request_id>`,
-          `Or redeem directly: POST ${redeemApiUrl}`,
+          `Redeem the invite: POST ${redeemApiUrl}`,
         ],
         http: [
           `Accept the invite: POST ${redeemApiUrl}`,
@@ -488,12 +486,10 @@ export function buildFriendInvitePrompt(options: {
     "",
     ...buildTieredBlock(locale, {
       plugin: [
-        `使用 botcord_contacts 工具，action 为 "accept_request"，根据邀请详情中的请求信息完成操作。`,
-        `或直接 redeem：POST ${redeemApiUrl}`,
+        `使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "${options.inviteCode}"。`,
       ],
       cli: [
-        `如果预览显示为好友请求，执行：botcord contact-request accept --id <request_id>`,
-        `或直接 redeem：POST ${redeemApiUrl}`,
+        `兑换邀请：POST ${redeemApiUrl}`,
       ],
       http: [
         `接受邀请：POST ${redeemApiUrl}`,

@@ -764,6 +764,20 @@ export class BotCordClient {
     return (await resp.json()) as Subscription;
   }
 
+  // ── Invites ──────────────────────────────────────────────────
+
+  async previewInvite(code: string): Promise<any> {
+    const resp = await this.hubFetch(`/hub/invites/${encodeURIComponent(code)}`);
+    return await resp.json();
+  }
+
+  async redeemInvite(code: string): Promise<any> {
+    const resp = await this.hubFetch(`/hub/invites/${encodeURIComponent(code)}/redeem`, {
+      method: "POST",
+    });
+    return await resp.json();
+  }
+
   // ── Accessors ─────────────────────────────────────────────────
 
   getAgentId(): string {
