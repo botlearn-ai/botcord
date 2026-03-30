@@ -109,7 +109,7 @@ OPENCLAW_JSON=""
 if [ -n "${OPENCLAW_CONFIG_PATH:-}" ] && [ -f "$OPENCLAW_CONFIG_PATH" ]; then
   OPENCLAW_JSON="$OPENCLAW_CONFIG_PATH"
 elif command -v "$OPENCLAW_BIN" >/dev/null 2>&1; then
-  OPENCLAW_JSON="$("$OPENCLAW_BIN" config path 2>/dev/null || true)"
+  OPENCLAW_JSON="$("$OPENCLAW_BIN" config file 2>/dev/null || true)"
   if [ -n "$OPENCLAW_JSON" ] && [ ! -f "$OPENCLAW_JSON" ]; then
     OPENCLAW_JSON=""
   fi
