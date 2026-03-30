@@ -22,6 +22,7 @@ import { createBindCommand } from "./src/commands/bind.js";
 import { createEnvCommand } from "./src/commands/env.js";
 import { createRegisterCli } from "./src/commands/register.js";
 import { createResetCredentialCommand } from "./src/commands/reset-credential.js";
+import { createUninstallCli } from "./src/commands/uninstall.js";
 import {
   buildBotCordLoopRiskPrompt,
   clearBotCordLoopRiskSession,
@@ -103,6 +104,8 @@ export default {
     // CLI
     const registerCli = createRegisterCli();
     api.registerCli(registerCli.setup, { commands: registerCli.commands });
+    const uninstallCli = createUninstallCli();
+    api.registerCli(uninstallCli.setup, { commands: uninstallCli.commands });
   },
 };
 
