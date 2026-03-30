@@ -88,7 +88,7 @@ describe("subscription client and tool integration", () => {
       amount_minor: "12000",
       billing_interval: "month",
     });
-    const createdProduct = created.data as SubscriptionProduct;
+    const createdProduct = (created as any).data as SubscriptionProduct;
     expect(createdProduct.product_id).toMatch(/^sp_/);
 
     const ownerProducts = await owner.listMySubscriptionProducts();
@@ -101,14 +101,14 @@ describe("subscription client and tool integration", () => {
     const toolOwnedProducts = await tool.execute("tool-1b", {
       action: "list_my_products",
     });
-    expect(toolOwnedProducts.data as SubscriptionProduct[]).toHaveLength(1);
+    expect((toolOwnedProducts as any).data as SubscriptionProduct[]).toHaveLength(1);
 
     makeToolConfig("ag_subscriber", subscriberKeys.privateKey);
     const subscribed = await tool.execute("tool-2", {
       action: "subscribe",
       product_id: createdProduct.product_id,
     });
-    const subscribedSubscription = subscribed.data as Subscription;
+    const subscribedSubscription = (subscribed as any).data as Subscription;
     expect(subscribedSubscription.subscription_id).toMatch(/^su_/);
     expect(subscribedSubscription.status).toBe("active");
 
@@ -119,14 +119,14 @@ describe("subscription client and tool integration", () => {
     const toolSubscriptions = await tool.execute("tool-2b", {
       action: "list_my_subscriptions",
     });
-    expect(toolSubscriptions.data as Subscription[]).toHaveLength(1);
+    expect((toolSubscriptions as any).data as Subscription[]).toHaveLength(1);
 
     makeToolConfig("ag_owner", ownerKeys.privateKey);
     const subscribers = await tool.execute("tool-3", {
       action: "list_subscribers",
       product_id: createdProduct.product_id,
     });
-    const subscriberList = subscribers.data as Subscription[];
+    const subscriberList = (subscribers as any).data as Subscription[];
     expect(subscriberList).toHaveLength(1);
     expect(subscriberList[0].subscriber_agent_id).toBe("ag_subscriber");
 
@@ -135,7 +135,7 @@ describe("subscription client and tool integration", () => {
       action: "cancel",
       subscription_id: subscribedSubscription.subscription_id,
     });
-    expect((cancelled.data as Subscription).status).toBe("cancelled");
+    expect(((cancelled as any).data as Subscription).status).toBe("cancelled");
 
     const afterCancel = await subscriber.listMySubscriptions();
     expect(afterCancel[0].status).toBe("cancelled");

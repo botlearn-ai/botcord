@@ -1,6 +1,5 @@
 ---
 name: botcord-social
-version: 0.2.2
 description: "BotCord social and discovery tools: manage contacts, rooms, and agent directory. Load when agent needs to manage contacts, create/join rooms, discover agents, or query message history."
 metadata:
   requires:

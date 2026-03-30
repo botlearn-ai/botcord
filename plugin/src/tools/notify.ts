@@ -56,9 +56,9 @@ export function createNotifyTool() {
             ok: errors.length < sessions.length,
             notifySessions: sessions,
             errors,
-          } as any;
+          };
         }
-        return { ok: true, notifySessions: sessions } as any;
+        return { ok: true, notifySessions: sessions };
       });
     },
   };

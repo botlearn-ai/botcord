@@ -54,74 +54,54 @@ export function createContactsTool() {
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       return withClient(async (client) => {
-        // Dry-run for write operations
-        if (args.dry_run) {
-          switch (args.action) {
-            case "send_request":
-              if (!args.agent_id) return validationError("agent_id is required");
-              return dryRunResult("POST", "/hub/send", { to: args.agent_id, type: "contact_request", payload: args.message ? { text: args.message } : {} }) as any;
-            case "remove":
-              if (!args.agent_id) return validationError("agent_id is required");
-              return dryRunResult("DELETE", `/registry/agents/{self}/contacts/${args.agent_id}`) as any;
-            case "accept_request":
-              if (!args.request_id) return validationError("request_id is required");
-              return dryRunResult("POST", `/registry/agents/{self}/contact-requests/${args.request_id}/accept`) as any;
-            case "reject_request":
-              if (!args.request_id) return validationError("request_id is required");
-              return dryRunResult("POST", `/registry/agents/{self}/contact-requests/${args.request_id}/reject`) as any;
-            case "block":
-              if (!args.agent_id) return validationError("agent_id is required");
-              return dryRunResult("POST", `/registry/agents/{self}/blocks`, { blocked_agent_id: args.agent_id }) as any;
-            case "unblock":
-              if (!args.agent_id) return validationError("agent_id is required");
-              return dryRunResult("DELETE", `/registry/agents/{self}/blocks/${args.agent_id}`) as any;
-            default:
-              break;
-          }
-        }
-
         switch (args.action) {
           case "list":
-            return { contacts: await client.listContacts() } as any;
+            return { contacts: await client.listContacts() };
 
           case "remove":
             if (!args.agent_id) return validationError("agent_id is required");
+            if (args.dry_run) return dryRunResult("DELETE", `/registry/agents/{self}/contacts/${args.agent_id}`);
             await client.removeContact(args.agent_id);
-            return { ok: true, removed: args.agent_id } as any;
+            return { ok: true, removed: args.agent_id };
 
           case "send_request":
             if (!args.agent_id) return validationError("agent_id is required");
+            if (args.dry_run) return dryRunResult("POST", "/hub/send", { to: args.agent_id, type: "contact_request", payload: args.message ? { text: args.message } : {} });
             await client.sendContactRequest(args.agent_id, args.message);
-            return { ok: true, sent_to: args.agent_id } as any;
+            return { ok: true, sent_to: args.agent_id };
 
           case "received_requests":
-            return { requests: await client.listReceivedRequests(args.state) } as any;
+            return { requests: await client.listReceivedRequests(args.state) };
 
           case "sent_requests":
-            return { requests: await client.listSentRequests(args.state) } as any;
+            return { requests: await client.listSentRequests(args.state) };
 
           case "accept_request":
             if (!args.request_id) return validationError("request_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/registry/agents/{self}/contact-requests/${args.request_id}/accept`);
             await client.acceptRequest(args.request_id);
-            return { ok: true, accepted: args.request_id } as any;
+            return { ok: true, accepted: args.request_id };
 
           case "reject_request":
             if (!args.request_id) return validationError("request_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/registry/agents/{self}/contact-requests/${args.request_id}/reject`);
             await client.rejectRequest(args.request_id);
-            return { ok: true, rejected: args.request_id } as any;
+            return { ok: true, rejected: args.request_id };
 
           case "block":
             if (!args.agent_id) return validationError("agent_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/registry/agents/{self}/blocks`, { blocked_agent_id: args.agent_id });
             await client.blockAgent(args.agent_id);
-            return { ok: true, blocked: args.agent_id } as any;
+            return { ok: true, blocked: args.agent_id };
 
           case "unblock":
             if (!args.agent_id) return validationError("agent_id is required");
+            if (args.dry_run) return dryRunResult("DELETE", `/registry/agents/{self}/blocks/${args.agent_id}`);
             await client.unblockAgent(args.agent_id);
-            return { ok: true, unblocked: args.agent_id } as any;
+            return { ok: true, unblocked: args.agent_id };
 
           case "list_blocks":
-            return { blocks: await client.listBlocks() } as any;
+            return { blocks: await client.listBlocks() };
 
           default:
             return validationError(`Unknown action: ${args.action}`);

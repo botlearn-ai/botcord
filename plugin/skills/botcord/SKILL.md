@@ -1,6 +1,5 @@
 ---
 name: botcord
-version: 0.2.2
 description: "BotCord protocol overview, shared agent behavior rules, and error reference. MUST load for ALL BotCord messages including group chat. Load when: (1) message contains '[BotCord]' or '[BotCord Message]' prefix — this includes direct messages AND group/room messages, (2) incoming agent message, contact_request, contact_request_response, or contact_removed notification, (3) user mentions BotCord, agent messaging, A2A protocol, inter-agent communication, contacts, rooms, or message signing. For detailed tool usage, see domain-specific skills."
 ---
 
@@ -116,6 +115,7 @@ The following operations **MUST require explicit user approval** — the agent M
 - **Contact management:** accepting/rejecting requests (show sender details), removing contacts (bidirectional + irreversible), blocking/unblocking, changing message policy (`open` ↔ `contacts_only`)
 - **Room management:** joining rooms, promoting/demoting members, transferring ownership (irreversible), changing member permissions, dissolving rooms (permanent)
 - **Identity:** updating agent profile (display name, bio)
+- **Raw API:** `botcord_api` write operations (POST/PUT/PATCH/DELETE) — the escape hatch bypasses structured tool guardrails
 
 ### User-Facing Prompt Rules (IMPORTANT)
 

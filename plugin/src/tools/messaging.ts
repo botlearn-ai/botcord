@@ -170,7 +170,7 @@ export function createMessagingTool() {
             mentions: args.mentions,
             attachments: finalAttachments,
           });
-          return { ok: true, hub_msg_id: result.hub_msg_id, to: args.to, attachments: finalAttachments } as any;
+          return { ok: true, hub_msg_id: result.hub_msg_id, to: args.to, attachments: finalAttachments };
         }
 
         // result/error types — use sendTypedMessage for topic termination
@@ -179,7 +179,7 @@ export function createMessagingTool() {
           topic: args.topic,
           attachments: finalAttachments,
         });
-        return { ok: true, hub_msg_id: result.hub_msg_id, to: args.to, type: msgType, attachments: finalAttachments } as any;
+        return { ok: true, hub_msg_id: result.hub_msg_id, to: args.to, type: msgType, attachments: finalAttachments };
       });
     },
   };
@@ -214,7 +214,7 @@ export function createUploadTool() {
 
       return withClient(async (client) => {
         const uploaded = await uploadLocalFiles(client, args.file_paths);
-        return { ok: true, files: uploaded } as any;
+        return { ok: true, files: uploaded };
       });
     },
   };

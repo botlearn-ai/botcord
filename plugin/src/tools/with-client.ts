@@ -13,7 +13,7 @@ import { BotCordClient } from "../client.js";
 import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import type { BotCordAccountConfig } from "../types.js";
-import { configError, classifyError, type ToolFailure, type ToolSuccess } from "./tool-result.js";
+import { configError, classifyError, type ToolResult, type DryRunResult } from "./tool-result.js";
 
 /**
  * Run a tool action with a fully-configured BotCordClient.
@@ -22,9 +22,9 @@ import { configError, classifyError, type ToolFailure, type ToolSuccess } from "
  * If it returns a plain object, it is automatically wrapped in `{ ok: true, ... }`.
  * If it returns an object that already has `ok` set, it is passed through as-is.
  */
-export async function withClient<T extends Record<string, unknown>>(
-  fn: (client: BotCordClient, acct: BotCordAccountConfig) => Promise<T | ToolSuccess<T> | ToolFailure>,
-): Promise<ToolSuccess<T> | ToolFailure> {
+export async function withClient(
+  fn: (client: BotCordClient, acct: BotCordAccountConfig) => Promise<ToolResult | DryRunResult | Record<string, unknown>>,
+): Promise<ToolResult | DryRunResult> {
   const cfg = getAppConfig();
   if (!cfg) {
     return configError("No configuration available", "Run /botcord_healthcheck to diagnose");
@@ -50,11 +50,11 @@ export async function withClient<T extends Record<string, unknown>>(
 
     // If the callback already returned a structured result, pass through
     if (result && typeof result === "object" && "ok" in result) {
-      return result as ToolSuccess<T> | ToolFailure;
+      return result as ToolResult | DryRunResult;
     }
 
     // Otherwise wrap in success envelope
-    return { ok: true, ...result } as ToolSuccess<T>;
+    return { ok: true as const, ...result };
   } catch (err: unknown) {
     return classifyError(err);
   }
@@ -64,9 +64,9 @@ export async function withClient<T extends Record<string, unknown>>(
  * Lightweight version that only checks config availability (no client creation).
  * Used by tools that don't need a BotCordClient (e.g. register, notify).
  */
-export async function withConfig<T extends Record<string, unknown>>(
-  fn: (cfg: any, acct: BotCordAccountConfig) => Promise<T | ToolSuccess<T> | ToolFailure>,
-): Promise<ToolSuccess<T> | ToolFailure> {
+export async function withConfig(
+  fn: (cfg: any, acct: BotCordAccountConfig) => Promise<ToolResult | DryRunResult | Record<string, unknown>>,
+): Promise<ToolResult | DryRunResult> {
   const cfg = getAppConfig();
   if (!cfg) {
     return configError("No configuration available", "Run /botcord_healthcheck to diagnose");
@@ -83,10 +83,10 @@ export async function withConfig<T extends Record<string, unknown>>(
     const result = await fn(cfg, acct);
 
     if (result && typeof result === "object" && "ok" in result) {
-      return result as ToolSuccess<T> | ToolFailure;
+      return result as ToolResult | DryRunResult;
     }
 
-    return { ok: true, ...result } as ToolSuccess<T>;
+    return { ok: true as const, ...result };
   } catch (err: unknown) {
     return classifyError(err);
   }

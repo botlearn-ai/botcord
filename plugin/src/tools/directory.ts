@@ -61,10 +61,10 @@ export function createDirectoryTool() {
         switch (args.action) {
           case "resolve":
             if (!args.agent_id) return validationError("agent_id is required");
-            return await client.resolve(args.agent_id) as any;
+            return await client.resolve(args.agent_id);
 
           case "discover_rooms":
-            return { rooms: await client.discoverRooms(args.room_name) } as any;
+            return { rooms: await client.discoverRooms(args.room_name) };
 
           case "history":
             return { history: await client.getHistory({
@@ -75,7 +75,7 @@ export function createDirectoryTool() {
               before: args.before,
               after: args.after,
               limit: args.limit || 20,
-            }) } as any;
+            }) };
 
           default:
             return validationError(`Unknown action: ${args.action}`);
