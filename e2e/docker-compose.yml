@@ -36,8 +36,8 @@ services:
       test: ["CMD", "curl", "-sf", "http://localhost:18789/"]
       interval: 5s
       timeout: 10s
-      retries: 12
-      start_period: 120s
+      retries: 40
+      start_period: 10s
 
   openclaw-2:
     container_name: e2e-openclaw-2
@@ -76,5 +76,5 @@ services:
       test: ["CMD", "curl", "-sf", "http://localhost:18789/"]
       interval: 5s
       timeout: 10s
-      retries: 12
-      start_period: 120s
+      retries: 40
+      start_period: 10s

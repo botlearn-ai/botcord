@@ -29,6 +29,6 @@ environments:
     quickstart_variant: stable
     plugin_package: "@botcord/botcord"
     db_url_env: BOTCORD_PROD_DB_URL
-    allow_mutation: false
+    allow_mutation: true
     botcord_env_preset: stable
     setup_instruction_url: "{docs_base_url}/openclaw-setup-instruction-script.md"
