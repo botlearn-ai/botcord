@@ -19,7 +19,6 @@ import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
 import { createBindCommand } from "./src/commands/bind.js";
 import { createEnvCommand } from "./src/commands/env.js";
-import { createRegisterCli } from "./src/commands/register.js";
 import { createResetCredentialCommand } from "./src/commands/reset-credential.js";
 import {
   buildBotCordLoopRiskPrompt,
@@ -99,9 +98,6 @@ export default {
     api.registerCommand(createResetCredentialCommand());
     api.registerCommand(createEnvCommand());
 
-    // CLI
-    const registerCli = createRegisterCli();
-    api.registerCli(registerCli.setup, { commands: registerCli.commands });
   },
 };
 
