@@ -296,6 +296,15 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
       return warnings;
     },
   },
+  threading: {
+    resolveReplyToMode: () => "off",
+    allowExplicitReplyTagsWhenOff: false,
+  },
+  agentPrompt: {
+    messageToolHints: () => [
+      "In BotCord channels, you MUST use the botcord_send tool to send messages. Do NOT use [[reply_to_current]] — it is not supported on this channel.",
+    ],
+  },
   messaging: {
     normalizeTarget: (raw) => normalizeBotCordTarget(raw),
     targetResolver: {
