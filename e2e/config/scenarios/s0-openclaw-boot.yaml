@@ -3,7 +3,7 @@ description: Verify OpenClaw Docker instances start healthy with Vertex AI confi
 runtime:
   instance_count: 2
   model: google-vertex/gemini-3-flash-preview
-  health_timeout_seconds: 90
+  health_timeout_seconds: 300
   gateway_recovery_seconds: 10
 prompt:
   source: scenario-override

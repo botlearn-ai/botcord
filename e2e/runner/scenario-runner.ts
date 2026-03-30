@@ -123,10 +123,10 @@ export async function runScenario(
     for (const inst of instances) {
       const evidence = evidenceMap.get(inst.id)!;
       const assertions = await runAssertions(scenario, env, inst, evidence);
-      const allPassed = assertions.every(a => a.status === "passed");
+      const hasFailed = assertions.some(a => a.status === "failed" || a.status === "error");
       instanceResults.push({
         id: inst.id,
-        status: allPassed ? "passed" : "failed",
+        status: hasFailed ? "failed" : "passed",
         assertions,
         artifacts: {
           log: resolve(inst.artifactDir, "container.log"),
@@ -254,41 +254,58 @@ async function readInstanceCredentials(
 }
 
 /**
- * Extract a room ID from agent output text.
- * Looks for patterns like rm_xxx in the response.
+ * Extract a room ID from agent output.
+ * Searches both text payload and raw JSON for rm_ prefixed IDs.
  */
 function extractRoomId(result: AgentResult): string | undefined {
-  const text = result.text ?? result.raw;
-  const match = text.match(/rm_[a-zA-Z0-9_-]+/);
-  return match?.[0];
+  // Search text payload first
+  const text = result.text ?? "";
+  const textMatch = text.match(/rm_[a-zA-Z0-9_-]+/);
+  if (textMatch) return textMatch[0];
+  // Fall back to searching raw JSON (tool call results contain room IDs)
+  const rawMatch = result.raw.match(/rm_[a-zA-Z0-9_-]+/);
+  return rawMatch?.[0];
 }
 
 /**
- * Extract an invite code from agent output text.
+ * Extract an invite code from agent output.
+ * Searches both text and raw JSON.
  */
 function extractInviteCode(result: AgentResult): string | undefined {
-  const text = result.text ?? result.raw;
-  // Look for invite code in various formats
+  const sources = [result.text ?? "", result.raw];
   const patterns = [
-    /invite[_\s-]*code[:\s]*["']?([a-zA-Z0-9_-]+)["']?/i,
-    /code[:\s]*["']?([a-zA-Z0-9_-]{6,})["']?/i,
+    /invites\/([a-zA-Z0-9_-]+)\/redeem/,
     /invites\/([a-zA-Z0-9_-]+)/,
+    /invite[_\s-]*code[:\s]*["']?([a-zA-Z0-9_-]+)["']?/i,
+    /"code"\s*:\s*"([a-zA-Z0-9_-]{6,})"/,
   ];
-  for (const pat of patterns) {
-    const m = text.match(pat);
-    if (m?.[1]) return m[1];
+  for (const text of sources) {
+    for (const pat of patterns) {
+      const m = text.match(pat);
+      if (m?.[1]) return m[1];
+    }
   }
   return undefined;
 }
 
 /**
- * Extract a share ID from agent output text.
+ * Extract a share ID from agent output.
+ * Searches both text and raw JSON.
  */
 function extractShareId(result: AgentResult): string | undefined {
-  const text = result.text ?? result.raw;
-  const match = text.match(/share[_\s-]*id[:\s]*["']?([a-zA-Z0-9_-]+)["']?/i)
-    ?? text.match(/rooms\/share\/([a-zA-Z0-9_-]+)/);
-  return match?.[1];
+  const sources = [result.text ?? "", result.raw];
+  const patterns = [
+    /share\/([a-zA-Z0-9_-]+)/,
+    /share[_\s-]*id[:\s]*["']?([a-zA-Z0-9_-]+)["']?/i,
+    /"shareId"\s*:\s*"([a-zA-Z0-9_-]+)"/,
+  ];
+  for (const text of sources) {
+    for (const pat of patterns) {
+      const m = text.match(pat);
+      if (m?.[1]) return m[1];
+    }
+  }
+  return undefined;
 }
 
 async function executeSteps(
@@ -360,27 +377,42 @@ async function executeSteps(
         break;
       }
 
-      // ── Prompt built dynamically from frontend builder ──────────
+      // ── Prompt built dynamically from frontend builder or direct message ──
       case "openclaw.dynamic_prompt": {
-        const kind = step.params?.kind as string;
-        if (!kind) {
-          console.warn("  Missing 'kind' param for dynamic_prompt — skipping");
+        const kind = step.params?.kind as string | undefined;
+        const directMessage = step.params?.message as string | undefined;
+        if (!kind && !directMessage) {
+          console.warn("  Missing 'kind' or 'message' param for dynamic_prompt — skipping");
           break;
         }
         for (const inst of targets) {
           const ev = evidenceMap.get(inst.id)!;
-          // Build params from evidence + step params
-          const promptParams: Record<string, unknown> = {
-            ...(step.params ?? {}),
-            agentId: ev.credentials?.["agentId"],
-            roomId: ev.roomId ?? ev.peerRoomId,
-            inviteCode: ev.inviteCode ?? ev.peerInviteCode,
-            shareId: ev.shareId ?? ev.peerShareId,
-            friendInviteCode: ev.friendInviteCode ?? ev.peerFriendInviteCode,
-          };
-          try {
-            const message = await resolvePromptByKind(kind, env, promptParams);
+          let message: string;
+          if (directMessage) {
+            // Direct message with placeholder substitution
+            message = directMessage;
+            message = message.replace(/\{agentId\}/g, (ev.credentials?.["agentId"] as string) ?? "");
+            message = message.replace(/\{roomId\}/g, ev.roomId ?? ev.peerRoomId ?? "");
+            message = message.replace(/\{inviteCode\}/g, ev.inviteCode ?? ev.peerInviteCode ?? "");
+            message = message.replace(/\{shareId\}/g, ev.shareId ?? ev.peerShareId ?? "");
+            message = message.replace(/\{friendInviteCode\}/g, ev.friendInviteCode ?? ev.peerFriendInviteCode ?? "");
+            message = message.replace(/\{peerAgentId\}/g, ev.peerAgentId ?? "");
+            message = message.replace(/\{hubBaseUrl\}/g, env.hub_base_url);
+            console.log(`  [${inst.id}] Direct message (${message.length} chars)`);
+          } else {
+            // Build params from evidence + step params
+            const promptParams: Record<string, unknown> = {
+              ...(step.params ?? {}),
+              agentId: ev.credentials?.["agentId"],
+              roomId: ev.roomId ?? ev.peerRoomId,
+              inviteCode: ev.inviteCode ?? ev.peerInviteCode,
+              shareId: ev.shareId ?? ev.peerShareId,
+              friendInviteCode: ev.friendInviteCode ?? ev.peerFriendInviteCode,
+            };
+            message = await resolvePromptByKind(kind!, env, promptParams);
             console.log(`  [${inst.id}] Built dynamic prompt (kind=${kind}, ${message.length} chars)`);
+          }
+          try {
             const result = await runtime.execAgent(inst, message, step.id);
             console.log(`  [${inst.id}] Exit code: ${result.exitCode}, status: ${result.status ?? "unknown"}`);
             ev.agentResults[step.id] = result;

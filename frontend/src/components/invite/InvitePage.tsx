@@ -4,22 +4,22 @@
  * [INPUT]: 依赖 betaApi (redeem/waitlist), Supabase auth session, URL query param ?code=
  * [OUTPUT]: /invite 页面 — 邀请码激活 + 等待列表申请
  * [POS]: 公测准入落地页，middleware 将未激活用户重定向至此
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, KeyRound, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { betaApi } from "@/lib/api";
-
-type PageState = "loading" | "guest" | "activated" | "idle";
+import { betaApi, userApi } from "@/lib/api";
+import { resolveInviteAccess, type InvitePageState } from "@/lib/invite-access";
 
 export default function InvitePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
 
-  const [pageState, setPageState] = useState<PageState>("loading");
+  const [pageState, setPageState] = useState<InvitePageState>("loading");
 
   // Invite code section
   const [code, setCode] = useState(searchParams.get("code") ?? "");
@@ -34,28 +34,58 @@ export default function InvitePage() {
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
   const [waitlistSuccess, setWaitlistSuccess] = useState(false);
 
-  const initRef = useRef(false);
-
   useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
+    let cancelled = false;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      // When beta gate is disabled, redirect logged-in users straight to dashboard
+    void (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+
       const betaGateEnabled = process.env.NEXT_PUBLIC_BETA_GATE_ENABLED !== "false";
-      if (!betaGateEnabled && session) {
-        router.replace("/chats/messages");
-        return;
-      }
+
       if (!session) {
         setPageState("guest");
         return;
       }
-      const betaAccess = session.user.user_metadata?.beta_access === true;
-      setPageState(betaAccess ? "activated" : "idle");
-      if (session.user.email) setEmail(session.user.email);
-    });
-  }, [supabase]);
+
+      let profileBetaAccess = false;
+      let profileEmail: string | null = null;
+
+      try {
+        const profile = await userApi.getMe({ force: true });
+        if (cancelled) return;
+        profileBetaAccess = profile.beta_access === true;
+        profileEmail = profile.email;
+      } catch {
+        // 后端瞬时失败时退回 session 元数据，避免 invite 页彻底失明。
+      }
+
+      const decision = resolveInviteAccess({
+        betaGateEnabled,
+        hasSession: true,
+        sessionBetaAccess: session.user.user_metadata?.beta_access === true,
+        profileBetaAccess,
+      });
+
+      setPageState(decision.pageState);
+      if (profileEmail || session.user.email) {
+        setEmail(profileEmail || session.user.email || "");
+      }
+
+      if (decision.shouldRefreshSession) {
+        await supabase.auth.refreshSession().catch(() => undefined);
+        if (cancelled) return;
+      }
+
+      if (decision.shouldRedirectToChats) {
+        router.replace("/chats/messages");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, supabase]);
 
   async function handleRedeem() {
     if (!code.trim()) return;

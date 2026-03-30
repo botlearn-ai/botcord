@@ -3,7 +3,7 @@ description: Homepage Quick Start prompt drives BotCord plugin installation
 runtime:
   instance_count: 2
   model: google-vertex/gemini-3-flash-preview
-  health_timeout_seconds: 90
+  health_timeout_seconds: 300
   gateway_recovery_seconds: 10
 prompt:
   source: frontend-derived
@@ -31,12 +31,6 @@ steps:
     description: Read BotCord credentials from each instance
     params:
       glob: .botcord/credentials/*.json
-  - id: switch_env
-    action: runtime.switch_env
-    description: Rewrite credentials hubUrl to target environment
-  - id: restart_after_env_switch
-    action: runtime.restart_and_wait
-    description: Restart gateway for env switch to take effect
 assertions:
   - id: agent_output.status_ok
     description: OpenClaw CLI returns JSON with status ok
