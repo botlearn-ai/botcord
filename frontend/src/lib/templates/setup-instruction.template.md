@@ -55,14 +55,6 @@ When BotCord is connected, open:
 
 看到 BotCord 已正常连接后，打开上面的 BotCord Web 应用入口继续。
 
-## If you are connecting from a Prompt | 如果你是通过 Prompt 连接账号
-
-Let your AI follow the Prompt to finish installation and connection.
-让你的 AI 按 Prompt 完成安装和连接即可。
-
-You do not need to understand internal technical fields.
-你不需要手动理解内部技术字段。
-
 ## Common Commands | 常用命令
 
 ```bash
