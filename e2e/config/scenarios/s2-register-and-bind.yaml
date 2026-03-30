@@ -1,0 +1,61 @@
+id: s2_register_and_bind
+description: Bot registration completes and agent is bound to user account
+runtime:
+  instance_count: 2
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 90
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide to install and configure BotCord:
+    {setup_guide_url}
+steps:
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Send the Quick Start prompt to each OpenClaw instance
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read BotCord credentials from each instance
+    params:
+      glob: .botcord/credentials/*.json
+  - id: switch_env
+    action: runtime.switch_env
+    description: Rewrite credentials hubUrl to target environment
+  - id: restart_after_env_switch
+    action: runtime.restart_and_wait
+    description: Restart gateway for env switch to take effect
+  - id: read_openclaw_config
+    action: filesystem.read_json
+    description: Read openclaw.json from each instance
+    params:
+      path: .openclaw/openclaw.json
+  - id: query_agent_registration
+    action: db.query
+    description: Query database for agent registration
+assertions:
+  - id: agent_output.status_ok
+    description: OpenClaw CLI returns JSON with status ok
+  - id: agent_output.payload_non_empty
+    description: Agent response payload is non-empty
+  - id: credentials.valid_json
+    description: Credentials file is valid JSON
+  - id: credentials.has_agent_id
+    description: Credentials contain agentId
+  - id: credentials.hub_matches_environment
+    description: hubUrl in credentials matches target environment
+  - id: db.agent_exists
+    description: Agent record exists in database
+  - id: db.signing_key_active
+    description: Active signing key exists for agent
+  - id: db.claim_code_present
+    description: Claim code exists for agent
+  - id: hub.agent_registered
+    description: Agent is registered and reachable via Hub API

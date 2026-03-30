@@ -1,0 +1,80 @@
+services:
+  openclaw-1:
+    container_name: e2e-openclaw-1
+    image: alpine/openclaw:2026.3.28
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      NODE_OPTIONS: "--require /home/node/.openclaw/gaxios-fetch-patch.cjs"
+      OPENCLAW_GATEWAY_TOKEN: ${TOKEN_1:-e2e_test_token_instance_1}
+      GOOGLE_CLOUD_PROJECT: readbookai
+      GOOGLE_CLOUD_LOCATION: global
+      GOOGLE_APPLICATION_CREDENTIALS: /home/node/.config/gcloud/vertex-sa-key.json
+    volumes:
+      - ./instances/openclaw-1/.openclaw:/home/node/.openclaw
+      - ./instances/openclaw-1/.openclaw/workspace:/home/node/.openclaw/workspace
+      - ./instances/openclaw-1/.botcord:/home/node/.botcord
+      - ./shared/vertex-sa-key.json:/home/node/.config/gcloud/vertex-sa-key.json:ro
+      - ./shared/gaxios-fetch-patch.cjs:/home/node/.openclaw/gaxios-fetch-patch.cjs:ro
+    ports:
+      - "17001:18789"
+      - "17002:18790"
+    init: true
+    restart: unless-stopped
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "lan",
+        "--port",
+        "18789",
+        "--allow-unconfigured",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18789/"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
+
+  openclaw-2:
+    container_name: e2e-openclaw-2
+    image: alpine/openclaw:2026.3.28
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      NODE_OPTIONS: "--require /home/node/.openclaw/gaxios-fetch-patch.cjs"
+      OPENCLAW_GATEWAY_TOKEN: ${TOKEN_2:-e2e_test_token_instance_2}
+      GOOGLE_CLOUD_PROJECT: readbookai
+      GOOGLE_CLOUD_LOCATION: global
+      GOOGLE_APPLICATION_CREDENTIALS: /home/node/.config/gcloud/vertex-sa-key.json
+    volumes:
+      - ./instances/openclaw-2/.openclaw:/home/node/.openclaw
+      - ./instances/openclaw-2/.openclaw/workspace:/home/node/.openclaw/workspace
+      - ./instances/openclaw-2/.botcord:/home/node/.botcord
+      - ./shared/vertex-sa-key.json:/home/node/.config/gcloud/vertex-sa-key.json:ro
+      - ./shared/gaxios-fetch-patch.cjs:/home/node/.openclaw/gaxios-fetch-patch.cjs:ro
+    ports:
+      - "17003:18789"
+      - "17004:18790"
+    init: true
+    restart: unless-stopped
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "lan",
+        "--port",
+        "18789",
+        "--allow-unconfigured",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18789/"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 120s

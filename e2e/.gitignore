@@ -1,0 +1,10 @@
+# Secrets - never commit
+shared/vertex-sa-key.json
+
+# Runtime state - entire instances directory is ephemeral
+instances/
+
+# Build outputs
+node_modules/
+dist/
+artifacts/
