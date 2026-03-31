@@ -6,6 +6,7 @@ import { getBotCordRuntime } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
 import { attachTokenPersistence } from "./credentials.js";
 import { buildSessionKey } from "./session-key.js";
+import { registerSessionRoom } from "./room-context.js";
 import { readFileSync } from "node:fs";
 
 // Simplified inline replacement for loadSessionStore from openclaw/plugin-sdk/mattermost.
@@ -306,6 +307,24 @@ export async function dispatchInbound(params: InboundParams): Promise<void> {
       id: chatType === "group" ? (roomId || replyTarget) : senderId,
     },
   });
+
+  // Track session → room mapping for cross-session context injection.
+  // Register under the *effective* session key (what OpenClaw passes as
+  // ctx.sessionKey in hooks).  When routing overrides the key, use that;
+  // otherwise fall back to the deterministic BotCord key.
+  // Note: if routing merges multiple rooms into one session, last-writer-wins
+  // is intentional — the session context already mixes messages from all rooms.
+  // Also register DM sessions without a roomId so they appear in digests.
+  const effectiveSessionKey = route.sessionKey || sessionKey;
+  const peerId = roomId || senderId;
+  if (peerId) {
+    registerSessionRoom(effectiveSessionKey, {
+      roomId: roomId || `rm_dm_${senderId}`,
+      roomName: groupSubject || roomId || senderName,
+      accountId,
+      lastActivityAt: Date.now(),
+    });
+  }
 
   const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(cfg);
   const formattedBody = core.channel.reply.formatAgentEnvelope({

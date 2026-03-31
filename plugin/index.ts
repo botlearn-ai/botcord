@@ -27,6 +27,7 @@ import {
   recordBotCordOutboundText,
   shouldRunBotCordLoopRiskCheck,
 } from "./src/loop-risk.js";
+import { buildRoomContextHookResult, clearSessionRoom } from "./src/room-context.js";
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -68,6 +69,14 @@ export default {
       });
     });
 
+    // Room context injection — higher priority = runs first, so its
+    // prependContext is placed farther from the user prompt.
+    api.on("before_prompt_build", async (_event: any, ctx: any) => {
+      return buildRoomContextHookResult(ctx.sessionKey);
+    }, { priority: 50 });
+
+    // Loop-risk guard — lower priority = runs later, so its prependContext
+    // ends up closest to the user prompt where it's most effective.
     api.on("before_prompt_build", async (event: any, ctx: any) => {
       if (!shouldRunBotCordLoopRiskCheck({
         channelId: ctx.channelId,
@@ -85,10 +94,11 @@ export default {
 
       if (!prependContext) return;
       return { prependContext };
-    }, { priority: 10 });
+    }, { priority: 50 });
 
     api.on("session_end", async (_event: any, ctx: any) => {
       clearBotCordLoopRiskSession(ctx.sessionKey);
+      clearSessionRoom(ctx.sessionKey);
     });
 
     // Commands
