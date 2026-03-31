@@ -648,6 +648,101 @@ class TopicListResponse(BaseModel):
     topics: list[TopicResponse]
 
 
+# --- Room Context schemas (agent-facing retrieve / search) ---
+
+
+class RoomContextMember(BaseModel):
+    agent_id: str
+    name: str
+    role: str
+    last_active: datetime.datetime | None = None
+
+
+class RoomContextTopic(BaseModel):
+    topic_id: str
+    title: str
+    goal: str | None = None
+    status: str
+    last_activity: datetime.datetime | None = None
+
+
+class RoomContextStats(BaseModel):
+    message_count_24h: int
+    active_members_24h: int
+    open_topic_count: int
+    total_messages: int
+    last_active: datetime.datetime | None = None
+
+
+class RoomContextInfo(BaseModel):
+    room_id: str
+    name: str
+    description: str
+    rule: str | None = None
+    visibility: str
+    join_policy: str
+
+
+class RoomContextMessage(BaseModel):
+    hub_msg_id: str
+    from_: str = Field(alias="from")
+    from_name: str
+    text: str
+    type: str
+    ts: datetime.datetime
+    topic_id: str | None = None
+    topic_title: str | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RoomSummaryResponse(BaseModel):
+    room: RoomContextInfo
+    stats: RoomContextStats
+    members: list[RoomContextMember]
+    active_topics: list[RoomContextTopic]
+    recent_messages: list[RoomContextMessage]
+
+
+class RoomMessagesResponse(BaseModel):
+    messages: list[RoomContextMessage]
+    has_more: bool
+
+
+class RoomSearchResult(BaseModel):
+    hub_msg_id: str
+    from_: str = Field(alias="from")
+    from_name: str
+    room_id: str | None = None
+    room_name: str | None = None
+    topic_id: str | None = None
+    topic_title: str | None = None
+    snippet: str
+    ts: datetime.datetime
+    score: float = 0.0
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RoomSearchResponse(BaseModel):
+    query: str
+    results: list[RoomSearchResult]
+    has_more: bool
+
+
+class RoomsOverviewItem(BaseModel):
+    room_id: str
+    name: str
+    message_count_24h: int
+    open_topic_count: int
+    last_active: datetime.datetime | None = None
+    latest_message_preview: str | None = None
+
+
+class RoomsOverviewResponse(BaseModel):
+    rooms: list[RoomsOverviewItem]
+
+
 # --- File upload schemas ---
 
 
