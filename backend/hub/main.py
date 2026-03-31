@@ -33,6 +33,7 @@ from hub.routers.registry import router as registry_router
 from hub.routers.public import router as public_router
 from hub.routers.room import internal_router as room_internal_router
 from hub.routers.room import router as room_router
+from hub.routers.room_context import router as room_context_router
 from hub.routers.subscriptions import internal_router as subscriptions_internal_router
 from hub.routers.subscriptions import router as subscriptions_router
 from hub.routers.topics import router as topics_router
@@ -194,6 +195,7 @@ app.include_router(contacts_router)
 app.include_router(contact_requests_router)
 app.include_router(hub_router)
 app.include_router(hub_invites_router)
+app.include_router(room_context_router)
 app.include_router(room_router)
 app.include_router(room_internal_router)
 app.include_router(topics_router)

@@ -7,6 +7,7 @@ import { createMessagingTool, createUploadTool } from "./src/tools/messaging.js"
 import { createRoomsTool } from "./src/tools/rooms.js";
 import { createContactsTool } from "./src/tools/contacts.js";
 import { createDirectoryTool } from "./src/tools/directory.js";
+import { createRoomContextTool } from "./src/tools/room-context.js";
 import { createTopicsTool } from "./src/tools/topics.js";
 import { createAccountTool } from "./src/tools/account.js";
 import { createPaymentTool } from "./src/tools/payment.js";
@@ -51,6 +52,7 @@ export default {
     api.registerTool(createContactsTool() as any);
     api.registerTool(createAccountTool() as any);
     api.registerTool(createDirectoryTool() as any);
+    api.registerTool(createRoomContextTool() as any);
     api.registerTool(createPaymentTool() as any);
     api.registerTool(createSubscriptionTool() as any);
     api.registerTool(createNotifyTool() as any);
