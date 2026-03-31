@@ -41,6 +41,10 @@ from hub.schemas import (
 
 router = APIRouter(prefix="/hub", tags=["room-context"])
 
+# Phase 1 search: scan up to this many deduped rows and filter in Python.
+# Phase 2 can replace with PostgreSQL FTS via tsvector.
+_SEARCH_SCAN_LIMIT = 500
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,7 +72,7 @@ def _extract_text(envelope_json: str) -> tuple[str, str, str]:
 
 
 def _snippet(text: str, query: str, max_len: int = 240) -> str:
-    """Extract a snippet around the first occurrence of *query* in *text*."""
+    """Return a window of *text* centred on the first hit of *query*."""
     if not text:
         return ""
     lower = text.lower()
@@ -86,14 +90,15 @@ def _snippet(text: str, query: str, max_len: int = 240) -> str:
     return snippet
 
 
-def _dedup_subquery(room_id: str):
-    """Return a subquery selecting min(id) per msg_id in *room_id*."""
+def _dedup_subquery(room_ids: str | list[str]):
+    """Subquery selecting min(id) per msg_id across one or more rooms."""
+    if isinstance(room_ids, str):
+        where = MessageRecord.room_id == room_ids
+    else:
+        where = MessageRecord.room_id.in_(room_ids)
     return (
         select(func.min(MessageRecord.id).label("min_id"))
-        .where(
-            MessageRecord.room_id == room_id,
-            MessageRecord.state != MessageState.failed,
-        )
+        .where(where, MessageRecord.state != MessageState.failed)
         .group_by(MessageRecord.msg_id)
         .subquery()
     )
@@ -102,7 +107,7 @@ def _dedup_subquery(room_id: str):
 async def _require_room_membership(
     db: AsyncSession, room_id: str, agent_id: str
 ) -> Room:
-    """Load room and verify the agent is a member. Returns the Room object."""
+    """Load room and verify the agent is a member."""
     result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = result.scalar_one_or_none()
     if room is None:
@@ -120,10 +125,22 @@ async def _require_room_membership(
     return room
 
 
+async def _resolve_cursor(
+    db: AsyncSession, hub_msg_id: str, room_id: str | None = None
+) -> int:
+    """Resolve a hub_msg_id cursor to its internal id. Raises 400 on miss."""
+    stmt = select(MessageRecord.id).where(MessageRecord.hub_msg_id == hub_msg_id)
+    if room_id is not None:
+        stmt = stmt.where(MessageRecord.room_id == room_id)
+    cursor_id = (await db.execute(stmt)).scalar_one_or_none()
+    if cursor_id is None:
+        raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
+    return cursor_id
+
+
 async def _resolve_sender_names(
     db: AsyncSession, sender_ids: set[str]
 ) -> dict[str, str]:
-    """Batch-resolve agent display names."""
     sender_ids.discard("")
     if not sender_ids:
         return {}
@@ -138,7 +155,6 @@ async def _resolve_sender_names(
 async def _resolve_topic_titles(
     db: AsyncSession, topic_ids: set[str]
 ) -> dict[str, str]:
-    """Batch-resolve topic titles."""
     topic_ids.discard("")
     topic_ids.discard(None)  # type: ignore[arg-type]
     if not topic_ids:
@@ -172,11 +188,91 @@ def _rows_to_messages(
     return messages
 
 
+# -- Shared search logic used by both room_search and global_search ----------
+
+
+async def _search_messages(
+    db: AsyncSession,
+    q: str,
+    room_ids: str | list[str],
+    limit: int,
+    before: str | None = None,
+    topic_id: str | None = None,
+    sender_id: str | None = None,
+) -> RoomSearchResponse:
+    """Scan deduped messages for *q* and return search results with snippets."""
+    dedup_sub = _dedup_subquery(room_ids)
+    stmt = select(MessageRecord).where(
+        MessageRecord.id.in_(select(dedup_sub.c.min_id))
+    )
+
+    if topic_id is not None:
+        stmt = stmt.where(MessageRecord.topic_id == topic_id)
+    if sender_id is not None:
+        stmt = stmt.where(MessageRecord.sender_id == sender_id)
+    if before is not None:
+        cursor_id = await _resolve_cursor(db, before)
+        stmt = stmt.where(MessageRecord.id < cursor_id)
+
+    stmt = stmt.order_by(MessageRecord.id.desc()).limit(_SEARCH_SCAN_LIMIT)
+    result = await db.execute(stmt)
+    all_rows = list(result.scalars().all())
+
+    # Application-level text match with early exit
+    q_lower = q.lower()
+    # Store (rec, sender_id, text, score) to avoid re-parsing envelope
+    matched: list[tuple[MessageRecord, str, str, float]] = []
+    for rec in all_rows:
+        sid, text, _ = _extract_text(rec.envelope_json)
+        if q_lower in text.lower():
+            score = 1.0 / max(len(text), 1) * 1000
+            matched.append((rec, sid, text, score))
+        if len(matched) >= limit + 1:
+            break
+
+    has_more = len(matched) > limit
+    matched = matched[:limit]
+
+    # Batch-resolve names
+    sender_ids = {sid for _, sid, _, _ in matched}
+    topic_ids_set = {rec.topic_id for rec, _, _, _ in matched if rec.topic_id}
+    room_ids_set = {rec.room_id for rec, _, _, _ in matched if rec.room_id}
+
+    sender_names = await _resolve_sender_names(db, sender_ids)
+    topic_titles = await _resolve_topic_titles(db, topic_ids_set)
+
+    room_names: dict[str, str] = {}
+    if room_ids_set:
+        rn_result = await db.execute(
+            select(Room.room_id, Room.name).where(Room.room_id.in_(room_ids_set))
+        )
+        room_names = dict(rn_result.all())
+
+    results: list[RoomSearchResult] = []
+    for rec, sid, text, score in matched:
+        results.append(
+            RoomSearchResult(
+                hub_msg_id=rec.hub_msg_id,
+                **{"from": sid},
+                from_name=sender_names.get(sid, sid),
+                room_id=rec.room_id,
+                room_name=room_names.get(rec.room_id) if rec.room_id else None,
+                topic_id=rec.topic_id,
+                topic_title=topic_titles.get(rec.topic_id) if rec.topic_id else None,
+                snippet=_snippet(text, q),
+                ts=_utc(rec.created_at),  # type: ignore[arg-type]
+                score=round(score, 4),
+            )
+        )
+
+    return RoomSearchResponse(query=q, results=results, has_more=has_more)
+
+
 # ---------------------------------------------------------------------------
 # 1. GET /hub/rooms/overview
 # ---------------------------------------------------------------------------
-# NOTE: This route is registered BEFORE the parametric /hub/rooms/{room_id}/*
-# routes so that FastAPI matches "/hub/rooms/overview" literally first.
+# NOTE: registered BEFORE the parametric /hub/rooms/{room_id}/* routes so
+# FastAPI matches the literal path first.
 
 
 @router.get("/rooms/overview", response_model=RoomsOverviewResponse)
@@ -187,7 +283,6 @@ async def rooms_overview(
 ):
     """Return a summary list of rooms the current agent has joined."""
 
-    # Get all rooms the agent is a member of
     member_result = await db.execute(
         select(RoomMember.room_id).where(RoomMember.agent_id == current_agent)
     )
@@ -195,7 +290,6 @@ async def rooms_overview(
     if not my_room_ids:
         return RoomsOverviewResponse(rooms=[])
 
-    # Load room metadata
     rooms_result = await db.execute(
         select(Room).where(Room.room_id.in_(my_room_ids))
     )
@@ -204,7 +298,7 @@ async def rooms_overview(
     now = datetime.datetime.now(datetime.timezone.utc)
     cutoff_24h = now - datetime.timedelta(hours=24)
 
-    # Message count per room in last 24h (deduplicated)
+    # 24h message counts (deduplicated)
     msg_count_sub = (
         select(
             MessageRecord.room_id,
@@ -224,7 +318,7 @@ async def rooms_overview(
     )
     msg_counts_24h: dict[str, int] = dict(count_result.all())
 
-    # Open topic counts per room
+    # Open topic counts
     topic_result = await db.execute(
         select(Topic.room_id, func.count()).where(
             Topic.room_id.in_(my_room_ids),
@@ -233,7 +327,7 @@ async def rooms_overview(
     )
     open_topic_counts: dict[str, int] = dict(topic_result.all())
 
-    # Last activity per room (most recent deduped message created_at)
+    # Latest message per room (for preview + last_active)
     last_msg_sub = (
         select(
             MessageRecord.room_id,
@@ -247,7 +341,6 @@ async def rooms_overview(
         .group_by(MessageRecord.room_id, MessageRecord.msg_id)
         .subquery()
     )
-    # Get the latest message per room
     latest_result = await db.execute(
         select(
             last_msg_sub.c.room_id,
@@ -256,7 +349,6 @@ async def rooms_overview(
     )
     latest_ids_by_room: dict[str, int] = dict(latest_result.all())
 
-    # Fetch latest message records for preview
     all_latest_ids = list(latest_ids_by_room.values())
     latest_records: dict[str, MessageRecord] = {}
     if all_latest_ids:
@@ -266,7 +358,6 @@ async def rooms_overview(
         for rec in recs_result.scalars().all():
             latest_records[rec.room_id] = rec
 
-    # Build response
     items: list[RoomsOverviewItem] = []
     for rid in my_room_ids:
         room = rooms_by_id.get(rid)
@@ -291,14 +382,11 @@ async def rooms_overview(
             )
         )
 
-    # Sort by last_active descending (rooms with no messages last)
     items.sort(
         key=lambda x: x.last_active or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc),
         reverse=True,
     )
-    items = items[:limit]
-
-    return RoomsOverviewResponse(rooms=items)
+    return RoomsOverviewResponse(rooms=items[:limit])
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +407,6 @@ async def room_summary(
     now = datetime.datetime.now(datetime.timezone.utc)
     cutoff_24h = now - datetime.timedelta(hours=24)
 
-    # Room info
     room_info = RoomContextInfo(
         room_id=room.room_id,
         name=room.name,
@@ -329,51 +416,47 @@ async def room_summary(
         join_policy=room.join_policy.value,
     )
 
-    # Members with last activity
+    # Members
     members_result = await db.execute(
         select(RoomMember, Agent.display_name)
         .join(Agent, Agent.agent_id == RoomMember.agent_id)
         .where(RoomMember.room_id == room_id)
     )
-    members: list[RoomContextMember] = []
-    for rm, display_name in members_result.all():
-        members.append(
-            RoomContextMember(
-                agent_id=rm.agent_id,
-                name=display_name,
-                role=rm.role.value,
-                last_active=_utc(rm.last_viewed_at),
-            )
+    members = [
+        RoomContextMember(
+            agent_id=rm.agent_id,
+            name=display_name,
+            role=rm.role.value,
+            last_active=_utc(rm.last_viewed_at),
         )
+        for rm, display_name in members_result.all()
+    ]
 
-    # Active topics (open status)
+    # Active topics
     topics_result = await db.execute(
         select(Topic)
         .where(Topic.room_id == room_id, Topic.status == TopicStatus.open)
         .order_by(Topic.updated_at.desc())
     )
-    active_topics: list[RoomContextTopic] = []
-    for t in topics_result.scalars().all():
-        active_topics.append(
-            RoomContextTopic(
-                topic_id=t.topic_id,
-                title=t.title,
-                goal=t.goal,
-                status=t.status.value,
-                last_activity=_utc(t.updated_at),
-            )
+    active_topics = [
+        RoomContextTopic(
+            topic_id=t.topic_id,
+            title=t.title,
+            goal=t.goal,
+            status=t.status.value,
+            last_activity=_utc(t.updated_at),
         )
+        for t in topics_result.scalars().all()
+    ]
 
     # Stats
     dedup_sub = _dedup_subquery(room_id)
 
-    # Total deduped messages
     total_result = await db.execute(
         select(func.count()).select_from(dedup_sub)
     )
     total_messages = total_result.scalar() or 0
 
-    # 24h deduped message count
     dedup_24h_sub = (
         select(func.min(MessageRecord.id).label("min_id"))
         .where(
@@ -384,12 +467,10 @@ async def room_summary(
         .group_by(MessageRecord.msg_id)
         .subquery()
     )
-    count_24h_result = await db.execute(
+    message_count_24h = (await db.execute(
         select(func.count()).select_from(dedup_24h_sub)
-    )
-    message_count_24h = count_24h_result.scalar() or 0
+    )).scalar() or 0
 
-    # Active senders in 24h
     active_senders_sub = (
         select(MessageRecord.sender_id)
         .where(
@@ -400,19 +481,16 @@ async def room_summary(
         .group_by(MessageRecord.sender_id)
         .subquery()
     )
-    active_members_result = await db.execute(
+    active_members_24h = (await db.execute(
         select(func.count()).select_from(active_senders_sub)
-    )
-    active_members_24h = active_members_result.scalar() or 0
+    )).scalar() or 0
 
-    # Last active (most recent deduped message)
-    last_msg_result = await db.execute(
+    last_active_row = (await db.execute(
         select(MessageRecord.created_at)
         .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
         .order_by(MessageRecord.id.desc())
         .limit(1)
-    )
-    last_active_row = last_msg_result.scalar_one_or_none()
+    )).scalar_one_or_none()
 
     stats = RoomContextStats(
         message_count_24h=message_count_24h,
@@ -423,13 +501,12 @@ async def room_summary(
     )
 
     # Recent messages (deduped, newest first)
-    stmt = (
+    recent_result = await db.execute(
         select(MessageRecord)
         .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
         .order_by(MessageRecord.id.desc())
         .limit(recent_limit)
     )
-    recent_result = await db.execute(stmt)
     rows = list(recent_result.scalars().all())
 
     sender_ids = set()
@@ -485,30 +562,11 @@ async def room_messages(
     if sender_id is not None:
         stmt = stmt.where(MessageRecord.sender_id == sender_id)
 
-    # Cursor pagination
     if before is not None:
-        cursor_result = await db.execute(
-            select(MessageRecord.id).where(
-                MessageRecord.hub_msg_id == before,
-                MessageRecord.room_id == room_id,
-                MessageRecord.id.in_(select(dedup_sub.c.min_id)),
-            )
-        )
-        cursor_id = cursor_result.scalar_one_or_none()
-        if cursor_id is None:
-            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
+        cursor_id = await _resolve_cursor(db, before, room_id)
         stmt = stmt.where(MessageRecord.id < cursor_id)
     elif after is not None:
-        cursor_result = await db.execute(
-            select(MessageRecord.id).where(
-                MessageRecord.hub_msg_id == after,
-                MessageRecord.room_id == room_id,
-                MessageRecord.id.in_(select(dedup_sub.c.min_id)),
-            )
-        )
-        cursor_id = cursor_result.scalar_one_or_none()
-        if cursor_id is None:
-            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
+        cursor_id = await _resolve_cursor(db, after, room_id)
         stmt = stmt.where(MessageRecord.id > cursor_id)
 
     stmt = stmt.order_by(MessageRecord.id.desc()).limit(limit + 1)
@@ -551,80 +609,10 @@ async def room_search(
 ):
     """Full-text search within a single room's logical messages."""
     await _require_room_membership(db, room_id, current_agent)
-
-    dedup_sub = _dedup_subquery(room_id)
-    stmt = select(MessageRecord).where(
-        MessageRecord.id.in_(select(dedup_sub.c.min_id))
+    return await _search_messages(
+        db, q, room_id, limit,
+        before=before, topic_id=topic_id, sender_id=sender_id,
     )
-
-    if topic_id is not None:
-        stmt = stmt.where(MessageRecord.topic_id == topic_id)
-    if sender_id is not None:
-        stmt = stmt.where(MessageRecord.sender_id == sender_id)
-    if before is not None:
-        cursor_result = await db.execute(
-            select(MessageRecord.id).where(
-                MessageRecord.hub_msg_id == before,
-                MessageRecord.room_id == room_id,
-                MessageRecord.id.in_(select(dedup_sub.c.min_id)),
-            )
-        )
-        cursor_id = cursor_result.scalar_one_or_none()
-        if cursor_id is None:
-            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
-        stmt = stmt.where(MessageRecord.id < cursor_id)
-
-    # For Phase 1 we use application-level text matching on the deduped set.
-    # A future Phase 2 can add PostgreSQL FTS via tsvector or a canonical index table.
-    # Fetch a reasonable scan window and filter in Python.
-    SCAN_LIMIT = 500
-    stmt = stmt.order_by(MessageRecord.id.desc()).limit(SCAN_LIMIT)
-    result = await db.execute(stmt)
-    all_rows = list(result.scalars().all())
-
-    q_lower = q.lower()
-    matched: list[tuple[MessageRecord, str, float]] = []
-    for rec in all_rows:
-        _, text, _ = _extract_text(rec.envelope_json)
-        if q_lower in text.lower():
-            # Simple relevance: shorter text with match → higher score
-            score = 1.0 / max(len(text), 1) * 1000
-            matched.append((rec, text, score))
-        if len(matched) >= limit + 1:
-            break
-
-    has_more = len(matched) > limit
-    matched = matched[:limit]
-
-    sender_ids = set()
-    topic_ids_set = set()
-    for rec, _, _ in matched:
-        sid, _, _ = _extract_text(rec.envelope_json)
-        sender_ids.add(sid)
-        if rec.topic_id:
-            topic_ids_set.add(rec.topic_id)
-
-    sender_names = await _resolve_sender_names(db, sender_ids)
-    topic_titles = await _resolve_topic_titles(db, topic_ids_set)
-
-    results: list[RoomSearchResult] = []
-    for rec, text, score in matched:
-        sid, _, _ = _extract_text(rec.envelope_json)
-        results.append(
-            RoomSearchResult(
-                hub_msg_id=rec.hub_msg_id,
-                **{"from": sid},
-                from_name=sender_names.get(sid, sid),
-                room_id=rec.room_id,
-                topic_id=rec.topic_id,
-                topic_title=topic_titles.get(rec.topic_id, None) if rec.topic_id else None,
-                snippet=_snippet(text, q),
-                ts=_utc(rec.created_at),  # type: ignore[arg-type]
-                score=round(score, 4),
-            )
-        )
-
-    return RoomSearchResponse(query=q, results=results, has_more=has_more)
 
 
 # ---------------------------------------------------------------------------
@@ -644,103 +632,18 @@ async def global_search(
     before: str | None = Query(default=None),
 ):
     """Cross-room full-text search across all rooms the agent has joined."""
-
-    # Determine which rooms to search
     if room_id is not None:
         await _require_room_membership(db, room_id, current_agent)
-        room_ids = [room_id]
+        search_room_ids: str | list[str] = room_id
     else:
         member_result = await db.execute(
             select(RoomMember.room_id).where(RoomMember.agent_id == current_agent)
         )
-        room_ids = [r[0] for r in member_result.all()]
-        if not room_ids:
+        search_room_ids = [r[0] for r in member_result.all()]
+        if not search_room_ids:
             return RoomSearchResponse(query=q, results=[], has_more=False)
 
-    # Cross-room dedup subquery
-    dedup_sub = (
-        select(func.min(MessageRecord.id).label("min_id"))
-        .where(
-            MessageRecord.room_id.in_(room_ids),
-            MessageRecord.state != MessageState.failed,
-        )
-        .group_by(MessageRecord.msg_id)
-        .subquery()
+    return await _search_messages(
+        db, q, search_room_ids, limit,
+        before=before, topic_id=topic_id, sender_id=sender_id,
     )
-
-    stmt = select(MessageRecord).where(
-        MessageRecord.id.in_(select(dedup_sub.c.min_id))
-    )
-
-    if topic_id is not None:
-        stmt = stmt.where(MessageRecord.topic_id == topic_id)
-    if sender_id is not None:
-        stmt = stmt.where(MessageRecord.sender_id == sender_id)
-    if before is not None:
-        cursor_result = await db.execute(
-            select(MessageRecord.id).where(MessageRecord.hub_msg_id == before)
-        )
-        cursor_id = cursor_result.scalar_one_or_none()
-        if cursor_id is None:
-            raise I18nHTTPException(status_code=400, message_key="invalid_cursor")
-        stmt = stmt.where(MessageRecord.id < cursor_id)
-
-    SCAN_LIMIT = 500
-    stmt = stmt.order_by(MessageRecord.id.desc()).limit(SCAN_LIMIT)
-    result = await db.execute(stmt)
-    all_rows = list(result.scalars().all())
-
-    q_lower = q.lower()
-    matched: list[tuple[MessageRecord, str, float]] = []
-    for rec in all_rows:
-        _, text, _ = _extract_text(rec.envelope_json)
-        if q_lower in text.lower():
-            score = 1.0 / max(len(text), 1) * 1000
-            matched.append((rec, text, score))
-        if len(matched) >= limit + 1:
-            break
-
-    has_more = len(matched) > limit
-    matched = matched[:limit]
-
-    sender_ids = set()
-    topic_ids_set = set()
-    room_ids_set = set()
-    for rec, _, _ in matched:
-        sid, _, _ = _extract_text(rec.envelope_json)
-        sender_ids.add(sid)
-        if rec.topic_id:
-            topic_ids_set.add(rec.topic_id)
-        if rec.room_id:
-            room_ids_set.add(rec.room_id)
-
-    sender_names = await _resolve_sender_names(db, sender_ids)
-    topic_titles = await _resolve_topic_titles(db, topic_ids_set)
-
-    # Resolve room names
-    room_names: dict[str, str] = {}
-    if room_ids_set:
-        rn_result = await db.execute(
-            select(Room.room_id, Room.name).where(Room.room_id.in_(room_ids_set))
-        )
-        room_names = dict(rn_result.all())
-
-    results: list[RoomSearchResult] = []
-    for rec, text, score in matched:
-        sid, _, _ = _extract_text(rec.envelope_json)
-        results.append(
-            RoomSearchResult(
-                hub_msg_id=rec.hub_msg_id,
-                **{"from": sid},
-                from_name=sender_names.get(sid, sid),
-                room_id=rec.room_id,
-                room_name=room_names.get(rec.room_id, None) if rec.room_id else None,
-                topic_id=rec.topic_id,
-                topic_title=topic_titles.get(rec.topic_id, None) if rec.topic_id else None,
-                snippet=_snippet(text, q),
-                ts=_utc(rec.created_at),  # type: ignore[arg-type]
-                score=round(score, 4),
-            )
-        )
-
-    return RoomSearchResponse(query=q, results=results, has_more=has_more)
