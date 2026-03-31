@@ -181,11 +181,14 @@ def _can_invite(room: Room, member: RoomMember) -> bool:
 
     Resolution order:
       1. owner → always True
-      2. member.can_invite is not None → use explicit value
-      3. admin → default True
-      4. room.default_invite
+      2. public + open room → always True (anyone can join anyway)
+      3. member.can_invite is not None → use explicit value
+      4. admin → default True
+      5. room.default_invite
     """
     if member.role == RoomRole.owner:
+        return True
+    if room.visibility == RoomVisibility.public and room.join_policy == RoomJoinPolicy.open:
         return True
     if member.can_invite is not None:
         return member.can_invite

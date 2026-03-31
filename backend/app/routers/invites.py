@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import RequestContext, require_active_agent
 from hub.config import FRONTEND_BASE_URL
 from hub.database import get_db
-from hub.enums import RoomRole, RoomVisibility, SubscriptionStatus
+from hub.enums import RoomJoinPolicy, RoomRole, RoomVisibility, SubscriptionStatus
 from hub.invite_ops import preview_invite, redeem_invite_for_agent
 from hub.models import Agent, AgentSubscription, Contact, Invite, InviteRedemption, Room, RoomMember
 from hub.share_payloads import frontend_url, room_continue_url, room_entry_type
@@ -74,6 +74,8 @@ def _continue_url_for_invite(invite: Invite, room: Room | None = None) -> str:
 
 def _can_invite(room: Room, member: RoomMember) -> bool:
     if member.role == RoomRole.owner:
+        return True
+    if room.visibility == RoomVisibility.public and room.join_policy == RoomJoinPolicy.open:
         return True
     if member.can_invite is not None:
         return member.can_invite

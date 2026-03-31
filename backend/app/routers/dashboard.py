@@ -222,7 +222,13 @@ async def _build_rooms_from_membership(
         my_role = role_val.value if hasattr(role_val, "value") else str(role_val) if role_val else "member"
 
         member_can_invite = invite_overrides.get(rid)
+        is_public_open = (
+            room.visibility == RoomVisibility.public
+            and room.join_policy == RoomJoinPolicy.open
+        )
         if my_role == "owner":
+            computed_can_invite = True
+        elif is_public_open:
             computed_can_invite = True
         elif member_can_invite is not None:
             computed_can_invite = member_can_invite
