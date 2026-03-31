@@ -12,10 +12,6 @@ type FollowUpDeliveryResult = {
 export type TransferResult = {
   tx: WalletTransaction;
   transfer_record_message: FollowUpDeliveryResult;
-  notifications: {
-    payer: FollowUpDeliveryResult;
-    payee: FollowUpDeliveryResult;
-  };
 };
 
 
@@ -57,31 +53,10 @@ export function buildTransferRecordMessage(tx: WalletTransaction): string {
   ].filter(Boolean).join("\n");
 }
 
-export function buildTransferNotificationMessage(
-  tx: WalletTransaction,
-  role: "payer" | "payee",
-): string {
-  if (role === "payer") {
-    return `[BotCord Notice] Transfer sent: ${formatCoinAmount(tx.amount_minor)} to ${tx.to_agent_id} (tx: ${tx.tx_id})`;
-  }
-  return `[BotCord Notice] Payment received: ${formatCoinAmount(tx.amount_minor)} from ${tx.from_agent_id} (tx: ${tx.tx_id})`;
-}
-
 export function formatFollowUpDeliverySummary(result: TransferResult): string {
-  const lines = [
-    `Transfer record message: ${result.transfer_record_message.sent ? "sent" : "failed"}`,
-    `Payer notification: ${result.notifications.payer.sent ? "sent" : "failed"}`,
-    `Payee notification: ${result.notifications.payee.sent ? "sent" : "failed"}`,
-  ];
-  const failures = [
-    result.transfer_record_message.error,
-    result.notifications.payer.error,
-    result.notifications.payee.error,
-  ].filter(Boolean);
-  if (failures.length > 0) {
-    lines.push("Warning: some follow-up messages failed to send.");
-  }
-  return lines.join("\n");
+  return `Transfer record message: ${result.transfer_record_message.sent ? "sent" : "failed"}${
+    result.transfer_record_message.error ? ` (${result.transfer_record_message.error})` : ""
+  }`;
 }
 
 async function sendRecordMessage(
@@ -90,30 +65,6 @@ async function sendRecordMessage(
 ): Promise<FollowUpDeliveryResult> {
   try {
     const response = await client.sendMessage(tx.to_agent_id || "", buildTransferRecordMessage(tx));
-    return { attempted: true, sent: true, hub_msg_id: response.hub_msg_id };
-  } catch (err: any) {
-    return { attempted: true, sent: false, error: err?.message ?? String(err) };
-  }
-}
-
-async function sendNotification(
-  client: BotCordClient,
-  to: string,
-  tx: WalletTransaction,
-  role: "payer" | "payee",
-): Promise<FollowUpDeliveryResult> {
-  try {
-    const response = await client.sendSystemMessage(to, buildTransferNotificationMessage(tx, role), {
-      event: "wallet_transfer_notice",
-      role,
-      tx_id: tx.tx_id,
-      amount_minor: tx.amount_minor,
-      asset_code: tx.asset_code,
-      from_agent_id: tx.from_agent_id,
-      to_agent_id: tx.to_agent_id,
-      reference_type: tx.reference_type,
-      reference_id: tx.reference_id,
-    });
     return { attempted: true, sent: true, hub_msg_id: response.hub_msg_id };
   } catch (err: any) {
     return { attempted: true, sent: false, error: err?.message ?? String(err) };
@@ -133,18 +84,10 @@ export async function executeTransfer(
   },
 ): Promise<TransferResult> {
   const tx = await client.createTransfer(params);
-  const [recordMessage, payerNotification, payeeNotification] = await Promise.all([
-    sendRecordMessage(client, tx),
-    sendNotification(client, client.getAgentId(), tx, "payer"),
-    sendNotification(client, params.to_agent_id, tx, "payee"),
-  ]);
+  const recordMessage = await sendRecordMessage(client, tx);
 
   return {
     tx,
     transfer_record_message: recordMessage,
-    notifications: {
-      payer: payerNotification,
-      payee: payeeNotification,
-    },
   };
 }

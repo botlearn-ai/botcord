@@ -81,7 +81,6 @@ function sanitizeTransferResult(transfer: any): any {
   return {
     tx: sanitizeTransaction(transfer.tx),
     transfer_record_message: transfer.transfer_record_message,
-    notifications: transfer.notifications,
   };
 }
 
@@ -226,7 +225,7 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
         },
         amount_minor: {
           type: "string" as const,
-          description: "Amount in minor units (string) — for transfer, topup, withdraw",
+          description: "Amount in minor units (1 COIN = 100 minor units). To transfer N coins, pass N × 100. Example: 10 COIN → \"1000\" — for transfer, topup, withdraw",
         },
         memo: {
           type: "string" as const,
@@ -262,7 +261,7 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
         },
         fee_minor: {
           type: "string" as const,
-          description: "Optional withdrawal fee in minor units — for withdraw",
+          description: "Optional withdrawal fee in minor units (1 COIN = 100 minor units) — for withdraw",
         },
         withdrawal_id: {
           type: "string" as const,
