@@ -308,6 +308,61 @@ function extractShareId(result: AgentResult): string | undefined {
   return undefined;
 }
 
+/**
+ * Extract a claim code (clm_xxx) from agent output.
+ */
+function extractClaimCode(result: AgentResult): string | undefined {
+  const sources = [result.text ?? "", result.raw];
+  for (const text of sources) {
+    const m = text.match(/clm_[a-fA-F0-9]{32}/);
+    if (m) return m[0];
+  }
+  return undefined;
+}
+
+/** Fixed E2E test user UUID for auto-claiming agents. */
+const E2E_TEST_USER_ID = "e2e00000-0000-0000-0000-000000000001";
+
+/**
+ * Auto-claim an agent by directly updating the database.
+ * Sets user_id and claimed_at so the agent is considered "claimed"
+ * and the LLM won't ask the user to claim before proceeding.
+ */
+async function autoClaimAgent(
+  claimCode: string,
+  env: EnvironmentConfig,
+  instanceId: string,
+): Promise<boolean> {
+  const dbUrl = process.env[env.db_url_env];
+  if (!dbUrl) {
+    console.warn(`  [${instanceId}] Cannot auto-claim: ${env.db_url_env} not set`);
+    return false;
+  }
+  try {
+    const { default: pg } = await import("pg");
+    const client = new pg.Client({ connectionString: dbUrl });
+    try {
+      await client.connect();
+      const res = await client.query(
+        `UPDATE agents SET user_id = $1, claimed_at = NOW() WHERE claim_code = $2 AND user_id IS NULL`,
+        [E2E_TEST_USER_ID, claimCode],
+      );
+      if (res.rowCount && res.rowCount > 0) {
+        console.log(`  [${instanceId}] Auto-claimed agent (claim_code=${claimCode})`);
+        return true;
+      } else {
+        console.warn(`  [${instanceId}] Auto-claim: no matching unclaimed agent for ${claimCode}`);
+        return false;
+      }
+    } finally {
+      await client.end();
+    }
+  } catch (err) {
+    console.error(`  [${instanceId}] Auto-claim failed: ${err}`);
+    return false;
+  }
+}
+
 async function executeSteps(
   runtime: OpenClawRuntime,
   instances: InstanceState[],
@@ -444,6 +499,25 @@ async function executeSteps(
         await sleep(delay * 1000);
         await runtime.waitHealthy(scenario.runtime.health_timeout_seconds);
         console.log("  All instances healthy after recovery.");
+        break;
+      }
+
+      // ── Auto-claim agents via DB ────────────────────────────────
+      case "runtime.auto_claim": {
+        for (const inst of targets) {
+          const ev = evidenceMap.get(inst.id)!;
+          // Find claim code from any previous agent result
+          let claimCode: string | undefined;
+          for (const result of Object.values(ev.agentResults)) {
+            claimCode = extractClaimCode(result);
+            if (claimCode) break;
+          }
+          if (claimCode) {
+            await autoClaimAgent(claimCode, env, inst.id);
+          } else {
+            console.warn(`  [${inst.id}] No claim code found in agent outputs — skipping auto-claim`);
+          }
+        }
         break;
       }
 

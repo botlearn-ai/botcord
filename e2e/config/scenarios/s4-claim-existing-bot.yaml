@@ -34,6 +34,7 @@ steps:
     description: Read BotCord credentials to get agent ID
     params:
       glob: .botcord/credentials/*.json
+  # NOTE: No auto_claim here — S4 tests the unclaimed state (user_id IS NULL)
   # -- Claim-specific verification ------------------------------------
   - id: query_claim_code
     action: db.query
