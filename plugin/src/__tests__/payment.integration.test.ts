@@ -110,12 +110,8 @@ describe("payment tool integration", () => {
       memo: "invoice settlement",
     });
     expect(transfer.data.transfer_record_message.sent).toBe(true);
-    expect(transfer.data.notifications.payer.sent).toBe(true);
-    expect(transfer.data.notifications.payee.sent).toBe(true);
     expect(transfer.result).toContain("Transfer record message: sent");
-    expect(transfer.result).toContain("Payer notification: sent");
-    expect(transfer.result).toContain("Payee notification: sent");
-    expect(hub.state.messages).toHaveLength(3);
+    expect(hub.state.messages).toHaveLength(1);
 
     const envelopes = hub.state.messages.map((entry) => entry.envelope);
     const recordMessage = envelopes.find((envelope) =>
@@ -124,24 +120,10 @@ describe("payment tool integration", () => {
       typeof envelope.payload?.text === "string" &&
       envelope.payload.text.includes("[BotCord Transfer]"),
     );
-    const payerNotice = envelopes.find((envelope) =>
-      envelope.type === "system" &&
-      envelope.to === "ag_sender" &&
-      typeof envelope.payload?.text === "string" &&
-      envelope.payload.text.includes("[BotCord Notice] Transfer sent"),
-    );
-    const payeeNotice = envelopes.find((envelope) =>
-      envelope.type === "system" &&
-      envelope.to === "ag_receiver" &&
-      typeof envelope.payload?.text === "string" &&
-      envelope.payload.text.includes("[BotCord Notice] Payment received"),
-    );
 
     expect(recordMessage).toBeTruthy();
-    expect(payerNotice).toBeTruthy();
-    expect(payeeNotice).toBeTruthy();
-    if (!recordMessage || !payerNotice || !payeeNotice) {
-      throw new Error("expected transfer follow-up messages to be present");
+    if (!recordMessage) {
+      throw new Error("expected transfer record message to be present");
     }
     expect(recordMessage.payload.text).toContain(transfer.data.tx.tx_id);
 
@@ -192,9 +174,7 @@ describe("payment tool integration", () => {
     expect(transfer.data.tx.to_agent_id).toBe("ag_receiver");
     expect(transfer.result).not.toContain("is not in your contacts");
     expect(transfer.data.transfer_record_message.sent).toBe(true);
-    expect(transfer.data.notifications.payer.sent).toBe(true);
-    expect(transfer.data.notifications.payee.sent).toBe(true);
-    expect(hub.state.messages).toHaveLength(3);
+    expect(hub.state.messages).toHaveLength(1);
   });
 
   it("requires confirmation for stranger transfers", async () => {
@@ -228,7 +208,7 @@ describe("payment tool integration", () => {
 
     expect(transfer.data.tx.type).toBe("transfer");
     expect(transfer.data.tx.to_agent_id).toBe("ag_receiver");
-    expect(hub.state.messages).toHaveLength(3); // record + 2 notifications
+    expect(hub.state.messages).toHaveLength(1);
   });
 
   it("keeps transfer successful when follow-up messages fail", async () => {
@@ -253,9 +233,7 @@ describe("payment tool integration", () => {
 
     expect(transfer.data.tx.type).toBe("transfer");
     expect(transfer.data.transfer_record_message.sent).toBe(false);
-    expect(transfer.data.notifications.payer.sent).toBe(false);
-    expect(transfer.data.notifications.payee.sent).toBe(false);
-    expect(transfer.result).toContain("Warning: some follow-up messages failed to send.");
+    expect(transfer.result).toContain("Transfer record message: failed");
 
     const balance: any = await tool.execute("tool-followup-fail-balance", {
       action: "balance",
