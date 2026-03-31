@@ -10,7 +10,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import ShareModal from "./ShareModal";
 import CopyableId from "@/components/ui/CopyableId";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -19,7 +18,6 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function RoomHeader() {
-  const [showShareModal, setShowShareModal] = useState(false);
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
   const locale = useLanguage();
   const t = roomList[locale];
@@ -147,7 +145,6 @@ export default function RoomHeader() {
   };
 
   return (
-    <>
       <div className="flex min-h-16 items-start justify-between border-b border-glass-border px-4 py-3">
         <div className="min-w-0 py-0.5">
           <div className="flex items-center gap-2">
@@ -174,22 +171,9 @@ export default function RoomHeader() {
         </div>
         <div className="flex items-center gap-2 self-start py-0.5">
           {isAuthedReady && authRoom && (
-            <>
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
                 {authRoom.my_role}
               </span>
-              <button
-                onClick={() => setShowShareModal(true)}
-                className="rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-                title={t.shareRoom}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M4 8V12C4 12.5523 4.44772 13 5 13H11C11.5523 13 12 12.5523 12 12V8" />
-                  <path d="M8 3V10" />
-                  <path d="M5.5 5.5L8 3L10.5 5.5" />
-                </svg>
-              </button>
-            </>
           )}
           {renderJoinButton()}
           {isGuest && (
@@ -211,15 +195,5 @@ export default function RoomHeader() {
           </button>
         </div>
       </div>
-
-      {showShareModal && isAuthedReady && (
-        <ShareModal
-          roomId={room.room_id}
-          roomName={room.name}
-          roomVisibility={room.visibility}
-          onClose={() => setShowShareModal(false)}
-        />
-      )}
-    </>
   );
 }

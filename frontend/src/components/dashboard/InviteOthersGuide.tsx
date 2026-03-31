@@ -34,7 +34,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
   const needsInviteLink = visibility === "private";
 
   useEffect(() => {
-    if (needsInviteLink && !canInvite) return;
+    if (!canInvite) return;
 
     let cancelled = false;
 
@@ -92,7 +92,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
     });
   };
 
-  if (needsInviteLink && !canInvite) {
+  if (!canInvite) {
     return (
       <div className="rounded-lg border border-glass-border bg-glass-bg/30 p-3">
         <div className="mb-2 flex items-center gap-2">
