@@ -11,7 +11,7 @@
  */
 import WebSocket from "ws";
 import { BotCordClient } from "./client.js";
-import { handleInboxMessage } from "./inbound.js";
+import { handleInboxMessageBatch } from "./inbound.js";
 import { displayPrefix } from "./config.js";
 import { buildHubWebSocketUrl } from "./hub-url.js";
 
@@ -51,31 +51,39 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
   let consecutiveAuthFailures = 0;
   const MAX_AUTH_FAILURES = 5;
   let processing = false;
+  let pendingUpdate = false;
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   const KEEPALIVE_INTERVAL = 20_000; // 20s — well under Caddy/proxy 30s timeout
 
   async function fetchAndDispatch() {
-    if (processing) return;
+    if (processing) {
+      // Signal that another fetch is needed after the current one finishes
+      pendingUpdate = true;
+      return;
+    }
     processing = true;
     try {
-      const resp = await client.pollInbox({ limit: 20, ack: false });
-      const messages = resp.messages || [];
-      const ackedIds: string[] = [];
-      for (const msg of messages) {
+      do {
+        pendingUpdate = false;
+        const resp = await client.pollInbox({ limit: 20, ack: false });
+        const messages = resp.messages || [];
         try {
-          await handleInboxMessage(msg, accountId, cfg);
-          ackedIds.push(msg.hub_msg_id);
+          const ackedIds = await handleInboxMessageBatch(messages, accountId, cfg);
+          if (ackedIds.length > 0) {
+            try {
+              await client.ackMessages(ackedIds);
+            } catch (err: any) {
+              log?.error(`[${dp}] ws ack error: ${err.message}`);
+            }
+          }
         } catch (err: any) {
-          log?.error(`[${dp}] ws dispatch error for ${msg.hub_msg_id}: ${err.message}`);
+          log?.error(`[${dp}] ws batch dispatch error: ${err.message}`);
         }
-      }
-      if (ackedIds.length > 0) {
-        try {
-          await client.ackMessages(ackedIds);
-        } catch (err: any) {
-          log?.error(`[${dp}] ws ack error: ${err.message}`);
+        // If we got a full batch, there may be more — keep draining
+        if (messages.length >= 20) {
+          pendingUpdate = true;
         }
-      }
+      } while (pendingUpdate);
     } catch (err: any) {
       log?.error(`[${dp}] ws poll error: ${err.message}`);
     } finally {
