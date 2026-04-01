@@ -13,6 +13,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useOwnerChatStreamStore } from "@/store/useOwnerChatStreamStore";
 
 let realtimeSyncInFlight = false;
 let queuedRealtimeEvent: RealtimeMetaEvent | null = null;
@@ -79,9 +80,14 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         const openedRoomId = uiState.openedRoomId;
         const userChatRoomId = uiState.userChatRoomId;
 
+        // Owner-chat WS handles its own realtime delivery — skip Supabase
+        // realtime events for the owner-chat room when the WS is connected.
+        const ownerChatWsConnected = useOwnerChatStreamStore.getState().wsConnected;
+        const isOwnerChatEvent = userChatRoomId && currentEvent?.room_id === userChatRoomId;
+
         // Handle typing events — just toggle the UI flag, no data fetching
         if (currentEvent && isTypingRealtimeEvent(currentEvent.type)) {
-          if (userChatRoomId && currentEvent.room_id === userChatRoomId) {
+          if (isOwnerChatEvent && !ownerChatWsConnected) {
             uiState.setUserChatAgentTyping(true);
           }
           nextEvent = queuedRealtimeEvent;
@@ -92,8 +98,8 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         if (
           currentEvent
           && isMessageRealtimeEvent(currentEvent.type)
-          && userChatRoomId
-          && currentEvent.room_id === userChatRoomId
+          && isOwnerChatEvent
+          && !ownerChatWsConnected
         ) {
           uiState.setUserChatAgentTyping(false);
         }
@@ -126,11 +132,13 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
           });
         }
 
-        // User-chat pane has its own room slot so it doesn't clobber openedRoomId
+        // User-chat pane has its own room slot so it doesn't clobber openedRoomId.
+        // When the owner-chat WS is connected, skip polling — WS handles delivery.
         if (
           userChatRoomId
           && userChatRoomId !== openedRoomId
           && (!currentEvent || currentEvent.room_id === userChatRoomId)
+          && !ownerChatWsConnected
         ) {
           await chatStore.pollNewMessages(userChatRoomId, {
             expectedHubMsgId: isMessageLikeRealtimeEvent(currentEvent) ? currentEvent.hub_msg_id : null,

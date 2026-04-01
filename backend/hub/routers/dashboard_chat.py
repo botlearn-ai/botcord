@@ -28,12 +28,7 @@ from hub.models import (
     RoomRole,
     RoomVisibility,
 )
-from hub.routers.hub import (
-    notify_inbox,
-    build_message_realtime_event,
-    build_agent_realtime_event,
-    _publish_agent_realtime_event,
-)
+from hub.routers.hub import notify_inbox
 from hub.i18n import I18nHTTPException
 
 logger = logging.getLogger(__name__)
@@ -221,29 +216,10 @@ async def send_chat_message(
 
     await db.commit()
 
-    # Notify inbox listeners so the plugin picks up the message
-    await notify_inbox(
-        agent_id,
-        db=db,
-        realtime_event=build_message_realtime_event(
-            type="message",
-            agent_id=agent_id,
-            sender_id=agent_id,
-            room_id=room_id,
-            hub_msg_id=hub_msg_id,
-            created_at=record.created_at,
-            payload=payload,
-            sender_name=agent_display_name,
-        ),
-    )
-
-    # Publish a typing indicator so the dashboard shows the agent is processing
-    typing_event = build_agent_realtime_event(
-        type="typing",
-        agent_id=agent_id,
-        room_id=room_id,
-    )
-    await _publish_agent_realtime_event(db, typing_event)
+    # Notify inbox listeners so the plugin picks up the message.
+    # Skip Supabase realtime event — the dedicated owner-chat WS path
+    # handles real-time delivery to the dashboard frontend.
+    await notify_inbox(agent_id, db=db)
 
     return ChatSendResponse(
         hub_msg_id=hub_msg_id,
