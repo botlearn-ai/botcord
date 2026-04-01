@@ -26,6 +26,7 @@ from hub.routers.contacts import router as contacts_router
 from hub.routers.dashboard import router as dashboard_router
 from hub.routers.dashboard import share_public_router
 from hub.routers.dashboard_chat import router as dashboard_chat_router
+from hub.routers.owner_chat_ws import router as owner_chat_ws_router
 from hub.routers.files import router as files_router
 from hub.routers.hub import router as hub_router
 from hub.routers.invites import router as hub_invites_router
@@ -207,6 +208,7 @@ app.include_router(subscriptions_router)
 app.include_router(subscriptions_internal_router)
 app.include_router(dashboard_router)
 app.include_router(dashboard_chat_router)
+app.include_router(owner_chat_ws_router)
 app.include_router(public_router)
 app.include_router(share_public_router)
 app.include_router(app_users_router)

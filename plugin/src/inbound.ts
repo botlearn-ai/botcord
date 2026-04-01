@@ -24,6 +24,7 @@ function loadSessionStore(storePath: string): Record<string, any> {
 import { sanitizeUntrustedContent, sanitizeSenderName } from "./sanitize.js";
 import { BotCordClient } from "./client.js";
 import { createBotCordReplyDispatcher } from "./reply-dispatcher.js";
+import { activeOwnerChatStreams } from "./owner-chat-stream.js";
 import type { InboxMessage, MessageType } from "./types.js";
 
 /** Normalize notifySession (string | string[] | undefined) to a flat array. */
@@ -191,27 +192,54 @@ async function handleDashboardUserChat(
     replyTarget,
   });
 
+  // Register owner-chat stream so after_tool_call hook can stream blocks
+  const effectiveSessionKey = route.sessionKey || sessionKey;
+  const traceId = msg.hub_msg_id;
+  if (traceId) {
+    activeOwnerChatStreams.set(effectiveSessionKey, {
+      traceId,
+      client,
+      seq: 1,
+    });
+  }
+
   // Use buffered block dispatcher with auto-delivery to the chat room.
   // The deliver callback receives a ReplyPayload object (not a plain string).
-  await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
-    ctx: ctxPayload,
-    cfg,
-    dispatcherOptions: {
-      deliver: async (payload: any) => {
-        const text = payload?.text ?? "";
-        const mediaUrl = payload?.mediaUrl;
-        if (mediaUrl) {
-          await replyDispatcher.sendMedia(text, mediaUrl);
-        } else if (text) {
-          await replyDispatcher.sendText(text);
-        }
+  try {
+    await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+      ctx: ctxPayload,
+      cfg,
+      dispatcherOptions: {
+        deliver: async (payload: any) => {
+          const text = payload?.text ?? "";
+          const mediaUrl = payload?.mediaUrl;
+
+          // Stream assistant block to Hub before sending the final reply
+          if (traceId && text) {
+            const stream = activeOwnerChatStreams.get(effectiveSessionKey);
+            if (stream) {
+              await client.postStreamBlock(traceId, stream.seq++, {
+                kind: "assistant",
+                payload: { text },
+              });
+            }
+          }
+
+          if (mediaUrl) {
+            await replyDispatcher.sendMedia(text, mediaUrl);
+          } else if (text) {
+            await replyDispatcher.sendText(text);
+          }
+        },
+        onError: (err: any, info: any) => {
+          console.error(`[botcord] user-chat ${info?.kind ?? "unknown"} reply error:`, err);
+        },
       },
-      onError: (err: any, info: any) => {
-        console.error(`[botcord] user-chat ${info?.kind ?? "unknown"} reply error:`, err);
-      },
-    },
-    replyOptions: {},
-  });
+      replyOptions: {},
+    });
+  } finally {
+    activeOwnerChatStreams.delete(effectiveSessionKey);
+  }
 }
 
 /**

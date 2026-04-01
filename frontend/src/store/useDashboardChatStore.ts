@@ -88,6 +88,7 @@ interface DashboardChatState {
   applyRealtimeEventHint: (event: RealtimeMetaEvent) => void;
   replaceOverview: (overview: DashboardOverview) => void;
 
+  insertMessage: (roomId: string, message: DashboardMessage) => void;
   loadRoomMessages: (roomId: string) => Promise<void>;
   pollNewMessages: (roomId: string, opts?: { expectedHubMsgId?: string | null; retries?: number }) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
@@ -219,6 +220,15 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         if (!hubMsgId) return false;
         return (get().messages[roomId] || []).some((message) => message.hub_msg_id === hubMsgId);
       },
+
+      insertMessage: (roomId, message) =>
+        set((state) => {
+          const current = state.messages[roomId] || [];
+          if (current.some((m) => m.hub_msg_id === message.hub_msg_id)) return state;
+          return {
+            messages: { ...state.messages, [roomId]: [...current, message] },
+          };
+        }),
 
       applyRealtimeEventHint: (event) =>
         set((state) => ({

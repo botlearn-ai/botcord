@@ -86,6 +86,33 @@ async def get_current_claimed_agent(
     return agent_id
 
 
+def verify_supabase_token(token: str) -> str:
+    """Verify a Supabase JWT and return the ``sub`` claim (supabase user id).
+
+    Raises ``jwt.InvalidTokenError`` on any verification failure.
+    """
+    if not SUPABASE_JWT_SECRET and not _jwks_client:
+        raise jwt.InvalidTokenError("Supabase auth not configured")
+
+    if _jwks_client:
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["ES256", "RS256"],
+            audience="authenticated",
+        )
+    else:
+        payload = jwt.decode(
+            token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated",
+        )
+
+    sub = payload.get("sub")
+    if not sub:
+        raise jwt.InvalidTokenError("Missing sub claim")
+    return sub
+
+
 def _parse_dashboard_token(
     authorization: str,
     x_active_agent: str | None,
@@ -108,33 +135,13 @@ def _parse_dashboard_token(
         pass
 
     # Slow path: Supabase JWT — need X-Active-Agent + ownership check later.
-    if not SUPABASE_JWT_SECRET and not _jwks_client:
-        raise I18nHTTPException(status_code=401, message_key="user_auth_not_configured")
-
     try:
-        if _jwks_client:
-            # ES256 / RS256 via JWKS endpoint
-            signing_key = _jwks_client.get_signing_key_from_jwt(token)
-            payload = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["ES256", "RS256"],
-                audience="authenticated",
-            )
-        else:
-            # Legacy HS256 via symmetric secret
-            payload = jwt.decode(
-                token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated",
-            )
+        supabase_user_id = verify_supabase_token(token)
     except jwt.InvalidTokenError:
         raise I18nHTTPException(status_code=401, message_key="invalid_token")
 
     if not x_active_agent:
         raise I18nHTTPException(status_code=400, message_key="active_agent_header_required")
-
-    supabase_user_id = payload.get("sub")
-    if not supabase_user_id:
-        raise I18nHTTPException(status_code=401, message_key="invalid_token")
 
     return x_active_agent, supabase_user_id
 

@@ -171,6 +171,24 @@ export class BotCordClient {
     return data;
   }
 
+  // ── Stream blocks (owner-chat WS) ────────────────────────────
+
+  async postStreamBlock(
+    traceId: string,
+    seq: number,
+    block: { kind: string; payload: Record<string, unknown> },
+  ): Promise<void> {
+    try {
+      await this.hubFetch("/hub/stream-block", {
+        method: "POST",
+        body: JSON.stringify({ trace_id: traceId, seq, block }),
+      });
+    } catch (err) {
+      // Stream blocks are best-effort; log but don't throw
+      console.warn(`[botcord] postStreamBlock failed (trace=${traceId} seq=${seq}):`, err);
+    }
+  }
+
   // ── Messaging ─────────────────────────────────────────────────
 
   async sendMessage(

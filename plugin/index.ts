@@ -29,6 +29,7 @@ import {
   shouldRunBotCordLoopRiskCheck,
 } from "./src/loop-risk.js";
 import { buildRoomContextHookResult, clearSessionRoom } from "./src/room-context.js";
+import { activeOwnerChatStreams } from "./src/owner-chat-stream.js";
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -63,6 +64,43 @@ export default {
 
     // Hooks
     api.on("after_tool_call", async (event: any, ctx: any) => {
+      // Stream tool blocks to Hub for active owner-chat sessions
+      const stream = activeOwnerChatStreams.get(ctx.sessionKey);
+      if (stream) {
+        try {
+          const toolName = ctx.toolName ?? "unknown";
+          const paramsSummary: Record<string, unknown> = {};
+          if (event.params && typeof event.params === "object") {
+            // Include only safe summary fields, not full payloads
+            for (const [k, v] of Object.entries(event.params)) {
+              paramsSummary[k] = typeof v === "string" && v.length > 200
+                ? v.slice(0, 200) + "..."
+                : v;
+            }
+          }
+          await stream.client.postStreamBlock(stream.traceId, stream.seq++, {
+            kind: "tool_call",
+            payload: { name: toolName, params: paramsSummary },
+          });
+
+          if (event.result != null) {
+            const resultStr = typeof event.result === "string"
+              ? event.result
+              : JSON.stringify(event.result);
+            await stream.client.postStreamBlock(stream.traceId, stream.seq++, {
+              kind: "tool_result",
+              payload: {
+                name: toolName,
+                result: resultStr.length > 500 ? resultStr.slice(0, 500) + "..." : resultStr,
+              },
+            });
+          }
+        } catch (err) {
+          console.warn("[botcord] owner-chat stream block error:", err);
+        }
+      }
+
+      // Existing loop-risk tracking
       if (ctx.toolName !== "botcord_send") return;
       if (!didBotCordSendSucceed(event.result, event.error)) return;
       recordBotCordOutboundText({
