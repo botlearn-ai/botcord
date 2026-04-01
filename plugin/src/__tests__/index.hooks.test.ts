@@ -43,8 +43,9 @@ describe("botcord plugin hooks", () => {
 
     expect(on.mock.calls.map((call) => call[0])).toEqual([
       "after_tool_call",
-      "before_prompt_build", // loop-risk
       "before_prompt_build", // room context injection
+      "before_prompt_build", // working memory injection
+      "before_prompt_build", // loop-risk
       "session_end",
     ]);
   });
