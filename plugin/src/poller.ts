@@ -3,7 +3,7 @@
  * Used when websocket delivery is unavailable.
  */
 import { BotCordClient } from "./client.js";
-import { handleInboxMessage } from "./inbound.js";
+import { handleInboxMessageBatch } from "./inbound.js";
 import { displayPrefix } from "./config.js";
 
 interface PollerOptions {
@@ -29,16 +29,7 @@ export function startPoller(opts: PollerOptions): { stop: () => void } {
     try {
       const resp = await client.pollInbox({ limit: 20, ack: false });
       const messages = resp.messages || [];
-      const ackedIds: string[] = [];
-
-      for (const msg of messages) {
-        try {
-          await handleInboxMessage(msg, accountId, cfg);
-          ackedIds.push(msg.hub_msg_id);
-        } catch (err: any) {
-          log?.error(`[${dp}] failed to dispatch message ${msg.hub_msg_id}: ${err.message}`);
-        }
-      }
+      const ackedIds = await handleInboxMessageBatch(messages, accountId, cfg);
 
       if (ackedIds.length > 0) {
         try {

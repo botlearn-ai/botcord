@@ -30,6 +30,7 @@ import {
 } from "./src/loop-risk.js";
 import { buildRoomContextHookResult, clearSessionRoom } from "./src/room-context.js";
 import { activeOwnerChatStreams } from "./src/owner-chat-stream.js";
+import { buildWorkingMemoryHookResult } from "./src/memory-hook.js";
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -109,10 +110,15 @@ export default {
       });
     });
 
-    // Room context injection — higher priority = runs first, so its
+    // Room context injection — highest priority among BotCord hooks, so its
     // prependContext is placed farther from the user prompt.
     api.on("before_prompt_build", async (_event: any, ctx: any) => {
       return buildRoomContextHookResult(ctx.sessionKey);
+    }, { priority: 60 });
+
+    // Working memory injection — between room context and loop-risk.
+    api.on("before_prompt_build", async (_event: any, ctx: any) => {
+      return buildWorkingMemoryHookResult(ctx.sessionKey);
     }, { priority: 50 });
 
     // Loop-risk guard — lower priority = runs later, so its prependContext

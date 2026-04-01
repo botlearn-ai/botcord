@@ -7,6 +7,7 @@ import { resolveAccountConfig } from "./config.js";
 import { attachTokenPersistence } from "./credentials.js";
 import { buildSessionKey } from "./session-key.js";
 import { registerSessionRoom } from "./room-context.js";
+import { processOutboundMemory } from "./memory-hook.js";
 import { readFileSync } from "node:fs";
 
 // Simplified inline replacement for loadSessionStore from openclaw/plugin-sdk/mattermost.
@@ -91,6 +92,76 @@ export interface InboundParams {
   topic?: string;
   topicId?: string;
   mentioned?: boolean;
+}
+
+/**
+ * Batch handler for InboxMessages — groups messages by session key and
+ * dispatches each group as a single combined message to OpenClaw.
+ * Same-session A2A messages are merged into one dispatch to avoid
+ * triggering multiple AI inference calls for the same conversation.
+ *
+ * Returns the hub_msg_ids of successfully handled messages.
+ */
+export async function handleInboxMessageBatch(
+  messages: InboxMessage[],
+  accountId: string,
+  cfg: any,
+): Promise<string[]> {
+  if (messages.length === 0) return [];
+
+  // Separate dashboard user chat messages (not batchable — single fixed session)
+  // and group A2A messages by computed session key.
+  const dashboardMsgs: InboxMessage[] = [];
+  const a2aGroups = new Map<string, InboxMessage[]>();
+
+  for (const msg of messages) {
+    if (msg.source_type === "dashboard_user_chat") {
+      dashboardMsgs.push(msg);
+      continue;
+    }
+    const envelope = msg.envelope;
+    const senderId = envelope.from || "unknown";
+    const roomId = msg.room_id;
+    const topic = msg.topic;
+    const key = buildSessionKey(roomId, topic, senderId);
+    // For group rooms, use roomId+topic as the group key (ignoring sender)
+    // so messages from different senders in the same room are batched.
+    const isGroupRoom = !!roomId && !roomId.startsWith("rm_dm_");
+    const groupKey = isGroupRoom
+      ? buildSessionKey(roomId, topic)
+      : key;
+    const group = a2aGroups.get(groupKey) || [];
+    group.push(msg);
+    a2aGroups.set(groupKey, group);
+  }
+
+  const handledIds: string[] = [];
+
+  // Handle dashboard user chat messages one by one (they share a fixed session)
+  for (const msg of dashboardMsgs) {
+    try {
+      await handleInboxMessage(msg, accountId, cfg);
+      handledIds.push(msg.hub_msg_id);
+    } catch {
+      // Error logged inside handleInboxMessage
+    }
+  }
+
+  // Handle A2A groups — single messages dispatched normally, batches merged
+  for (const [, group] of a2aGroups) {
+    try {
+      if (group.length === 1) {
+        await handleA2AMessage(group[0], accountId, cfg);
+      } else {
+        await handleA2AMessageBatch(group, accountId, cfg);
+      }
+      for (const msg of group) handledIds.push(msg.hub_msg_id);
+    } catch {
+      // Error logged inside handlers
+    }
+  }
+
+  return handledIds;
 }
 
 /**
@@ -205,13 +276,15 @@ async function handleDashboardUserChat(
 
   // Use buffered block dispatcher with auto-delivery to the chat room.
   // The deliver callback receives a ReplyPayload object (not a plain string).
+  // Memory extraction: strip <memory_update> blocks and persist before sending.
   try {
     await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
       ctx: ctxPayload,
       cfg,
       dispatcherOptions: {
         deliver: async (payload: any) => {
-          const text = payload?.text ?? "";
+          const rawText = payload?.text ?? "";
+          const text = processOutboundMemory(rawText, sessionKey);
           const mediaUrl = payload?.mediaUrl;
 
           // Stream assistant block to Hub before sending the final reply
@@ -300,6 +373,89 @@ async function handleA2AMessage(
     topic: msg.topic,
     topicId: msg.topic_id,
     mentioned: msg.mentioned,
+  });
+}
+
+/**
+ * Handle a batch of A2A messages that share the same session (room + topic).
+ * Combines individual <agent-message> blocks into a single dispatch.
+ */
+async function handleA2AMessageBatch(
+  msgs: InboxMessage[],
+  accountId: string,
+  cfg: any,
+): Promise<void> {
+  // Use the first message for shared room context
+  const first = msgs[0];
+  const isGroupRoom = !!first.room_id && !first.room_id.startsWith("rm_dm_");
+  const chatType = isGroupRoom ? "group" : "direct";
+  const roomName = isGroupRoom ? (first.room_name || first.room_id) : undefined;
+
+  // Build individual <agent-message> blocks for each message
+  const messageBlocks: string[] = [];
+  let anyMentioned = false;
+  let hasContactRequest = false;
+  let contactRequestSender = "";
+
+  for (const msg of msgs) {
+    const envelope = msg.envelope;
+    const senderId = envelope.from || "unknown";
+    const rawContent =
+      msg.text ||
+      (typeof envelope.payload === "string"
+        ? envelope.payload
+        : (envelope.payload?.text as string) ?? JSON.stringify(envelope.payload));
+
+    const sanitizedSender = sanitizeSenderName(senderId);
+    const sanitizedContent = sanitizeUntrustedContent(rawContent);
+    messageBlocks.push(
+      `<agent-message sender="${sanitizedSender}">\n${sanitizedContent}\n</agent-message>`,
+    );
+
+    if (msg.mentioned) anyMentioned = true;
+    if (envelope.type === "contact_request") {
+      hasContactRequest = true;
+      contactRequestSender = sanitizedSender;
+    }
+  }
+
+  // Shared header — indicate batch count
+  const header = `[BotCord Messages (${msgs.length} new)]` +
+    (roomName ? ` | room: ${roomName}` : "") +
+    ` | to: ${accountId}`;
+
+  const silentHint =
+    chatType === "group"
+      ? '\n\n[In group chats, do NOT reply unless you are explicitly mentioned or addressed. If no response is needed, reply with exactly "NO_REPLY" and nothing else.]'
+      : '\n\n[If the conversation has naturally concluded or no response is needed, reply with exactly "NO_REPLY" and nothing else.]';
+
+  const notifyOwnerHint = hasContactRequest
+    ? `\n\n[You received a contact request from ${contactRequestSender}. Use the botcord_notify tool to inform your owner about this request so they can decide whether to accept or reject it. Include the sender's agent ID and any message they attached.]`
+    : "";
+
+  const content = `${header}\n${messageBlocks.join("\n")}${silentHint}${notifyOwnerHint}`;
+  const contentWithRule = isGroupRoom ? appendRoomRule(content, first.room_rule) : content;
+
+  // Use the last message's metadata for dispatch (most recent)
+  const last = msgs[msgs.length - 1];
+  const lastEnvelope = last.envelope;
+  const lastSenderId = lastEnvelope.from || "unknown";
+
+  await dispatchInbound({
+    cfg,
+    accountId,
+    senderName: lastSenderId,
+    senderId: lastSenderId,
+    content: contentWithRule,
+    messageId: lastEnvelope.msg_id,
+    messageType: lastEnvelope.type,
+    chatType,
+    groupSubject: isGroupRoom ? (first.room_name || first.room_id) : undefined,
+    replyTarget: isGroupRoom ? first.room_id! : (lastEnvelope.from || ""),
+    roomId: first.room_id,
+    topic: first.topic,
+    topicId: first.topic_id,
+    mentioned: anyMentioned,
   });
 }
 
@@ -395,7 +551,11 @@ export async function dispatchInbound(params: InboundParams): Promise<void> {
     dispatcherOptions: {
       // A2A replies are sent explicitly via botcord_send tool.
       // Suppress automatic delivery to avoid leaking agent narration.
-      deliver: async () => {},
+      // Still extract <memory_update> blocks from the suppressed text.
+      deliver: async (payload: any) => {
+        const rawText = payload?.text ?? "";
+        if (rawText) processOutboundMemory(rawText, effectiveSessionKey);
+      },
       onError: (err: any, info: any) => {
         console.error(`[botcord] ${info?.kind ?? "unknown"} reply error:`, err);
       },
