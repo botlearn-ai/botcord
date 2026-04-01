@@ -1,23 +1,30 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 dashboard session/chat/ui store 与 user-chat API，维护“用户 <-> 当前 active agent”私聊房间的初始化、消息发送与轻量流式感知
+ * [INPUT]: 依赖 dashboard session/chat/ui store 与 user-chat API，维护"用户 <-> 当前 active agent"私聊房间的初始化、消息发送与轻量流式感知
  * [OUTPUT]: 对外提供 UserChatPane 组件，渲染固定私聊入口对应的一对一会话正文与输入框
  * [POS]: dashboard messages 视图里的特殊会话面板，被 `messages/__user-chat__` 深链与左侧固定入口消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw } from "lucide-react";
+import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot } from "lucide-react";
 import { api } from "@/lib/api";
-import type { DashboardMessage, UserChatRoom } from "@/lib/types";
+import type { DashboardMessage, UserChatRoom, StreamBlockEntry } from "@/lib/types";
+import { createOwnerChatWs, type OwnerChatWsClient } from "@/lib/owner-chat-ws";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useOwnerChatStreamStore } from "@/store/useOwnerChatStreamStore";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
+import { createClient } from "@/lib/supabase/client";
+
+const HUB_BASE_URL =
+  process.env.NEXT_PUBLIC_HUB_BASE_URL ||
+  (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
 
 interface PendingMessage {
   id: string;
@@ -59,16 +66,144 @@ function isOwnerMessage(msg: DashboardMessage): boolean {
   return msg.source_type === "dashboard_user_chat";
 }
 
+// ---------------------------------------------------------------------------
+// Stream block rendering
+// ---------------------------------------------------------------------------
+
+function StreamBlocksView({
+  blocks,
+  onScrollRequest,
+}: {
+  blocks: StreamBlockEntry[];
+  onScrollRequest?: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Separate assistant-visible text from execution blocks
+  const executionBlocks = blocks.filter(
+    (b) => b.block.kind !== "assistant",
+  );
+  const assistantBlocks = blocks.filter(
+    (b) => b.block.kind === "assistant",
+  );
+
+  useEffect(() => {
+    onScrollRequest?.();
+  }, [blocks.length, onScrollRequest]);
+
+  if (blocks.length === 0) return null;
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] space-y-2">
+        {/* Execution blocks (tool_call, tool_result, reasoning) */}
+        {executionBlocks.length > 0 && (
+          <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/50 overflow-hidden">
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+            >
+              {expanded ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+              <Wrench className="w-3 h-3" />
+              <span>{executionBlocks.length} execution step{executionBlocks.length !== 1 ? "s" : ""}</span>
+            </button>
+            {expanded && (
+              <div className="border-t border-zinc-800 px-3 py-2 space-y-1.5">
+                {executionBlocks.map((block) => (
+                  <StreamBlockItem key={`${block.trace_id}-${block.seq}`} block={block} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Streamed assistant text (inline) */}
+        {assistantBlocks.length > 0 && (
+          <div className="rounded-lg px-3 py-2 bg-zinc-800 border border-zinc-700 text-sm text-zinc-200">
+            <div className="mb-1 flex items-center gap-1.5">
+              <Bot className="w-3 h-3 text-zinc-400" />
+              <span className="text-xs text-zinc-400">Composing...</span>
+            </div>
+            <MarkdownContent
+              content={
+                assistantBlocks
+                  .map((b) => (b.block.payload?.text as string) || "")
+                  .join("")
+              }
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
+  const { kind, payload } = block.block;
+
+  if (kind === "tool_call") {
+    const name = (payload?.name as string) || "tool";
+    return (
+      <div className="text-xs">
+        <span className="text-cyan-400 font-mono">{name}</span>
+        <span className="text-zinc-500 ml-1">called</span>
+      </div>
+    );
+  }
+
+  if (kind === "tool_result") {
+    const name = (payload?.name as string) || "tool";
+    const result = (payload?.result as string) || "";
+    return (
+      <div className="text-xs">
+        <span className="text-emerald-400 font-mono">{name}</span>
+        <span className="text-zinc-500 ml-1">returned</span>
+        {result && (
+          <div className="mt-0.5 text-zinc-500 font-mono text-[10px] truncate max-w-[300px]">
+            {result}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (kind === "reasoning") {
+    const text = (payload?.text as string) || "";
+    return (
+      <div className="text-xs text-zinc-500 italic flex items-start gap-1">
+        <Brain className="w-3 h-3 mt-0.5 shrink-0" />
+        <span className="truncate">{text}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-xs text-zinc-500">
+      <span className="font-mono">{kind}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function UserChatPane() {
   const { activeAgentId } = useDashboardSessionStore();
   const { setUserChatRoomId, userChatAgentTyping, setUserChatAgentTyping } = useDashboardUIStore();
-  const { messages: storeMessages, messagesHasMore, loadRoomMessages, loadMoreMessages, pollNewMessages } = useDashboardChatStore(useShallow((s) => ({
+  const { messages: storeMessages, messagesHasMore, loadRoomMessages, loadMoreMessages, pollNewMessages, insertMessage } = useDashboardChatStore(useShallow((s) => ({
     messages: s.messages,
     messagesHasMore: s.messagesHasMore,
     loadRoomMessages: s.loadRoomMessages,
     loadMoreMessages: s.loadMoreMessages,
     pollNewMessages: s.pollNewMessages,
+    insertMessage: s.insertMessage,
   })));
+  const { activeBlocks, addStreamBlock, clearTrace, setWsConnected, wsConnected } = useOwnerChatStreamStore();
 
   const [chatRoom, setChatRoom] = useState<UserChatRoom | null>(null);
   const [inputText, setInputText] = useState("");
@@ -86,6 +221,11 @@ export default function UserChatPane() {
   const prevLengthRef = useRef(0);
   const wasNearBottomRef = useRef(true);
   const [, forceRender] = useState(0);
+
+  // WS client ref
+  const wsClientRef = useRef<OwnerChatWsClient | null>(null);
+  // Track the last trace_id so we can clear stream blocks when final message arrives
+  const activeTraceRef = useRef<string | null>(null);
 
   // Initialize chat room and load messages (userChatRoomId is set eagerly by DashboardApp)
   useEffect(() => {
@@ -116,6 +256,115 @@ export default function UserChatPane() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAgentId]);
 
+  // --- Owner-chat WebSocket lifecycle ---
+  useEffect(() => {
+    if (!activeAgentId || !chatRoom) return;
+
+    const supabase = createClient();
+
+    const wsClient = createOwnerChatWs({
+      hubBaseUrl: HUB_BASE_URL,
+      getToken: async () => {
+        const { data } = await supabase.auth.getSession();
+        return data.session?.access_token || "";
+      },
+      agentId: activeAgentId,
+      onAuthOk: (data) => {
+        // Room ID confirmed by server
+        if (data.room_id && data.room_id !== chatRoom.room_id) {
+          setChatRoom((prev) => prev ? { ...prev, room_id: data.room_id } : prev);
+          setUserChatRoomId(data.room_id);
+        }
+      },
+      onMessage: (msg) => {
+        const roomId = msg.room_id || chatRoom.room_id;
+
+        // Clear stream blocks when final agent message arrives
+        if (msg.sender === "agent" && msg.ext?.trace_id) {
+          clearTrace(msg.ext.trace_id as string);
+          activeTraceRef.current = null;
+        }
+
+        // Dismiss typing indicator on agent message
+        if (msg.sender === "agent") {
+          setUserChatAgentTyping(false);
+        }
+
+        // Insert directly into chat store
+        const dashMsg: DashboardMessage = {
+          hub_msg_id: msg.hub_msg_id,
+          msg_id: msg.hub_msg_id,
+          sender_id: activeAgentId,
+          sender_name: msg.sender === "user" ? "You" : (chatRoom.name || activeAgentId),
+          type: "message",
+          text: msg.text,
+          payload: {},
+          room_id: roomId,
+          topic: null,
+          topic_id: null,
+          goal: null,
+          state: "delivered",
+          state_counts: null,
+          created_at: msg.created_at,
+          source_type: msg.sender === "user" ? "dashboard_user_chat" : undefined,
+        };
+        insertMessage(roomId, dashMsg);
+
+        // Remove matching pending message
+        if (msg.sender === "user") {
+          setPending((prev) => {
+            const match = prev.find((p) => p.text === msg.text);
+            return match ? prev.filter((p) => p.id !== match.id) : prev;
+          });
+        }
+      },
+      onStreamBlock: (block) => {
+        addStreamBlock(block);
+        activeTraceRef.current = block.trace_id;
+      },
+      onStatusChange: (connected) => {
+        setWsConnected(connected);
+        if (!connected) {
+          // On disconnect: mark all "sending" pending messages as failed so
+          // they can be retried via HTTP, and clear stale stream blocks.
+          setPending((prev) =>
+            prev.map((p) =>
+              p.status === "sending"
+                ? { ...p, status: "failed" as const, error: "Connection lost" }
+                : p
+            )
+          );
+          // Clear all ephemeral stream blocks — they cannot be recovered after
+          // disconnect (Phase 1 design: no replay).
+          useOwnerChatStreamStore.getState().reset();
+          activeTraceRef.current = null;
+        }
+      },
+      onSendFailed: () => {
+        // Mark the most recent "sending" pending message as failed
+        setPending((prev) => {
+          const last = [...prev].reverse().find((p) => p.status === "sending");
+          if (!last) return prev;
+          return prev.map((p) =>
+            p.id === last.id ? { ...p, status: "failed" as const, error: "WebSocket send failed" } : p
+          );
+        });
+      },
+    });
+
+    wsClientRef.current = wsClient;
+
+    return () => {
+      wsClient.close();
+      wsClientRef.current = null;
+      setWsConnected(false);
+      // Clear stream blocks on cleanup too
+      useOwnerChatStreamStore.getState().reset();
+      activeTraceRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAgentId, chatRoom?.room_id]);
+
   // Derive messages from the chat store (populated by loadRoomMessages + realtime sync)
   const roomId = chatRoom?.room_id;
   const messages: DashboardMessage[] = roomId ? (storeMessages[roomId] ?? []) : [];
@@ -128,6 +377,11 @@ export default function UserChatPane() {
     ));
     return !matchingOwnerMessage;
   });
+
+  // Collect stream blocks for the active trace
+  const currentStreamBlocks: StreamBlockEntry[] = activeTraceRef.current
+    ? (activeBlocks[activeTraceRef.current] || [])
+    : [];
 
   // Mark messages from initial load as already animated (skip typewriter) and scroll to bottom.
   // Must wait for loading=false so the real scroll container is in the DOM.
@@ -204,10 +458,20 @@ export default function UserChatPane() {
   }, [messages, userChatAgentTyping, setUserChatAgentTyping]);
 
   const sendMessage = useCallback(async (text: string, msgId: string) => {
+    // If WS is connected, send via WS (no polling needed — WS delivers echo)
+    if (wsClientRef.current && wsConnected) {
+      const sent = wsClientRef.current.send(text);
+      if (sent) {
+        // WS echo will remove the pending message via onMessage callback.
+        // onSendFailed callback handles the case where the socket closes after send.
+        return;
+      }
+      // WS send failed — fall through to HTTP fallback
+    }
+
+    // Fallback to HTTP
     try {
       const result = await api.sendUserChatMessage(text);
-      // Poll first so the real message lands in the store, then remove pending.
-      // This avoids the flash where the message disappears between pending removal and poll completion.
       if (roomId) {
         await pollNewMessages(roomId, {
           expectedHubMsgId: result.hub_msg_id,
@@ -224,7 +488,7 @@ export default function UserChatPane() {
         )
       );
     }
-  }, [roomId, pollNewMessages]);
+  }, [roomId, pollNewMessages, wsConnected]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -297,6 +561,9 @@ export default function UserChatPane() {
         <h2 className="text-sm font-medium text-zinc-200">
           {chatRoom?.name || "Chat with Agent"}
         </h2>
+        {wsConnected && (
+          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400" title="Live" />
+        )}
       </div>
 
       {/* Messages */}
@@ -371,6 +638,15 @@ export default function UserChatPane() {
             </div>
           );
         })}
+
+        {/* Stream blocks (ephemeral execution activity) */}
+        {currentStreamBlocks.length > 0 && (
+          <StreamBlocksView
+            blocks={currentStreamBlocks}
+            onScrollRequest={wasNearBottomRef.current ? scrollToBottom : undefined}
+          />
+        )}
+
         {visiblePending.map((msg) => (
           <div key={msg.id} className="flex justify-end">
             <div className="max-w-[75%] rounded-lg px-3 py-2 text-sm bg-cyan-500/20 text-cyan-100 border border-cyan-500/30">
@@ -396,7 +672,7 @@ export default function UserChatPane() {
             </div>
           </div>
         ))}
-        {userChatAgentTyping && (
+        {userChatAgentTyping && currentStreamBlocks.length === 0 && (
           <div className="flex justify-start">
             <div className="rounded-lg px-3 py-2 bg-zinc-800 border border-zinc-700">
               <div className="flex items-center gap-1">

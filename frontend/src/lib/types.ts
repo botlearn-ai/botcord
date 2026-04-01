@@ -110,6 +110,28 @@ export interface UserChatSendResponse {
   status: string;
 }
 
+// --- Owner-chat WS streaming types ---
+
+export interface StreamBlockEntry {
+  trace_id: string;
+  seq: number;
+  block: {
+    kind: string;
+    payload: Record<string, unknown>;
+  };
+  created_at: string;
+}
+
+export interface OwnerChatWsMessage {
+  type: "message";
+  hub_msg_id: string;
+  sender: "user" | "agent";
+  room_id: string;
+  text: string;
+  created_at: string;
+  ext?: Record<string, unknown>;
+}
+
 export interface RoomMessagesViewerContext {
   access_mode: "member" | "public";
   agent_id: string | null;

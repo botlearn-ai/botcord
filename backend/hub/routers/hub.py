@@ -843,9 +843,24 @@ async def _send_room_message(
             # Self-delivery: publish realtime event for the dashboard
             # frontend but do NOT wake the agent's inbox/WS to avoid
             # the plugin re-processing its own message.
-            await _publish_agent_realtime_event(db, rt_event)
+            # Skip Supabase realtime for owner-chat rooms — the dedicated
+            # WS path handles delivery; publishing here would cause
+            # redundant polling from the Supabase realtime listener.
+            if not room_id.startswith("rm_oc_"):
+                await _publish_agent_realtime_event(db, rt_event)
         else:
             await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
+
+    # Push agent reply to owner-chat WS clients when applicable
+    if _self_delivery and room_id.startswith("rm_oc_"):
+        from hub.routers.owner_chat_ws import notify_oc_ws_message
+        _oc_text = (envelope.payload or {}).get("text", "")
+        await notify_oc_ws_message(
+            room_id=room_id,
+            hub_msg_id=first_hub_msg_id or "",
+            sender_id=envelope.from_,
+            text=_oc_text,
+        )
 
     # Notify the sender's dashboard so the frontend refreshes in real-time
     # when the agent posts via plugin/API. Skip if self-delivery already
