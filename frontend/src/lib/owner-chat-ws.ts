@@ -23,11 +23,14 @@ export interface OwnerChatWsClient {
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 
+const KEEPALIVE_INTERVAL = 20_000; // 20s — match plugin ws-client keepalive
+
 export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
   let ws: WebSocket | null = null;
   let closed = false;
   let reconnectAttempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   let authenticated = false;
 
   function buildWsUrl(): string {
@@ -72,6 +75,13 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
           case "auth_ok":
             authenticated = true;
             reconnectAttempt = 0;
+            // Start client-side keepalive to survive proxy/ALB idle timeouts
+            if (keepaliveTimer) clearInterval(keepaliveTimer);
+            keepaliveTimer = setInterval(() => {
+              if (ws?.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "ping" }));
+              }
+            }, KEEPALIVE_INTERVAL);
             opts.onAuthOk({ agent_id: data.agent_id, room_id: data.room_id });
             opts.onStatusChange?.(true);
             break;
@@ -99,6 +109,7 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
 
       ws.onclose = () => {
         authenticated = false;
+        if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
         opts.onStatusChange?.(false);
         if (!closed) {
           scheduleReconnect();
@@ -145,6 +156,10 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
+    }
+    if (keepaliveTimer) {
+      clearInterval(keepaliveTimer);
+      keepaliveTimer = null;
     }
     if (ws) {
       ws.onclose = null;

@@ -286,6 +286,8 @@ async def owner_chat_ws(ws: WebSocket):
                     await ws.send_json({"type": "error", "message": "Invalid text"})
                     continue
 
+                logger.info("Owner-chat WS recv: user=%s agent=%s text_len=%d", user_id, agent_id, len(text))
+
                 # Create MessageRecord (same logic as dashboard_chat.send_chat_message)
                 msg_id = str(uuid.uuid4())
                 ts = int(time.time())
@@ -350,6 +352,10 @@ async def owner_chat_ws(ws: WebSocket):
                             payload=payload,
                             sender_name=display_name,
                         ),
+                    )
+                    logger.info(
+                        "Owner-chat WS forwarded: hub_msg_id=%s agent=%s room=%s",
+                        hub_msg_id, agent_id, room_id,
                     )
 
                     # Typing indicator
