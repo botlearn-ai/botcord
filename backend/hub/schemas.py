@@ -270,6 +270,7 @@ class ResolveResponse(BaseModel):
     agent_id: str
     display_name: str
     bio: str | None = None
+    is_claimed: bool = False
     has_endpoint: bool
     endpoints: list[ResolveEndpointInfo]
 

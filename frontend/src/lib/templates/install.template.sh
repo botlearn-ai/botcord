@@ -313,7 +313,30 @@ log ""
 if [ "${#EXISTING_CRED_PATHS[@]}" -gt 0 ]; then
   log "Existing credentials detected. Configure with:"
   for cp in "${EXISTING_CRED_PATHS[@]}"; do
-    log "  openclaw botcord-import --file $cp"
+    # Check if the agent is already claimed (bound to a user account)
+    BIND_STATUS="$(CRED_PATH="$cp" node -e '
+      const fs = require("fs");
+      try {
+        const c = JSON.parse(fs.readFileSync(process.env.CRED_PATH, "utf8"));
+        const hubUrl = c.hubUrl || "";
+        const agentId = c.agentId || "";
+        if (!hubUrl || !agentId) { process.stdout.write("unknown"); process.exit(0); }
+        fetch(`${hubUrl}/registry/resolve/${agentId}`, { signal: AbortSignal.timeout(5000) })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (!d || !("is_claimed" in d)) process.stdout.write("unknown");
+            else process.stdout.write(d.is_claimed ? "claimed" : "unclaimed");
+          })
+          .catch(() => process.stdout.write("unknown"));
+      } catch { process.stdout.write("unknown"); }
+    ' 2>/dev/null || echo "unknown")"
+    if [ "$BIND_STATUS" = "claimed" ]; then
+      log "  openclaw botcord-import --file $cp  (already bound to an account)"
+    elif [ "$BIND_STATUS" = "unclaimed" ]; then
+      log "  openclaw botcord-import --file $cp  (not yet bound — visit {{BASE_URL}}/chats to bind)"
+    else
+      log "  openclaw botcord-import --file $cp"
+    fi
   done
   log ""
   log "Then restart the OpenClaw gateway to load the plugin."
