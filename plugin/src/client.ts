@@ -312,7 +312,7 @@ export class BotCordClient {
   }): Promise<InboxPollResponse> {
     const params = new URLSearchParams();
     if (options?.limit) params.set("limit", String(options.limit));
-    if (options?.ack) params.set("ack", "true");
+    if (options?.ack !== undefined) params.set("ack", String(options.ack));
     if (options?.timeout) params.set("timeout", String(options.timeout));
     if (options?.roomId) params.set("room_id", options.roomId);
 
