@@ -227,8 +227,11 @@ async def notify_inbox(
     *,
     db: AsyncSession | None = None,
     realtime_event: dict[str, Any] | None = None,
-) -> None:
-    """Wake up any long-polling readers and WebSocket connections waiting on this agent's inbox."""
+) -> int:
+    """Wake up any long-polling readers and WebSocket connections waiting on this agent's inbox.
+
+    Returns the number of WebSocket connections that were successfully notified.
+    """
     # Wake long-polling readers
     cond = _inbox_conditions.get(agent_id)
     if cond:
@@ -236,6 +239,7 @@ async def notify_inbox(
             cond.notify_all()
 
     # Notify WebSocket connections
+    notified = 0
     ws_set = _ws_connections.get(agent_id)
     if ws_set:
         # Iterate a snapshot to avoid concurrent modification
@@ -243,6 +247,7 @@ async def notify_inbox(
         for ws in list(ws_set):
             try:
                 await ws.send_json({"type": "inbox_update"})
+                notified += 1
             except (WebSocketDisconnect, RuntimeError) as exc:
                 # Permanent disconnect — mark connection as dead
                 logger.debug(
@@ -265,6 +270,8 @@ async def notify_inbox(
 
     if db is not None and realtime_event is not None:
         await _publish_agent_realtime_event(db, realtime_event)
+
+    return notified
 
 
 # ---------------------------------------------------------------------------

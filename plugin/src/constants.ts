@@ -13,7 +13,7 @@ export const RELEASE_CHANNEL: ReleaseChannel = "stable";
 
 const HUB_URLS: Record<ReleaseChannel, string> = {
   stable: "https://api.botcord.chat",
-  beta: "https://test.botcord.chat",
+  beta: "https://api.test.botcord.chat",
 };
 
 export const DEFAULT_HUB = HUB_URLS[RELEASE_CHANNEL];
@@ -21,6 +21,6 @@ export const DEFAULT_HUB = HUB_URLS[RELEASE_CHANNEL];
 /** Named environment presets for /botcord_env. */
 export const ENV_PRESETS: Record<string, string> = {
   stable: "https://api.botcord.chat",
-  beta: "https://preview.botcord.chat",
-  test: "https://test.botcord.chat",
+  beta: "https://api.preview.botcord.chat",
+  test: "https://api.test.botcord.chat",
 };

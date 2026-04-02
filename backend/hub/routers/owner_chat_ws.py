@@ -8,6 +8,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Sequence
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
@@ -115,6 +116,24 @@ def _cleanup_trace(trace_id: str) -> None:
     """Remove a trace subscription and its block counter."""
     _oc_trace_subs.pop(trace_id, None)
     _oc_trace_block_count.pop(trace_id, None)
+
+
+# Retry backoff schedule (seconds) for notify_inbox when no WS connections are active.
+_NOTIFY_RETRY_DELAYS: Sequence[float] = (1, 2, 4, 8)
+
+
+async def _notify_inbox_with_retry(agent_id: str) -> None:
+    """Background task: retry notify_inbox until the agent's WS reconnects or retries exhaust."""
+    for delay in _NOTIFY_RETRY_DELAYS:
+        await asyncio.sleep(delay)
+        notified = await notify_inbox(agent_id)
+        if notified > 0:
+            logger.info("Owner-chat notify retry succeeded: agent=%s after %.0fs", agent_id, delay)
+            return
+    logger.warning(
+        "Owner-chat notify retries exhausted: agent=%s (message awaits next poll)",
+        agent_id,
+    )
 
 
 async def notify_oc_ws_message(
@@ -339,7 +358,7 @@ async def owner_chat_ws(ws: WebSocket):
                     _oc_trace_block_count[hub_msg_id] = 0
 
                     # Notify plugin inbox
-                    await notify_inbox(
+                    notified = await notify_inbox(
                         agent_id,
                         db=db,
                         realtime_event=build_message_realtime_event(
@@ -354,9 +373,18 @@ async def owner_chat_ws(ws: WebSocket):
                         ),
                     )
                     logger.info(
-                        "Owner-chat WS forwarded: hub_msg_id=%s agent=%s room=%s",
-                        hub_msg_id, agent_id, room_id,
+                        "Owner-chat WS forwarded: hub_msg_id=%s agent=%s room=%s ws_notified=%d",
+                        hub_msg_id, agent_id, room_id, notified,
                     )
+
+                    # If no active WS connections, spawn background retry so the
+                    # plugin picks up the message when it reconnects shortly.
+                    if notified == 0:
+                        logger.warning(
+                            "Owner-chat: no active WS for agent=%s, scheduling notify retry",
+                            agent_id,
+                        )
+                        asyncio.create_task(_notify_inbox_with_retry(agent_id))
 
                     # Typing indicator
                     typing_event = build_agent_realtime_event(
