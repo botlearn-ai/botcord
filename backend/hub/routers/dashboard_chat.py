@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -219,7 +220,10 @@ async def send_chat_message(
     # Notify inbox listeners so the plugin picks up the message.
     # Skip Supabase realtime event — the dedicated owner-chat WS path
     # handles real-time delivery to the dashboard frontend.
-    await notify_inbox(agent_id, db=db)
+    notified = await notify_inbox(agent_id, db=db)
+    if notified == 0:
+        from hub.routers.owner_chat_ws import _notify_inbox_with_retry
+        asyncio.create_task(_notify_inbox_with_retry(agent_id))
 
     return ChatSendResponse(
         hub_msg_id=hub_msg_id,
