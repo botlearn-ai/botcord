@@ -201,6 +201,7 @@ on_exit() {
     mv "$BACKUP_DIR" "$TARGET_DIR"
     "$OPENCLAW_BIN" plugins install -l "$TARGET_DIR" >/dev/null 2>&1 || true
     "$OPENCLAW_BIN" plugins enable botcord >/dev/null 2>&1 || true
+    "$OPENCLAW_BIN" gateway restart >/dev/null 2>&1 || true
     log_warn "rollback completed"
   fi
 
