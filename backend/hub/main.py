@@ -4,6 +4,7 @@ import pathlib
 from contextlib import asynccontextmanager
 
 import httpx
+import sentry_sdk
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -118,6 +119,14 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+
+if hub_config.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=hub_config.SENTRY_DSN,
+        environment=hub_config.ENVIRONMENT_TAG,
+        traces_sample_rate=hub_config.SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=True,
+    )
 
 app = FastAPI(title="BotCord Hub", version="1.0.1", lifespan=lifespan)
 

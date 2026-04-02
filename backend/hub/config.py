@@ -135,3 +135,10 @@ BIND_PROOF_SECRET: str | None = os.getenv("BIND_PROOF_SECRET") or os.getenv("BOT
 # Values: "preview" | "prod" (default: "prod")
 # ---------------------------------------------------------------------------
 ENVIRONMENT_TAG: str = os.getenv("ENVIRONMENT_TAG", "prod")
+
+# ---------------------------------------------------------------------------
+# Sentry — error & performance monitoring
+# Set SENTRY_DSN to enable. Inherits ENVIRONMENT_TAG as the Sentry environment.
+# ---------------------------------------------------------------------------
+SENTRY_DSN: str | None = os.getenv("SENTRY_DSN")
+SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
