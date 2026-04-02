@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot } from "lucide-react";
+import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot, Search, FileText, CheckCircle2, Code2, HelpCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { DashboardMessage, UserChatRoom, StreamBlockEntry } from "@/lib/types";
 import { createOwnerChatWs, type OwnerChatWsClient } from "@/lib/owner-chat-ws";
@@ -70,14 +70,127 @@ function isOwnerMessage(msg: DashboardMessage): boolean {
 // Stream block rendering
 // ---------------------------------------------------------------------------
 
+/** Icon for a tool_call based on tool name heuristics. */
+function ToolCallIcon({ name }: { name: string }) {
+  const n = name.toLowerCase();
+  if (n.includes("search") || n.includes("find") || n.includes("query")) {
+    return <Search className="w-3 h-3 text-cyan-400 shrink-0" />;
+  }
+  if (n.includes("read") || n.includes("get") || n.includes("fetch") || n.includes("list")) {
+    return <FileText className="w-3 h-3 text-cyan-400 shrink-0" />;
+  }
+  return <Code2 className="w-3 h-3 text-cyan-400 shrink-0" />;
+}
+
+/** Summarize tool_call params into a short one-liner. */
+function summarizeParams(params: Record<string, unknown> | undefined): string | null {
+  if (!params || Object.keys(params).length === 0) return null;
+  // Show the first meaningful string param value, truncated
+  for (const v of Object.values(params)) {
+    if (typeof v === "string" && v.length > 0) {
+      return v.length > 60 ? v.slice(0, 60) + "..." : v;
+    }
+  }
+  return null;
+}
+
+/** Truncate a tool_result to a readable preview. */
+function summarizeResult(result: string): string {
+  // Try to extract text content from JSON results (only if it looks like JSON)
+  if (result.startsWith("{") || result.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(result);
+      if (parsed?.content?.[0]?.text) {
+        const text = parsed.content[0].text as string;
+        return text.length > 120 ? text.slice(0, 120) + "..." : text;
+      }
+    } catch { /* not valid JSON, use raw */ }
+  }
+  return result.length > 120 ? result.slice(0, 120) + "..." : result;
+}
+
+/** Render a single execution block with type-specific styling. */
+function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
+  const { kind, payload } = block.block;
+  const [resultExpanded, setResultExpanded] = useState(false);
+
+  if (kind === "tool_call") {
+    const name = (payload?.name as string) || "tool";
+    const params = payload?.params as Record<string, unknown> | undefined;
+    const paramHint = summarizeParams(params);
+    return (
+      <div className="flex items-start gap-2 py-1">
+        <ToolCallIcon name={name} />
+        <div className="min-w-0">
+          <span className="text-xs font-mono text-cyan-400">{name}</span>
+          {paramHint && (
+            <p className="text-[10px] text-zinc-500 truncate mt-0.5">{paramHint}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === "tool_result") {
+    const name = (payload?.name as string) || "tool";
+    const result = (payload?.result as string) || "";
+    return (
+      <div className="py-1">
+        <button
+          onClick={() => setResultExpanded(!resultExpanded)}
+          className="flex items-center gap-2 group"
+        >
+          <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+          <span className="text-xs font-mono text-emerald-400">{name}</span>
+          <span className="text-[10px] text-zinc-500">returned</span>
+          {result && (
+            resultExpanded
+              ? <ChevronDown className="w-2.5 h-2.5 text-zinc-500" />
+              : <ChevronRight className="w-2.5 h-2.5 text-zinc-500" />
+          )}
+        </button>
+        {result && resultExpanded && (
+          <pre className="mt-1 ml-5 text-[10px] text-zinc-500 font-mono bg-zinc-950/50 rounded px-2 py-1 overflow-x-auto max-h-[120px] overflow-y-auto whitespace-pre-wrap break-all">
+            {summarizeResult(result)}
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  if (kind === "reasoning") {
+    const text = (payload?.text as string) || "";
+    return (
+      <div className="flex items-start gap-2 py-1">
+        <Brain className="w-3 h-3 text-purple-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-purple-300/70 italic leading-relaxed line-clamp-3">
+          {text}
+        </p>
+      </div>
+    );
+  }
+
+  // Unknown kind fallback
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <HelpCircle className="w-3 h-3 text-zinc-500 shrink-0" />
+      <span className="text-xs text-zinc-500 font-mono">{kind}</span>
+    </div>
+  );
+}
+
+/** Collapsible execution block group — used for both active and finalized blocks. */
 function StreamBlocksView({
   blocks,
+  defaultExpanded,
   onScrollRequest,
 }: {
   blocks: StreamBlockEntry[];
+  /** When true, starts expanded (for active/in-progress blocks). */
+  defaultExpanded?: boolean;
   onScrollRequest?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
 
   // Separate assistant-visible text from execution blocks
   const executionBlocks = blocks.filter(
@@ -87,18 +200,28 @@ function StreamBlocksView({
     (b) => b.block.kind === "assistant",
   );
 
+  // Count tool calls for summary
+  const toolCallCount = executionBlocks.filter((b) => b.block.kind === "tool_call").length;
+  const reasoningCount = executionBlocks.filter((b) => b.block.kind === "reasoning").length;
+
   useEffect(() => {
     onScrollRequest?.();
   }, [blocks.length, onScrollRequest]);
 
   if (blocks.length === 0) return null;
 
+  // Build summary text
+  const summaryParts: string[] = [];
+  if (toolCallCount > 0) summaryParts.push(`${toolCallCount} tool call${toolCallCount !== 1 ? "s" : ""}`);
+  if (reasoningCount > 0) summaryParts.push(`${reasoningCount} reasoning`);
+  if (summaryParts.length === 0) summaryParts.push(`${executionBlocks.length} step${executionBlocks.length !== 1 ? "s" : ""}`);
+
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] space-y-2">
         {/* Execution blocks (tool_call, tool_result, reasoning) */}
         {executionBlocks.length > 0 && (
-          <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/50 overflow-hidden">
+          <div className="rounded-lg border border-zinc-700/40 bg-zinc-900/40 overflow-hidden">
             <button
               onClick={() => setExpanded(!expanded)}
               className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
@@ -109,10 +232,10 @@ function StreamBlocksView({
                 <ChevronRight className="w-3 h-3" />
               )}
               <Wrench className="w-3 h-3" />
-              <span>{executionBlocks.length} execution step{executionBlocks.length !== 1 ? "s" : ""}</span>
+              <span>{summaryParts.join(", ")}</span>
             </button>
             {expanded && (
-              <div className="border-t border-zinc-800 px-3 py-2 space-y-1.5">
+              <div className="border-t border-zinc-800/60 px-3 py-1 divide-y divide-zinc-800/40">
                 {executionBlocks.map((block) => (
                   <StreamBlockItem key={`${block.trace_id}-${block.seq}`} block={block} />
                 ))}
@@ -121,7 +244,7 @@ function StreamBlocksView({
           </div>
         )}
 
-        {/* Streamed assistant text (inline) */}
+        {/* Streamed assistant text (inline, only during active execution) */}
         {assistantBlocks.length > 0 && (
           <div className="rounded-lg px-3 py-2 bg-zinc-800 border border-zinc-700 text-sm text-zinc-200">
             <div className="mb-1 flex items-center gap-1.5">
@@ -142,52 +265,6 @@ function StreamBlocksView({
   );
 }
 
-function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
-  const { kind, payload } = block.block;
-
-  if (kind === "tool_call") {
-    const name = (payload?.name as string) || "tool";
-    return (
-      <div className="text-xs">
-        <span className="text-cyan-400 font-mono">{name}</span>
-        <span className="text-zinc-500 ml-1">called</span>
-      </div>
-    );
-  }
-
-  if (kind === "tool_result") {
-    const name = (payload?.name as string) || "tool";
-    const result = (payload?.result as string) || "";
-    return (
-      <div className="text-xs">
-        <span className="text-emerald-400 font-mono">{name}</span>
-        <span className="text-zinc-500 ml-1">returned</span>
-        {result && (
-          <div className="mt-0.5 text-zinc-500 font-mono text-[10px] truncate max-w-[300px]">
-            {result}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (kind === "reasoning") {
-    const text = (payload?.text as string) || "";
-    return (
-      <div className="text-xs text-zinc-500 italic flex items-start gap-1">
-        <Brain className="w-3 h-3 mt-0.5 shrink-0" />
-        <span className="truncate">{text}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="text-xs text-zinc-500">
-      <span className="font-mono">{kind}</span>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -203,7 +280,7 @@ export default function UserChatPane() {
     pollNewMessages: s.pollNewMessages,
     insertMessage: s.insertMessage,
   })));
-  const { activeBlocks, addStreamBlock, clearTrace, setWsConnected, wsConnected } = useOwnerChatStreamStore();
+  const { activeBlocks, finalizedBlocks, addStreamBlock, finalizeTrace, clearTrace, setWsConnected, wsConnected } = useOwnerChatStreamStore();
 
   const [chatRoom, setChatRoom] = useState<UserChatRoom | null>(null);
   const [inputText, setInputText] = useState("");
@@ -279,9 +356,9 @@ export default function UserChatPane() {
       onMessage: (msg) => {
         const roomId = msg.room_id || chatRoom.room_id;
 
-        // Clear stream blocks when final agent message arrives
+        // Finalize stream blocks when final agent message arrives (keep them collapsed)
         if (msg.sender === "agent" && msg.ext?.trace_id) {
-          clearTrace(msg.ext.trace_id as string);
+          finalizeTrace(msg.ext.trace_id as string, msg.hub_msg_id);
           activeTraceRef.current = null;
         }
 
@@ -580,69 +657,74 @@ export default function UserChatPane() {
         )}
         {messages.map((msg) => {
           const isOwner = isOwnerMessage(msg);
+          const msgFinalizedBlocks = finalizedBlocks[msg.hub_msg_id];
           return (
-            <div
-              key={msg.hub_msg_id}
-              className={`flex ${isOwner ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                  isOwner
-                    ? "bg-cyan-500/20 text-cyan-100 border border-cyan-500/30"
-                    : "bg-zinc-800 text-zinc-200 border border-zinc-700"
-                }`}
-              >
-                {!isOwner && (
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-zinc-300">
-                      {msg.sender_name || msg.sender_id}
-                    </span>
-                    <CopyableId value={msg.sender_id} className="text-zinc-500 hover:text-zinc-300" />
-                  </div>
-                )}
-                {!isOwner && !animatedRef.current.has(msg.hub_msg_id) ? (
-                  <TypewriterText
-                    text={msg.text || ""}
-                    onTick={scrollToBottom}
-                    onComplete={() => {
-                      animatedRef.current.add(msg.hub_msg_id);
-                      forceRender((n) => n + 1);
-                    }}
-                  />
-                ) : (
-                  <MarkdownContent content={msg.text || ""} />
-                )}
-                {(() => {
-                  const atts = msg.payload?.attachments as Array<{ url: string; filename?: string }> | undefined;
-                  if (!atts || atts.length === 0) return null;
-                  return (
-                    <div className="mt-2 space-y-1">
-                      {atts.map((att, idx) => (
-                        <a
-                          key={idx}
-                          href={att.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block text-xs text-cyan-400 underline truncate"
-                        >
-                          {att.filename || "Attachment"}
-                        </a>
-                      ))}
+            <div key={msg.hub_msg_id} className="space-y-1.5">
+              {/* Finalized execution blocks above agent message */}
+              {!isOwner && msgFinalizedBlocks && msgFinalizedBlocks.length > 0 && (
+                <StreamBlocksView blocks={msgFinalizedBlocks} />
+              )}
+              <div className={`flex ${isOwner ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
+                    isOwner
+                      ? "bg-cyan-500/20 text-cyan-100 border border-cyan-500/30"
+                      : "bg-zinc-800 text-zinc-200 border border-zinc-700"
+                  }`}
+                >
+                  {!isOwner && (
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <span className="text-xs font-medium text-zinc-300">
+                        {msg.sender_name || msg.sender_id}
+                      </span>
+                      <CopyableId value={msg.sender_id} className="text-zinc-500 hover:text-zinc-300" />
                     </div>
-                  );
-                })()}
-                <div className="text-xs text-zinc-500 mt-1 text-right">
-                  {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  )}
+                  {!isOwner && !animatedRef.current.has(msg.hub_msg_id) ? (
+                    <TypewriterText
+                      text={msg.text || ""}
+                      onTick={scrollToBottom}
+                      onComplete={() => {
+                        animatedRef.current.add(msg.hub_msg_id);
+                        forceRender((n) => n + 1);
+                      }}
+                    />
+                  ) : (
+                    <MarkdownContent content={msg.text || ""} />
+                  )}
+                  {(() => {
+                    const atts = msg.payload?.attachments as Array<{ url: string; filename?: string }> | undefined;
+                    if (!atts || atts.length === 0) return null;
+                    return (
+                      <div className="mt-2 space-y-1">
+                        {atts.map((att, idx) => (
+                          <a
+                            key={idx}
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-xs text-cyan-400 underline truncate"
+                          >
+                            {att.filename || "Attachment"}
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <div className="text-xs text-zinc-500 mt-1 text-right">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
                 </div>
               </div>
             </div>
           );
         })}
 
-        {/* Stream blocks (ephemeral execution activity) */}
+        {/* Stream blocks (active execution in progress) */}
         {currentStreamBlocks.length > 0 && (
           <StreamBlocksView
             blocks={currentStreamBlocks}
+            defaultExpanded
             onScrollRequest={wasNearBottomRef.current ? scrollToBottom : undefined}
           />
         )}
