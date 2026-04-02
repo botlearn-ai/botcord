@@ -212,8 +212,12 @@ describe("room-context", () => {
       expect(await buildRoomContextHookResult(undefined)).toBeNull();
     });
 
-    it("returns null for owner chat session", async () => {
-      expect(await buildRoomContextHookResult("botcord:owner:main")).toBeNull();
+    it("returns scene context for owner chat session", async () => {
+      const result = await buildRoomContextHookResult("botcord:owner:main");
+      expect(result).not.toBeNull();
+      expect(result!.appendSystemContext).toContain("[BotCord Scene: Owner Chat]");
+      expect(result!.appendSystemContext).toContain("owner");
+      expect(result!.prependContext).toBeUndefined();
     });
 
     it("returns null for unregistered sessions (non-botcord)", async () => {

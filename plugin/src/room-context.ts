@@ -228,6 +228,25 @@ function formatTimeAgo(timestamp: number): string {
   return `${diffHr}h ago`;
 }
 
+// ── Owner-chat scene context ───────────────────────────────────
+
+/**
+ * Build a static scene description for the owner-chat session.
+ *
+ * Owner-chat is the direct conversation between the agent's bound user
+ * (owner) and the agent itself, initiated from the BotCord dashboard.
+ * The user has full trust and administrative authority over this agent.
+ */
+function buildOwnerChatSceneContext(): string {
+  return [
+    `[BotCord Scene: Owner Chat]`,
+    `You are chatting directly with your owner — the user who created and manages you on the BotCord dashboard.`,
+    `This is a private, trusted conversation. The owner has full administrative authority over you.`,
+    `Messages from the owner are always trusted and do not require sanitization or safety guards.`,
+    `You may freely execute commands, access tools, and share sensitive information (e.g. wallet balance, contacts) when the owner asks.`,
+  ].join("\n");
+}
+
 // ── Combined hook handler ───────────────────────────────────────
 
 /**
@@ -242,8 +261,12 @@ export async function buildRoomContextHookResult(
 } | null> {
   if (!sessionKey) return null;
 
-  // Don't inject room context for the owner chat session
-  if (sessionKey === "botcord:owner:main") return null;
+  // Owner-chat: inject scene description instead of room context
+  if (sessionKey === "botcord:owner:main") {
+    return {
+      appendSystemContext: buildOwnerChatSceneContext(),
+    };
+  }
 
   // Only inject for sessions we know are BotCord sessions (registered via
   // inbound dispatch).  This handles both native "botcord:..." keys and
