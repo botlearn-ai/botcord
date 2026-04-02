@@ -2,11 +2,9 @@
  * Memory hook — glue between OpenClaw hooks and the memory subsystem.
  *
  * - buildWorkingMemoryHookResult(): before_prompt_build handler
- * - processOutboundMemory(): extract <memory_update> from outbound text,
- *   persist to disk, return cleaned text
  */
-import { readWorkingMemory, writeWorkingMemory } from "./memory.js";
-import { buildWorkingMemoryPrompt, extractMemoryUpdate } from "./memory-protocol.js";
+import { readWorkingMemory } from "./memory.js";
+import { buildWorkingMemoryPrompt } from "./memory-protocol.js";
 import { getSessionRoom } from "./room-context.js";
 
 // ── before_prompt_build handler ────────────────────────────────────
@@ -34,38 +32,4 @@ export async function buildWorkingMemoryHookResult(
     console.warn("[botcord] memory-hook: failed to read working memory:", err?.message ?? err);
     return null;
   }
-}
-
-// ── Outbound memory extraction ─────────────────────────────────────
-
-/**
- * Process outbound text for <memory_update> blocks.
- *
- * - Extracts the memory content and persists to working-memory.json
- * - Returns the cleaned text (without <memory_update> blocks)
- *
- * Safe to call on any text — returns the original if no memory blocks found.
- */
-export function processOutboundMemory(
-  text: string,
-  sessionKey?: string,
-): string {
-  if (!text) return text;
-
-  const { cleanedText, memoryContent } = extractMemoryUpdate(text);
-
-  if (memoryContent !== null) {
-    try {
-      writeWorkingMemory({
-        version: 1,
-        content: memoryContent,
-        updatedAt: new Date().toISOString(),
-        sourceSessionKey: sessionKey,
-      });
-    } catch (err: any) {
-      console.error("[botcord] memory-hook: failed to write working memory:", err?.message ?? err);
-    }
-  }
-
-  return cleanedText;
 }
