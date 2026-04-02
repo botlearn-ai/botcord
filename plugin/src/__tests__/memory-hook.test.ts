@@ -1,8 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import {
-  buildWorkingMemoryHookResult,
-  processOutboundMemory,
-} from "../memory-hook.js";
+import { buildWorkingMemoryHookResult } from "../memory-hook.js";
 import {
   registerSessionRoom,
   getAllSessionRooms,
@@ -27,11 +24,8 @@ vi.mock("../credentials.js", () => ({
 
 // Mock memory read/write to avoid filesystem in unit tests
 const mockReadWorkingMemory = vi.fn().mockReturnValue(null);
-const mockWriteWorkingMemory = vi.fn();
-
 vi.mock("../memory.js", () => ({
   readWorkingMemory: (...args: any[]) => mockReadWorkingMemory(...args),
-  writeWorkingMemory: (...args: any[]) => mockWriteWorkingMemory(...args),
 }));
 
 describe("memory-hook", () => {
@@ -39,7 +33,6 @@ describe("memory-hook", () => {
     const map = getAllSessionRooms() as Map<string, any>;
     map.clear();
     mockReadWorkingMemory.mockReset().mockReturnValue(null);
-    mockWriteWorkingMemory.mockReset();
   });
 
   // ── buildWorkingMemoryHookResult ─────────────────────────────────
@@ -87,44 +80,6 @@ describe("memory-hook", () => {
 
       const result = await buildWorkingMemoryHookResult("botcord:test");
       expect(result?.prependContext).toContain("important fact");
-    });
-  });
-
-  // ── processOutboundMemory ────────────────────────────────────────
-
-  describe("processOutboundMemory", () => {
-    it("returns original text when no memory block", () => {
-      const result = processOutboundMemory("Hello world");
-      expect(result).toBe("Hello world");
-      expect(mockWriteWorkingMemory).not.toHaveBeenCalled();
-    });
-
-    it("extracts memory and returns cleaned text", () => {
-      const text =
-        "Here is my response.\n\n<memory_update>\n- new note\n</memory_update>";
-      const result = processOutboundMemory(text, "botcord:test");
-      expect(result).toBe("Here is my response.");
-      expect(mockWriteWorkingMemory).toHaveBeenCalledTimes(1);
-      expect(mockWriteWorkingMemory.mock.calls[0][0]).toMatchObject({
-        version: 1,
-        content: "- new note",
-        sourceSessionKey: "botcord:test",
-      });
-    });
-
-    it("returns empty string for empty input", () => {
-      expect(processOutboundMemory("")).toBe("");
-      expect(mockWriteWorkingMemory).not.toHaveBeenCalled();
-    });
-
-    it("handles write errors gracefully", () => {
-      mockWriteWorkingMemory.mockImplementation(() => {
-        throw new Error("disk full");
-      });
-      const text = "Response.\n<memory_update>notes</memory_update>";
-      // Should not throw — logs error and returns cleaned text
-      const result = processOutboundMemory(text);
-      expect(result).toBe("Response.");
     });
   });
 });

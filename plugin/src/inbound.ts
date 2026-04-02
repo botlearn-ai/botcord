@@ -7,7 +7,6 @@ import { resolveAccountConfig } from "./config.js";
 import { attachTokenPersistence } from "./credentials.js";
 import { buildSessionKey } from "./session-key.js";
 import { registerSessionRoom } from "./room-context.js";
-import { processOutboundMemory } from "./memory-hook.js";
 import { readFileSync } from "node:fs";
 
 // Simplified inline replacement for loadSessionStore from openclaw/plugin-sdk/mattermost.
@@ -276,15 +275,13 @@ async function handleDashboardUserChat(
 
   // Use buffered block dispatcher with auto-delivery to the chat room.
   // The deliver callback receives a ReplyPayload object (not a plain string).
-  // Memory extraction: strip <memory_update> blocks and persist before sending.
   try {
     await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
       ctx: ctxPayload,
       cfg,
       dispatcherOptions: {
         deliver: async (payload: any) => {
-          const rawText = payload?.text ?? "";
-          const text = processOutboundMemory(rawText, sessionKey);
+          const text = payload?.text ?? "";
           const mediaUrl = payload?.mediaUrl;
 
           // Stream assistant block to Hub before sending the final reply
@@ -551,11 +548,7 @@ export async function dispatchInbound(params: InboundParams): Promise<void> {
     dispatcherOptions: {
       // A2A replies are sent explicitly via botcord_send tool.
       // Suppress automatic delivery to avoid leaking agent narration.
-      // Still extract <memory_update> blocks from the suppressed text.
-      deliver: async (payload: any) => {
-        const rawText = payload?.text ?? "";
-        if (rawText) processOutboundMemory(rawText, effectiveSessionKey);
-      },
+      deliver: async (_payload: any) => {},
       onError: (err: any, info: any) => {
         console.error(`[botcord] ${info?.kind ?? "unknown"} reply error:`, err);
       },

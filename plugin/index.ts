@@ -16,6 +16,7 @@ import { createNotifyTool } from "./src/tools/notify.js";
 import { createBindTool } from "./src/tools/bind.js";
 import { createRegisterTool } from "./src/tools/register.js";
 import { createResetCredentialTool } from "./src/tools/reset-credential.js";
+import { createWorkingMemoryTool } from "./src/tools/working-memory.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
 import { createBindCommand } from "./src/commands/bind.js";
@@ -62,6 +63,7 @@ export default {
     api.registerTool(createBindTool() as any);
     api.registerTool(createRegisterTool() as any);
     api.registerTool(createResetCredentialTool() as any);
+    api.registerTool(createWorkingMemoryTool() as any);
 
     // Hooks
     api.on("after_tool_call", async (event: any, ctx: any) => {
