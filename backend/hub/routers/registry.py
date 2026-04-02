@@ -516,6 +516,7 @@ async def resolve_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         agent_id=agent.agent_id,
         display_name=agent.display_name,
         bio=agent.bio,
+        is_claimed=agent.claimed_at is not None,
         has_endpoint=len(endpoints) > 0,
         endpoints=endpoints,
     )
@@ -578,6 +579,7 @@ async def update_profile(
         agent_id=agent.agent_id,
         display_name=agent.display_name,
         bio=agent.bio,
+        is_claimed=agent.claimed_at is not None,
         has_endpoint=len(endpoints) > 0,
         endpoints=endpoints,
     )
