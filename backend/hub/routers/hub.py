@@ -242,10 +242,15 @@ async def notify_inbox(
     notified = 0
     ws_set = _ws_connections.get(agent_id)
     if ws_set:
+        logger.info("notify_inbox: agent=%s ws_connections=%d", agent_id, len(ws_set))
+    else:
+        logger.warning("notify_inbox: agent=%s no ws_connections", agent_id)
+    if ws_set:
         # Iterate a snapshot to avoid concurrent modification
         dead: list[WebSocket] = []
         for ws in list(ws_set):
             try:
+                logger.info("notify_inbox: sending inbox_update to ws=%s state=%s", id(ws), ws.client_state)
                 await ws.send_json({"type": "inbox_update"})
                 notified += 1
             except (WebSocketDisconnect, RuntimeError) as exc:
@@ -1589,17 +1594,31 @@ async def websocket_inbox(ws: WebSocket):
         _ws_connections[agent_id].add(ws)
 
         # --- Main loop: heartbeat + listen for client messages ---
+        # Track consecutive heartbeats without any client response to detect
+        # ghost connections (e.g. Nginx h2 proxy silently dropping frames).
+        _silent_heartbeats = 0
+        _MAX_SILENT_HEARTBEATS = 3  # kick after 3 unanswered heartbeats (~90s)
+
         while True:
             try:
                 # Wait for client message or heartbeat timeout
                 msg = await asyncio.wait_for(
                     ws.receive_json(), timeout=_WS_HEARTBEAT_INTERVAL
                 )
+                _silent_heartbeats = 0  # client is alive
                 # Handle client messages (ping/pong, future extensions)
                 if msg.get("type") == "ping":
                     await ws.send_json({"type": "pong"})
             except asyncio.TimeoutError:
                 # No client message within interval — send heartbeat
+                _silent_heartbeats += 1
+                if _silent_heartbeats >= _MAX_SILENT_HEARTBEATS:
+                    logger.warning(
+                        "WebSocket ghost detected: agent=%s silent_heartbeats=%d, closing",
+                        agent_id, _silent_heartbeats,
+                    )
+                    await ws.close(code=4002, reason="Ghost connection: no client response")
+                    break
                 await ws.send_json({"type": "heartbeat"})
 
     except WebSocketDisconnect:
