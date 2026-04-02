@@ -322,7 +322,10 @@ if [ "${#EXISTING_CRED_PATHS[@]}" -gt 0 ]; then
         if (!hubUrl || !agentId) { process.stdout.write("unknown"); process.exit(0); }
         fetch(`${hubUrl}/registry/resolve/${agentId}`, { signal: AbortSignal.timeout(5000) })
           .then(r => r.ok ? r.json() : null)
-          .then(d => process.stdout.write(d && d.is_claimed ? "claimed" : "unclaimed"))
+          .then(d => {
+            if (!d || !("is_claimed" in d)) process.stdout.write("unknown");
+            else process.stdout.write(d.is_claimed ? "claimed" : "unclaimed");
+          })
           .catch(() => process.stdout.write("unknown"));
       } catch { process.stdout.write("unknown"); }
     ' 2>/dev/null || echo "unknown")"
