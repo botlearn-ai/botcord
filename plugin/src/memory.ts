@@ -55,12 +55,12 @@ export function resolveMemoryDir(): string {
 }
 
 /**
- * Resolve the room state directory (workspace-scoped).
+ * Resolve the workspace-scoped base directory.
  *
- * Uses OpenClaw's workspace API so each agent instance has its own room state.
- * Falls back to ~/.botcord/memory/ when the workspace API is unavailable.
+ * Uses OpenClaw's workspace API so each agent instance has isolated state.
+ * Returns null when the workspace API is unavailable.
  */
-export function resolveRoomStateDir(): string {
+function resolveWorkspaceDir(): string | null {
   try {
     const runtime = getBotCordRuntime();
     const cfg = getConfig();
@@ -71,9 +71,18 @@ export function resolveRoomStateDir(): string {
       return path.join(workspaceDir, "memory/botcord");
     }
   } catch {
-    // runtime not initialized or API unavailable — fall through
+    // runtime not initialized or API unavailable
   }
-  return path.join(os.homedir(), ".botcord", "memory");
+  return null;
+}
+
+/**
+ * Resolve the room state directory (workspace-scoped).
+ *
+ * Falls back to the account-scoped memory dir when workspace API is unavailable.
+ */
+export function resolveRoomStateDir(): string {
+  return resolveWorkspaceDir() ?? resolveMemoryDir();
 }
 
 // ── Atomic file helpers ────────────────────────────────────────────
@@ -111,7 +120,17 @@ function workingMemoryPath(memDir?: string): string {
 }
 
 export function readWorkingMemory(memDir?: string): WorkingMemory | null {
-  return readJsonFile<WorkingMemory>(workingMemoryPath(memDir));
+  const primary = readJsonFile<WorkingMemory>(workingMemoryPath(memDir));
+  if (primary || memDir) return primary;
+
+  // Migration fallback: try the old workspace-scoped path so existing memory
+  // is not lost after upgrading to account-scoped storage.
+  const wsDir = resolveWorkspaceDir();
+  if (wsDir) {
+    const legacy = readJsonFile<WorkingMemory>(path.join(wsDir, "working-memory.json"));
+    if (legacy) return legacy;
+  }
+  return null;
 }
 
 export function writeWorkingMemory(

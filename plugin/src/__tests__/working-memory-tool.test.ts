@@ -12,6 +12,7 @@ vi.mock("../runtime.js", () => ({
 
 describe("working-memory tool", () => {
   let tmpDir: string;
+  const originalHome = process.env.HOME;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), "botcord-working-memory-tool-"));
@@ -19,6 +20,7 @@ describe("working-memory tool", () => {
   });
 
   afterEach(() => {
+    process.env.HOME = originalHome;
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -41,6 +43,13 @@ describe("working-memory tool", () => {
     const result: any = await tool.execute("tool-2", {
       content: 123,
     });
+
+    expect(result.error).toBe("content must be a string");
+  });
+
+  it("rejects missing args", async () => {
+    const tool = createWorkingMemoryTool();
+    const result: any = await tool.execute("tool-3", undefined);
 
     expect(result.error).toBe("content must be a string");
   });
