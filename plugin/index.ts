@@ -74,11 +74,18 @@ export default {
           const toolName = ctx.toolName ?? "unknown";
           const paramsSummary: Record<string, unknown> = {};
           if (event.params && typeof event.params === "object") {
-            // Include only safe summary fields, not full payloads
+            // Redact working memory content — it should stay local
+            const redactKeys = toolName === "botcord_update_working_memory"
+              ? new Set(["content"])
+              : new Set<string>();
             for (const [k, v] of Object.entries(event.params)) {
-              paramsSummary[k] = typeof v === "string" && v.length > 200
-                ? v.slice(0, 200) + "..."
-                : v;
+              if (redactKeys.has(k)) {
+                paramsSummary[k] = "[redacted]";
+              } else {
+                paramsSummary[k] = typeof v === "string" && v.length > 200
+                  ? v.slice(0, 200) + "..."
+                  : v;
+              }
             }
           }
           await stream.client.postStreamBlock(stream.traceId, stream.seq++, {
