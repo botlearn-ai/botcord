@@ -16,6 +16,7 @@ import { createNotifyTool } from "./src/tools/notify.js";
 import { createBindTool } from "./src/tools/bind.js";
 import { createRegisterTool } from "./src/tools/register.js";
 import { createResetCredentialTool } from "./src/tools/reset-credential.js";
+import { createWorkingMemoryTool } from "./src/tools/working-memory.js";
 import { createHealthcheckCommand } from "./src/commands/healthcheck.js";
 import { createTokenCommand } from "./src/commands/token.js";
 import { createBindCommand } from "./src/commands/bind.js";
@@ -62,6 +63,7 @@ export default {
     api.registerTool(createBindTool() as any);
     api.registerTool(createRegisterTool() as any);
     api.registerTool(createResetCredentialTool() as any);
+    api.registerTool(createWorkingMemoryTool() as any);
 
     // Hooks
     api.on("after_tool_call", async (event: any, ctx: any) => {
@@ -72,11 +74,18 @@ export default {
           const toolName = ctx.toolName ?? "unknown";
           const paramsSummary: Record<string, unknown> = {};
           if (event.params && typeof event.params === "object") {
-            // Include only safe summary fields, not full payloads
+            // Redact working memory content — it should stay local
+            const redactKeys = toolName === "botcord_update_working_memory"
+              ? new Set(["content"])
+              : new Set<string>();
             for (const [k, v] of Object.entries(event.params)) {
-              paramsSummary[k] = typeof v === "string" && v.length > 200
-                ? v.slice(0, 200) + "..."
-                : v;
+              if (redactKeys.has(k)) {
+                paramsSummary[k] = "[redacted]";
+              } else {
+                paramsSummary[k] = typeof v === "string" && v.length > 200
+                  ? v.slice(0, 200) + "..."
+                  : v;
+              }
             }
           }
           await stream.client.postStreamBlock(stream.traceId, stream.seq++, {

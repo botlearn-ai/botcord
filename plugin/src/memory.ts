@@ -1,14 +1,17 @@
 /**
  * Working Memory & Room State — persistent local storage for agent memory.
  *
- * Storage layout (under OpenClaw agent workspace):
- *   {workspace}/memory/botcord/working-memory.json
+ * Working memory is account-scoped:
+ *   ~/.botcord/memory/{agentId}/working-memory.json
+ *
+ * Room state is workspace-scoped (per OpenClaw agent instance):
  *   {workspace}/memory/botcord/rooms/{roomId}.json
  */
 import { mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { getBotCordRuntime, getConfig } from "./runtime.js";
+import { resolveAccountConfig } from "./config.js";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -29,30 +32,57 @@ export type RoomState = {
   updatedAt: string;
 };
 
-// ── Workspace resolution ───────────────────────────────────────────
-
-const MEMORY_SUBDIR = "memory/botcord";
+// ── Directory resolution ──────────────────────────────────────────
 
 /**
- * Resolve the base memory directory.
+ * Resolve the working memory directory (account-scoped).
  *
- * Tries OpenClaw's workspace API first; falls back to ~/.botcord/memory.
+ * Uses ~/.botcord/memory/{agentId}/ so that all OpenClaw agents sharing the
+ * same BotCord account read/write the same working memory.
+ * Falls back to ~/.botcord/memory/ when agentId is unavailable.
  */
 export function resolveMemoryDir(): string {
   try {
+    const cfg = getConfig();
+    const agentId = resolveAccountConfig(cfg)?.agentId;
+    if (agentId) {
+      return path.join(os.homedir(), ".botcord", "memory", agentId);
+    }
+  } catch {
+    // config not initialized — fall through
+  }
+  return path.join(os.homedir(), ".botcord", "memory");
+}
+
+/**
+ * Resolve the workspace-scoped base directory.
+ *
+ * Uses OpenClaw's workspace API so each agent instance has isolated state.
+ * Returns null when the workspace API is unavailable.
+ */
+function resolveWorkspaceDir(): string | null {
+  try {
     const runtime = getBotCordRuntime();
     const cfg = getConfig();
-    // OpenClaw workspace API (if available)
     const workspaceDir =
       (runtime as any).agent?.resolveAgentWorkspaceDir?.(cfg) ??
       (runtime as any).agent?.ensureAgentWorkspace?.(cfg);
     if (typeof workspaceDir === "string" && workspaceDir) {
-      return path.join(workspaceDir, MEMORY_SUBDIR);
+      return path.join(workspaceDir, "memory/botcord");
     }
   } catch {
-    // runtime not initialized or API unavailable — fall through
+    // runtime not initialized or API unavailable
   }
-  return path.join(os.homedir(), ".botcord", "memory");
+  return null;
+}
+
+/**
+ * Resolve the room state directory (workspace-scoped).
+ *
+ * Falls back to the account-scoped memory dir when workspace API is unavailable.
+ */
+export function resolveRoomStateDir(): string {
+  return resolveWorkspaceDir() ?? resolveMemoryDir();
 }
 
 // ── Atomic file helpers ────────────────────────────────────────────
@@ -90,7 +120,17 @@ function workingMemoryPath(memDir?: string): string {
 }
 
 export function readWorkingMemory(memDir?: string): WorkingMemory | null {
-  return readJsonFile<WorkingMemory>(workingMemoryPath(memDir));
+  const primary = readJsonFile<WorkingMemory>(workingMemoryPath(memDir));
+  if (primary || memDir) return primary;
+
+  // Migration fallback: try the old workspace-scoped path so existing memory
+  // is not lost after upgrading to account-scoped storage.
+  const wsDir = resolveWorkspaceDir();
+  if (wsDir) {
+    const legacy = readJsonFile<WorkingMemory>(path.join(wsDir, "working-memory.json"));
+    if (legacy) return legacy;
+  }
+  return null;
 }
 
 export function writeWorkingMemory(
@@ -103,7 +143,7 @@ export function writeWorkingMemory(
 // ── Room State ─────────────────────────────────────────────────────
 
 function roomStatePath(roomId: string, memDir?: string): string {
-  return path.join(memDir ?? resolveMemoryDir(), "rooms", `${roomId}.json`);
+  return path.join(memDir ?? resolveRoomStateDir(), "rooms", `${roomId}.json`);
 }
 
 export function readRoomState(
