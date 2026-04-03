@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import RequestContext, require_user
 from hub.auth import create_agent_token, verify_agent_token
 from hub.config import BIND_PROOF_SECRET, JWT_SECRET
+from hub.routers.hub import is_agent_ws_online
 from hub.crypto import verify_challenge_sig
 from hub.database import async_session as _default_session_factory, get_db
 from hub.models import Agent, Role, ShortCode, SigningKey, User, UserRole
@@ -514,6 +515,7 @@ async def get_me(
                 "display_name": a.display_name,
                 "is_default": a.is_default,
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
+                "ws_online": is_agent_ws_online(a.agent_id),
             }
             for a in agents
         ],
@@ -540,6 +542,7 @@ async def get_my_agents(
                 "message_policy": a.message_policy.value if a.message_policy else None,
                 "is_default": a.is_default,
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
+                "ws_online": is_agent_ws_online(a.agent_id),
             }
             for a in agents
         ],

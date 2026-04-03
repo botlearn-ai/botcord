@@ -97,6 +97,12 @@ _inbox_conditions: dict[str, asyncio.Condition] = {}
 _ws_connections: dict[str, set[WebSocket]] = {}
 
 
+def is_agent_ws_online(agent_id: str) -> bool:
+    """Check if an agent has at least one active WebSocket connection."""
+    ws_set = _ws_connections.get(agent_id)
+    return bool(ws_set)
+
+
 def build_agent_realtime_topic(agent_id: str) -> str:
     return f"agent:{agent_id}"
 
