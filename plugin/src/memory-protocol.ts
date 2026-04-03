@@ -38,7 +38,7 @@ export function buildWorkingMemoryPrompt(params: {
   const lines: string[] = [
     `[BotCord Working Memory]`,
     `You have a persistent working memory that survives across sessions and rooms.`,
-    `Use it to track important facts, pending tasks, and context you want to remember.`,
+    `Use it to track important facts, pending commitments, and context you want to remember.`,
     ``,
     `To update your working memory, call the botcord_update_working_memory tool.`,
     ``,

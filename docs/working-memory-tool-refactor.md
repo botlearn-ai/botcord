@@ -61,7 +61,7 @@ It is not appropriate for:
 - room-local operational state that belongs in room state
 - details that are useful only for the current reply
 
-## Proposed Design
+## Design
 
 ### Read Path
 
