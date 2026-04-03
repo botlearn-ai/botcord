@@ -14,6 +14,7 @@ interface WorkingMemory {
 }
 
 const AGENT_ID_RE = /^ag_[A-Za-z0-9_-]+$/;
+const MAX_WORKING_MEMORY_CHARS = 20_000;
 
 function validateAgentId(agentId: string): void {
   if (!AGENT_ID_RE.test(agentId)) {
@@ -34,9 +35,22 @@ function readMemory(agentId: string): WorkingMemory | null {
   const filePath = memoryFilePath(agentId);
   try {
     const raw = readFileSync(filePath, "utf-8");
-    return JSON.parse(raw) as WorkingMemory;
-  } catch {
-    return null;
+    const parsed = JSON.parse(raw) as Partial<WorkingMemory> | null;
+    if (
+      !parsed ||
+      parsed.version !== 1 ||
+      typeof parsed.content !== "string" ||
+      typeof parsed.updatedAt !== "string"
+    ) {
+      throw new Error(`working memory file is invalid: ${filePath}`);
+    }
+    return parsed as WorkingMemory;
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "ENOENT") {
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -54,6 +68,21 @@ function writeMemory(agentId: string, content: string): WorkingMemory {
   renameSync(tmp, filePath);
   chmodSync(filePath, 0o600);
   return data;
+}
+
+function normalizeContent(content: string): string {
+  const normalized = content.trim();
+  if (!normalized) {
+    outputError('content must not be empty. Usage: botcord memory set "content" or botcord memory set --file path');
+  }
+  if (normalized.length > MAX_WORKING_MEMORY_CHARS) {
+    outputError(`content exceeds ${MAX_WORKING_MEMORY_CHARS} characters`);
+  }
+  return normalized;
+}
+
+function formatErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 // ── Command ───────────────────────────────────────────────────────
@@ -78,8 +107,12 @@ Options:
   const sub = args.subcommand;
 
   if (!sub || sub === "get") {
-    // Read current working memory
-    const wm = readMemory(agentId);
+    let wm: WorkingMemory | null;
+    try {
+      wm = readMemory(agentId);
+    } catch (err: unknown) {
+      outputError(`failed to read working memory: ${formatErrorMessage(err)}`);
+    }
     if (!wm) {
       outputJson({ agent_id: agentId, content: null, message: "working memory is empty" });
     } else {
@@ -99,20 +132,22 @@ Options:
     const filePath = args.flags["file"];
     if (typeof filePath === "string") {
       try {
-        content = readFileSync(filePath, "utf-8").trim();
+        content = normalizeContent(readFileSync(filePath, "utf-8"));
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        outputError(`failed to read file "${filePath}": ${msg}`);
+        outputError(`failed to read file "${filePath}": ${formatErrorMessage(err)}`);
       }
     } else {
       content = args.positionals[0];
     }
 
-    if (!content || !content.trim()) {
-      outputError('content must not be empty. Usage: botcord memory set "content" or botcord memory set --file path');
-    }
+    const normalizedContent = normalizeContent(content ?? "");
 
-    const wm = writeMemory(agentId, content!);
+    let wm: WorkingMemory;
+    try {
+      wm = writeMemory(agentId, normalizedContent);
+    } catch (err: unknown) {
+      outputError(`failed to write working memory: ${formatErrorMessage(err)}`);
+    }
     outputJson({
       agent_id: agentId,
       updated: true,
@@ -124,11 +159,21 @@ Options:
 
   if (sub === "clear") {
     const filePath = memoryFilePath(agentId);
-    if (existsSync(filePath)) {
+    if (!existsSync(filePath)) {
+      outputJson({ agent_id: agentId, cleared: false, message: "working memory was already empty" });
+      return;
+    }
+
+    try {
       unlinkSync(filePath);
       outputJson({ agent_id: agentId, cleared: true });
-    } else {
-      outputJson({ agent_id: agentId, cleared: false, message: "working memory was already empty" });
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (code === "ENOENT") {
+        outputJson({ agent_id: agentId, cleared: false, message: "working memory was already empty" });
+      } else {
+        outputError(`failed to clear working memory: ${formatErrorMessage(err)}`);
+      }
     }
     return;
   }
