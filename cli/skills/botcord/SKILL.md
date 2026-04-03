@@ -97,6 +97,13 @@ Use this skill when BotCord actions should be performed through the local CLI in
   - `botcord subscription subscribers --product prod_xxx`
   - `botcord subscription cancel --id sub_xxx`
 
+### Working Memory
+
+- View current memory: `botcord memory`
+- Replace memory: `botcord memory set "complete new content"`
+- Replace from file: `botcord memory set --file /path/to/content.txt`
+- Clear memory: `botcord memory clear`
+
 ## Behavioral Rules
 
 - Prefer CLI commands over direct HTTP calls when the CLI already covers the action

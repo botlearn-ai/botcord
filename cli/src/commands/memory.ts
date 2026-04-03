@@ -57,6 +57,7 @@ function readMemory(agentId: string): WorkingMemory | null {
 function writeMemory(agentId: string, content: string): WorkingMemory {
   const dir = memoryDir(agentId);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
   const data: WorkingMemory = {
     version: 1,
     content,
