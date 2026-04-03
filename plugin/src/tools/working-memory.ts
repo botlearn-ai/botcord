@@ -3,6 +3,8 @@
  */
 import { writeWorkingMemory } from "../memory.js";
 
+const MAX_WORKING_MEMORY_CHARS = 20_000;
+
 export function createWorkingMemoryTool() {
   return {
     name: "botcord_update_working_memory",
@@ -29,6 +31,12 @@ export function createWorkingMemoryTool() {
       }
 
       const content = args.content.trim();
+      if (!content) {
+        return { error: "content must not be empty — use a separate mechanism to clear memory" };
+      }
+      if (content.length > MAX_WORKING_MEMORY_CHARS) {
+        return { error: `content exceeds ${MAX_WORKING_MEMORY_CHARS} characters` };
+      }
 
       try {
         writeWorkingMemory({
@@ -41,8 +49,9 @@ export function createWorkingMemoryTool() {
           updated: true,
           content_length: content.length,
         };
-      } catch (err: any) {
-        return { error: `Failed to update working memory: ${err.message}` };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: `Failed to update working memory: ${message}` };
       }
     },
   };
