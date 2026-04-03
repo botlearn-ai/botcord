@@ -174,31 +174,41 @@ export class OpenClawRuntime {
     let stderr = "";
     let exitCode = 0;
 
-    try {
-      const result = await execFileAsync(
-        "docker",
-        [
-          "exec",
-          instance.containerName,
-          "openclaw",
-          "agent",
-          "--session-id",
-          instance.sessionId,
-          "-m",
-          message,
-          "--json",
-        ],
-        { timeout: 300_000, maxBuffer: 10 * 1024 * 1024 },
-      );
-      stdout = result.stdout;
-      stderr = result.stderr;
-    } catch (err: unknown) {
-      // openclaw agent --json returns non-zero exit codes in gateway mode
-      // even on success (e.g. 255). The real status is in the JSON output.
-      const error = err as { stdout?: string; stderr?: string; code?: number };
-      stdout = error.stdout ?? "";
-      stderr = error.stderr ?? "";
-      exitCode = error.code ?? 1;
+    const maxAttempts = 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      stdout = "";
+      stderr = "";
+      exitCode = 0;
+      try {
+        const result = await execFileAsync(
+          "docker",
+          [
+            "exec",
+            instance.containerName,
+            "openclaw",
+            "agent",
+            "--session-id",
+            instance.sessionId,
+            "-m",
+            message,
+            "--json",
+          ],
+          { timeout: 300_000, maxBuffer: 10 * 1024 * 1024 },
+        );
+        stdout = result.stdout;
+        stderr = result.stderr;
+      } catch (err: unknown) {
+        const error = err as { stdout?: string; stderr?: string; code?: number };
+        stdout = error.stdout ?? "";
+        stderr = error.stderr ?? "";
+        exitCode = error.code ?? 1;
+      }
+      // Retry on exit=255 with no JSON output (transient LLM error)
+      if (exitCode === 255 && !stdout.trim() && attempt < maxAttempts) {
+        console.log(`  [${instance.id}] Exit 255 with no output — retrying (attempt ${attempt + 1}/${maxAttempts})...`);
+        continue;
+      }
+      break;
     }
 
     // Parse JSON from stdout regardless of exit code
