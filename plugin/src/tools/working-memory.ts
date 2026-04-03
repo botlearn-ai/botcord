@@ -29,6 +29,9 @@ export function createWorkingMemoryTool() {
       }
 
       const content = args.content.trim();
+      if (!content) {
+        return { error: "content must not be empty — use a separate mechanism to clear memory" };
+      }
 
       try {
         writeWorkingMemory({
