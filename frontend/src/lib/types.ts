@@ -617,4 +617,5 @@ export interface UserAgent {
   display_name: string;
   is_default: boolean;
   claimed_at: string;
+  ws_online: boolean;
 }

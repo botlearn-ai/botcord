@@ -81,8 +81,16 @@ export default function AccountMenu({
               <p className="text-sm font-medium leading-none text-text-primary">
                 {user?.display_name || user?.email || t.user}
               </p>
-              <p className="text-xs leading-none text-text-secondary mt-1">
-                {activeAgent ? `${t.active}${activeAgent.display_name}` : t.noActiveAgent}
+              <p className="text-xs leading-none text-text-secondary mt-1 flex items-center gap-1.5">
+                {activeAgent ? (
+                  <>
+                    {t.active}{activeAgent.display_name}
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${activeAgent.ws_online ? "bg-emerald-400" : "bg-zinc-500"}`} />
+                    <span className={activeAgent.ws_online ? "text-emerald-400" : "text-zinc-500"}>
+                      {activeAgent.ws_online ? t.wsOnline : t.wsOffline}
+                    </span>
+                  </>
+                ) : t.noActiveAgent}
               </p>
             </div>
 
@@ -103,6 +111,7 @@ export default function AccountMenu({
                       onClick={() => onSwitchAgent(agent.agent_id)}
                       className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus:bg-glass-bg data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
                     >
+                      <span className={`inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full mr-2 ${agent.ws_online ? "bg-emerald-400" : "bg-zinc-500"}`} />
                       <span className="flex-1 truncate text-text-primary">
                         {agent.display_name}
                       </span>

@@ -906,6 +906,8 @@ export const accountMenu: TranslationMap<{
   createAgent: string
   resetCredential: string
   resetCredentialDisabled: string
+  wsOnline: string
+  wsOffline: string
 }> = {
   en: {
     account: 'Account',
@@ -917,6 +919,8 @@ export const accountMenu: TranslationMap<{
     createAgent: 'Create Bot',
     resetCredential: 'Reset Bot Credential',
     resetCredentialDisabled: 'Select a Bot first',
+    wsOnline: 'Online',
+    wsOffline: 'Offline',
   },
   zh: {
     account: '账户',
@@ -928,6 +932,8 @@ export const accountMenu: TranslationMap<{
     createAgent: '创建 Bot',
     resetCredential: '重置 Bot Credential',
     resetCredentialDisabled: '请先选择一个 Bot',
+    wsOnline: '在线',
+    wsOffline: '离线',
   },
 }
 
