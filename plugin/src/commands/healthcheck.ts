@@ -9,9 +9,14 @@ import {
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
+import { attachTokenPersistence, resolveCredentialsFilePath } from "../credentials.js";
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { getConfig as getAppConfig } from "../runtime.js";
+import { createRequire } from "node:module";
+import { existsSync, statSync } from "node:fs";
+
+const require = createRequire(import.meta.url);
+const { version: PLUGIN_VERSION } = require("../../package.json");
 
 export function createHealthcheckCommand() {
   return {
@@ -29,6 +34,10 @@ export function createHealthcheckCommand() {
       const warning = (msg: string) => { lines.push(`[WARN] ${msg}`); warn++; };
       const error = (msg: string) => { lines.push(`[FAIL] ${msg}`); fail++; };
       const info = (msg: string) => { lines.push(`[INFO] ${msg}`); };
+
+      // ── 0. Plugin Version ──
+      lines.push("", "── Plugin Version ──");
+      info(`@botcord/botcord v${PLUGIN_VERSION}`);
 
       // ── 1. Plugin Configuration ──
       lines.push("", "── Plugin Configuration ──");
@@ -60,10 +69,34 @@ export function createHealthcheckCommand() {
         }
       }
 
-      if (acct.credentialsFile) {
-        info(`Credentials file: ${acct.credentialsFile}`);
+      // ── 1b. Credentials File ──
+      lines.push("", "── Credentials File ──");
+
+      const credFile = acct.credentialsFile
+        ? resolveCredentialsFilePath(acct.credentialsFile)
+        : undefined;
+
+      if (!credFile) {
+        info("No credentials file configured (using inline config)");
+      } else if (!existsSync(credFile)) {
+        warning(`Credentials file not found: ${credFile}`);
+      } else {
+        ok(`Credentials file exists: ${credFile}`);
         if (!acct.privateKey) {
-          error("credentialsFile is configured but could not be loaded");
+          error("Credentials file exists but could not be loaded");
+        }
+        if (process.platform !== "win32") {
+          try {
+            const st = statSync(credFile);
+            const mode = st.mode & 0o777;
+            if ((mode & 0o077) === 0) {
+              ok(`Credentials file permissions: 0${mode.toString(8)}`);
+            } else {
+              warning(`Credentials file permissions: 0${mode.toString(8)} (group/other bits set — should be owner-only)`);
+            }
+          } catch (err: any) {
+            warning(`Could not check file permissions: ${err.message}`);
+          }
         }
       }
 
@@ -109,6 +142,20 @@ export function createHealthcheckCommand() {
       try {
         await client.ensureToken();
         ok("Token refresh successful — Hub is reachable and credentials are valid");
+
+        const expiresAt = client.getTokenExpiresAt();
+        if (expiresAt > 0) {
+          const remainingSec = expiresAt - Date.now() / 1000;
+          const remainingHrs = Math.floor(remainingSec / 3600);
+          const remainingMin = Math.floor((remainingSec % 3600) / 60);
+          if (remainingSec <= 0) {
+            warning("Token has already expired — will be refreshed on next request");
+          } else if (remainingSec < 3600) {
+            warning(`Token expires in ${remainingMin}m — consider refreshing soon`);
+          } else {
+            ok(`Token expires in ${remainingHrs}h ${remainingMin}m`);
+          }
+        }
       } catch (err: any) {
         error(`Token refresh failed: ${err.message}`);
         lines.push("", `── Summary ──`);
@@ -141,6 +188,17 @@ export function createHealthcheckCommand() {
 
       if (mode === "polling") {
         info(`Poll interval: ${acct.pollIntervalMs || 5000}ms`);
+      }
+
+      // ── 5. Notify Session ──
+      lines.push("", "── Notify Session ──");
+
+      const ns = acct.notifySession;
+      if (!ns || (Array.isArray(ns) && ns.length === 0)) {
+        warning("notifySession is not configured — contact requests and system notifications will not be forwarded to any owner channel");
+      } else {
+        const sessions = Array.isArray(ns) ? ns : [ns];
+        ok(`Notify session(s): ${sessions.join(", ")}`);
       }
 
       // ── Summary ──

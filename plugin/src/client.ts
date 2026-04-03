@@ -57,6 +57,10 @@ export class BotCordClient {
     }
   }
 
+  getTokenExpiresAt(): number {
+    return this.tokenExpiresAt;
+  }
+
   // ── Token management ──────────────────────────────────────────
 
   async ensureToken(forceRefresh = false): Promise<string> {
