@@ -220,11 +220,12 @@ async def _publish_agent_realtime_event(
         await db.commit()
     except Exception as exc:
         await db.rollback()
-        logger.warning(
-            "Supabase realtime publish skipped for agent=%s type=%s err=%s",
+        logger.error(
+            "Supabase realtime publish failed: agent=%s type=%s err=%s",
             event.get("agent_id"),
             event.get("type"),
             exc,
+            exc_info=True,
         )
 
 
@@ -624,22 +625,28 @@ async def _send_direct_message(
     _sender_display_name = _sender_name_result.scalar_one_or_none()
 
     # Notify inbox listeners
-    await notify_inbox(
-        envelope.to,
-        db=db,
-        realtime_event=build_message_realtime_event(
-            type=envelope.type.value,
-            agent_id=envelope.to,
-            sender_id=envelope.from_,
-            room_id=room_id,
-            hub_msg_id=record.hub_msg_id,
-            created_at=record.created_at,
-            topic_id=topic_id,
-            mentioned=True,
-            payload=envelope.payload,
-            sender_name=_sender_display_name,
-        ),
-    )
+    try:
+        await notify_inbox(
+            envelope.to,
+            db=db,
+            realtime_event=build_message_realtime_event(
+                type=envelope.type.value,
+                agent_id=envelope.to,
+                sender_id=envelope.from_,
+                room_id=room_id,
+                hub_msg_id=record.hub_msg_id,
+                created_at=record.created_at,
+                topic_id=topic_id,
+                mentioned=True,
+                payload=envelope.payload,
+                sender_name=_sender_display_name,
+            ),
+        )
+    except Exception as exc:
+        logger.error(
+            "DM notify_inbox failed: receiver=%s msg_id=%s err=%s",
+            envelope.to, envelope.msg_id, exc, exc_info=True,
+        )
 
     return SendResponse(
         queued=True,
@@ -846,28 +853,34 @@ async def _send_room_message(
 
     # Notify all receivers
     for receiver_id in receivers:
-        rt_event = build_message_realtime_event(
-            type=envelope.type.value,
-            agent_id=receiver_id,
-            sender_id=envelope.from_,
-            room_id=envelope.to,
-            hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
-            topic_id=topic_id,
-            mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
-            payload=envelope.payload,
-            sender_name=_sender_display_name,
-        )
-        if _self_delivery and receiver_id == envelope.from_:
-            # Self-delivery: publish realtime event for the dashboard
-            # frontend but do NOT wake the agent's inbox/WS to avoid
-            # the plugin re-processing its own message.
-            # Skip Supabase realtime for owner-chat rooms — the dedicated
-            # WS path handles delivery; publishing here would cause
-            # redundant polling from the Supabase realtime listener.
-            if not room_id.startswith("rm_oc_"):
-                await _publish_agent_realtime_event(db, rt_event)
-        else:
-            await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
+        try:
+            rt_event = build_message_realtime_event(
+                type=envelope.type.value,
+                agent_id=receiver_id,
+                sender_id=envelope.from_,
+                room_id=envelope.to,
+                hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
+                topic_id=topic_id,
+                mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
+                payload=envelope.payload,
+                sender_name=_sender_display_name,
+            )
+            if _self_delivery and receiver_id == envelope.from_:
+                # Self-delivery: publish realtime event for the dashboard
+                # frontend but do NOT wake the agent's inbox/WS to avoid
+                # the plugin re-processing its own message.
+                # Skip Supabase realtime for owner-chat rooms — the dedicated
+                # WS path handles delivery; publishing here would cause
+                # redundant polling from the Supabase realtime listener.
+                if not room_id.startswith("rm_oc_"):
+                    await _publish_agent_realtime_event(db, rt_event)
+            else:
+                await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
+        except Exception as exc:
+            logger.error(
+                "Room fan-out notify failed: receiver=%s room=%s msg_id=%s err=%s",
+                receiver_id, room_id, envelope.msg_id, exc, exc_info=True,
+            )
 
     # Push agent reply to owner-chat WS clients when applicable
     if _self_delivery and room_id.startswith("rm_oc_"):
@@ -1587,7 +1600,8 @@ async def websocket_inbox(ws: WebSocket):
 
         try:
             agent_id = verify_agent_token(token)
-        except Exception:
+        except Exception as exc:
+            logger.error("WebSocket auth failed: %s: %s", type(exc).__name__, exc)
             await ws.close(code=4001, reason="Invalid token")
             return
 
@@ -1630,7 +1644,7 @@ async def websocket_inbox(ws: WebSocket):
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected: agent=%s", agent_id)
     except Exception as e:
-        logger.warning("WebSocket error: agent=%s err=%s", agent_id, e)
+        logger.error("WebSocket error: agent=%s err=%s", agent_id, e, exc_info=True)
     finally:
         # --- Cleanup ---
         if agent_id:

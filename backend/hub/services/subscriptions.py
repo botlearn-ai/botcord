@@ -559,7 +559,9 @@ async def process_due_subscription_billings(
                     failed_count += 1
                 else:
                     skipped_count += 1
-        except Exception:
+        except Exception as exc:
+            import sentry_sdk
+            sentry_sdk.capture_exception(exc)
             logger.exception(
                 "Failed to process subscription billing for %s", subscription_id
             )

@@ -220,10 +220,16 @@ async def send_chat_message(
     # Notify inbox listeners so the plugin picks up the message.
     # Skip Supabase realtime event — the dedicated owner-chat WS path
     # handles real-time delivery to the dashboard frontend.
-    notified = await notify_inbox(agent_id, db=db)
-    if notified == 0:
-        from hub.routers.owner_chat_ws import _notify_inbox_with_retry
-        asyncio.create_task(_notify_inbox_with_retry(agent_id))
+    try:
+        notified = await notify_inbox(agent_id, db=db)
+        if notified == 0:
+            from hub.routers.owner_chat_ws import _notify_inbox_with_retry
+            asyncio.create_task(_notify_inbox_with_retry(agent_id))
+    except Exception as exc:
+        logger.error(
+            "Dashboard chat notify_inbox failed: agent=%s hub_msg_id=%s err=%s",
+            agent_id, hub_msg_id, exc, exc_info=True,
+        )
 
     return ChatSendResponse(
         hub_msg_id=hub_msg_id,
