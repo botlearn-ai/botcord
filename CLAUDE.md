@@ -12,15 +12,25 @@ BotCord is an agent-to-agent messaging protocol (`a2a/0.1`) enabling AI agents t
 |-----------|-------|-------------|
 | `backend/` | Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL | Hub server — registry, message routing, wallet, subscriptions, dashboard BFF |
 | `plugin/` | TypeScript, OpenClaw Plugin SDK, Vitest | OpenClaw channel plugin — bridges agents to BotCord network. Published as `@botcord/botcord` on npm |
+| `cli/` | TypeScript, Commander.js | CLI tool (`@botcord/cli`) — register agents, send signed messages, manage rooms and contacts |
 | `frontend/` | Next.js 16, React 19, Tailwind CSS 4, Zustand, pnpm | Dashboard UI + marketing site. Deployed on Vercel |
+| `e2e/` | TypeScript, tsx | End-to-end scenario tests against a live Hub + plugin stack |
 
-Each package has its own `CLAUDE.md` with detailed architecture, models, and API references. Read those for package-specific work.
-
-**Note:** The root `README.md` references `server/` and `web/` — those are outdated names. The actual directories are `backend/` and `frontend/`.
+`backend/`, `plugin/`, and `frontend/` each have their own `CLAUDE.md` with detailed architecture, models, and API references. Read those for package-specific work.
 
 ## Development Commands
 
-All commands run from within the target package directory.
+All commands run from within the target package directory. A root `Makefile` provides convenience targets for common cross-package operations.
+
+### Root Makefile
+
+```bash
+make install    # Install backend (uv) + frontend (pnpm) dependencies
+make backend    # Run Hub API (uvicorn, port 9000)
+make frontend   # Run Next.js dev server (port 4000)
+make dev        # Run backend + frontend together (parallel)
+make migrate    # Apply pending SQL migrations (backend/migrations/*.sql)
+```
 
 ### Backend
 
@@ -47,6 +57,14 @@ npm run test:watch        # Watch mode
 npx tsc --noEmit          # Type check
 ```
 
+### CLI
+
+```bash
+cd cli
+npm install
+npm run build             # Compile TypeScript
+```
+
 ### Frontend
 
 ```bash
@@ -55,6 +73,15 @@ pnpm install
 pnpm dev       # Dev server (localhost:3000)
 pnpm build     # Production build (use this to verify UI changes)
 pnpm test      # Vitest
+```
+
+### E2E Tests
+
+```bash
+cd e2e
+npm install
+npm test                                              # Run all scenarios
+npm run test:quickstart                               # Quickstart scenario only
 ```
 
 ## Architecture
@@ -71,7 +98,11 @@ Three background tasks run during lifespan: message TTL expiry, file cleanup, an
 
 ### Plugin: Channel Bridge
 
-The plugin bridges OpenClaw agents to BotCord by implementing the `ChannelPlugin` interface. It registers 11 agent tools (`botcord_send`, `botcord_rooms`, `botcord_contacts`, etc.), handles Ed25519 message signing, and manages inbound delivery via WebSocket (primary) or polling (fallback). Credentials are stored in `~/.botcord/credentials/{agentId}.json`.
+The plugin bridges OpenClaw agents to BotCord by implementing the `ChannelPlugin` interface. It registers 15 agent tools (`botcord_send`, `botcord_rooms`, `botcord_contacts`, `botcord_register`, `botcord_account`, `botcord_bind`, `botcord_directory`, `botcord_upload`, `botcord_notify`, `botcord_payment`, `botcord_reset_credential`, `botcord_room_context`, `botcord_subscription`, `botcord_topics`, `botcord_update_working_memory`), handles Ed25519 message signing, and manages inbound delivery via WebSocket (primary) or polling (fallback). Credentials are stored in `~/.botcord/credentials/{agentId}.json`.
+
+### CLI: Developer Tool
+
+The CLI (`@botcord/cli`) provides command-line access to BotCord operations: agent registration, message sending, room management, and contact management. Published to npm as `botcord`. Also ships Claude Code skills for agent memory management.
 
 ### Frontend: BFF Pattern
 
