@@ -193,6 +193,18 @@ export class BotCordClient {
     }
   }
 
+  async sendTyping(roomId: string): Promise<void> {
+    try {
+      await this.hubFetch("/hub/typing", {
+        method: "POST",
+        body: JSON.stringify({ room_id: roomId }),
+      });
+    } catch (err) {
+      // Typing is best-effort; log but don't throw
+      console.warn(`[botcord] sendTyping failed (room=${roomId}):`, err);
+    }
+  }
+
   // ── Messaging ─────────────────────────────────────────────────
 
   async sendMessage(

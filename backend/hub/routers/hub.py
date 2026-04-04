@@ -59,6 +59,7 @@ from hub.schemas import (
     MessageType,
     ReceiptResponse,
     SendResponse,
+    TypingRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -1547,6 +1548,102 @@ async def query_history(
         count=len(messages),
         has_more=has_more,
     )
+
+
+# ---------------------------------------------------------------------------
+# Typing indicator — ephemeral presence broadcast
+# ---------------------------------------------------------------------------
+
+# Dedup cache — prevents redundant fan-out from the SDK's ~3s keepalive.
+# Per-process only; multi-worker setups may duplicate but that's acceptable
+# (same pattern as _rate_windows).
+_typing_dedup: TTLCache[str, bool] = TTLCache(maxsize=4096, ttl=2)
+
+# Rate limit: max 20 typing events per agent per minute (same window as messages).
+_typing_rate_windows: dict[str, deque[float]] = defaultdict(deque)
+_TYPING_RATE_LIMIT_PER_MINUTE = 20
+
+
+@router.post("/typing", status_code=204)
+async def send_typing(
+    body: TypingRequest,
+    current_agent: str = Depends(get_current_claimed_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Broadcast a typing indicator to other members of a room.
+
+    Ephemeral — no database writes.  Deduped by (agent, room) with a 2-second
+    TTL so the plugin's ~3-second keepalive doesn't flood downstream listeners.
+    """
+    # Rate limit
+    now = time.monotonic()
+    window = _typing_rate_windows[current_agent]
+    while window and now - window[0] > 60:
+        window.popleft()
+    if len(window) >= _TYPING_RATE_LIMIT_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Typing rate limit exceeded")
+    window.append(now)
+
+    # Verify room exists and agent is a member (BEFORE dedup to avoid caching errors)
+    room_result = await db.execute(
+        select(Room)
+        .options(selectinload(Room.members))
+        .where(Room.room_id == body.room_id)
+    )
+    room = room_result.scalar_one_or_none()
+    if not room:
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
+
+    member_map = {m.agent_id: m for m in room.members}
+    if current_agent not in member_map:
+        raise I18nHTTPException(status_code=403, message_key="not_a_member")
+
+    # Dedup AFTER auth — never cache error responses
+    dedup_key = f"{current_agent}:{body.room_id}"
+    if dedup_key in _typing_dedup:
+        return
+    _typing_dedup[dedup_key] = True
+
+    # Resolve sender display name (best-effort)
+    name_row = await db.execute(
+        select(Agent.display_name).where(Agent.agent_id == current_agent)
+    )
+    sender_name = name_row.scalar_one_or_none() or current_agent
+
+    # Fan out to other non-muted members
+    targets = [
+        m.agent_id
+        for m in room.members
+        if m.agent_id != current_agent and not m.muted
+    ]
+
+    for target_id in targets:
+        # Supabase Realtime → dashboard
+        event = build_agent_realtime_event(
+            type="typing",
+            agent_id=target_id,
+            room_id=body.room_id,
+            ext={"sender_id": current_agent, "sender_name": sender_name},
+        )
+        try:
+            await _publish_agent_realtime_event(db, event)
+        except Exception as exc:
+            logger.warning("typing realtime publish failed for %s: %s", target_id, exc)
+
+        # Direct WS push → peer agent plugin
+        ws_set = _ws_connections.get(target_id)
+        if ws_set:
+            payload = {
+                "type": "typing",
+                "agent_id": current_agent,
+                "room_id": body.room_id,
+                "sender_name": sender_name,
+            }
+            for ws_conn in list(ws_set):
+                try:
+                    await ws_conn.send_json(payload)
+                except Exception:
+                    pass
 
 
 # ---------------------------------------------------------------------------
