@@ -74,7 +74,11 @@ async def create_checkout_session(
     for topup in existing.scalars().all():
         try:
             meta = json.loads(topup.metadata_json) if topup.metadata_json else {}
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning(
+                "Corrupted topup metadata_json: topup_id=%s err=%s",
+                topup.topup_id, exc,
+            )
             meta = {}
         if meta.get("idempotency_key") != idempotency_key:
             continue
@@ -304,8 +308,11 @@ async def get_checkout_status(
                     select(TopupRequest).where(TopupRequest.topup_id == topup_id)
                 )
                 topup = r2.scalar_one_or_none()
-        except stripe.StripeError:
-            pass
+        except stripe.StripeError as exc:
+            logger.error(
+                "Stripe session retrieve failed: session_id=%s err=%s",
+                checkout_session_id, exc,
+            )
 
     if topup is None:
         raise ValueError("Checkout session not found")
