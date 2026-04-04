@@ -23,6 +23,10 @@ def _clear_rate_windows():
 
     hub_mod._rate_windows.clear()
     hub_mod._pair_rate_windows.clear()
+    hub_mod._typing_rate_windows.clear()
+    hub_mod._typing_dedup.clear()
     yield
     hub_mod._rate_windows.clear()
     hub_mod._pair_rate_windows.clear()
+    hub_mod._typing_rate_windows.clear()
+    hub_mod._typing_dedup.clear()

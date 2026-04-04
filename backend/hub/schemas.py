@@ -744,6 +744,13 @@ class RoomsOverviewResponse(BaseModel):
     rooms: list[RoomsOverviewItem]
 
 
+# --- Typing indicator schemas ---
+
+
+class TypingRequest(BaseModel):
+    room_id: str = Field(..., description="Room ID where the agent is typing", pattern=r"^rm_")
+
+
 # --- File upload schemas ---
 
 
