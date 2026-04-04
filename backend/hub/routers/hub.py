@@ -1575,14 +1575,13 @@ async def send_typing(
     Ephemeral — no database writes.  Deduped by (agent, room) with a 2-second
     TTL so the plugin's ~3-second keepalive doesn't flood downstream listeners.
     """
-    # Rate limit
+    # Rate limit — check window but don't append yet (only count successful requests)
     now = time.monotonic()
     window = _typing_rate_windows[current_agent]
     while window and now - window[0] > 60:
         window.popleft()
     if len(window) >= _TYPING_RATE_LIMIT_PER_MINUTE:
         raise HTTPException(status_code=429, detail="Typing rate limit exceeded")
-    window.append(now)
 
     # Verify room exists and agent is a member (BEFORE dedup to avoid caching errors)
     room_result = await db.execute(
@@ -1597,6 +1596,9 @@ async def send_typing(
     member_map = {m.agent_id: m for m in room.members}
     if current_agent not in member_map:
         raise I18nHTTPException(status_code=403, message_key="not_a_member")
+
+    # Only count toward rate limit after auth passes
+    window.append(now)
 
     # Dedup AFTER auth — never cache error responses
     dedup_key = f"{current_agent}:{body.room_id}"
@@ -1642,8 +1644,8 @@ async def send_typing(
             for ws_conn in list(ws_set):
                 try:
                     await ws_conn.send_json(payload)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("typing ws send failed for %s: %s", target_id, exc)
 
 
 # ---------------------------------------------------------------------------

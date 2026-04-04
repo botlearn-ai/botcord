@@ -170,6 +170,44 @@ async def test_typing_dedup(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_typing_rate_limit_429(client: AsyncClient):
+    """Exceeding typing rate limit should return 429."""
+    sk_a, pub_a = _make_keypair()
+    sk_b, pub_b = _make_keypair()
+    agent_a, _, token_a = await _register_and_verify(client, sk_a, pub_a, "Agent A")
+    agent_b, _, token_b = await _register_and_verify(client, sk_b, pub_b, "Agent B")
+
+    room_id = await _create_room_with_members(client, token_a, [agent_b])
+
+    # Patch the rate limit to a low value for testing
+    from hub.routers import hub as hub_mod
+    original = hub_mod._TYPING_RATE_LIMIT_PER_MINUTE
+    hub_mod._TYPING_RATE_LIMIT_PER_MINUTE = 2
+    try:
+        # First two should succeed (204)
+        for _ in range(2):
+            # Clear dedup so each request actually counts
+            hub_mod._typing_dedup.clear()
+            resp = await client.post(
+                "/hub/typing",
+                json={"room_id": room_id},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            assert resp.status_code == 204
+
+        # Third should be rate-limited (429)
+        hub_mod._typing_dedup.clear()
+        resp = await client.post(
+            "/hub/typing",
+            json={"room_id": room_id},
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 429
+    finally:
+        hub_mod._TYPING_RATE_LIMIT_PER_MINUTE = original
+
+
+@pytest.mark.asyncio
 async def test_typing_ws_fanout(client: AsyncClient):
     """Typing should push a WS message to the other agent's connection."""
     sk_a, pub_a = _make_keypair()
