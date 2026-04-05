@@ -14,6 +14,7 @@ import { BotCordClient } from "./client.js";
 import { handleInboxMessageBatch } from "./inbound.js";
 import { displayPrefix } from "./config.js";
 import { buildHubWebSocketUrl } from "./hub-url.js";
+import { PLUGIN_VERSION, checkVersionInfo } from "./version-check.js";
 
 interface WsClientOptions {
   client: BotCordClient;
@@ -104,8 +105,8 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
       ws = new WebSocket(wsUrl);
 
       ws.on("open", () => {
-        // Send auth message
-        ws!.send(JSON.stringify({ type: "auth", token }));
+        // Send auth message with plugin version for Hub version negotiation
+        ws!.send(JSON.stringify({ type: "auth", token, plugin_version: PLUGIN_VERSION }));
       });
 
       ws.on("message", async (data: WebSocket.Data) => {
@@ -116,6 +117,12 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
               log?.info(`[${dp}] WebSocket authenticated as ${msg.agent_id}`);
               reconnectAttempt = 0; // Reset backoff on successful auth
               consecutiveAuthFailures = 0; // Reset auth failure counter
+              // Check Hub's version recommendation — stop if incompatible
+              if (checkVersionInfo(msg, log) === "incompatible") {
+                log?.error(`[${dp}] Plugin incompatible with Hub, stopping WebSocket`);
+                stop();
+                return;
+              }
               // Start client-side keepalive to survive proxies/Caddy timeouts
               if (keepaliveTimer) clearInterval(keepaliveTimer);
               keepaliveTimer = setInterval(() => {

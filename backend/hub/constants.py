@@ -8,3 +8,28 @@ BACKOFF_SCHEDULE = [1, 2, 4, 8, 16, 32, 60]
 
 # UUID v5 namespace for deriving deterministic session keys from room/topic
 SESSION_KEY_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "botcord")
+
+# Plugin version negotiation — update these when publishing new plugin releases.
+# latest: the newest published version; min_compatible: oldest version that still
+# works with this Hub (older clients should be prompted / refused).
+LATEST_PLUGIN_VERSION = "0.2.3"
+MIN_PLUGIN_VERSION = "0.2.0"
+
+_SEMVER_RE = __import__("re").compile(r"^v?(\d+)\.(\d+)\.(\d+)")
+
+
+def parse_semver(s: str) -> tuple[int, int, int] | None:
+    """Parse a semver-like string. Returns None if unparseable."""
+    m = _SEMVER_RE.match(s)
+    if not m:
+        return None
+    return int(m[1]), int(m[2]), int(m[3])
+
+
+def is_below_min_version(client_version: str) -> bool:
+    """Return True if *client_version* is below MIN_PLUGIN_VERSION."""
+    cv = parse_semver(client_version)
+    mv = parse_semver(MIN_PLUGIN_VERSION)
+    if cv is None or mv is None:
+        return False  # unparseable → don't block
+    return cv < mv
