@@ -162,6 +162,12 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
         ws = null;
         if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
 
+        // 4010 = plugin version incompatible — do NOT reconnect
+        if (code === 4010) {
+          log?.error(`[${dp}] Plugin version incompatible with Hub: ${reasonStr}. Please update: openclaw plugins install @botcord/botcord@latest`);
+          return;
+        }
+
         if (code === 4001) {
           consecutiveAuthFailures++;
           if (consecutiveAuthFailures >= MAX_AUTH_FAILURES) {
@@ -186,6 +192,11 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
       });
     } catch (err: any) {
       log?.error(`[${dp}] WebSocket connect failed: ${err.message}`);
+      // If the error is a version incompatibility (426 from token refresh), stop.
+      if (err.message?.includes("incompatible")) {
+        log?.error(`[${dp}] Stopping WebSocket due to version incompatibility`);
+        return;
+      }
       scheduleReconnect();
     }
   }

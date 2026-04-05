@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 
@@ -743,7 +744,7 @@ async def refresh_token(
 ):
     """Refresh JWT by proving key ownership via nonce signature."""
     # Log and enforce client plugin version
-    plugin_version = request.headers.get("X-Plugin-Version", "")[:20].strip() or None
+    plugin_version = re.sub(r"[^\w.\-]", "", request.headers.get("X-Plugin-Version", "")[:20]) or None
     if plugin_version:
         logger.info("Token refresh: agent=%s plugin_version=%s", agent_id, plugin_version)
         if is_below_min_version(plugin_version):

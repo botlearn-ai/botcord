@@ -1,5 +1,6 @@
 """Protocol-level constants for the BotCord hub."""
 
+import re
 import uuid
 
 PROTOCOL_VERSION = "a2a/0.1"
@@ -15,7 +16,7 @@ SESSION_KEY_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "botcord")
 LATEST_PLUGIN_VERSION = "0.2.3"
 MIN_PLUGIN_VERSION = "0.2.0"
 
-_SEMVER_RE = __import__("re").compile(r"^v?(\d+)\.(\d+)\.(\d+)")
+_SEMVER_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
 
 
 def parse_semver(s: str) -> tuple[int, int, int] | None:

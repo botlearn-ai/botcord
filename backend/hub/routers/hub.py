@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import logging
+import re
 import time
 from typing import Any
 from collections import defaultdict, deque
@@ -1593,7 +1594,7 @@ async def websocket_inbox(ws: WebSocket):
             return
 
         raw_pv = auth_data.get("plugin_version")
-        plugin_version = str(raw_pv)[:20].strip() if raw_pv else None
+        plugin_version = re.sub(r"[^\w.\-]", "", str(raw_pv)[:20]) if raw_pv else None
         if plugin_version and is_below_min_version(plugin_version):
             logger.warning("WebSocket rejected: agent=%s plugin_version=%s below min=%s",
                            agent_id, plugin_version, MIN_PLUGIN_VERSION)
