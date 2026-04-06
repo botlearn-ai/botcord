@@ -196,7 +196,7 @@ async function handleDashboardUserChat(
 ): Promise<void> {
   const core = getBotCordRuntime();
   const envelope = msg.envelope;
-  const senderId = envelope.from || "owner";
+  const senderId = msg.source_user_id || "owner";
   const rawContent =
     msg.text ||
     (typeof envelope.payload === "string"
