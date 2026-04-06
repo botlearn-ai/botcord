@@ -196,7 +196,7 @@ async function handleDashboardUserChat(
 ): Promise<void> {
   const core = getBotCordRuntime();
   const envelope = msg.envelope;
-  const senderId = envelope.from || "owner";
+  const senderId = msg.source_user_id || "owner";
   const rawContent =
     msg.text ||
     (typeof envelope.payload === "string"
@@ -273,6 +273,15 @@ async function handleDashboardUserChat(
     });
   }
 
+  // Build typing callbacks for the user-chat room
+  const userChatTypingCallbacks: { onReplyStart: () => Promise<void>; onIdle?: () => void; onCleanup?: () => void } | undefined = replyTarget
+    ? {
+        onReplyStart: async () => { await client.sendTyping(replyTarget); },
+        onIdle: () => {},
+        onCleanup: () => {},
+      }
+    : undefined;
+
   // Use buffered block dispatcher with auto-delivery to the chat room.
   // The deliver callback receives a ReplyPayload object (not a plain string).
   try {
@@ -304,6 +313,7 @@ async function handleDashboardUserChat(
         onError: (err: any, info: any) => {
           console.error(`[botcord] user-chat ${info?.kind ?? "unknown"} reply error:`, err);
         },
+        ...(userChatTypingCallbacks ? { typingCallbacks: userChatTypingCallbacks } : {}),
       },
       replyOptions: {},
     });
@@ -542,6 +552,28 @@ export async function dispatchInbound(params: InboundParams): Promise<void> {
     ConversationLabel: chatType === "group" ? (groupSubject || senderName) : senderName,
   });
 
+  // Build typing callbacks so the agent shows a typing indicator while
+  // processing.  Requires a room ID — DMs always have one (rm_dm_*).
+  const typingRoomId = roomId;
+  let typingCallbacks: { onReplyStart: () => Promise<void>; onIdle?: () => void; onCleanup?: () => void } | undefined;
+  if (typingRoomId) {
+    try {
+      const acct = resolveAccountConfig(cfg, accountId);
+      const typingClient = new BotCordClient(acct);
+      attachTokenPersistence(typingClient, acct);
+      typingCallbacks = {
+        onReplyStart: async () => {
+          await typingClient.sendTyping(typingRoomId);
+        },
+        onIdle: () => {},
+        onCleanup: () => {},
+      };
+    } catch (err: any) {
+      // Config may be incomplete (e.g. in tests) — skip typing
+      console.warn("[botcord] typing setup skipped:", err?.message ?? err);
+    }
+  }
+
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg,
@@ -552,6 +584,7 @@ export async function dispatchInbound(params: InboundParams): Promise<void> {
       onError: (err: any, info: any) => {
         console.error(`[botcord] ${info?.kind ?? "unknown"} reply error:`, err);
       },
+      ...(typingCallbacks ? { typingCallbacks } : {}),
     },
     replyOptions: {},
   });

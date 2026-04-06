@@ -141,6 +141,10 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
               // Server responded to our ping
               break;
 
+            case "typing":
+              // Typing indicator from a peer agent — informational only
+              break;
+
             default:
               log?.warn(`[${dp}] unknown ws message type: ${msg.type}`);
           }
