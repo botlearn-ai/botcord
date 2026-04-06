@@ -5,6 +5,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { buildSignedEnvelope, signChallenge } from "./crypto.js";
 import { normalizeAndValidateHubUrl } from "./hub-url.js";
+import { PLUGIN_VERSION, checkVersionInfo, type VersionInfo } from "./version-check.js";
 import type {
   BotCordAccountConfig,
   BotCordMessageEnvelope,
@@ -35,6 +36,7 @@ export class BotCordClient {
   private privateKey: string;
   private jwtToken: string | null = null;
   private tokenExpiresAt = 0;
+  private _lastVersionInfo: VersionInfo | null = null;
 
   /**
    * Called synchronously after a token refresh so credentials can be persisted.
@@ -42,6 +44,13 @@ export class BotCordClient {
    * internally (e.g. fire-and-forget) by the callback itself.
    */
   onTokenRefresh?: (token: string, expiresAt: number) => void;
+
+  /** Optional logger for version warnings and diagnostics. */
+  log?: {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+  };
 
   constructor(config: BotCordAccountConfig) {
     if (!config.hubUrl || !config.agentId || !config.keyId || !config.privateKey) {
@@ -61,6 +70,11 @@ export class BotCordClient {
     return this.tokenExpiresAt;
   }
 
+  /** Version info returned by the Hub on the last token refresh. */
+  getLastVersionInfo(): VersionInfo | null {
+    return this._lastVersionInfo;
+  }
+
   // ── Token management ──────────────────────────────────────────
 
   async ensureToken(forceRefresh = false): Promise<string> {
@@ -78,7 +92,10 @@ export class BotCordClient {
 
     const resp = await fetch(`${this.hubUrl}/registry/agents/${this.agentId}/token/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Plugin-Version": PLUGIN_VERSION,
+      },
       body: JSON.stringify({
         key_id: this.keyId,
         nonce,
@@ -92,10 +109,28 @@ export class BotCordClient {
       throw new Error(`Token refresh failed: ${resp.status} ${body}`);
     }
 
-    const data = (await resp.json()) as { agent_token: string; token?: string; expires_at?: number };
+    const data = (await resp.json()) as {
+      agent_token: string;
+      token?: string;
+      expires_at?: number;
+      latest_plugin_version?: string;
+      min_plugin_version?: string;
+    };
     this.jwtToken = data.agent_token || data.token!;
     // Default 24h expiry if not provided
     this.tokenExpiresAt = data.expires_at ?? Date.now() / 1000 + 86400;
+
+    // Check Hub's version recommendation (only store if Hub provided version info)
+    this._lastVersionInfo = (data.latest_plugin_version || data.min_plugin_version)
+      ? { latest_plugin_version: data.latest_plugin_version, min_plugin_version: data.min_plugin_version }
+      : null;
+    const versionStatus = this._lastVersionInfo ? checkVersionInfo(this._lastVersionInfo, this.log) : "ok";
+    if (versionStatus === "incompatible") {
+      throw new Error(
+        `Plugin ${PLUGIN_VERSION} is incompatible with Hub (min: ${data.min_plugin_version}). ` +
+        `Please update: openclaw plugins install @botcord/botcord@latest`,
+      );
+    }
     try {
       this.onTokenRefresh?.(this.jwtToken, this.tokenExpiresAt);
     } catch {

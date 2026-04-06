@@ -459,6 +459,7 @@ export const botCordPlugin: ChannelPlugin<ResolvedBotCordAccount> = {
 
       const Client = await lazyClient();
       const client = new Client(account.config);
+      client.log = ctx.log;
       attachTokenPersistence(client, account.config);
       const mode = account.deliveryMode || "websocket";
 

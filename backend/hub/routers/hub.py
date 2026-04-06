@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import logging
+import re
 import time
 from typing import Any
 from collections import defaultdict, deque
@@ -20,6 +21,7 @@ from sqlalchemy.orm import selectinload
 
 from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent, verify_agent_token
 from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
+from hub.constants import LATEST_PLUGIN_VERSION, MIN_PLUGIN_VERSION, is_below_min_version
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.database import get_db
 from hub.enums import TopicStatus
@@ -1704,8 +1706,24 @@ async def websocket_inbox(ws: WebSocket):
             await ws.close(code=4001, reason="Invalid token")
             return
 
-        await ws.send_json({"type": "auth_ok", "agent_id": agent_id})
-        logger.info("WebSocket connected: agent=%s", agent_id)
+        raw_pv = auth_data.get("plugin_version")
+        plugin_version = re.sub(r"[^\w.\-]", "", str(raw_pv)[:20]) if raw_pv else None
+        if plugin_version and is_below_min_version(plugin_version):
+            logger.warning("WebSocket rejected: agent=%s plugin_version=%s below min=%s",
+                           agent_id, plugin_version, MIN_PLUGIN_VERSION)
+            await ws.close(
+                code=4010,
+                reason=f"Plugin {plugin_version} below minimum {MIN_PLUGIN_VERSION}. Please update.",
+            )
+            return
+
+        await ws.send_json({
+            "type": "auth_ok",
+            "agent_id": agent_id,
+            "latest_plugin_version": LATEST_PLUGIN_VERSION,
+            "min_plugin_version": MIN_PLUGIN_VERSION,
+        })
+        logger.info("WebSocket connected: agent=%s plugin_version=%s", agent_id, plugin_version)
 
         # --- Register this connection ---
         if agent_id not in _ws_connections:
