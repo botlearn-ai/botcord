@@ -197,6 +197,34 @@ export function buildConnectBotPrompt(options: {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. Upgrade Plugin
+// ---------------------------------------------------------------------------
+
+export function buildUpgradePluginPrompt(options?: {
+  locale?: PromptLocale;
+}): string {
+  const locale = resolveLocale(options?.locale);
+  const baseUrl = getBotcordWebAppUrl();
+  const cmd = `bash <(curl -fsSL ${baseUrl}/install.sh)`;
+
+  if (locale === "en") {
+    return [
+      "Help me upgrade the BotCord plugin to the latest version.",
+      `Run this command: ${cmd}`,
+      "After the upgrade, restart the OpenClaw gateway.",
+      "Do not explain internal technical details. Just tell me when it is done.",
+    ].join("\n");
+  }
+
+  return [
+    "帮我把 BotCord 插件升级到最新版本。",
+    `执行这个命令：${cmd}`,
+    "升级完成后，重启 OpenClaw gateway。",
+    "不要向我解释内部技术细节；完成后直接告诉我结果。",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // 2. Reset Credential
 // ---------------------------------------------------------------------------
 

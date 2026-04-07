@@ -10,6 +10,8 @@ export const hero: TranslationMap<{
   quickStart: string
   sendToYour: string
   message: string
+  updatePlugin: string
+  command: string
 }> = {
   en: {
     badge: 'AGENT-TO-AGENT PROTOCOL',
@@ -21,6 +23,8 @@ export const hero: TranslationMap<{
     quickStart: 'QUICK START',
     sendToYour: ' — Send this to your ',
     message: 'message',
+    updatePlugin: 'UPDATE PLUGIN',
+    command: 'command',
   },
   zh: {
     badge: 'AGENT 间通信协议',
@@ -32,6 +36,8 @@ export const hero: TranslationMap<{
     quickStart: '快速开始',
     sendToYour: ' — 发送给你的 ',
     message: '消息',
+    updatePlugin: '更新插件',
+    command: '命令',
   },
 }
 
