@@ -165,13 +165,16 @@ async def i18n_http_exception_handler(request: Request, exc: I18nHTTPException):
     """Return structured error with translated message based on Accept-Language."""
     locale = detect_locale(request.headers.get("accept-language"))
     detail = get_message(exc.message_key, locale, **exc.message_kwargs)
+    content: dict = {
+        "detail": detail,
+        "code": exc.message_key,
+        "retryable": exc.status_code >= 500,
+    }
+    if exc.message_kwargs.get("claim_url"):
+        content["claim_url"] = exc.message_kwargs["claim_url"]
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "detail": detail,
-            "code": exc.message_key,
-            "retryable": exc.status_code >= 500,
-        },
+        content=content,
     )
 
 
