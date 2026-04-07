@@ -131,10 +131,13 @@ async def _build_rooms_from_sql(
 
 
 def _sort_room_previews(rooms: list[dict]) -> list[dict]:
-    rooms.sort(
-        key=lambda r: r.get("last_message_at") or r.get("created_at") or "",
-        reverse=True,
-    )
+    def _sort_key(r: dict) -> str:
+        val = r.get("last_message_at") or r.get("created_at") or ""
+        if hasattr(val, "isoformat"):
+            return val.isoformat()
+        return str(val)
+
+    rooms.sort(key=_sort_key, reverse=True)
     return rooms
 
 
