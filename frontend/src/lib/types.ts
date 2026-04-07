@@ -222,6 +222,7 @@ export interface DiscoverRoom {
   description: string;
   owner_id: string;
   visibility: string;
+  join_policy?: "open" | "invite_only";
   member_count: number;
   rule: string | null;
   required_subscription_product_id?: string | null;

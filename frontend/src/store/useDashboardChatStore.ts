@@ -152,12 +152,26 @@ function hasTransientChatState(state: DashboardChatState): boolean {
   );
 }
 
+let _errorTimerId: ReturnType<typeof setTimeout> | null = null;
+
 export const useDashboardChatStore = create<DashboardChatState>()(
   persist(
     (set, get) => ({
       ...initialChatState,
 
-      setError: (error) => set({ error }),
+      setError: (error) => {
+        set({ error });
+        if (_errorTimerId) {
+          clearTimeout(_errorTimerId);
+          _errorTimerId = null;
+        }
+        if (error) {
+          _errorTimerId = setTimeout(() => {
+            _errorTimerId = null;
+            if (get().error === error) set({ error: null });
+          }, 4000);
+        }
+      },
 
       addRecentPublicRoom: (room) =>
         set((state) => ({
@@ -448,7 +462,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           get().replaceOverview(overview);
         } catch (error) {
           set({ joiningRoomId: null });
-          throw error;
+          get().setError(error instanceof Error ? error.message : "Unknown error");
         }
       },
 

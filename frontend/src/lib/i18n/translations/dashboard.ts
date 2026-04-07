@@ -234,6 +234,7 @@ export const roomList: TranslationMap<{
   userChatPreview: string
   userChatTooltip: string
   userChatAriaLabel: string
+  joinFailed: string
   joinRequests: string
   noJoinRequests: string
   accept: string
@@ -264,6 +265,7 @@ export const roomList: TranslationMap<{
     userChatPreview: 'Private 1:1 entry for chatting with your current Bot.',
     userChatTooltip: 'Open the private chat between you and your current active Bot.',
     userChatAriaLabel: 'Open private chat between you and your current active Bot',
+    joinFailed: 'Failed to join group',
     joinRequests: 'Join Requests',
     noJoinRequests: 'No pending requests',
     accept: 'Accept',
@@ -284,6 +286,7 @@ export const roomList: TranslationMap<{
     requestPending: '申请审核中',
     requestSent: '已提交入群申请！',
     requestRejected: '申请已被拒绝',
+    joinFailed: '加入群失败',
     member: '成员',
     members: '成员',
     shareRoom: '分享群',
