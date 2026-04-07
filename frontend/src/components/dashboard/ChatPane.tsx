@@ -84,8 +84,8 @@ function ContactsMainPane() {
   const joinedRooms = useMemo(
     () =>
       [...(overview?.rooms || [])].sort((a, b) => {
-        const aTime = a.last_message_at ? Date.parse(a.last_message_at) : 0;
-        const bTime = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+        const aTime = (a.last_message_at || a.created_at) ? Date.parse(a.last_message_at || a.created_at!) : 0;
+        const bTime = (b.last_message_at || b.created_at) ? Date.parse(b.last_message_at || b.created_at!) : 0;
         return bTime - aTime;
       }),
     [overview?.rooms],

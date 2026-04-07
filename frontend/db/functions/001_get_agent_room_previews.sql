@@ -36,7 +36,8 @@ returns table (
   last_message_preview text,
   last_message_at timestamptz,
   last_sender_id varchar,
-  last_sender_name varchar
+  last_sender_name varchar,
+  room_created_at timestamptz
 )
 language sql
 stable
@@ -58,7 +59,8 @@ as $$
         when rm.role = 'admin' then true
         else r.default_invite
       end as can_invite,
-      rm.last_viewed_at
+      rm.last_viewed_at,
+      r.created_at as room_created_at
     from room_members rm
     inner join rooms r on r.room_id = rm.room_id
     where rm.agent_id = p_agent_id
@@ -143,10 +145,11 @@ as $$
     lm.last_message_preview,
     lm.last_message_at,
     lm.last_sender_id,
-    lm.last_sender_name
+    lm.last_sender_name,
+    m.room_created_at
   from member_rooms m
   left join member_counts mc on mc.room_id = m.room_id
   left join latest_message lm on lm.room_id = m.room_id
   left join unread_rooms ur on ur.room_id = m.room_id
-  order by lm.last_message_at desc nulls last, m.room_id asc;
+  order by coalesce(lm.last_message_at, m.room_created_at) desc, m.room_id asc;
 $$;

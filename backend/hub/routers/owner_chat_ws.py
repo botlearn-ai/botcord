@@ -513,10 +513,57 @@ async def notify_owner(
         return
 
     user_id = str(agent.user_id)
+    room_id = _build_owner_chat_room_id(user_id, agent_id)
+    text = body.text.strip()
+
+    # Persist notification as a MessageRecord so it survives page refresh
+    msg_id = str(uuid.uuid4())
+    ts = int(time.time())
+    payload = {"text": text}
+    envelope_data = {
+        "v": "a2a/0.1",
+        "msg_id": msg_id,
+        "ts": ts,
+        "from": agent_id,
+        "to": agent_id,
+        "type": "notification",
+        "reply_to": None,
+        "ttl_sec": 3600,
+        "payload": payload,
+        "payload_hash": "",
+        "sig": {"alg": "ed25519", "key_id": "agent", "value": ""},
+    }
+    envelope_json = json.dumps(envelope_data)
+
+    hub_msg_id = generate_hub_msg_id()
+    record = MessageRecord(
+        hub_msg_id=hub_msg_id,
+        msg_id=msg_id,
+        sender_id=agent_id,
+        receiver_id=agent_id,
+        room_id=room_id,
+        state=MessageState.delivered,
+        envelope_json=envelope_json,
+        ttl_sec=3600,
+        source_type="agent_notification",
+    )
+
+    try:
+        async with db.begin_nested():
+            db.add(record)
+            await db.flush()
+        await db.commit()
+    except IntegrityError:
+        logger.warning(
+            "Notify-owner duplicate message: agent=%s msg_id=%s",
+            agent_id, msg_id,
+        )
+        await db.rollback()
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     await _send_to_oc_ws(user_id, agent_id, {
         "type": "notification",
-        "text": body.text.strip(),
+        "hub_msg_id": hub_msg_id,
+        "text": text,
         "created_at": now,
     })

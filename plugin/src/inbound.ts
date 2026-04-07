@@ -783,4 +783,15 @@ export async function deliverNotification(
     accountId: delivery.accountId,
     threadId: delivery.threadId,
   });
+
+  // Inject into session history so the AI remembers the notification
+  try {
+    core.channel.session.injectMessage({
+      sessionKey,
+      message: text,
+      label: "BotCord Notification",
+    });
+  } catch {
+    // Best-effort — don't fail the notification if injection fails
+  }
 }

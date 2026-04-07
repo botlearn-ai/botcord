@@ -20,6 +20,7 @@ class DashboardRoom(BaseModel):
     visibility: str
     member_count: int
     my_role: str
+    created_at: datetime.datetime | None = None
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None
     last_sender_name: str | None = None
