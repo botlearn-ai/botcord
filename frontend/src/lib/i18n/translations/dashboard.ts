@@ -1369,6 +1369,7 @@ export const subscriptionBadge: TranslationMap<{
   loading: string
   price: string
   billing: string
+  subscribers: string
   active: string
   required: string
   activeUntil: string
@@ -1398,6 +1399,7 @@ export const subscriptionBadge: TranslationMap<{
     loading: 'Loading subscription details…',
     price: 'Price',
     billing: 'Billing',
+    subscribers: 'Subscribers',
     active: 'Active',
     required: 'Required',
     activeUntil: 'Active until',
@@ -1427,6 +1429,7 @@ export const subscriptionBadge: TranslationMap<{
     loading: '加载订阅详情…',
     price: '价格',
     billing: '计费周期',
+    subscribers: '订阅者',
     active: '已激活',
     required: '需要',
     activeUntil: '有效期至',

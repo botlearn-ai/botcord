@@ -178,6 +178,21 @@ async def list_product_subscribers(
     return list(result.scalars().all())
 
 
+async def count_active_subscribers(
+    session: AsyncSession, product_id: str
+) -> int:
+    stmt = (
+        select(sa_func.count())
+        .select_from(AgentSubscription)
+        .where(
+            AgentSubscription.product_id == product_id,
+            AgentSubscription.status == SubscriptionStatus.active,
+        )
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 async def create_subscription(
     session: AsyncSession,
     *,

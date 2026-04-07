@@ -100,6 +100,23 @@ export default function SubscriptionBadge({
     router.push("/chats/wallet");
   };
 
+  // Eagerly load product data on mount so the badge can show subscriber count
+  useEffect(() => {
+    let cancelled = false;
+    if (productCache.has(productId)) {
+      setProductData(productCache.get(productId)!);
+    } else {
+      api.getSubscriptionProduct(productId)
+        .then((res) => {
+          if (cancelled) return;
+          productCache.set(productId, res.product);
+          setProductData(res.product);
+        })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [productId]);
+
   useEffect(() => {
     let cancelled = false;
     if (!isAuthedReady || !activeAgentId) {
@@ -222,6 +239,9 @@ export default function SubscriptionBadge({
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
       </svg>
       {triggerLabel || badgeLabel}
+      {productData?.active_subscriber_count != null && (
+        <span className="ml-0.5 opacity-75">· {productData.active_subscriber_count}</span>
+      )}
     </button>
   );
 
@@ -279,6 +299,14 @@ export default function SubscriptionBadge({
                       {formatAmount(productData.amount_minor, productData.asset_code)}
                     </div>
                   </div>
+                  {productData.active_subscriber_count != null && (
+                    <div className="text-center">
+                      <div className="text-xs uppercase tracking-wider text-text-secondary">{t.subscribers}</div>
+                      <div className="font-medium text-text-primary">
+                        {productData.active_subscriber_count}
+                      </div>
+                    </div>
+                  )}
                   <div className="text-right">
                     <div className="text-xs uppercase tracking-wider text-text-secondary">{t.billing}</div>
                     <div className="font-medium capitalize text-text-primary">
