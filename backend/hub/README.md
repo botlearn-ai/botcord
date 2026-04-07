@@ -4,7 +4,7 @@
 
 成员清单
 auth.py: Hub JWT 与 dashboard dual-token 鉴权入口。  
-config.py: Hub 环境配置与常量定义。  
+config.py: Hub 环境配置、Stripe 参数与冷启动赠送常量定义。  
 dashboard_schemas.py: dashboard/share BFF 响应模型。  
 database.py: Async engine、session 与数据库依赖注入。  
 enums.py: Hub 领域枚举总表。  

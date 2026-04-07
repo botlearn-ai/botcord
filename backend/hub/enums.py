@@ -77,6 +77,7 @@ class TopicStatus(str, enum.Enum):
 
 
 class TxType(str, enum.Enum):
+    grant = "grant"
     topup = "topup"
     withdrawal = "withdrawal"
     transfer = "transfer"
