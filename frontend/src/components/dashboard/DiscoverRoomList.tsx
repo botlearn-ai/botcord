@@ -11,6 +11,7 @@ import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import { useShallow } from "zustand/react/shallow";
+import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import SubscriptionBadge from "./SubscriptionBadge";
@@ -35,7 +36,7 @@ export default function DiscoverRoomList() {
     }
   }, [discoverRooms.length, discoverLoading, loadDiscoverRooms]);
 
-  if (discoverLoading) {
+  if (discoverLoading && discoverRooms.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
         {t.loadingRooms}
@@ -98,8 +99,9 @@ export default function DiscoverRoomList() {
               <button
                 onClick={() => void joinRoom(room.room_id)}
                 disabled={isJoining}
-                className="mt-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
+                className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
               >
+                {isJoining ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 {isJoining ? t.joining : t.join}
               </button>
             )}
@@ -108,8 +110,10 @@ export default function DiscoverRoomList() {
       })}
       <button
         onClick={() => void loadDiscoverRooms()}
-        className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
+        disabled={discoverLoading}
+        className="inline-flex w-full items-center justify-center gap-1.5 py-2 text-xs text-text-secondary hover:text-neon-cyan disabled:opacity-60"
       >
+        {discoverLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         {tc.refresh}
       </button>
     </div>
@@ -157,8 +161,9 @@ function InviteOnlyJoinButton({ roomId }: { roomId: string }) {
       <button
         onClick={() => void joinRoom(roomId)}
         disabled={isJoining}
-        className="mt-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
+        className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
       >
+        {isJoining ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
         {isJoining ? t.joining : t.join}
       </button>
     );
@@ -181,8 +186,9 @@ function InviteOnlyJoinButton({ roomId }: { roomId: string }) {
     <button
       onClick={() => void handleRequest()}
       disabled={status === "sending"}
-      className="mt-1.5 rounded border border-amber-400/40 px-3 py-0.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/10 disabled:opacity-40"
+      className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-amber-400/40 px-3 py-0.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/10 disabled:opacity-40"
     >
+      {status === "sending" ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
       {status === "sending" ? t.joining : t.requestToJoin}
     </button>
   );

@@ -17,7 +17,8 @@ interface DashboardContactState {
   contactRequestsSent: ContactRequestItem[];
   contactRequestsLoading: boolean;
   processingContactRequestId: number | null;
-  sendingContactRequest: boolean;
+  processingContactRequestAction: "accept" | "reject" | null;
+  sendingContactRequestAgentId: string | null;
 
   markFriendRequestPending: (agentId: string) => void;
   resetContactState: () => void;
@@ -32,7 +33,8 @@ const initialContactState = {
   contactRequestsSent: [],
   contactRequestsLoading: false,
   processingContactRequestId: null,
-  sendingContactRequest: false,
+  processingContactRequestAction: null,
+  sendingContactRequestAgentId: null,
 };
 
 function hasReadyAgent() {
@@ -84,7 +86,7 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
   sendContactRequest: async (toAgentId: string, message?: string) => {
     const { token } = useDashboardSessionStore.getState();
     if (!token) return;
-    set({ sendingContactRequest: true });
+    set({ sendingContactRequestAgentId: toAgentId });
     try {
       await api.createContactRequest({ to_agent_id: toAgentId, message });
       await get().loadContactRequests();
@@ -92,10 +94,10 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
         pendingFriendRequests: state.pendingFriendRequests.includes(toAgentId)
           ? state.pendingFriendRequests
           : [...state.pendingFriendRequests, toAgentId],
-        sendingContactRequest: false,
+        sendingContactRequestAgentId: null,
       }));
     } catch (err) {
-      set({ sendingContactRequest: false });
+      set({ sendingContactRequestAgentId: null });
       throw err;
     }
   },
@@ -103,7 +105,7 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
   respondContactRequest: async (requestId: number, action: "accept" | "reject") => {
     const { token } = useDashboardSessionStore.getState();
     if (!token) return;
-    set({ processingContactRequestId: requestId });
+    set({ processingContactRequestId: requestId, processingContactRequestAction: action });
     try {
       if (action === "accept") {
         await api.acceptContactRequest(requestId);
@@ -112,9 +114,9 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
       }
       const chatStore = useDashboardChatStore.getState();
       await Promise.all([chatStore.refreshOverview(), get().loadContactRequests()]);
-      set({ processingContactRequestId: null });
+      set({ processingContactRequestId: null, processingContactRequestAction: null });
     } catch (err) {
-      set({ processingContactRequestId: null });
+      set({ processingContactRequestId: null, processingContactRequestAction: null });
       throw err;
     }
   },

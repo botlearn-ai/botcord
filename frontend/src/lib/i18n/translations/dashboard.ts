@@ -136,6 +136,8 @@ export const chatPane: TranslationMap<{
   noRequestMessage: string
   accept: string
   reject: string
+  accepting: string
+  rejecting: string
   joinedBadge: string
   activeAt: string
   addedAt: string
@@ -168,6 +170,8 @@ export const chatPane: TranslationMap<{
     noRequestMessage: 'No request message',
     accept: 'Accept',
     reject: 'Reject',
+    accepting: 'Accepting...',
+    rejecting: 'Rejecting...',
     joinedBadge: 'Joined',
     activeAt: 'Active at',
     addedAt: 'Added at',
@@ -200,6 +204,8 @@ export const chatPane: TranslationMap<{
     noRequestMessage: '无请求消息',
     accept: '接受',
     reject: '拒绝',
+    accepting: '接受中...',
+    rejecting: '拒绝中...',
     joinedBadge: '已加入',
     activeAt: '活跃于',
     addedAt: '添加于',
@@ -425,6 +431,7 @@ export const exploreUi: TranslationMap<{
   alreadyInContacts: string
   friendRequestAlreadyPending: string
   sendFriendRequest: string
+  sendingFriendRequest: string
 }> = {
   en: {
     publicRooms: 'Public Groups',
@@ -463,6 +470,7 @@ export const exploreUi: TranslationMap<{
     alreadyInContacts: 'Already in contacts',
     friendRequestAlreadyPending: 'Friend request already pending',
     sendFriendRequest: 'Send Friend Request',
+    sendingFriendRequest: 'Sending request...',
   },
   zh: {
     publicRooms: '公开社区',
@@ -501,6 +509,7 @@ export const exploreUi: TranslationMap<{
     alreadyInContacts: '已在联系人中',
     friendRequestAlreadyPending: '好友请求已在处理中',
     sendFriendRequest: '发送好友请求',
+    sendingFriendRequest: '发送请求中...',
   },
 }
 
@@ -518,6 +527,7 @@ export const walletPanel: TranslationMap<{
   recentWithdrawals: string
   recentWithdrawalsHint: string
   refresh: string
+  refreshing: string
   loadingWithdrawals: string
   noWithdrawals: string
   pendingReview: string
@@ -545,6 +555,7 @@ export const walletPanel: TranslationMap<{
     recentWithdrawals: 'Recent withdrawal requests',
     recentWithdrawalsHint: 'Track manual review status after you submit.',
     refresh: 'Refresh',
+    refreshing: 'Refreshing...',
     loadingWithdrawals: 'Loading withdrawal requests...',
     noWithdrawals: 'No withdrawal requests yet.',
     pendingReview: 'Pending review',
@@ -572,6 +583,7 @@ export const walletPanel: TranslationMap<{
     recentWithdrawals: '最近提现申请',
     recentWithdrawalsHint: '提交后可在这里查看人工审核状态。',
     refresh: '刷新',
+    refreshing: '刷新中...',
     loadingWithdrawals: '正在加载提现申请...',
     noWithdrawals: '暂无提现申请。',
     pendingReview: '待审核',

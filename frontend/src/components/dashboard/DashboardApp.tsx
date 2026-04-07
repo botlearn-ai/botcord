@@ -556,6 +556,9 @@ export default function DashboardApp() {
         (item) => item.to_agent_id === selectedAgentForCard.agent_id && item.state === "pending",
       )
     : false;
+  const isSendingFriendRequest = selectedAgentForCard
+    ? contactStore.sendingContactRequestAgentId === selectedAgentForCard.agent_id
+    : false;
 
   const handleSendFriendRequestFromCard = () => {
     if (!selectedAgentForCard) return;
@@ -601,6 +604,7 @@ export default function DashboardApp() {
         }}
         alreadyInContacts={alreadyInContacts}
         requestAlreadyPending={requestAlreadyPending}
+        sendingFriendRequest={isSendingFriendRequest}
         onSendFriendRequest={handleSendFriendRequestFromCard}
         onRetry={() => {
           if (!chatStore.selectedAgentId) return;

@@ -14,6 +14,7 @@ import { subscriptionBadge } from "@/lib/i18n/translations/dashboard";
 import { api } from "@/lib/api";
 import type { SubscriptionProduct } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
+import { Loader2 } from "lucide-react";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
@@ -358,8 +359,9 @@ export default function SubscriptionBadge({
                   <button
                     onClick={handlePrimaryAction}
                     disabled={subscribing || (!isGuest && !activeAgentId)}
-                    className="rounded border border-yellow-500/50 bg-yellow-500/20 px-4 py-2 text-sm font-medium text-yellow-500 hover:bg-yellow-500/30 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded border border-yellow-500/50 bg-yellow-500/20 px-4 py-2 text-sm font-medium text-yellow-500 hover:bg-yellow-500/30 disabled:opacity-50"
                   >
+                    {subscribing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {subscribing ? t.processing : primaryLabel}
                   </button>
                 </div>

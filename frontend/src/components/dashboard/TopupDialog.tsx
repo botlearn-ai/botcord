@@ -6,6 +6,7 @@ import { topupDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
 import type { StripePackageItem } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { Loader2 } from "lucide-react";
 
 function formatCoin(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -224,8 +225,9 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
             <button
               onClick={handleCheckout}
               disabled={!activePackage || submitting}
-              className="mt-4 w-full rounded-lg border border-neon-green/30 bg-neon-green/10 py-2.5 font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-40"
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/30 bg-neon-green/10 py-2.5 font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-40"
             >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {submitting ? t.redirectingToStripe : `${t.continueToPayment}${activePackage ? ` • $${formatFiat(totalFiat)}` : ""}`}
             </button>
           </>

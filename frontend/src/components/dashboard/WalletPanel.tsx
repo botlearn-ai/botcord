@@ -14,6 +14,7 @@ import { common } from '@/lib/i18n/translations/common';
 import { api, ApiError } from "@/lib/api";
 import type { WithdrawalResponse } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
+import { Loader2 } from "lucide-react";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
@@ -311,6 +312,7 @@ function RecentWithdrawals({
   const locale = useLanguage();
   const t = walletPanel[locale];
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const isRefreshing = loading && items.length > 0;
 
   const handleCancel = useCallback(async (withdrawalId: string) => {
     if (!window.confirm(t.cancelWithdrawalConfirm)) {
@@ -342,9 +344,11 @@ function RecentWithdrawals({
         </div>
         <button
           onClick={onRefresh}
-          className="rounded-lg border border-glass-border px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary"
+          disabled={isRefreshing}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
         >
-          {t.refresh}
+          {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+          {isRefreshing ? t.refreshing : t.refresh}
         </button>
       </div>
 
@@ -396,8 +400,9 @@ function RecentWithdrawals({
                       type="button"
                       onClick={() => handleCancel(item.withdrawal_id)}
                       disabled={cancellingId === item.withdrawal_id}
-                      className="rounded-lg border border-red-400/30 px-3 py-1.5 text-[11px] text-red-300 transition-colors hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/30 px-3 py-1.5 text-[11px] text-red-300 transition-colors hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-60"
                     >
+                      {cancellingId === item.withdrawal_id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                       {cancellingId === item.withdrawal_id ? t.cancelling : t.cancelWithdrawal}
                     </button>
                   </div>

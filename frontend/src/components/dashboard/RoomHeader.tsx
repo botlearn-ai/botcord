@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
+import { Loader2 } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -124,9 +125,10 @@ export default function RoomHeader() {
         <button
           onClick={() => void handleRequestJoin()}
           disabled={!isAuthedReady || joinRequestStatus === "sending"}
-          className="rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
           title={t.requestToJoin}
         >
+          {joinRequestStatus === "sending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           {joinRequestStatus === "sending" ? t.joining : t.requestToJoin}
         </button>
       );
@@ -136,9 +138,10 @@ export default function RoomHeader() {
       <button
         onClick={handleJoinOpenRoom}
         disabled={!isGuest && (!isAuthedReady || isJoining)}
-        className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
         title={t.join}
       >
+        {isJoining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         {isJoining ? t.joining : t.join}
       </button>
     );

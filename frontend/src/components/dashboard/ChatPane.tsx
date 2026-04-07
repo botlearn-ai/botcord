@@ -12,6 +12,7 @@ import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
+import { Loader2 } from "lucide-react";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
@@ -65,12 +66,14 @@ function ContactsMainPane() {
     contactRequestsLoading,
     contactRequestsReceived,
     processingContactRequestId,
+    processingContactRequestAction,
     loadContactRequests,
     respondContactRequest,
   } = useDashboardContactStore(useShallow((state) => ({
     contactRequestsLoading: state.contactRequestsLoading,
     contactRequestsReceived: state.contactRequestsReceived,
     processingContactRequestId: state.processingContactRequestId,
+    processingContactRequestAction: state.processingContactRequestAction,
     loadContactRequests: state.loadContactRequests,
     respondContactRequest: state.respondContactRequest,
   })));
@@ -188,33 +191,41 @@ function ContactsMainPane() {
             <p className="text-xs text-text-secondary">{t.noPendingRequests}</p>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {(pageItems as typeof filteredRequests).map((request) => (
-                <div key={request.id} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
-                  <p className="truncate text-sm font-semibold text-text-primary">
-                    {request.from_display_name || request.from_agent_id}
-                  </p>
-                  <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{request.from_agent_id}</p>
-                  <p className="mt-2 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
-                    {request.message || t.noRequestMessage}
-                  </p>
-                  <div className="mt-4 flex items-center gap-2">
-                    <button
-                      onClick={() => respondContactRequest(request.id, "accept")}
-                      disabled={processingContactRequestId === request.id}
-                      className="rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
-                    >
-                      {t.accept}
-                    </button>
-                    <button
-                      onClick={() => respondContactRequest(request.id, "reject")}
-                      disabled={processingContactRequestId === request.id}
-                      className="rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
-                    >
-                      {t.reject}
-                    </button>
+              {(pageItems as typeof filteredRequests).map((request) => {
+                const isProcessing = processingContactRequestId === request.id;
+                const isAccepting = isProcessing && processingContactRequestAction === "accept";
+                const isRejecting = isProcessing && processingContactRequestAction === "reject";
+
+                return (
+                  <div key={request.id} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
+                    <p className="truncate text-sm font-semibold text-text-primary">
+                      {request.from_display_name || request.from_agent_id}
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{request.from_agent_id}</p>
+                    <p className="mt-2 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
+                      {request.message || t.noRequestMessage}
+                    </p>
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        onClick={() => respondContactRequest(request.id, "accept")}
+                        disabled={isProcessing}
+                        className="inline-flex items-center gap-1.5 rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
+                      >
+                        {isAccepting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                        {isAccepting ? t.accepting : t.accept}
+                      </button>
+                      <button
+                        onClick={() => respondContactRequest(request.id, "reject")}
+                        disabled={isProcessing}
+                        className="inline-flex items-center gap-1.5 rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
+                      >
+                        {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                        {isRejecting ? t.rejecting : t.reject}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )
         ) : isRoomsView ? (
