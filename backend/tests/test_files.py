@@ -474,28 +474,30 @@ async def test_cleanup_removes_expired_files(client: AsyncClient, db_session: As
     dl_resp = await client.get(f"/hub/files/{file_id}")
     assert dl_resp.status_code == 404
 
-    # Manually run cleanup logic (simulating what the background task does)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    result = await db_session.execute(
-        sa_select(FileRecord).where(FileRecord.expires_at <= now)
-    )
-    expired_records = list(result.scalars().all())
-    assert len(expired_records) == 1
+    # Run the real cleanup function
+    from hub import cleanup as hub_cleanup
 
-    for rec in expired_records:
-        try:
-            os.remove(rec.disk_path)
-        except FileNotFoundError:
-            pass
-        await db_session.delete(rec)
-    await db_session.commit()
+    @asynccontextmanager
+    async def _test_async_session():
+        yield db_session
 
-    # Verify disk file and DB record are gone
+    with patch.object(hub_cleanup, "async_session", _test_async_session):
+        cleaned = await hub_cleanup._cleanup_expired_files()
+    assert cleaned == 1
+
+    # Verify disk file is gone but DB record is kept (marked as expired)
     assert not os.path.isfile(disk_path)
     result = await db_session.execute(
         sa_select(FileRecord).where(FileRecord.file_id == file_id)
     )
-    assert result.scalar_one_or_none() is None
+    kept_record = result.scalar_one_or_none()
+    assert kept_record is not None
+    assert kept_record.storage_backend == "expired"
+
+    # Verify download still returns 404 with file_expired error
+    dl_resp2 = await client.get(f"/hub/files/{file_id}")
+    assert dl_resp2.status_code == 404
+    assert dl_resp2.json()["code"] == "file_expired"
 
 
 @pytest.mark.asyncio
@@ -536,10 +538,55 @@ async def test_cleanup_removes_expired_supabase_files(client: AsyncClient, db_se
     result = await db_session.execute(
         sa_select(FileRecord).where(FileRecord.file_id == file_id)
     )
-    assert result.scalar_one_or_none() is None
+    kept_record = result.scalar_one_or_none()
+    assert kept_record is not None
+    assert kept_record.storage_backend == "expired"
+    assert kept_record.storage_object_key is None
 
 
 # ===========================================================================
+@pytest.mark.asyncio
+async def test_cleanup_skips_record_on_delete_failure(client: AsyncClient, db_session: AsyncSession):
+    """When storage deletion fails, the record should NOT be marked as expired."""
+    from sqlalchemy import select as sa_select
+    from sqlalchemy import update
+    from hub import cleanup as hub_cleanup
+
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+
+    upload_resp = await client.post(
+        "/hub/upload",
+        headers=_auth_header(token),
+        files={"file": ("fail.txt", io.BytesIO(b"fail"), "text/plain")},
+    )
+    assert upload_resp.status_code == 200
+    file_id = upload_resp.json()["file_id"]
+
+    await db_session.execute(
+        update(FileRecord)
+        .where(FileRecord.file_id == file_id)
+        .values(expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc))
+    )
+    await db_session.commit()
+
+    @asynccontextmanager
+    async def _test_async_session():
+        yield db_session
+
+    with patch("hub.storage.delete_file", new=AsyncMock(side_effect=OSError("disk error"))):
+        with patch.object(hub_cleanup, "async_session", _test_async_session):
+            cleaned = await hub_cleanup._cleanup_expired_files()
+
+    assert cleaned == 0
+    result = await db_session.execute(
+        sa_select(FileRecord).where(FileRecord.file_id == file_id)
+    )
+    record = result.scalar_one()
+    assert record.storage_backend == "disk"
+    assert record.disk_path is not None
+
+
 # to_text() with attachments
 # ===========================================================================
 

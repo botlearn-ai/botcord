@@ -104,7 +104,11 @@ async def _send_to_oc_ws(
     for ws in snapshot:
         try:
             await ws.send_json(data)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Owner-chat WS send failed: user=%s agent=%s err=%s",
+                user_id, agent_id, exc,
+            )
             dead.append(ws)
     for ws in dead:
         ws_set.discard(ws)
@@ -245,7 +249,8 @@ async def owner_chat_ws(ws: WebSocket):
         # Verify Supabase JWT and resolve ownership
         try:
             supabase_uid = verify_supabase_token(token)
-        except (pyjwt.InvalidTokenError, Exception):
+        except Exception as exc:
+            logger.error("Owner-chat WS auth failed: %s: %s", type(exc).__name__, exc)
             await ws.close(code=4001, reason="Invalid token")
             return
 
@@ -347,7 +352,11 @@ async def owner_chat_ws(ws: WebSocket):
                         async with db.begin_nested():
                             db.add(record)
                             await db.flush()
-                    except IntegrityError:
+                    except IntegrityError as exc:
+                        logger.warning(
+                            "Owner-chat duplicate message: agent=%s msg_id=%s err=%s",
+                            agent_id, msg_id, exc,
+                        )
                         await ws.send_json({"type": "error", "message": "Duplicate message"})
                         continue
 
@@ -408,7 +417,7 @@ async def owner_chat_ws(ws: WebSocket):
     except WebSocketDisconnect:
         logger.info("Owner-chat WS disconnected: user=%s agent=%s", user_id, agent_id)
     except Exception as e:
-        logger.warning("Owner-chat WS error: user=%s agent=%s err=%s", user_id, agent_id, e)
+        logger.error("Owner-chat WS error: user=%s agent=%s err=%s", user_id, agent_id, e, exc_info=True)
     finally:
         if user_id and agent_id:
             _unregister_ws(user_id, agent_id, ws)

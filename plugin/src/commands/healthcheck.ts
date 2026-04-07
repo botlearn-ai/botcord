@@ -15,11 +15,8 @@ import { attachTokenPersistence, resolveCredentialsFilePath } from "../credentia
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 import { getWsStatus } from "../ws-client.js";
-import { createRequire } from "node:module";
 import { existsSync, statSync } from "node:fs";
-
-const require = createRequire(import.meta.url);
-const { version: PLUGIN_VERSION } = require("../../package.json");
+import { PLUGIN_VERSION, checkVersionInfo } from "../version-check.js";
 
 export function createHealthcheckCommand() {
   return {
@@ -164,6 +161,23 @@ export function createHealthcheckCommand() {
         lines.push("", `── Summary ──`);
         lines.push(`Passed: ${pass}  |  Warnings: ${warn}  |  Failed: ${fail}`);
         return { text: lines.join("\n") };
+      }
+
+      // ── 2b. Version Negotiation ──
+      lines.push("", "── Version Negotiation ──");
+      const versionInfo = client.getLastVersionInfo();
+      if (versionInfo) {
+        info(`Hub latest: ${versionInfo.latest_plugin_version ?? "unknown"}, min: ${versionInfo.min_plugin_version ?? "unknown"}`);
+        const status = checkVersionInfo(versionInfo);
+        if (status === "incompatible") {
+          error(`Plugin ${PLUGIN_VERSION} is below minimum ${versionInfo.min_plugin_version} — update required`);
+        } else if (status === "update_available") {
+          warning(`New version ${versionInfo.latest_plugin_version} available (current: ${PLUGIN_VERSION})`);
+        } else {
+          ok(`Plugin ${PLUGIN_VERSION} is up to date`);
+        }
+      } else {
+        info("Hub did not return version info");
       }
 
       // ── 3. Agent Resolution ──

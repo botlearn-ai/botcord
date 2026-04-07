@@ -165,6 +165,8 @@ class VerifyResponse(BaseModel):
     agent_token: str
     expires_at: int
     claim_url: str | None = None
+    latest_plugin_version: str | None = None
+    min_plugin_version: str | None = None
 
 
 class ClaimContextResponse(BaseModel):

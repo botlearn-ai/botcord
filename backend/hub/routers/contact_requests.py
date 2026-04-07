@@ -84,21 +84,27 @@ async def _create_notification(
     db.add(record)
     await db.commit()
 
-    await notify_inbox(
-        requester_id,
-        db=db,
-        realtime_event=build_contact_event(
-            type="contact_request_response",
-            agent_id=requester_id,
-            hub_msg_id=hub_msg_id,
-            created_at=now,
-            ext={
-                "request_id": request_id,
-                "responder_id": responder_id,
-                "state": status,
-            },
-        ),
-    )
+    try:
+        await notify_inbox(
+            requester_id,
+            db=db,
+            realtime_event=build_contact_event(
+                type="contact_request_response",
+                agent_id=requester_id,
+                hub_msg_id=hub_msg_id,
+                created_at=now,
+                ext={
+                    "request_id": request_id,
+                    "responder_id": responder_id,
+                    "state": status,
+                },
+            ),
+        )
+    except Exception as exc:
+        logger.error(
+            "Contact request notify failed: responder=%s requester=%s request_id=%s err=%s",
+            responder_id, requester_id, request_id, exc, exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------

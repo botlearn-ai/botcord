@@ -75,19 +75,25 @@ async def _create_contact_removed_notification(
     db.add(record)
     await db.commit()
 
-    await notify_inbox(
-        other_id,
-        db=db,
-        realtime_event=build_contact_event(
-            type="contact_removed",
-            agent_id=other_id,
-            hub_msg_id=hub_msg_id,
-            created_at=now,
-            ext={
-                "removed_by": remover_id,
-            },
-        ),
-    )
+    try:
+        await notify_inbox(
+            other_id,
+            db=db,
+            realtime_event=build_contact_event(
+                type="contact_removed",
+                agent_id=other_id,
+                hub_msg_id=hub_msg_id,
+                created_at=now,
+                ext={
+                    "removed_by": remover_id,
+                },
+            ),
+        )
+    except Exception as exc:
+        logger.error(
+            "Contact removal notify failed: remover=%s other=%s err=%s",
+            remover_id, other_id, exc, exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------

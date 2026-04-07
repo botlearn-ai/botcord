@@ -21,3 +21,4 @@ backend/skills-lock.json
 cli/node_modules/
 cli/package-lock.json
 cli/dist/
+.DS_Store

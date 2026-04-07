@@ -908,6 +908,7 @@ export const accountMenu: TranslationMap<{
   resetCredentialDisabled: string
   wsOnline: string
   wsOffline: string
+  refreshStatus: string
 }> = {
   en: {
     account: 'Account',
@@ -921,6 +922,7 @@ export const accountMenu: TranslationMap<{
     resetCredentialDisabled: 'Select a Bot first',
     wsOnline: 'Online',
     wsOffline: 'Offline',
+    refreshStatus: 'Refresh status',
   },
   zh: {
     account: '账户',
@@ -934,6 +936,7 @@ export const accountMenu: TranslationMap<{
     resetCredentialDisabled: '请先选择一个 Bot',
     wsOnline: '在线',
     wsOffline: '离线',
+    refreshStatus: '刷新状态',
   },
 }
 
