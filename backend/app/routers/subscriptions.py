@@ -101,7 +101,13 @@ async def get_product(
     product = await sub_svc.get_subscription_product(db, product_id)
     if product is None:
         raise HTTPException(status_code=404, detail="Subscription product not found")
-    return {"product": _product_response(product)}
+    active_subscriber_count = await sub_svc.count_active_subscribers(db, product_id)
+    return {
+        "product": {
+            **_product_response(product),
+            "active_subscriber_count": active_subscriber_count,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

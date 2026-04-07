@@ -132,6 +132,12 @@ export interface OwnerChatWsMessage {
   ext?: Record<string, unknown>;
 }
 
+export interface OwnerChatNotification {
+  type: "notification";
+  text: string;
+  created_at: string;
+}
+
 export interface RoomMessagesViewerContext {
   access_mode: "member" | "public";
   agent_id: string | null;
@@ -439,6 +445,7 @@ export interface SubscriptionProduct {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  active_subscriber_count?: number;
 }
 
 export interface SubscriptionProductResponse {
