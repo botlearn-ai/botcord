@@ -8,9 +8,10 @@ import json
 import logging
 import time
 import uuid
+from collections import deque
 from typing import Sequence
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -460,5 +461,62 @@ async def receive_stream_block(
         "trace_id": body.trace_id,
         "seq": body.seq,
         "block": body.block,
+        "created_at": now,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Notify owner HTTP endpoint (called by plugin)
+# ---------------------------------------------------------------------------
+
+
+class NotifyOwnerBody(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+# Rate limit: max 10 notify-owner calls per minute per agent
+_NOTIFY_OWNER_RATE_LIMIT = 10
+_notify_owner_windows: dict[str, deque[float]] = {}
+
+
+@router.post("/hub/notify-owner", status_code=204)
+async def notify_owner(
+    body: NotifyOwnerBody,
+    agent_id: str = Depends(get_current_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Push a notification to the agent's owner via owner-chat WebSocket.
+
+    The plugin calls this when the agent uses botcord_notify so the owner
+    also sees the notification in the dashboard chat, in addition to any
+    external channel (Telegram, Discord, etc.).
+
+    Best-effort delivery: if the owner has no active WebSocket connection,
+    the notification is silently dropped (not persisted).
+    """
+    # Sliding-window rate limit
+    now_mono = time.monotonic()
+    window = _notify_owner_windows.setdefault(agent_id, deque())
+    while window and window[0] <= now_mono - 60:
+        window.popleft()
+    if len(window) >= _NOTIFY_OWNER_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Notify rate limit exceeded")
+    window.append(now_mono)
+
+    # Look up the agent's bound user
+    result = await db.execute(
+        select(Agent).where(Agent.agent_id == agent_id)
+    )
+    agent = result.scalar_one_or_none()
+    if not agent or not agent.user_id:
+        # Agent not bound to a user — silently skip
+        return
+
+    user_id = str(agent.user_id)
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    await _send_to_oc_ws(user_id, agent_id, {
+        "type": "notification",
+        "text": body.text.strip(),
         "created_at": now,
     })
