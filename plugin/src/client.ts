@@ -927,6 +927,15 @@ export class BotCordClient {
     return await resp.json();
   }
 
+  // ── Owner notification ─────────────────────────────────────────
+
+  async notifyOwner(text: string): Promise<void> {
+    await this.hubFetch("/hub/notify-owner", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  }
+
   // ── Accessors ─────────────────────────────────────────────────
 
   getAgentId(): string {

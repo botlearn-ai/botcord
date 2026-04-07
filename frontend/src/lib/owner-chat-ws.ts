@@ -3,7 +3,7 @@
  * Connects to Hub's /dashboard/chat/ws for real-time messaging
  * and execution block streaming.
  */
-import type { OwnerChatWsMessage, StreamBlockEntry } from "./types";
+import type { OwnerChatWsMessage, OwnerChatNotification, StreamBlockEntry } from "./types";
 
 export interface OwnerChatWsOptions {
   hubBaseUrl: string;
@@ -11,6 +11,7 @@ export interface OwnerChatWsOptions {
   agentId: string;
   onMessage: (msg: OwnerChatWsMessage) => void;
   onStreamBlock: (block: StreamBlockEntry) => void;
+  onNotification?: (notif: OwnerChatNotification) => void;
   onAuthOk: (data: { agent_id: string; room_id: string }) => void;
   onStatusChange?: (connected: boolean) => void;
   onSendFailed?: (text: string) => void;
@@ -92,6 +93,10 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
 
           case "stream_block":
             opts.onStreamBlock(data as StreamBlockEntry);
+            break;
+
+          case "notification":
+            opts.onNotification?.(data as OwnerChatNotification);
             break;
 
           case "heartbeat":

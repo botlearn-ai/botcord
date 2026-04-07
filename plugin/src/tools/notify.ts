@@ -5,8 +5,10 @@
  */
 import { getBotCordRuntime } from "../runtime.js";
 import { getConfig as getAppConfig } from "../runtime.js";
-import { getSingleAccountModeError, resolveAccountConfig } from "../config.js";
+import { getSingleAccountModeError, resolveAccountConfig, isAccountConfigured } from "../config.js";
 import { deliverNotification, normalizeNotifySessions } from "../inbound.js";
+import { BotCordClient } from "../client.js";
+import { attachTokenPersistence } from "../credentials.js";
 
 export function createNotifyTool() {
   return {
@@ -51,6 +53,17 @@ export function createNotifyTool() {
           await deliverNotification(core, cfg, ns, text);
         } catch (err: any) {
           errors.push(`${ns}: ${err?.message ?? err}`);
+        }
+      }
+
+      // Also push notification to owner's dashboard via Hub API
+      if (isAccountConfigured(acct)) {
+        try {
+          const client = new BotCordClient(acct);
+          attachTokenPersistence(client, acct);
+          await client.notifyOwner(text);
+        } catch (err: any) {
+          errors.push(`owner-chat: ${err?.message ?? err}`);
         }
       }
 

@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot, Search, FileText, CheckCircle2, Code2, HelpCircle } from "lucide-react";
+import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot, Search, FileText, CheckCircle2, Code2, HelpCircle, Bell } from "lucide-react";
 import { api } from "@/lib/api";
 import type { DashboardMessage, UserChatRoom, StreamBlockEntry } from "@/lib/types";
 import { createOwnerChatWs, type OwnerChatWsClient } from "@/lib/owner-chat-ws";
@@ -399,6 +399,27 @@ export default function UserChatPane() {
         addStreamBlock(block);
         activeTraceRef.current = block.trace_id;
       },
+      onNotification: (notif) => {
+        const roomId = chatRoom.room_id;
+        const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const dashMsg: DashboardMessage = {
+          hub_msg_id: notifId,
+          msg_id: notifId,
+          sender_id: activeAgentId,
+          sender_name: chatRoom.name || activeAgentId,
+          type: "notification",
+          text: notif.text,
+          payload: {},
+          room_id: roomId,
+          topic: null,
+          topic_id: null,
+          goal: null,
+          state: "delivered",
+          state_counts: null,
+          created_at: notif.created_at,
+        };
+        insertMessage(roomId, dashMsg);
+      },
       onStatusChange: (connected) => {
         setWsConnected(connected);
         if (!connected) {
@@ -657,7 +678,25 @@ export default function UserChatPane() {
         )}
         {messages.map((msg) => {
           const isOwner = isOwnerMessage(msg);
+          const isNotification = msg.type === "notification";
           const msgFinalizedBlocks = finalizedBlocks[msg.hub_msg_id];
+
+          if (isNotification) {
+            return (
+              <div key={msg.hub_msg_id} className="flex justify-center">
+                <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-start gap-2">
+                  <Bell className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <div>
+                    <MarkdownContent content={msg.text || ""} />
+                    <div className="text-amber-500/60 mt-1 text-right">
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div key={msg.hub_msg_id} className="space-y-1.5">
               {/* Finalized execution blocks above agent message */}
