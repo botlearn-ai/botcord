@@ -31,6 +31,7 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地蓝点只能做短暂覆盖，不能替代后端状态。
 
 变更日志
+- 2026-04-07: `useDashboardContactStore.ts` 的联系人请求提交/处理状态细化为“按目标 agent 跟踪发送中”和“按 request + action 跟踪处理中”，让按钮 loading 能准确落在真正正在执行的那一项上。
 - 2026-03-25: `useDashboardUIStore.ts` 新增 `messagesPane`，把“固定私聊入口”和普通房间选择拆开，避免再用一级 tab 承载同属 `messages` 域的特殊会话。
 - 2026-03-22: 新增 `useDashboardSubscriptionStore.ts`，把付费房间的订阅状态从 `SubscriptionBadge.tsx` 组件内缓存上收回到业务 store，统一支撑 Header join、订阅弹窗与成员面板底部的退订动作。
 - 2026-03-21: 删除 `useDashboardChannelStore.ts` 与 `useDashboardStore.ts`，dashboard store 完全收敛为 `session/ui/chat/realtime/unread/wallet/contact` 七个职责域，结束兼容壳长期滞留。

@@ -5,6 +5,7 @@ import { useLanguage } from '@/lib/i18n';
 import { withdrawDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { Loader2 } from "lucide-react";
 
 const MIN_WITHDRAWAL_MINOR = 1000 * 100;
 
@@ -257,8 +258,9 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg border border-neon-purple/30 bg-neon-purple/10 py-2.5 font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-40"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-purple/30 bg-neon-purple/10 py-2.5 font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-40"
           >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitting ? t.submitting : t.submitWithdraw}
           </button>
         </form>

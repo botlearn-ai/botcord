@@ -11,6 +11,7 @@ import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import type { AgentProfile } from "@/lib/types";
+import { Loader2 } from "lucide-react";
 
 interface AgentCardModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface AgentCardModalProps {
   onClose: () => void;
   alreadyInContacts: boolean;
   requestAlreadyPending: boolean;
+  sendingFriendRequest?: boolean;
   onSendFriendRequest: () => void;
   onRetry?: () => void;
 }
@@ -32,6 +34,7 @@ export default function AgentCardModal({
   onClose,
   alreadyInContacts,
   requestAlreadyPending,
+  sendingFriendRequest = false,
   onSendFriendRequest,
   onRetry,
 }: AgentCardModalProps) {
@@ -92,9 +95,11 @@ export default function AgentCardModal({
             ) : (
               <button
                 onClick={onSendFriendRequest}
-                className="w-full rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+                disabled={sendingFriendRequest}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {t.sendFriendRequest}
+                {sendingFriendRequest ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                {sendingFriendRequest ? t.sendingFriendRequest : t.sendFriendRequest}
               </button>
             )}
           </>

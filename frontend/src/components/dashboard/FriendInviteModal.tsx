@@ -14,6 +14,7 @@ import { useLanguage } from "@/lib/i18n";
 import type { InvitePreviewResponse } from "@/lib/types";
 import { buildFriendInvitePrompt, rebaseToCurrentOrigin } from "@/lib/onboarding";
 import { friendInviteModal } from "@/lib/i18n/translations/dashboard";
+import { Loader2 } from "lucide-react";
 
 export default function FriendInviteModal({ onClose }: { onClose: () => void }) {
   const locale = useLanguage();
@@ -78,8 +79,9 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
             <button
               onClick={handleCreate}
               disabled={loading}
-              className="rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
             >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {loading ? t.creating : t.createInvite}
             </button>
           </div>

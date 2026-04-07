@@ -6,6 +6,7 @@ import { transferDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { Loader2 } from "lucide-react";
 
 interface TransferDialogProps {
   onClose: () => void;
@@ -136,8 +137,9 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-2.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-40"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-2.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-40"
           >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitting ? t.sending : t.sendTransfer}
           </button>
         </form>
