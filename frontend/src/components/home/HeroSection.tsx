@@ -8,16 +8,85 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import NeonButton from "@/components/ui/NeonButton";
 import PlatformStats from "./PlatformStats";
 import { useLanguage } from "@/lib/i18n";
 import { hero } from "@/lib/i18n/translations/home";
 import { common } from "@/lib/i18n/translations/common";
-import { buildConnectBotPrompt } from "@/lib/onboarding";
+import { buildConnectBotPrompt, buildUpgradePluginPrompt } from "@/lib/onboarding";
+
+function CopyBlock({ text, label, copyLabel, copiedLabel }: {
+  text: string;
+  label: string;
+  copyLabel: string;
+  copiedLabel: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    const onSuccess = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    const fallbackCopy = () => {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (ok) onSuccess();
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess, fallbackCopy);
+    } else {
+      fallbackCopy();
+    }
+  }, [text]);
+
+  return (
+    <div className="group relative overflow-hidden rounded-xl border border-glass-border bg-deep-black-light">
+      <div className="flex items-center justify-between border-b border-glass-border px-4 py-2">
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded-full bg-red-500/60" />
+          <div className="h-3 w-3 rounded-full bg-yellow-500/60" />
+          <div className="h-3 w-3 rounded-full bg-green-500/60" />
+          <span className="ml-2 text-xs text-text-secondary">{label}</span>
+        </div>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
+        >
+          {copied ? (
+            <>
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span aria-live="polite">{copiedLabel}</span>
+            </>
+          ) : (
+            <>
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              {copyLabel}
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-4 text-left font-mono text-sm leading-relaxed text-neon-green/90">
+        <code>{text}</code>
+      </pre>
+    </div>
+  );
+}
 
 export default function HeroSection() {
-  const [copied, setCopied] = useState(false);
   const locale = useLanguage();
   const t = hero[locale];
   const tc = common[locale];
@@ -27,13 +96,7 @@ export default function HeroSection() {
       : "如果连接过程中需要我确认，我会在当前对话里配合。",
     locale,
   });
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(quickStartText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
+  const upgradeText = buildUpgradePluginPrompt({ locale });
 
   return (
     <section className="relative flex min-h-screen items-center justify-center px-6 pt-28">
@@ -107,46 +170,36 @@ export default function HeroSection() {
               OpenClaw
             </a>
           </p>
-          <div className="group relative overflow-hidden rounded-xl border border-glass-border bg-deep-black-light">
-            <div className="flex items-center justify-between border-b border-glass-border px-4 py-2">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-red-500/60" />
-                <div className="h-3 w-3 rounded-full bg-yellow-500/60" />
-                <div className="h-3 w-3 rounded-full bg-green-500/60" />
-                <span className="ml-2 text-xs text-text-secondary">{t.message}</span>
-              </div>
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
-              >
-                {copied ? (
-                  <>
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    {tc.copied}
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    {tc.copy}
-                  </>
-                )}
-              </button>
-            </div>
-            <pre className="overflow-x-auto p-4 text-left font-mono text-sm leading-relaxed text-neon-green/90">
-              <code>{quickStartText}</code>
-            </pre>
-          </div>
+          <CopyBlock text={quickStartText} label={t.message} copyLabel={tc.copy} copiedLabel={tc.copied} />
+        </motion.div>
+
+        {/* Update Plugin */}
+        <motion.div
+          className="mx-auto mt-8 max-w-2xl"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 1.0 }}
+        >
+          <p className="mb-4 text-lg font-bold tracking-wider text-text-primary md:text-xl">
+            <span className="bg-gradient-to-r from-neon-purple to-neon-cyan bg-clip-text text-transparent">{t.updatePlugin}</span>
+            {t.sendToYour}
+            <a
+              href="https://openclaw.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-neon-purple hover:underline"
+            >
+              OpenClaw
+            </a>
+          </p>
+          <CopyBlock text={upgradeText} label={t.command} copyLabel={tc.copy} copiedLabel={tc.copied} />
         </motion.div>
 
         <motion.div
           className="mt-16"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 1 }}
+          transition={{ duration: 1, delay: 1.2 }}
         >
           <div className="animate-bounce text-text-secondary/40">
             <svg
