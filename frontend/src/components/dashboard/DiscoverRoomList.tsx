@@ -6,11 +6,12 @@
  */
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import { useShallow } from "zustand/react/shallow";
+import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 
@@ -91,6 +92,8 @@ export default function DiscoverRoomList() {
                 triggerLabel={t.join}
                 className="mt-1.5"
               />
+            ) : room.join_policy === "invite_only" ? (
+              <InviteOnlyJoinButton roomId={room.room_id} />
             ) : (
               <button
                 onClick={() => void joinRoom(room.room_id)}
@@ -110,5 +113,77 @@ export default function DiscoverRoomList() {
         {tc.refresh}
       </button>
     </div>
+  );
+}
+
+function InviteOnlyJoinButton({ roomId }: { roomId: string }) {
+  const locale = useLanguage();
+  const t = roomList[locale];
+  const { joinRoom, joiningRoomId } = useDashboardChatStore(useShallow((state) => ({
+    joinRoom: state.joinRoom,
+    joiningRoomId: state.joiningRoomId,
+  })));
+  const setError = useDashboardChatStore((state) => state.setError);
+  const [status, setStatus] = useState<"idle" | "sending" | "pending" | "accepted" | "rejected">("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getMyJoinRequest(roomId).then((res) => {
+      if (cancelled) return;
+      if (res.has_request && res.request) {
+        const s = res.request.status;
+        if (s === "pending" || s === "accepted" || s === "rejected") setStatus(s);
+      }
+    }).catch((err) => {
+      if (!cancelled) console.warn("Failed to fetch join request status:", err);
+    });
+    return () => { cancelled = true; };
+  }, [roomId]);
+
+  const handleRequest = useCallback(async () => {
+    setStatus("sending");
+    try {
+      await api.createJoinRequest(roomId);
+      setStatus("pending");
+    } catch (err) {
+      setStatus("idle");
+      setError(err instanceof Error ? err.message : t.joinFailed);
+    }
+  }, [roomId, setError, t.joinFailed]);
+
+  if (status === "accepted") {
+    const isJoining = joiningRoomId === roomId;
+    return (
+      <button
+        onClick={() => void joinRoom(roomId)}
+        disabled={isJoining}
+        className="mt-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
+      >
+        {isJoining ? t.joining : t.join}
+      </button>
+    );
+  }
+  if (status === "pending") {
+    return (
+      <span className="mt-1.5 inline-block rounded border border-amber-400/40 bg-amber-400/10 px-3 py-0.5 text-xs font-medium text-amber-400">
+        {t.requestPending}
+      </span>
+    );
+  }
+  if (status === "rejected") {
+    return (
+      <span className="mt-1.5 inline-block rounded border border-red-400/40 bg-red-400/10 px-3 py-0.5 text-xs font-medium text-red-400">
+        {t.requestRejected}
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={() => void handleRequest()}
+      disabled={status === "sending"}
+      className="mt-1.5 rounded border border-amber-400/40 px-3 py-0.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/10 disabled:opacity-40"
+    >
+      {status === "sending" ? t.joining : t.requestToJoin}
+    </button>
   );
 }
