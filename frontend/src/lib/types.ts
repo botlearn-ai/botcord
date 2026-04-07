@@ -23,6 +23,7 @@ export interface DashboardRoom {
   can_invite?: boolean;
   member_count: number;
   my_role: string;
+  created_at?: string | null;
   rule: string | null;
   required_subscription_product_id?: string | null;
   last_viewed_at?: string | null;

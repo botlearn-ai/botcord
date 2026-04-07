@@ -167,6 +167,10 @@ async def _build_dashboard_rooms(
                 last_at = last_at.replace(tzinfo=datetime.timezone.utc)
             last_sender = sender_names.get(sid)
 
+        room_created_at = room.created_at
+        if room_created_at is not None and room_created_at.tzinfo is None:
+            room_created_at = room_created_at.replace(tzinfo=datetime.timezone.utc)
+
         dashboard_rooms.append(
             DashboardRoom(
                 room_id=room.room_id,
@@ -177,13 +181,14 @@ async def _build_dashboard_rooms(
                 visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
                 member_count=member_counts.get(rid, 0),
                 my_role=my_roles.get(rid, "member"),
+                created_at=room_created_at,
                 last_message_preview=last_preview,
                 last_message_at=last_at,
                 last_sender_name=last_sender,
             )
         )
     dashboard_rooms.sort(
-        key=lambda room: room.last_message_at or datetime.datetime.min.replace(
+        key=lambda room: room.last_message_at or room.created_at or datetime.datetime.min.replace(
             tzinfo=datetime.timezone.utc
         ),
         reverse=True,

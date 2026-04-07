@@ -87,6 +87,7 @@ async def _build_rooms_from_sql(
         "room_name": "name",
         "room_description": "description",
         "room_rule": "rule",
+        "room_created_at": "created_at",
     }
     _DROP_COLS = {"last_sender_id"}
 
@@ -131,7 +132,7 @@ async def _build_rooms_from_sql(
 
 def _sort_room_previews(rooms: list[dict]) -> list[dict]:
     rooms.sort(
-        key=lambda r: r.get("last_message_at") or "",
+        key=lambda r: r.get("last_message_at") or r.get("created_at") or "",
         reverse=True,
     )
     return rooms
@@ -252,6 +253,7 @@ async def _build_rooms_from_membership(
             "last_message_preview": last_preview,
             "last_message_at": last_at.isoformat() if last_at else None,
             "last_sender_name": last_sender,
+            "created_at": room.created_at.isoformat() if room.created_at else None,
         })
 
     return _sort_room_previews(result_rooms)
