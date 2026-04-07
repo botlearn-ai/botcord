@@ -28,17 +28,30 @@ interface WsClientOptions {
   };
 }
 
+export type WsConnectionStatus = "disconnected" | "connecting" | "authenticated" | "reconnecting";
+
+export interface WsClientEntry {
+  stop: () => void;
+  getStatus: () => WsConnectionStatus;
+}
+
 // Use lazy initialization to avoid TDZ errors when jiti resolves
 // the dynamic import("./ws-client.js") before the module body completes.
-let _activeWsClients: Map<string, { stop: () => void }> | undefined;
+let _activeWsClients: Map<string, WsClientEntry> | undefined;
 function getActiveWsClients() {
   return (_activeWsClients ??= new Map());
+}
+
+/** Get the current WS connection status for an account. */
+export function getWsStatus(accountId: string): WsConnectionStatus {
+  const entry = getActiveWsClients().get(accountId);
+  return entry ? entry.getStatus() : "disconnected";
 }
 
 // Reconnect backoff: 1s, 2s, 4s, 8s, 16s, 30s max
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
 
-export function startWsClient(opts: WsClientOptions): { stop: () => void } {
+export function startWsClient(opts: WsClientOptions): WsClientEntry {
   // Stop any existing client for this account before creating a new one
   const existing = getActiveWsClients().get(opts.accountId);
   if (existing) existing.stop();
@@ -55,6 +68,7 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
   let pendingUpdate = false;
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   const KEEPALIVE_INTERVAL = 20_000; // 20s — well under Caddy/proxy 30s timeout
+  let status: WsConnectionStatus = "connecting";
 
   async function fetchAndDispatch() {
     if (processing) {
@@ -101,6 +115,7 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
       const hubUrl = client.getHubUrl();
       const wsUrl = buildHubWebSocketUrl(hubUrl);
 
+      status = "connecting";
       log?.info(`[${dp}] WebSocket connecting to ${wsUrl}`);
       ws = new WebSocket(wsUrl);
 
@@ -114,6 +129,7 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
           const msg = JSON.parse(data.toString());
           switch (msg.type) {
             case "auth_ok":
+              status = "authenticated";
               log?.info(`[${dp}] WebSocket authenticated as ${msg.agent_id}`);
               reconnectAttempt = 0; // Reset backoff on successful auth
               consecutiveAuthFailures = 0; // Reset auth failure counter
@@ -175,9 +191,11 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
         if (code === 4001) {
           consecutiveAuthFailures++;
           if (consecutiveAuthFailures >= MAX_AUTH_FAILURES) {
+            status = "disconnected";
             log?.error(`[${dp}] WebSocket auth failed ${consecutiveAuthFailures} times consecutively, stopping reconnect`);
             return;
           }
+          status = "reconnecting";
           log?.warn(`[${dp}] WebSocket auth failed (${consecutiveAuthFailures}/${MAX_AUTH_FAILURES}), force-refreshing token before reconnect`);
           // Await token refresh so the next connect() picks up the new token
           try {
@@ -210,12 +228,14 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
     const delay =
       RECONNECT_BACKOFF[Math.min(reconnectAttempt, RECONNECT_BACKOFF.length - 1)];
     reconnectAttempt++;
+    status = "reconnecting";
     log?.info(`[${dp}] WebSocket reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
     reconnectTimer = setTimeout(connect, delay);
   }
 
   function stop() {
     running = false;
+    status = "disconnected";
     if (reconnectTimer) clearTimeout(reconnectTimer);
     if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
     if (ws) {
@@ -229,10 +249,14 @@ export function startWsClient(opts: WsClientOptions): { stop: () => void } {
     getActiveWsClients().delete(accountId);
   }
 
+  function getStatus(): WsConnectionStatus {
+    return status;
+  }
+
   // Start connection
   connect();
 
-  const entry = { stop };
+  const entry: WsClientEntry = { stop, getStatus };
   getActiveWsClients().set(accountId, entry);
 
   abortSignal?.addEventListener("abort", stop, { once: true });

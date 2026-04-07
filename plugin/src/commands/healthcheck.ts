@@ -6,12 +6,15 @@
 import {
   getSingleAccountModeError,
   resolveAccountConfig,
+  resolveChannelConfig,
+  resolveAccounts,
   isAccountConfigured,
 } from "../config.js";
 import { BotCordClient } from "../client.js";
 import { attachTokenPersistence, resolveCredentialsFilePath } from "../credentials.js";
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { getConfig as getAppConfig } from "../runtime.js";
+import { getWsStatus } from "../ws-client.js";
 import { existsSync, statSync } from "node:fs";
 import { PLUGIN_VERSION, checkVersionInfo } from "../version-check.js";
 
@@ -200,7 +203,20 @@ export function createHealthcheckCommand() {
       const mode = acct.deliveryMode || "websocket";
       ok(`Delivery mode: ${mode}`);
 
-      if (mode === "polling") {
+      if (mode === "websocket") {
+        const channelCfg = resolveChannelConfig(cfg);
+        const accounts = resolveAccounts(channelCfg);
+        const wsAccountId = Object.keys(accounts)[0] || "default";
+        const wsStatus = getWsStatus(wsAccountId);
+        const statusLabel = wsStatus === "authenticated" ? "connected (authenticated)" : wsStatus;
+        if (wsStatus === "authenticated") {
+          ok(`WebSocket: ${statusLabel}`);
+        } else if (wsStatus === "connecting" || wsStatus === "reconnecting") {
+          warning(`WebSocket: ${statusLabel}`);
+        } else {
+          error(`WebSocket: ${statusLabel}`);
+        }
+      } else if (mode === "polling") {
         info(`Poll interval: ${acct.pollIntervalMs || 5000}ms`);
       }
 
