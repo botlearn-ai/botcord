@@ -12,7 +12,7 @@ import type { UserAgent, UserProfile } from "@/lib/types";
 import AgentBindDialog from "./AgentBindDialog";
 import CredentialResetDialog from "./CredentialResetDialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, KeyRound, LogOut, Plus, Settings, User } from "lucide-react";
+import { Check, KeyRound, LogOut, Plus, RefreshCw, Settings, User } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
@@ -25,6 +25,7 @@ interface AccountMenuProps {
   onSwitchAgent: (agentId: string) => Promise<void> | void;
   onLogout: () => void;
   onAgentBound: (agentId: string) => Promise<void> | void;
+  onRefreshStatus?: () => Promise<void> | void;
 }
 
 function getAvatarSeed(user: UserProfile | null): string {
@@ -40,10 +41,12 @@ export default function AccountMenu({
   onSwitchAgent,
   onLogout,
   onAgentBound,
+  onRefreshStatus,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [showBindDialog, setShowBindDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const locale = useLanguage();
   const t = accountMenu[locale];
   const tc = common[locale];
@@ -81,7 +84,7 @@ export default function AccountMenu({
               <p className="text-sm font-medium leading-none text-text-primary">
                 {user?.display_name || user?.email || t.user}
               </p>
-              <p className="text-xs leading-none text-text-secondary mt-1 flex items-center gap-1.5">
+              <div className="text-xs leading-none text-text-secondary mt-1 flex items-center gap-1.5">
                 {activeAgent ? (
                   <>
                     {t.active}{activeAgent.display_name}
@@ -89,9 +92,25 @@ export default function AccountMenu({
                     <span className={activeAgent.ws_online ? "text-emerald-400" : "text-zinc-500"}>
                       {activeAgent.ws_online ? t.wsOnline : t.wsOffline}
                     </span>
+                    {onRefreshStatus && (
+                      <button
+                        type="button"
+                        disabled={refreshing}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          setRefreshing(true);
+                          try { await onRefreshStatus(); } finally { setRefreshing(false); }
+                        }}
+                        className="ml-0.5 p-0.5 rounded text-text-secondary hover:text-neon-cyan transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                        title={t.refreshStatus}
+                        aria-label={t.refreshStatus}
+                      >
+                        <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+                      </button>
+                    )}
                   </>
                 ) : t.noActiveAgent}
-              </p>
+              </div>
             </div>
 
             <DropdownMenu.Group>

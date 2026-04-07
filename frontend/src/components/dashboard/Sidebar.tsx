@@ -437,17 +437,18 @@ export default function Sidebar() {
                 </Tooltip>
               </TooltipProvider>
               <AccountMenu
-              user={sessionStore.user}
-              agents={sessionStore.ownedAgents}
-              activeAgentId={sessionStore.activeAgentId}
-              pendingRequests={chatStore.overview?.pending_requests || 0}
-              onSwitchAgent={chatStore.switchActiveAgent}
-              onLogout={handleLogout}
-              onAgentBound={async (agentId) => {
-                await sessionStore.refreshUserProfile();
-                await chatStore.switchActiveAgent(agentId);
-              }}
-            />
+                user={sessionStore.user}
+                agents={sessionStore.ownedAgents}
+                activeAgentId={sessionStore.activeAgentId}
+                pendingRequests={chatStore.overview?.pending_requests || 0}
+                onSwitchAgent={chatStore.switchActiveAgent}
+                onLogout={handleLogout}
+                onAgentBound={async (agentId) => {
+                  await sessionStore.refreshUserProfile();
+                  await chatStore.switchActiveAgent(agentId);
+                }}
+                onRefreshStatus={() => sessionStore.refreshUserProfile()}
+              />
             </>
           )}
         </div>
