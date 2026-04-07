@@ -5,11 +5,11 @@ import logging
 import uuid
 
 import jcs
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from hub.i18n import I18nHTTPException
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,16 +107,25 @@ async def _create_contact_removed_notification(
 )
 async def list_contacts(
     agent_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_claimed_agent),
 ):
     check_agent_ownership(agent_id, current_agent)
+
+    base = select(Contact).where(Contact.owner_id == agent_id)
+
+    total_result = await db.execute(select(func.count()).select_from(base.subquery()))
+    total = total_result.scalar_one()
 
     result = await db.execute(
         select(Contact, Agent.display_name, Agent.bio)
         .outerjoin(Agent, Agent.agent_id == Contact.contact_agent_id)
         .where(Contact.owner_id == agent_id)
         .order_by(Contact.created_at.asc())
+        .limit(limit)
+        .offset(offset)
     )
     return ContactListResponse(
         contacts=[
@@ -128,7 +137,8 @@ async def list_contacts(
                 created_at=c.created_at,
             )
             for c, dn, bio in result.all()
-        ]
+        ],
+        total=total,
     )
 
 

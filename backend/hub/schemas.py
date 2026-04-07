@@ -390,6 +390,7 @@ class ContactResponse(BaseModel):
 
 class ContactListResponse(BaseModel):
     contacts: list[ContactResponse]
+    total: int
 
 
 class AddBlockRequest(BaseModel):
