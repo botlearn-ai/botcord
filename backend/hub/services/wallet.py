@@ -1,11 +1,8 @@
-"""Core wallet business logic — all balance mutations happen here.
-
-Rules:
-- All balance mutations within a single DB transaction.
-- SELECT ... FOR UPDATE on wallet rows before mutation.
-- Write WalletEntry for every balance change (immutable ledger).
-- Support idempotency_key dedup.
-- Balance can never go negative.
+"""
+[INPUT]: 依赖钱包模型、交易枚举与数据库事务，承载所有余额写路径
+[OUTPUT]: 对外提供钱包查询、转账、充值、提现与系统赠送入账能力
+[POS]: wallet 领域服务中枢，负责保证账本写入的原子性与审计一致性
+[PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
 
 import datetime
@@ -196,6 +193,102 @@ async def get_transaction(
         select(WalletTransaction).where(WalletTransaction.tx_id == tx_id)
     )
     return result.scalar_one_or_none()
+
+
+# ---------------------------------------------------------------------------
+# Grant
+# ---------------------------------------------------------------------------
+
+
+async def create_grant(
+    session: AsyncSession,
+    agent_id: str,
+    amount_minor: int,
+    *,
+    idempotency_key: str | None = None,
+    memo: str | None = None,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    metadata: dict | None = None,
+    asset_code: str = "COIN",
+) -> WalletTransaction:
+    """Credit an agent directly from the system treasury."""
+
+    if idempotency_key:
+        existing = await session.execute(
+            select(WalletTransaction).where(
+                WalletTransaction.idempotency_key == idempotency_key,
+                WalletTransaction.type == TxType.grant,
+                WalletTransaction.initiator_agent_id == agent_id,
+            )
+        )
+        tx = existing.scalar_one_or_none()
+        if tx is not None:
+            return tx
+
+    if amount_minor <= 0:
+        raise ValueError("Amount must be positive")
+
+    recipient = await session.execute(select(Agent).where(Agent.agent_id == agent_id))
+    if recipient.scalar_one_or_none() is None:
+        raise ValueError("Recipient agent not found")
+
+    wallet = await _lock_wallet(session, agent_id, asset_code)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    tx_id = generate_tx_id()
+    metadata_obj = dict(metadata or {})
+    if memo is not None and "memo" not in metadata_obj:
+        metadata_obj["memo"] = memo
+    if reference_type is not None and "reference_type" not in metadata_obj:
+        metadata_obj["reference_type"] = reference_type
+    if reference_id is not None and "reference_id" not in metadata_obj:
+        metadata_obj["reference_id"] = reference_id
+
+    tx = WalletTransaction(
+        tx_id=tx_id,
+        type=TxType.grant,
+        status=TxStatus.completed,
+        asset_code=asset_code,
+        amount_minor=amount_minor,
+        fee_minor=0,
+        from_agent_id=None,
+        to_agent_id=agent_id,
+        initiator_agent_id=agent_id,
+        idempotency_key=idempotency_key,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        metadata_json=json.dumps(metadata_obj) if metadata_obj else None,
+        completed_at=now,
+    )
+    session.add(tx)
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        existing = await session.execute(
+            select(WalletTransaction).where(
+                WalletTransaction.idempotency_key == idempotency_key,
+                WalletTransaction.type == TxType.grant,
+                WalletTransaction.initiator_agent_id == agent_id,
+            )
+        )
+        tx = existing.scalar_one_or_none()
+        if tx is not None:
+            return tx
+        raise ValueError("Idempotency conflict")
+
+    wallet.available_balance_minor += amount_minor
+    wallet.version += 1
+    _write_entry(
+        session,
+        tx_id,
+        agent_id,
+        asset_code,
+        EntryDirection.credit,
+        amount_minor,
+        wallet.available_balance_minor + wallet.locked_balance_minor,
+    )
+    return tx
 
 
 # ---------------------------------------------------------------------------

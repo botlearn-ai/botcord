@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
+from hub import config as hub_config
 from hub.auth import create_agent_token, verify_agent_token
 from hub.config import BIND_PROOF_SECRET, JWT_SECRET
 from hub.routers.hub import is_agent_ws_online
@@ -29,6 +30,7 @@ from hub.models import Agent, Role, ShortCode, SigningKey, User, UserRole
 from hub.id_generators import generate_key_id
 from hub.enums import KeyState
 from hub.schemas import ResetCredentialResponse
+from hub.services import wallet as wallet_svc
 from hub.validators import parse_pubkey
 
 _logger = logging.getLogger(__name__)
@@ -153,6 +155,50 @@ def _verify_bind_ticket(ticket: str) -> dict | None:
 
 def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
+
+
+async def _ensure_agent_owner_role(
+    db: AsyncSession,
+    user_id: UUID,
+) -> None:
+    """Ensure the claiming user owns the agent_owner role."""
+    role_result = await db.execute(select(Role).where(Role.name == "agent_owner"))
+    agent_owner_role = role_result.scalar_one_or_none()
+    if agent_owner_role is None:
+        return
+
+    existing_ur = await db.execute(
+        select(UserRole).where(
+            UserRole.user_id == user_id,
+            UserRole.role_id == agent_owner_role.id,
+        )
+    )
+    if existing_ur.scalar_one_or_none() is None:
+        db.add(UserRole(user_id=user_id, role_id=agent_owner_role.id))
+
+
+async def _maybe_grant_claim_gift(
+    db: AsyncSession,
+    agent: Agent,
+) -> None:
+    """Grant the cold-start claim gift exactly once per agent within the window."""
+    if not hub_config.is_claim_gift_active():
+        return
+
+    await wallet_svc.create_grant(
+        db,
+        agent_id=agent.agent_id,
+        amount_minor=hub_config.CLAIM_GIFT_AMOUNT_MINOR,
+        asset_code=hub_config.CLAIM_GIFT_ASSET_CODE,
+        idempotency_key="claim-cold-start-gift-v1",
+        memo="Cold-start claim gift",
+        reference_type="agent_claim_gift",
+        reference_id=agent.agent_id,
+        metadata={
+            "campaign": "claim_cold_start_2026_q2",
+            "claimed_at": agent.claimed_at.isoformat() if agent.claimed_at else None,
+        },
+    )
 
 
 async def _peek_short_code(code: str, kind: str, payload_key: str) -> str | None:
@@ -449,19 +495,8 @@ async def _bind_agent_to_user(
         # Refresh to get updated state
         await db.refresh(agent)
 
-    # Ensure user has the "agent_owner" role
-    role_result = await db.execute(select(Role).where(Role.name == "agent_owner"))
-    agent_owner_role = role_result.scalar_one_or_none()
-
-    if agent_owner_role is not None:
-        existing_ur = await db.execute(
-            select(UserRole).where(
-                UserRole.user_id == user_id,
-                UserRole.role_id == agent_owner_role.id,
-            )
-        )
-        if existing_ur.scalar_one_or_none() is None:
-            db.add(UserRole(user_id=user_id, role_id=agent_owner_role.id))
+    await _ensure_agent_owner_role(db, user_id)
+    await _maybe_grant_claim_gift(db, agent)
 
     await db.commit()
     await db.refresh(agent)
@@ -800,21 +835,8 @@ async def claim_resolve(
     agent.claimed_at = datetime.datetime.now(datetime.timezone.utc)
     agent.is_default = is_first
 
-    # Ensure user has the "agent_owner" role
-    role_result = await db.execute(
-        select(Role).where(Role.name == "agent_owner")
-    )
-    agent_owner_role = role_result.scalar_one_or_none()
-
-    if agent_owner_role is not None:
-        existing_ur = await db.execute(
-            select(UserRole).where(
-                UserRole.user_id == ctx.user_id,
-                UserRole.role_id == agent_owner_role.id,
-            )
-        )
-        if existing_ur.scalar_one_or_none() is None:
-            db.add(UserRole(user_id=ctx.user_id, role_id=agent_owner_role.id))
+    await _ensure_agent_owner_role(db, ctx.user_id)
+    await _maybe_grant_claim_gift(db, agent)
 
     await db.commit()
     await db.refresh(agent)

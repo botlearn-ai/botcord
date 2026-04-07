@@ -12,12 +12,13 @@ import pytest
 import pytest_asyncio
 from nacl.signing import SigningKey as NaClSigningKey
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock, patch
 
-from hub.models import Agent, Base, KeyState, MessagePolicy, Role, SigningKey, User, UserRole
+from hub.enums import TxType
+from hub.models import Agent, Base, KeyState, MessagePolicy, Role, SigningKey, User, UserRole, WalletTransaction
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
@@ -364,6 +365,15 @@ async def test_claim_resolve_success(client: AsyncClient, seed_user: dict, db_se
     assert data["is_default"] is False
     assert data["claimed_at"] is not None
 
+    grant_result = await db_session.execute(
+        select(WalletTransaction).where(
+            WalletTransaction.to_agent_id == "ag_unclaimed01",
+            WalletTransaction.type == TxType.grant,
+        )
+    )
+    grant_tx = grant_result.scalar_one()
+    assert grant_tx.amount_minor == 100
+
 
 @pytest.mark.asyncio
 async def test_claim_resolve_already_claimed(client: AsyncClient, seed_user: dict, db_session: AsyncSession):
@@ -534,6 +544,53 @@ async def test_claim_agent_with_token_success(
     assert data["display_name"] == "New Agent"
     assert data["is_default"] is True  # first agent for this user
     assert data["claimed_at"] is not None
+
+    wallet_resp = await client.get(
+        "/api/wallet/summary",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Active-Agent": "ag_newagent0001",
+        },
+    )
+    assert wallet_resp.status_code == 200
+    assert wallet_resp.json()["available_balance_minor"] == "100"
+
+
+@pytest.mark.asyncio
+async def test_claim_gift_skips_after_window(
+    client: AsyncClient,
+    seed_user_for_claim: dict,
+    db_session: AsyncSession,
+    monkeypatch,
+):
+    import hub.config
+
+    token = seed_user_for_claim["token"]
+    monkeypatch.setattr(
+        hub.config,
+        "CLAIM_GIFT_WINDOW_END_AT_EXCLUSIVE",
+        datetime.datetime(2026, 4, 7, 0, 0, 0, tzinfo=datetime.timezone.utc),
+    )
+
+    with _mock_verify_agent_control(True):
+        resp = await client.post(
+            "/api/users/me/agents",
+            json={
+                "agent_id": "ag_windowclosed1",
+                "display_name": "Window Closed",
+                "agent_token": "tok_valid",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 201
+    tx_count = await db_session.execute(
+        select(func.count()).select_from(WalletTransaction).where(
+            WalletTransaction.to_agent_id == "ag_windowclosed1",
+            WalletTransaction.type == TxType.grant,
+        )
+    )
+    assert tx_count.scalar_one() == 0
 
 
 @pytest.mark.asyncio

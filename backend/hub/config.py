@@ -1,3 +1,11 @@
+"""
+[INPUT]: 依赖环境变量、时间窗口与支付活动常量，向 Hub 全局暴露运行时配置
+[OUTPUT]: 对外提供数据库、鉴权、文件、Stripe 与冷启动赠送等统一配置常量
+[POS]: backend 配置中枢，负责把跨模块共享的运行时策略收敛为单一真相源
+[PROTOCOL]: 变更时更新此头部，然后检查 README.md
+"""
+
+import datetime
 import logging
 import os
 import re
@@ -142,3 +150,25 @@ ENVIRONMENT_TAG: str = os.getenv("ENVIRONMENT_TAG", "prod")
 # ---------------------------------------------------------------------------
 SENTRY_DSN: str | None = os.getenv("SENTRY_DSN")
 SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
+
+# ---------------------------------------------------------------------------
+# Cold-start claim gift
+# 固定窗口: 2026-04-07 00:00:00 +08:00 <= now < 2026-07-08 00:00:00 +08:00
+# 金额使用 COIN minor unit，当前写死赠送 100 COIN。
+# ---------------------------------------------------------------------------
+
+_COLD_START_TZ = datetime.timezone(datetime.timedelta(hours=8))
+CLAIM_GIFT_ASSET_CODE: str = "COIN"
+CLAIM_GIFT_AMOUNT_MINOR: int = 100
+CLAIM_GIFT_WINDOW_START_AT: datetime.datetime = datetime.datetime(
+    2026, 4, 7, 0, 0, 0, tzinfo=_COLD_START_TZ
+)
+CLAIM_GIFT_WINDOW_END_AT_EXCLUSIVE: datetime.datetime = datetime.datetime(
+    2026, 7, 8, 0, 0, 0, tzinfo=_COLD_START_TZ
+)
+
+
+def is_claim_gift_active(now: datetime.datetime | None = None) -> bool:
+    """Return whether the cold-start claim gift should be granted now."""
+    current = now or datetime.datetime.now(datetime.timezone.utc)
+    return CLAIM_GIFT_WINDOW_START_AT <= current < CLAIM_GIFT_WINDOW_END_AT_EXCLUSIVE

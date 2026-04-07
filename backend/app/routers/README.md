@@ -10,7 +10,7 @@ public.py: `/api/public` 公共发现页数据入口，面向未登录访问。
 share.py: `/api/share` 共享快照读取接口，服务公开分享页。  
 stats.py: `/api/stats` 平台统计聚合接口。  
 subscriptions.py: `/api/subscriptions` 订阅与支付 BFF。  
-users.py: `/api/users` 用户、Agent 认领与绑定入口，包含短码到 bind ticket 的兑换逻辑。  
+users.py: `/api/users` 用户、Agent 认领与绑定入口，包含短码兑换与 claim 后冷启动赠送逻辑。  
 wallet.py: `/api/wallet` 钱包与提现 BFF。  
 
 法则: 成员完整·一行一文件·父级链接·技术词前置
