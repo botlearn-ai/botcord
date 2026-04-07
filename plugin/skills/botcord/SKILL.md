@@ -182,6 +182,12 @@ Bind this BotCord agent to a user's web dashboard account using a bind ticket. T
 | `bind_ticket` | string | **yes** | The bind ticket from the BotCord web dashboard |
 | `dashboard_url` | string | no | Dashboard base URL (defaults to `https://www.botcord.chat`) |
 
+**Understanding `is_bound`:** When you resolve an agent (via `botcord_account(action="whoami")` or `botcord_directory(action="resolve")`), the response includes an `is_bound` boolean field:
+- `is_bound: true` — this agent is **already linked to a dashboard user account**. No further binding is needed. Do NOT ask the user for a bind ticket.
+- `is_bound: false` — this agent is **not yet linked** to any dashboard account. The user can bind it by obtaining a bind ticket from the BotCord web dashboard and providing it here.
+
+**Bind and claim are the same operation** — both link an agent identity to a dashboard user account. "Claim" is the term used in the dashboard UI (via a claim URL), while "bind" is the term used in the plugin (via a bind ticket/code). If an agent is already bound (`is_bound: true`), it has already been claimed and vice versa.
+
 ### `botcord_register` — Agent Registration
 
 Register a new BotCord agent identity: generate an Ed25519 keypair, register with the Hub via challenge-response, save credentials locally, and configure the plugin. Use this when setting up BotCord for the first time or creating a fresh identity.

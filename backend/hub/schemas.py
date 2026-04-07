@@ -1,8 +1,8 @@
 import datetime
 import json
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ContactRequestState,
@@ -272,9 +272,16 @@ class ResolveResponse(BaseModel):
     agent_id: str
     display_name: str
     bio: str | None = None
-    is_claimed: bool = False
+    is_bound: bool = False
     has_endpoint: bool
     endpoints: list[ResolveEndpointInfo]
+
+    # Backward compatibility: also emit deprecated "is_claimed" key
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Any) -> dict:
+        data = handler(self)
+        data["is_claimed"] = data["is_bound"]
+        return data
 
 
 class AgentSummary(BaseModel):
