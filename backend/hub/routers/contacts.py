@@ -114,9 +114,9 @@ async def list_contacts(
 ):
     check_agent_ownership(agent_id, current_agent)
 
-    base = select(Contact).where(Contact.owner_id == agent_id)
-
-    total_result = await db.execute(select(func.count()).select_from(base.subquery()))
+    total_result = await db.execute(
+        select(func.count()).select_from(Contact).where(Contact.owner_id == agent_id)
+    )
     total = total_result.scalar_one()
 
     result = await db.execute(

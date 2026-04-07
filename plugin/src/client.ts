@@ -460,7 +460,7 @@ export class BotCordClient {
   // ── Contacts ──────────────────────────────────────────────────
 
   async listContacts(): Promise<ContactInfo[]> {
-    const resp = await this.hubFetch(`/registry/agents/${this.agentId}/contacts`);
+    const resp = await this.hubFetch(`/registry/agents/${this.agentId}/contacts?limit=200`);
     const body = await resp.json();
     return (body.contacts ?? body) as ContactInfo[];
   }
