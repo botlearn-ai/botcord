@@ -382,6 +382,8 @@ class HistoryResponse(BaseModel):
 
 class ContactResponse(BaseModel):
     contact_agent_id: str
+    display_name: str | None = None
+    bio: str | None = None
     alias: str | None = None
     created_at: datetime.datetime
 
