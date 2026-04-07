@@ -323,8 +323,8 @@ if [ "${#EXISTING_CRED_PATHS[@]}" -gt 0 ]; then
         fetch(`${hubUrl}/registry/resolve/${agentId}`, { signal: AbortSignal.timeout(5000) })
           .then(r => r.ok ? r.json() : null)
           .then(d => {
-            if (!d || !("is_claimed" in d)) process.stdout.write("unknown");
-            else process.stdout.write(d.is_claimed ? "claimed" : "unclaimed");
+            if (!d) process.stdout.write("unknown");
+            else { const b = "is_bound" in d ? d.is_bound : d.is_claimed; process.stdout.write(b === undefined ? "unknown" : b ? "claimed" : "unclaimed"); }
           })
           .catch(() => process.stdout.write("unknown"));
       } catch { process.stdout.write("unknown"); }
