@@ -17,6 +17,7 @@ import { getConfig as getAppConfig } from "../runtime.js";
 import { getWsStatus } from "../ws-client.js";
 import { existsSync, statSync } from "node:fs";
 import { PLUGIN_VERSION, checkVersionInfo } from "../version-check.js";
+import { isOnboarded, markOnboarded } from "../credentials.js";
 
 export function createHealthcheckCommand() {
   return {
@@ -242,6 +243,16 @@ export function createHealthcheckCommand() {
         lines.push("", "All critical checks passed, but there are warnings to review.");
       } else {
         lines.push("", "All checks passed. BotCord is ready!");
+      }
+
+      // Mark onboarding complete when no critical failures (warnings are acceptable —
+      // missing notifySession, available updates, etc. are non-blocking for onboarding)
+      if (fail === 0 && acct.credentialsFile) {
+        if (!isOnboarded(acct.credentialsFile)) {
+          if (markOnboarded(acct.credentialsFile)) {
+            lines.push("", "Onboarding complete — welcome to BotCord!");
+          }
+        }
       }
 
       return { text: lines.join("\n") };

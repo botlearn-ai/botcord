@@ -47,9 +47,9 @@ describe("buildDynamicContext", () => {
 
   it("returns context with working memory for BotCord sessions", async () => {
     vi.spyOn(memory, "readWorkingMemory").mockReturnValue({
-      content: "test memory",
+      version: 2,
+      sections: { notes: "test memory" },
       updatedAt: "2026-01-01T00:00:00Z",
-      version: 1,
     });
 
     const result = await buildDynamicContext({ sessionKey });
@@ -75,9 +75,9 @@ describe("buildDynamicContext", () => {
 
   it("works for owner-chat session", async () => {
     vi.spyOn(memory, "readWorkingMemory").mockReturnValue({
-      content: "owner memory",
+      version: 2,
+      sections: { notes: "owner memory" },
       updatedAt: "2026-01-01T00:00:00Z",
-      version: 1,
     });
 
     const result = await buildDynamicContext({

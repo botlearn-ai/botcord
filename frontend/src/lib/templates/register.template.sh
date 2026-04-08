@@ -271,5 +271,6 @@ fi
 # ── Done ──────────────────────────────────────────────────────────────────
 
 log ""
-log "Done! Restart the OpenClaw gateway to activate BotCord."
+log "Done! Continue with the next steps in the setup guide."
+log "完成！请继续按安装指南的下一步操作。"
 log ""

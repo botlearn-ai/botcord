@@ -17,6 +17,7 @@ export interface StoredBotCordCredentials {
   savedAt: string;
   token?: string;
   tokenExpiresAt?: number;
+  onboardedAt?: string;
 }
 
 function normalizeCredentialValue(raw: any, keys: string[]): string | undefined {
@@ -86,6 +87,8 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     throw new Error(`BotCord credentials file "${resolved}" has an invalid hubUrl: ${err.message}`);
   }
 
+  const onboardedAt = normalizeCredentialValue(raw, ["onboardedAt", "onboarded_at"]);
+
   return {
     version: 1,
     hubUrl: normalizedHubUrl,
@@ -97,6 +100,7 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     savedAt: savedAt || new Date().toISOString(),
     token,
     tokenExpiresAt,
+    onboardedAt,
   };
 }
 
@@ -153,6 +157,40 @@ export function updateCredentialsToken(
     const raw = JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
     raw.token = token;
     raw.tokenExpiresAt = tokenExpiresAt;
+    writeFileSync(resolved, JSON.stringify(raw, null, 2) + "\n", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    chmodSync(resolved, 0o600);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check whether the agent has completed onboarding.
+ */
+export function isOnboarded(credentialsFile: string): boolean {
+  const resolved = resolveCredentialsFilePath(credentialsFile);
+  try {
+    if (!existsSync(resolved)) return false;
+    const raw = JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
+    return !!(raw.onboardedAt || raw.onboarded_at);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mark the agent as onboarded by writing onboardedAt timestamp.
+ */
+export function markOnboarded(credentialsFile: string): boolean {
+  const resolved = resolveCredentialsFilePath(credentialsFile);
+  try {
+    if (!existsSync(resolved)) return false;
+    const raw = JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
+    raw.onboardedAt = new Date().toISOString();
     writeFileSync(resolved, JSON.stringify(raw, null, 2) + "\n", {
       encoding: "utf8",
       mode: 0o600,

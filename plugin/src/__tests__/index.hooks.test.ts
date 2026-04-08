@@ -2,9 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import plugin from "../../index.js";
 
 describe("botcord plugin hooks", () => {
-  it("registers hooks and context engine", () => {
+  it("registers loop-risk hooks", () => {
     const on = vi.fn();
-    const registerContextEngine = vi.fn();
 
     plugin.register?.({
       id: "botcord",
@@ -28,7 +27,7 @@ describe("botcord plugin hooks", () => {
       registerService() {},
       registerProvider() {},
       registerCommand() {},
-      registerContextEngine,
+      registerContextEngine() {},
       registerSpeechProvider() {},
       registerMediaUnderstandingProvider() {},
       registerImageGenerationProvider() {},
@@ -42,14 +41,11 @@ describe("botcord plugin hooks", () => {
       on,
     } as any);
 
-    // Hook registrations: after_tool_call, two before_prompt_build hooks
-    // (static room context + dynamic context), session_end.
-    // All dynamic context (cross-room digest, working memory, loop-risk)
-    // now uses appendSystemContext instead of prependContext.
     expect(on.mock.calls.map((call) => call[0])).toEqual([
       "after_tool_call",
-      "before_prompt_build", // static room context (appendSystemContext)
-      "before_prompt_build", // dynamic context (appendSystemContext)
+      "before_prompt_build", // onboarding injection
+      "before_prompt_build", // static room context
+      "before_prompt_build", // dynamic context (working memory, loop-risk)
       "session_end",
     ]);
   });

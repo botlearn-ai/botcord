@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import {
@@ -30,16 +30,20 @@ describe("memory", () => {
 
   // ── Working Memory ───────────────────────────────────────────────
 
-  describe("WorkingMemory read/write", () => {
+  describe("WorkingMemory read/write (v2)", () => {
     it("returns null when file does not exist", () => {
       const result = readWorkingMemory(tmpDir);
       expect(result).toBeNull();
     });
 
-    it("writes and reads working memory", () => {
+    it("writes and reads working memory with sections", () => {
       const wm: WorkingMemory = {
-        version: 1,
-        content: "- Alice 在等我 review loss 曲线",
+        version: 2,
+        goal: "帮客户做PPT",
+        sections: {
+          contacts: "张三：喜欢蓝色",
+          pending_tasks: "- 年终总结PPT",
+        },
         updatedAt: "2026-04-01T11:00:00Z",
         sourceSessionKey: "agent:pm:botcord:group:rm_xxx",
       };
@@ -49,47 +53,112 @@ describe("memory", () => {
       expect(result).toEqual(wm);
     });
 
+    it("writes and reads memory without goal", () => {
+      const wm: WorkingMemory = {
+        version: 2,
+        sections: { notes: "some notes" },
+        updatedAt: "2026-04-01T11:00:00Z",
+      };
+      writeWorkingMemory(wm, tmpDir);
+
+      const result = readWorkingMemory(tmpDir);
+      expect(result?.goal).toBeUndefined();
+      expect(result?.sections.notes).toBe("some notes");
+    });
+
     it("overwrites existing working memory", () => {
       writeWorkingMemory({
-        version: 1,
-        content: "old content",
+        version: 2,
+        sections: { notes: "old" },
         updatedAt: "2026-04-01T10:00:00Z",
       }, tmpDir);
 
       writeWorkingMemory({
-        version: 1,
-        content: "new content",
+        version: 2,
+        goal: "new goal",
+        sections: { notes: "new" },
         updatedAt: "2026-04-01T11:00:00Z",
       }, tmpDir);
 
       const result = readWorkingMemory(tmpDir);
-      expect(result?.content).toBe("new content");
+      expect(result?.sections.notes).toBe("new");
+      expect(result?.goal).toBe("new goal");
     });
 
     it("creates parent directories if they do not exist", () => {
       const nested = path.join(tmpDir, "deep", "nested");
       writeWorkingMemory({
-        version: 1,
-        content: "test",
+        version: 2,
+        sections: { notes: "test" },
         updatedAt: "2026-04-01T11:00:00Z",
       }, nested);
 
       const result = readWorkingMemory(nested);
-      expect(result?.content).toBe("test");
+      expect(result?.sections.notes).toBe("test");
     });
 
     it("atomic write does not leave .tmp files on success", () => {
       writeWorkingMemory({
-        version: 1,
-        content: "test",
+        version: 2,
+        sections: { notes: "test" },
         updatedAt: "2026-04-01T11:00:00Z",
       }, tmpDir);
 
-      // Unique temp files (PID.timestamp.tmp) should be renamed away
       const files = readdirSync(tmpDir);
       const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
       expect(tmpFiles).toHaveLength(0);
       expect(existsSync(path.join(tmpDir, "working-memory.json"))).toBe(true);
+    });
+  });
+
+  // ── v1 Migration ────────────────────────────────────────────────
+
+  describe("v1 → v2 migration", () => {
+    it("migrates v1 content into notes section", () => {
+      // Write a v1 file directly
+      const filePath = path.join(tmpDir, "working-memory.json");
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({
+        version: 1,
+        content: "- Alice 在等我 review loss 曲线",
+        updatedAt: "2026-04-01T11:00:00Z",
+        sourceSessionKey: "agent:pm:botcord:group:rm_xxx",
+      }));
+
+      const result = readWorkingMemory(tmpDir);
+      expect(result).not.toBeNull();
+      expect(result!.version).toBe(2);
+      expect(result!.sections.notes).toBe("- Alice 在等我 review loss 曲线");
+      expect(result!.goal).toBeUndefined();
+    });
+
+    it("migrates empty v1 content to empty sections", () => {
+      const filePath = path.join(tmpDir, "working-memory.json");
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({
+        version: 1,
+        content: "",
+        updatedAt: "2026-04-01T11:00:00Z",
+      }));
+
+      const result = readWorkingMemory(tmpDir);
+      expect(result).not.toBeNull();
+      expect(result!.version).toBe(2);
+      expect(Object.keys(result!.sections)).toHaveLength(0);
+    });
+
+    it("handles file with no version as v1", () => {
+      const filePath = path.join(tmpDir, "working-memory.json");
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({
+        content: "legacy content",
+        updatedAt: "2026-04-01T11:00:00Z",
+      }));
+
+      const result = readWorkingMemory(tmpDir);
+      expect(result).not.toBeNull();
+      expect(result!.version).toBe(2);
+      expect(result!.sections.notes).toBe("legacy content");
     });
   });
 
