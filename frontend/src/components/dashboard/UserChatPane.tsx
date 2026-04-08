@@ -439,6 +439,7 @@ export default function UserChatPane() {
           // disconnect (Phase 1 design: no replay).
           useOwnerChatStreamStore.getState().reset();
           activeTraceRef.current = null;
+          setUserChatAgentTyping(false);
         }
       },
       onSendFailed: () => {

@@ -201,9 +201,14 @@ async def notify_oc_ws_typing(*, agent_id: str, room_id: str) -> None:
     owner-chat WS connection.  This lets the frontend show the typing
     indicator without waiting for Supabase Realtime.
     """
-    for (uid, aid), ws_set in _oc_ws_connections.items():
-        if ws_set and aid == agent_id and _build_owner_chat_room_id(uid, aid) == room_id:
-            await _send_to_oc_ws(uid, aid, {"type": "typing", "room_id": room_id})
+    # Snapshot keys to avoid RuntimeError if _send_to_oc_ws mutates the dict.
+    targets = [
+        (uid, aid)
+        for (uid, aid), ws_set in _oc_ws_connections.items()
+        if ws_set and aid == agent_id and _build_owner_chat_room_id(uid, aid) == room_id
+    ]
+    for uid, aid in targets:
+        await _send_to_oc_ws(uid, aid, {"type": "typing", "room_id": room_id})
 
 
 # ---------------------------------------------------------------------------
