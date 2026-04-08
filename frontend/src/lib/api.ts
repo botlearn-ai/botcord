@@ -82,6 +82,16 @@ export function setActiveAgentId(agentId: string | null) {
   }
 }
 
+function extractErrorMessage(body: Record<string, unknown>, fallback: string): string {
+  if (typeof body.error === "string") return body.error;
+  const detail = body.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d: { msg?: string }) => d.msg ?? JSON.stringify(d)).join("; ");
+  }
+  return fallback;
+}
+
 class ApiError extends Error {
   constructor(
     public status: number,
@@ -126,7 +136,7 @@ async function apiGet<T>(path: string, params?: Record<string, string>): Promise
   const res = await fetch(url.toString(), { headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, body.error || body.detail || res.statusText);
+    throw new ApiError(res.status, extractErrorMessage(body, res.statusText));
   }
   return res.json();
 }
@@ -142,7 +152,7 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(url.toString(), init);
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, data.error || data.detail || res.statusText);
+    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
   }
   return res.json();
 }
@@ -153,7 +163,7 @@ async function apiDelete(path: string): Promise<void> {
   const res = await fetch(url.toString(), { method: "DELETE", headers });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, data.error || data.detail || res.statusText);
+    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
   }
 }
 
@@ -168,7 +178,7 @@ async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(url.toString(), init);
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, data.error || data.detail || res.statusText);
+    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
   }
   return res.json();
 }
