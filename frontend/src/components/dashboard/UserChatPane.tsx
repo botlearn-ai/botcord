@@ -353,6 +353,9 @@ export default function UserChatPane() {
           setUserChatRoomId(data.room_id);
         }
       },
+      onTyping: () => {
+        setUserChatAgentTyping(true);
+      },
       onMessage: (msg) => {
         const roomId = msg.room_id || chatRoom.room_id;
 

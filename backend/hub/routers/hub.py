@@ -1662,6 +1662,14 @@ async def send_typing(
                 except Exception as exc:
                     logger.debug("typing ws send failed for %s: %s", target_id, exc)
 
+    # Owner-chat rooms (rm_oc_*): the agent is the sole member, so the
+    # normal fan-out above produces no targets.  Push directly to the
+    # owner-chat WS so the dashboard shows a typing indicator.
+    if body.room_id.startswith("rm_oc_"):
+        from hub.routers.owner_chat_ws import notify_oc_ws_typing
+
+        await notify_oc_ws_typing(agent_id=current_agent, room_id=body.room_id)
+
 
 # ---------------------------------------------------------------------------
 # WebSocket /hub/ws — real-time inbox push

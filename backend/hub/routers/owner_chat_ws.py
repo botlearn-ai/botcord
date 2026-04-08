@@ -33,8 +33,6 @@ from hub.routers.dashboard_chat import (
 from hub.routers.hub import (
     notify_inbox,
     build_message_realtime_event,
-    build_agent_realtime_event,
-    _publish_agent_realtime_event,
 )
 
 import jwt as pyjwt
@@ -194,6 +192,18 @@ async def notify_oc_ws_message(
 
     for uid, aid in target_keys:
         await _send_to_oc_ws(uid, aid, msg_data)
+
+
+async def notify_oc_ws_typing(*, agent_id: str, room_id: str) -> None:
+    """Push a typing indicator to owner-chat WS clients for a given agent.
+
+    Called from POST /hub/typing fan-out when the target has an active
+    owner-chat WS connection.  This lets the frontend show the typing
+    indicator without waiting for Supabase Realtime.
+    """
+    for (uid, aid), ws_set in _oc_ws_connections.items():
+        if ws_set and aid == agent_id and _build_owner_chat_room_id(uid, aid) == room_id:
+            await _send_to_oc_ws(uid, aid, {"type": "typing", "room_id": room_id})
 
 
 # ---------------------------------------------------------------------------
@@ -395,14 +405,6 @@ async def owner_chat_ws(ws: WebSocket):
                             agent_id,
                         )
                         asyncio.create_task(_notify_inbox_with_retry(agent_id))
-
-                    # Typing indicator
-                    typing_event = build_agent_realtime_event(
-                        type="typing",
-                        agent_id=agent_id,
-                        room_id=room_id,
-                    )
-                    await _publish_agent_realtime_event(db, typing_event)
 
                 # Echo user message back
                 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
