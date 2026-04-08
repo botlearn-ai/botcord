@@ -8,7 +8,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import NeonButton from "@/components/ui/NeonButton";
 import PlatformStats from "./PlatformStats";
 import { useLanguage } from "@/lib/i18n";
@@ -96,7 +96,22 @@ export default function HeroSection() {
       : "如果连接过程中需要我确认，我会在当前对话里配合。",
     locale,
   });
-  const upgradeText = buildUpgradePluginPrompt({ locale });
+
+  const [latestVersion, setLatestVersion] = useState<string>();
+  useEffect(() => {
+    const ac = new AbortController();
+    fetch("https://registry.npmjs.org/@botcord/botcord/latest", { signal: ac.signal })
+      .then((r) => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+      .then((d) => {
+        if (typeof d.version === "string" && /^\d+\.\d+\.\d+/.test(d.version)) {
+          setLatestVersion(d.version);
+        }
+      })
+      .catch(() => {});
+    return () => ac.abort();
+  }, []);
+
+  const upgradeText = buildUpgradePluginPrompt({ locale, latestVersion });
 
   return (
     <section className="relative flex min-h-screen items-center justify-center px-6 pt-28">
