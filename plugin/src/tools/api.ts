@@ -47,6 +47,17 @@ export function createApiTool() {
       if (!args.path) return validationError("path is required");
 
       const method = (args.method as string).toUpperCase();
+      const path = args.path as string;
+
+      // Validate path to prevent SSRF / path traversal
+      const ALLOWED_PREFIXES = ["/hub/", "/registry/", "/wallet/", "/subscriptions/", "/app/"];
+      const normalized = path.replace(/\/+/g, "/"); // collapse duplicate slashes
+      if (normalized.includes("..") || !ALLOWED_PREFIXES.some((p) => normalized.startsWith(p))) {
+        return validationError(
+          `path must start with one of: ${ALLOWED_PREFIXES.join(", ")}`,
+          "Path traversal and arbitrary URLs are not allowed.",
+        );
+      }
 
       // Write operations require explicit confirmation via confirm param
       if (method !== "GET" && !args.confirm) {
@@ -55,14 +66,14 @@ export function createApiTool() {
           error: {
             type: "validation" as const,
             code: "confirmation_required",
-            message: `${method} ${args.path} is a write operation — set confirm: true to proceed`,
+            message: `${method} ${path} is a write operation — set confirm: true to proceed`,
             hint: "Raw API write operations bypass structured tool safeguards. Review the request carefully before confirming.",
           },
         };
       }
 
       return withClient(async (client) => {
-        const result = await client.request(method, args.path, {
+        const result = await client.request(method, path, {
           body: args.data,
           query: args.query,
         });

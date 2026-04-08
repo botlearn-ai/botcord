@@ -137,15 +137,14 @@ try {
   console.log(`[botcord] WARN: could not parse ${configPath}: ${err.message}`);
   console.log("[botcord] WARN: config file may already be corrupted — attempting repair");
 
-  // Try to fix common JSON corruption: trailing commas, missing braces
+  // Try to fix common JSON corruption: trailing commas only.
+  // We intentionally do NOT regex-remove nested objects (e.g. "botcord": {...})
+  // because that regex can't handle nested braces and would corrupt the file.
+  // If trailing-comma fix succeeds, the delete below will remove botcord cleanly.
   try {
-    // Remove trailing commas before } or ]
-    let fixed = raw
-      .replace(/,\s*([\]}])/g, "$1")
-      // Remove any bare "botcord" fragments that might be leftover
-      .replace(/"botcord"\s*:\s*\{[^}]*\}\s*,?/g, "");
+    let fixed = raw.replace(/,\s*([\]}])/g, "$1");
     config = JSON.parse(fixed);
-    console.log("[botcord] repair succeeded — will write cleaned config");
+    console.log("[botcord] repair succeeded (trailing comma fix) — will write cleaned config");
   } catch {
     console.log("[botcord] WARN: could not repair config — skipping JSON cleanup");
     console.log("[botcord] HINT: manually check " + configPath);

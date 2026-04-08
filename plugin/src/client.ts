@@ -234,6 +234,15 @@ export class BotCordClient {
     }
     const resp = await this.hubFetch(fullPath, init);
     const text = await resp.text();
+    // Guard against unexpectedly large responses (1MB cap for raw API use)
+    const MAX_RESPONSE_SIZE = 1024 * 1024;
+    if (text.length > MAX_RESPONSE_SIZE) {
+      throw new HubApiError(
+        resp.status,
+        `Response too large (${(text.length / 1024).toFixed(0)}KB > 1MB limit)`,
+        fullPath,
+      );
+    }
     try {
       return JSON.parse(text);
     } catch {
