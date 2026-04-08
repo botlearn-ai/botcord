@@ -66,16 +66,19 @@ async def wallet_ledger(
     return LedgerListResponse(
         entries=[
             LedgerEntryResponse(
-                entry_id=e.entry_id,
-                tx_id=e.tx_id,
-                agent_id=e.agent_id,
-                asset_code=e.asset_code,
-                direction=e.direction.value,
-                amount_minor=str(e.amount_minor),
-                balance_after_minor=str(e.balance_after_minor),
-                created_at=e.created_at,
+                entry_id=entry.entry_id,
+                tx_id=entry.tx_id,
+                agent_id=entry.agent_id,
+                asset_code=entry.asset_code,
+                direction=entry.direction.value,
+                tx_type=tx.type.value if tx is not None and hasattr(tx.type, "value") else (str(tx.type) if tx is not None else None),
+                reference_type=tx.reference_type if tx is not None else None,
+                reference_id=tx.reference_id if tx is not None else None,
+                amount_minor=str(entry.amount_minor),
+                balance_after_minor=str(entry.balance_after_minor),
+                created_at=entry.created_at,
             )
-            for e in entries
+            for entry, tx in entries
         ],
         next_cursor=next_cursor,
         has_more=has_more,

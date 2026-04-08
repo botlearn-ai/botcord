@@ -507,6 +507,9 @@ export interface WalletLedgerEntry {
   entry_id: string;
   tx_id: string;
   direction: 'debit' | 'credit';
+  tx_type?: string | null;
+  reference_type?: string | null;
+  reference_id?: string | null;
   amount_minor: string;
   balance_after_minor: string;
   created_at: string;

@@ -372,7 +372,7 @@ async def test_claim_resolve_success(client: AsyncClient, seed_user: dict, db_se
         )
     )
     grant_tx = grant_result.scalar_one()
-    assert grant_tx.amount_minor == 100
+    assert grant_tx.amount_minor == 10000
 
 
 @pytest.mark.asyncio
@@ -553,7 +553,7 @@ async def test_claim_agent_with_token_success(
         },
     )
     assert wallet_resp.status_code == 200
-    assert wallet_resp.json()["available_balance_minor"] == "100"
+    assert wallet_resp.json()["available_balance_minor"] == "10000"
 
 
 @pytest.mark.asyncio
