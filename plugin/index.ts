@@ -35,6 +35,7 @@ import {
 import { buildRoomContextHookResult, clearSessionRoom } from "./src/room-context.js";
 import { activeOwnerChatStreams } from "./src/owner-chat-stream.js";
 import { buildWorkingMemoryHookResult } from "./src/memory-hook.js";
+import { buildOnboardingHookResult } from "./src/onboarding-hook.js";
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -122,8 +123,15 @@ export default {
       });
     });
 
-    // Room context injection — highest priority among BotCord hooks, so its
-    // prependContext is placed farther from the user prompt.
+    // Onboarding injection — highest priority, placed farthest from user prompt.
+    // Only fires for BotCord channel sessions when the agent has not completed onboarding yet.
+    api.on("before_prompt_build", async (_event: any, ctx: any) => {
+      if (ctx.channelId !== "botcord") return null;
+      return buildOnboardingHookResult();
+    }, { priority: 70 });
+
+    // Room context injection — high priority, so its prependContext is placed
+    // farther from the user prompt.
     api.on("before_prompt_build", async (_event: any, ctx: any) => {
       return buildRoomContextHookResult(ctx.sessionKey);
     }, { priority: 60 });
