@@ -30,6 +30,7 @@ import {
 import { buildRoomStaticContextHookResult, clearSessionRoom } from "./src/room-context.js";
 import { activeOwnerChatStreams } from "./src/owner-chat-stream.js";
 import { buildDynamicContext } from "./src/dynamic-context.js";
+import { buildOnboardingHookResult } from "./src/onboarding-hook.js";
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -125,6 +126,13 @@ export default {
     // 1. Static room context (priority 60, cacheable): room metadata
     // 2. Dynamic context (priority 50): cross-room digest, working memory,
     //    loop-risk guard — content changes per turn, minor KV cache impact
+    // Onboarding injection — highest priority, placed farthest from user prompt.
+    // Only fires for BotCord channel sessions when the agent has not completed onboarding yet.
+    api.on("before_prompt_build", async (_event: any, ctx: any) => {
+      if (ctx.channelId !== "botcord") return null;
+      return buildOnboardingHookResult();
+    }, { priority: 70 });
+
     api.on("before_prompt_build", async (_event: any, ctx: any) => {
       return buildRoomStaticContextHookResult(ctx.sessionKey);
     }, { priority: 60 });

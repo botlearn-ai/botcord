@@ -11,7 +11,7 @@ import type { WorkingMemory } from "./memory.js";
 const MEMORY_SIZE_WARN_CHARS = 2000;
 
 /** Tags that must not appear literally in injected memory content. */
-const RESERVED_TAGS_RE = /<\/?current_memory\b[^>]*>/gi;
+const RESERVED_TAGS_RE = /<\/?(?:current_memory|section_\w+)\b[^>]*>/gi;
 
 /**
  * Sanitize memory content before embedding in the prompt.
@@ -38,37 +38,57 @@ export function buildWorkingMemoryPrompt(params: {
   const lines: string[] = [
     `[BotCord Working Memory]`,
     `You have a persistent working memory that survives across sessions and rooms.`,
-    `Use it to track important facts, pending commitments, and context you want to remember.`,
+    `Use it to track your goal, important facts, pending commitments, and context you want to remember.`,
     ``,
-    `To update your working memory, call the botcord_update_working_memory tool.`,
+    `Memory is organized into named sections. Use botcord_update_working_memory to update:`,
+    `- Pass "goal" to set/update your work goal (pinned, never lost during section updates).`,
+    `- Pass "section" + "content" to update a specific section (other sections are untouched).`,
+    `- Pass "section" + empty "content" to delete a section.`,
+    `- Without "section", updates the default "notes" section.`,
     ``,
-    `Rules:`,
-    `- Pass the COMPLETE new working memory content to the tool, not a delta.`,
-    `- Only update when something meaningful changes. Do not update on every turn.`,
-    `- Keep it concise: focus on actionable items, pending commitments, stable preferences, people/room relationships, and key context that will matter later.`,
-    `- Good reasons to update: a new long-lived fact, a stable preference, a durable person/profile insight, a pending commitment, or a meaningful change to existing memory.`,
-    `- Do NOT update for one-off chatter, transient emotions, verbose summaries of the current turn, or details that are useful only right now.`,
-    `- If the information is room-specific operational state, prefer room context / room state tools rather than global working memory.`,
+    `Section naming: use clear names like "contacts", "pending_tasks", "preferences", etc.`,
+    `Only update when something meaningful changes. Do not update on every turn.`,
+    `Keep each section concise and focused on its topic.`,
   ];
 
-  if (workingMemory?.content) {
-    const content = sanitizeMemoryContent(workingMemory.content);
-    lines.push(``);
-    lines.push(`Current working memory (last updated: ${workingMemory.updatedAt}):`);
-    lines.push(`<current_memory>`);
-    lines.push(content);
-    lines.push(`</current_memory>`);
+  if (!workingMemory) {
+    lines.push(``, `Your working memory is currently empty.`);
+    return lines.join("\n");
+  }
 
-    if (warnLarge && content.length > MEMORY_SIZE_WARN_CHARS) {
-      lines.push(``);
-      lines.push(
-        `⚠ Your working memory is ${content.length} characters. ` +
-        `Consider condensing it to keep token usage low.`,
-      );
-    }
-  } else {
-    lines.push(``);
-    lines.push(`Your working memory is currently empty.`);
+  const sectionEntries = Object.entries(workingMemory.sections || {});
+  const hasGoal = !!workingMemory.goal;
+  const hasSections = sectionEntries.length > 0;
+
+  if (!hasGoal && !hasSections) {
+    lines.push(``, `Your working memory is currently empty.`);
+    return lines.join("\n");
+  }
+
+  lines.push(``, `Current working memory (last updated: ${workingMemory.updatedAt}):`);
+
+  let totalChars = 0;
+
+  if (hasGoal) {
+    // Collapse newlines to prevent prompt injection via goal field
+    const goal = sanitizeMemoryContent(workingMemory.goal!.replace(/[\r\n]+/g, " ").trim());
+    lines.push(``, `Goal: ${goal}`);
+    totalChars += goal.length;
+  }
+
+  for (const [name, content] of sectionEntries) {
+    if (!content) continue;
+    const sanitized = sanitizeMemoryContent(content);
+    lines.push(``, `<section_${name}>`, sanitized, `</section_${name}>`);
+    totalChars += sanitized.length;
+  }
+
+  if (warnLarge && totalChars > MEMORY_SIZE_WARN_CHARS) {
+    lines.push(
+      ``,
+      `⚠ Your working memory is ${totalChars} characters. ` +
+      `Consider condensing sections to keep token usage low.`,
+    );
   }
 
   return lines.join("\n");

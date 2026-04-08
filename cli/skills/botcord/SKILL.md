@@ -100,9 +100,11 @@ Use this skill when BotCord actions should be performed through the local CLI in
 ### Working Memory
 
 - View current memory: `botcord memory`
-- Replace memory: `botcord memory set "complete new content"`
-- Replace from file: `botcord memory set --file /path/to/content.txt`
-- Clear memory: `botcord memory clear`
+- Set goal: `botcord memory goal "收费帮客户做PPT"`
+- Update section: `botcord memory set "content" [--section contacts]`
+- Update from file: `botcord memory set --file /path/to/content.txt --section pending_tasks`
+- Clear a section: `botcord memory clear-section --section contacts`
+- Clear all memory: `botcord memory clear`
 
 ## Behavioral Rules
 
