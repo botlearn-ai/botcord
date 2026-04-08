@@ -7,7 +7,7 @@ from jwt import PyJWKClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.config import JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET, SUPABASE_JWT_JWKS_URL
+from hub.config import FRONTEND_BASE_URL, JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET, SUPABASE_JWT_JWKS_URL
 from hub.database import get_db
 from hub.i18n import I18nHTTPException
 from hub.models import Agent, User
@@ -82,7 +82,10 @@ async def get_current_claimed_agent(
     if agent is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
-        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
+        claim_url = f"{FRONTEND_BASE_URL.rstrip('/')}/agents/claim/{agent.claim_code}" if agent.claim_code else None
+        if claim_url:
+            raise I18nHTTPException(status_code=403, message_key="agent_not_claimed", claim_url=claim_url)
+        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed_generic")
     return agent_id
 
 
@@ -206,7 +209,7 @@ async def get_dashboard_claimed_agent(
     if agent is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
-        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
+        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed_generic")
     if supabase_uid is not None:
         internal_uid = await _resolve_internal_user_id(db, supabase_uid)
         if internal_uid is None or str(agent.user_id) != internal_uid:
@@ -231,7 +234,7 @@ async def get_dashboard_agent_with_user(
     if agent is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
-        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed")
+        raise I18nHTTPException(status_code=403, message_key="agent_not_claimed_generic")
 
     internal_uid: str | None = None
     if supabase_uid is not None:
