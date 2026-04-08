@@ -16,11 +16,30 @@ import { resolveAccountConfig } from "./config.js";
 // ── Types ──────────────────────────────────────────────────────────
 
 export type WorkingMemory = {
+  version: 2;
+  goal?: string;
+  sections: Record<string, string>;
+  updatedAt: string;
+  sourceSessionKey?: string;
+};
+
+/** Legacy v1 format — single content string. */
+type WorkingMemoryV1 = {
   version: 1;
   content: string;
   updatedAt: string;
   sourceSessionKey?: string;
 };
+
+/** Migrate v1 to v2: move content into a "notes" section. */
+function migrateV1toV2(v1: WorkingMemoryV1): WorkingMemory {
+  return {
+    version: 2,
+    sections: v1.content ? { notes: v1.content } : {},
+    updatedAt: v1.updatedAt,
+    sourceSessionKey: v1.sourceSessionKey,
+  };
+}
 
 export type RoomState = {
   version: 1;
@@ -119,16 +138,54 @@ function workingMemoryPath(memDir?: string): string {
   return path.join(memDir ?? resolveMemoryDir(), "working-memory.json");
 }
 
+const VALID_SECTION_KEY_RE = /^[a-zA-Z0-9_]+$/;
+
+function sanitizeSections(sections: unknown): Record<string, string> {
+  if (!sections || typeof sections !== "object" || Array.isArray(sections)) return {};
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(sections as Record<string, unknown>)) {
+    if (VALID_SECTION_KEY_RE.test(key) && typeof value === "string") {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function normalizeWorkingMemory(raw: any): WorkingMemory | null {
+  if (!raw || typeof raw !== "object") return null;
+  // Already v2
+  if (raw.version === 2 && typeof raw.sections === "object") {
+    return {
+      version: 2,
+      goal: typeof raw.goal === "string" ? raw.goal : undefined,
+      sections: sanitizeSections(raw.sections),
+      updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
+      sourceSessionKey: typeof raw.sourceSessionKey === "string" ? raw.sourceSessionKey : undefined,
+    };
+  }
+  // v1 → v2 migration
+  if (raw.version === 1 && typeof raw.content === "string") {
+    return migrateV1toV2(raw as WorkingMemoryV1);
+  }
+  // Unknown or no version — try to treat as v1 if content exists
+  if (typeof raw.content === "string") {
+    return migrateV1toV2({ version: 1, content: raw.content, updatedAt: raw.updatedAt ?? "" });
+  }
+  return null;
+}
+
 export function readWorkingMemory(memDir?: string): WorkingMemory | null {
-  const primary = readJsonFile<WorkingMemory>(workingMemoryPath(memDir));
-  if (primary || memDir) return primary;
+  const primary = readJsonFile<unknown>(workingMemoryPath(memDir));
+  const normalized = primary ? normalizeWorkingMemory(primary) : null;
+  if (normalized) return normalized;
+  if (memDir) return null;
 
   // Migration fallback: try the old workspace-scoped path so existing memory
   // is not lost after upgrading to account-scoped storage.
   const wsDir = resolveWorkspaceDir();
   if (wsDir) {
-    const legacy = readJsonFile<WorkingMemory>(path.join(wsDir, "working-memory.json"));
-    if (legacy) return legacy;
+    const legacy = readJsonFile<unknown>(path.join(wsDir, "working-memory.json"));
+    if (legacy) return normalizeWorkingMemory(legacy);
   }
   return null;
 }
