@@ -578,6 +578,11 @@ class FileRecord(Base):
 
 # ---------------------------------------------------------------------------
 # Wallet / Economy models
+#
+# Currency convention:
+#   1 COIN = 100 minor units (similar to 1 USD = 100 cents).
+#   All `amount_minor` / `balance_*_minor` / `fee_minor` columns store
+#   values in minor units (integer).  Display-side divides by 100.
 # ---------------------------------------------------------------------------
 
 

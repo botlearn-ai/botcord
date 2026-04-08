@@ -154,7 +154,7 @@ SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", 
 # ---------------------------------------------------------------------------
 # Cold-start claim gift
 # 固定窗口: 2026-04-07 00:00:00 +08:00 <= now < 2026-07-08 00:00:00 +08:00
-# 金额使用 COIN minor unit，100 COIN = 10000 minor units。
+# 金额使用 COIN minor unit (1 COIN = 100 minor)，当前写死赠送 100 COIN = 10000 minor。
 # ---------------------------------------------------------------------------
 
 _COLD_START_TZ = datetime.timezone(datetime.timedelta(hours=8))
