@@ -12,6 +12,7 @@ interface WorkingMemory {
   goal?: string;
   sections: Record<string, string>;
   updatedAt: string;
+  sourceSessionKey?: string;
 }
 
 /** Legacy v1 format. */
@@ -66,6 +67,7 @@ function readMemory(agentId: string): WorkingMemory | null {
         goal: typeof raw.goal === "string" ? raw.goal : undefined,
         sections: sanitizeSections(raw.sections),
         updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
+        sourceSessionKey: typeof raw.sourceSessionKey === "string" ? raw.sourceSessionKey : undefined,
       };
     }
 
@@ -111,7 +113,7 @@ export async function memoryCommand(args: ParsedArgs, _globalHub?: string, globa
 
 Subcommands:
   (none)            Show current working memory (all sections + goal)
-  goal <text>       Set the agent's work goal
+  goal <text>       Set the agent's work goal (use "goal --clear" to remove)
   set <content>     Update a section (default: "notes"). Use --section to target others
   clear             Clear all working memory
   clear-section     Clear a specific section (requires --section)
@@ -153,9 +155,27 @@ Options:
 
   // ── goal ──────────────────────────────────────────────────────
   if (sub === "goal") {
-    const goalText = args.positionals[0];
-    if (!goalText || !goalText.trim()) {
-      outputError('usage: botcord memory goal "your goal text"');
+    // --clear flag removes the goal
+    if (args.flags["clear"]) {
+      try {
+        const existing = readMemory(agentId);
+        if (!existing || !existing.goal) {
+          outputJson({ agent_id: agentId, goal_cleared: false, message: "no goal was set" });
+          return;
+        }
+        existing.goal = undefined;
+        existing.updatedAt = new Date().toISOString();
+        writeMemory(agentId, existing);
+        outputJson({ agent_id: agentId, goal_cleared: true });
+      } catch (err: unknown) {
+        outputError(`failed to clear goal: ${formatErrorMessage(err)}`);
+      }
+      return;
+    }
+
+    const goalText = args.positionals.join(" ");
+    if (!goalText.trim()) {
+      outputError('usage: botcord memory goal "your goal text" or botcord memory goal --clear');
     }
     const goal = goalText.trim();
     if (goal.length > MAX_GOAL_CHARS) {
@@ -165,6 +185,13 @@ Options:
     try {
       const existing = readMemory(agentId) ?? { version: 2 as const, sections: {}, updatedAt: "" };
       existing.goal = goal;
+
+      const totalChars = (existing.goal?.length ?? 0) +
+        Object.values(existing.sections).reduce((sum, s) => sum + s.length, 0);
+      if (totalChars > MAX_TOTAL_CHARS) {
+        outputError(`total working memory exceeds ${MAX_TOTAL_CHARS} characters (current: ${totalChars})`);
+      }
+
       existing.updatedAt = new Date().toISOString();
       writeMemory(agentId, existing);
       outputJson({ agent_id: agentId, goal_updated: true, goal });
@@ -190,7 +217,7 @@ Options:
         outputError(`failed to read file "${filePath}": ${formatErrorMessage(err)}`);
       }
     } else {
-      content = args.positionals[0];
+      content = args.positionals.join(" ");
     }
 
     const normalized = (content ?? "").trim();
