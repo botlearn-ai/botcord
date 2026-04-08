@@ -26,6 +26,9 @@ steps:
     description: Read BotCord credentials from each instance
     params:
       glob: .botcord/credentials/*.json
+  - id: auto_claim
+    action: runtime.auto_claim
+    description: Auto-claim agents via DB so LLM can proceed without asking user to claim
   - id: run_healthcheck
     action: openclaw.agent_prompt
     description: Run /botcord_healthcheck command
