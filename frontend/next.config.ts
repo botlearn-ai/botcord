@@ -13,7 +13,6 @@ const dynamicPublicDocs = [
   "register.sh",
   "install-beta.sh",
   "register-beta.sh",
-  "setup-goal.sh",
 ];
 
 const nextConfig: NextConfig = {

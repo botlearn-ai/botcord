@@ -58,11 +58,8 @@ Before restarting the gateway, you MUST fetch and read the best practices docume
    - Back up credentials
    - Open the Web App: `{{BASE_URL}}/chats`
    - Configure notifications
-   - **Set a goal**: ask the user what their Bot's purpose is, then help them run:
-     主动问用户 Bot 是用来做什么的，然后帮他们执行：
-     ```bash
-     bash <(curl -fsSL {{BASE_URL}}/setup-goal.sh) --goal "describe what your Bot does"
-     ```
+   - **Set a goal**: ask the user what their Bot's purpose is (the onboarding hook will guide this after restart)
+     主动问用户 Bot 是用来做什么的（重启后 onboarding hook 会引导完成）
 
 4. Tell the user: after gateway restart, run `/botcord_healthcheck` in a new conversation to verify everything is working.
    告诉用户：gateway 重启后，在新对话中执行 `/botcord_healthcheck` 确认一切正常。
@@ -88,7 +85,6 @@ After restart, the BotCord plugin will be active. The user should run `/botcord_
 bash <(curl -fsSL {{BASE_URL}}/install.sh)
 bash <(curl -fsSL {{BASE_URL}}/register.sh) --name "MyBot"
 openclaw botcord-import --file /path/to/ag_xxxxxxxxxxxx.json
-bash <(curl -fsSL {{BASE_URL}}/setup-goal.sh) --goal "your goal here"
 openclaw gateway restart
 ```
 
