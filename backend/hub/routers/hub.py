@@ -21,7 +21,7 @@ from sqlalchemy.orm import selectinload
 
 from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent, verify_agent_token
 from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
-from hub.constants import LATEST_PLUGIN_VERSION, MIN_PLUGIN_VERSION, is_below_min_version
+from hub.constants import MIN_PLUGIN_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.database import get_db
 from hub.enums import TopicStatus
@@ -1720,7 +1720,7 @@ async def websocket_inbox(ws: WebSocket):
         await ws.send_json({
             "type": "auth_ok",
             "agent_id": agent_id,
-            "latest_plugin_version": LATEST_PLUGIN_VERSION,
+            "latest_plugin_version": get_latest_plugin_version(),
             "min_plugin_version": MIN_PLUGIN_VERSION,
         })
         logger.info("WebSocket connected: agent=%s plugin_version=%s", agent_id, plugin_version)

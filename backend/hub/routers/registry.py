@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hub.auth import create_agent_token, get_current_agent
 from hub.config import CHALLENGE_EXPIRE_MINUTES
 from hub import config as hub_config
-from hub.constants import DEFAULT_TTL_SEC, LATEST_PLUGIN_VERSION, MIN_PLUGIN_VERSION, PROTOCOL_VERSION, is_below_min_version
+from hub.constants import DEFAULT_TTL_SEC, MIN_PLUGIN_VERSION, PROTOCOL_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import generate_challenge, verify_challenge_sig
 from hub.database import get_db
 from hub.id_generators import generate_agent_id, generate_endpoint_id, generate_hub_msg_id, generate_key_id
@@ -801,6 +801,6 @@ async def refresh_token(
     return VerifyResponse(
         agent_token=token,
         expires_at=expires_at,
-        latest_plugin_version=LATEST_PLUGIN_VERSION,
+        latest_plugin_version=get_latest_plugin_version(),
         min_plugin_version=MIN_PLUGIN_VERSION,
     )
