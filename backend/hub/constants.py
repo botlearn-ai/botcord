@@ -10,11 +10,19 @@ BACKOFF_SCHEDULE = [1, 2, 4, 8, 16, 32, 60]
 # UUID v5 namespace for deriving deterministic session keys from room/topic
 SESSION_KEY_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "botcord")
 
-# Plugin version negotiation — update these when publishing new plugin releases.
-# latest: the newest published version; min_compatible: oldest version that still
-# works with this Hub (older clients should be prompted / refused).
-LATEST_PLUGIN_VERSION = "0.2.3"
+# Plugin version negotiation.
+# min: oldest plugin version compatible with this Hub — update manually on breaking changes.
+# latest: dynamically fetched from npm registry (see version_poll.py); the hardcoded
+# value serves as fallback until the first successful fetch.
+_FALLBACK_LATEST_PLUGIN_VERSION = "0.2.3"
 MIN_PLUGIN_VERSION = "0.2.0"
+
+
+def get_latest_plugin_version() -> str:
+    """Return the latest plugin version (live from npm, or fallback)."""
+    from hub.version_poll import get_latest_plugin_version as _get_live
+
+    return _get_live() or _FALLBACK_LATEST_PLUGIN_VERSION
 
 _SEMVER_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
 

@@ -22,6 +22,7 @@ from hub import config as hub_config
 from hub.database import get_db
 from hub.expiry import message_expiry_loop
 from hub.subscription_billing import subscription_billing_loop
+from hub.version_poll import version_poll_loop
 from hub.routers.contact_requests import router as contact_requests_router
 from hub.routers.contacts import router as contacts_router
 from hub.routers.dashboard import router as dashboard_router
@@ -100,6 +101,7 @@ async def lifespan(app: FastAPI):
     expiry_task = None
     cleanup_task = None
     subscription_billing_task = None
+    version_poll_task = None
     if not test_db_override:
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
@@ -107,11 +109,13 @@ async def lifespan(app: FastAPI):
         cleanup_task = asyncio.create_task(file_cleanup_loop())
         # Background subscription billing loop
         subscription_billing_task = asyncio.create_task(subscription_billing_loop())
+        # Background npm version polling loop
+        version_poll_task = asyncio.create_task(version_poll_loop())
 
     yield
 
     # Shutdown
-    for task in (subscription_billing_task, cleanup_task, expiry_task):
+    for task in (version_poll_task, subscription_billing_task, cleanup_task, expiry_task):
         if task is None:
             continue
         task.cancel()
