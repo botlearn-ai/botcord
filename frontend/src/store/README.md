@@ -27,10 +27,12 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 新增业务状态优先放到对应业务 store，不再向 `DashboardApp` 回灌跨域字段。
 - 跨域依赖只能读取必要上下文（如 token/activeAgentId），避免双向循环调用。
 - 任何跨域状态重置（如 agent 切换、退出登录）必须在聚合层显式同步。
+- `useDashboardChatStore.ts` 的会话列表缓存必须绑定当前 active agent；身份切换后先换真相源，再清空上一身份残留，不能让 recents/overview 跨 agent 泄漏。
 - Supabase realtime 在线时，消息更新必须走 `useDashboardRealtimeStore.ts` 的同步动作；不要重新引入组件级定时轮询制造第二数据入口。
 - 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地蓝点只能做短暂覆盖，不能替代后端状态。
 
 变更日志
+- 2026-04-08: `useDashboardChatStore.ts` 新增 `boundAgentId` 边界，claim/切换身份后会先切 active agent 再硬刷新，并在 agent 不一致时清空上一身份的会话缓存，修复 `/chats` 继续进入仍显示旧身份与旧会话列表残留的问题。
 - 2026-04-07: `useDashboardContactStore.ts` 的联系人请求提交/处理状态细化为“按目标 agent 跟踪发送中”和“按 request + action 跟踪处理中”，让按钮 loading 能准确落在真正正在执行的那一项上。
 - 2026-03-25: `useDashboardUIStore.ts` 新增 `messagesPane`，把“固定私聊入口”和普通房间选择拆开，避免再用一级 tab 承载同属 `messages` 域的特殊会话。
 - 2026-03-22: 新增 `useDashboardSubscriptionStore.ts`，把付费房间的订阅状态从 `SubscriptionBadge.tsx` 组件内缓存上收回到业务 store，统一支撑 Header join、订阅弹窗与成员面板底部的退订动作。

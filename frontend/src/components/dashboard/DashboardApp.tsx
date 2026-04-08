@@ -322,6 +322,10 @@ export default function DashboardApp() {
       return;
     }
 
+    if (chatStore.boundAgentId !== sessionStore.activeAgentId) {
+      chatStore.bindToActiveAgent(sessionStore.activeAgentId);
+    }
+
     if (walletBoundAgentRef.current !== sessionStore.activeAgentId) {
       walletBoundAgentRef.current = sessionStore.activeAgentId;
       walletStore.resetWalletState();
@@ -341,6 +345,8 @@ export default function DashboardApp() {
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
     uiStore.sidebarTab,
+    chatStore.boundAgentId,
+    chatStore.bindToActiveAgent,
     uiStore.resetUIState,
     chatStore.overview,
     chatStore.overviewRefreshing,

@@ -54,6 +54,7 @@ function applyRealtimeRoomHint<T extends {
 }
 
 interface DashboardChatState {
+  boundAgentId: string | null;
   overviewRefreshing: boolean;
   overview: DashboardOverview | null;
   messages: Record<string, DashboardMessage[]>;
@@ -79,6 +80,7 @@ interface DashboardChatState {
 
   setError: (error: string | null) => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
+  bindToActiveAgent: (agentId: string | null) => void;
   resetChatState: () => void;
   logout: () => void;
   closeAgentCardState: () => void;
@@ -105,6 +107,7 @@ interface DashboardChatState {
 }
 
 const initialChatState = {
+  boundAgentId: null,
   overviewRefreshing: false,
   overview: null,
   messages: {},
@@ -181,6 +184,20 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           ].slice(0, 20),
         })),
 
+      bindToActiveAgent: (agentId) =>
+        set((state) => {
+          if (state.boundAgentId === agentId) {
+            return state;
+          }
+          return {
+            ...initialChatState,
+            boundAgentId: agentId,
+            publicRooms: state.publicRooms,
+            publicAgents: state.publicAgents,
+            publicRoomDetails: state.publicRoomDetails,
+          };
+        }),
+
       resetChatState: () =>
         set((state) => {
           if (!hasTransientChatState(state)) {
@@ -198,7 +215,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       logout: () =>
         set({
           ...initialChatState,
-          recentVisitedRooms: get().recentVisitedRooms,
           publicRooms: get().publicRooms,
           publicAgents: get().publicAgents,
           publicRoomDetails: get().publicRoomDetails,
@@ -538,13 +554,15 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       switchActiveAgent: async (agentId: string) => {
         const { activeAgentId } = useDashboardSessionStore.getState();
         if (agentId === activeAgentId) return;
+        get().bindToActiveAgent(agentId);
         useDashboardSessionStore.getState().switchActiveAgent(agentId);
-        window.location.reload();
+        window.location.replace(window.location.pathname + window.location.search + window.location.hash);
       },
     }),
     {
       name: "dashboard-chat-storage",
       partialize: (state) => ({
+        boundAgentId: state.boundAgentId,
         recentVisitedRooms: state.recentVisitedRooms,
         publicRooms: state.publicRooms,
         publicAgents: state.publicAgents,
