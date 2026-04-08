@@ -18,22 +18,33 @@ export function createUninstallCli() {
         .action(async (options: { purge?: boolean; keepChannel?: boolean; profile?: string; dev?: boolean }) => {
           const { existsSync, rmSync, readdirSync } = await import("node:fs");
           const { join } = await import("node:path");
-          const { execSync } = await import("node:child_process");
+          const { spawnSync } = await import("node:child_process");
           const { homedir } = await import("node:os");
 
           const home = homedir();
           const credDir = join(home, ".botcord", "credentials");
 
-          // Build profile flags to forward to openclaw CLI
-          const profileFlags: string[] = [];
-          if (options.dev) profileFlags.push("--dev");
-          else if (options.profile) profileFlags.push("--profile", options.profile);
-          const pfx = profileFlags.length > 0 ? ` ${profileFlags.join(" ")}` : "";
+          // Build profile args to forward to openclaw CLI (as array, never shell-interpolated)
+          const profileArgs: string[] = [];
+          if (options.dev) profileArgs.push("--dev");
+          else if (options.profile) {
+            // Validate profile name to prevent injection via spawn args
+            if (!/^[a-zA-Z0-9._-]+$/.test(options.profile)) {
+              ctx.logger.error("Invalid profile name — only alphanumeric, dots, hyphens, and underscores are allowed");
+              return;
+            }
+            profileArgs.push("--profile", options.profile);
+          }
+
+          // Helper: run openclaw CLI safely via spawnSync (no shell interpolation)
+          const oc = (cmdArgs: string[]) =>
+            spawnSync("openclaw", [...profileArgs, ...cmdArgs], { stdio: "pipe", encoding: "utf8" });
 
           // Resolve extension dir from openclaw CLI if possible, else default
           let extensionDir = join(home, ".openclaw", "extensions", "botcord");
           try {
-            const configFile = execSync(`openclaw${pfx} config file`, { stdio: "pipe", encoding: "utf8" }).trim();
+            const result = oc(["config", "file"]);
+            const configFile = (result.stdout || "").trim();
             if (configFile) {
               const configDir = join(configFile, "..");
               extensionDir = join(configDir, "extensions", "botcord");
@@ -45,8 +56,12 @@ export function createUninstallCli() {
           // Step 1: Disable plugin via OpenClaw CLI (safe — no JSON editing)
           ctx.logger.info("Disabling BotCord plugin ...");
           try {
-            execSync(`openclaw${pfx} plugins disable botcord`, { stdio: "pipe" });
-            ctx.logger.info("  Plugin disabled");
+            const result = oc(["plugins", "disable", "botcord"]);
+            if (result.status === 0) {
+              ctx.logger.info("  Plugin disabled");
+            } else {
+              ctx.logger.warn("  Plugin was not enabled (or already disabled)");
+            }
           } catch {
             ctx.logger.warn("  Plugin was not enabled (or already disabled)");
           }
@@ -55,9 +70,13 @@ export function createUninstallCli() {
           if (!options.keepChannel) {
             ctx.logger.info("Removing channel configuration ...");
             try {
-              // Use openclaw config unset to safely remove the channel entry
-              execSync(`openclaw${pfx} config unset channels.botcord`, { stdio: "pipe" });
-              ctx.logger.info("  Channel config removed");
+              const result = oc(["config", "unset", "channels.botcord"]);
+              if (result.status === 0) {
+                ctx.logger.info("  Channel config removed");
+              } else {
+                ctx.logger.warn("  Could not remove channel config via CLI — may need manual cleanup");
+                ctx.logger.warn("  If needed, remove 'channels.botcord' from openclaw.json");
+              }
             } catch {
               ctx.logger.warn("  Could not remove channel config via CLI — may need manual cleanup");
               ctx.logger.warn("  If needed, remove 'channels.botcord' from openclaw.json");

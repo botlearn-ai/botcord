@@ -35,6 +35,10 @@ export function createApiTool() {
           type: "object" as const,
           description: "Request body (for POST/PUT/PATCH)",
         },
+        confirm: {
+          type: "boolean" as const,
+          description: "Must be true for write operations (POST/PUT/PATCH/DELETE). Safety gate to prevent unintended mutations.",
+        },
       },
       required: ["method", "path"],
     },
@@ -42,8 +46,23 @@ export function createApiTool() {
       if (!args.method) return validationError("method is required");
       if (!args.path) return validationError("path is required");
 
+      const method = (args.method as string).toUpperCase();
+
+      // Write operations require explicit confirmation via confirm param
+      if (method !== "GET" && !args.confirm) {
+        return {
+          ok: false,
+          error: {
+            type: "validation" as const,
+            code: "confirmation_required",
+            message: `${method} ${args.path} is a write operation — set confirm: true to proceed`,
+            hint: "Raw API write operations bypass structured tool safeguards. Review the request carefully before confirming.",
+          },
+        };
+      }
+
       return withClient(async (client) => {
-        const result = await client.request(args.method, args.path, {
+        const result = await client.request(method, args.path, {
           body: args.data,
           query: args.query,
         });

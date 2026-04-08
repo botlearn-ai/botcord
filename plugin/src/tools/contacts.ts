@@ -109,7 +109,7 @@ export function createContactsTool() {
             return { blocks: await client.listBlocks() };
 
           case "redeem_invite": {
-            if (!args.invite_code) return { error: "invite_code is required" };
+            if (!args.invite_code) return validationError("invite_code is required");
             // Extract code from full URL if needed (e.g. .../invites/iv_xxx/redeem or /i/iv_xxx)
             const raw = args.invite_code as string;
             const match = raw.match(/\b(iv_[a-zA-Z0-9]+)/);

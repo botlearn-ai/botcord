@@ -132,7 +132,7 @@ export function createRoomsTool() {
 
           case "update":
             if (!args.room_id) return validationError("room_id is required");
-            if (args.dry_run) return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { name: args.name, description: args.description, visibility: args.visibility });
+            if (args.dry_run) return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { name: args.name, description: args.description, rule: args.rule, visibility: args.visibility, join_policy: args.join_policy, required_subscription_product_id: args.required_subscription_product_id, max_members: args.max_members, default_send: args.default_send, default_invite: args.default_invite, slow_mode_seconds: args.slow_mode_seconds });
             return await client.updateRoom(args.room_id, {
               name: args.name,
               description: args.description,
