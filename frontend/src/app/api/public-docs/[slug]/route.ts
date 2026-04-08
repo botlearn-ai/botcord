@@ -53,6 +53,10 @@ const TEMPLATES: Record<string, TemplateEntry> = {
     file: "uninstall.template.sh",
     contentType: "text/x-shellscript; charset=utf-8",
   },
+  "setup-goal.sh": {
+    file: "setup-goal.template.sh",
+    contentType: "text/x-shellscript; charset=utf-8",
+  },
 };
 
 function getBaseUrl(): string {
