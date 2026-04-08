@@ -23,15 +23,13 @@ import { createBindCommand } from "./src/commands/bind.js";
 import { createEnvCommand } from "./src/commands/env.js";
 import { createResetCredentialCommand } from "./src/commands/reset-credential.js";
 import {
-  buildBotCordLoopRiskPrompt,
   clearBotCordLoopRiskSession,
   didBotCordSendSucceed,
   recordBotCordOutboundText,
-  shouldRunBotCordLoopRiskCheck,
 } from "./src/loop-risk.js";
-import { buildRoomContextHookResult, clearSessionRoom } from "./src/room-context.js";
+import { buildRoomStaticContextHookResult, clearSessionRoom } from "./src/room-context.js";
 import { activeOwnerChatStreams } from "./src/owner-chat-stream.js";
-import { buildWorkingMemoryHookResult } from "./src/memory-hook.js";
+import { buildDynamicContext } from "./src/dynamic-context.js";
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -119,36 +117,29 @@ export default {
       });
     });
 
-    // Room context injection — highest priority among BotCord hooks, so its
-    // prependContext is placed farther from the user prompt.
+    // Room context + dynamic context injection — all via appendSystemContext.
+    // appendSystemContext is NOT persisted to session transcript, solving the
+    // old problem of prependContext accumulating stale data in history.
+    //
+    // Two hooks at different priorities:
+    // 1. Static room context (priority 60, cacheable): room metadata
+    // 2. Dynamic context (priority 50): cross-room digest, working memory,
+    //    loop-risk guard — content changes per turn, minor KV cache impact
     api.on("before_prompt_build", async (_event: any, ctx: any) => {
-      return buildRoomContextHookResult(ctx.sessionKey);
+      return buildRoomStaticContextHookResult(ctx.sessionKey);
     }, { priority: 60 });
 
-    // Working memory injection — between room context and loop-risk.
-    api.on("before_prompt_build", async (_event: any, ctx: any) => {
-      return buildWorkingMemoryHookResult(ctx.sessionKey);
-    }, { priority: 50 });
-
-    // Loop-risk guard — lower priority = runs later, so its prependContext
-    // ends up closest to the user prompt where it's most effective.
     api.on("before_prompt_build", async (event: any, ctx: any) => {
-      if (!shouldRunBotCordLoopRiskCheck({
+      if (!ctx.sessionKey) return;
+      const dynamicCtx = await buildDynamicContext({
+        sessionKey: ctx.sessionKey,
         channelId: ctx.channelId,
         prompt: event.prompt,
-        trigger: ctx.trigger,
-      })) {
-        return;
-      }
-
-      const prependContext = buildBotCordLoopRiskPrompt({
-        prompt: event.prompt,
         messages: event.messages,
-        sessionKey: ctx.sessionKey,
+        trigger: ctx.trigger,
       });
-
-      if (!prependContext) return;
-      return { prependContext };
+      if (!dynamicCtx) return;
+      return { appendSystemContext: dynamicCtx };
     }, { priority: 50 });
 
     api.on("session_end", async (_event: any, ctx: any) => {
