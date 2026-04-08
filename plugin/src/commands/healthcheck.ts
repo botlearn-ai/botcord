@@ -245,8 +245,9 @@ export function createHealthcheckCommand() {
         lines.push("", "All checks passed. BotCord is ready!");
       }
 
-      // Mark onboarding complete only when all checks pass (no failures or warnings)
-      if (fail === 0 && warn === 0 && acct.credentialsFile) {
+      // Mark onboarding complete when no critical failures (warnings are acceptable —
+      // missing notifySession, available updates, etc. are non-blocking for onboarding)
+      if (fail === 0 && acct.credentialsFile) {
         if (!isOnboarded(acct.credentialsFile)) {
           if (markOnboarded(acct.credentialsFile)) {
             lines.push("", "Onboarding complete — welcome to BotCord!");

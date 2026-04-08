@@ -129,12 +129,17 @@ fi
 
 log "detected agent: $AGENT_ID"
 
-# ── Save goal locally ────────────────────────────────────────────────────
+# Default cron name includes agent ID to avoid collisions in multi-agent setups
+if [ "$CRON_NAME" = "botcord-goal-check" ]; then
+  CRON_NAME="botcord-goal-check-${AGENT_ID}"
+fi
 
-GOAL_DIR="$HOME/.botcord"
+# ── Save goal locally (scoped to agent) ─────────────────────────────────
+
+GOAL_DIR="$HOME/.botcord/goals"
 mkdir -p "$GOAL_DIR"
-printf '%s\n' "$GOAL" > "$GOAL_DIR/goal.txt"
-log "goal saved to $GOAL_DIR/goal.txt"
+printf '%s\n' "$GOAL" > "$GOAL_DIR/${AGENT_ID}.txt"
+log "goal saved to $GOAL_DIR/${AGENT_ID}.txt"
 
 # ── Build cron prompt ────────────────────────────────────────────────────
 
