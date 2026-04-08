@@ -10,6 +10,7 @@
 import { getBotCordRuntime, getConfig } from "./runtime.js";
 import { resolveAccountConfig, resolveChannelConfig, resolveAccounts, isAccountConfigured } from "./config.js";
 import { attachTokenPersistence } from "./credentials.js";
+import { sanitizeUntrustedContent } from "./sanitize.js";
 import type { RoomInfo } from "./types.js";
 
 // ── Session ↔ Room mapping ──────────────────────────────────────
@@ -117,21 +118,26 @@ export async function buildRoomStaticContext(
   if (!cached) return null;
 
   const { room, members } = cached;
+  // Sanitize all tenant-controlled fields to prevent prompt injection
+  // via room metadata that lands in appendSystemContext.
+  // Strip newlines from single-line fields (name, member names) to
+  // prevent structural reshaping of the system prompt.
+  const safeName = sanitizeUntrustedContent((room.name || "").replace(/[\r\n]+/g, " "));
   const lines: string[] = [
     `[BotCord Room Context]`,
-    `Room: ${room.name} (${room.room_id})`,
+    `Room: ${safeName} (${room.room_id})`,
   ];
   if (room.description) {
-    lines.push(`Description: ${room.description}`);
+    lines.push(`Description: ${sanitizeUntrustedContent(room.description)}`);
   }
   if (room.rule) {
-    lines.push(`Rule: ${room.rule}`);
+    lines.push(`Rule: ${sanitizeUntrustedContent(room.rule)}`);
   }
   lines.push(`Visibility: ${room.visibility}, Join: ${room.join_policy}`);
 
   const memberList = members
     .map((m) => {
-      const name = m.display_name || m.agent_id;
+      const name = sanitizeUntrustedContent((m.display_name || m.agent_id).replace(/[\r\n]+/g, " "));
       return m.role && m.role !== "member" ? `${name} (${m.role})` : name;
     })
     .join(", ");
@@ -184,7 +190,10 @@ export async function buildCrossRoomDigest(
   ];
 
   for (const { key, entry } of toDigest) {
-    const roomLabel = entry.roomName || entry.roomId;
+    // Sanitize room label — tenant-controlled name could contain
+    // injection markers or newlines that reshape the digest structure.
+    const rawLabel = entry.roomName || entry.roomId;
+    const roomLabel = sanitizeUntrustedContent(rawLabel.replace(/[\r\n]+/g, " "));
     const isDm = entry.roomId.startsWith("rm_dm_");
     const typeLabel = isDm ? "DM" : "Room";
 
@@ -199,13 +208,28 @@ export async function buildCrossRoomDigest(
         continue;
       }
 
-      // Extract a brief summary from the last messages
+      // Extract a brief summary from the last messages.
+      // Sanitize previews to neutralize prompt injection from other rooms.
       const previews = messages
         .slice(-3)
         .map((msg: any) => {
           const role = msg.role || "unknown";
-          const text = (msg.content || msg.text || "").slice(0, 120);
-          return `  [${role}] ${text}${text.length >= 120 ? "…" : ""}`;
+          // Content may be a string, an array of content blocks, or
+          // missing. Coerce safely to avoid throwing on non-string shapes.
+          let rawText: string;
+          const c = msg.content ?? msg.text ?? "";
+          if (typeof c === "string") {
+            rawText = c;
+          } else if (Array.isArray(c)) {
+            rawText = c
+              .map((part: any) => (typeof part === "string" ? part : part?.text ?? ""))
+              .join(" ");
+          } else {
+            rawText = String(c);
+          }
+          const truncated = rawText.slice(0, 120);
+          const text = sanitizeUntrustedContent(truncated);
+          return `  [${role}] ${text}${rawText.length > 120 ? "…" : ""}`;
         })
         .join("\n");
 
@@ -250,14 +274,17 @@ function buildOwnerChatSceneContext(): string {
 // ── Combined hook handler ───────────────────────────────────────
 
 /**
- * before_prompt_build handler that injects room context.
- * Returns appendSystemContext (static, cacheable) and prependContext (dynamic).
+ * before_prompt_build handler that injects static room context only.
+ *
+ * Returns appendSystemContext (cacheable) for room metadata and
+ * owner-chat scene description. Dynamic context (cross-room digest,
+ * working memory, loop-risk) is now handled by the context engine
+ * in context-engine.ts to avoid polluting session transcript.
  */
-export async function buildRoomContextHookResult(
+export async function buildRoomStaticContextHookResult(
   sessionKey: string | undefined,
 ): Promise<{
   appendSystemContext?: string;
-  prependContext?: string;
 } | null> {
   if (!sessionKey) return null;
 
@@ -273,20 +300,8 @@ export async function buildRoomContextHookResult(
   // custom-routed keys that don't carry the prefix.
   if (!sessionRoomMap.has(sessionKey)) return null;
 
-  const result: { appendSystemContext?: string; prependContext?: string } = {};
-
-  // Layer 1: Static room context (cacheable)
+  // Static room context (cacheable)
   const staticCtx = await buildRoomStaticContext(sessionKey);
-  if (staticCtx) {
-    result.appendSystemContext = staticCtx;
-  }
-
-  // Layer 2: Cross-room activity digest (dynamic, per-turn)
-  const digest = await buildCrossRoomDigest(sessionKey);
-  if (digest) {
-    result.prependContext = digest;
-  }
-
-  if (!result.appendSystemContext && !result.prependContext) return null;
-  return result;
+  if (!staticCtx) return null;
+  return { appendSystemContext: staticCtx };
 }
