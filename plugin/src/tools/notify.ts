@@ -33,9 +33,11 @@ export function createNotifyTool() {
     execute: async (toolCallId: any, args: any) => {
       return withConfig(async (cfg, acct) => {
         const sessions = normalizeNotifySessions(acct.notifySession);
-        if (sessions.length === 0) {
+        const hasAccount = isAccountConfigured(acct);
+
+        if (sessions.length === 0 && !hasAccount) {
           return validationError(
-            "notifySession is not configured in channels.botcord",
+            "No notification channel available. Configure notifySession in channels.botcord or register a BotCord account.",
           );
         }
 
@@ -46,33 +48,36 @@ export function createNotifyTool() {
         }
 
         const errors: string[] = [];
+        const channels: string[] = [];
+
         for (const ns of sessions) {
           try {
             await deliverNotification(core, cfg, ns, text);
+            channels.push(ns);
           } catch (err: any) {
             errors.push(`${ns}: ${err?.message ?? err}`);
           }
         }
 
         // Also push notification to owner's dashboard via Hub API
-        if (isAccountConfigured(acct)) {
+        if (hasAccount) {
           try {
             const client = new BotCordClient(acct);
             attachTokenPersistence(client, acct);
             await client.notifyOwner(text);
+            channels.push("owner-chat");
           } catch (err: any) {
             errors.push(`owner-chat: ${err?.message ?? err}`);
           }
         }
 
-        if (errors.length > 0) {
-          return {
-            ok: errors.length < sessions.length,
-            notifySessions: sessions,
-            errors,
-          };
+        if (channels.length === 0) {
+          return { ok: false, errors };
         }
-        return { ok: true, notifySessions: sessions };
+        if (errors.length > 0) {
+          return { ok: true, channels, errors };
+        }
+        return { ok: true, channels };
       });
     },
   };

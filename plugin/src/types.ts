@@ -48,6 +48,7 @@ export type BotCordAccountConfig = {
   pollIntervalMs?: number;
   allowFrom?: string[];
   notifySession?: string | string[];
+  docsBaseUrl?: string;
   accounts?: Record<string, BotCordAccountConfig>;
 };
 
