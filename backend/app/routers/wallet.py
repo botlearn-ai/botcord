@@ -140,14 +140,17 @@ async def get_wallet_ledger(
     return {
         "entries": [
             {
-                "entry_id": e.entry_id,
-                "tx_id": e.tx_id,
-                "direction": e.direction.value if hasattr(e.direction, "value") else str(e.direction),
-                "amount_minor": str(e.amount_minor),
-                "balance_after_minor": str(e.balance_after_minor),
-                "created_at": e.created_at,
+                "entry_id": entry.entry_id,
+                "tx_id": entry.tx_id,
+                "direction": entry.direction.value if hasattr(entry.direction, "value") else str(entry.direction),
+                "tx_type": tx.type.value if tx is not None and hasattr(tx.type, "value") else (str(tx.type) if tx is not None else None),
+                "reference_type": tx.reference_type if tx is not None else None,
+                "reference_id": tx.reference_id if tx is not None else None,
+                "amount_minor": str(entry.amount_minor),
+                "balance_after_minor": str(entry.balance_after_minor),
+                "created_at": entry.created_at,
             }
-            for e in entries
+            for entry, tx in entries
         ],
         "has_more": has_more,
         "next_cursor": next_cursor,

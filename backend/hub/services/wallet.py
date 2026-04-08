@@ -145,7 +145,7 @@ async def list_wallet_ledger(
     tx_type: str | None = None,
     cursor: str | None = None,
     limit: int = 50,
-) -> tuple[list[WalletEntry], str | None, bool]:
+) -> tuple[list[tuple[WalletEntry, WalletTransaction | None]], str | None, bool]:
     """Return paginated ledger entries for an agent.
 
     Returns (entries, next_cursor, has_more).
@@ -153,7 +153,8 @@ async def list_wallet_ledger(
     limit = min(max(limit, 1), 200)
 
     stmt = (
-        select(WalletEntry)
+        select(WalletEntry, WalletTransaction)
+        .outerjoin(WalletTransaction, WalletEntry.tx_id == WalletTransaction.tx_id)
         .where(
             WalletEntry.agent_id == agent_id,
             WalletEntry.asset_code == asset_code,
@@ -176,13 +177,13 @@ async def list_wallet_ledger(
 
     stmt = stmt.limit(limit + 1)
     result = await session.execute(stmt)
-    entries = list(result.scalars().all())
+    entries = list(result.all())
 
     has_more = len(entries) > limit
     if has_more:
         entries = entries[:limit]
 
-    next_cursor = str(entries[-1].id) if entries and has_more else None
+    next_cursor = str(entries[-1][0].id) if entries and has_more else None
     return entries, next_cursor, has_more
 
 

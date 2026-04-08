@@ -41,6 +41,9 @@ class LedgerEntryResponse(BaseModel):
     agent_id: str
     asset_code: str
     direction: str
+    tx_type: str | None = None
+    reference_type: str | None = None
+    reference_id: str | None = None
     amount_minor: str
     balance_after_minor: str
     created_at: datetime.datetime

@@ -430,6 +430,9 @@ async def test_list_wallet_ledger(client, seed_data):
     assert "entry_id" in entry
     assert "tx_id" in entry
     assert "direction" in entry
+    assert "tx_type" in entry
+    assert "reference_type" in entry
+    assert "reference_id" in entry
     assert "amount_minor" in entry
     assert "balance_after_minor" in entry
     assert "created_at" in entry

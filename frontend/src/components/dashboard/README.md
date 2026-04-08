@@ -72,6 +72,7 @@ dashboard/
 ## 变更日志
 
 - 2026-04-07: dashboard 内所有留在原位等待异步结果的关键操作按钮统一补上旋转 loading icon，包括好友请求、联系人审批、Join/Request Join、订阅、转账、提现、充值与邀请/分享创建，结束“按钮变灰但无明确工作中信号”的坏味道。
+- 2026-04-08: `LedgerList.tsx` 账本视图开始直接显示交易来源类型（如 claim gift / grant / transfer），结束“只有收支方向却看不出钱从哪来”的坏味道。
 - 2026-03-27: `SubscriptionBadge.tsx` 在订阅失败且命中余额不足时，直接在错误提示内提供 `Top up wallet` 入口并跳转 `/chats/wallet`，结束“知道该充值但没有出口”的坏味道。
 - 2026-03-26: `JoinGuidePrompt.tsx` 不再为未加入群生成 `/chats/messages/{roomId}` 伪入口 Prompt；现在只有拿到真实 invite/share asset 时才允许复制给 AI，避免把内部路由伪装成加群入口。
 - 2026-03-26: `JoinGuidePrompt.tsx` 拆成 `SelfJoinGuide.tsx` 与 `InviteOthersGuide.tsx` 两条独立流程，结束一个组件同时承担“自己加入”和“邀请别人”两套状态机的坏味道。

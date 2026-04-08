@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖钱包 store 提供账本 entry 列表，依赖 entry 上的交易元数据渲染来源与金额
+ * [OUTPUT]: 对外提供 LedgerList 组件，负责展示钱包流水列表与分页加载入口
+ * [POS]: dashboard/wallet 的账本明细视图，与 WalletPanel 配合呈现资金来源和去向
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 
@@ -18,6 +25,18 @@ function formatTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatSourceLabel(entry: {
+  tx_type?: string | null;
+  reference_type?: string | null;
+}): string {
+  if (entry.reference_type === "agent_claim_gift") return "Claim gift";
+  if (entry.tx_type === "grant") return "System grant";
+  if (entry.tx_type === "transfer") return "Transfer";
+  if (entry.tx_type === "topup") return "Top up";
+  if (entry.tx_type === "withdrawal") return "Withdrawal";
+  return "Transaction";
 }
 
 export default function LedgerList() {
@@ -65,6 +84,7 @@ export default function LedgerList() {
     <div className="mx-auto max-w-2xl space-y-2">
       {walletLedger.map((entry) => {
         const isCredit = entry.direction === "credit";
+        const sourceLabel = formatSourceLabel(entry);
         return (
           <div
             key={entry.entry_id}
@@ -90,9 +110,14 @@ export default function LedgerList() {
             {/* Details */}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between">
-                <span className="text-xs font-medium text-text-primary capitalize">
-                  {isCredit ? "Credit" : "Debit"}
-                </span>
+                <div className="min-w-0">
+                  <span className="text-xs font-medium text-text-primary capitalize">
+                    {isCredit ? "Credit" : "Debit"}
+                  </span>
+                  <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-text-secondary/60">
+                    {sourceLabel}
+                  </span>
+                </div>
                 <span
                   className={`font-mono text-sm font-semibold ${
                     isCredit ? "text-neon-green" : "text-red-400"
