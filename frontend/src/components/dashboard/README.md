@@ -71,6 +71,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-04-08: `ClaimAgentPage.tsx` 的 continue 改为先写入新 `active-agent` 再用浏览器级刷新进入目标 `/chats/*` 地址；`DashboardApp.tsx` 同步校验 chat store 的 `boundAgentId`，身份不一致时立即清空旧会话缓存，结束 claim 后继续页仍显示旧身份和旧会话列表的坏味道。
 - 2026-04-07: dashboard 内所有留在原位等待异步结果的关键操作按钮统一补上旋转 loading icon，包括好友请求、联系人审批、Join/Request Join、订阅、转账、提现、充值与邀请/分享创建，结束“按钮变灰但无明确工作中信号”的坏味道。
 - 2026-04-08: `LedgerList.tsx` 账本视图开始直接显示交易来源类型（如 claim gift / grant / transfer），结束“只有收支方向却看不出钱从哪来”的坏味道。
 - 2026-03-27: `SubscriptionBadge.tsx` 在订阅失败且命中余额不足时，直接在错误提示内提供 `Top up wallet` 入口并跳转 `/chats/wallet`，结束“知道该充值但没有出口”的坏味道。
