@@ -349,6 +349,8 @@ export default function UserChatPane() {
   // Grace period: suppress stale typing events arriving shortly after an agent message.
   // Scoped to room_id so a room rebind via onAuthOk doesn't carry over stale state.
   const lastAgentMsgRef = useRef<{ roomId: string; at: number } | null>(null);
+  // Track trace_ids that received assistant stream blocks (text already shown to user)
+  const streamedTraceIds = useRef<Set<string>>(new Set());
 
   // Initialize chat room and load messages (userChatRoomId is set eagerly by DashboardApp)
   useEffect(() => {
@@ -414,6 +416,12 @@ export default function UserChatPane() {
 
         // Finalize stream blocks when final agent message arrives (keep them collapsed)
         if (msg.sender === "agent" && msg.ext?.trace_id) {
+          // If assistant text was already streamed (shown in "Composing..." panel),
+          // skip the typewriter animation — user has already read the content.
+          if (streamedTraceIds.current.has(msg.ext.trace_id as string)) {
+            animatedRef.current.add(msg.hub_msg_id);
+            streamedTraceIds.current.delete(msg.ext.trace_id as string);
+          }
           finalizeTrace(msg.ext.trace_id as string, msg.hub_msg_id);
           activeTraceRef.current = null;
         }
@@ -455,6 +463,9 @@ export default function UserChatPane() {
       onStreamBlock: (block) => {
         addStreamBlock(block);
         activeTraceRef.current = block.trace_id;
+        if (block.block.kind === "assistant") {
+          streamedTraceIds.current.add(block.trace_id);
+        }
       },
       onNotification: (notif) => {
         const roomId = chatRoom.room_id;
