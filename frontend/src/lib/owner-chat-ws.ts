@@ -11,6 +11,7 @@ export interface OwnerChatWsOptions {
   agentId: string;
   onMessage: (msg: OwnerChatWsMessage) => void;
   onStreamBlock: (block: StreamBlockEntry) => void;
+  onTyping?: () => void;
   onNotification?: (notif: OwnerChatNotification) => void;
   onAuthOk: (data: { agent_id: string; room_id: string }) => void;
   onStatusChange?: (connected: boolean) => void;
@@ -93,6 +94,10 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
 
           case "stream_block":
             opts.onStreamBlock(data as StreamBlockEntry);
+            break;
+
+          case "typing":
+            opts.onTyping?.();
             break;
 
           case "notification":

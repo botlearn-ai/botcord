@@ -1589,10 +1589,8 @@ async def send_chat_message(
     from hub.id_generators import generate_hub_msg_id
     from hub.routers.dashboard_chat import _ensure_owner_chat_room
     from hub.routers.hub import (
-        build_agent_realtime_event,
         build_message_realtime_event,
         notify_inbox,
-        _publish_agent_realtime_event,
     )
 
     agent_id = ctx.active_agent_id
@@ -1667,13 +1665,5 @@ async def send_chat_message(
             sender_name=agent_display_name,
         ),
     )
-
-    # Publish a typing indicator so the dashboard shows the agent is processing
-    typing_event = build_agent_realtime_event(
-        type="typing",
-        agent_id=agent_id,
-        room_id=room_id,
-    )
-    await _publish_agent_realtime_event(db, typing_event)
 
     return {"hub_msg_id": hub_msg_id, "room_id": room_id, "status": "queued"}

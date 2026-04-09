@@ -353,6 +353,9 @@ export default function UserChatPane() {
           setUserChatRoomId(data.room_id);
         }
       },
+      onTyping: () => {
+        setUserChatAgentTyping(true);
+      },
       onMessage: (msg) => {
         const roomId = msg.room_id || chatRoom.room_id;
 
@@ -436,6 +439,7 @@ export default function UserChatPane() {
           // disconnect (Phase 1 design: no replay).
           useOwnerChatStreamStore.getState().reset();
           activeTraceRef.current = null;
+          setUserChatAgentTyping(false);
         }
       },
       onSendFailed: () => {
