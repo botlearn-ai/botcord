@@ -11,7 +11,7 @@ export async function subscriptionCommand(args: ParsedArgs, globalHub?: string, 
 
 Subcommands:
   create-product    Create a subscription product
-                      --name <name> --amount <minor> --interval <week|month>
+                      --name <name> --amount <minor> --interval <week|month|once>
                       [--description <text>] [--asset-code <code>]
   list-products     List your own subscription products
   list-all-products List all available subscription products
@@ -44,7 +44,7 @@ Subcommands:
       const interval = args.flags["interval"];
       if (!name || typeof name !== "string") outputError("--name is required");
       if (!amount || typeof amount !== "string") outputError("--amount is required");
-      if (interval !== "week" && interval !== "month") outputError("--interval must be 'week' or 'month'");
+      if (interval !== "week" && interval !== "month" && interval !== "once") outputError("--interval must be 'week', 'month', or 'once'");
       const description = typeof args.flags["description"] === "string" ? args.flags["description"] : undefined;
       const assetCode = typeof args.flags["asset-code"] === "string" ? args.flags["asset-code"] : undefined;
       const result = await client.createSubscriptionProduct({

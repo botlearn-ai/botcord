@@ -697,7 +697,7 @@ export class BotCordClient {
     name: string;
     description?: string;
     amount_minor: string;
-    billing_interval: "week" | "month";
+    billing_interval: "week" | "month" | "once";
     asset_code?: string;
   }): Promise<SubscriptionProduct> {
     const resp = await this.hubFetch("/subscriptions/products", {

@@ -61,7 +61,7 @@ describe("subscription room tool integration", () => {
     const createdProduct = await tool.execute("tool-1", {
       action: "create_product",
       name: "Premium",
-      amount_minor: "9000",
+      amount: "90",
       billing_interval: "month",
     });
 
@@ -94,7 +94,7 @@ describe("subscription room tool integration", () => {
     const createdProduct = await tool.execute("tool-1", {
       action: "create_product",
       name: "Gold",
-      amount_minor: "7000",
+      amount: "70",
       billing_interval: "week",
     });
     const productId = (createdProduct as any).data.product_id;

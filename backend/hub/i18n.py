@@ -460,8 +460,8 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
     # Subscriptions (subscriptions.py)
     # -----------------------------------------------------------------------
     "billing_interval_invalid": {
-        Locale.EN: "billing_interval must be week or month",
-        Locale.ZH: "billing_interval 必须为 week 或 month",
+        Locale.EN: "billing_interval must be week, month, or once",
+        Locale.ZH: "billing_interval 必须为 week、month 或 once",
     },
     "subscription_product_not_found": {
         Locale.EN: "Subscription product not found",

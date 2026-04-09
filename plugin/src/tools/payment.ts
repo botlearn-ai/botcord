@@ -9,7 +9,7 @@ import {
 import { BotCordClient } from "../client.js";
 import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
-import { formatCoinAmount } from "./coin-format.js";
+import { formatCoinAmount, parseCoinToMinor } from "./coin-format.js";
 import { executeTransfer, isPeerContact, formatFollowUpDeliverySummary } from "./payment-transfer.js";
 
 function sanitizeBalance(summary: any): any {
@@ -223,9 +223,9 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
           type: "string" as const,
           description: "Recipient agent ID (ag_...) — for transfer",
         },
-        amount_minor: {
+        amount: {
           type: "string" as const,
-          description: "Amount in minor units (1 COIN = 100 minor units). To transfer N coins, pass N × 100. Example: 10 COIN → \"1000\" — for transfer, topup, withdraw",
+          description: "Amount in COIN (supports up to 2 decimals, e.g. \"10\" or \"9.50\") — for transfer, topup, withdraw",
         },
         memo: {
           type: "string" as const,
@@ -259,9 +259,9 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
           type: "object" as const,
           description: "Withdrawal destination details — for withdraw",
         },
-        fee_minor: {
+        fee: {
           type: "string" as const,
-          description: "Optional withdrawal fee in minor units (1 COIN = 100 minor units) — for withdraw",
+          description: "Optional withdrawal fee in COIN (e.g. \"1\" or \"0.50\") — for withdraw",
         },
         withdrawal_id: {
           type: "string" as const,
@@ -328,18 +328,20 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
 
           case "transfer": {
             if (!args.to_agent_id) return { error: "to_agent_id is required" };
-            if (!args.amount_minor) return { error: "amount_minor is required" };
+            if (!args.amount) return { error: "amount is required" };
+            const transferMinor = parseCoinToMinor(args.amount);
+            if (transferMinor === null) return { error: "amount must be a valid number (e.g. \"10\" or \"9.50\")" };
 
             const isContact = await isPeerContact(client, args.to_agent_id);
             if (!isContact && args.confirmed !== true) {
               return {
-                result: `\u26a0\ufe0f ${args.to_agent_id} is not in your contacts. This is a stranger transfer of ${formatCoinAmount(args.amount_minor)}. To proceed, call this tool again with confirmed: true. The transfer will create a chat room between you and the recipient.`,
+                result: `\u26a0\ufe0f ${args.to_agent_id} is not in your contacts. This is a stranger transfer of ${formatCoinAmount(transferMinor)}. To proceed, call this tool again with confirmed: true. The transfer will create a chat room between you and the recipient.`,
               };
             }
 
             const transfer = await executeTransfer(client, {
               to_agent_id: args.to_agent_id,
-              amount_minor: args.amount_minor,
+              amount_minor: transferMinor,
               memo: args.memo,
               reference_type: args.reference_type,
               reference_id: args.reference_id,
@@ -353,9 +355,11 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
           }
 
           case "topup": {
-            if (!args.amount_minor) return { error: "amount_minor is required" };
+            if (!args.amount) return { error: "amount is required" };
+            const topupMinor = parseCoinToMinor(args.amount);
+            if (topupMinor === null) return { error: "amount must be a valid number (e.g. \"10\" or \"9.50\")" };
             const topup = await client.createTopup({
-              amount_minor: args.amount_minor,
+              amount_minor: topupMinor,
               channel: args.channel,
               metadata: args.metadata,
               idempotency_key: args.idempotency_key,
@@ -364,10 +368,17 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
           }
 
           case "withdraw": {
-            if (!args.amount_minor) return { error: "amount_minor is required" };
+            if (!args.amount) return { error: "amount is required" };
+            const withdrawMinor = parseCoinToMinor(args.amount);
+            if (withdrawMinor === null) return { error: "amount must be a valid number (e.g. \"10\" or \"9.50\")" };
+            let feeMinor: string | undefined;
+            if (args.fee) {
+              feeMinor = parseCoinToMinor(args.fee) ?? undefined;
+              if (feeMinor === undefined) return { error: "fee must be a valid number (e.g. \"1\" or \"0.50\")" };
+            }
             const withdrawal = await client.createWithdrawal({
-              amount_minor: args.amount_minor,
-              fee_minor: args.fee_minor,
+              amount_minor: withdrawMinor,
+              fee_minor: feeMinor,
               destination_type: args.destination_type,
               destination: args.destination,
               idempotency_key: args.idempotency_key,

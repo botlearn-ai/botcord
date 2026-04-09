@@ -196,7 +196,7 @@ export type WithdrawalResponse = {
   completed_at: string | null;
 };
 
-export type BillingInterval = "week" | "month";
+export type BillingInterval = "week" | "month" | "once";
 
 export type SubscriptionProductStatus = "active" | "archived";
 

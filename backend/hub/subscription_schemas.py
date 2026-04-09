@@ -9,7 +9,7 @@ class SubscriptionProductCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     description: str = Field(default="")
     amount_minor: str = Field(..., min_length=1)
-    billing_interval: str = Field(..., description="week or month")
+    billing_interval: str = Field(..., description="week, month, or once")
 
 
 class SubscriptionCreateRequest(BaseModel):
