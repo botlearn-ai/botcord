@@ -1663,12 +1663,24 @@ async def send_typing(
                     logger.debug("typing ws send failed for %s: %s", target_id, exc)
 
     # Owner-chat rooms (rm_oc_*): the agent is the sole member, so the
-    # normal fan-out above produces no targets.  Push directly to the
-    # owner-chat WS so the dashboard shows a typing indicator.
+    # normal fan-out above produces no targets.  Push to the owner-chat
+    # WS (primary) and Supabase Realtime (fallback when WS is down).
     if body.room_id.startswith("rm_oc_"):
         from hub.routers.owner_chat_ws import notify_oc_ws_typing
 
         await notify_oc_ws_typing(agent_id=current_agent, room_id=body.room_id)
+
+        # Supabase Realtime fallback — the frontend only processes this
+        # when ownerChatWsConnected === false (see useDashboardRealtimeStore).
+        rt_event = build_agent_realtime_event(
+            type="typing",
+            agent_id=current_agent,
+            room_id=body.room_id,
+        )
+        try:
+            await _publish_agent_realtime_event(db, rt_event)
+        except Exception as exc:
+            logger.warning("typing realtime publish failed for owner-chat %s: %s", current_agent, exc)
 
 
 # ---------------------------------------------------------------------------
