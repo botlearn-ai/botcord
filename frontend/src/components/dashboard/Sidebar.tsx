@@ -500,6 +500,19 @@ export default function Sidebar() {
             >
               {t.agents}
             </SecondaryNavButton>
+            <SecondaryNavButton
+              onClick={() => {
+                uiStore.setExploreView("templates");
+                startTransition(() => {
+                  router.push("/chats/explore/templates");
+                });
+              }}
+              active={uiStore.exploreView === "templates"}
+              className="mt-2"
+              tone="purple"
+            >
+              {t.promptTemplates}
+            </SecondaryNavButton>
           </div>
         )}
 

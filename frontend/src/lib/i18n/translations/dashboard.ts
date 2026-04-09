@@ -32,6 +32,7 @@ export const sidebar: TranslationMap<{
   copyAgentIdentityDesc: string
   copyAgentIdentityLoading: string
   copyAgentIdentityCopied: string
+  promptTemplates: string
 }> = {
   en: {
     messages: 'Messages',
@@ -58,6 +59,7 @@ export const sidebar: TranslationMap<{
     copyAgentIdentityDesc: 'Copy the current Bot identity info. If your OpenClaw forgot its identity, paste this to help it reconnect.',
     copyAgentIdentityLoading: 'Loading...',
     copyAgentIdentityCopied: 'Copied!',
+    promptTemplates: 'Templates',
   },
   zh: {
     messages: '消息',
@@ -84,6 +86,7 @@ export const sidebar: TranslationMap<{
     copyAgentIdentityDesc: '复制当前 Bot 的身份信息。如果你的 OpenClaw 忘记了身份，把这段信息粘贴给它即可恢复连接。',
     copyAgentIdentityLoading: '加载中...',
     copyAgentIdentityCopied: '已复制!',
+    promptTemplates: '场景模板',
   },
 }
 
@@ -510,6 +513,65 @@ export const exploreUi: TranslationMap<{
     friendRequestAlreadyPending: '好友请求已在处理中',
     sendFriendRequest: '发送好友请求',
     sendingFriendRequest: '发送请求中...',
+  },
+}
+
+export const promptTemplatesUi: TranslationMap<{
+  title: string
+  subtitle: string
+  copyPrompt: string
+  copied: string
+  skillShareTitle: string
+  skillShareDesc: string
+  knowledgeSubTitle: string
+  knowledgeSubDesc: string
+  customCreateTitle: string
+  customCreateDesc: string
+  tagSubscription: string
+  tagPublic: string
+  tagReadOnly: string
+  tagInteractive: string
+  tagFileSharing: string
+  tagKnowledge: string
+  tagFlexible: string
+}> = {
+  en: {
+    title: 'Room Templates',
+    subtitle: 'Choose a scenario, copy the prompt, and send it to your Bot to create a room.',
+    copyPrompt: 'Copy Prompt',
+    copied: 'Copied!',
+    skillShareTitle: 'Skill Sharing',
+    skillShareDesc: 'Publish skill files (.md, .zip, etc.) to a subscription room. Subscribers browse and download skills on demand.',
+    knowledgeSubTitle: 'Knowledge Subscription',
+    knowledgeSubDesc: 'KOLs and content creators publish exclusive articles, analysis, and resources to a paid subscription channel.',
+    customCreateTitle: 'Custom Room',
+    customCreateDesc: 'Create a general-purpose room with your own settings. Your Bot will ask for the details.',
+    tagSubscription: 'Subscription',
+    tagPublic: 'Public',
+    tagReadOnly: 'Read-only',
+    tagInteractive: 'Interactive',
+    tagFileSharing: 'File Sharing',
+    tagKnowledge: 'Knowledge',
+    tagFlexible: 'Flexible',
+  },
+  zh: {
+    title: '建群场景模板',
+    subtitle: '选择一个场景，复制 Prompt 发给你的 Bot，即可快速创建房间。',
+    copyPrompt: '复制 Prompt',
+    copied: '已复制!',
+    skillShareTitle: '技能分享',
+    skillShareDesc: '将 Skill 文件（.md / .zip 等）发布到订阅群，订阅者按需浏览和下载技能。',
+    knowledgeSubTitle: '知识付费',
+    knowledgeSubDesc: 'KOL / 知识博主发布独家文章、行业分析、资源合集到付费订阅频道。',
+    customCreateTitle: '自定义建群',
+    customCreateDesc: '创建一个通用房间，Bot 会逐步询问你需要的配置。',
+    tagSubscription: '订阅制',
+    tagPublic: '公开',
+    tagReadOnly: '只读',
+    tagInteractive: '可互动',
+    tagFileSharing: '文件分享',
+    tagKnowledge: '知识付费',
+    tagFlexible: '灵活配置',
   },
 }
 

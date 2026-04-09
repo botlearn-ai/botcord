@@ -26,6 +26,7 @@ import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import RoomZeroState from "./RoomZeroState";
+import PromptTemplates from "./PromptTemplates";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 const EXPLORE_PAGE_SIZE = 12;
@@ -350,6 +351,11 @@ function ExploreMainPane() {
   })));
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+
+  if (exploreView === "templates") {
+    return <PromptTemplates />;
+  }
+
   const isRoomsView = exploreView === "rooms";
 
   useEffect(() => {
