@@ -1,13 +1,12 @@
 import type { ParsedArgs } from "../args.js";
 import { BotCordClient } from "../client.js";
 import { loadDefaultCredentials } from "../credentials.js";
+import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { outputError, outputJson } from "../output.js";
-
-const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
 
 export async function bindCommand(args: ParsedArgs, globalHub?: string, globalAgent?: string): Promise<void> {
   if (args.flags["help"]) {
-    console.log(`Usage: botcord bind <bind_code_or_bind_ticket> [--dashboard-url <url>]
+    console.log(`Usage: botcord bind <bind_code_or_bind_ticket>
 
 Bind the current BotCord agent to a BotCord web dashboard account.`);
     return;
@@ -17,10 +16,7 @@ Bind the current BotCord agent to a BotCord web dashboard account.`);
   if (!bindCredential) outputError("bind code or bind ticket is required");
 
   const creds = loadDefaultCredentials(typeof globalAgent === "string" ? globalAgent : undefined);
-  const hubUrl = globalHub || creds.hubUrl;
-  const dashboardUrl = typeof args.flags["dashboard-url"] === "string"
-    ? args.flags["dashboard-url"].replace(/\/+$/, "")
-    : DEFAULT_DASHBOARD_URL;
+  const hubUrl = normalizeAndValidateHubUrl(globalHub || creds.hubUrl);
 
   const client = new BotCordClient({
     hubUrl,
@@ -37,7 +33,7 @@ Bind the current BotCord agent to a BotCord web dashboard account.`);
     ? resolved.display_name
     : creds.agentId;
 
-  const resp = await fetch(`${dashboardUrl}/api/users/me/agents/bind`, {
+  const resp = await fetch(`${hubUrl}/api/users/me/agents/bind`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -53,15 +49,14 @@ Bind the current BotCord agent to a BotCord web dashboard account.`);
 
   const body = await resp.json().catch(() => null);
   if (!resp.ok) {
-    const message = body?.error || body?.message || resp.statusText;
-    outputError(`dashboard bind failed (${resp.status}): ${message}`);
+    const message = body?.error || body?.detail || body?.message || resp.statusText;
+    outputError(`bind failed (${resp.status}): ${message}`);
   }
 
   outputJson({
     ok: true,
     agent_id: creds.agentId,
     display_name: displayName,
-    dashboard_url: dashboardUrl,
     ...(body && typeof body === "object" ? body : {}),
   });
 }

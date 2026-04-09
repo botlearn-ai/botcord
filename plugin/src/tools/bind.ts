@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 runtime/config 读取当前 Agent 身份，依赖 BotCordClient 获取 agent_token 并访问 dashboard 绑定接口
+ * [INPUT]: 依赖 runtime/config 读取当前 Agent 身份，依赖 BotCordClient 获取 agent_token 并通过 Hub API 执行绑定
  * [OUTPUT]: 对外提供 botcord_bind 工具与 executeBind 助手，支持短认领码或原始 bind_ticket
  * [POS]: plugin dashboard 认领执行器，把命令行参数翻译成稳定的绑定请求
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -18,7 +18,6 @@ import { getConfig as getAppConfig } from "../runtime.js";
  */
 export async function executeBind(
   bindCredential: string,
-  _dashboardUrl?: string,
 ): Promise<{ ok: true; [key: string]: unknown } | { error: string }> {
   const cfg = getAppConfig();
   if (!cfg) return { error: "No configuration available" };
@@ -40,9 +39,9 @@ export async function executeBind(
     const resolved = (await client.resolve(agentId)) as Record<string, unknown>;
     const displayName = (resolved.display_name as string) || agentId;
 
-    const baseUrl = client.getHubUrl().replace(/\/+$/, "");
+    const hubUrl = client.getHubUrl();
 
-    const res = await fetch(`${baseUrl}/api/users/me/agents/bind`, {
+    const res = await fetch(`${hubUrl}/api/users/me/agents/bind`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -59,8 +58,8 @@ export async function executeBind(
     const body = await res.json().catch(() => null);
 
     if (!res.ok) {
-      const msg = body?.error || body?.message || res.statusText;
-      return { error: `Dashboard bind failed (${res.status}): ${msg}` };
+      const msg = body?.error || body?.detail || body?.message || res.statusText;
+      return { error: `Bind failed (${res.status}): ${msg}` };
     }
 
     return { ok: true, ...body };
@@ -82,10 +81,6 @@ export function createBindTool() {
           type: "string" as const,
           description: "The short bind code or bind ticket from the BotCord web dashboard",
         },
-        dashboard_url: {
-          type: "string" as const,
-          description: "Dashboard base URL (unused, bind endpoint is resolved from Hub URL)",
-        },
       },
       required: ["bind_ticket"],
     },
@@ -93,7 +88,7 @@ export function createBindTool() {
       if (!args.bind_ticket) {
         return { error: "bind_ticket is required" };
       }
-      return executeBind(args.bind_ticket, args.dashboard_url);
+      return executeBind(args.bind_ticket);
     },
   };
 }

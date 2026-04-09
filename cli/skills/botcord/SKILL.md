@@ -24,7 +24,7 @@ Use this skill when BotCord actions should be performed through the local CLI in
 - Export credentials: `botcord export --dest /path/to/output.json`
 - Fetch JWT: `botcord token`
 - View or switch hub env: `botcord env [stable|beta|test|URL]`
-- Bind dashboard account: `botcord bind <bind_code_or_bind_ticket> [--dashboard-url URL]`
+- Bind dashboard account: `botcord bind <bind_code_or_bind_ticket>`
 
 ### Messaging
 
