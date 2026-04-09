@@ -17,6 +17,9 @@ import { useOwnerChatStreamStore } from "@/store/useOwnerChatStreamStore";
 
 let realtimeSyncInFlight = false;
 let queuedRealtimeEvent: RealtimeMetaEvent | null = null;
+// Grace period: suppress stale typing events arriving shortly after an agent
+// message.  Scoped to a specific room to avoid cross-session leakage.
+let _lastOwnerChatAgentMsg: { roomId: string; at: number } | null = null;
 
 function isContactRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
   return type === "contact_request" || type === "contact_request_response" || type === "contact_removed";
@@ -88,19 +91,29 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         // Handle typing events — just toggle the UI flag, no data fetching
         if (currentEvent && isTypingRealtimeEvent(currentEvent.type)) {
           if (isOwnerChatEvent && !ownerChatWsConnected) {
+            // Suppress stale typing events arriving shortly after an agent message
+            const grace = _lastOwnerChatAgentMsg;
+            if (grace && grace.roomId === currentEvent.room_id && Date.now() - grace.at < 5_000) {
+              nextEvent = queuedRealtimeEvent;
+              continue;
+            }
             uiState.setUserChatAgentTyping(true);
           }
           nextEvent = queuedRealtimeEvent;
           continue;
         }
 
-        // Clear typing indicator when a message arrives for the user-chat room
+        // Clear typing indicator when a message arrives for the user-chat room.
+        // Only record grace timestamp for actual "message" events (not ack/result/error).
         if (
           currentEvent
           && isMessageRealtimeEvent(currentEvent.type)
           && isOwnerChatEvent
           && !ownerChatWsConnected
         ) {
+          if (currentEvent.type === "message" && currentEvent.room_id) {
+            _lastOwnerChatAgentMsg = { roomId: currentEvent.room_id, at: Date.now() };
+          }
           uiState.setUserChatAgentTyping(false);
         }
 
@@ -156,6 +169,6 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
     }
   },
 
-  resetRealtimeState: () => set({ ...initialRealtimeState }),
-  logout: () => set({ ...initialRealtimeState }),
+  resetRealtimeState: () => { _lastOwnerChatAgentMsg = null; set({ ...initialRealtimeState }); },
+  logout: () => { _lastOwnerChatAgentMsg = null; set({ ...initialRealtimeState }); },
 }));
