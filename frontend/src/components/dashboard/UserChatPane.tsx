@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot, Search, FileText, CheckCircle2, Code2, HelpCircle, Bell } from "lucide-react";
 import { api } from "@/lib/api";
 import type { DashboardMessage, UserChatRoom, StreamBlockEntry } from "@/lib/types";
@@ -94,7 +94,7 @@ function summarizeParams(params: Record<string, unknown> | undefined): string | 
   return null;
 }
 
-/** Truncate a tool_result to a readable preview. */
+/** Truncate a tool_result to a short inline preview. */
 function summarizeResult(result: string): string {
   // Try to extract text content from JSON results (only if it looks like JSON)
   if (result.startsWith("{") || result.startsWith("[")) {
@@ -109,10 +109,42 @@ function summarizeResult(result: string): string {
   return result.length > 120 ? result.slice(0, 120) + "..." : result;
 }
 
+/** Max characters for rendering tool results inline. Beyond this, truncate. */
+const MAX_RESULT_RENDER_CHARS = 50_000;
+
+/** Format a tool result for full display: pretty-print JSON, otherwise return raw.
+ *  Truncates oversized payloads to avoid blocking the main thread or DOM bloat. */
+function formatFullResult(result: string): { text: string; truncated: boolean } {
+  // Try to pretty-print JSON first (on the full string), then truncate the output
+  if (result.startsWith("{") || result.startsWith("[")) {
+    try {
+      const formatted = JSON.stringify(JSON.parse(result), null, 2);
+      const truncated = formatted.length > MAX_RESULT_RENDER_CHARS;
+      return {
+        text: truncated ? formatted.slice(0, MAX_RESULT_RENDER_CHARS) : formatted,
+        truncated,
+      };
+    } catch { /* not valid JSON, use raw */ }
+  }
+  const truncated = result.length > MAX_RESULT_RENDER_CHARS;
+  return {
+    text: truncated ? result.slice(0, MAX_RESULT_RENDER_CHARS) : result,
+    truncated,
+  };
+}
+
 /** Render a single execution block with type-specific styling. */
 function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
   const { kind, payload } = block.block;
   const [resultExpanded, setResultExpanded] = useState(false);
+
+  // Hooks must be called unconditionally (Rules of Hooks).
+  // Extract result string for tool_result blocks; empty for other kinds.
+  const resultStr = kind === "tool_result" ? String(payload?.result ?? "") : "";
+  const formatted = useMemo(
+    () => resultStr ? formatFullResult(resultStr) : null,
+    [resultStr],
+  );
 
   if (kind === "tool_call") {
     const name = (payload?.name as string) || "tool";
@@ -133,26 +165,37 @@ function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
 
   if (kind === "tool_result") {
     const name = (payload?.name as string) || "tool";
-    const result = (payload?.result as string) || "";
     return (
       <div className="py-1">
         <button
-          onClick={() => setResultExpanded(!resultExpanded)}
+          onClick={() => resultStr && setResultExpanded(!resultExpanded)}
           className="flex items-center gap-2 group"
         >
           <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
           <span className="text-xs font-mono text-emerald-400">{name}</span>
           <span className="text-[10px] text-zinc-500">returned</span>
-          {result && (
+          {resultStr && (
             resultExpanded
               ? <ChevronDown className="w-2.5 h-2.5 text-zinc-500" />
               : <ChevronRight className="w-2.5 h-2.5 text-zinc-500" />
           )}
         </button>
-        {result && resultExpanded && (
-          <pre className="mt-1 ml-5 text-[10px] text-zinc-500 font-mono bg-zinc-950/50 rounded px-2 py-1 overflow-x-auto max-h-[120px] overflow-y-auto whitespace-pre-wrap break-all">
-            {summarizeResult(result)}
-          </pre>
+        {resultStr && !resultExpanded && (
+          <p className="mt-0.5 ml-5 text-[10px] text-zinc-500 truncate max-w-[400px]">
+            {summarizeResult(resultStr)}
+          </p>
+        )}
+        {resultStr && resultExpanded && formatted && (
+          <div className="mt-1 ml-5">
+            <pre className="text-[11px] text-zinc-400 font-mono bg-zinc-950/50 rounded-md px-3 py-2 overflow-x-auto max-h-[400px] overflow-y-auto whitespace-pre-wrap break-words">
+              {formatted.text}
+            </pre>
+            {formatted.truncated && (
+              <p className="mt-1 text-[10px] text-zinc-600 italic">
+                结果过大，已截断显示前 {Math.round(MAX_RESULT_RENDER_CHARS / 1000)}K 字符
+              </p>
+            )}
+          </div>
         )}
       </div>
     );
