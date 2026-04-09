@@ -346,10 +346,16 @@ export default function UserChatPane() {
   const wsClientRef = useRef<OwnerChatWsClient | null>(null);
   // Track the last trace_id so we can clear stream blocks when final message arrives
   const activeTraceRef = useRef<string | null>(null);
+  // Grace period: suppress stale typing events arriving shortly after an agent message.
+  // Scoped to room_id so a room rebind via onAuthOk doesn't carry over stale state.
+  const lastAgentMsgRef = useRef<{ roomId: string; at: number } | null>(null);
 
   // Initialize chat room and load messages (userChatRoomId is set eagerly by DashboardApp)
   useEffect(() => {
     if (!activeAgentId) return;
+
+    // Reset grace period when switching agents to avoid cross-session suppression
+    lastAgentMsgRef.current = null;
 
     let cancelled = false;
     setLoading(true);
@@ -397,6 +403,10 @@ export default function UserChatPane() {
         }
       },
       onTyping: () => {
+        // Suppress stale typing events that arrive shortly after an agent
+        // message (e.g. from a keepalive tick race in the SDK).
+        const grace = lastAgentMsgRef.current;
+        if (grace && grace.roomId === chatRoom.room_id && Date.now() - grace.at < 5_000) return;
         setUserChatAgentTyping(true);
       },
       onMessage: (msg) => {
@@ -410,6 +420,7 @@ export default function UserChatPane() {
 
         // Dismiss typing indicator on agent message
         if (msg.sender === "agent") {
+          lastAgentMsgRef.current = { roomId: roomId, at: Date.now() };
           setUserChatAgentTyping(false);
         }
 
