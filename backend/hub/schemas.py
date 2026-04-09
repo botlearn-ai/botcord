@@ -739,7 +739,7 @@ class RoomSearchResult(BaseModel):
 
 
 class RoomSearchResponse(BaseModel):
-    query: str
+    query: str | list[str]
     results: list[RoomSearchResult]
     has_more: bool
 
