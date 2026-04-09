@@ -13,14 +13,12 @@ import { BotCordClient } from "../client.js";
 import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 
-const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
-
 /**
  * Shared bind logic used by both the tool and the command.
  */
 export async function executeBind(
   bindCredential: string,
-  dashboardUrl?: string,
+  _dashboardUrl?: string,
 ): Promise<{ ok: true; [key: string]: unknown } | { error: string }> {
   const cfg = getAppConfig();
   if (!cfg) return { error: "No configuration available" };
@@ -42,7 +40,7 @@ export async function executeBind(
     const resolved = (await client.resolve(agentId)) as Record<string, unknown>;
     const displayName = (resolved.display_name as string) || agentId;
 
-    const baseUrl = (dashboardUrl || DEFAULT_DASHBOARD_URL).replace(/\/+$/, "");
+    const baseUrl = client.getHubUrl().replace(/\/+$/, "");
 
     const res = await fetch(`${baseUrl}/api/users/me/agents/bind`, {
       method: "POST",
@@ -86,7 +84,7 @@ export function createBindTool() {
         },
         dashboard_url: {
           type: "string" as const,
-          description: `Dashboard base URL (defaults to ${DEFAULT_DASHBOARD_URL})`,
+          description: "Dashboard base URL (unused, bind endpoint is resolved from Hub URL)",
         },
       },
       required: ["bind_ticket"],
