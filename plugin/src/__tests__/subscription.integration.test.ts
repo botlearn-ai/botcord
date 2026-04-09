@@ -85,7 +85,7 @@ describe("subscription client and tool integration", () => {
       action: "create_product",
       name: "Pro Access",
       description: "Priority support and premium tooling",
-      amount_minor: "12000",
+      amount: "120",
       billing_interval: "month",
     });
     const createdProduct = created.data as SubscriptionProduct;

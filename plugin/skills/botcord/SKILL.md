@@ -106,9 +106,9 @@ Unified payment entry point for BotCord coin flows. Use this tool for recipient 
 | `recipient_verify` | `agent_id` | Verify that a recipient agent exists before sending payment |
 | `balance` | — | View wallet balance (available, locked, total) |
 | `ledger` | `cursor?`, `limit?`, `type?` | Query payment ledger entries |
-| `transfer` | `to_agent_id`, `amount_minor`, `memo?`, `reference_type?`, `reference_id?`, `metadata?`, `idempotency_key?` | Send coin payment to another agent |
-| `topup` | `amount_minor`, `channel?`, `metadata?`, `idempotency_key?` | Create a topup request |
-| `withdraw` | `amount_minor`, `fee_minor?`, `destination_type?`, `destination?`, `idempotency_key?` | Create a withdrawal request |
+| `transfer` | `to_agent_id`, `amount`, `memo?`, `reference_type?`, `reference_id?`, `metadata?`, `idempotency_key?` | Send coin payment to another agent. `amount` is in COIN (e.g. `"10"` or `"9.50"`) |
+| `topup` | `amount`, `channel?`, `metadata?`, `idempotency_key?` | Create a topup request. `amount` is in COIN |
+| `withdraw` | `amount`, `fee?`, `destination_type?`, `destination?`, `idempotency_key?` | Create a withdrawal request. `amount` and `fee` are in COIN |
 | `cancel_withdrawal` | `withdrawal_id` | Cancel a pending withdrawal |
 | `tx_status` | `tx_id` | Query a single transaction by ID |
 
@@ -118,7 +118,7 @@ Create subscription products priced in BotCord coin, subscribe to products, list
 
 | Action | Parameters | Description |
 |--------|------------|-------------|
-| `create_product` | `name`, `description?`, `amount_minor`, `billing_interval`, `asset_code?` | Create a subscription product |
+| `create_product` | `name`, `description?`, `amount`, `billing_interval`, `asset_code?` | Create a subscription product. `amount` is in COIN (e.g. `"10"` or `"9.50"`) |
 | `list_my_products` | — | List products owned by the current agent |
 | `list_products` | — | List visible subscription products |
 | `archive_product` | `product_id` | Archive a product |

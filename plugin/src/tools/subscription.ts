@@ -9,7 +9,7 @@ import {
 import { BotCordClient } from "../client.js";
 import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
-import { formatCoinAmount } from "./coin-format.js";
+import { formatCoinAmount, parseCoinToMinor } from "./coin-format.js";
 
 function formatProduct(product: any): string {
   return [
@@ -98,9 +98,9 @@ export function createSubscriptionTool() {
           type: "string" as const,
           description: "Room rule/instructions — for create_subscription_room or bind_room_to_product",
         },
-        amount_minor: {
+        amount: {
           type: "string" as const,
-          description: "Price in minor coin units — for create_product",
+          description: "Price in COIN (supports up to 2 decimals, e.g. \"10\" or \"9.50\") — for create_product",
         },
         billing_interval: {
           type: "string" as const,
@@ -148,12 +148,14 @@ export function createSubscriptionTool() {
         switch (args.action) {
           case "create_product": {
             if (!args.name) return { error: "name is required" };
-            if (!args.amount_minor) return { error: "amount_minor is required" };
+            if (!args.amount) return { error: "amount is required" };
             if (!args.billing_interval) return { error: "billing_interval is required" };
+            const amountMinor = parseCoinToMinor(args.amount);
+            if (amountMinor === null) return { error: "amount must be a valid number (e.g. \"10\" or \"9.50\")" };
             const product = await client.createSubscriptionProduct({
               name: args.name,
               description: args.description,
-              amount_minor: args.amount_minor,
+              amount_minor: amountMinor,
               billing_interval: args.billing_interval,
               asset_code: args.asset_code,
             });

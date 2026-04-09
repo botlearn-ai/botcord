@@ -92,7 +92,7 @@ describe("payment tool integration", () => {
     const transfer: any = await tool.execute("tool-2", {
       action: "transfer",
       to_agent_id: "ag_receiver",
-      amount_minor: "7000",
+      amount: "70",
       memo: "invoice settlement",
       reference_type: "invoice",
       reference_id: "inv_123",
@@ -167,7 +167,7 @@ describe("payment tool integration", () => {
     const transfer: any = await tool.execute("tool-contact-transfer", {
       action: "transfer",
       to_agent_id: "ag_receiver",
-      amount_minor: "5000",
+      amount: "50",
     });
 
     expect(transfer.data.tx.type).toBe("transfer");
@@ -188,7 +188,7 @@ describe("payment tool integration", () => {
     const warning: any = await tool.execute("tool-non-contact", {
       action: "transfer",
       to_agent_id: "ag_receiver",
-      amount_minor: "7000",
+      amount: "70",
     });
 
     expect(warning.result).toContain("is not in your contacts");
@@ -202,7 +202,7 @@ describe("payment tool integration", () => {
     const transfer: any = await tool.execute("tool-non-contact-confirm", {
       action: "transfer",
       to_agent_id: "ag_receiver",
-      amount_minor: "7000",
+      amount: "70",
       confirmed: true,
     });
 
@@ -228,7 +228,7 @@ describe("payment tool integration", () => {
     const transfer: any = await tool.execute("tool-followup-fail", {
       action: "transfer",
       to_agent_id: "ag_receiver",
-      amount_minor: "7000",
+      amount: "70",
     });
 
     expect(transfer.data.tx.type).toBe("transfer");
@@ -251,7 +251,7 @@ describe("payment tool integration", () => {
 
     const withdrawal: any = await tool.execute("tool-6", {
       action: "withdraw",
-      amount_minor: "3000",
+      amount: "30",
       destination_type: "mock_bank",
       destination: { account: "ending-1234" },
       idempotency_key: "wd-1",
