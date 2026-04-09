@@ -1,44 +1,104 @@
 /**
- * Onboarding hook — injects onboarding guidance for first-time users.
+ * Onboarding hook — injects step-by-step onboarding guidance for first-time users.
  *
  * Checks the credential file for `onboardedAt`. If absent, injects a
- * prependContext that instructs the agent to fetch and follow the
- * best-practices guide, then mark onboarding as complete.
+ * prependContext that walks the user through features, use cases, goal
+ * setting, cron setup, checklist, and healthcheck — one step at a time.
  */
 import { isOnboarded } from "./credentials.js";
 import { resolveAccountConfig, isAccountConfigured } from "./config.js";
 import { getConfig } from "./runtime.js";
 
-const DEFAULT_DOCS_BASE_URL = "https://botcord.chat";
-const BEST_PRACTICES_PATH = "/openclaw-best-practices.md";
+function buildOnboardingPrompt(baseUrl: string): string {
+  return `[BotCord Onboarding — Step-by-Step]
 
-function buildOnboardingPrompt(docsBaseUrl: string): string {
-  const bestPracticesUrl = `${docsBaseUrl}${BEST_PRACTICES_PATH}`;
-  return [
-    "[BotCord Onboarding] This is a newly installed BotCord plugin. The user has not been guided through setup yet.",
-    "",
-    "You MUST do the following before handling any other request:",
-    "",
-    `1. Fetch and read the BotCord guide: ${bestPracticesUrl}`,
-    "2. Introduce BotCord's core features to the user (messaging, rooms, contacts, wallet).",
-    "3. Walk the user through the Setup Hygiene checklist (items 1–6 in the guide).",
-    "4. Ask the user what their Bot's purpose is — this will be used to set up periodic task checking.",
-    "5. Run /botcord_healthcheck to verify everything is working (this also marks onboarding as complete).",
-    "",
-    "Be a guide — don't just show URLs. Explain each step conversationally.",
-    "",
-    "[BotCord 新手引导] 这是新安装的 BotCord 插件，用户还没有完成引导。",
-    "",
-    "在处理任何其他请求之前，你必须：",
-    "",
-    `1. 获取并阅读 BotCord 指南：${bestPracticesUrl}`,
-    "2. 向用户介绍 BotCord 的核心功能（消息、群聊、联系人、钱包）。",
-    "3. 带用户过一遍安装清单（指南中的第 1–6 条）。",
-    "4. 问用户 Bot 是用来做什么的——用于后续设置定时任务检查。",
-    "5. 执行 /botcord_healthcheck 确认一切正常（同时标记引导完成）。",
-    "",
-    "做一个引导者——不要只给 URL，用对话的方式解释每一步。",
-  ].join("\n");
+This is a newly installed BotCord plugin. Guide the user through onboarding ONE STEP AT A TIME.
+这是新安装的 BotCord 插件。引导用户完成新手流程，每次只做一步。
+
+CRITICAL RULES:
+- Complete each step before moving to the next.
+- After each step, STOP and wait for the user to respond before continuing.
+- Keep each message short and conversational — no walls of text.
+- Use the user's language (detect from their first message).
+- Do NOT dump all steps in a single message.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1 — Introduce Core Features | 介绍核心功能
+
+Briefly introduce what BotCord is and its 4 core features:
+- Messaging: 1-on-1 encrypted signed messages between AI agents, like WeChat for bots
+- Rooms: Group chats for multi-agent collaboration (public or private)
+- Contacts: Friend-request system with privacy controls (open / contacts_only)
+- Wallet: Each bot has a wallet for transfers, topups, withdrawals, and paid subscriptions
+
+Keep it to a few sentences per feature. End with "let me show you some fun things you can do with it" to transition to Step 2.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 2 — Possible Use Cases | 介绍可能的玩法
+
+Present inspiring examples of what people do with BotCord:
+
+| Use Case | What the Bot Does |
+|----------|-------------------|
+| AI freelancer (接单做 PPT/写代码) | Accept orders via DM, deliver work, collect payment via wallet |
+| Customer service agent (客服) | Auto-reply to inquiries, escalate complex issues to owner |
+| Social networker (社交达人) | Explore public rooms, make friends, join communities |
+| Content creator (内容创作者) | Post in rooms, build audience, offer paid subscriptions |
+| Team coordinator (团队协调) | Create task rooms, assign work to other bots via topics |
+| Trading / alert bot (交易/监控) | Monitor signals, notify owner, execute via wallet |
+
+Ask the user: "Which of these sounds closest to what you want your bot to do? Or describe your own idea."
+Wait for their answer.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 3 — Set the Bot's Purpose | 设定工作目标
+
+Based on the user's answer from Step 2, help them crystallize a goal.
+Save it using: botcord_update_working_memory({ goal: "<the goal>" })
+
+Confirm the goal was saved. Then say: "Now let's make sure you never miss a message — I'll help you set up automatic checking."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 4 — Set Up Cron & Heartbeat | 设置定时检查
+
+Based on the goal from Step 3, suggest a cron schedule:
+- For customer-facing bots (客服/接单): every 15–30 minutes
+- For social/casual bots: every 1–2 hours
+- For monitoring/alert bots: every 5–15 minutes
+
+The command to set up:
+\`\`\`
+openclaw cron add --name "botcord-check" --every <interval> \\
+  --message "检查 BotCord 是否有未回复的消息或待处理的任务，如果有，立即处理。" \\
+  --channel botcord --announce
+\`\`\`
+
+Help the user choose the interval and run the command. Confirm it's set up.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 5 — Setup Checklist | 安装清单
+
+Walk through each item. Check current state and skip items already done:
+
+1. **Profile** — display name and bio set? If not, help set via botcord_account.
+2. **Credential backup** — remind: \`openclaw botcord-export --dest ~/botcord-backup.json\`. Private key is irrecoverable if lost.
+3. **Dashboard binding** — open ${baseUrl}/chats to manage everything from the web. If not bound, guide through /botcord_bind.
+4. **Notifications** — suggest configuring notifySession so friend requests and important events reach the owner's Telegram/Discord.
+
+After completing the checklist, say: "Great, one last step — let's run a health check to make sure everything is connected."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 6 — Health Check | 健康检查
+
+Run /botcord_healthcheck. This verifies connectivity and marks onboarding as complete.
+If it passes: celebrate and summarize what was set up.
+If it fails: help diagnose and fix, then re-run.`;
 }
 
 // ── before_prompt_build handler ────────────────────────────────────
@@ -60,8 +120,8 @@ export function buildOnboardingHookResult(): { prependContext?: string } | null 
 
     if (isOnboarded(acct.credentialsFile)) return null;
 
-    const docsBaseUrl = (acct.docsBaseUrl || DEFAULT_DOCS_BASE_URL).replace(/\/+$/, "");
-    return { prependContext: buildOnboardingPrompt(docsBaseUrl) };
+    const baseUrl = (acct.docsBaseUrl || "https://botcord.chat").replace(/\/+$/, "");
+    return { prependContext: buildOnboardingPrompt(baseUrl) };
   } catch {
     return null;
   }
