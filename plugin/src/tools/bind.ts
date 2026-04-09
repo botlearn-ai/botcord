@@ -8,14 +8,12 @@ import { withClient } from "./with-client.js";
 import { validationError } from "./tool-result.js";
 import { HubApiError } from "../client.js";
 
-const DEFAULT_DASHBOARD_URL = "https://www.botcord.chat";
-
 /**
  * Shared bind logic used by both the tool and the command.
  */
 export async function executeBind(
   bindCredential: string,
-  dashboardUrl?: string,
+  _dashboardUrl?: string,
 ) {
   return withClient(async (client) => {
     const agentToken = await client.ensureToken();
@@ -24,7 +22,7 @@ export async function executeBind(
     const resolved = (await client.resolve(agentId)) as Record<string, unknown>;
     const displayName = (resolved.display_name as string) || agentId;
 
-    const baseUrl = (dashboardUrl || DEFAULT_DASHBOARD_URL).replace(/\/+$/, "");
+    const baseUrl = client.getHubUrl().replace(/\/+$/, "");
 
     const res = await fetch(`${baseUrl}/api/users/me/agents/bind`, {
       method: "POST",
