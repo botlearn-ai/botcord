@@ -470,3 +470,116 @@ async def test_room_messages_sender_filter(client: AsyncClient, db_session: Asyn
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["messages"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_room_search_multi_query(client: AsyncClient, db_session: AsyncSession):
+    """Multiple q params use OR semantics — matches messages containing any term."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner", db_session)
+    room = await _create_room(client, token, "Multi Query Room")
+    room_id = room["room_id"]
+
+    await _send_msg_with_token(client, sk, key_id, agent_id, room_id, token, text="the quick brown fox")
+    await _send_msg_with_token(client, sk, key_id, agent_id, room_id, token, text="lazy dog sleeps")
+    await _send_msg_with_token(client, sk, key_id, agent_id, room_id, token, text="cat on the roof")
+
+    resp = await client.get(
+        f"/hub/rooms/{room_id}/search?q=fox&q=dog",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["query"] == ["fox", "dog"]
+    assert len(data["results"]) == 2
+    snippets = [r["snippet"].lower() for r in data["results"]]
+    assert any("fox" in s for s in snippets)
+    assert any("dog" in s for s in snippets)
+
+
+@pytest.mark.asyncio
+async def test_global_search_multi_query(client: AsyncClient, db_session: AsyncSession):
+    """Global search with multiple q params finds matches across rooms."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner", db_session)
+    room1 = await _create_room(client, token, "Room X")
+    room2 = await _create_room(client, token, "Room Y")
+
+    await _send_msg_with_token(client, sk, key_id, agent_id, room1["room_id"], token, text="deploy started")
+    await _send_msg_with_token(client, sk, key_id, agent_id, room2["room_id"], token, text="release notes ready")
+    await _send_msg_with_token(client, sk, key_id, agent_id, room1["room_id"], token, text="unrelated message")
+
+    resp = await client.get(
+        "/hub/search?q=deploy&q=release",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["query"] == ["deploy", "release"]
+    assert len(data["results"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_room_search_single_query_backwards_compat(client: AsyncClient, db_session: AsyncSession):
+    """Single q param returns query as a string (not a list) for backwards compatibility."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner", db_session)
+    room = await _create_room(client, token, "Compat Room")
+    room_id = room["room_id"]
+
+    await _send_msg_with_token(client, sk, key_id, agent_id, room_id, token, text="hello world")
+
+    resp = await client.get(
+        f"/hub/rooms/{room_id}/search?q=hello",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["query"] == "hello"
+    assert isinstance(data["query"], str)
+
+
+@pytest.mark.asyncio
+async def test_room_search_deduplicates_terms(client: AsyncClient, db_session: AsyncSession):
+    """Duplicate q params are deduplicated — response echoes unique terms."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner", db_session)
+    room = await _create_room(client, token, "Dedup Room")
+    room_id = room["room_id"]
+
+    await _send_msg_with_token(client, sk, key_id, agent_id, room_id, token, text="the quick brown fox")
+
+    resp = await client.get(
+        f"/hub/rooms/{room_id}/search?q=fox&q=fox&q=FOX",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # All three are the same term after lowercasing — response collapses to string
+    assert data["query"] == "fox"
+    assert len(data["results"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_room_search_too_many_terms(client: AsyncClient, db_session: AsyncSession):
+    """More than 10 q params returns 400."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner", db_session)
+    room = await _create_room(client, token, "Limit Room")
+    room_id = room["room_id"]
+
+    qs = "&".join(f"q=term{i}" for i in range(11))
+    resp = await client.get(
+        f"/hub/rooms/{room_id}/search?{qs}",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_global_search_too_many_terms(client: AsyncClient, db_session: AsyncSession):
+    """Global search with >10 unique q params returns 400."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner", db_session)
+    await _create_room(client, token, "Limit Room G")
+
+    qs = "&".join(f"q=term{i}" for i in range(11))
+    resp = await client.get(
+        f"/hub/search?{qs}",
+        headers=_auth_header(token),
+    )
+    assert resp.status_code == 400

@@ -11,6 +11,23 @@ import { BotCordClient } from "../client.js";
 import { attachTokenPersistence } from "../credentials.js";
 import { getConfig as getAppConfig } from "../runtime.js";
 
+/** Normalize query input: accept a string or string[] from the LLM. */
+function _normalizeQuery(raw: unknown): string | string[] | null {
+  if (Array.isArray(raw)) {
+    const parts = raw
+      .filter((v) => typeof v === "string")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return null;
+    return parts.length === 1 ? parts[0] : parts;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed || null;
+  }
+  return null;
+}
+
 export function createRoomContextTool() {
   return {
     name: "botcord_room_context",
@@ -44,8 +61,9 @@ export function createRoomContextTool() {
             "Room ID (rm_...) — required for room_summary, room_messages, room_search; optional filter for global_search",
         },
         query: {
-          type: "string" as const,
-          description: "Search query text — required for room_search and global_search",
+          description:
+            "Search query — required for room_search and global_search. " +
+            "Pass a single string or an array of strings for OR search (e.g., ['deploy', 'release']).",
         },
         topic_id: {
           type: "string" as const,
@@ -104,8 +122,9 @@ export function createRoomContextTool() {
 
           case "room_search": {
             if (!args.room_id) return { error: "room_id is required for room_search" };
-            if (!args.query) return { error: "query is required for room_search" };
-            return await client.roomSearch(args.room_id, args.query, {
+            const rsQuery = _normalizeQuery(args.query);
+            if (!rsQuery) return { error: "query is required for room_search" };
+            return await client.roomSearch(args.room_id, rsQuery, {
               limit: args.limit,
               before: args.before,
               topicId: args.topic_id,
@@ -118,8 +137,9 @@ export function createRoomContextTool() {
           }
 
           case "global_search": {
-            if (!args.query) return { error: "query is required for global_search" };
-            return await client.globalSearch(args.query, {
+            const gsQuery = _normalizeQuery(args.query);
+            if (!gsQuery) return { error: "query is required for global_search" };
+            return await client.globalSearch(gsQuery, {
               limit: args.limit,
               roomId: args.room_id,
               topicId: args.topic_id,

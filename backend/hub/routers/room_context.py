@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime
 import json
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from hub.i18n import I18nHTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,17 +71,24 @@ def _extract_text(envelope_json: str) -> tuple[str, str, str]:
     return sender_id, text, msg_type
 
 
-def _snippet(text: str, query: str, max_len: int = 240) -> str:
-    """Return a window of *text* centred on the first hit of *query*."""
+def _snippet(text: str, query: str | list[str], max_len: int = 240) -> str:
+    """Return a window of *text* centred on the first hit of any *query* term."""
     if not text:
         return ""
     lower = text.lower()
-    q_lower = query.lower()
-    idx = lower.find(q_lower)
-    if idx == -1:
+    terms = [query] if isinstance(query, str) else query
+    # Find earliest match across all terms
+    best_idx = -1
+    best_term = terms[0] if terms else ""
+    for t in terms:
+        idx = lower.find(t.lower())
+        if idx != -1 and (best_idx == -1 or idx < best_idx):
+            best_idx = idx
+            best_term = t
+    if best_idx == -1:
         return text[:max_len] + ("..." if len(text) > max_len else "")
-    start = max(0, idx - 60)
-    end = min(len(text), idx + len(query) + max_len - 60)
+    start = max(0, best_idx - 60)
+    end = min(len(text), best_idx + len(best_term) + max_len - 60)
     snippet = text[start:end]
     if start > 0:
         snippet = "..." + snippet
@@ -193,14 +200,19 @@ def _rows_to_messages(
 
 async def _search_messages(
     db: AsyncSession,
-    q: str,
+    q: str | list[str],
     room_ids: str | list[str],
     limit: int,
     before: str | None = None,
     topic_id: str | None = None,
     sender_id: str | None = None,
 ) -> RoomSearchResponse:
-    """Scan deduped messages for *q* and return search results with snippets."""
+    """Scan deduped messages for *q* (OR across terms) and return search results with snippets."""
+    terms = [q] if isinstance(q, str) else q
+    terms_lower = list(dict.fromkeys(t.lower() for t in terms))  # deduplicate, preserve order
+    if len(terms_lower) > 10:
+        raise HTTPException(status_code=400, detail="Too many search terms (max 10)")
+
     dedup_sub = _dedup_subquery(room_ids)
     stmt = select(MessageRecord).where(
         MessageRecord.id.in_(select(dedup_sub.c.min_id))
@@ -218,14 +230,14 @@ async def _search_messages(
     result = await db.execute(stmt)
     all_rows = list(result.scalars().all())
 
-    # Application-level text match with early exit
-    q_lower = q.lower()
-    # Store (rec, sender_id, text, score) to avoid re-parsing envelope
+    # Application-level text match with early exit (OR: any term matches)
     matched: list[tuple[MessageRecord, str, str, float]] = []
     for rec in all_rows:
         sid, text, _ = _extract_text(rec.envelope_json)
-        if q_lower in text.lower():
-            score = 1.0 / max(len(text), 1) * 1000
+        text_lower = text.lower()
+        hit_count = sum(1 for t in terms_lower if t in text_lower)
+        if hit_count > 0:
+            score = hit_count / max(len(text), 1) * 1000
             matched.append((rec, sid, text, score))
         if len(matched) >= limit + 1:
             break
@@ -248,6 +260,9 @@ async def _search_messages(
         )
         room_names = dict(rn_result.all())
 
+    # Collapse single-term list back to string for backwards compatibility
+    response_query: str | list[str] = terms_lower[0] if len(terms_lower) == 1 else terms_lower
+
     results: list[RoomSearchResult] = []
     for rec, sid, text, score in matched:
         results.append(
@@ -259,13 +274,13 @@ async def _search_messages(
                 room_name=room_names.get(rec.room_id) if rec.room_id else None,
                 topic_id=rec.topic_id,
                 topic_title=topic_titles.get(rec.topic_id) if rec.topic_id else None,
-                snippet=_snippet(text, q),
+                snippet=_snippet(text, terms),
                 ts=_utc(rec.created_at),  # type: ignore[arg-type]
                 score=round(score, 4),
             )
         )
 
-    return RoomSearchResponse(query=q, results=results, has_more=has_more)
+    return RoomSearchResponse(query=response_query, results=results, has_more=has_more)
 
 
 # ---------------------------------------------------------------------------
@@ -599,7 +614,7 @@ async def room_messages(
 @router.get("/rooms/{room_id}/search", response_model=RoomSearchResponse)
 async def room_search(
     room_id: str,
-    q: str = Query(..., min_length=1, max_length=200),
+    q: list[str] = Query(..., min_length=1, max_length=200),
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_claimed_agent),
     limit: int = Query(default=10, ge=1, le=20),
@@ -607,7 +622,11 @@ async def room_search(
     topic_id: str | None = Query(default=None),
     sender_id: str | None = Query(default=None),
 ):
-    """Full-text search within a single room's logical messages."""
+    """Full-text search within a single room's logical messages.
+
+    Accepts one or more ``q`` query parameters (OR semantics).
+    Example: ``?q=deploy&q=release`` matches messages containing either term.
+    """
     await _require_room_membership(db, room_id, current_agent)
     return await _search_messages(
         db, q, room_id, limit,
@@ -622,7 +641,7 @@ async def room_search(
 
 @router.get("/search", response_model=RoomSearchResponse)
 async def global_search(
-    q: str = Query(..., min_length=1, max_length=200),
+    q: list[str] = Query(..., min_length=1, max_length=200),
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_claimed_agent),
     limit: int = Query(default=10, ge=1, le=20),
@@ -631,7 +650,10 @@ async def global_search(
     sender_id: str | None = Query(default=None),
     before: str | None = Query(default=None),
 ):
-    """Cross-room full-text search across all rooms the agent has joined."""
+    """Cross-room full-text search across all rooms the agent has joined.
+
+    Accepts one or more ``q`` query parameters (OR semantics).
+    """
     if room_id is not None:
         await _require_room_membership(db, room_id, current_agent)
         search_room_ids: str | list[str] = room_id
@@ -641,7 +663,11 @@ async def global_search(
         )
         search_room_ids = [r[0] for r in member_result.all()]
         if not search_room_ids:
-            return RoomSearchResponse(query=q, results=[], has_more=False)
+            q_norm = list(dict.fromkeys(t.lower() for t in q))
+            return RoomSearchResponse(
+                query=q_norm[0] if len(q_norm) == 1 else q_norm,
+                results=[], has_more=False,
+            )
 
     return await _search_messages(
         db, q, search_room_ids, limit,

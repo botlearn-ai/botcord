@@ -866,7 +866,7 @@ export class BotCordClient {
 
   async roomSearch(
     roomId: string,
-    query: string,
+    query: string | string[],
     opts?: {
       limit?: number;
       before?: string;
@@ -875,7 +875,9 @@ export class BotCordClient {
     },
   ): Promise<any> {
     const params = new URLSearchParams();
-    params.set("q", query);
+    const queries = (Array.isArray(query) ? query : [query])
+      .map((q) => q.trim()).filter(Boolean);
+    for (const q of queries) params.append("q", q);
     if (opts?.limit) params.set("limit", String(opts.limit));
     if (opts?.before) params.set("before", opts.before);
     if (opts?.topicId) params.set("topic_id", opts.topicId);
@@ -893,7 +895,7 @@ export class BotCordClient {
   }
 
   async globalSearch(
-    query: string,
+    query: string | string[],
     opts?: {
       limit?: number;
       roomId?: string;
@@ -903,7 +905,9 @@ export class BotCordClient {
     },
   ): Promise<any> {
     const params = new URLSearchParams();
-    params.set("q", query);
+    const queries = (Array.isArray(query) ? query : [query])
+      .map((q) => q.trim()).filter(Boolean);
+    for (const q of queries) params.append("q", q);
     if (opts?.limit) params.set("limit", String(opts.limit));
     if (opts?.roomId) params.set("room_id", opts.roomId);
     if (opts?.topicId) params.set("topic_id", opts.topicId);
