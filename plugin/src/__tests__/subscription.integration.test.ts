@@ -243,4 +243,50 @@ describe("subscription client and tool integration", () => {
     expect(failureRecord.consecutive_failed_attempts).toBe(3);
     expect(failureRecord.cancelled_at).toBeTruthy();
   });
+
+  it("creates a one-time payment product that never charges again", async () => {
+    const owner = makeClient("ag_owner", ownerKeys.privateKey);
+    const subscriber = makeClient("ag_subscriber", subscriberKeys.privateKey);
+    const tool = createSubscriptionTool();
+
+    await seedBalance(subscriber, "50000");
+
+    makeToolConfig("ag_owner", ownerKeys.privateKey);
+    const created = await tool.execute("tool-once-1", {
+      action: "create_product",
+      name: "Lifetime Access",
+      description: "Pay once, access forever",
+      amount: "100",
+      billing_interval: "once",
+    });
+    const product = created.data as SubscriptionProduct;
+    expect(product.billing_interval).toBe("once");
+
+    makeToolConfig("ag_subscriber", subscriberKeys.privateKey);
+    const subscribed = await tool.execute("tool-once-2", {
+      action: "subscribe",
+      product_id: product.product_id,
+    });
+    const subscription = subscribed.data as Subscription;
+    expect(subscription.status).toBe("active");
+    expect(subscription.billing_interval).toBe("once");
+    expect(subscription.next_charge_at).toBe("9999-12-31T00:00:00.000Z");
+
+    // Verify first charge was deducted
+    const subscriberWallet = await subscriber.getWallet();
+    const ownerWallet = await owner.getWallet();
+    expect(subscriberWallet.available_balance_minor).toBe("40000");
+    expect(ownerWallet.available_balance_minor).toBe("10000");
+
+    // Run billing — should not charge again
+    const resp = await fetch(`${hubUrl}/internal/subscriptions/run-billing`, {
+      method: "POST",
+    });
+    const billingResult = await resp.json();
+    expect(billingResult.charged).toBe(0);
+
+    // Balance unchanged
+    const subscriberWalletAfter = await subscriber.getWallet();
+    expect(subscriberWalletAfter.available_balance_minor).toBe("40000");
+  });
 });

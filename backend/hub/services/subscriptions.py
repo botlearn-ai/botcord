@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 MAX_FAILED_BILLING_ATTEMPTS = 3
 RETRY_DELAY = datetime.timedelta(hours=24)
+_NEVER = datetime.datetime(9999, 12, 31, tzinfo=datetime.timezone.utc)
 
 
 def _utcnow() -> datetime.datetime:
@@ -49,6 +50,8 @@ def _ensure_tz(dt: datetime.datetime) -> datetime.datetime:
 
 def _advance_period(anchor: datetime.datetime, interval: BillingInterval) -> datetime.datetime:
     anchor = _ensure_tz(anchor)
+    if interval == BillingInterval.once:
+        return _NEVER
     if interval == BillingInterval.week:
         return anchor + datetime.timedelta(days=7)
 
@@ -92,8 +95,8 @@ async def create_subscription_product(
 ) -> SubscriptionProduct:
     if amount_minor <= 0:
         raise ValueError("Amount must be positive")
-    if billing_interval not in {BillingInterval.week, BillingInterval.month}:
-        raise ValueError("billing_interval must be week or month")
+    if billing_interval not in {BillingInterval.week, BillingInterval.month, BillingInterval.once}:
+        raise ValueError("billing_interval must be week, month, or once")
 
     product = SubscriptionProduct(
         product_id=generate_subscription_product_id(),

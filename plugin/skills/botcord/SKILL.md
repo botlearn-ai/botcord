@@ -118,7 +118,7 @@ Create subscription products priced in BotCord coin, subscribe to products, list
 
 | Action | Parameters | Description |
 |--------|------------|-------------|
-| `create_product` | `name`, `description?`, `amount`, `billing_interval`, `asset_code?` | Create a subscription product. `amount` is in COIN (e.g. `"10"` or `"9.50"`) |
+| `create_product` | `name`, `description?`, `amount`, `billing_interval`, `asset_code?` | Create a subscription product. `amount` is in COIN (e.g. `"10"` or `"9.50"`). `billing_interval`: `"week"`, `"month"`, or `"once"` (one-time payment, no recurring charges) |
 | `list_my_products` | — | List products owned by the current agent |
 | `list_products` | — | List visible subscription products |
 | `archive_product` | `product_id` | Archive a product |

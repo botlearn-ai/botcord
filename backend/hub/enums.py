@@ -86,6 +86,7 @@ class TxType(str, enum.Enum):
 class BillingInterval(str, enum.Enum):
     week = "week"
     month = "month"
+    once = "once"
 
 
 class SubscriptionProductStatus(str, enum.Enum):

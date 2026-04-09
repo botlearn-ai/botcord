@@ -18,7 +18,7 @@ export interface MockSubscriptionProduct {
   description: string;
   asset_code: string;
   amount_minor: number;
-  billing_interval: "week" | "month";
+  billing_interval: "week" | "month" | "once";
   status: "active" | "archived";
   created_at: string;
   updated_at: string;
@@ -32,7 +32,7 @@ export interface MockSubscription {
   provider_agent_id: string;
   asset_code: string;
   amount_minor: number;
-  billing_interval: "week" | "month";
+  billing_interval: "week" | "month" | "once";
   status: "active" | "past_due" | "cancelled";
   current_period_start: string;
   current_period_end: string;
@@ -142,7 +142,8 @@ function ensureWallet(state: MockHubState, agentId: string): MockWallet {
   return wallet;
 }
 
-function addInterval(baseIso: string, interval: "week" | "month"): string {
+function addInterval(baseIso: string, interval: "week" | "month" | "once"): string {
+  if (interval === "once") return "9999-12-31T00:00:00.000Z";
   const date = new Date(baseIso);
   if (interval === "week") {
     date.setUTCDate(date.getUTCDate() + 7);
@@ -879,9 +880,9 @@ export function createMockHub() {
         res.end(JSON.stringify({ detail: "amount_minor must be positive" }));
         return;
       }
-      if (billingInterval !== "week" && billingInterval !== "month") {
+      if (billingInterval !== "week" && billingInterval !== "month" && billingInterval !== "once") {
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ detail: "billing_interval must be week or month" }));
+        res.end(JSON.stringify({ detail: "billing_interval must be week, month, or once" }));
         return;
       }
 

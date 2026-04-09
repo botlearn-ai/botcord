@@ -104,8 +104,8 @@ export function createSubscriptionTool() {
         },
         billing_interval: {
           type: "string" as const,
-          enum: ["week", "month"],
-          description: "Billing interval — for create_product",
+          enum: ["week", "month", "once"],
+          description: "Billing interval — for create_product. Use \"once\" for one-time payment (no recurring charges)",
         },
         asset_code: {
           type: "string" as const,
