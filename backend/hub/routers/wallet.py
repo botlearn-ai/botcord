@@ -4,7 +4,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, Header, Query
-from hub.i18n import I18nHTTPException
+from hub.i18n import I18nHTTPException, resolve_service_error_hint
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import get_current_claimed_agent
@@ -111,7 +111,7 @@ async def create_transfer(
         )
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
 
     return _tx_response(tx)
 
@@ -135,7 +135,7 @@ async def create_topup(
         )
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
 
     return TopupResponse(
         topup_id=topup.topup_id,
@@ -180,7 +180,7 @@ async def create_withdrawal(
         )
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
 
     return _wd_response(wd)
 
@@ -212,7 +212,7 @@ async def cancel_withdrawal(
         wd = await wallet_svc.cancel_withdrawal_request(db, withdrawal_id, current_agent)
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
     return _wd_response(wd)
 
 
@@ -255,7 +255,7 @@ async def internal_complete_topup(
         topup, tx = await wallet_svc.complete_topup_request(db, topup_id)
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
     return TopupResponse(
         topup_id=topup.topup_id,
         tx_id=topup.tx_id,
@@ -281,7 +281,7 @@ async def internal_fail_topup(
         topup = await wallet_svc.fail_topup_request(db, topup_id)
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
     return TopupResponse(
         topup_id=topup.topup_id,
         tx_id=topup.tx_id,
@@ -307,7 +307,7 @@ async def internal_approve_withdrawal(
         wd = await wallet_svc.approve_withdrawal_request(db, withdrawal_id)
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
     return _wd_response(wd)
 
 
@@ -325,7 +325,7 @@ async def internal_reject_withdrawal(
         wd = await wallet_svc.reject_withdrawal_request(db, withdrawal_id, note)
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
     return _wd_response(wd)
 
 
@@ -341,7 +341,7 @@ async def internal_complete_withdrawal(
         wd, tx = await wallet_svc.complete_withdrawal_request(db, withdrawal_id)
         await db.commit()
     except ValueError as e:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(e))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(e)), detail=str(e))
     return _wd_response(wd)
 
 

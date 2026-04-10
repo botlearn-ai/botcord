@@ -1,7 +1,7 @@
 """Subscription product and billing API router."""
 
 from fastapi import APIRouter, Depends, Header, Query
-from hub.i18n import I18nHTTPException
+from hub.i18n import I18nHTTPException, resolve_service_error_hint
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -106,7 +106,7 @@ async def create_product(
         await db.commit()
         await db.refresh(product)
     except ValueError as err:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(err)), detail=str(err))
 
     return _product_response(product)
 
@@ -145,7 +145,7 @@ async def archive_product(
         await db.commit()
         await db.refresh(product)
     except ValueError as err:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(err)), detail=str(err))
     return _product_response(product)
 
 
@@ -166,7 +166,7 @@ async def subscribe(
         await db.commit()
         await db.refresh(subscription)
     except ValueError as err:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(err)), detail=str(err))
     return _subscription_response(subscription)
 
 
@@ -212,7 +212,7 @@ async def cancel_subscription(
         await db.commit()
         await db.refresh(subscription)
     except ValueError as err:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(err)), detail=str(err))
     return _subscription_response(subscription)
 
 
@@ -227,6 +227,6 @@ async def run_billing(
         result = await subscription_svc.process_due_subscription_billings(db, limit=limit)
         await db.commit()
     except ValueError as err:
-        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", detail=str(err))
+        raise I18nHTTPException(status_code=400, message_key="wallet_service_error", hint_key=resolve_service_error_hint(str(err)), detail=str(err))
 
     return SubscriptionBillingResponse(**result)

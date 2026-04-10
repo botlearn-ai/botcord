@@ -10,7 +10,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from hub.i18n import I18nHTTPException, detect_locale, get_message
+from hub.i18n import I18nHTTPException, detect_locale, get_hint, get_message
 
 from sqlalchemy import text
 
@@ -170,9 +170,12 @@ async def i18n_http_exception_handler(request: Request, exc: I18nHTTPException):
     """Return structured error with translated message based on Accept-Language."""
     locale = detect_locale(request.headers.get("accept-language"))
     detail = get_message(exc.message_key, locale, **exc.message_kwargs)
+    hint_lookup_key = exc.hint_key or exc.message_key
+    hint = get_hint(hint_lookup_key, locale, **exc.message_kwargs)
     content: dict = {
         "detail": detail,
         "code": exc.message_key,
+        "hint": hint,
         "retryable": exc.status_code >= 500,
     }
     if exc.message_kwargs.get("claim_url"):
@@ -198,6 +201,7 @@ async def structured_http_exception_handler(request: Request, exc: HTTPException
         content={
             "detail": exc.detail,
             "error": exc.detail,
+            "hint": None,
             "retryable": exc.status_code >= 500,
         },
     )
