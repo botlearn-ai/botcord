@@ -73,12 +73,18 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
 
     const shareId = "share_id" in shareData ? shareData.share_id : undefined;
     const inviteCode = "code" in shareData ? shareData.code : undefined;
+    const productId = "required_subscription_product_id" in shareData && shareData.required_subscription_product_id
+      ? shareData.required_subscription_product_id as string
+      : shareData && "room" in shareData && shareData.room && "required_subscription_product_id" in shareData.room
+        ? shareData.room.required_subscription_product_id ?? undefined
+        : undefined;
     return buildSharePrompt({
       shareId,
       inviteCode,
       roomId,
       roomName,
       requiresPayment: shareData.entry_type === "paid_room",
+      productId,
       isReadOnly: shareData.entry_type === "private_room",
       locale,
     });

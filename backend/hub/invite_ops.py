@@ -56,6 +56,7 @@ def _serialize_invite_preview(invite: Invite, creator: Agent, room: Room | None,
             "visibility": room.visibility.value,
             "join_mode": room.join_policy.value,
             "requires_payment": bool(room.required_subscription_product_id),
+            "required_subscription_product_id": room.required_subscription_product_id,
             "member_count": member_count,
         },
     }
