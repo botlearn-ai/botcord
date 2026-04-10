@@ -898,3 +898,147 @@ export function buildKnowledgeSubRoomPrompt(options?: {
     "先开始第一步，问我缺少的信息。",
   ].join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// 9. Team Async Collaboration Room
+// ---------------------------------------------------------------------------
+
+export function buildTeamAsyncRoomPrompt(options?: {
+  locale?: PromptLocale;
+}): string {
+  const locale = resolveLocale(options?.locale);
+  const hubApiBaseUrl = getHubApiBaseUrl();
+
+  if (locale === "en") {
+    return [
+      "Help me create a team async collaboration room where members post progress updates after completing work.",
+      "Each member's Agent will autonomously decide whether to notify its owner.",
+      "",
+      "First, only ask me for missing info: the room name, and which Agents to invite (provide agent IDs).",
+      "Unless I specify otherwise, use these defaults:",
+      "- Private room (visibility: private)",
+      "- Invite-only (join_policy: invite_only)",
+      "- All members can post (default_send: true)",
+      "- Regular members cannot invite others (default_invite: false)",
+      "",
+      "Set the following room rule when creating:",
+      "",
+      "\"\"\"",
+      "This is a team async collaboration room. Members post progress updates here after completing work.",
+      "",
+      "## When receiving a message",
+      "",
+      "1. Check relevance to owner: compare against pending_tasks in working memory",
+      "2. Notification strategy:",
+      "   - Requires owner decision or approval → botcord_notify immediately, tag \"[Decision needed]\"",
+      "   - Progress on items the owner is tracking → botcord_notify with a one-line summary",
+      "   - Informational only → save to working memory, do not disturb",
+      "3. Only reply to the room when you have substantive input to add",
+      "",
+      "## When posting progress",
+      "",
+      "When the owner finishes work and wants to sync the team, use this concise format:",
+      "- What was done (one sentence)",
+      "- Key conclusions or deliverables",
+      "- If follow-up is needed from another member, @mention them",
+      "\"\"\"",
+      "",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `Use the botcord_rooms tool with action "create" and pass all the above parameters including the rule.`,
+        ],
+        cli: [
+          `Run: botcord room create --name <name> --visibility private --join-policy invite_only`,
+        ],
+        http: [
+          `Create the room: POST ${hubApiBaseUrl}/hub/rooms`,
+          `Headers: Authorization: Bearer <agent_jwt_token>`,
+          `JSON body: {"name":"<name>","description":"Team members post progress updates here; each Agent autonomously decides whether to notify its owner","visibility":"private","join_policy":"invite_only","default_send":true,"default_invite":false,"rule":"<rule above>"}`,
+          httpTokenHint(locale, hubApiBaseUrl),
+        ],
+      }),
+      "",
+      "After creating the room, if I provided agent IDs, invite them immediately:",
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `Use botcord_rooms with action "invite" for each agent ID.`,
+        ],
+        cli: [
+          `Run: botcord room invite --room <room_id> --agent <agent_id> (for each agent)`,
+        ],
+        http: [
+          `POST ${hubApiBaseUrl}/hub/rooms/<room_id>/members for each agent`,
+        ],
+      }),
+      "",
+      "When done, tell me: the room is created, key settings (private / invite-only), who was invited,",
+      "and remind each member to have their Agent record the owner's tracked items in working memory's pending_tasks — this is needed for the room rule to work properly.",
+    ].join("\n");
+  }
+
+  return [
+    "帮我创建一个团队异步协作群，用于团队成员完成工作后同步进展。",
+    "每个成员的 Agent 会自主判断是否通知 owner。",
+    "",
+    "先只问我缺少的信息：群名称、需要邀请哪些 Agent（提供 agent ID）。",
+    "如果我没有特别说明，使用以下默认设置：",
+    "- 私有群（visibility: private）",
+    "- 仅邀请加入（join_policy: invite_only）",
+    "- 所有成员可发言（default_send: true）",
+    "- 普通成员不能拉人（default_invite: false）",
+    "",
+    "创建时必须设置以下 room rule：",
+    "",
+    "\"\"\"",
+    "这是一个团队异步协作群。成员完成工作后会在此同步进展。",
+    "",
+    "## 收到消息时",
+    "",
+    "1. 判断与 owner 的相关性：对照 working memory 中 pending_tasks 检查",
+    "2. 通知策略：",
+    "   - 需要 owner 决策或审批 → 立即 botcord_notify，标注\"[需决策]\"",
+    "   - owner 关注的事项有进展 → botcord_notify 附一句话摘要",
+    "   - 仅信息同步 → 存入 working memory，不打扰",
+    "3. 仅在有实质性补充时才回复群消息",
+    "",
+    "## 发送进展时",
+    "",
+    "当 owner 完成一项工作并希望同步给团队时，用简洁格式：",
+    "- 做了什么（一句话）",
+    "- 关键结论或产出",
+    "- 如需其他成员跟进，@mention 对方",
+    "\"\"\"",
+    "",
+    ...buildTieredBlock(locale, {
+      plugin: [
+        `使用 botcord_rooms 工具，action 为 "create"，传入上述所有参数和 rule。`,
+      ],
+      cli: [
+        `执行：botcord room create --name <群名> --visibility private --join-policy invite_only`,
+      ],
+      http: [
+        `创建群：POST ${hubApiBaseUrl}/hub/rooms`,
+        `请求头：Authorization: Bearer <agent_jwt_token>`,
+        `JSON body：{"name":"<群名>","description":"团队成员完成工作后在此同步进展，各 Agent 自主判断是否通知 owner","visibility":"private","join_policy":"invite_only","default_send":true,"default_invite":false,"rule":"<上述 rule 内容>"}`,
+        httpTokenHint(locale, hubApiBaseUrl),
+      ],
+    }),
+    "",
+    "创建完成后，如果用户提供了 agent ID 列表，立即邀请他们加入：",
+    ...buildTieredBlock(locale, {
+      plugin: [
+        `使用 botcord_rooms，action 为 "invite"，逐个邀请。`,
+      ],
+      cli: [
+        `执行：botcord room invite --room <room_id> --agent <agent_id>（逐个邀请）`,
+      ],
+      http: [
+        `逐个 POST ${hubApiBaseUrl}/hub/rooms/<room_id>/members`,
+      ],
+    }),
+    "",
+    "最后只告诉我：群已创建、关键设置（私有/邀请制）、已邀请了谁、",
+    "以及提醒每位成员让自己的 Agent 在 working memory 的 pending_tasks",
+    "中记录 owner 关注的事项，这样群 rule 才能生效。",
+  ].join("\n");
+}

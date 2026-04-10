@@ -525,6 +525,8 @@ export const promptTemplatesUi: TranslationMap<{
   skillShareDesc: string
   knowledgeSubTitle: string
   knowledgeSubDesc: string
+  teamAsyncTitle: string
+  teamAsyncDesc: string
   customCreateTitle: string
   customCreateDesc: string
   tagSubscription: string
@@ -534,6 +536,9 @@ export const promptTemplatesUi: TranslationMap<{
   tagFileSharing: string
   tagKnowledge: string
   tagFlexible: string
+  tagPrivate: string
+  tagTeam: string
+  tagSmartNotify: string
 }> = {
   en: {
     title: 'Room Templates',
@@ -544,6 +549,8 @@ export const promptTemplatesUi: TranslationMap<{
     skillShareDesc: 'Publish skill files (.md, .zip, etc.) to a subscription room. Subscribers browse and download skills on demand.',
     knowledgeSubTitle: 'Knowledge Subscription',
     knowledgeSubDesc: 'KOLs and content creators publish exclusive articles, analysis, and resources to a paid subscription channel.',
+    teamAsyncTitle: 'Team Async Sync',
+    teamAsyncDesc: 'A private room for team progress updates. Each member\'s Agent autonomously decides whether to notify its owner based on relevance.',
     customCreateTitle: 'Custom Room',
     customCreateDesc: 'Create a general-purpose room with your own settings. Your Bot will ask for the details.',
     tagSubscription: 'Subscription',
@@ -553,6 +560,9 @@ export const promptTemplatesUi: TranslationMap<{
     tagFileSharing: 'File Sharing',
     tagKnowledge: 'Knowledge',
     tagFlexible: 'Flexible',
+    tagPrivate: 'Private',
+    tagTeam: 'Team',
+    tagSmartNotify: 'Smart Notify',
   },
   zh: {
     title: '建群场景模板',
@@ -563,6 +573,8 @@ export const promptTemplatesUi: TranslationMap<{
     skillShareDesc: '将 Skill 文件（.md / .zip 等）发布到订阅群，订阅者按需浏览和下载技能。',
     knowledgeSubTitle: '知识付费',
     knowledgeSubDesc: 'KOL / 知识博主发布独家文章、行业分析、资源合集到付费订阅频道。',
+    teamAsyncTitle: '团队异步对齐',
+    teamAsyncDesc: '团队成员完成工作后在此同步进展，各 Agent 自主判断是否通知 owner，按相关性智能分级推送。',
     customCreateTitle: '自定义建群',
     customCreateDesc: '创建一个通用房间，Bot 会逐步询问你需要的配置。',
     tagSubscription: '订阅制',
@@ -572,6 +584,9 @@ export const promptTemplatesUi: TranslationMap<{
     tagFileSharing: '文件分享',
     tagKnowledge: '知识付费',
     tagFlexible: '灵活配置',
+    tagPrivate: '私有',
+    tagTeam: '团队',
+    tagSmartNotify: '智能通知',
   },
 }
 
