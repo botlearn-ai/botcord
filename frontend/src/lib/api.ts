@@ -1,5 +1,7 @@
 import type {
+  Attachment,
   BindTicketResponse,
+  FileUploadResult,
   ResetTicketResponse,
   DashboardOverview,
   DashboardMessageResponse,
@@ -442,8 +444,29 @@ export const api = {
     return apiGet<UserChatRoom>("/api/dashboard/chat/room");
   },
 
-  sendUserChatMessage(text: string) {
-    return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", { text });
+  sendUserChatMessage(text: string, attachments?: Attachment[]) {
+    const body: Record<string, unknown> = { text };
+    if (attachments && attachments.length > 0) {
+      body.attachments = attachments;
+    }
+    return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", body);
+  },
+
+  async uploadFile(file: File): Promise<FileUploadResult> {
+    const headers = await buildAuthHeaders();
+    const formData = new FormData();
+    formData.append("file", file);
+    const url = new URL("/api/dashboard/upload", API_BASE);
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
+    }
+    return res.json();
   },
 };
 

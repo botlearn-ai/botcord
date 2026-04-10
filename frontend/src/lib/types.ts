@@ -111,6 +111,15 @@ export interface UserChatSendResponse {
   status: string;
 }
 
+export interface FileUploadResult {
+  file_id: string;
+  url: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  expires_at: string;
+}
+
 // --- Owner-chat WS streaming types ---
 
 export interface StreamBlockEntry {
