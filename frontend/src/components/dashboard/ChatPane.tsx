@@ -357,13 +357,14 @@ function ExploreMainPane() {
     if (!authResolved) {
       return;
     }
-    if (isRoomsView && !publicRooms.length && !publicRoomsLoading) {
+    if (isRoomsView && !publicRoomsLoading) {
       void loadPublicRooms();
     }
-    if (!isRoomsView && !publicAgents.length && !publicAgentsLoading) {
+    if (!isRoomsView && !publicAgentsLoading) {
       void loadPublicAgents();
     }
-  }, [isRoomsView, loadPublicAgents, loadPublicRooms, authResolved, publicAgents.length, publicAgentsLoading, publicRooms.length, publicRoomsLoading]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally refresh on view switch, not on data length
+  }, [isRoomsView, authResolved]);
 
   useEffect(() => {
     setPage(1);
