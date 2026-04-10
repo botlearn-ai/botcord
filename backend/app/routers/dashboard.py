@@ -1601,23 +1601,21 @@ async def dashboard_upload_file(
     if not any(content_type.lower().startswith(p) for p in _ALLOWED_MIME_PREFIXES):
         raise HTTPException(status_code=400, detail=f"MIME type not allowed: {content_type}")
 
-    chunks: list[bytes] = []
-    total_size = 0
+    buf = bytearray()
     while True:
         chunk = await file.read(64 * 1024)
         if not chunk:
             break
-        total_size += len(chunk)
-        if total_size > hub_config.FILE_MAX_SIZE_BYTES:
+        buf.extend(chunk)
+        if len(buf) > hub_config.FILE_MAX_SIZE_BYTES:
             raise HTTPException(status_code=413, detail="File too large")
-        chunks.append(chunk)
 
-    if total_size == 0:
+    if len(buf) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
     raw_name = file.filename or "upload"
     original_filename = os.path.basename(raw_name).strip()[:200] or "upload"
-    data = b"".join(chunks)
+    data = bytes(buf)
     file_id = generate_file_id()
     now = datetime.datetime.now(datetime.timezone.utc)
     expires_at = now + datetime.timedelta(hours=hub_config.FILE_TTL_HOURS)
@@ -1632,7 +1630,7 @@ async def dashboard_upload_file(
         uploader_id=ctx.active_agent_id,
         original_filename=original_filename,
         content_type=content_type,
-        size_bytes=total_size,
+        size_bytes=len(data),
         storage_backend=location.storage_backend,
         disk_path=location.disk_path,
         storage_bucket=location.storage_bucket,
@@ -1647,7 +1645,7 @@ async def dashboard_upload_file(
         "url": f"/hub/files/{file_id}",
         "original_filename": original_filename,
         "content_type": content_type,
-        "size_bytes": total_size,
+        "size_bytes": len(data),
         "expires_at": expires_at.isoformat(),
     }
 

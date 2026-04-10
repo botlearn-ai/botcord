@@ -326,15 +326,18 @@ async def owner_chat_ws(ws: WebSocket):
 
             elif msg_type == "send":
                 text = (msg.get("text") or "").strip()
+                client_msg_id = msg.get("client_msg_id") or None
 
                 # Optional attachments (pre-uploaded via /api/dashboard/upload)
                 raw_atts = msg.get("attachments") or []
                 attachments: list[dict] = []
+                skipped_atts = 0
                 for att in raw_atts[:10]:
                     if isinstance(att, dict) and att.get("url") and att.get("filename"):
                         url_str = str(att["url"])
                         # Only allow /hub/files/f_* URLs — reject arbitrary external links
                         if not _FILE_URL_RE.match(url_str):
+                            skipped_atts += 1
                             continue
                         attachments.append({
                             k: v for k, v in {
@@ -345,12 +348,24 @@ async def owner_chat_ws(ws: WebSocket):
                             }.items() if v is not None
                         })
 
+                if skipped_atts > 0:
+                    logger.warning(
+                        "Owner-chat WS: skipped %d invalid attachment(s) for user=%s agent=%s",
+                        skipped_atts, user_id, agent_id,
+                    )
+
                 # Must have text or attachments
                 if not text and not attachments:
-                    await ws.send_json({"type": "error", "message": "Message must contain text or attachments"})
+                    err_resp: dict = {"type": "error", "message": "Message must contain text or attachments"}
+                    if client_msg_id:
+                        err_resp["client_msg_id"] = str(client_msg_id)[:64]
+                    await ws.send_json(err_resp)
                     continue
                 if len(text) > 4000:
-                    await ws.send_json({"type": "error", "message": "Text too long"})
+                    err_resp2: dict = {"type": "error", "message": "Text too long"}
+                    if client_msg_id:
+                        err_resp2["client_msg_id"] = str(client_msg_id)[:64]
+                    await ws.send_json(err_resp2)
                     continue
 
                 logger.info("Owner-chat WS recv: user=%s agent=%s text_len=%d attachments=%d", user_id, agent_id, len(text), len(attachments))
@@ -450,6 +465,8 @@ async def owner_chat_ws(ws: WebSocket):
                     "text": text,
                     "created_at": now,
                 }
+                if client_msg_id:
+                    echo["client_msg_id"] = str(client_msg_id)[:64]
                 if attachments:
                     echo["ext"] = {"attachments": attachments}
                 await ws.send_json(echo)
