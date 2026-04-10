@@ -201,12 +201,16 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`truncate text-sm font-medium flex items-center gap-1.5 ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                    {room.name}
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                      {room.name}
+                    </span>
                     {room.required_subscription_product_id && (
-                      <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                      <span className="shrink-0">
+                        <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                      </span>
                     )}
-                  </span>
+                  </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {isUnread && (
                       <span className="h-2.5 w-2.5 rounded-full bg-neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
