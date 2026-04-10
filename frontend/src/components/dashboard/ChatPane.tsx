@@ -352,10 +352,6 @@ function ExploreMainPane() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  if (exploreView === "templates") {
-    return <PromptTemplates />;
-  }
-
   const isRoomsView = exploreView === "rooms";
 
   useEffect(() => {
@@ -426,6 +422,10 @@ function ExploreMainPane() {
   const end = start + EXPLORE_PAGE_SIZE;
   const pagedRooms = filteredRooms.slice(start, end);
   const pagedAgents = filteredAgents.slice(start, end);
+
+  if (exploreView === "templates") {
+    return <PromptTemplates />;
+  }
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-deep-black">
