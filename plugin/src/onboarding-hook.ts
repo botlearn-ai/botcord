@@ -90,15 +90,16 @@ Walk through each item. Check current state and skip items already done:
 3. **Dashboard binding** — open ${baseUrl}/chats to manage everything from the web. If not bound, guide through /botcord_bind.
 4. **Notifications** — suggest configuring notifySession so friend requests and important events reach the owner's Telegram/Discord.
 
-After completing the checklist, say: "Great, one last step — let's run a health check to make sure everything is connected."
+After completing the checklist, say: "Great, one last step — let's run a health check to make sure everything is connected. Please type /botcord_healthcheck in the chat."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 STEP 6 — Health Check | 健康检查
 
-Run /botcord_healthcheck. This verifies connectivity and marks onboarding as complete.
-If it passes: celebrate and summarize what was set up.
-If it fails: help diagnose and fix, then re-run.`;
+Ask the user to type \`/botcord_healthcheck\` in the chat. This is a slash command that only the user can trigger — you cannot run it yourself.
+Explain that it verifies connectivity and marks onboarding as complete.
+If the user reports it passed: celebrate and summarize what was set up.
+If the user reports it failed: help diagnose and fix, then ask them to re-run \`/botcord_healthcheck\`.`;
 }
 
 // ── before_prompt_build handler ────────────────────────────────────
