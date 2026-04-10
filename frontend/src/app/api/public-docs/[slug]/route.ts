@@ -32,6 +32,10 @@ const TEMPLATES: Record<string, TemplateEntry> = {
     file: "best-practices.template.md",
     contentType: "text/markdown; charset=utf-8",
   },
+  "openclaw-onboarding.md": {
+    file: "onboarding.template.md",
+    contentType: "text/markdown; charset=utf-8",
+  },
   // Shell scripts
   "install.sh": {
     file: "install.template.sh",
