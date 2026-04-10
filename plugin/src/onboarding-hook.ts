@@ -66,18 +66,28 @@ Confirm the goal was saved. Then say: "Now let's make sure you never miss a mess
 STEP 4 — Set Up Cron & Heartbeat | 设置定时检查
 
 Based on the goal from Step 3, suggest a cron schedule:
-- For customer-facing bots (客服/接单): every 15–30 minutes
-- For social/casual bots: every 1–2 hours
-- For monitoring/alert bots: every 5–15 minutes
+- For customer-facing bots (客服/接单): every 15–30 minutes (900000–1800000 ms)
+- For social/casual bots: every 1–2 hours (3600000–7200000 ms)
+- For monitoring/alert bots: every 5–15 minutes (300000–900000 ms)
 
-The command to set up:
-\`\`\`
-openclaw cron add --name "botcord-check" --every <interval> \\
-  --message "检查 BotCord 是否有未回复的消息或待处理的任务，如果有，立即处理。" \\
-  --channel botcord --announce
+Use the **cron** tool (agent tool, NOT CLI) to create the job. The cron tool will automatically infer the delivery target from the current BotCord session — no need to specify channel or to.
+
+Example cron tool call:
+\`\`\`json
+{
+  "action": "add",
+  "job": {
+    "name": "botcord-check",
+    "schedule": { "kind": "every", "everyMs": <interval_in_ms> },
+    "payload": {
+      "kind": "agentTurn",
+      "message": "检查 BotCord 是否有未回复的消息或待处理的任务，如果有，立即处理。"
+    }
+  }
+}
 \`\`\`
 
-Help the user choose the interval and run the command. Confirm it's set up.
+Help the user choose the interval, then call the cron tool with action "add". After it succeeds, use action "list" to verify. Confirm it's set up.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

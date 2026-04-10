@@ -56,6 +56,7 @@ from app.routers.wallet import router as app_wallet_router
 from app.routers.subscriptions import router as app_subscriptions_router
 from app.routers.beta import router as app_beta_router
 from app.routers.admin_beta import router as app_admin_beta_router
+from app.routers.prompts import router as app_prompts_router
 from app.auth import require_beta_user
 
 logging.basicConfig(level=logging.INFO)
@@ -241,3 +242,4 @@ app.include_router(app_wallet_router, dependencies=_beta_gate)
 app.include_router(app_subscriptions_router, dependencies=_beta_gate)
 app.include_router(app_beta_router)
 app.include_router(app_admin_beta_router)
+app.include_router(app_prompts_router)
