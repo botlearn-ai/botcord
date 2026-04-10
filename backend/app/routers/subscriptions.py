@@ -129,7 +129,7 @@ async def create_product(
     try:
         interval = BillingInterval(body.billing_interval)
     except ValueError:
-        raise HTTPException(status_code=400, detail="billing_interval must be 'week' or 'month'")
+        raise HTTPException(status_code=400, detail="billing_interval must be 'week', 'month', or 'once'")
 
     try:
         product = await sub_svc.create_subscription_product(
