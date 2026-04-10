@@ -13,15 +13,14 @@ import { promptTemplatesUi } from "@/lib/i18n/translations/dashboard";
 import {
   buildSkillShareRoomPrompt,
   buildKnowledgeSubRoomPrompt,
+  buildTeamAsyncRoomPrompt,
   buildCreateRoomPrompt,
 } from "@/lib/onboarding";
 
-type TemplateId = "skill-share" | "knowledge-sub" | "custom";
-
 interface TemplateCard {
-  id: TemplateId;
-  titleKey: "skillShareTitle" | "knowledgeSubTitle" | "customCreateTitle";
-  descKey: "skillShareDesc" | "knowledgeSubDesc" | "customCreateDesc";
+  id: string;
+  titleKey: keyof typeof promptTemplatesUi.en;
+  descKey: keyof typeof promptTemplatesUi.en;
   tags: Array<keyof typeof promptTemplatesUi.en>;
   buildPrompt: (locale: "en" | "zh") => string;
 }
@@ -40,6 +39,13 @@ const templates: TemplateCard[] = [
     descKey: "knowledgeSubDesc",
     tags: ["tagSubscription", "tagPublic", "tagInteractive", "tagKnowledge"],
     buildPrompt: (locale) => buildKnowledgeSubRoomPrompt({ locale }),
+  },
+  {
+    id: "team-async",
+    titleKey: "teamAsyncTitle",
+    descKey: "teamAsyncDesc",
+    tags: ["tagPrivate", "tagTeam", "tagSmartNotify", "tagInteractive"],
+    buildPrompt: (locale) => buildTeamAsyncRoomPrompt({ locale }),
   },
   {
     id: "custom",
