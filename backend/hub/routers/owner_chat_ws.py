@@ -417,7 +417,10 @@ async def owner_chat_ws(ws: WebSocket):
                             "Owner-chat duplicate message: agent=%s msg_id=%s err=%s",
                             agent_id, msg_id, exc,
                         )
-                        await ws.send_json({"type": "error", "message": "Duplicate message"})
+                        dup_err: dict = {"type": "error", "message": "Duplicate message"}
+                        if client_msg_id:
+                            dup_err["client_msg_id"] = str(client_msg_id)[:64]
+                        await ws.send_json(dup_err)
                         continue
 
                     await db.commit()
