@@ -81,6 +81,7 @@ class CreateShareResponse(BaseModel):
     share_url: str
     link_url: str
     entry_type: str
+    required_subscription_product_id: str | None = None
     target_type: str
     target_id: str
     continue_url: str
@@ -107,6 +108,7 @@ class SharedRoomInfo(BaseModel):
     visibility: str | None = None
     join_mode: str | None = None
     requires_payment: bool = False
+    required_subscription_product_id: str | None = None
 
 
 class SharedRoomResponse(BaseModel):

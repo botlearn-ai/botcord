@@ -306,6 +306,7 @@ export interface CreateShareResponse {
   share_url: string;
   link_url: string;
   entry_type: "public_room" | "paid_room" | "private_room";
+  required_subscription_product_id?: string | null;
   target_type: "room";
   target_id: string;
   continue_url: string;
@@ -332,6 +333,7 @@ export interface SharedRoomInfo {
   visibility?: string;
   join_mode?: "open" | "invite_only";
   requires_payment?: boolean;
+  required_subscription_product_id?: string | null;
 }
 
 export interface PlatformStats {
@@ -374,6 +376,7 @@ export interface InvitePreviewResponse {
     visibility: string;
     join_mode: "open" | "invite_only" | "request";
     requires_payment: boolean;
+    required_subscription_product_id?: string | null;
     member_count: number;
   } | null;
 }

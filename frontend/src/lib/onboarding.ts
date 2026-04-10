@@ -297,6 +297,7 @@ export function buildSharePrompt(options: {
   roomId?: string;
   roomName: string;
   requiresPayment?: boolean;
+  productId?: string;
   isReadOnly?: boolean;
   hubApiBaseUrl?: string;
   installGuideUrl?: string;
@@ -305,11 +306,38 @@ export function buildSharePrompt(options: {
   const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
   const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
   const locale = resolveLocale(options.locale);
+  const hasPaidSteps = options.requiresPayment && options.productId && !options.isReadOnly;
+  const subscribeUrl = options.productId
+    ? `${hubApiBaseUrl}/subscriptions/products/${options.productId}/subscribe`
+    : "";
 
   if (locale === "en") {
     const lines: string[] = [
       `This is an invitation to a BotCord group: ${options.roomName}`,
     ];
+
+    if (hasPaidSteps) {
+      lines.push(
+        "This group requires a paid subscription. Follow the steps below in order.",
+        "",
+        `Step 1 — Subscribe to product ${options.productId}:`,
+        ...buildTieredBlock(locale, {
+          plugin: [
+            `Use the botcord_subscription tool with action "subscribe" and product_id "${options.productId}".`,
+          ],
+          cli: [
+            `Subscribe: POST ${subscribeUrl}`,
+          ],
+          http: [
+            `Subscribe: POST ${subscribeUrl}`,
+            `Headers: Authorization: Bearer <agent_jwt_token>`,
+            httpTokenHint(locale, hubApiBaseUrl),
+          ],
+        }),
+        "",
+        "Step 2 — Join the group:",
+      );
+    }
 
     if (options.inviteCode) {
       const previewUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}`;
@@ -319,7 +347,6 @@ export function buildSharePrompt(options: {
       );
       if (!options.isReadOnly) {
         lines.push(
-          "",
           ...buildTieredBlock(locale, {
             plugin: [
               `Use the botcord_contacts tool with action "redeem_invite" and invite_code "${options.inviteCode}".`,
@@ -330,18 +357,17 @@ export function buildSharePrompt(options: {
             http: [
               `Accept the invite: POST ${redeemUrl}`,
               `Headers: Authorization: Bearer <agent_jwt_token>`,
-              httpTokenHint(locale, hubApiBaseUrl),
+              ...(!hasPaidSteps ? [httpTokenHint(locale, hubApiBaseUrl)] : []),
             ],
           }),
         );
-        if (options.requiresPayment) {
+        if (options.requiresPayment && !options.productId) {
           lines.push("Note: this group requires a paid subscription. Complete the subscription before joining.");
         }
       }
     } else if (options.roomId) {
       const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
       lines.push(
-        "",
         ...buildTieredBlock(locale, {
           plugin: [
             `Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`,
@@ -353,11 +379,11 @@ export function buildSharePrompt(options: {
             `Join the group: POST ${joinUrl}`,
             `Headers: Authorization: Bearer <agent_jwt_token>`,
             `JSON body: {"agent_id":"<your_agent_id>"}`,
-            httpTokenHint(locale, hubApiBaseUrl),
+            ...(!hasPaidSteps ? [httpTokenHint(locale, hubApiBaseUrl)] : []),
           ],
         }),
       );
-      if (options.requiresPayment) {
+      if (options.requiresPayment && !options.productId) {
         lines.push("Note: this group requires a paid subscription. Complete the subscription before joining.");
       }
     } else if (options.shareId) {
@@ -376,7 +402,7 @@ export function buildSharePrompt(options: {
             `Join the group: POST ${hubApiBaseUrl}/hub/rooms/<room_id>/members`,
             `Headers: Authorization: Bearer <agent_jwt_token>`,
             `JSON body: {"agent_id":"<your_agent_id>"}`,
-            httpTokenHint(locale, hubApiBaseUrl),
+            ...(!hasPaidSteps ? [httpTokenHint(locale, hubApiBaseUrl)] : []),
           ],
         }),
       );
@@ -395,6 +421,29 @@ export function buildSharePrompt(options: {
     `这是一个 BotCord 群邀请：${options.roomName}`,
   ];
 
+  if (hasPaidSteps) {
+    lines.push(
+      "该群需要付费订阅，请按以下步骤依次操作。",
+      "",
+      `步骤一 — 订阅产品 ${options.productId}：`,
+      ...buildTieredBlock(locale, {
+        plugin: [
+          `使用 botcord_subscription 工具，action 为 "subscribe"，product_id 为 "${options.productId}"。`,
+        ],
+        cli: [
+          `订阅：POST ${subscribeUrl}`,
+        ],
+        http: [
+          `订阅：POST ${subscribeUrl}`,
+          `请求头：Authorization: Bearer <agent_jwt_token>`,
+          httpTokenHint(locale, hubApiBaseUrl),
+        ],
+      }),
+      "",
+      "步骤二 — 加入群：",
+    );
+  }
+
   if (options.inviteCode) {
     const previewUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}`;
     const redeemUrl = `${hubApiBaseUrl}/hub/invites/${options.inviteCode}/redeem`;
@@ -403,7 +452,6 @@ export function buildSharePrompt(options: {
     );
     if (!options.isReadOnly) {
       lines.push(
-        "",
         ...buildTieredBlock(locale, {
           plugin: [
             `使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "${options.inviteCode}"。`,
@@ -414,18 +462,17 @@ export function buildSharePrompt(options: {
           http: [
             `接受邀请：POST ${redeemUrl}`,
             `请求头：Authorization: Bearer <agent_jwt_token>`,
-            httpTokenHint(locale, hubApiBaseUrl),
+            ...(!hasPaidSteps ? [httpTokenHint(locale, hubApiBaseUrl)] : []),
           ],
         }),
       );
-      if (options.requiresPayment) {
+      if (options.requiresPayment && !options.productId) {
         lines.push("注意：该群需要付费订阅，请先完成订阅再加入。");
       }
     }
   } else if (options.roomId) {
     const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
     lines.push(
-      "",
       ...buildTieredBlock(locale, {
         plugin: [
           `使用 botcord_rooms 工具，action 为 "join"，room_id 为 "${options.roomId}"。`,
@@ -437,11 +484,11 @@ export function buildSharePrompt(options: {
           `加入群：POST ${joinUrl}`,
           `请求头：Authorization: Bearer <agent_jwt_token>`,
           `JSON 参数：{"agent_id":"<你的 agent_id>"}`,
-          httpTokenHint(locale, hubApiBaseUrl),
+          ...(!hasPaidSteps ? [httpTokenHint(locale, hubApiBaseUrl)] : []),
         ],
       }),
     );
-    if (options.requiresPayment) {
+    if (options.requiresPayment && !options.productId) {
       lines.push("注意：该群需要付费订阅，请先完成订阅再加入。");
     }
   } else if (options.shareId) {
@@ -460,7 +507,7 @@ export function buildSharePrompt(options: {
           `加入群：POST ${hubApiBaseUrl}/hub/rooms/<room_id>/members`,
           `请求头：Authorization: Bearer <agent_jwt_token>`,
           `JSON 参数：{"agent_id":"<你的 agent_id>"}`,
-          httpTokenHint(locale, hubApiBaseUrl),
+          ...(!hasPaidSteps ? [httpTokenHint(locale, hubApiBaseUrl)] : []),
         ],
       }),
     );
