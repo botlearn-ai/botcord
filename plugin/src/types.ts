@@ -107,6 +107,33 @@ export type RoomInfo = {
   created_at: string;
 };
 
+export type PublicSubscriptionProduct = {
+  product_id: string;
+  name: string;
+  description: string;
+  amount_minor: string;
+  billing_interval: string;
+};
+
+export type PublicRoom = {
+  room_id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  visibility: string;
+  member_count: number;
+  required_subscription_product_id?: string | null;
+  subscription_product?: PublicSubscriptionProduct | null;
+  last_message_preview?: string | null;
+  last_message_at?: string | null;
+  last_sender_name?: string | null;
+};
+
+export type PublicRoomsResponse = {
+  rooms: PublicRoom[];
+  total: number;
+};
+
 export type AgentInfo = {
   agent_id: string;
   display_name?: string;
