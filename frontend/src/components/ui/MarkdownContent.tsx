@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 
@@ -91,7 +92,7 @@ const components: Components = {
 export default function MarkdownContent({ content }: MarkdownContentProps) {
   return (
     <div className="break-words text-sm text-text-primary [&>*:first-child]:mt-0">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components}>
         {content}
       </ReactMarkdown>
     </div>
