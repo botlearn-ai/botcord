@@ -214,7 +214,7 @@ export default function DashboardApp() {
       const nextSidebarTab = normalizedTab === "user-chat" ? "messages" : normalizedTab;
       if (uiStore.sidebarTab !== nextSidebarTab) uiStore.setSidebarTab(nextSidebarTab);
 
-      if (tab === "explore" && (subtab === "rooms" || subtab === "agents") && uiStore.exploreView !== subtab) {
+      if (tab === "explore" && (subtab === "rooms" || subtab === "agents" || subtab === "templates") && uiStore.exploreView !== subtab) {
         uiStore.setExploreView(subtab);
       }
 

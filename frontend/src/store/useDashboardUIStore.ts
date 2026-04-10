@@ -19,7 +19,7 @@ export interface DashboardUIState {
   sidebarTab: "messages" | "contacts" | "explore" | "wallet";
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
-  exploreView: "rooms" | "agents";
+  exploreView: "rooms" | "agents" | "templates";
   contactsView: "agents" | "requests" | "rooms";
 
   setFocusedRoomId: (roomId: string | null) => void;
