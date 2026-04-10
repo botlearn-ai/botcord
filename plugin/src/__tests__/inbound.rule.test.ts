@@ -25,12 +25,12 @@ vi.mock("../runtime.js", () => ({
 
 import { handleInboxMessage } from "../inbound.js";
 
-describe("handleInboxMessage room rule injection", () => {
+describe("handleInboxMessage room rule injection removed", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("injects room rule for group rooms", async () => {
+  it("does not inject room rule into message body for group rooms (handled by static context)", async () => {
     await handleInboxMessage(
       {
         hub_msg_id: "h1",
@@ -58,8 +58,8 @@ describe("handleInboxMessage room rule injection", () => {
 
     expect(mockDispatchReply).toHaveBeenCalledTimes(1);
     const dispatchArg = mockDispatchReply.mock.calls[0][0];
-    expect(dispatchArg.ctx.BodyForAgent).toContain("[Room Rule] <room-rule>Keep it focused</room-rule>");
-    expect(dispatchArg.ctx.RawBody).toContain("[Room Rule] <room-rule>Keep it focused</room-rule>");
+    expect(dispatchArg.ctx.BodyForAgent).not.toContain("[Room Rule]");
+    expect(dispatchArg.ctx.RawBody).not.toContain("[Room Rule]");
   });
 
   it("does not inject room rule for direct rooms", async () => {
