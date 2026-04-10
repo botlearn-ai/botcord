@@ -15,7 +15,7 @@ export interface OwnerChatWsOptions {
   onNotification?: (notif: OwnerChatNotification) => void;
   onAuthOk: (data: { agent_id: string; room_id: string }) => void;
   onStatusChange?: (connected: boolean) => void;
-  onSendFailed?: (text: string) => void;
+  onSendFailed?: (text: string, clientMsgId?: string) => void;
 }
 
 export interface WsAttachment {
@@ -26,7 +26,7 @@ export interface WsAttachment {
 }
 
 export interface OwnerChatWsClient {
-  send: (text: string, attachments?: WsAttachment[]) => boolean;
+  send: (text: string, attachments?: WsAttachment[], clientMsgId?: string) => boolean;
   close: () => void;
 }
 
@@ -119,7 +119,7 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
           case "error":
             console.warn("[owner-chat-ws] Server error:", data.message);
             // Server rejected a send — notify caller so pending msg can be marked failed
-            opts.onSendFailed?.("");
+            opts.onSendFailed?.("", data.client_msg_id);
             break;
         }
       };
@@ -154,9 +154,9 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
     }, delay);
   }
 
-  function send(text: string, attachments?: WsAttachment[]): boolean {
+  function send(text: string, attachments?: WsAttachment[], clientMsgId?: string): boolean {
     if (!ws || !authenticated || ws.readyState !== WebSocket.OPEN) {
-      opts.onSendFailed?.(text);
+      opts.onSendFailed?.(text, clientMsgId);
       return false;
     }
     try {
@@ -164,10 +164,13 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
       if (attachments && attachments.length > 0) {
         msg.attachments = attachments;
       }
+      if (clientMsgId) {
+        msg.client_msg_id = clientMsgId;
+      }
       ws.send(JSON.stringify(msg));
       return true;
     } catch {
-      opts.onSendFailed?.(text);
+      opts.onSendFailed?.(text, clientMsgId);
       return false;
     }
   }

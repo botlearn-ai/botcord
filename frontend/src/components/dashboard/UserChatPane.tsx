@@ -473,10 +473,13 @@ export default function UserChatPane() {
         };
         insertMessage(roomId, dashMsg);
 
-        // Remove matching pending message (match on sendText, not display text)
+        // Remove matching pending message (prefer client_msg_id, fall back to sendText)
         if (msg.sender === "user") {
           setPending((prev) => {
-            const match = prev.find((p) => p.sendText === msg.text);
+            const clientMsgId = (msg as any).client_msg_id as string | undefined;
+            const match = clientMsgId
+              ? prev.find((p) => p.id === clientMsgId)
+              : prev.find((p) => p.sendText === msg.text);
             return match ? prev.filter((p) => p.id !== match.id) : prev;
           });
         }
@@ -528,13 +531,15 @@ export default function UserChatPane() {
           setUserChatAgentTyping(false);
         }
       },
-      onSendFailed: () => {
-        // Mark the most recent "sending" pending message as failed
+      onSendFailed: (_text: string, clientMsgId?: string) => {
+        // Mark the identified (or most recent) "sending" pending message as failed
         setPending((prev) => {
-          const last = [...prev].reverse().find((p) => p.status === "sending");
-          if (!last) return prev;
+          const target = clientMsgId
+            ? prev.find((p) => p.id === clientMsgId && p.status === "sending")
+            : [...prev].reverse().find((p) => p.status === "sending");
+          if (!target) return prev;
           return prev.map((p) =>
-            p.id === last.id ? { ...p, status: "failed" as const, error: "WebSocket send failed" } : p
+            p.id === target.id ? { ...p, status: "failed" as const, error: "WebSocket send failed" } : p
           );
         });
       },
@@ -667,7 +672,7 @@ export default function UserChatPane() {
 
     // If WS is connected, send via WS (no polling needed — WS delivers echo)
     if (wsClientRef.current && wsConnected) {
-      const sent = wsClientRef.current.send(text, wsAtts);
+      const sent = wsClientRef.current.send(text, wsAtts, msgId);
       if (sent) {
         // WS echo will remove the pending message via onMessage callback.
         // onSendFailed callback handles the case where the socket closes after send.

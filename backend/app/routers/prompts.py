@@ -158,6 +158,7 @@ async def prompt_share(
     # Resolve room metadata
     room_name = "Unknown"
     requires_payment = False
+    product_id: str | None = None
     is_read_only = False
     resolved_room_id = room_id
 
@@ -183,13 +184,32 @@ async def prompt_share(
         if room:
             room_name = room.name or room_name
             requires_payment = bool(room.required_subscription_product_id)
+            product_id = room.required_subscription_product_id
 
     # Build prompt
     loc = language
     lines: list[str] = []
+    has_paid_steps = requires_payment and product_id and not is_read_only
+    subscribe_url = f"{hub_url}/subscriptions/products/{product_id}/subscribe" if product_id else ""
 
     if loc == "en":
         lines.append(f"This is an invitation to a BotCord group: {room_name}")
+
+        if has_paid_steps:
+            lines.append("This group requires a paid subscription. Follow the steps below in order.")
+            lines.append("")
+            lines.append(f"Step 1 — Subscribe to product {product_id}:")
+            lines.extend(_tiered_block(loc,
+                plugin=[f'Use the botcord_subscription tool with action "subscribe" and product_id "{product_id}".'],
+                cli=[f"Subscribe: POST {subscribe_url}"],
+                http=[
+                    f"Subscribe: POST {subscribe_url}",
+                    "Headers: Authorization: Bearer <agent_jwt_token>",
+                    _http_token_hint(loc, hub_url),
+                ],
+            ))
+            lines.append("")
+            lines.append("Step 2 — Join the group:")
 
         if invite_code:
             preview_url = f"{hub_url}/hub/invites/{invite_code}"
@@ -197,16 +217,18 @@ async def prompt_share(
             lines.append(f"Preview invite details: GET {preview_url}")
             if not is_read_only:
                 lines.append("")
+                http_lines = [
+                    f"Accept the invite: POST {redeem_url}",
+                    "Headers: Authorization: Bearer <agent_jwt_token>",
+                ]
+                if not has_paid_steps:
+                    http_lines.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
                     plugin=[f'Use the botcord_contacts tool with action "redeem_invite" and invite_code "{invite_code}".'],
                     cli=[f"Redeem the invite: POST {redeem_url}"],
-                    http=[
-                        f"Accept the invite: POST {redeem_url}",
-                        "Headers: Authorization: Bearer <agent_jwt_token>",
-                        _http_token_hint(loc, hub_url),
-                    ],
+                    http=http_lines,
                 ))
-                if requires_payment:
+                if requires_payment and not product_id:
                     lines.append("Note: this group requires a paid subscription. Complete the subscription before joining.")
         elif resolved_room_id:
             join_url = f"{hub_url}/hub/rooms/{resolved_room_id}/members"
@@ -214,29 +236,33 @@ async def prompt_share(
                 share_info_url = f"{hub_url}/api/share/{share_id}"
                 lines.append(f"View share details and find room_id: GET {share_info_url}")
                 lines.append("")
+                share_http = [
+                    f"Join the group: POST {hub_url}/hub/rooms/<room_id>/members",
+                    "Headers: Authorization: Bearer <agent_jwt_token>",
+                    '{"agent_id":"<your_agent_id>"}',
+                ]
+                if not has_paid_steps:
+                    share_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
                     plugin=['Use the botcord_rooms tool with action "join" and the room_id from the share details.'],
                     cli=["Run: botcord room join --room <room_id> (get room_id from the share details above)."],
-                    http=[
-                        f"Join the group: POST {hub_url}/hub/rooms/<room_id>/members",
-                        "Headers: Authorization: Bearer <agent_jwt_token>",
-                        '{"agent_id":"<your_agent_id>"}',
-                        _http_token_hint(loc, hub_url),
-                    ],
+                    http=share_http,
                 ))
             else:
                 lines.append("")
+                room_http = [
+                    f"Join the group: POST {join_url}",
+                    "Headers: Authorization: Bearer <agent_jwt_token>",
+                    'JSON body: {"agent_id":"<your_agent_id>"}',
+                ]
+                if not has_paid_steps:
+                    room_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
                     plugin=[f'Use the botcord_rooms tool with action "join" and room_id "{resolved_room_id}".'],
                     cli=[f"Run: botcord room join --room {resolved_room_id}"],
-                    http=[
-                        f"Join the group: POST {join_url}",
-                        "Headers: Authorization: Bearer <agent_jwt_token>",
-                        'JSON body: {"agent_id":"<your_agent_id>"}',
-                        _http_token_hint(loc, hub_url),
-                    ],
+                    http=room_http,
                 ))
-            if requires_payment:
+            if requires_payment and not product_id:
                 lines.append("Note: this group requires a paid subscription. Complete the subscription before joining.")
 
         lines.append("")
@@ -246,22 +272,40 @@ async def prompt_share(
         # Chinese
         lines.append(f"这是一个 BotCord 群邀请：{room_name}")
 
+        if has_paid_steps:
+            lines.append("该群需要付费订阅，请按以下步骤依次操作。")
+            lines.append("")
+            lines.append(f"步骤一 — 订阅产品 {product_id}：")
+            lines.extend(_tiered_block(loc,
+                plugin=[f'使用 botcord_subscription 工具，action 为 "subscribe"，product_id 为 "{product_id}"。'],
+                cli=[f"订阅：POST {subscribe_url}"],
+                http=[
+                    f"订阅：POST {subscribe_url}",
+                    "请求头：Authorization: Bearer <agent_jwt_token>",
+                    _http_token_hint(loc, hub_url),
+                ],
+            ))
+            lines.append("")
+            lines.append("步骤二 — 加入群：")
+
         if invite_code:
             preview_url = f"{hub_url}/hub/invites/{invite_code}"
             redeem_url = f"{hub_url}/hub/invites/{invite_code}/redeem"
             lines.append(f"查看邀请详情：GET {preview_url}")
             if not is_read_only:
                 lines.append("")
+                zh_invite_http = [
+                    f"接受邀请：POST {redeem_url}",
+                    "请求头：Authorization: Bearer <agent_jwt_token>",
+                ]
+                if not has_paid_steps:
+                    zh_invite_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
                     plugin=[f'使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "{invite_code}"。'],
                     cli=[f"兑换邀请：POST {redeem_url}"],
-                    http=[
-                        f"接受邀请：POST {redeem_url}",
-                        "请求头：Authorization: Bearer <agent_jwt_token>",
-                        _http_token_hint(loc, hub_url),
-                    ],
+                    http=zh_invite_http,
                 ))
-                if requires_payment:
+                if requires_payment and not product_id:
                     lines.append("注意：该群需要付费订阅，请先完成订阅再加入。")
         elif resolved_room_id:
             join_url = f"{hub_url}/hub/rooms/{resolved_room_id}/members"
@@ -269,29 +313,33 @@ async def prompt_share(
                 share_info_url = f"{hub_url}/api/share/{share_id}"
                 lines.append(f"查看分享详情并获取 room_id：GET {share_info_url}")
                 lines.append("")
+                zh_share_http = [
+                    f"加入群：POST {hub_url}/hub/rooms/<room_id>/members",
+                    "请求头：Authorization: Bearer <agent_jwt_token>",
+                    'JSON 参数：{"agent_id":"<你的 agent_id>"}',
+                ]
+                if not has_paid_steps:
+                    zh_share_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
                     plugin=["使用 botcord_rooms 工具，action 为 \"join\"，room_id 从分享详情中获取。"],
                     cli=["执行命令：botcord room join --room <room_id>（room_id 从上面的分享详情中获取）。"],
-                    http=[
-                        f"加入群：POST {hub_url}/hub/rooms/<room_id>/members",
-                        "请求头：Authorization: Bearer <agent_jwt_token>",
-                        'JSON 参数：{"agent_id":"<你的 agent_id>"}',
-                        _http_token_hint(loc, hub_url),
-                    ],
+                    http=zh_share_http,
                 ))
             else:
                 lines.append("")
+                zh_room_http = [
+                    f"加入群：POST {join_url}",
+                    "请求头：Authorization: Bearer <agent_jwt_token>",
+                    'JSON 参数：{"agent_id":"<你的 agent_id>"}',
+                ]
+                if not has_paid_steps:
+                    zh_room_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
                     plugin=[f'使用 botcord_rooms 工具，action 为 "join"，room_id 为 "{resolved_room_id}"。'],
                     cli=[f"执行命令：botcord room join --room {resolved_room_id}"],
-                    http=[
-                        f"加入群：POST {join_url}",
-                        "请求头：Authorization: Bearer <agent_jwt_token>",
-                        'JSON 参数：{"agent_id":"<你的 agent_id>"}',
-                        _http_token_hint(loc, hub_url),
-                    ],
+                    http=zh_room_http,
                 ))
-            if requires_payment:
+            if requires_payment and not product_id:
                 lines.append("注意：该群需要付费订阅，请先完成订阅再加入。")
 
         lines.append("")

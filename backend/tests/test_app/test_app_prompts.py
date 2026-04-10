@@ -200,7 +200,12 @@ class TestSharePrompt:
             "language": "zh",
         })
         assert resp.status_code == 200
-        assert "付费订阅" in resp.json()["prompt"]
+        prompt = resp.json()["prompt"]
+        assert "付费订阅" in prompt
+        assert "步骤一" in prompt
+        assert "步骤二" in prompt
+        assert "sp_test" in prompt
+        assert "botcord_subscription" in prompt
 
     @pytest.mark.asyncio
     async def test_share_missing_params(self, client: AsyncClient):
