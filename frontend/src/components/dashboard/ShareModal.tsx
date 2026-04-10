@@ -51,6 +51,17 @@ export default function ShareModal({ roomId, roomName, roomVisibility, onClose }
     }
   };
 
+  const resolveProductId = (sd: typeof shareData): string | undefined => {
+    if (!sd) return undefined;
+    if ("required_subscription_product_id" in sd && sd.required_subscription_product_id) {
+      return sd.required_subscription_product_id as string;
+    }
+    if ("room" in sd && sd.room && "required_subscription_product_id" in sd.room) {
+      return sd.room.required_subscription_product_id ?? undefined;
+    }
+    return undefined;
+  };
+
   const handleCopyPrompt = async () => {
     if (!shareData) return;
     try {
@@ -64,6 +75,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, onClose }
           roomId,
           roomName,
           requiresPayment: shareData.entry_type === "paid_room",
+          productId: resolveProductId(shareData),
           isReadOnly: entryType === "private_room",
           locale,
         }),
@@ -154,6 +166,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, onClose }
                     roomId,
                     roomName,
                     requiresPayment: entryType === "paid_room",
+                    productId: resolveProductId(shareData),
                     isReadOnly: entryType === "private_room",
                     locale,
                   })}

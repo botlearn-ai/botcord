@@ -72,6 +72,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
     roomId: data.room.room_id,
     roomName: data.room.name,
     requiresPayment: data.entry_type === "paid_room",
+    productId: data.room.required_subscription_product_id ?? undefined,
     isReadOnly: data.entry_type === "private_room",
     locale,
   });
