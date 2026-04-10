@@ -69,13 +69,6 @@ function buildInboundHeader(params: {
   return parts.join(" | ");
 }
 
-function appendRoomRule(content: string, roomRule?: string | null): string {
-  const normalizedRule = roomRule?.trim();
-  if (!normalizedRule) return content;
-  const sanitizedRule = sanitizeUntrustedContent(normalizedRule);
-  return `${content}\n[Room Rule] <room-rule>${sanitizedRule}</room-rule>`;
-}
-
 export interface InboundParams {
   cfg: any;
   accountId: string;
@@ -363,14 +356,13 @@ async function handleA2AMessage(
 
   const sanitizedContent = sanitizeUntrustedContent(rawContent);
   const content = `${header}\n<agent-message sender="${sanitizedSender}">\n${sanitizedContent}\n</agent-message>${silentHint}${notifyOwnerHint}`;
-  const contentWithRule = isGroupRoom ? appendRoomRule(content, msg.room_rule) : content;
 
   await dispatchInbound({
     cfg,
     accountId,
     senderName: senderId,
     senderId,
-    content: contentWithRule,
+    content,
     messageId: envelope.msg_id,
     messageType: envelope.type,
     chatType,
@@ -441,7 +433,6 @@ async function handleA2AMessageBatch(
     : "";
 
   const content = `${header}\n${messageBlocks.join("\n")}${silentHint}${notifyOwnerHint}`;
-  const contentWithRule = isGroupRoom ? appendRoomRule(content, first.room_rule) : content;
 
   // Use the last message's metadata for dispatch (most recent)
   const last = msgs[msgs.length - 1];
