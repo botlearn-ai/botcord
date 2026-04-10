@@ -160,7 +160,7 @@ export function createRoomsTool() {
             });
 
           case "discover":
-            return await client.discoverRooms(args.name);
+            return await client.discoverPublicRooms(args.name);
 
           case "join":
             if (!args.room_id) return { error: "room_id is required" };

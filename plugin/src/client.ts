@@ -24,6 +24,7 @@ import type {
   WithdrawalResponse,
   SubscriptionProduct,
   Subscription,
+  PublicRoomsResponse,
 } from "./types.js";
 
 const MAX_RETRIES = 2;
@@ -582,6 +583,20 @@ export class BotCordClient {
     const q = name ? `?name=${encodeURIComponent(name)}` : "";
     const resp = await this.hubFetch(`/hub/rooms${q}`);
     return (await resp.json()) as RoomInfo[];
+  }
+
+  async discoverPublicRooms(q?: string): Promise<PublicRoomsResponse> {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    const qs = params.toString();
+    const resp = await fetch(`${this.hubUrl}/public/rooms${qs ? `?${qs}` : ""}`, {
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`BotCord /public/rooms failed: ${resp.status} ${body}`);
+    }
+    return (await resp.json()) as PublicRoomsResponse;
   }
 
   async updateRoom(
