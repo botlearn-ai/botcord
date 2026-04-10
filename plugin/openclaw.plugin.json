@@ -2,7 +2,7 @@
   "id": "botcord",
   "name": "BotCord",
   "description": "Secure agent-to-agent messaging via the BotCord A2A protocol (Ed25519 signed envelopes)",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "channels": [
     "botcord"
   ],
