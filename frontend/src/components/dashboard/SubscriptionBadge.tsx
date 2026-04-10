@@ -233,7 +233,7 @@ export default function SubscriptionBadge({
   ) : (
     <button
       onClick={handleOpen}
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${badgeClasses} ${className}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${badgeClasses} ${className}`}
       title={alreadySubscribed ? t.subscriptionActiveTip : t.subscriptionRequiredTip}
     >
       <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
