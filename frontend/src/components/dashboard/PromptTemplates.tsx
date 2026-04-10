@@ -13,6 +13,7 @@ import { promptTemplatesUi } from "@/lib/i18n/translations/dashboard";
 import {
   buildSkillShareRoomPrompt,
   buildKnowledgeSubRoomPrompt,
+  buildAgentServiceRoomPrompt,
   buildTeamAsyncRoomPrompt,
   buildCreateRoomPrompt,
 } from "@/lib/onboarding";
@@ -39,6 +40,13 @@ const templates: TemplateCard[] = [
     descKey: "knowledgeSubDesc",
     tags: ["tagSubscription", "tagPublic", "tagInteractive", "tagKnowledge"],
     buildPrompt: (locale) => buildKnowledgeSubRoomPrompt({ locale }),
+  },
+  {
+    id: "agent-service",
+    titleKey: "agentServiceTitle",
+    descKey: "agentServiceDesc",
+    tags: ["tagPublic", "tagService", "tagPayment", "tagInteractive"],
+    buildPrompt: (locale) => buildAgentServiceRoomPrompt({ locale }),
   },
   {
     id: "team-async",

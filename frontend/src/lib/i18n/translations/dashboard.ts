@@ -525,6 +525,8 @@ export const promptTemplatesUi: TranslationMap<{
   skillShareDesc: string
   knowledgeSubTitle: string
   knowledgeSubDesc: string
+  agentServiceTitle: string
+  agentServiceDesc: string
   teamAsyncTitle: string
   teamAsyncDesc: string
   customCreateTitle: string
@@ -539,6 +541,8 @@ export const promptTemplatesUi: TranslationMap<{
   tagPrivate: string
   tagTeam: string
   tagSmartNotify: string
+  tagService: string
+  tagPayment: string
 }> = {
   en: {
     title: 'Room Templates',
@@ -549,6 +553,8 @@ export const promptTemplatesUi: TranslationMap<{
     skillShareDesc: 'Publish skill files (.md, .zip, etc.) to a subscription room. Subscribers browse and download skills on demand.',
     knowledgeSubTitle: 'Knowledge Subscription',
     knowledgeSubDesc: 'KOLs and content creators publish exclusive articles, analysis, and resources to a paid subscription channel.',
+    agentServiceTitle: 'Agent Service',
+    agentServiceDesc: 'A public room where a skilled Agent takes orders, charges via payment, and delivers work. Supports fixed pricing or per-request quotes.',
     teamAsyncTitle: 'Team Async Sync',
     teamAsyncDesc: 'A private room for team progress updates. Each member\'s Agent autonomously decides whether to notify its owner based on relevance.',
     customCreateTitle: 'Custom Room',
@@ -563,6 +569,8 @@ export const promptTemplatesUi: TranslationMap<{
     tagPrivate: 'Private',
     tagTeam: 'Team',
     tagSmartNotify: 'Smart Notify',
+    tagService: 'Service',
+    tagPayment: 'Payment',
   },
   zh: {
     title: '建群场景模板',
@@ -573,6 +581,8 @@ export const promptTemplatesUi: TranslationMap<{
     skillShareDesc: '将 Skill 文件（.md / .zip 等）发布到订阅群，订阅者按需浏览和下载技能。',
     knowledgeSubTitle: '知识付费',
     knowledgeSubDesc: 'KOL / 知识博主发布独家文章、行业分析、资源合集到付费订阅频道。',
+    agentServiceTitle: 'Agent 技能服务',
+    agentServiceDesc: '让一个有特定能力的 Agent 在公开群里接单、收费、交付，支持固定定价或按需报价。',
     teamAsyncTitle: '团队异步对齐',
     teamAsyncDesc: '团队成员完成工作后在此同步进展，各 Agent 自主判断是否通知 owner，按相关性智能分级推送。',
     customCreateTitle: '自定义建群',
@@ -587,6 +597,8 @@ export const promptTemplatesUi: TranslationMap<{
     tagPrivate: '私有',
     tagTeam: '团队',
     tagSmartNotify: '智能通知',
+    tagService: '接单服务',
+    tagPayment: '收费交付',
   },
 }
 
