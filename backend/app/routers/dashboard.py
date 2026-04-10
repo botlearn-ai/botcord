@@ -687,26 +687,19 @@ async def discover_rooms(
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Discover public rooms the agent is not a member of."""
-    agent_id = ctx.active_agent_id
-
-    my_rooms = select(RoomMember.room_id).where(RoomMember.agent_id == agent_id).subquery()
-
-    not_joined = (
-        Room.visibility == RoomVisibility.public,
-        ~Room.room_id.in_(select(my_rooms.c.room_id)),
-    )
+    """Discover public rooms."""
+    filters = (Room.visibility == RoomVisibility.public,)
 
     # Total count
     count_result = await db.execute(
-        select(func.count()).select_from(Room).where(*not_joined)
+        select(func.count()).select_from(Room).where(*filters)
     )
     total = count_result.scalar() or 0
 
     stmt = (
         select(Room, func.count(RoomMember.id).label("member_count"))
         .outerjoin(RoomMember, RoomMember.room_id == Room.room_id)
-        .where(*not_joined)
+        .where(*filters)
         .group_by(Room.id)
         .order_by(Room.created_at.desc())
         .offset(offset)
