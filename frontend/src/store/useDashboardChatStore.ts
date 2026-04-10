@@ -453,8 +453,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       loadDiscoverRooms: async () => {
-        const { token } = useDashboardSessionStore.getState();
-        if (!token) return;
         set({ discoverLoading: true });
         try {
           const result = await api.discoverRooms();
