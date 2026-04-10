@@ -6,6 +6,7 @@ import asyncio
 import datetime
 import json
 import logging
+import re
 import time
 import uuid
 from collections import deque
@@ -45,6 +46,9 @@ _WS_HEARTBEAT_INTERVAL = 30  # seconds
 
 # Maximum stream blocks per trace before auto-discarding (W7: unbounded buffer)
 _MAX_STREAM_BLOCKS_PER_TRACE = 200
+
+# Strict regex for attachment URLs — must match /hub/files/f_{id}
+_FILE_URL_RE = re.compile(r"^/hub/files/f_[a-zA-Z0-9_-]+$")
 
 # ---------------------------------------------------------------------------
 # In-memory connection & trace state
@@ -322,16 +326,41 @@ async def owner_chat_ws(ws: WebSocket):
 
             elif msg_type == "send":
                 text = (msg.get("text") or "").strip()
-                if not text or len(text) > 4000:
-                    await ws.send_json({"type": "error", "message": "Invalid text"})
+
+                # Optional attachments (pre-uploaded via /api/dashboard/upload)
+                raw_atts = msg.get("attachments") or []
+                attachments: list[dict] = []
+                for att in raw_atts[:10]:
+                    if isinstance(att, dict) and att.get("url") and att.get("filename"):
+                        url_str = str(att["url"])
+                        # Only allow /hub/files/f_* URLs — reject arbitrary external links
+                        if not _FILE_URL_RE.match(url_str):
+                            continue
+                        attachments.append({
+                            k: v for k, v in {
+                                "filename": str(att["filename"])[:200],
+                                "url": url_str,
+                                "content_type": str(att["content_type"]) if att.get("content_type") else None,
+                                "size_bytes": att.get("size_bytes") if isinstance(att.get("size_bytes"), int) else None,
+                            }.items() if v is not None
+                        })
+
+                # Must have text or attachments
+                if not text and not attachments:
+                    await ws.send_json({"type": "error", "message": "Message must contain text or attachments"})
+                    continue
+                if len(text) > 4000:
+                    await ws.send_json({"type": "error", "message": "Text too long"})
                     continue
 
-                logger.info("Owner-chat WS recv: user=%s agent=%s text_len=%d", user_id, agent_id, len(text))
+                logger.info("Owner-chat WS recv: user=%s agent=%s text_len=%d attachments=%d", user_id, agent_id, len(text), len(attachments))
 
                 # Create MessageRecord (same logic as dashboard_chat.send_chat_message)
                 msg_id = str(uuid.uuid4())
                 ts = int(time.time())
-                payload = {"text": text}
+                payload: dict = {"text": text}
+                if attachments:
+                    payload["attachments"] = attachments
                 envelope_data = {
                     "v": "a2a/0.1",
                     "msg_id": msg_id,
@@ -413,14 +442,17 @@ async def owner_chat_ws(ws: WebSocket):
 
                 # Echo user message back
                 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                await ws.send_json({
+                echo: dict = {
                     "type": "message",
                     "hub_msg_id": hub_msg_id,
                     "sender": "user",
                     "room_id": room_id,
                     "text": text,
                     "created_at": now,
-                })
+                }
+                if attachments:
+                    echo["ext"] = {"attachments": attachments}
+                await ws.send_json(echo)
 
     except WebSocketDisconnect:
         logger.info("Owner-chat WS disconnected: user=%s agent=%s", user_id, agent_id)

@@ -8,10 +8,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot, Search, FileText, CheckCircle2, Code2, HelpCircle, Bell } from "lucide-react";
+import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, ChevronDown, ChevronRight, Wrench, Brain, Bot, Search, FileText, CheckCircle2, Code2, HelpCircle, Bell, Paperclip, X } from "lucide-react";
 import { api } from "@/lib/api";
-import type { DashboardMessage, UserChatRoom, StreamBlockEntry } from "@/lib/types";
-import { createOwnerChatWs, type OwnerChatWsClient } from "@/lib/owner-chat-ws";
+import type { Attachment, DashboardMessage, UserChatRoom, StreamBlockEntry } from "@/lib/types";
+import { createOwnerChatWs, type OwnerChatWsClient, type WsAttachment } from "@/lib/owner-chat-ws";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -26,9 +26,24 @@ const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
 
+interface PendingAttachment {
+  file: File;
+  preview?: string; // Object URL for image preview
+  uploaded?: Attachment; // Populated after upload completes
+  uploading?: boolean;
+  error?: string;
+}
+
 interface PendingMessage {
   id: string;
+  /** Display text shown in the UI bubble */
   text: string;
+  /** Actual text sent in the message payload (may be empty for file-only sends) */
+  sendText: string;
+  /** Uploaded attachment metadata (set after successful upload) */
+  attachments?: Attachment[];
+  /** Original files for retry if upload failed */
+  retryFiles?: File[];
   createdAt: number;
   status: "sending" | "failed";
   error?: string;
@@ -328,12 +343,14 @@ export default function UserChatPane() {
   const [chatRoom, setChatRoom] = useState<UserChatRoom | null>(null);
   const [inputText, setInputText] = useState("");
   const [pending, setPending] = useState<PendingMessage[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Track which messages have already been animated (or were present on initial load)
   const animatedRef = useRef<Set<string>>(new Set());
   const initialLoadRef = useRef(true);
@@ -433,6 +450,10 @@ export default function UserChatPane() {
         }
 
         // Insert directly into chat store
+        const payload: Record<string, unknown> = {};
+        if (msg.ext?.attachments) {
+          payload.attachments = msg.ext.attachments;
+        }
         const dashMsg: DashboardMessage = {
           hub_msg_id: msg.hub_msg_id,
           msg_id: msg.hub_msg_id,
@@ -440,7 +461,7 @@ export default function UserChatPane() {
           sender_name: msg.sender === "user" ? "You" : (chatRoom.name || activeAgentId),
           type: "message",
           text: msg.text,
-          payload: {},
+          payload,
           room_id: roomId,
           topic: null,
           topic_id: null,
@@ -452,10 +473,10 @@ export default function UserChatPane() {
         };
         insertMessage(roomId, dashMsg);
 
-        // Remove matching pending message
+        // Remove matching pending message (match on sendText, not display text)
         if (msg.sender === "user") {
           setPending((prev) => {
-            const match = prev.find((p) => p.text === msg.text);
+            const match = prev.find((p) => p.sendText === msg.text);
             return match ? prev.filter((p) => p.id !== match.id) : prev;
           });
         }
@@ -539,7 +560,7 @@ export default function UserChatPane() {
   const visiblePending = pending.filter((item) => {
     const matchingOwnerMessage = messages.find((message) => (
       isOwnerMessage(message)
-      && (message.text || "") === item.text
+      && (message.text || "") === item.sendText
       && Date.parse(message.created_at) >= item.createdAt - 5_000
     ));
     return !matchingOwnerMessage;
@@ -603,6 +624,18 @@ export default function UserChatPane() {
     }
   }, [roomId, hasMore, loadMoreMessages]);
 
+  // Revoke pending file object URLs on unmount
+  useEffect(() => {
+    return () => {
+      setPendingFiles((prev) => {
+        for (const pf of prev) {
+          if (pf.preview) URL.revokeObjectURL(pf.preview);
+        }
+        return [];
+      });
+    };
+  }, []);
+
   // Auto-dismiss typing indicator after 30 seconds
   useEffect(() => {
     if (!userChatAgentTyping) return;
@@ -624,10 +657,17 @@ export default function UserChatPane() {
     prevMessageCountRef.current = messages.length;
   }, [messages, userChatAgentTyping, setUserChatAgentTyping]);
 
-  const sendMessage = useCallback(async (text: string, msgId: string) => {
+  const sendMessage = useCallback(async (text: string, msgId: string, attachments?: Attachment[]) => {
+    const wsAtts: WsAttachment[] | undefined = attachments?.map((a) => ({
+      filename: a.filename,
+      url: a.url,
+      content_type: a.content_type,
+      size_bytes: a.size_bytes,
+    }));
+
     // If WS is connected, send via WS (no polling needed — WS delivers echo)
     if (wsClientRef.current && wsConnected) {
-      const sent = wsClientRef.current.send(text);
+      const sent = wsClientRef.current.send(text, wsAtts);
       if (sent) {
         // WS echo will remove the pending message via onMessage callback.
         // onSendFailed callback handles the case where the socket closes after send.
@@ -638,7 +678,7 @@ export default function UserChatPane() {
 
     // Fallback to HTTP
     try {
-      const result = await api.sendUserChatMessage(text);
+      const result = await api.sendUserChatMessage(text, attachments);
       if (roomId) {
         await pollNewMessages(roomId, {
           expectedHubMsgId: result.hub_msg_id,
@@ -657,32 +697,123 @@ export default function UserChatPane() {
     }
   }, [roomId, pollNewMessages, wsConnected]);
 
+  // Upload pending files and return Attachment array
+  const uploadPendingFiles = useCallback(async (files: PendingAttachment[]): Promise<Attachment[]> => {
+    const results: Attachment[] = [];
+    for (const pf of files) {
+      if (pf.uploaded) {
+        results.push(pf.uploaded);
+        continue;
+      }
+      const res = await api.uploadFile(pf.file);
+      results.push({
+        filename: res.original_filename,
+        url: res.url,
+        content_type: res.content_type,
+        size_bytes: res.size_bytes,
+      });
+    }
+    return results;
+  }, []);
+
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || !roomId) return;
+    const hasFiles = pendingFiles.length > 0;
+    if ((!text && !hasFiles) || !roomId) return;
 
-    // Clear input immediately via both state and DOM to avoid stale-closure race
+    // Snapshot and clear input immediately
+    const filesToUpload = [...pendingFiles];
     setInputText("");
+    setPendingFiles([]);
     if (inputRef.current) inputRef.current.value = "";
+    // Revoke object URLs
+    for (const pf of filesToUpload) {
+      if (pf.preview) URL.revokeObjectURL(pf.preview);
+    }
 
     const msgId = crypto.randomUUID();
+    const rawFiles = filesToUpload.map((pf) => pf.file);
+    const displayText = text || (rawFiles.length > 0 ? `[${rawFiles.length} file(s)]` : "");
     const pendingMsg: PendingMessage = {
       id: msgId,
-      text,
+      text: displayText,
+      sendText: text,
+      retryFiles: rawFiles.length > 0 ? rawFiles : undefined,
       createdAt: Date.now(),
       status: "sending",
     };
     setPending((prev) => [...prev, pendingMsg]);
 
-    await sendMessage(text, msgId);
-  }, [inputText, roomId, sendMessage]);
+    try {
+      // Upload files first
+      const attachments = filesToUpload.length > 0
+        ? await uploadPendingFiles(filesToUpload)
+        : undefined;
+      // Persist attachments on the pending message so retry can resend them
+      if (attachments) {
+        setPending((prev) =>
+          prev.map((m) => m.id === msgId ? { ...m, attachments, retryFiles: undefined } : m)
+        );
+      }
+      await sendMessage(text, msgId, attachments);
+    } catch (err: any) {
+      setPending((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? { ...m, status: "failed" as const, error: err?.message || "Upload failed" }
+            : m
+        )
+      );
+    }
+  }, [inputText, pendingFiles, roomId, sendMessage, uploadPendingFiles]);
 
   const handleRetry = useCallback(async (msg: PendingMessage) => {
     setPending((prev) =>
       prev.map((m) => (m.id === msg.id ? { ...m, status: "sending" as const, error: undefined } : m))
     );
-    await sendMessage(msg.text, msg.id);
-  }, [sendMessage]);
+    try {
+      // If upload never completed, re-upload from retryFiles
+      let attachments = msg.attachments;
+      if (!attachments && msg.retryFiles && msg.retryFiles.length > 0) {
+        const pfs: PendingAttachment[] = msg.retryFiles.map((f) => ({ file: f }));
+        attachments = await uploadPendingFiles(pfs);
+        setPending((prev) =>
+          prev.map((m) => m.id === msg.id ? { ...m, attachments, retryFiles: undefined } : m)
+        );
+      }
+      await sendMessage(msg.sendText, msg.id, attachments);
+    } catch (err: any) {
+      setPending((prev) =>
+        prev.map((m) =>
+          m.id === msg.id
+            ? { ...m, status: "failed" as const, error: err?.message || "Retry failed" }
+            : m
+        )
+      );
+    }
+  }, [sendMessage, uploadPendingFiles]);
+
+  const handleFileSelect = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setPendingFiles((prev) => {
+      const remaining = 10 - prev.length;
+      if (remaining <= 0) return prev;
+      const toAdd = Array.from(files).slice(0, remaining);
+      const newFiles: PendingAttachment[] = toAdd.map((file) => ({
+        file,
+        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      }));
+      return [...prev, ...newFiles];
+    });
+  }, []);
+
+  const removePendingFile = useCallback((index: number) => {
+    setPendingFiles((prev) => {
+      const removed = prev[index];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -690,6 +821,16 @@ export default function UserChatPane() {
       handleSend();
     }
   };
+
+  // Handle drag and drop
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    handleFileSelect(e.dataTransfer.files);
+  }, [handleFileSelect]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
 
   if (!activeAgentId) {
     return (
@@ -801,21 +942,38 @@ export default function UserChatPane() {
                     <MarkdownContent content={msg.text || ""} />
                   )}
                   {(() => {
-                    const atts = msg.payload?.attachments as Array<{ url: string; filename?: string }> | undefined;
+                    const atts = msg.payload?.attachments as Array<{ url: string; filename?: string; content_type?: string; size_bytes?: number }> | undefined;
                     if (!atts || atts.length === 0) return null;
                     return (
-                      <div className="mt-2 space-y-1">
-                        {atts.map((att, idx) => (
-                          <a
-                            key={idx}
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block text-xs text-cyan-400 underline truncate"
-                          >
-                            {att.filename || "Attachment"}
-                          </a>
-                        ))}
+                      <div className="mt-2 space-y-1.5">
+                        {atts.map((att, idx) => {
+                          const fullUrl = att.url.startsWith("/") ? `${HUB_BASE_URL}${att.url}` : att.url;
+                          const isImage = att.content_type?.startsWith("image/");
+                          if (isImage) {
+                            return (
+                              <a key={idx} href={fullUrl} target="_blank" rel="noopener noreferrer" className="block">
+                                <img
+                                  src={fullUrl}
+                                  alt={att.filename || "Image"}
+                                  className="max-h-48 max-w-full rounded border border-zinc-600 object-cover hover:opacity-80 transition-opacity"
+                                />
+                                <span className="mt-0.5 block text-[10px] text-zinc-500">{att.filename}</span>
+                              </a>
+                            );
+                          }
+                          return (
+                            <a
+                              key={idx}
+                              href={fullUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{att.filename || "Attachment"}</span>
+                            </a>
+                          );
+                        })}
                       </div>
                     );
                   })()}
@@ -877,8 +1035,46 @@ export default function UserChatPane() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-zinc-800 px-4 py-3">
+      <div className="border-t border-zinc-800 px-4 py-3" onDrop={handleDrop} onDragOver={handleDragOver}>
+        {/* Pending file previews */}
+        {pendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {pendingFiles.map((pf, idx) => (
+              <div key={idx} className="relative group flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-300 max-w-[200px]">
+                {pf.preview ? (
+                  <img src={pf.preview} alt={pf.file.name} className="w-8 h-8 rounded object-cover shrink-0" />
+                ) : (
+                  <FileText className="w-4 h-4 text-zinc-400 shrink-0" />
+                )}
+                <span className="truncate">{pf.file.name}</span>
+                <button
+                  onClick={() => removePendingFile(idx)}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-zinc-600 text-zinc-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              handleFileSelect(e.target.files);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center justify-center w-9 h-9 rounded-lg text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-colors"
+            title="Attach file"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
           <textarea
             ref={inputRef}
             className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 min-h-[40px] max-h-[120px]"
@@ -890,7 +1086,7 @@ export default function UserChatPane() {
           />
           <button
             onClick={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() && pendingFiles.length === 0}
             className="flex items-center justify-center w-9 h-9 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-4 h-4" />

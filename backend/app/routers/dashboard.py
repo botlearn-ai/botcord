@@ -5,8 +5,10 @@ import json
 import logging
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from pydantic import BaseModel
+import os
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1536,8 +1538,21 @@ async def get_inbox(
 # ---------------------------------------------------------------------------
 
 
+import re as _re
+
+_FILE_URL_RE = _re.compile(r"^/hub/files/f_[a-zA-Z0-9_-]+$")
+
+
+class ChatAttachment(BaseModel):
+    filename: str = Field(..., max_length=200)
+    url: str = Field(..., max_length=300)
+    content_type: str | None = None
+    size_bytes: int | None = None
+
+
 class ChatSendBody(BaseModel):
-    text: str
+    text: str = ""
+    attachments: list[ChatAttachment] | None = Field(default=None, max_length=10)
 
 
 @router.get("/chat/room")
@@ -1560,6 +1575,81 @@ async def get_chat_room(
     await db.commit()
 
     return {"room_id": room_id, "name": f"Chat with {display_name}", "agent_id": agent_id}
+
+
+# Allowed MIME type prefixes (mirrors hub/routers/files.py)
+_ALLOWED_MIME_PREFIXES = (
+    "text/", "image/", "audio/", "video/",
+    "application/pdf", "application/json", "application/xml",
+    "application/zip", "application/gzip", "application/octet-stream",
+)
+
+
+@router.post("/upload")
+async def dashboard_upload_file(
+    file: UploadFile,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a file via dashboard auth. Reuses hub file storage."""
+    from hub import config as hub_config
+    from hub.id_generators import generate_file_id
+    from hub.models import FileRecord
+    from hub.storage import store_file
+
+    content_type = file.content_type or "application/octet-stream"
+    if not any(content_type.lower().startswith(p) for p in _ALLOWED_MIME_PREFIXES):
+        raise HTTPException(status_code=400, detail=f"MIME type not allowed: {content_type}")
+
+    chunks: list[bytes] = []
+    total_size = 0
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > hub_config.FILE_MAX_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail="File too large")
+        chunks.append(chunk)
+
+    if total_size == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    raw_name = file.filename or "upload"
+    original_filename = os.path.basename(raw_name).strip()[:200] or "upload"
+    data = b"".join(chunks)
+    file_id = generate_file_id()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expires_at = now + datetime.timedelta(hours=hub_config.FILE_TTL_HOURS)
+    location = await store_file(
+        file_id=file_id,
+        original_filename=original_filename,
+        content_type=content_type,
+        data=data,
+    )
+    record = FileRecord(
+        file_id=file_id,
+        uploader_id=ctx.active_agent_id,
+        original_filename=original_filename,
+        content_type=content_type,
+        size_bytes=total_size,
+        storage_backend=location.storage_backend,
+        disk_path=location.disk_path,
+        storage_bucket=location.storage_bucket,
+        storage_object_key=location.storage_object_key,
+        expires_at=expires_at,
+    )
+    db.add(record)
+    await db.commit()
+
+    return {
+        "file_id": file_id,
+        "url": f"/hub/files/{file_id}",
+        "original_filename": original_filename,
+        "content_type": content_type,
+        "size_bytes": total_size,
+        "expires_at": expires_at.isoformat(),
+    }
 
 
 @router.post("/chat/send", status_code=202)
@@ -1589,6 +1679,17 @@ async def send_chat_message(
     agent_id = ctx.active_agent_id
     user_id = str(ctx.user_id)
 
+    text = (body.text or "").strip()
+    has_attachments = bool(body.attachments)
+    if not text and not has_attachments:
+        raise HTTPException(status_code=400, detail="Message must contain text or attachments")
+
+    # Validate attachment URLs — only allow /hub/files/f_* paths
+    if body.attachments:
+        for att in body.attachments:
+            if not _FILE_URL_RE.match(att.url):
+                raise HTTPException(status_code=400, detail=f"Invalid attachment URL: {att.url}")
+
     # Fetch agent display name
     agent_result = await db.execute(
         select(Agent.display_name).where(Agent.agent_id == agent_id)
@@ -1601,7 +1702,9 @@ async def send_chat_message(
     # Build a synthetic envelope JSON
     msg_id = str(uuid.uuid4())
     ts = int(time.time())
-    payload = {"text": body.text}
+    payload: dict = {"text": text}
+    if body.attachments:
+        payload["attachments"] = [att.model_dump(exclude_none=True) for att in body.attachments]
     envelope_data = {
         "v": "a2a/0.1",
         "msg_id": msg_id,
