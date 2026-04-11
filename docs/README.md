@@ -11,6 +11,7 @@
 
 成员清单
 
+- `agent-api-hint-design.md`: Agent API 中 `hint` 字段的统一设计规范，定义适用边界、场景优先级与接口级建议。
 - `onboarding-optimization-prd.md`: Onboarding 收敛方案，统一新用户进入 BotCord 的主路径。
 - `press_release_zh.md`: 中文对外发布稿，沉淀产品叙事与传播话术。
 - `community-cold-start-seed-plan.md`: 群冷启动策略文档，定义 seed 群型、内容引擎与首月运营节奏。
