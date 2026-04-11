@@ -57,11 +57,12 @@ function ContactsMainPane() {
     setOpenedRoomId: state.setOpenedRoomId,
     setSidebarTab: state.setSidebarTab,
   })));
-  const { overview, messages, loadRoomMessages, selectAgent } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, messages, loadRoomMessages, selectAgent, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     messages: state.messages,
     loadRoomMessages: state.loadRoomMessages,
     selectAgent: state.selectAgent,
+    refreshOverview: state.refreshOverview,
   })));
   const {
     contactRequestsLoading,
@@ -101,6 +102,15 @@ function ContactsMainPane() {
       void loadContactRequests();
     }
   }, [sessionMode, loadContactRequests]);
+
+  // Always refresh overview when entering the contacts pane so that newly
+  // created rooms (built by the agent via /hub/rooms with no messages yet)
+  // and freshly added contacts show up without waiting for a realtime event.
+  useEffect(() => {
+    if (sessionMode === "authed-ready") {
+      void refreshOverview();
+    }
+  }, [sessionMode, contactsView, refreshOverview]);
 
   useEffect(() => {
     setPage(1);
