@@ -33,6 +33,8 @@ export interface DashboardUIState {
   toggleRightPanel: () => void;
   openAgentCard: () => void;
   closeAgentCard: () => void;
+  sidebarWidth: number;
+  setSidebarWidth: (width: number) => void;
   resetUIState: () => void;
   logout: () => void;
 }
@@ -48,6 +50,7 @@ const initialUIState = {
   messagesPane: "room" as const,
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
+  sidebarWidth: 260,
 };
 
 export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
@@ -69,6 +72,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.exploreView === exploreView ? state : { exploreView })),
   setContactsView: (contactsView) =>
     set((state) => (state.contactsView === contactsView ? state : { contactsView })),
+  setSidebarWidth: (sidebarWidth) =>
+    set((state) => (state.sidebarWidth === sidebarWidth ? state : { sidebarWidth })),
   toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
   openAgentCard: () => set({ agentCardOpen: true }),
   closeAgentCard: () => set({ agentCardOpen: false }),
