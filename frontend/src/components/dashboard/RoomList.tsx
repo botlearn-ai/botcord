@@ -201,16 +201,9 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                      {room.name}
-                    </span>
-                    {room.required_subscription_product_id && (
-                      <span className="shrink-0">
-                        <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
-                      </span>
-                    )}
-                  </div>
+                  <span className={`min-w-0 truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                    {room.name}
+                  </span>
                   <div className="flex shrink-0 items-center gap-2">
                     {isUnread && (
                       <span className="h-2.5 w-2.5 rounded-full bg-neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
@@ -222,9 +215,16 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
                     )}
                   </div>
                 </div>
-                <p className="mt-0.5 truncate text-xs text-text-secondary">
-                  {previewLine}
-                </p>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  {room.required_subscription_product_id && (
+                    <span className="shrink-0">
+                      <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+                    </span>
+                  )}
+                  <p className="min-w-0 truncate text-xs text-text-secondary">
+                    {previewLine}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
