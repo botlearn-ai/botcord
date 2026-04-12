@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
@@ -188,10 +188,12 @@ export default function Sidebar() {
     exploreView: state.exploreView,
     openedRoomId: state.openedRoomId,
     messagesPane: state.messagesPane,
+    sidebarWidth: state.sidebarWidth,
     setSidebarTab: state.setSidebarTab,
     setMessagesPane: state.setMessagesPane,
     setExploreView: state.setExploreView,
     setContactsView: state.setContactsView,
+    setSidebarWidth: state.setSidebarWidth,
   })));
   const chatStore = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -207,6 +209,37 @@ export default function Sidebar() {
   const [showFriendInvite, setShowFriendInvite] = useState(false);
   const [identityState, setIdentityState] = useState<"idle" | "loading" | "copied">("idle");
   const showLoginModal = () => router.push("/login");
+
+  const SIDEBAR_MIN = 200;
+  const SIDEBAR_MAX = 480;
+  const isResizing = useRef(false);
+  const startX = useRef(0);
+  const startWidth = useRef(uiStore.sidebarWidth);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    startX.current = e.clientX;
+    startWidth.current = uiStore.sidebarWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const delta = ev.clientX - startX.current;
+      const next = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth.current + delta));
+      uiStore.setSidebarWidth(next);
+    };
+    const onMouseUp = () => {
+      isResizing.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [uiStore.sidebarWidth, uiStore.setSidebarWidth]);
 
   const handleCopyAgentIdentity = async () => {
     if (!sessionStore.activeAgentId || identityState === "loading") return;
@@ -457,7 +490,12 @@ export default function Sidebar() {
       {showFriendInvite && <FriendInviteModal onClose={() => setShowFriendInvite(false)} />}
 
       {/* Secondary panel */}
-      <div className="flex h-full w-[260px] min-w-[260px] flex-col border-r border-glass-border bg-deep-black-light">
+      <div className="relative flex h-full flex-col border-r border-glass-border bg-deep-black-light" style={{ width: uiStore.sidebarWidth, minWidth: SIDEBAR_MIN }}>
+        {/* Resize handle */}
+        <div
+          onMouseDown={handleResizeStart}
+          className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-neon-cyan/30 active:bg-neon-cyan/50"
+        />
         {/* Panel header */}
         <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
           <div className="min-w-0">
