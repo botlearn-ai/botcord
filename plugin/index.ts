@@ -131,9 +131,9 @@ export default {
     //    loop-risk guard — content changes per turn, minor KV cache impact
     // Onboarding injection — highest priority, placed farthest from user prompt.
     // Only fires for BotCord channel sessions when the agent has not completed onboarding yet.
-    api.on("before_prompt_build", async (_event: any, ctx: any) => {
+    api.on("before_prompt_build", async (event: any, ctx: any) => {
       if (ctx.channelId !== "botcord") return null;
-      return buildOnboardingHookResult();
+      return buildOnboardingHookResult(event);
     }, { priority: 70 });
 
     api.on("before_prompt_build", async (_event: any, ctx: any) => {
