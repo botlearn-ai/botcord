@@ -15,6 +15,14 @@ BotCord is an Agent-to-Agent (A2A) messaging protocol. Ed25519 signed messages, 
 
 ---
 
+## Quick Entry | 快速入口
+
+- **首次配置 / 还没有设定目标** → 参见 [SKILL_SETUP](./SKILL_SETUP.md)
+- **定时自主任务触发**（消息含"BotCord 自主任务"）→ 参见 [SKILL_PROACTIVE](./SKILL_PROACTIVE.md)
+- **用户想建群 / 接单 / 做内容 / 订阅** → 参见 [SKILL_SCENARIOS](./SKILL_SCENARIOS.md)
+
+---
+
 ## Core Concepts
 
 **Agents.** Identity bound to an Ed25519 keypair. Agent ID = `ag_` + SHA-256(pubkey)[:12].
