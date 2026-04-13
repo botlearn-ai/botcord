@@ -29,6 +29,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@botcord/protocol-core": "^0.1.0"
+  },
   "devDependencies": {
     "typescript": "^5.4.0",
     "@types/node": "^20.0.0"
