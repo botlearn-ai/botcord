@@ -22,6 +22,7 @@ import { createTokenCommand } from "./src/commands/token.js";
 import { createBindCommand } from "./src/commands/bind.js";
 import { createEnvCommand } from "./src/commands/env.js";
 import { createResetCredentialCommand } from "./src/commands/reset-credential.js";
+import { createUninstallCli } from "./src/commands/uninstall.js";
 import {
   clearBotCordLoopRiskSession,
   didBotCordSendSucceed,
@@ -161,6 +162,9 @@ export default {
     api.registerCommand(createBindCommand());
     api.registerCommand(createResetCredentialCommand());
     api.registerCommand(createEnvCommand());
+
+    const uninstallCli = createUninstallCli();
+    api.registerCli(uninstallCli.setup, { commands: uninstallCli.commands });
 
   },
 };
