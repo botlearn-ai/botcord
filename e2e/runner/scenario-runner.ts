@@ -70,12 +70,16 @@ export async function runScenario(
     };
   }
 
-  // 3. Initialize runtime
+  // 3. Clean up previous E2E data
+  console.log("Cleaning up previous E2E data...");
+  await cleanupE2EData(env);
+
+  // 4. Initialize runtime
   const runtime = new OpenClawRuntime(env, runDir, scenario.runtime.model);
   const instances = await runtime.initialize(scenario.runtime.instance_count);
   console.log(`\nInitialized ${instances.length} instances`);
 
-  // 4. Reset and start
+  // 5. Reset and start
   console.log("Resetting instance state...");
   await runtime.resetInstances();
 
@@ -308,6 +312,152 @@ function extractShareId(result: AgentResult): string | undefined {
   return undefined;
 }
 
+/**
+ * Extract a claim code (clm_xxx) from agent output.
+ */
+function extractClaimCode(result: AgentResult): string | undefined {
+  const sources = [result.text ?? "", result.raw];
+  for (const text of sources) {
+    const m = text.match(/clm_[a-fA-F0-9]{32}/);
+    if (m) return m[0];
+  }
+  return undefined;
+}
+
+/** Fixed E2E test user UUID for auto-claiming agents. */
+const E2E_TEST_USER_ID = "e2e00000-0000-0000-0000-000000000001";
+
+/**
+ * Delete all test data associated with the E2E test user.
+ * Resolves agent_ids by user_id, then cascades through all dependent tables.
+ */
+export async function cleanupE2EData(env: EnvironmentConfig): Promise<void> {
+  const dbUrl = process.env[env.db_url_env];
+  if (!dbUrl) {
+    console.log("  Cleanup skipped: no DB URL configured");
+    return;
+  }
+  try {
+    const { default: pg } = await import("pg");
+    const client = new pg.Client({ connectionString: dbUrl });
+    await client.connect();
+    try {
+      // All dependent tables referencing agents.agent_id
+      const dependentTables = [
+        ["wallet_entries", "agent_id"],
+        ["wallet_accounts", "agent_id"],
+        ["topup_requests", "agent_id"],
+        ["withdrawal_requests", "agent_id"],
+        ["subscription_charge_attempts", "subscription_id", "agent_subscriptions"],
+        ["agent_subscriptions", "subscriber_agent_id"],
+        ["agent_subscriptions", "provider_agent_id"],
+        ["subscription_products", "owner_agent_id"],
+        ["subscription_room_creator_policies", "agent_id"],
+        ["used_nonces", "agent_id"],
+        ["challenges", "agent_id"],
+        ["signing_keys", "agent_id"],
+        ["invite_redemptions", "redeemer_agent_id"],
+        ["invites", "creator_agent_id"],
+        ["contacts", "owner_id"],
+        ["contacts", "contact_agent_id"],
+        ["contact_requests", "from_agent_id"],
+        ["contact_requests", "to_agent_id"],
+        ["blocks", "owner_id"],
+        ["room_join_requests", "agent_id"],
+        ["room_members", "agent_id"],
+        ["topics", "creator_id"],
+        ["shares", "shared_by_agent_id"],
+        ["message_records", "sender_id"],
+        ["file_records", "uploader_id"],
+        ["endpoints", "agent_id"],
+      ];
+
+      // Delete rooms owned by E2E agents (room_members FK prevents direct agent delete)
+      // Must delete room_members for those rooms first, then the rooms
+      await client.query(`
+        DELETE FROM room_members WHERE room_id IN (
+          SELECT room_id FROM rooms WHERE owner_id IN (
+            SELECT agent_id FROM agents WHERE user_id = $1
+          )
+        )
+      `, [E2E_TEST_USER_ID]);
+      await client.query(`
+        DELETE FROM rooms WHERE owner_id IN (
+          SELECT agent_id FROM agents WHERE user_id = $1
+        )
+      `, [E2E_TEST_USER_ID]);
+
+      // Delete from all dependent tables
+      let totalDeleted = 0;
+      for (const [table, column] of dependentTables) {
+        const res = await client.query(
+          `DELETE FROM ${table} WHERE ${column} IN (SELECT agent_id FROM agents WHERE user_id = $1)`,
+          [E2E_TEST_USER_ID],
+        );
+        if (res.rowCount && res.rowCount > 0) totalDeleted += res.rowCount;
+      }
+
+      // Finally delete agents themselves
+      const agentRes = await client.query(
+        `DELETE FROM agents WHERE user_id = $1`,
+        [E2E_TEST_USER_ID],
+      );
+      const agentCount = agentRes.rowCount ?? 0;
+      totalDeleted += agentCount;
+
+      if (totalDeleted > 0) {
+        console.log(`  Cleaned up ${agentCount} E2E agents and ${totalDeleted - agentCount} related rows`);
+      } else {
+        console.log("  No E2E data to clean up");
+      }
+    } finally {
+      await client.end();
+    }
+  } catch (err) {
+    console.warn(`  Cleanup failed (non-fatal): ${err}`);
+  }
+}
+
+/**
+ * Auto-claim an agent by directly updating the database.
+ * Sets user_id and claimed_at so the agent is considered "claimed"
+ * and the LLM won't ask the user to claim before proceeding.
+ */
+async function autoClaimAgent(
+  claimCode: string,
+  env: EnvironmentConfig,
+  instanceId: string,
+): Promise<boolean> {
+  const dbUrl = process.env[env.db_url_env];
+  if (!dbUrl) {
+    console.warn(`  [${instanceId}] Cannot auto-claim: ${env.db_url_env} not set`);
+    return false;
+  }
+  try {
+    const { default: pg } = await import("pg");
+    const client = new pg.Client({ connectionString: dbUrl });
+    try {
+      await client.connect();
+      const res = await client.query(
+        `UPDATE agents SET user_id = $1, claimed_at = NOW() WHERE claim_code = $2 AND user_id IS NULL`,
+        [E2E_TEST_USER_ID, claimCode],
+      );
+      if (res.rowCount && res.rowCount > 0) {
+        console.log(`  [${instanceId}] Auto-claimed agent (claim_code=${claimCode})`);
+        return true;
+      } else {
+        console.warn(`  [${instanceId}] Auto-claim: no matching unclaimed agent for ${claimCode}`);
+        return false;
+      }
+    } finally {
+      await client.end();
+    }
+  } catch (err) {
+    console.error(`  [${instanceId}] Auto-claim failed: ${err}`);
+    return false;
+  }
+}
+
 async function executeSteps(
   runtime: OpenClawRuntime,
   instances: InstanceState[],
@@ -444,6 +594,25 @@ async function executeSteps(
         await sleep(delay * 1000);
         await runtime.waitHealthy(scenario.runtime.health_timeout_seconds);
         console.log("  All instances healthy after recovery.");
+        break;
+      }
+
+      // ── Auto-claim agents via DB ────────────────────────────────
+      case "runtime.auto_claim": {
+        for (const inst of targets) {
+          const ev = evidenceMap.get(inst.id)!;
+          // Find claim code from any previous agent result
+          let claimCode: string | undefined;
+          for (const result of Object.values(ev.agentResults)) {
+            claimCode = extractClaimCode(result);
+            if (claimCode) break;
+          }
+          if (claimCode) {
+            await autoClaimAgent(claimCode, env, inst.id);
+          } else {
+            console.warn(`  [${inst.id}] No claim code found in agent outputs — skipping auto-claim`);
+          }
+        }
         break;
       }
 
