@@ -2,14 +2,8 @@
  * botcord_room_context — Inspect room context, recent messages, and search
  * message history within one room or across all joined rooms.
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError } from "./tool-result.js";
 
 /** Normalize query input: accept a string or string[] from the LLM. */
 function _normalizeQuery(raw: unknown): string | string[] | null {
@@ -89,28 +83,15 @@ export function createRoomContextTool() {
       required: ["action"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
-
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured." };
-      }
-
-      const client = new BotCordClient(acct);
-      attachTokenPersistence(client, acct);
-
-      try {
+      return withClient(async (client) => {
         switch (args.action) {
           case "room_summary": {
-            if (!args.room_id) return { error: "room_id is required for room_summary" };
+            if (!args.room_id) return validationError("room_id is required for room_summary");
             return await client.roomSummary(args.room_id, args.limit);
           }
 
           case "room_messages": {
-            if (!args.room_id) return { error: "room_id is required for room_messages" };
+            if (!args.room_id) return validationError("room_id is required for room_messages");
             return await client.roomMessages(args.room_id, {
               limit: args.limit,
               before: args.before,
@@ -121,9 +102,9 @@ export function createRoomContextTool() {
           }
 
           case "room_search": {
-            if (!args.room_id) return { error: "room_id is required for room_search" };
+            if (!args.room_id) return validationError("room_id is required for room_search");
             const rsQuery = _normalizeQuery(args.query);
-            if (!rsQuery) return { error: "query is required for room_search" };
+            if (!rsQuery) return validationError("query is required for room_search");
             return await client.roomSearch(args.room_id, rsQuery, {
               limit: args.limit,
               before: args.before,
@@ -138,7 +119,7 @@ export function createRoomContextTool() {
 
           case "global_search": {
             const gsQuery = _normalizeQuery(args.query);
-            if (!gsQuery) return { error: "query is required for global_search" };
+            if (!gsQuery) return validationError("query is required for global_search");
             return await client.globalSearch(gsQuery, {
               limit: args.limit,
               roomId: args.room_id,
@@ -149,11 +130,9 @@ export function createRoomContextTool() {
           }
 
           default:
-            return { error: `Unknown action: ${args.action}` };
+            return validationError(`Unknown action: ${args.action}`);
         }
-      } catch (err: any) {
-        return { error: `Room context action failed: ${err.message}` };
-      }
+      });
     },
   };
 }

@@ -4,44 +4,26 @@
  * [POS]: plugin dashboard 认领执行器，把命令行参数翻译成稳定的绑定请求
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError } from "./tool-result.js";
+import { HubApiError } from "../client.js";
 
 /**
  * Shared bind logic used by both the tool and the command.
  */
 export async function executeBind(
   bindCredential: string,
-): Promise<{ ok: true; [key: string]: unknown } | { error: string }> {
-  const cfg = getAppConfig();
-  if (!cfg) return { error: "No configuration available" };
-  const singleAccountError = getSingleAccountModeError(cfg);
-  if (singleAccountError) return { error: singleAccountError };
-
-  const acct = resolveAccountConfig(cfg);
-  if (!isAccountConfigured(acct)) {
-    return { error: "BotCord is not configured." };
-  }
-
-  const client = new BotCordClient(acct);
-  attachTokenPersistence(client, acct);
-
-  try {
+) {
+  return withClient(async (client) => {
     const agentToken = await client.ensureToken();
     const agentId = client.getAgentId();
 
     const resolved = (await client.resolve(agentId)) as Record<string, unknown>;
     const displayName = (resolved.display_name as string) || agentId;
 
-    const hubUrl = client.getHubUrl();
+    const baseUrl = client.getHubUrl().replace(/\/+$/, "");
 
-    const res = await fetch(`${hubUrl}/api/users/me/agents/bind`, {
+    const res = await fetch(`${baseUrl}/api/users/me/agents/bind`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -59,13 +41,11 @@ export async function executeBind(
 
     if (!res.ok) {
       const msg = body?.error || body?.detail || body?.message || res.statusText;
-      return { error: `Bind failed (${res.status}): ${msg}` };
+      throw new HubApiError(res.status, JSON.stringify({ detail: msg }), "/api/users/me/agents/bind");
     }
 
     return { ok: true, ...body };
-  } catch (err: any) {
-    return { error: `Bind failed: ${err.message}` };
-  }
+  });
 }
 
 export function createBindTool() {
@@ -86,7 +66,7 @@ export function createBindTool() {
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       if (!args.bind_ticket) {
-        return { error: "bind_ticket is required" };
+        return validationError("bind_ticket is required");
       }
       return executeBind(args.bind_ticket);
     },
