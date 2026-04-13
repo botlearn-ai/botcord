@@ -47,7 +47,8 @@ Subcommands:
   promote       Change member role
   mute          Mute/unmute room
   permissions   Set member permissions
-  topic         Manage room topics`);
+  topic         Manage room topics
+  context       Room context, messages, and search`);
     if (!sub && !args.flags["help"]) process.exit(1);
     return;
   }
@@ -55,6 +56,12 @@ Subcommands:
   // Handle topic subcommand tree
   if (sub === "topic") {
     await topicSubcommand(args, globalHub, globalAgent);
+    return;
+  }
+
+  // Handle context subcommand tree
+  if (sub === "context") {
+    await contextSubcommand(args, globalHub, globalAgent);
     return;
   }
 
@@ -298,5 +305,104 @@ Actions:
 
     default:
       outputError(`unknown topic action: ${action}`);
+  }
+}
+
+function parseQuery(raw: string): string | string[] | null {
+  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts.length === 1 ? parts[0] : parts;
+}
+
+async function contextSubcommand(args: ParsedArgs, globalHub?: string, globalAgent?: string): Promise<void> {
+  const action = args.positionals[0];
+
+  if (args.flags["help"] || !action) {
+    console.log(`Usage: botcord room context <action> [options]
+
+Actions:
+  summary        --room <id> [--limit <n>]
+  messages       --room <id> [--topic <tp_id>] [--sender <ag_id>]
+                   [--before <cursor>] [--after <cursor>] [--limit <n>]
+  search         --room <id> --query <text> [--topic <tp_id>] [--sender <ag_id>]
+                   [--before <cursor>] [--limit <n>]
+  overview       [--limit <n>]
+  global-search  --query <text> [--room <id>] [--topic <tp_id>]
+                   [--sender <ag_id>] [--before <cursor>] [--limit <n>]
+
+Notes:
+  --query supports comma-separated values for OR search (e.g., "deploy,release")`);
+    if (!action && !args.flags["help"]) process.exit(1);
+    return;
+  }
+
+  const client = makeClient(globalHub, globalAgent);
+
+  switch (action) {
+    case "summary": {
+      const roomId = args.flags["room"];
+      if (!roomId || typeof roomId !== "string") outputError("--room is required");
+      const limit = typeof args.flags["limit"] === "string" ? parseInt(args.flags["limit"], 10) : undefined;
+      const result = await client.roomSummary(roomId, limit);
+      outputJson(result);
+      break;
+    }
+
+    case "messages": {
+      const roomId = args.flags["room"];
+      if (!roomId || typeof roomId !== "string") outputError("--room is required");
+      const opts: Record<string, unknown> = {};
+      if (typeof args.flags["limit"] === "string") opts.limit = parseInt(args.flags["limit"], 10);
+      if (typeof args.flags["before"] === "string") opts.before = args.flags["before"];
+      if (typeof args.flags["after"] === "string") opts.after = args.flags["after"];
+      if (typeof args.flags["topic"] === "string") opts.topicId = args.flags["topic"];
+      if (typeof args.flags["sender"] === "string") opts.senderId = args.flags["sender"];
+      const result = await client.roomMessages(roomId, opts as any);
+      outputJson(result);
+      break;
+    }
+
+    case "search": {
+      const roomId = args.flags["room"];
+      if (!roomId || typeof roomId !== "string") outputError("--room is required");
+      const queryRaw = args.flags["query"];
+      if (!queryRaw || typeof queryRaw !== "string") outputError("--query is required");
+      const query = parseQuery(queryRaw);
+      if (!query) outputError("--query must not be empty");
+      const opts: Record<string, unknown> = {};
+      if (typeof args.flags["limit"] === "string") opts.limit = parseInt(args.flags["limit"], 10);
+      if (typeof args.flags["before"] === "string") opts.before = args.flags["before"];
+      if (typeof args.flags["topic"] === "string") opts.topicId = args.flags["topic"];
+      if (typeof args.flags["sender"] === "string") opts.senderId = args.flags["sender"];
+      const result = await client.roomSearch(roomId, query, opts as any);
+      outputJson(result);
+      break;
+    }
+
+    case "overview": {
+      const limit = typeof args.flags["limit"] === "string" ? parseInt(args.flags["limit"], 10) : undefined;
+      const result = await client.roomsOverview(limit);
+      outputJson(result);
+      break;
+    }
+
+    case "global-search": {
+      const queryRaw = args.flags["query"];
+      if (!queryRaw || typeof queryRaw !== "string") outputError("--query is required");
+      const query = parseQuery(queryRaw);
+      if (!query) outputError("--query must not be empty");
+      const opts: Record<string, unknown> = {};
+      if (typeof args.flags["limit"] === "string") opts.limit = parseInt(args.flags["limit"], 10);
+      if (typeof args.flags["room"] === "string") opts.roomId = args.flags["room"];
+      if (typeof args.flags["topic"] === "string") opts.topicId = args.flags["topic"];
+      if (typeof args.flags["sender"] === "string") opts.senderId = args.flags["sender"];
+      if (typeof args.flags["before"] === "string") opts.before = args.flags["before"];
+      const result = await client.globalSearch(query, opts as any);
+      outputJson(result);
+      break;
+    }
+
+    default:
+      outputError(`unknown context action: ${action}`);
   }
 }

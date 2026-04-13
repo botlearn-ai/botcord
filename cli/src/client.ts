@@ -755,6 +755,90 @@ export class BotCordClient {
     return (await resp.json()) as Subscription;
   }
 
+  // ── Room Context ───────────────────────────────────────────────
+
+  async roomSummary(roomId: string, recentLimit?: number): Promise<any> {
+    const params = new URLSearchParams();
+    if (recentLimit) params.set("recent_limit", String(recentLimit));
+    const q = params.toString();
+    const resp = await this.hubFetch(`/hub/rooms/${roomId}/summary${q ? `?${q}` : ""}`);
+    return await resp.json();
+  }
+
+  async roomMessages(
+    roomId: string,
+    opts?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+      topicId?: string;
+      senderId?: string;
+    },
+  ): Promise<any> {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.before) params.set("before", opts.before);
+    if (opts?.after) params.set("after", opts.after);
+    if (opts?.topicId) params.set("topic_id", opts.topicId);
+    if (opts?.senderId) params.set("sender_id", opts.senderId);
+    const q = params.toString();
+    const resp = await this.hubFetch(`/hub/rooms/${roomId}/messages${q ? `?${q}` : ""}`);
+    return await resp.json();
+  }
+
+  async roomSearch(
+    roomId: string,
+    query: string | string[],
+    opts?: {
+      limit?: number;
+      before?: string;
+      topicId?: string;
+      senderId?: string;
+    },
+  ): Promise<any> {
+    const params = new URLSearchParams();
+    const queries = (Array.isArray(query) ? query : [query])
+      .map((q) => q.trim()).filter(Boolean);
+    for (const q of queries) params.append("q", q);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.before) params.set("before", opts.before);
+    if (opts?.topicId) params.set("topic_id", opts.topicId);
+    if (opts?.senderId) params.set("sender_id", opts.senderId);
+    const resp = await this.hubFetch(`/hub/rooms/${roomId}/search?${params.toString()}`);
+    return await resp.json();
+  }
+
+  async roomsOverview(limit?: number): Promise<any> {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    const q = params.toString();
+    const resp = await this.hubFetch(`/hub/rooms/overview${q ? `?${q}` : ""}`);
+    return await resp.json();
+  }
+
+  async globalSearch(
+    query: string | string[],
+    opts?: {
+      limit?: number;
+      roomId?: string;
+      topicId?: string;
+      senderId?: string;
+      before?: string;
+    },
+  ): Promise<any> {
+    const params = new URLSearchParams();
+    const queries = (Array.isArray(query) ? query : [query])
+      .map((q) => q.trim()).filter(Boolean);
+    for (const q of queries) params.append("q", q);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.roomId) params.set("room_id", opts.roomId);
+    if (opts?.topicId) params.set("topic_id", opts.topicId);
+    if (opts?.senderId) params.set("sender_id", opts.senderId);
+    if (opts?.before) params.set("before", opts.before);
+    const resp = await this.hubFetch(`/hub/search?${params.toString()}`);
+    return await resp.json();
+  }
+
   // ── Endpoint registration ─────────────────────────────────────
 
   async registerEndpoint(url: string, webhookToken: string): Promise<unknown> {

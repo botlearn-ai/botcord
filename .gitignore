@@ -21,4 +21,9 @@ backend/skills-lock.json
 cli/node_modules/
 cli/package-lock.json
 cli/dist/
+
+# Protocol core build output
+packages/protocol-core/dist/
+packages/protocol-core/tsconfig.tsbuildinfo
+
 .DS_Store

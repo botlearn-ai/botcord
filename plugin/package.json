@@ -35,6 +35,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@botcord/protocol-core": "^0.1.0",
     "ws": "^8.18.0"
   },
   "peerDependencies": {
