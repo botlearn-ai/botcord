@@ -159,32 +159,6 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
-async function apiDelete(path: string): Promise<void> {
-  const headers = await buildAuthHeaders();
-  const url = new URL(path, API_BASE);
-  const res = await fetch(url.toString(), { method: "DELETE", headers });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
-  }
-}
-
-async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
-  const init: RequestInit = { method: "PATCH", headers };
-  if (body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    init.body = JSON.stringify(body);
-  }
-  const url = new URL(path, API_BASE);
-  const res = await fetch(url.toString(), init);
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
-  }
-  return res.json();
-}
-
 export const api = {
   // --- Dashboard APIs ---
 
@@ -500,34 +474,6 @@ const userApi = {
     return apiGet<{ agents: UserAgent[] }>("/api/users/me/agents");
   },
 
-  async claimAgent(
-    agentId: string,
-    displayName: string,
-    credentials: {
-      agentToken?: string;
-      bindProof?: { key_id: string; nonce: string; sig: string };
-      bindTicket?: string;
-    },
-  ): Promise<UserAgent> {
-    const payload: Record<string, unknown> = {
-      agent_id: agentId,
-      display_name: displayName,
-    };
-    if (credentials.bindProof) {
-      payload.bind_proof = credentials.bindProof;
-    }
-    if (credentials.bindTicket) {
-      payload.bind_ticket = credentials.bindTicket;
-    }
-    if (credentials.agentToken) {
-      payload.agent_token = credentials.agentToken;
-    }
-
-    const result = await apiPost<UserAgent>("/api/users/me/agents", payload);
-    invalidateMeCache();
-    return result;
-  },
-
   async issueBindTicket(): Promise<BindTicketResponse> {
     return apiPost<BindTicketResponse>("/api/users/me/agents/bind-ticket");
   },
@@ -548,17 +494,6 @@ const userApi = {
       is_default: boolean;
       claimed_at: string;
     }>("/api/users/me/agents/claim/resolve", { claim_code: claimCode });
-    invalidateMeCache();
-    return result;
-  },
-
-  async unbindAgent(agentId: string): Promise<void> {
-    await apiDelete(`/api/users/me/agents/${agentId}`);
-    invalidateMeCache();
-  },
-
-  async setDefaultAgent(agentId: string): Promise<UserAgent> {
-    const result = await apiPatch<UserAgent>(`/api/users/me/agents/${agentId}`, { is_default: true });
     invalidateMeCache();
     return result;
   },
