@@ -114,7 +114,8 @@ jobs:
 
             # Set package.json to the higher version, then bump
             npm version "$HIGHER" --no-git-tag-version --allow-same-version
-            NEW_VERSION=$(npm version ${{ github.event.inputs.bump }} --no-git-tag-version)
+            npm version ${{ github.event.inputs.bump }} --no-git-tag-version
+            NEW_VERSION="v$(node -p "require('./package.json').version")"
 
             # Append -beta.<timestamp> prerelease suffix
             BASE="${NEW_VERSION#v}"
@@ -122,7 +123,8 @@ jobs:
             npm version "$BETA_VERSION" --no-git-tag-version --allow-same-version
             NEW_VERSION="v${BETA_VERSION}"
           else
-            NEW_VERSION=$(npm version ${{ github.event.inputs.bump }} --no-git-tag-version)
+            npm version ${{ github.event.inputs.bump }} --no-git-tag-version
+            NEW_VERSION="v$(node -p "require('./package.json').version")"
           fi
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
