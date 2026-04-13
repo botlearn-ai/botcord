@@ -109,7 +109,7 @@ OPENCLAW_JSON=""
 if [ -n "${OPENCLAW_CONFIG_PATH:-}" ] && [ -f "$OPENCLAW_CONFIG_PATH" ]; then
   OPENCLAW_JSON="$OPENCLAW_CONFIG_PATH"
 elif command -v "$OPENCLAW_BIN" >/dev/null 2>&1; then
-  OPENCLAW_JSON="$("$OPENCLAW_BIN" config file 2>/dev/null || true)"
+  OPENCLAW_JSON="$("$OPENCLAW_BIN" config path 2>/dev/null || true)"
   if [ -n "$OPENCLAW_JSON" ] && [ ! -f "$OPENCLAW_JSON" ]; then
     OPENCLAW_JSON=""
   fi
@@ -168,7 +168,7 @@ if (Array.isArray(loadPaths)) {
   const before = loadPaths.length;
   const targetDir = process.env.TARGET_DIR;
   config.plugins.load.paths = loadPaths.filter(
-    (p) => !p.includes("botcord") && p !== targetDir
+    (p) => p !== targetDir && !p.endsWith("/botcord")
   );
   if (config.plugins.load.paths.length < before) {
     changed = true;

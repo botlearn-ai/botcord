@@ -43,7 +43,7 @@ export function createUninstallCli() {
           // Resolve extension dir from openclaw CLI if possible, else default
           let extensionDir = join(home, ".openclaw", "extensions", "botcord");
           try {
-            const result = oc(["config", "file"]);
+            const result = oc(["config", "path"]);
             const configFile = (result.stdout || "").trim();
             if (configFile) {
               const configDir = join(configFile, "..");
