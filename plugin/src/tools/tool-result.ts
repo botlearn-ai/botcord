@@ -28,7 +28,8 @@ export interface DryRunRequest {
   method: string;
   path: string;
   body?: unknown;
-  query?: Record<string, string>;
+  query?: Record<string, string | string[]>;
+  note?: string;
 }
 
 export type DryRunResult = { ok: true; dry_run: true; request: DryRunRequest };
@@ -60,11 +61,17 @@ export function apiError(code: string, message: string, hint?: string): ToolFail
   return fail("api", code, message, hint);
 }
 
-export function dryRunResult(method: string, path: string, body?: unknown, query?: Record<string, string>): DryRunResult {
+export function dryRunResult(method: string, path: string, body?: unknown, options?: { query?: Record<string, string | string[]>; note?: string }): DryRunResult {
   return {
     ok: true,
     dry_run: true,
-    request: { method, path, ...(body !== undefined ? { body } : {}), ...(query ? { query } : {}) },
+    request: {
+      method,
+      path,
+      ...(body !== undefined ? { body } : {}),
+      ...(options?.query ? { query: options.query } : {}),
+      ...(options?.note ? { note: options.note } : {}),
+    },
   };
 }
 

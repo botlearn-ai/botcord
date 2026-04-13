@@ -3,15 +3,9 @@
  */
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { lookup } from "node:dns";
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError, dryRunResult } from "./tool-result.js";
+import type { BotCordClient } from "../client.js";
 import type { MessageAttachment } from "../types.js";
 
 /** Extract clean filename from a URL, stripping query string and hash. */
@@ -127,23 +121,30 @@ export function createMessagingTool() {
           items: { type: "string" as const },
           description: "URLs of already-hosted files to attach to the message",
         },
+        dry_run: {
+          type: "boolean" as const,
+          description: "Preview the request without sending. Returns the API call that would be made.",
+        },
       },
       required: ["to", "text"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
-
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured. Set hubUrl, agentId, keyId, and privateKey." };
+      if (args.dry_run) {
+        const msgType = args.type || "message";
+        const body: Record<string, unknown> = { to: args.to, text: args.text, type: msgType };
+        if (args.topic) body.topic = args.topic;
+        if (args.goal) body.goal = args.goal;
+        if (args.reply_to) body.reply_to = args.reply_to;
+        if (args.mentions) body.mentions = args.mentions;
+        if (args.file_paths) body.file_paths = args.file_paths;
+        if (args.file_urls) body.file_urls = args.file_urls;
+        const notes: string[] = [];
+        if (args.file_paths?.length) notes.push("Local files will be uploaded via POST /hub/upload before sending.");
+        notes.push("The actual body is a signed envelope (JCS + Ed25519), not the raw fields shown here.");
+        return dryRunResult("POST", "/hub/send", body, { note: notes.join(" ") });
       }
 
-      try {
-        const client = new BotCordClient(acct);
-        attachTokenPersistence(client, acct);
+      return withClient(async (client) => {
         const msgType = args.type || "message";
 
         // Collect attachments from both file_paths (upload first) and file_urls
@@ -182,9 +183,7 @@ export function createMessagingTool() {
           attachments: finalAttachments,
         });
         return { ok: true, hub_msg_id: result.hub_msg_id, to: args.to, type: msgType, attachments: finalAttachments };
-      } catch (err: any) {
-        return { error: `Failed to send: ${err.message}` };
-      }
+      });
     },
   };
 }
@@ -212,28 +211,14 @@ export function createUploadTool() {
       required: ["file_paths"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
-
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured. Set hubUrl, agentId, keyId, and privateKey." };
-      }
-
       if (!args.file_paths || args.file_paths.length === 0) {
-        return { error: "file_paths is required and must not be empty" };
+        return validationError("file_paths is required and must not be empty");
       }
 
-      try {
-        const client = new BotCordClient(acct);
-        attachTokenPersistence(client, acct);
+      return withClient(async (client) => {
         const uploaded = await uploadLocalFiles(client, args.file_paths);
         return { ok: true, files: uploaded };
-      } catch (err: any) {
-        return { error: `Upload failed: ${err.message}` };
-      }
+      });
     },
   };
 }

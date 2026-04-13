@@ -1,14 +1,8 @@
 /**
  * botcord_rooms — Room lifecycle and membership management.
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError, dryRunResult } from "./tool-result.js";
 
 export function createRoomsTool() {
   return {
@@ -102,27 +96,19 @@ export function createRoomsTool() {
           type: "boolean" as const,
           description: "Mute or unmute the current member in a room — for mute",
         },
+        dry_run: {
+          type: "boolean" as const,
+          description: "Preview the request without executing. Returns the API call that would be made.",
+        },
       },
       required: ["action"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
-
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured." };
-      }
-
-      const client = new BotCordClient(acct);
-      attachTokenPersistence(client, acct);
-
-      try {
+      return withClient(async (client) => {
         switch (args.action) {
           case "create":
-            if (!args.name) return { error: "name is required" };
+            if (!args.name) return validationError("name is required");
+            if (args.dry_run) return dryRunResult("POST", "/hub/rooms", { name: args.name, visibility: args.visibility || "private", join_policy: args.join_policy, member_ids: args.member_ids });
             return await client.createRoom({
               name: args.name,
               description: args.description,
@@ -138,14 +124,15 @@ export function createRoomsTool() {
             });
 
           case "list":
-            return await client.listMyRooms();
+            return { rooms: await client.listMyRooms() };
 
           case "info":
-            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.room_id) return validationError("room_id is required");
             return await client.getRoomInfo(args.room_id);
 
           case "update":
-            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.room_id) return validationError("room_id is required");
+            if (args.dry_run) return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { name: args.name, description: args.description, rule: args.rule, visibility: args.visibility, join_policy: args.join_policy, required_subscription_product_id: args.required_subscription_product_id, max_members: args.max_members, default_send: args.default_send, default_invite: args.default_invite, slow_mode_seconds: args.slow_mode_seconds });
             return await client.updateRoom(args.room_id, {
               name: args.name,
               description: args.description,
@@ -163,7 +150,8 @@ export function createRoomsTool() {
             return await client.discoverPublicRooms(args.name);
 
           case "join":
-            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.room_id) return validationError("room_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/members`, { agent_id: "{self}" });
             await client.joinRoom(args.room_id, {
               can_send: args.can_send,
               can_invite: args.can_invite,
@@ -171,21 +159,24 @@ export function createRoomsTool() {
             return { ok: true, joined: args.room_id };
 
           case "leave":
-            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.room_id) return validationError("room_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/leave`);
             await client.leaveRoom(args.room_id);
             return { ok: true, left: args.room_id };
 
           case "dissolve":
-            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.room_id) return validationError("room_id is required");
+            if (args.dry_run) return dryRunResult("DELETE", `/hub/rooms/${args.room_id}`);
             await client.dissolveRoom(args.room_id);
             return { ok: true, dissolved: args.room_id };
 
           case "members":
-            if (!args.room_id) return { error: "room_id is required" };
-            return await client.getRoomMembers(args.room_id);
+            if (!args.room_id) return validationError("room_id is required");
+            return { members: await client.getRoomMembers(args.room_id) };
 
           case "invite":
-            if (!args.room_id || !args.agent_id) return { error: "room_id and agent_id are required" };
+            if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/members`, { agent_id: args.agent_id, can_send: args.can_send, can_invite: args.can_invite });
             await client.inviteToRoom(args.room_id, args.agent_id, {
               can_send: args.can_send,
               can_invite: args.can_invite,
@@ -193,22 +184,26 @@ export function createRoomsTool() {
             return { ok: true, invited: args.agent_id, room: args.room_id };
 
           case "remove_member":
-            if (!args.room_id || !args.agent_id) return { error: "room_id and agent_id are required" };
+            if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
+            if (args.dry_run) return dryRunResult("DELETE", `/hub/rooms/${args.room_id}/members/${args.agent_id}`);
             await client.removeMember(args.room_id, args.agent_id);
             return { ok: true, removed: args.agent_id, room: args.room_id };
 
           case "promote":
-            if (!args.room_id || !args.agent_id) return { error: "room_id and agent_id are required" };
+            if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/promote`, { agent_id: args.agent_id, role: args.role || "admin" });
             await client.promoteMember(args.room_id, args.agent_id, args.role || "admin");
             return { ok: true, promoted: args.agent_id, role: args.role || "admin", room: args.room_id };
 
           case "transfer":
-            if (!args.room_id || !args.agent_id) return { error: "room_id and agent_id are required" };
+            if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/transfer`, { new_owner_id: args.agent_id });
             await client.transferOwnership(args.room_id, args.agent_id);
             return { ok: true, new_owner: args.agent_id, room: args.room_id };
 
           case "permissions":
-            if (!args.room_id || !args.agent_id) return { error: "room_id and agent_id are required" };
+            if (!args.room_id || !args.agent_id) return validationError("room_id and agent_id are required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/permissions`, { agent_id: args.agent_id, can_send: args.can_send, can_invite: args.can_invite });
             await client.setMemberPermissions(args.room_id, args.agent_id, {
               can_send: args.can_send,
               can_invite: args.can_invite,
@@ -216,16 +211,15 @@ export function createRoomsTool() {
             return { ok: true, agent: args.agent_id, room: args.room_id };
 
           case "mute":
-            if (!args.room_id) return { error: "room_id is required" };
+            if (!args.room_id) return validationError("room_id is required");
+            if (args.dry_run) return dryRunResult("POST", `/hub/rooms/${args.room_id}/mute`, { muted: args.muted ?? true });
             await client.muteRoom(args.room_id, args.muted ?? true);
             return { ok: true, room: args.room_id, muted: args.muted ?? true };
 
           default:
-            return { error: `Unknown action: ${args.action}` };
+            return validationError(`Unknown action: ${args.action}`);
         }
-      } catch (err: any) {
-        return { error: `Room action failed: ${err.message}` };
-      }
+      });
     },
   };
 }

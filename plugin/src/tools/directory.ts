@@ -1,14 +1,8 @@
 /**
  * botcord_directory — Read-only queries: resolve agents, discover rooms, message history.
  */
-import {
-  getSingleAccountModeError,
-  resolveAccountConfig,
-  isAccountConfigured,
-} from "../config.js";
-import { BotCordClient } from "../client.js";
-import { attachTokenPersistence } from "../credentials.js";
-import { getConfig as getAppConfig } from "../runtime.js";
+import { withClient } from "./with-client.js";
+import { validationError } from "./tool-result.js";
 
 export function createDirectoryTool() {
   return {
@@ -63,30 +57,17 @@ export function createDirectoryTool() {
       required: ["action"],
     },
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
-      const cfg = getAppConfig();
-      if (!cfg) return { error: "No configuration available" };
-      const singleAccountError = getSingleAccountModeError(cfg);
-      if (singleAccountError) return { error: singleAccountError };
-
-      const acct = resolveAccountConfig(cfg);
-      if (!isAccountConfigured(acct)) {
-        return { error: "BotCord is not configured." };
-      }
-
-      const client = new BotCordClient(acct);
-      attachTokenPersistence(client, acct);
-
-      try {
+      return withClient(async (client) => {
         switch (args.action) {
           case "resolve":
-            if (!args.agent_id) return { error: "agent_id is required" };
+            if (!args.agent_id) return validationError("agent_id is required");
             return await client.resolve(args.agent_id);
 
           case "discover_rooms":
             return await client.discoverPublicRooms(args.room_name);
 
           case "history":
-            return await client.getHistory({
+            return { history: await client.getHistory({
               peer: args.peer,
               roomId: args.room_id,
               topic: args.topic,
@@ -94,14 +75,12 @@ export function createDirectoryTool() {
               before: args.before,
               after: args.after,
               limit: args.limit || 20,
-            });
+            }) };
 
           default:
-            return { error: `Unknown action: ${args.action}` };
+            return validationError(`Unknown action: ${args.action}`);
         }
-      } catch (err: any) {
-        return { error: `Directory action failed: ${err.message}` };
-      }
+      });
     },
   };
 }

@@ -30,6 +30,36 @@ import type {
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 1000;
 
+/**
+ * Typed error thrown by BotCordClient for non-ok HTTP responses.
+ * Carries the HTTP status and an optional error code parsed from the response body.
+ */
+export class HubApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+
+  constructor(status: number, body: string, path: string) {
+    super(`BotCord ${path} failed: ${status} ${body}`);
+    this.name = "HubApiError";
+    this.status = status;
+    this.code = HubApiError.parseCode(body);
+  }
+
+  private static parseCode(body: string): string | undefined {
+    try {
+      const parsed = JSON.parse(body);
+      // Hub returns { "detail": "BLOCKED" } or { "code": "NOT_IN_CONTACTS" }
+      if (typeof parsed.code === "string") return parsed.code;
+      if (typeof parsed.detail === "string" && /^[A-Z_]+$/.test(parsed.detail)) return parsed.detail;
+    } catch {
+      // Not JSON — try to extract an all-caps code from the raw body
+      const match = body.match(/\b([A-Z][A-Z_]{2,})\b/);
+      if (match) return match[1];
+    }
+    return undefined;
+  }
+}
+
 export class BotCordClient {
   private hubUrl: string;
   private agentId: string;
@@ -178,11 +208,55 @@ export class BotCordClient {
       }
 
       const body = await resp.text().catch(() => "");
-      const err = new Error(`BotCord ${path} failed: ${resp.status} ${body}`);
-      (err as any).status = resp.status;
-      throw err;
+      throw new HubApiError(resp.status, body, path);
     }
     throw new Error(`BotCord ${path} failed: exhausted retries`);
+  }
+
+  // ── Raw API access ──────────────────────────────────────────
+
+  /**
+   * Execute an arbitrary authenticated request against the Hub API.
+   * Returns the parsed JSON response body.
+   */
+  async request(
+    method: string,
+    path: string,
+    options?: { body?: unknown; query?: Record<string, string | string[]> },
+  ): Promise<unknown> {
+    let fullPath = path;
+    if (options?.query) {
+      const params = new URLSearchParams();
+      for (const [key, val] of Object.entries(options.query)) {
+        if (Array.isArray(val)) {
+          for (const v of val) params.append(key, v);
+        } else {
+          params.append(key, val);
+        }
+      }
+      const sep = path.includes("?") ? "&" : "?";
+      fullPath = `${path}${sep}${params}`;
+    }
+    const init: RequestInit = { method };
+    if (options?.body !== undefined) {
+      init.body = JSON.stringify(options.body);
+    }
+    const resp = await this.hubFetch(fullPath, init);
+    const text = await resp.text();
+    // Guard against unexpectedly large responses (1MB cap for raw API use)
+    const MAX_RESPONSE_SIZE = 1024 * 1024;
+    if (text.length > MAX_RESPONSE_SIZE) {
+      throw new HubApiError(
+        resp.status,
+        `Response too large (${(text.length / 1024).toFixed(0)}KB > 1MB limit)`,
+        fullPath,
+      );
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   }
 
   // ── File upload ──────────────────────────────────────────────
