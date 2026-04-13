@@ -138,7 +138,10 @@ export function createMessagingTool() {
         if (args.mentions) body.mentions = args.mentions;
         if (args.file_paths) body.file_paths = args.file_paths;
         if (args.file_urls) body.file_urls = args.file_urls;
-        return dryRunResult("POST", "/hub/send", body);
+        const notes: string[] = [];
+        if (args.file_paths?.length) notes.push("Local files will be uploaded via POST /hub/upload before sending.");
+        notes.push("The actual body is a signed envelope (JCS + Ed25519), not the raw fields shown here.");
+        return dryRunResult("POST", "/hub/send", body, { note: notes.join(" ") });
       }
 
       return withClient(async (client) => {

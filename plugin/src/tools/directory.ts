@@ -64,7 +64,7 @@ export function createDirectoryTool() {
             return await client.resolve(args.agent_id);
 
           case "discover_rooms":
-            return { rooms: await client.discoverRooms(args.room_name) };
+            return await client.discoverPublicRooms(args.room_name);
 
           case "history":
             return { history: await client.getHistory({

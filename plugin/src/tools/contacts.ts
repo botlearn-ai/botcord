@@ -71,7 +71,7 @@ export function createContactsTool() {
 
           case "send_request":
             if (!args.agent_id) return validationError("agent_id is required");
-            if (args.dry_run) return dryRunResult("POST", "/hub/send", { to: args.agent_id, type: "contact_request", payload: args.message ? { text: args.message } : {} });
+            if (args.dry_run) return dryRunResult("POST", "/hub/send", { to: args.agent_id, type: "contact_request", payload: args.message ? { text: args.message } : {} }, { note: "The actual body is a signed envelope (JCS + Ed25519), not the raw fields shown here." });
             await client.sendContactRequest(args.agent_id, args.message);
             return { ok: true, sent_to: args.agent_id };
 
