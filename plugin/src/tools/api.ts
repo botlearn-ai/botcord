@@ -49,9 +49,26 @@ export function createApiTool() {
       const method = (args.method as string).toUpperCase();
       const path = args.path as string;
 
-      // Validate path to prevent SSRF / path traversal
+      // Validate path to prevent SSRF / path traversal.
       const ALLOWED_PREFIXES = ["/hub/", "/registry/", "/wallet/", "/subscriptions/", "/app/"];
-      const normalized = path.replace(/\/+/g, "/"); // collapse duplicate slashes
+
+      // Reject absolute URLs (scheme://...) — path must be relative to Hub
+      if (/^[a-z][a-z0-9+.-]*:/i.test(path)) {
+        return validationError(
+          "Absolute URLs are not allowed — provide a path like /hub/inbox",
+          "Path traversal and arbitrary URLs are not allowed.",
+        );
+      }
+
+      // Resolve against dummy base to normalize percent-encoded traversal
+      // (e.g. /%2e%2e/ → /../ → resolved away by URL constructor)
+      let resolvedPath: string;
+      try {
+        resolvedPath = new URL(path, "http://localhost").pathname;
+      } catch {
+        return validationError("Invalid path", "Could not parse the provided path as a URL.");
+      }
+      const normalized = resolvedPath.replace(/\/+/g, "/"); // collapse duplicate slashes
       if (normalized.includes("..") || !ALLOWED_PREFIXES.some((p) => normalized.startsWith(p))) {
         return validationError(
           `path must start with one of: ${ALLOWED_PREFIXES.join(", ")}`,
@@ -73,7 +90,8 @@ export function createApiTool() {
       }
 
       return withClient(async (client) => {
-        const result = await client.request(method, path, {
+        // Use the normalized path so the request matches what was validated
+        const result = await client.request(method, normalized, {
           body: args.data,
           query: args.query,
         });

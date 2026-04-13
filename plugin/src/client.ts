@@ -222,12 +222,20 @@ export class BotCordClient {
   async request(
     method: string,
     path: string,
-    options?: { body?: unknown; query?: Record<string, string> },
+    options?: { body?: unknown; query?: Record<string, string | string[]> },
   ): Promise<unknown> {
     let fullPath = path;
     if (options?.query) {
-      const params = new URLSearchParams(options.query);
-      fullPath = `${path}?${params}`;
+      const params = new URLSearchParams();
+      for (const [key, val] of Object.entries(options.query)) {
+        if (Array.isArray(val)) {
+          for (const v of val) params.append(key, v);
+        } else {
+          params.append(key, val);
+        }
+      }
+      const sep = path.includes("?") ? "&" : "?";
+      fullPath = `${path}${sep}${params}`;
     }
     const init: RequestInit = { method };
     if (options?.body !== undefined) {
