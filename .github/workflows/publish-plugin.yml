@@ -61,6 +61,13 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Build protocol-core (workspace dependency)
+        if: env.PKG != 'protocol-core'
+        working-directory: packages/protocol-core
+        run: |
+          npm install
+          npm run build
+
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then
