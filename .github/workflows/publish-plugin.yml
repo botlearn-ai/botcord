@@ -10,6 +10,7 @@ on:
         options:
           - plugin
           - cli
+          - protocol-core
       bump:
         description: "Version bump type"
         required: true
@@ -34,9 +35,10 @@ jobs:
       contents: write
     defaults:
       run:
-        working-directory: ${{ github.event.inputs.package }}
+        working-directory: ${{ github.event.inputs.package == 'protocol-core' && 'packages/protocol-core' || github.event.inputs.package }}
     env:
       PKG: ${{ github.event.inputs.package }}
+      PKG_DIR: ${{ github.event.inputs.package == 'protocol-core' && 'packages/protocol-core' || github.event.inputs.package }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +48,11 @@ jobs:
         run: |
           NPM_NAME=$(node -p "require('./package.json').name")
           echo "npm_name=$NPM_NAME" >> $GITHUB_OUTPUT
-          DISPLAY_NAME=$([ "$PKG" = "plugin" ] && echo "Plugin" || echo "CLI")
+          case "$PKG" in
+            plugin) DISPLAY_NAME="Plugin" ;;
+            cli) DISPLAY_NAME="CLI" ;;
+            protocol-core) DISPLAY_NAME="Protocol Core" ;;
+          esac
           echo "display_name=$DISPLAY_NAME" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
@@ -64,7 +70,7 @@ jobs:
           fi
 
       - name: Build
-        if: env.PKG == 'cli'
+        if: env.PKG == 'cli' || env.PKG == 'protocol-core'
         run: npm run build
 
       - name: Run tests
@@ -150,7 +156,11 @@ jobs:
           else
             git add package.json
           fi
-          TAG_PREFIX=$([ "$PKG" = "plugin" ] && echo "" || echo "cli-")
+          case "$PKG" in
+            plugin) TAG_PREFIX="" ;;
+            cli) TAG_PREFIX="cli-" ;;
+            protocol-core) TAG_PREFIX="protocol-core-" ;;
+          esac
           git commit -m "chore: release ${PKG} ${{ steps.bump.outputs.new_version }}"
           git tag "${TAG_PREFIX}${{ steps.bump.outputs.new_version }}"
           git push origin HEAD:main --tags
