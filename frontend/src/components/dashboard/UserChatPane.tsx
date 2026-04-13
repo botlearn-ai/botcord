@@ -18,6 +18,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useOwnerChatStreamStore } from "@/store/useOwnerChatStreamStore";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import ToolResultContent from "./ToolResultContent";
 import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
 import { createClient } from "@/lib/supabase/client";
@@ -124,42 +125,13 @@ function summarizeResult(result: string): string {
   return result.length > 120 ? result.slice(0, 120) + "..." : result;
 }
 
-/** Max characters for rendering tool results inline. Beyond this, truncate. */
-const MAX_RESULT_RENDER_CHARS = 50_000;
-
-/** Format a tool result for full display: pretty-print JSON, otherwise return raw.
- *  Truncates oversized payloads to avoid blocking the main thread or DOM bloat. */
-function formatFullResult(result: string): { text: string; truncated: boolean } {
-  // Try to pretty-print JSON first (on the full string), then truncate the output
-  if (result.startsWith("{") || result.startsWith("[")) {
-    try {
-      const formatted = JSON.stringify(JSON.parse(result), null, 2);
-      const truncated = formatted.length > MAX_RESULT_RENDER_CHARS;
-      return {
-        text: truncated ? formatted.slice(0, MAX_RESULT_RENDER_CHARS) : formatted,
-        truncated,
-      };
-    } catch { /* not valid JSON, use raw */ }
-  }
-  const truncated = result.length > MAX_RESULT_RENDER_CHARS;
-  return {
-    text: truncated ? result.slice(0, MAX_RESULT_RENDER_CHARS) : result,
-    truncated,
-  };
-}
-
 /** Render a single execution block with type-specific styling. */
 function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
   const { kind, payload } = block.block;
   const [resultExpanded, setResultExpanded] = useState(false);
 
-  // Hooks must be called unconditionally (Rules of Hooks).
   // Extract result string for tool_result blocks; empty for other kinds.
   const resultStr = kind === "tool_result" ? String(payload?.result ?? "") : "";
-  const formatted = useMemo(
-    () => resultStr ? formatFullResult(resultStr) : null,
-    [resultStr],
-  );
 
   if (kind === "tool_call") {
     const name = (payload?.name as string) || "tool";
@@ -200,17 +172,8 @@ function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
             {summarizeResult(resultStr)}
           </p>
         )}
-        {resultStr && resultExpanded && formatted && (
-          <div className="mt-1 ml-5">
-            <pre className="text-[11px] text-zinc-400 font-mono bg-zinc-950/50 rounded-md px-3 py-2 overflow-x-auto max-h-[400px] overflow-y-auto whitespace-pre-wrap break-words">
-              {formatted.text}
-            </pre>
-            {formatted.truncated && (
-              <p className="mt-1 text-[10px] text-zinc-600 italic">
-                结果过大，已截断显示前 {Math.round(MAX_RESULT_RENDER_CHARS / 1000)}K 字符
-              </p>
-            )}
-          </div>
+        {resultStr && resultExpanded && (
+          <ToolResultContent result={resultStr} toolName={name} />
         )}
       </div>
     );
