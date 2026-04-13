@@ -78,6 +78,27 @@ describe("botcord_api tool", () => {
     expect(result.ok).toBe(false);
   });
 
+  // ── Query string in path ─────────────────────────────────────
+
+  it("rejects query string embedded in path", async () => {
+    const result: any = await tool.execute("t1", {
+      method: "GET",
+      path: "/hub/search?q=deploy",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error.code).toBe("INVALID_INPUT");
+    expect(result.error.hint).toContain("query");
+  });
+
+  it("rejects path with query string even when query field is also provided", async () => {
+    const result: any = await tool.execute("t1", {
+      method: "GET",
+      path: "/hub/search?q=deploy",
+      query: { limit: "10" },
+    });
+    expect(result.ok).toBe(false);
+  });
+
   // ── Encoded path traversal ─────────────────────────────────
 
   it("rejects percent-encoded path traversal escaping to disallowed prefix", async () => {

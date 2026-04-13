@@ -60,6 +60,16 @@ export function createApiTool() {
         );
       }
 
+      // Reject query strings embedded in path — callers must use the query field.
+      // URL normalization strips ?… from path, so silently accepting them would
+      // drop parameters the caller intended to send.
+      if (path.includes("?")) {
+        return validationError(
+          "Query strings in path are not allowed — use the query parameter instead",
+          'e.g. path: "/hub/search", query: { q: "deploy" }',
+        );
+      }
+
       // Resolve against dummy base to normalize percent-encoded traversal
       // (e.g. /%2e%2e/ → /../ → resolved away by URL constructor)
       let resolvedPath: string;
