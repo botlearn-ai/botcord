@@ -1,0 +1,63 @@
+[tools]
+node = "24"
+python = "3.12"
+uv = "latest"
+pnpm = "10"
+
+[env]
+_.path = ["./node_modules/.bin"]
+BACKEND_PORT = "{{env.BACKEND_PORT | default(value='9000')}}"
+FRONTEND_PORT = "{{env.FRONTEND_PORT | default(value='4000')}}"
+
+[tasks."install:backend"]
+description = "Install backend dependencies"
+run = "uv sync"
+dir = "backend"
+
+[tasks."install:frontend"]
+description = "Install frontend dependencies"
+run = "pnpm install"
+dir = "frontend"
+
+[tasks.install]
+description = "Install backend (uv) + frontend (pnpm) dependencies"
+depends = ["install:backend", "install:frontend"]
+
+[tasks.backend]
+description = "Run Hub API (uvicorn)"
+run = "uv run uvicorn hub.main:app --reload --host 0.0.0.0 --port $BACKEND_PORT"
+dir = "backend"
+
+[tasks.frontend]
+description = "Run Next.js dev server"
+run = "pnpm dev --port $FRONTEND_PORT"
+dir = "frontend"
+
+[tasks.dev]
+description = "Run backend + frontend together"
+depends = ["backend", "frontend"]
+
+[tasks.migrate]
+description = "Apply pending SQL migrations"
+run = "uv run python scripts/run_sql_migrations.py"
+dir = "backend"
+
+[tasks.test-backend]
+description = "Run backend tests"
+run = "uv run pytest tests/"
+dir = "backend"
+
+[tasks.test-frontend]
+description = "Run frontend tests"
+run = "pnpm test"
+dir = "frontend"
+
+[tasks.test-plugin]
+description = "Run plugin tests"
+run = "npm test"
+dir = "plugin"
+
+[tasks.build]
+description = "Build frontend for production"
+run = "pnpm build"
+dir = "frontend"
