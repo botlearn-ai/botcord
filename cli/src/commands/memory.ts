@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ParsedArgs } from "../args.js";
 import { loadDefaultCredentials } from "../credentials.js";
+import { BotCordClient } from "../client.js";
 import { outputJson, outputError } from "../output.js";
 
 // ── Working memory file I/O (v2: named sections + pinned goal) ──
@@ -137,6 +138,27 @@ Options:
     } catch (err: unknown) {
       outputError(`failed to read working memory: ${formatErrorMessage(err)}`);
     }
+
+    // Lazy seed: if no local memory, fetch default from Hub API
+    if (!wm) {
+      try {
+        const client = new BotCordClient(creds);
+        const seed = await client.getDefaultMemory();
+        if (seed && seed.version === 2) {
+          const seeded: WorkingMemory = {
+            version: 2,
+            goal: typeof seed.goal === "string" ? seed.goal : undefined,
+            sections: seed.sections && typeof seed.sections === "object" ? seed.sections : {},
+            updatedAt: new Date().toISOString(),
+          };
+          writeMemory(agentId, seeded);
+          wm = seeded;
+        }
+      } catch {
+        // Offline — no onboarding guidance, but don't block
+      }
+    }
+
     if (!wm) {
       outputJson({ agent_id: agentId, goal: null, sections: {}, message: "working memory is empty" });
     } else {

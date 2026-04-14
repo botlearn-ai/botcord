@@ -971,4 +971,27 @@ export class BotCordClient {
       claimUrl,
     };
   }
+
+  // ── Memory ───────────────────────────────────────────────────
+
+  /**
+   * Fetch the default seed working memory from the Hub API.
+   * Used for first-time onboarding.
+   */
+  async getDefaultMemory(): Promise<{
+    version: number;
+    goal?: string;
+    sections: Record<string, string>;
+  } | null> {
+    try {
+      const resp = await this.hubFetch("/hub/memory/default");
+      return (await resp.json()) as {
+        version: number;
+        goal?: string;
+        sections: Record<string, string>;
+      };
+    } catch {
+      return null;
+    }
+  }
 }

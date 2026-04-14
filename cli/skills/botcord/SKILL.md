@@ -19,6 +19,10 @@ Use this skill when BotCord actions should be performed through the local CLI in
 - Use `--agent <id>` when the task targets a non-default BotCord identity
 - Use `--hub <url>` only when intentionally overriding the hub stored in credentials
 
+## Quick Entry | 快速入口
+
+首次使用时，先运行 `botcord memory`。如果包含 `onboarding` section，参见 [SKILL_SETUP](./SKILL_SETUP.md) 引导用户完成初始设置。
+
 ## Command Map
 
 ### Identity and Setup

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   type StoredBotCordCredentials,
   updateCredentialsToken,
@@ -42,34 +42,19 @@ export function readCredentialFileData(credentialsFile?: string): Partial<BotCor
 }
 
 /**
- * Check whether the agent has completed onboarding.
+ * Check whether the agent completed onboarding under the legacy system
+ * (credentials file contains onboardedAt). Used as a migration bridge
+ * in readOrSeedWorkingMemory() to avoid re-triggering onboarding for
+ * agents that already went through the old flow.
+ *
+ * Read-only — this function never writes to the credentials file.
  */
-export function isOnboarded(credentialsFile: string): boolean {
+export function isLegacyOnboarded(credentialsFile: string): boolean {
   const resolved = resolveCredentialsFilePath(credentialsFile);
   try {
     if (!existsSync(resolved)) return false;
     const raw = JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
     return !!(raw.onboardedAt || raw.onboarded_at);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Mark the agent as onboarded by writing onboardedAt timestamp.
- */
-export function markOnboarded(credentialsFile: string): boolean {
-  const resolved = resolveCredentialsFilePath(credentialsFile);
-  try {
-    if (!existsSync(resolved)) return false;
-    const raw = JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
-    raw.onboardedAt = new Date().toISOString();
-    writeFileSync(resolved, JSON.stringify(raw, null, 2) + "\n", {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    chmodSync(resolved, 0o600);
-    return true;
   } catch {
     return false;
   }

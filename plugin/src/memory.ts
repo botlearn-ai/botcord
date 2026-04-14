@@ -12,6 +12,8 @@ import path from "node:path";
 import os from "node:os";
 import { getBotCordRuntime, getConfig } from "./runtime.js";
 import { resolveAccountConfig } from "./config.js";
+import { isLegacyOnboarded } from "./credentials.js";
+import type { BotCordClient as BotCordClientType } from "./client.js";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -195,6 +197,54 @@ export function writeWorkingMemory(
   memDir?: string,
 ): void {
   writeJsonFileAtomic(workingMemoryPath(memDir), data);
+}
+
+// ── Seed (lazy init) ──────────────────────────────────────────────
+
+/**
+ * Read working memory with lazy seed from Hub API.
+ *
+ * If local memory file does not exist:
+ * 1. Check the legacy onboardedAt flag → skip seed if set (migration bridge).
+ * 2. Fetch default memory from GET /hub/memory/default.
+ * 3. Write the seed to local file and return it.
+ *
+ * This is the ONLY entry point that should be used on the "display path"
+ * (i.e., injecting memory into the agent prompt). Write-tool internal reads
+ * (read-before-update) should continue using readWorkingMemory() directly.
+ */
+export async function readOrSeedWorkingMemory(params: {
+  client: BotCordClientType;
+  credentialsFile?: string;
+  memDir?: string;
+}): Promise<WorkingMemory | null> {
+  const { client, credentialsFile, memDir } = params;
+
+  // 1. Local file exists → return as-is
+  const existing = readWorkingMemory(memDir);
+  if (existing) return existing;
+
+  // 2. Migration bridge: agent already onboarded under legacy system → skip seed
+  if (credentialsFile && isLegacyOnboarded(credentialsFile)) return null;
+
+  // 3. Fetch seed from Hub API
+  try {
+    const seed = await client.getDefaultMemory();
+    if (seed && typeof seed === "object" && seed.version === 2) {
+      const wm: WorkingMemory = {
+        version: 2,
+        goal: typeof seed.goal === "string" ? seed.goal : undefined,
+        sections: seed.sections && typeof seed.sections === "object" ? seed.sections as Record<string, string> : {},
+        updatedAt: new Date().toISOString(),
+      };
+      writeWorkingMemory(wm, memDir);
+      return wm;
+    }
+  } catch {
+    // Offline / network error → no onboarding guidance, but don't block
+  }
+
+  return null;
 }
 
 // ── Room State ─────────────────────────────────────────────────────
