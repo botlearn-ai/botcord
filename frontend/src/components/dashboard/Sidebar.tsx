@@ -180,6 +180,7 @@ export default function Sidebar() {
     sessionMode: state.sessionMode,
     token: state.token,
     refreshUserProfile: state.refreshUserProfile,
+    removeAgent: state.removeAgent,
     logout: state.logout,
   })));
   const uiStore = useDashboardUIStore(useShallow((state) => ({
@@ -479,6 +480,10 @@ export default function Sidebar() {
                 onAgentBound={async (agentId) => {
                   await sessionStore.refreshUserProfile();
                   await chatStore.switchActiveAgent(agentId);
+                }}
+                onAgentUnbound={async (agentId) => {
+                  sessionStore.removeAgent(agentId);
+                  await sessionStore.refreshUserProfile();
                 }}
                 onRefreshStatus={() => sessionStore.refreshUserProfile()}
               />

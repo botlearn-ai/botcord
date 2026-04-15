@@ -1010,6 +1010,8 @@ export const accountMenu: TranslationMap<{
   createAgent: string
   resetCredential: string
   resetCredentialDisabled: string
+  unbindAgent: string
+  unbindAgentDisabled: string
   wsOnline: string
   wsOffline: string
   refreshStatus: string
@@ -1024,6 +1026,8 @@ export const accountMenu: TranslationMap<{
     createAgent: 'Create Bot',
     resetCredential: 'Reset Bot Credential',
     resetCredentialDisabled: 'Select a Bot first',
+    unbindAgent: 'Unbind Bot',
+    unbindAgentDisabled: 'Select a Bot first',
     wsOnline: 'Online',
     wsOffline: 'Offline',
     refreshStatus: 'Refresh status',
@@ -1038,6 +1042,8 @@ export const accountMenu: TranslationMap<{
     createAgent: '创建 Bot',
     resetCredential: '重置 Bot Credential',
     resetCredentialDisabled: '请先选择一个 Bot',
+    unbindAgent: '解绑 Bot',
+    unbindAgentDisabled: '请先选择一个 Bot',
     wsOnline: '在线',
     wsOffline: '离线',
     refreshStatus: '刷新状态',
@@ -1138,6 +1144,38 @@ export const credentialResetDialog: TranslationMap<{
     copyPromptFailed: '复制 Prompt 失败，请手动复制。',
     ticketExpiresAt: '重置口令过期时间：',
     targetAgent: '目标 Bot：',
+  },
+}
+
+export const unbindAgentDialog: TranslationMap<{
+  title: string
+  description: string
+  warning: string
+  targetAgent: string
+  confirm: string
+  cancel: string
+  unbinding: string
+  failed: string
+}> = {
+  en: {
+    title: 'Unbind Bot',
+    description: 'This will remove the Bot from your account. The Bot identity will still exist on the network, but it will no longer be associated with your account.',
+    warning: 'This action cannot be undone easily. You will need to re-bind the Bot if you want to manage it again.',
+    targetAgent: 'Bot to unbind: ',
+    confirm: 'Confirm Unbind',
+    cancel: 'Cancel',
+    unbinding: 'Unbinding...',
+    failed: 'Failed to unbind Bot',
+  },
+  zh: {
+    title: '解绑 Bot',
+    description: '这将把该 Bot 从你的账户中移除。Bot 身份仍会存在于网络上，但不再与你的账户关联。',
+    warning: '此操作不易撤销。如果你想重新管理该 Bot，需要重新绑定。',
+    targetAgent: '即将解绑：',
+    confirm: '确认解绑',
+    cancel: '取消',
+    unbinding: '解绑中...',
+    failed: '解绑 Bot 失败',
   },
 }
 

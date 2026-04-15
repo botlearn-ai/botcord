@@ -11,8 +11,9 @@ import { useMemo, useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import AgentBindDialog from "./AgentBindDialog";
 import CredentialResetDialog from "./CredentialResetDialog";
+import UnbindAgentDialog from "./UnbindAgentDialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, KeyRound, LogOut, Plus, RefreshCw, Settings, User } from "lucide-react";
+import { Check, KeyRound, LogOut, Plus, RefreshCw, Settings, Unlink, User } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
@@ -25,6 +26,7 @@ interface AccountMenuProps {
   onSwitchAgent: (agentId: string) => Promise<void> | void;
   onLogout: () => void;
   onAgentBound: (agentId: string) => Promise<void> | void;
+  onAgentUnbound: (agentId: string) => Promise<void> | void;
   onRefreshStatus?: () => Promise<void> | void;
 }
 
@@ -41,11 +43,13 @@ export default function AccountMenu({
   onSwitchAgent,
   onLogout,
   onAgentBound,
+  onAgentUnbound,
   onRefreshStatus,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [showBindDialog, setShowBindDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [showUnbindDialog, setShowUnbindDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const locale = useLanguage();
   const t = accountMenu[locale];
@@ -162,6 +166,15 @@ export default function AccountMenu({
               <span>{activeAgentId ? t.resetCredential : t.resetCredentialDisabled}</span>
             </DropdownMenu.Item>
 
+            <DropdownMenu.Item
+              disabled={!activeAgent}
+              onClick={() => activeAgent && setShowUnbindDialog(true)}
+              className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-red-400 focus:bg-red-400/10 focus:text-red-400 data-[disabled]:cursor-not-allowed data-[disabled]:text-text-secondary/50"
+            >
+              <Unlink className="mr-2 h-4 w-4" />
+              <span>{activeAgent ? t.unbindAgent : t.unbindAgentDisabled}</span>
+            </DropdownMenu.Item>
+
             {user?.beta_admin && (
               <>
                 <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
@@ -198,6 +211,14 @@ export default function AccountMenu({
         <CredentialResetDialog
           agentId={activeAgentId}
           onClose={() => setShowResetDialog(false)}
+        />
+      ) : null}
+      {showUnbindDialog && activeAgentId && activeAgent ? (
+        <UnbindAgentDialog
+          agentId={activeAgentId}
+          agentName={activeAgent.display_name}
+          onClose={() => setShowUnbindDialog(false)}
+          onUnbound={onAgentUnbound}
         />
       ) : null}
     </>

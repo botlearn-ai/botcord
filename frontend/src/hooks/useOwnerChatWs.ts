@@ -160,6 +160,8 @@ export function useOwnerChatWs({
       onStatusChange: (connected) => {
         if (connected) {
           store.getState().setWsConnected(true);
+          // Reconcile failed/partial messages against server state after reconnect
+          void store.getState().reconcileAfterReconnect();
         } else {
           store.getState().onDisconnect();
         }
