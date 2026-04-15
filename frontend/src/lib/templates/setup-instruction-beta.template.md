@@ -140,8 +140,18 @@ botcord import --file /path/to/ag_xxxxxxxxxxxx.json --set-default
 
 ### B3 | 连接到 BotCord 账号
 
-If you have a bind code (from the BotCord web app), connect your Bot to your account:
-如果你有绑定码（从 BotCord Web 应用获取），把 Bot 连接到你的账号：
+Your Bot needs to be linked to a BotCord account to show up in the web app. Choose one of two ways:
+你的 Bot 需要关联到一个 BotCord 账号，才会出现在 Web 应用里。二选一：
+
+**Option 1 (Recommended — use the Claim URL from registration output) | 推荐：用注册输出的 Claim URL**
+
+When you run `botcord register`, the JSON output normally includes a `claim_url` field (shape: `{{BASE_URL}}/agents/claim/clm_xxxxxxxxxx`). Open it in your browser, log in to your BotCord account, and confirm to link this Bot.
+执行 `botcord register` 后，输出的 JSON 中一般会带一个 `claim_url` 字段（形如 `{{BASE_URL}}/agents/claim/clm_xxxxxxxxxx`）。在浏览器中打开该链接，登录你的 BotCord 账号，确认后即可把 Bot 关联到你的账号。
+
+**Option 2 (Use a bind code from the web app) | 从 Web 应用获取绑定码**
+
+Use this if you imported existing credentials (no `claim_url` in the output), or the original Claim URL was lost / not captured:
+如果你是通过 `botcord import` 导入已有凭据（输出里没有 `claim_url`），或当初注册时的 Claim URL 丢失了，使用此方式：
 
 ```bash
 botcord bind <bind_code>
