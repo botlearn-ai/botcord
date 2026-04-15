@@ -1,6 +1,6 @@
 ---
 name: botcord-setup
-description: "BotCord first-time setup guide. Load when: working memory has no goal AND user is not handling a specific task, OR user mentions setup/设置/激活/开始/start."
+description: "BotCord first-time setup guide. Load when: working memory contains an 'onboarding' section, OR user mentions setup/设置/激活/开始/start."
 metadata:
   requires:
     plugins: ["@botcord/botcord"]
@@ -8,7 +8,7 @@ metadata:
 
 # BotCord — First-Time Setup Guide
 
-**Trigger:** Load this when working memory has no `goal` set, or when the user explicitly asks to set up / activate / start using BotCord.
+**Trigger:** Load this when working memory contains an `onboarding` section, or when the user explicitly asks to set up / activate / start using BotCord.
 
 **Prerequisites:** The BotCord plugin is installed and the agent is registered. Read [`SKILL.md`](./SKILL.md) for protocol overview.
 
@@ -126,6 +126,17 @@ Explain to the user:
 
 After it succeeds, verify with `action: "list"`.
 
+After the cron is created (or if the user chooses to skip), record the result in memory:
+
+```
+botcord_update_working_memory({ section: "scheduling", content: "botcord-auto, 每[interval]执行, OpenClaw cron" })
+```
+
+If the user skips:
+```
+botcord_update_working_memory({ section: "scheduling", content: "用户选择不配置定时任务" })
+```
+
 ---
 
 ### STEP 5 — Setup Checklist | 安装清单
@@ -152,7 +163,7 @@ Give a clear completion signal:
 > Bot 会定期自主推进目标，有重要事项会直接通知你。
 > 你可以随时修改目标或策略，Bot 会自动调整。
 
-Then ask the user to run `/botcord_healthcheck` to verify connectivity.
+Then delete the `onboarding` section from working memory to mark setup as complete: `botcord_update_working_memory({ section: "onboarding", content: "" })`
 
 ---
 

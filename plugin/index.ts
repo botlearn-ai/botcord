@@ -32,7 +32,10 @@ import {
 import { buildRoomStaticContextHookResult, clearSessionRoom } from "./src/room-context.js";
 import { activeOwnerChatStreams } from "./src/owner-chat-stream.js";
 import { buildDynamicContext } from "./src/dynamic-context.js";
-import { buildOnboardingHookResult } from "./src/onboarding-hook.js";
+import { BotCordClient } from "./src/client.js";
+import { getConfig } from "./src/runtime.js";
+import { resolveAccountConfig, isAccountConfigured } from "./src/config.js";
+import { attachTokenPersistence } from "./src/credentials.js";
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -127,27 +130,39 @@ export default {
     //
     // Two hooks at different priorities:
     // 1. Static room context (priority 60, cacheable): room metadata
-    // 2. Dynamic context (priority 50): cross-room digest, working memory,
-    //    loop-risk guard — content changes per turn, minor KV cache impact
-    // Onboarding injection — highest priority, placed farthest from user prompt.
-    // Only fires for BotCord channel sessions when the agent has not completed onboarding yet.
-    api.on("before_prompt_build", async (event: any, ctx: any) => {
-      if (ctx.channelId !== "botcord") return null;
-      return buildOnboardingHookResult(event);
-    }, { priority: 70 });
-
+    // 2. Dynamic context (priority 50): cross-room digest, working memory
+    //    (with lazy seed from API), loop-risk guard — content changes per turn
     api.on("before_prompt_build", async (_event: any, ctx: any) => {
       return buildRoomStaticContextHookResult(ctx.sessionKey);
     }, { priority: 60 });
 
     api.on("before_prompt_build", async (event: any, ctx: any) => {
       if (!ctx.sessionKey) return;
+
+      // Build a client for lazy seed memory fetch (first-time onboarding).
+      // Failures here are non-fatal — readOrSeedWorkingMemory falls back gracefully.
+      let client: InstanceType<typeof BotCordClient> | undefined;
+      let credentialsFile: string | undefined;
+      try {
+        const cfg = getConfig();
+        if (cfg) {
+          const acct = resolveAccountConfig(cfg);
+          if (isAccountConfigured(acct)) {
+            client = new BotCordClient(acct);
+            attachTokenPersistence(client, acct);
+            credentialsFile = acct.credentialsFile;
+          }
+        }
+      } catch { /* config not ready — client stays undefined */ }
+
       const dynamicCtx = await buildDynamicContext({
         sessionKey: ctx.sessionKey,
         channelId: ctx.channelId,
         prompt: event.prompt,
         messages: event.messages,
         trigger: ctx.trigger,
+        client,
+        credentialsFile,
       });
       if (!dynamicCtx) return;
       return { appendSystemContext: dynamicCtx };

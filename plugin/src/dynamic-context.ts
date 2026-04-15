@@ -16,12 +16,13 @@
  * out of the box with zero config.
  */
 import { buildCrossRoomDigest, getSessionRoom } from "./room-context.js";
-import { readWorkingMemory } from "./memory.js";
+import { readWorkingMemory, readOrSeedWorkingMemory } from "./memory.js";
 import { buildWorkingMemoryPrompt } from "./memory-protocol.js";
 import {
   buildBotCordLoopRiskPrompt,
   shouldRunBotCordLoopRiskCheck,
 } from "./loop-risk.js";
+import type { BotCordClient as BotCordClientType } from "./client.js";
 
 /**
  * Build the dynamic context for a BotCord session.
@@ -35,8 +36,10 @@ export async function buildDynamicContext(params: {
   prompt?: string;
   messages?: unknown[];
   trigger?: string;
+  client?: BotCordClientType;
+  credentialsFile?: string;
 }): Promise<string | null> {
-  const { sessionKey, channelId, prompt, messages, trigger } = params;
+  const { sessionKey, channelId, prompt, messages, trigger, client, credentialsFile } = params;
 
   const isOwnerChat = sessionKey === "botcord:owner:main";
   const isBotCordSession = isOwnerChat || !!getSessionRoom(sessionKey);
@@ -49,9 +52,11 @@ export async function buildDynamicContext(params: {
   const digest = await buildCrossRoomDigest(sessionKey);
   if (digest) parts.push(digest);
 
-  // 2. Working memory
+  // 2. Working memory (with lazy seed from API on first read)
   try {
-    const wm = readWorkingMemory();
+    const wm = client
+      ? await readOrSeedWorkingMemory({ client, credentialsFile })
+      : readWorkingMemory();
     const memoryPrompt = buildWorkingMemoryPrompt({ workingMemory: wm });
     parts.push(memoryPrompt);
   } catch (err: unknown) {
