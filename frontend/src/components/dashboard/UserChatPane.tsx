@@ -259,7 +259,10 @@ export default function UserChatPane() {
     const filesToUpload = [...pendingFiles];
     setInputText("");
     setPendingFiles([]);
-    if (inputRef.current) inputRef.current.value = "";
+    if (inputRef.current) {
+      inputRef.current.value = "";
+      inputRef.current.style.height = "auto";
+    }
     for (const pf of filesToUpload) { if (pf.preview) URL.revokeObjectURL(pf.preview); }
 
     const clientId = crypto.randomUUID();
@@ -311,6 +314,13 @@ export default function UserChatPane() {
       handleSend();
     }
   };
+
+  const autoResize = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -590,10 +600,10 @@ export default function UserChatPane() {
           </button>
           <textarea
             ref={inputRef}
-            className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 min-h-[40px] max-h-[120px]"
+            className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50"
             placeholder="Type a message..."
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            onChange={(e) => { setInputText(e.target.value); autoResize(); }}
             onKeyDown={handleKeyDown}
             rows={1}
           />
