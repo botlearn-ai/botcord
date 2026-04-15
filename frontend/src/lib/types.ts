@@ -132,6 +132,62 @@ export interface StreamBlockEntry {
   created_at: string;
 }
 
+// --- Owner-chat unified message model ---
+
+export type OwnerChatMessageStatus =
+  | "optimistic"   // User message: created locally, send in flight
+  | "failed"       // User message: send failed, retryable
+  | "confirmed"    // User message: server echoed back (has hubMsgId)
+  | "streaming"    // Agent message: actively receiving stream blocks
+  | "delivered";   // Final state for both user and agent messages
+
+export interface OwnerChatMessage {
+  /** Client-generated UUID — stable React key, always present. */
+  clientId: string;
+  /** Server-assigned message ID. Null while optimistic. */
+  hubMsgId: string | null;
+
+  sender: "user" | "agent";
+  text: string;
+  attachments?: Attachment[];
+  /** Embedded execution blocks (empty for user messages). */
+  streamBlocks: StreamBlockEntry[];
+
+  status: OwnerChatMessageStatus;
+  error?: string;
+
+  createdAt: string;
+  senderName: string;
+  type: "message" | "notification";
+
+  /** Original text payload for retry (may differ from display text for file-only sends). */
+  sendText?: string;
+  /** Unsent files preserved for retry. */
+  retryFiles?: File[];
+  /** Links streaming placeholder to its final delivered message. */
+  traceId?: string;
+}
+
+/** Convert a DashboardMessage (from API) into an OwnerChatMessage. */
+export function dashboardMsgToOwnerChat(
+  msg: DashboardMessage,
+  agentName: string,
+): OwnerChatMessage {
+  const isUser = msg.source_type === "dashboard_user_chat";
+  return {
+    clientId: msg.hub_msg_id,
+    hubMsgId: msg.hub_msg_id,
+    sender: isUser ? "user" : "agent",
+    text: msg.text || "",
+    attachments: (msg.payload?.attachments as Attachment[] | undefined) ?? undefined,
+    streamBlocks: [],
+    status: "delivered",
+    createdAt: msg.created_at,
+    senderName: isUser ? "You" : (msg.sender_name || agentName),
+    type: msg.type === "notification" ? "notification" : "message",
+  };
+}
+
 export interface OwnerChatWsMessage {
   type: "message";
   hub_msg_id: string;

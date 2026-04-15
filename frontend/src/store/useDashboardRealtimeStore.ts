@@ -13,7 +13,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import { useOwnerChatStreamStore } from "@/store/useOwnerChatStreamStore";
+import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 
 let realtimeSyncInFlight = false;
 let queuedRealtimeEvent: RealtimeMetaEvent | null = null;
@@ -85,7 +85,7 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
 
         // Owner-chat WS handles its own realtime delivery — skip Supabase
         // realtime events for the owner-chat room when the WS is connected.
-        const ownerChatWsConnected = useOwnerChatStreamStore.getState().wsConnected;
+        const ownerChatWsConnected = useOwnerChatStore.getState().wsConnected;
         const isOwnerChatEvent = userChatRoomId && currentEvent?.room_id === userChatRoomId;
 
         // Handle typing events — just toggle the UI flag, no data fetching
@@ -97,7 +97,7 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
               nextEvent = queuedRealtimeEvent;
               continue;
             }
-            uiState.setUserChatAgentTyping(true);
+            useOwnerChatStore.getState().setAgentTyping(true);
           }
           nextEvent = queuedRealtimeEvent;
           continue;
@@ -114,7 +114,7 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
           if (currentEvent.type === "message" && currentEvent.room_id) {
             _lastOwnerChatAgentMsg = { roomId: currentEvent.room_id, at: Date.now() };
           }
-          uiState.setUserChatAgentTyping(false);
+          useOwnerChatStore.getState().setAgentTyping(false);
         }
 
         const chatStore = useDashboardChatStore.getState();
@@ -145,18 +145,25 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
           });
         }
 
-        // User-chat pane has its own room slot so it doesn't clobber openedRoomId.
-        // When the owner-chat WS is connected, skip polling — WS handles delivery.
+        // User-chat pane uses its own store. When WS is disconnected,
+        // fetch new messages via API and merge into the owner-chat store.
         if (
           userChatRoomId
           && userChatRoomId !== openedRoomId
           && (!currentEvent || currentEvent.room_id === userChatRoomId)
           && !ownerChatWsConnected
         ) {
-          await chatStore.pollNewMessages(userChatRoomId, {
-            expectedHubMsgId: isMessageLikeRealtimeEvent(currentEvent) ? currentEvent.hub_msg_id : null,
-            retries: isMessageLikeRealtimeEvent(currentEvent) ? 2 : 0,
-          });
+          try {
+            const ocStore = useOwnerChatStore.getState();
+            const existing = ocStore.messages;
+            const newest = [...existing].reverse().find((m) => m.hubMsgId);
+            const result = newest?.hubMsgId
+              ? await api.getRoomMessages(userChatRoomId, { after: newest.hubMsgId, limit: 50 })
+              : await api.getRoomMessages(userChatRoomId, { limit: 50 });
+            if (result.messages.length > 0) {
+              ocStore.mergeApiMessages(result.messages, "append");
+            }
+          } catch { /* non-critical */ }
         }
 
         nextEvent = queuedRealtimeEvent;
