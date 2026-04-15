@@ -481,9 +481,9 @@ export default function Sidebar() {
                   await sessionStore.refreshUserProfile();
                   await chatStore.switchActiveAgent(agentId);
                 }}
-                onAgentUnbound={(agentId) => {
+                onAgentUnbound={async (agentId) => {
                   sessionStore.removeAgent(agentId);
-                  sessionStore.refreshUserProfile();
+                  await sessionStore.refreshUserProfile();
                 }}
                 onRefreshStatus={() => sessionStore.refreshUserProfile()}
               />

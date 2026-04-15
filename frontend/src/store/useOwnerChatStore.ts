@@ -85,6 +85,7 @@ export interface OwnerChatState {
   setWsConnected: (connected: boolean) => void;
   setAgentTyping: (typing: boolean) => void;
   onDisconnect: () => void;
+  reconcileAfterReconnect: () => Promise<void>;
   reset: () => void;
 }
 
@@ -307,9 +308,43 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       const existingIds = new Set(
         state.messages.filter((m) => m.hubMsgId).map((m) => m.hubMsgId!)
       );
-      const deduped = converted.filter((m) => m.hubMsgId && !existingIds.has(m.hubMsgId));
-      if (deduped.length === 0) return state;
-      return { messages: [...state.messages, ...deduped] };
+
+      // Reconcile: if a server message matches a failed optimistic message, confirm it
+      const failedUserMsgs = state.messages.filter(
+        (m) => m.status === "failed" && m.sender === "user" && m.error === "Connection lost"
+      );
+      let reconciled = state.messages;
+      const reconciledServerIds = new Set<string>();
+
+      if (failedUserMsgs.length > 0) {
+        const serverUserMsgs = converted.filter((m) => m.sender === "user");
+        reconciled = state.messages.map((m) => {
+          if (m.status !== "failed" || m.sender !== "user" || m.error !== "Connection lost") return m;
+          const sendText = m.sendText || m.text;
+          const match = serverUserMsgs.find(
+            (sm) => sm.text === sendText && sm.hubMsgId && !reconciledServerIds.has(sm.hubMsgId)
+          );
+          if (match && match.hubMsgId) {
+            reconciledServerIds.add(match.hubMsgId);
+            return {
+              ...m,
+              hubMsgId: match.hubMsgId,
+              status: "confirmed" as const,
+              createdAt: match.createdAt,
+              error: undefined,
+              sendText: undefined,
+              retryFiles: undefined,
+            };
+          }
+          return m;
+        });
+      }
+
+      const deduped = converted.filter(
+        (m) => m.hubMsgId && !existingIds.has(m.hubMsgId) && !reconciledServerIds.has(m.hubMsgId)
+      );
+      if (deduped.length === 0 && reconciled === state.messages) return state;
+      return { messages: deduped.length > 0 ? [...reconciled, ...deduped] : reconciled };
     });
   },
 
@@ -434,16 +469,100 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       wsConnected: false,
       agentTyping: false,
       activeTraceId: null,
-      messages: state.messages
-        // Fail all optimistic messages
-        .map((m) =>
-          m.status === "optimistic"
-            ? { ...m, status: "failed" as const, error: "Connection lost" }
-            : m
-        )
-        // Remove streaming messages (cannot be recovered)
-        .filter((m) => m.status !== "streaming"),
+      messages: state.messages.map((m) => {
+        if (m.status === "optimistic") {
+          // Mark as failed but flag for reconnect reconciliation
+          return { ...m, status: "failed" as const, error: "Connection lost" };
+        }
+        if (m.status === "streaming") {
+          // Preserve partial streamed content instead of dropping
+          const partialText = m.text || extractAssistantText(m.streamBlocks);
+          if (!partialText && m.streamBlocks.length === 0) {
+            // Empty streaming placeholder — safe to drop
+            return null;
+          }
+          return {
+            ...m,
+            text: partialText,
+            status: "delivered" as const,
+            // Keep streamBlocks for display (execution blocks, etc.)
+            streamBlocks: m.streamBlocks.filter((b) => b.block.kind !== "assistant"),
+          };
+        }
+        return m;
+      }).filter((m): m is OwnerChatMessage => m !== null),
     })),
+
+  reconcileAfterReconnect: async () => {
+    const { roomId, messages, agentName } = get();
+    if (!roomId) return;
+
+    // Find failed user messages that were caused by disconnect (candidates for reconciliation)
+    const failedMsgs = messages.filter(
+      (m) => m.status === "failed" && m.sender === "user" && m.error === "Connection lost"
+    );
+    if (failedMsgs.length === 0) return;
+
+    try {
+      // Fetch recent messages from server to check if any "failed" sends actually went through
+      const newest = [...messages].reverse().find((m) => m.hubMsgId && m.status !== "failed");
+      const result = newest?.hubMsgId
+        ? await api.getRoomMessages(roomId, { after: newest.hubMsgId, limit: 50 })
+        : await api.getRoomMessages(roomId, { limit: 50 });
+
+      if (result.messages.length === 0) return;
+
+      const serverMsgs = result.messages.map((m) => dashboardMsgToOwnerChat(m, agentName));
+      const serverTexts = new Set(serverMsgs.map((m) => m.text));
+
+      set((state) => {
+        const existingHubIds = new Set(
+          state.messages.filter((m) => m.hubMsgId).map((m) => m.hubMsgId!)
+        );
+
+        const updatedMessages = state.messages.map((m) => {
+          // Only reconcile disconnect-failed user messages
+          if (m.status !== "failed" || m.sender !== "user" || m.error !== "Connection lost") {
+            return m;
+          }
+
+          // Check if server received this message (match by text content)
+          const sendText = m.sendText || m.text;
+          const serverMatch = serverMsgs.find(
+            (sm) => sm.sender === "user" && sm.text === sendText
+          );
+          if (serverMatch) {
+            return {
+              ...m,
+              hubMsgId: serverMatch.hubMsgId,
+              status: "confirmed" as const,
+              createdAt: serverMatch.createdAt,
+              error: undefined,
+              sendText: undefined,
+              retryFiles: undefined,
+            };
+          }
+
+          return m;
+        });
+
+        // Append any new server messages not already in our list
+        const newServerMsgs = serverMsgs.filter(
+          (sm) => sm.hubMsgId && !existingHubIds.has(sm.hubMsgId)
+            // Skip messages we just reconciled above
+            && !updatedMessages.some((m) => m.hubMsgId === sm.hubMsgId)
+        );
+
+        return {
+          messages: newServerMsgs.length > 0
+            ? [...updatedMessages, ...newServerMsgs]
+            : updatedMessages,
+        };
+      });
+    } catch (err) {
+      console.error("[OwnerChatStore] Failed to reconcile after reconnect:", err);
+    }
+  },
 
   reset: () => {
     loadInFlight = false;
