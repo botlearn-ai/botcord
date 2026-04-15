@@ -159,6 +159,17 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function apiDelete<T>(path: string): Promise<T> {
+  const headers = await buildAuthHeaders();
+  const url = new URL(path, API_BASE);
+  const res = await fetch(url.toString(), { method: "DELETE", headers });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
+  }
+  return res.json();
+}
+
 export const api = {
   // --- Dashboard APIs ---
 
@@ -500,6 +511,15 @@ const userApi = {
 
   getAgentIdentity(agentId: string): Promise<{ agent_id: string; agent_token: string | null }> {
     return apiGet<{ agent_id: string; agent_token: string | null }>(`/api/users/me/agents/${agentId}/identity`);
+  },
+
+  async unbindAgent(agentId: string): Promise<{ ok: boolean }> {
+    const result = await apiDelete<{ ok: boolean }>(`/api/users/me/agents/${agentId}`);
+    invalidateMeCache();
+    if (getActiveAgentId() === agentId) {
+      setActiveAgentId(null);
+    }
+    return result;
   },
 };
 

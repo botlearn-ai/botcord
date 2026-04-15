@@ -27,6 +27,7 @@ interface DashboardSessionState {
   resetSessionState: () => void;
   initAuth: (token: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
+  removeAgent: (agentId: string) => void;
   switchActiveAgent: (agentId: string) => Promise<void>;
   logout: () => void;
 }
@@ -170,6 +171,20 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     } catch (err) {
       console.error("[SessionStore] Failed to refresh user profile:", err);
     }
+  },
+
+  removeAgent: (agentId: string) => {
+    const { ownedAgents, activeAgentId, token } = get();
+    const remaining = ownedAgents.filter((a) => a.agent_id !== agentId);
+    const newActiveId = agentId === activeAgentId
+      ? (remaining.find((a) => a.is_default) || remaining[0])?.agent_id ?? null
+      : activeAgentId;
+    setActiveAgentId(newActiveId);
+    set({
+      ownedAgents: remaining,
+      activeAgentId: newActiveId,
+      sessionMode: resolveSessionMode(token, newActiveId),
+    });
   },
 
   switchActiveAgent: async (agentId: string) => {
