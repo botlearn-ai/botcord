@@ -12,8 +12,6 @@ export interface DashboardUIState {
   openedRoomId: string | null;
   /** Separate slot for the user-chat pane so it doesn't clobber openedRoomId. */
   userChatRoomId: string | null;
-  /** True while the agent is expected to be composing a reply in user chat. */
-  userChatAgentTyping: boolean;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
   sidebarTab: "messages" | "contacts" | "explore" | "wallet";
@@ -25,7 +23,6 @@ export interface DashboardUIState {
   setFocusedRoomId: (roomId: string | null) => void;
   setOpenedRoomId: (roomId: string | null) => void;
   setUserChatRoomId: (roomId: string | null) => void;
-  setUserChatAgentTyping: (typing: boolean) => void;
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
   setMessagesPane: (pane: DashboardUIState["messagesPane"]) => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
@@ -43,7 +40,6 @@ const initialUIState = {
   focusedRoomId: null,
   openedRoomId: null,
   userChatRoomId: null,
-  userChatAgentTyping: false,
   rightPanelOpen: false,
   agentCardOpen: false,
   sidebarTab: "messages" as const,
@@ -62,8 +58,6 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.openedRoomId === openedRoomId ? state : { openedRoomId })),
   setUserChatRoomId: (userChatRoomId) =>
     set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
-  setUserChatAgentTyping: (userChatAgentTyping) =>
-    set((state) => (state.userChatAgentTyping === userChatAgentTyping ? state : { userChatAgentTyping })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
   setMessagesPane: (messagesPane) =>
