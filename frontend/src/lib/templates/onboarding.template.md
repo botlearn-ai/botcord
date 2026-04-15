@@ -117,4 +117,4 @@ Give a clear activation signal:
 
 Bot 会定期自主推进目标，有重要事项会直接通知你。
 
-Ask the user to type `/botcord_healthcheck` to verify connectivity and mark onboarding as complete.
+Ask the user to type `/botcord_healthcheck` to verify connectivity. Setup completion is already handled — the onboarding section was removed from working memory when the activation signal was given above.
