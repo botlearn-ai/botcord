@@ -44,28 +44,40 @@ export async function buildDynamicContext(params: {
   const isOwnerChat = sessionKey === "botcord:owner:main";
   const isBotCordSession = isOwnerChat || !!getSessionRoom(sessionKey);
 
-  if (!isBotCordSession) return null;
-
-  const parts: string[] = [];
-
-  // 1. Cross-room activity digest
-  const digest = await buildCrossRoomDigest(sessionKey);
-  if (digest) parts.push(digest);
-
-  // 2. Working memory (with lazy seed from API on first read)
+  // Read working memory early — needed both for injection and for the
+  // onboarding gate decision below.
+  let wm: Awaited<ReturnType<typeof readOrSeedWorkingMemory>> = null;
   try {
-    const wm = client
+    wm = client
       ? await readOrSeedWorkingMemory({ client, credentialsFile })
       : readWorkingMemory();
-    const memoryPrompt = buildWorkingMemoryPrompt({ workingMemory: wm });
-    parts.push(memoryPrompt);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn("[botcord] dynamic-context: failed to read working memory:", msg);
   }
 
-  // 3. Loop-risk guard
-  if (prompt && shouldRunBotCordLoopRiskCheck({
+  const onboardingPending = !!wm?.sections?.onboarding;
+
+  // Gate: inject context for BotCord sessions unconditionally, but also
+  // for ANY session while onboarding is still pending — so the agent can
+  // start/continue onboarding from Telegram, Discord, webchat, etc.
+  if (!isBotCordSession && !onboardingPending) return null;
+
+  const parts: string[] = [];
+
+  // 1. Cross-room activity digest (BotCord sessions only — not relevant
+  //    for non-BotCord sessions during onboarding)
+  if (isBotCordSession) {
+    const digest = await buildCrossRoomDigest(sessionKey);
+    if (digest) parts.push(digest);
+  }
+
+  // 2. Working memory
+  const memoryPrompt = buildWorkingMemoryPrompt({ workingMemory: wm });
+  parts.push(memoryPrompt);
+
+  // 3. Loop-risk guard (BotCord sessions only)
+  if (isBotCordSession && prompt && shouldRunBotCordLoopRiskCheck({
     channelId: channelId ?? "botcord",
     prompt,
     trigger,
