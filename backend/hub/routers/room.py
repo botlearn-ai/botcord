@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from hub.auth import get_current_claimed_agent
 from hub import config as hub_config
 from hub.config import JOIN_RATE_LIMIT_PER_MINUTE
+from hub.share_payloads import frontend_url
 from hub.database import get_db
 from hub.id_generators import generate_room_id
 from hub.enums import SubscriptionProductStatus, SubscriptionStatus
@@ -99,6 +100,10 @@ def _normalize_room_rule(rule: str | None) -> str | None:
     return normalized or None
 
 
+def _room_url(room_id: str) -> str:
+    return frontend_url(f"/chats/messages/{room_id}")
+
+
 def _build_room_response(room: Room) -> RoomResponse:
     return RoomResponse(
         room_id=room.room_id,
@@ -126,6 +131,7 @@ def _build_room_response(room: Room) -> RoomResponse:
             for m in room.members
         ],
         created_at=room.created_at,
+        url=_room_url(room.room_id),
     )
 
 
@@ -142,6 +148,7 @@ def _build_room_public_response(room: Room) -> RoomPublicResponse:
         slow_mode_seconds=room.slow_mode_seconds,
         member_count=len(room.members),
         created_at=room.created_at,
+        url=_room_url(room.room_id),
     )
 
 
