@@ -46,8 +46,7 @@ import type {
   JoinRequestListResponse,
   MyJoinRequestResponse,
   ActivityStats,
-  ActivityTopicsResponse,
-  ActivityIssues,
+  ActivityFeedResponse,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -463,16 +462,12 @@ export const api = {
     return apiGet<ActivityStats>("/api/dashboard/activity/stats", { period });
   },
 
-  getActivityTopics(opts?: { status?: string; limit?: number; offset?: number }) {
+  getActivityFeed(opts?: { period?: string; limit?: number; offset?: number }) {
     const params: Record<string, string> = {};
-    if (opts?.status) params.status = opts.status;
+    if (opts?.period) params.period = opts.period;
     if (opts?.limit) params.limit = String(opts.limit);
     if (opts?.offset) params.offset = String(opts.offset);
-    return apiGet<ActivityTopicsResponse>("/api/dashboard/activity/topics", params);
-  },
-
-  getActivityIssues() {
-    return apiGet<ActivityIssues>("/api/dashboard/activity/issues");
+    return apiGet<ActivityFeedResponse>("/api/dashboard/activity/feed", params);
   },
 };
 
