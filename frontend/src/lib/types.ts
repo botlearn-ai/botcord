@@ -707,53 +707,31 @@ export interface ActivityStats {
   messages_received: number;
   topics_open: number;
   topics_completed: number;
-  topics_failed: number;
-  delivery_success_rate: number;
-  failed_messages: number;
   active_rooms: number;
 }
 
-export interface ActivityTopic {
-  topic_id: string;
-  title: string;
-  status: "open" | "completed" | "failed" | "expired";
-  room_id: string;
-  room_name: string | null;
-  goal: string | null;
-  message_count: number;
-  creator_id: string;
-  created_at: string | null;
-  updated_at: string | null;
-  closed_at: string | null;
-}
+export type ActivityEventType =
+  | "message_sent"
+  | "message_received"
+  | "message_failed"
+  | "topic_created"
+  | "topic_completed"
+  | "topic_failed"
+  | "topic_expired";
 
-export interface ActivityTopicsResponse {
-  topics: ActivityTopic[];
-  total: number;
-}
-
-export interface ActivityFailedMessage {
-  hub_msg_id: string;
-  receiver_id: string;
-  receiver_name: string | null;
+export interface ActivityFeedItem {
+  type: ActivityEventType;
+  timestamp: string | null;
+  agent_id: string | null;
+  agent_name: string | null;
   room_id: string | null;
   room_name: string | null;
-  last_error: string | null;
-  retry_count: number;
-  created_at: string | null;
+  preview: string | null;
+  count: number;
+  meta: Record<string, any> | null;
 }
 
-export interface ActivityStaleTopic {
-  topic_id: string;
-  title: string;
-  room_name: string | null;
-  status: string;
-  message_count: number;
-  updated_at: string | null;
-  hours_since_update: number;
-}
-
-export interface ActivityIssues {
-  failed_messages: ActivityFailedMessage[];
-  stale_topics: ActivityStaleTopic[];
+export interface ActivityFeedResponse {
+  items: ActivityFeedItem[];
+  has_more: boolean;
 }

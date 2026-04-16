@@ -1,7 +1,9 @@
-"""Activity / observability API routes under /api/dashboard/activity."""
+"""Activity feed API routes under /api/dashboard/activity."""
 
 import datetime
+import json
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import distinct, func, or_, select
@@ -12,7 +14,6 @@ from hub.database import get_db
 from hub.models import (
     Agent,
     MessageRecord,
-    MessageState,
     Room,
     Topic,
     TopicStatus,
@@ -29,18 +30,36 @@ router = APIRouter(prefix="/api/dashboard", tags=["app-activity"])
 
 
 def _period_start(period: str) -> datetime.datetime:
-    """Return the UTC start time for the given period string."""
     now = datetime.datetime.now(datetime.timezone.utc)
     if period == "7d":
         return now - datetime.timedelta(days=7)
     if period == "30d":
         return now - datetime.timedelta(days=30)
-    # Default: "today" — start of current UTC day
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def _extract_preview(envelope_json: str | None, max_len: int = 60) -> str | None:
+    """Extract text preview from message envelope JSON."""
+    if not envelope_json:
+        return None
+    try:
+        env = json.loads(envelope_json)
+        payload = env.get("payload") or {}
+        text = payload.get("text") or payload.get("body") or ""
+        if not text and isinstance(payload.get("parts"), list):
+            for part in payload["parts"]:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text = part.get("text", "")
+                    break
+        if text and len(text) > max_len:
+            text = text[:max_len] + "\u2026"
+        return text or None
+    except (json.JSONDecodeError, AttributeError):
+        return None
+
+
 # ---------------------------------------------------------------------------
-# 1. GET /api/dashboard/activity/stats
+# GET /api/dashboard/activity/stats
 # ---------------------------------------------------------------------------
 
 
@@ -50,11 +69,10 @@ async def get_activity_stats(
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return overview statistics cards for the active agent."""
+    """User-friendly overview statistics."""
     agent_id = ctx.active_agent_id
     start = _period_start(period)
 
-    # --- messages_sent (deduplicated by msg_id) ---
     sent_result = await db.execute(
         select(func.count(distinct(MessageRecord.msg_id))).where(
             MessageRecord.sender_id == agent_id,
@@ -63,7 +81,6 @@ async def get_activity_stats(
     )
     messages_sent = sent_result.scalar() or 0
 
-    # --- messages_received ---
     received_result = await db.execute(
         select(func.count()).select_from(MessageRecord).where(
             MessageRecord.receiver_id == agent_id,
@@ -72,8 +89,6 @@ async def get_activity_stats(
     )
     messages_received = received_result.scalar() or 0
 
-    # --- topics: find topic_ids where agent participates and updated within period ---
-    # Agent participates if they are creator_id OR have sent/received messages with that topic_id.
     msg_topic_sub = (
         select(distinct(MessageRecord.topic_id))
         .where(
@@ -85,12 +100,8 @@ async def get_activity_stats(
         )
         .subquery()
     )
-
     topic_counts_result = await db.execute(
-        select(
-            Topic.status,
-            func.count().label("cnt"),
-        )
+        select(Topic.status, func.count().label("cnt"))
         .where(
             Topic.updated_at >= start,
             or_(
@@ -100,50 +111,11 @@ async def get_activity_stats(
         )
         .group_by(Topic.status)
     )
-    topic_counts: dict[str, int] = {}
+    tc: dict[str, int] = {}
     for row in topic_counts_result.all():
-        status_val = row[0].value if hasattr(row[0], "value") else str(row[0])
-        topic_counts[status_val] = row[1]
+        sv = row[0].value if hasattr(row[0], "value") else str(row[0])
+        tc[sv] = row[1]
 
-    topics_open = topic_counts.get("open", 0)
-    topics_completed = topic_counts.get("completed", 0)
-    topics_failed = topic_counts.get("failed", 0)
-
-    # --- delivery_success_rate & failed_messages ---
-    # Count by state for messages sent by this agent within the period (deduplicated).
-    # We use a subquery to first pick min(id) per msg_id for deduplication.
-    dedup_sent = (
-        select(
-            MessageRecord.msg_id,
-            func.min(MessageRecord.id).label("min_id"),
-        )
-        .where(
-            MessageRecord.sender_id == agent_id,
-            MessageRecord.created_at >= start,
-        )
-        .group_by(MessageRecord.msg_id)
-        .subquery()
-    )
-
-    state_counts_result = await db.execute(
-        select(
-            MessageRecord.state,
-            func.count().label("cnt"),
-        )
-        .where(MessageRecord.id.in_(select(dedup_sent.c.min_id)))
-        .group_by(MessageRecord.state)
-    )
-    state_counts: dict[str, int] = {}
-    for row in state_counts_result.all():
-        state_val = row[0].value if hasattr(row[0], "value") else str(row[0])
-        state_counts[state_val] = row[1]
-
-    total_sent_records = sum(state_counts.values())
-    success_states = state_counts.get("delivered", 0) + state_counts.get("acked", 0) + state_counts.get("done", 0)
-    delivery_success_rate = round(success_states / total_sent_records, 3) if total_sent_records > 0 else 1.0
-    failed_messages = state_counts.get("failed", 0)
-
-    # --- active_rooms ---
     active_rooms_result = await db.execute(
         select(func.count(distinct(MessageRecord.room_id))).where(
             MessageRecord.room_id.isnot(None),
@@ -159,32 +131,130 @@ async def get_activity_stats(
     return {
         "messages_sent": messages_sent,
         "messages_received": messages_received,
-        "topics_open": topics_open,
-        "topics_completed": topics_completed,
-        "topics_failed": topics_failed,
-        "delivery_success_rate": delivery_success_rate,
-        "failed_messages": failed_messages,
+        "topics_open": tc.get("open", 0),
+        "topics_completed": tc.get("completed", 0),
         "active_rooms": active_rooms,
     }
 
 
 # ---------------------------------------------------------------------------
-# 2. GET /api/dashboard/activity/topics
+# GET /api/dashboard/activity/feed
 # ---------------------------------------------------------------------------
 
 
-@router.get("/activity/topics")
-async def get_activity_topics(
-    status: str | None = Query(default=None, pattern="^(open|completed|failed|expired)$"),
-    limit: int = Query(default=20, ge=1, le=100),
+@router.get("/activity/feed")
+async def get_activity_feed(
+    period: str = Query(default="today", pattern="^(today|7d|30d)$"),
+    limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return recent topics the active agent participates in."""
+    """Unified activity feed — messages grouped per conversation + topic events."""
     agent_id = ctx.active_agent_id
+    start = _period_start(period)
+    cap = limit + offset + 20
 
-    # Subquery: topic_ids where the agent has sent/received messages
+    events: list[dict[str, Any]] = []
+
+    ReceiverAgent = Agent.__table__.alias("receiver_agent")
+    SenderAgent = Agent.__table__.alias("sender_agent")
+
+    # --- Sent messages grouped by (receiver, room) ---
+    sent_grp = (
+        select(
+            MessageRecord.receiver_id,
+            MessageRecord.room_id,
+            func.count().label("msg_count"),
+            func.max(MessageRecord.created_at).label("latest_at"),
+            func.max(MessageRecord.id).label("latest_id"),
+        )
+        .where(
+            MessageRecord.sender_id == agent_id,
+            MessageRecord.created_at >= start,
+        )
+        .group_by(MessageRecord.receiver_id, MessageRecord.room_id)
+        .order_by(func.max(MessageRecord.created_at).desc())
+        .limit(cap)
+        .subquery()
+    )
+    sent_stmt = (
+        select(
+            sent_grp.c.receiver_id,
+            sent_grp.c.room_id,
+            sent_grp.c.msg_count,
+            sent_grp.c.latest_at,
+            ReceiverAgent.c.display_name.label("other_name"),
+            Room.name.label("room_name"),
+            MessageRecord.envelope_json,
+            MessageRecord.state,
+            MessageRecord.last_error,
+        )
+        .join(MessageRecord, MessageRecord.id == sent_grp.c.latest_id)
+        .outerjoin(ReceiverAgent, ReceiverAgent.c.agent_id == sent_grp.c.receiver_id)
+        .outerjoin(Room, Room.room_id == sent_grp.c.room_id)
+    )
+    for row in (await db.execute(sent_stmt)).all():
+        state_val = row.state.value if hasattr(row.state, "value") else str(row.state)
+        etype = "message_failed" if state_val == "failed" else "message_sent"
+        events.append({
+            "type": etype,
+            "timestamp": row.latest_at.isoformat() if row.latest_at else None,
+            "agent_id": row.receiver_id,
+            "agent_name": row.other_name,
+            "room_id": row.room_id,
+            "room_name": row.room_name,
+            "preview": _extract_preview(row.envelope_json),
+            "count": row.msg_count,
+            "meta": {"error": row.last_error} if etype == "message_failed" else None,
+        })
+
+    # --- Received messages grouped by (sender, room) ---
+    recv_grp = (
+        select(
+            MessageRecord.sender_id,
+            MessageRecord.room_id,
+            func.count().label("msg_count"),
+            func.max(MessageRecord.created_at).label("latest_at"),
+            func.max(MessageRecord.id).label("latest_id"),
+        )
+        .where(
+            MessageRecord.receiver_id == agent_id,
+            MessageRecord.created_at >= start,
+        )
+        .group_by(MessageRecord.sender_id, MessageRecord.room_id)
+        .order_by(func.max(MessageRecord.created_at).desc())
+        .limit(cap)
+        .subquery()
+    )
+    recv_stmt = (
+        select(
+            recv_grp.c.sender_id,
+            recv_grp.c.room_id,
+            recv_grp.c.msg_count,
+            recv_grp.c.latest_at,
+            SenderAgent.c.display_name.label("other_name"),
+            Room.name.label("room_name"),
+            MessageRecord.envelope_json,
+        )
+        .join(MessageRecord, MessageRecord.id == recv_grp.c.latest_id)
+        .outerjoin(SenderAgent, SenderAgent.c.agent_id == recv_grp.c.sender_id)
+        .outerjoin(Room, Room.room_id == recv_grp.c.room_id)
+    )
+    for row in (await db.execute(recv_stmt)).all():
+        events.append({
+            "type": "message_received",
+            "timestamp": row.latest_at.isoformat() if row.latest_at else None,
+            "agent_id": row.sender_id,
+            "agent_name": row.other_name,
+            "room_id": row.room_id,
+            "room_name": row.room_name,
+            "preview": _extract_preview(row.envelope_json),
+            "count": row.msg_count,
+            "meta": None,
+        })
+
+    # --- Topic events ---
     msg_topic_sub = (
         select(distinct(MessageRecord.topic_id))
         .where(
@@ -196,168 +266,85 @@ async def get_activity_topics(
         )
         .subquery()
     )
-
-    # Base filter: agent is creator OR has messages in the topic
-    base_filter = or_(
+    CreatorAgent = Agent.__table__.alias("creator_agent")
+    topic_base = or_(
         Topic.creator_id == agent_id,
         Topic.topic_id.in_(select(msg_topic_sub)),
     )
 
-    # Count total
-    count_stmt = select(func.count()).select_from(Topic).where(base_filter)
-    if status:
-        count_stmt = count_stmt.where(Topic.status == status)
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar() or 0
-
-    # Fetch topics with room name
-    stmt = (
-        select(Topic, Room.name.label("room_name"))
-        .outerjoin(Room, Room.room_id == Topic.room_id)
-        .where(base_filter)
-    )
-    if status:
-        stmt = stmt.where(Topic.status == status)
-    stmt = stmt.order_by(Topic.updated_at.desc()).offset(offset).limit(limit)
-
-    result = await db.execute(stmt)
-    rows = result.all()
-
-    topics = []
-    for t, room_name in rows:
-        topics.append({
-            "topic_id": t.topic_id,
-            "title": t.title,
-            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
-            "room_id": t.room_id,
-            "room_name": room_name,
-            "goal": t.goal,
-            "message_count": t.message_count,
-            "creator_id": t.creator_id,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
-            "closed_at": t.closed_at.isoformat() if t.closed_at else None,
-        })
-
-    return {"topics": topics, "total": total}
-
-
-# ---------------------------------------------------------------------------
-# 3. GET /api/dashboard/activity/issues
-# ---------------------------------------------------------------------------
-
-
-@router.get("/activity/issues")
-async def get_activity_issues(
-    ctx: RequestContext = Depends(require_active_agent),
-    db: AsyncSession = Depends(get_db),
-):
-    """Return anomalies/issues that need attention for the active agent."""
-    agent_id = ctx.active_agent_id
-    now = datetime.datetime.now(datetime.timezone.utc)
-    seven_days_ago = now - datetime.timedelta(days=7)
-    one_hour_ago = now - datetime.timedelta(hours=1)
-
-    # --- failed_messages: last 7 days, limit 50 ---
-    # Join Agent for receiver_name, join Room for room_name
-    ReceiverAgent = Agent.__table__.alias("receiver_agent")
-
-    failed_stmt = (
-        select(
-            MessageRecord.hub_msg_id,
-            MessageRecord.receiver_id,
-            ReceiverAgent.c.display_name.label("receiver_name"),
-            MessageRecord.room_id,
-            Room.name.label("room_name"),
-            MessageRecord.last_error,
-            MessageRecord.retry_count,
-            MessageRecord.created_at,
-        )
-        .outerjoin(ReceiverAgent, ReceiverAgent.c.agent_id == MessageRecord.receiver_id)
-        .outerjoin(Room, Room.room_id == MessageRecord.room_id)
-        .where(
-            MessageRecord.sender_id == agent_id,
-            MessageRecord.state == MessageState.failed,
-            MessageRecord.created_at >= seven_days_ago,
-        )
-        .order_by(MessageRecord.created_at.desc())
-        .limit(50)
-    )
-    failed_result = await db.execute(failed_stmt)
-    failed_rows = failed_result.all()
-
-    failed_messages = [
-        {
-            "hub_msg_id": row.hub_msg_id,
-            "receiver_id": row.receiver_id,
-            "receiver_name": row.receiver_name,
-            "room_id": row.room_id,
-            "room_name": row.room_name,
-            "last_error": row.last_error,
-            "retry_count": row.retry_count,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-        }
-        for row in failed_rows
-    ]
-
-    # --- stale_topics: open topics where agent participates, updated > 1 hour ago ---
-    msg_topic_sub = (
-        select(distinct(MessageRecord.topic_id))
-        .where(
-            MessageRecord.topic_id.isnot(None),
-            or_(
-                MessageRecord.sender_id == agent_id,
-                MessageRecord.receiver_id == agent_id,
-            ),
-        )
-        .subquery()
-    )
-
-    stale_stmt = (
+    # Created topics
+    created_stmt = (
         select(
             Topic.topic_id,
             Topic.title,
+            Topic.room_id,
             Room.name.label("room_name"),
-            Topic.status,
+            Topic.creator_id,
+            CreatorAgent.c.display_name.label("creator_name"),
             Topic.message_count,
+            Topic.created_at,
+        )
+        .outerjoin(Room, Room.room_id == Topic.room_id)
+        .outerjoin(CreatorAgent, CreatorAgent.c.agent_id == Topic.creator_id)
+        .where(Topic.created_at >= start, topic_base)
+        .order_by(Topic.created_at.desc())
+        .limit(cap)
+    )
+    for row in (await db.execute(created_stmt)).all():
+        events.append({
+            "type": "topic_created",
+            "timestamp": row.created_at.isoformat() if row.created_at else None,
+            "agent_id": row.creator_id,
+            "agent_name": row.creator_name,
+            "room_id": row.room_id,
+            "room_name": row.room_name,
+            "preview": None,
+            "count": row.message_count,
+            "meta": {"topic_id": row.topic_id, "topic_title": row.title},
+        })
+
+    # Closed topics (completed / failed / expired)
+    closed_stmt = (
+        select(
+            Topic.topic_id,
+            Topic.title,
+            Topic.status,
+            Topic.room_id,
+            Room.name.label("room_name"),
+            Topic.creator_id,
+            CreatorAgent.c.display_name.label("creator_name"),
+            Topic.message_count,
+            Topic.closed_at,
             Topic.updated_at,
         )
         .outerjoin(Room, Room.room_id == Topic.room_id)
+        .outerjoin(CreatorAgent, CreatorAgent.c.agent_id == Topic.creator_id)
         .where(
-            Topic.status == TopicStatus.open,
-            Topic.updated_at < one_hour_ago,
-            or_(
-                Topic.creator_id == agent_id,
-                Topic.topic_id.in_(select(msg_topic_sub)),
-            ),
+            Topic.status.in_([TopicStatus.completed, TopicStatus.failed, TopicStatus.expired]),
+            Topic.updated_at >= start,
+            topic_base,
         )
-        .order_by(Topic.updated_at.asc())
-        .limit(50)
+        .order_by(Topic.updated_at.desc())
+        .limit(cap)
     )
-    stale_result = await db.execute(stale_stmt)
-    stale_rows = stale_result.all()
-
-    stale_topics = []
-    for row in stale_rows:
-        updated_at = row.updated_at
-        hours_since = 0
-        if updated_at:
-            if updated_at.tzinfo is None:
-                updated_at = updated_at.replace(tzinfo=datetime.timezone.utc)
-            delta = now - updated_at
-            hours_since = round(delta.total_seconds() / 3600, 1)
-
-        stale_topics.append({
-            "topic_id": row.topic_id,
-            "title": row.title,
+    for row in (await db.execute(closed_stmt)).all():
+        sv = row.status.value if hasattr(row.status, "value") else str(row.status)
+        ts = row.closed_at or row.updated_at
+        events.append({
+            "type": f"topic_{sv}",
+            "timestamp": ts.isoformat() if ts else None,
+            "agent_id": row.creator_id,
+            "agent_name": row.creator_name,
+            "room_id": row.room_id,
             "room_name": row.room_name,
-            "status": row.status.value if hasattr(row.status, "value") else str(row.status),
-            "message_count": row.message_count,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-            "hours_since_update": hours_since,
+            "preview": None,
+            "count": row.message_count,
+            "meta": {"topic_id": row.topic_id, "topic_title": row.title},
         })
 
-    return {
-        "failed_messages": failed_messages,
-        "stale_topics": stale_topics,
-    }
+    # Sort by timestamp descending, paginate
+    events.sort(key=lambda e: e["timestamp"] or "", reverse=True)
+    page = events[offset : offset + limit]
+    has_more = len(events) > offset + limit
+
+    return {"items": page, "has_more": has_more}
