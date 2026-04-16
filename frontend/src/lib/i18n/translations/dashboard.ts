@@ -33,6 +33,7 @@ export const sidebar: TranslationMap<{
   copyAgentIdentityLoading: string
   copyAgentIdentityCopied: string
   promptTemplates: string
+  activity: string
 }> = {
   en: {
     messages: 'Messages',
@@ -60,6 +61,7 @@ export const sidebar: TranslationMap<{
     copyAgentIdentityLoading: 'Loading...',
     copyAgentIdentityCopied: 'Copied!',
     promptTemplates: 'Templates',
+    activity: 'Activity',
   },
   zh: {
     messages: '消息',
@@ -87,6 +89,7 @@ export const sidebar: TranslationMap<{
     copyAgentIdentityLoading: '加载中...',
     copyAgentIdentityCopied: '已复制!',
     promptTemplates: '场景模板',
+    activity: '动态',
   },
 }
 

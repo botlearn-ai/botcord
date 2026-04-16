@@ -14,7 +14,7 @@ export interface DashboardUIState {
   userChatRoomId: string | null;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
-  sidebarTab: "messages" | "contacts" | "explore" | "wallet";
+  sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "activity";
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
   exploreView: "rooms" | "agents" | "templates";

@@ -30,6 +30,7 @@ import Sidebar from "./Sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
+import ActivityPanel from "./ActivityPanel";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
 
@@ -206,7 +207,7 @@ export default function DashboardApp() {
     const normalizedTab =
       tab === "dm" || tab === "rooms"
         ? "messages"
-        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet" || tab === "user-chat"
+        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet" || tab === "activity" || tab === "user-chat"
           ? tab
           : null;
 
@@ -361,7 +362,7 @@ export default function DashboardApp() {
 
   useEffect(() => {
     if (!sessionStore.authResolved || sessionStore.sessionMode !== "authed-ready") return;
-    if (uiStore.sidebarTab === "wallet") return;
+    if (uiStore.sidebarTab === "wallet" || uiStore.sidebarTab === "activity") return;
     if (chatStore.overview || chatStore.overviewRefreshing) return;
     void chatStore.refreshOverview();
   }, [
@@ -578,7 +579,9 @@ export default function DashboardApp() {
   return (
     <div className="relative flex h-screen overflow-hidden">
       <Sidebar />
-      {uiStore.sidebarTab === "wallet" ? (
+      {uiStore.sidebarTab === "activity" ? (
+        <ActivityPanel />
+      ) : uiStore.sidebarTab === "wallet" ? (
         <WalletPanel />
       ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
         <div className="flex-1 min-w-0">
