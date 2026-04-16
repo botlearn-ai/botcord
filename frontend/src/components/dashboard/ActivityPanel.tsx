@@ -181,6 +181,7 @@ export default function ActivityPanel() {
   const [feed, setFeed] = useState<ActivityFeedItem[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(
@@ -203,6 +204,20 @@ export default function ActivityPanel() {
     },
     [],
   );
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.getActivityFeed({ period, limit: 30, offset: feed.length });
+      setFeed((prev) => [...prev, ...res.items]);
+      setHasMore(res.has_more);
+    } catch {
+      // silently ignore load-more failures
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, period, feed.length]);
 
   useEffect(() => {
     void loadData(period);
@@ -299,11 +314,15 @@ export default function ActivityPanel() {
                     />
                   ))}
                   {hasMore && (
-                    <p className="pt-2 text-center text-[10px] text-text-secondary">
-                      {zh
-                        ? "\u6EDA\u52A8\u67E5\u770B\u66F4\u591A\u2026"
-                        : "Scroll for more\u2026"}
-                    </p>
+                    <button
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      className="mt-2 w-full rounded-lg border border-glass-border py-2 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                    >
+                      {loadingMore
+                        ? (zh ? "\u52A0\u8F7D\u4E2D\u2026" : "Loading\u2026")
+                        : (zh ? "\u52A0\u8F7D\u66F4\u591A" : "Load more")}
+                    </button>
                   )}
                 </div>
               )}

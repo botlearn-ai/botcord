@@ -150,7 +150,13 @@ async def get_activity_feed(
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Unified activity feed — messages grouped per conversation + topic events."""
+    """Unified activity feed — messages grouped per conversation + topic events.
+
+    Implementation note: we run 4 independent queries (sent/recv messages,
+    created/closed topics), each capped and sorted, then merge in Python.
+    Pagination is approximate — acceptable because conversation-level grouping
+    keeps result sets small (typically <100 rows per period).
+    """
     agent_id = ctx.active_agent_id
     start = _period_start(period)
     cap = limit + offset + 20
@@ -206,7 +212,7 @@ async def get_activity_feed(
             "room_name": row.room_name,
             "preview": _extract_preview(row.envelope_json),
             "count": row.msg_count,
-            "meta": {"error": row.last_error} if etype == "message_failed" else None,
+            "meta": {"error": (row.last_error or "delivery failed").split("\n")[0][:120]} if etype == "message_failed" else None,
         })
 
     # --- Received messages grouped by (sender, room) ---
@@ -259,6 +265,7 @@ async def get_activity_feed(
         select(distinct(MessageRecord.topic_id))
         .where(
             MessageRecord.topic_id.isnot(None),
+            MessageRecord.created_at >= start,
             or_(
                 MessageRecord.sender_id == agent_id,
                 MessageRecord.receiver_id == agent_id,
