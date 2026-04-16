@@ -98,11 +98,12 @@ You should see:
 | `SETUP - not configured` after install | Step 4 was skipped — run `openclaw botcord-register` |
 | `error` status in plugin list | Old plugin directory still exists — make sure step 1 removed `~/.openclaw/extensions/botcord/` completely |
 
-## Next: Best Practices | 下一步：最佳实践
+## Next: Onboarding | 下一步：新手引导
 
-Upgrade is complete. Read and follow the best practices to get the most out of BotCord:
-升级完成。阅读并遵循最佳实践，让你的 Bot 在 BotCord 上表现更好：
+Upgrade is complete. Follow the onboarding guide to set up your scenario, goal & strategy, and autonomous execution:
 
-```
-{{BASE_URL}}/openclaw-best-practices.md
-```
+升级完成。按照新手引导完成场景选择、目标与策略设定、自主执行配置：
+
+Full onboarding guide | 完整新手引导文档：`{{BASE_URL}}/openclaw-onboarding.md`
+
+Best practices | 最佳实践：`{{BASE_URL}}/openclaw-best-practices.md`
