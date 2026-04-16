@@ -17,6 +17,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 interface RoomListProps {
@@ -71,8 +72,14 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
   })));
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
+  const ownerChatMessages = useOwnerChatStore((state) => state.messages);
+  const ownerChatLoading = useOwnerChatStore((state) => state.loading);
+  const ownerChatRoomId = useOwnerChatStore((state) => state.roomId);
   const rooms = propsRooms || overview?.rooms || [];
   const showUserChatEntry = Boolean(activeAgentId);
+  // Only show onboarding state when the owner-chat store has been initialized
+  // (roomId is set), to avoid false positives when store is in default empty state.
+  const isOwnerChatEmpty = showUserChatEntry && Boolean(ownerChatRoomId) && !ownerChatLoading && ownerChatMessages.length === 0;
 
   const handleSelect = (roomId: string) => {
     setMessagesPane("room");
@@ -125,15 +132,22 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
           title={t.userChatTooltip}
           onClick={handleSelectUserChat}
           onKeyDown={handleUserChatKeyDown}
-          className={`w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
+          className={`relative w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
             messagesPane === "user-chat"
               ? "border-neon-cyan bg-neon-cyan/10"
-              : "border-transparent hover:bg-glass-bg"
+              : isOwnerChatEmpty
+                ? "border-neon-cyan/50 bg-neon-cyan/[0.06] animate-[pulse-border_2s_ease-in-out_infinite]"
+                : "border-transparent hover:bg-glass-bg"
           }`}
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
+            <div className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-neon-cyan ${
+              isOwnerChatEmpty ? "border-neon-cyan/50 bg-neon-cyan/15" : "border-neon-cyan/30 bg-neon-cyan/10"
+            }`}>
+              {isOwnerChatEmpty && (
+                <div className="absolute inset-0 rounded-xl bg-neon-cyan/20 blur-md animate-pulse" />
+              )}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="relative h-5 w-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
               </svg>
             </div>
@@ -144,10 +158,15 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
                   <span className="rounded-full border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neon-cyan">
                     {t.userChatBadge}
                   </span>
+                  {isOwnerChatEmpty && (
+                    <span className="rounded-full bg-neon-green/20 border border-neon-green/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neon-green animate-pulse">
+                      {t.userChatOnboardingBadge}
+                    </span>
+                  )}
                 </span>
               </div>
-              <p className="mt-0.5 truncate text-xs text-text-secondary">
-                {t.userChatPreview}
+              <p className={`mt-0.5 truncate text-xs ${isOwnerChatEmpty ? "text-neon-cyan/70" : "text-text-secondary"}`}>
+                {isOwnerChatEmpty ? t.userChatOnboardingPreview : t.userChatPreview}
               </p>
             </div>
           </div>

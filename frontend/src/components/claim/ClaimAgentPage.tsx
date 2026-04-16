@@ -26,7 +26,7 @@ interface ClaimedAgent {
 export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const continuePath = searchParams.get("next") || "/chats/messages";
+  const continuePath = searchParams.get("next") || "/chats/messages/__user-chat__";
   const setSessionActiveAgentId = useDashboardSessionStore((state) => state.setActiveAgentId);
 
   const [loading, setLoading] = useState(false);

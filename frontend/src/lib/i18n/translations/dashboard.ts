@@ -243,6 +243,8 @@ export const roomList: TranslationMap<{
   userChatPreview: string
   userChatTooltip: string
   userChatAriaLabel: string
+  userChatOnboardingBadge: string
+  userChatOnboardingPreview: string
   joinFailed: string
   joinRequests: string
   noJoinRequests: string
@@ -274,6 +276,8 @@ export const roomList: TranslationMap<{
     userChatPreview: 'Private 1:1 entry for chatting with your current Bot.',
     userChatTooltip: 'Open the private chat between you and your current active Bot.',
     userChatAriaLabel: 'Open private chat between you and your current active Bot',
+    userChatOnboardingBadge: 'Start',
+    userChatOnboardingPreview: 'Send your first message!',
     joinFailed: 'Failed to join group',
     joinRequests: 'Join Requests',
     noJoinRequests: 'No pending requests',
@@ -306,6 +310,8 @@ export const roomList: TranslationMap<{
     userChatPreview: '你和当前 Bot 的一对一聊天入口。',
     userChatTooltip: '打开你与当前 Bot 的私聊，用于直接给自己的 Bot 发消息。',
     userChatAriaLabel: '打开你与当前 Bot 的私聊入口',
+    userChatOnboardingBadge: '开始',
+    userChatOnboardingPreview: '发送你的第一条消息！',
     joinRequests: '入群申请',
     noJoinRequests: '暂无待处理申请',
     accept: '通过',
