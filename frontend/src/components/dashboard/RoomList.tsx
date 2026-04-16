@@ -171,9 +171,23 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
       {!loading && rooms.map((room) => {
         const isSelected = messagesPane === "room" && focusedRoomId === room.room_id;
         const roomMessages = messages[room.room_id] || [];
-        const cachedLatestMessage = roomMessages[roomMessages.length - 1];
-        const previewText = room.last_message_preview || cachedLatestMessage?.text || t.noMessagesYet;
-        const previewSender = room.last_sender_name || cachedLatestMessage?.sender_name || "";
+        // Find the latest real message (skip ack/result/error receipts)
+        const cachedLatestMessage = roomMessages.findLast(
+          (m) => m.type !== "ack" && m.type !== "result" && m.type !== "error",
+        );
+        // Preview text and sender must come from the same source to stay consistent
+        let previewText: string;
+        let previewSender: string;
+        if (room.last_message_preview != null || room.last_sender_name != null) {
+          previewText = room.last_message_preview ?? t.noMessagesYet;
+          previewSender = room.last_sender_name ?? "";
+        } else if (cachedLatestMessage) {
+          previewText = cachedLatestMessage.text || t.noMessagesYet;
+          previewSender = cachedLatestMessage.sender_name || "";
+        } else {
+          previewText = t.noMessagesYet;
+          previewSender = "";
+        }
         const previewLine = previewSender ? `${previewSender}: ${previewText}` : previewText;
         const messageTime = formatLastMessageTime(room.last_message_at);
         const avatarLabel = buildRoomAvatarLabel(room.name);
