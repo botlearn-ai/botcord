@@ -38,11 +38,42 @@ describe("buildDynamicContext", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns null for non-BotCord sessions", async () => {
+  it("returns null for non-BotCord sessions when onboarding is complete", async () => {
     const result = await buildDynamicContext({
       sessionKey: "some-other-session",
     });
     expect(result).toBeNull();
+  });
+
+  it("returns null for non-BotCord sessions when memory exists but onboarding section is absent", async () => {
+    vi.spyOn(memory, "readWorkingMemory").mockReturnValue({
+      version: 2,
+      goal: "做PPT接单",
+      sections: { strategy: "主动展示技能" },
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const result = await buildDynamicContext({
+      sessionKey: "telegram:direct:12345",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("injects working memory for non-BotCord sessions when onboarding is pending", async () => {
+    vi.spyOn(memory, "readWorkingMemory").mockReturnValue({
+      version: 2,
+      goal: "完成初始设置 — 引导 owner 选择场景、设定目标、配置自主执行",
+      sections: { onboarding: "## BotCord 初始设置\n\nSTEP 1..." },
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    const result = await buildDynamicContext({
+      sessionKey: "telegram:direct:12345",
+    });
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("Working Memory");
+    expect(result).toContain("初始设置");
   });
 
   it("returns context with working memory for BotCord sessions", async () => {

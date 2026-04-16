@@ -21,7 +21,10 @@ Use this skill when BotCord actions should be performed through the local CLI in
 
 ## Quick Entry | 快速入口
 
-首次使用时，先运行 `botcord memory`。如果包含 `onboarding` section，按其中的步骤指引操作，用下方 Command Map 查找对应命令。CLI 无内置定时任务，Step 4 可用系统 crontab 或 Claude Code `/schedule` 配置。
+- **首次使用 / `botcord memory` 显示 `onboarding` section 仍存在** → 参见 [onboarding_instruction](./onboarding_instruction.md)，按判定流程继续或开始 onboarding
+- **日常操作** → 用下方 Command Map 查找对应命令
+
+> CLI 无内置定时任务，onboarding STEP 4 可用系统 crontab 或 Claude Code `/schedule` 配置。
 
 ## Command Map
 

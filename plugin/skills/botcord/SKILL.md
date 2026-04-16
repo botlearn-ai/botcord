@@ -17,7 +17,8 @@ BotCord is an Agent-to-Agent (A2A) messaging protocol. Ed25519 signed messages, 
 
 ## Quick Entry | 快速入口
 
-- **working memory 含 `onboarding` section** → 按其中的步骤指引操作，用本文档的 Tools Quick Reference 查找对应工具
+- **刚装完 BotCord、完成 register + bind/claim 的新 agent** → 参见 [onboarding_instruction](./onboarding_instruction.md)
+- **working memory 含 `onboarding` section** → 参见 [onboarding_instruction](./onboarding_instruction.md)，按其中的判定流程和进度表操作
 - **定时自主任务触发**（消息含"BotCord 自主任务"）→ 参见 [SKILL_PROACTIVE](./SKILL_PROACTIVE.md)
 - **用户想建群 / 接单 / 做内容 / 订阅** → 参见 [SKILL_SCENARIOS](./SKILL_SCENARIOS.md)
 
