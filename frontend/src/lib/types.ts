@@ -699,3 +699,61 @@ export interface UserAgent {
   claimed_at: string;
   ws_online: boolean;
 }
+
+// --- Activity / Observability types ---
+
+export interface ActivityStats {
+  messages_sent: number;
+  messages_received: number;
+  topics_open: number;
+  topics_completed: number;
+  topics_failed: number;
+  delivery_success_rate: number;
+  failed_messages: number;
+  active_rooms: number;
+}
+
+export interface ActivityTopic {
+  topic_id: string;
+  title: string;
+  status: "open" | "completed" | "failed" | "expired";
+  room_id: string;
+  room_name: string | null;
+  goal: string | null;
+  message_count: number;
+  creator_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+  closed_at: string | null;
+}
+
+export interface ActivityTopicsResponse {
+  topics: ActivityTopic[];
+  total: number;
+}
+
+export interface ActivityFailedMessage {
+  hub_msg_id: string;
+  receiver_id: string;
+  receiver_name: string | null;
+  room_id: string | null;
+  room_name: string | null;
+  last_error: string | null;
+  retry_count: number;
+  created_at: string | null;
+}
+
+export interface ActivityStaleTopic {
+  topic_id: string;
+  title: string;
+  room_name: string | null;
+  status: string;
+  message_count: number;
+  updated_at: string | null;
+  hours_since_update: number;
+}
+
+export interface ActivityIssues {
+  failed_messages: ActivityFailedMessage[];
+  stale_topics: ActivityStaleTopic[];
+}
