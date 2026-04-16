@@ -60,20 +60,24 @@ class CreateShareBody(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _extract_text_preview(envelope_json: str) -> tuple[str, str | None]:
-    """Extract (sender_id, text_preview) from an envelope JSON string."""
+_RECEIPT_TYPES = frozenset({"ack", "result", "error"})
+
+
+def _extract_text_preview(envelope_json: str) -> tuple[str, str | None, str]:
+    """Extract (sender_id, text_preview, msg_type) from an envelope JSON string."""
     try:
         data = json.loads(envelope_json)
     except (json.JSONDecodeError, TypeError):
-        return ("", None)
+        return ("", None, "message")
     sender_id = data.get("from", "")
+    msg_type = data.get("type", "message")
     payload = data.get("payload", {})
     if not isinstance(payload, dict):
         payload = {}
     text_val = payload.get("text") or payload.get("body") or payload.get("message") or ""
     if text_val and not isinstance(text_val, str):
         text_val = str(text_val)
-    return sender_id, (text_val[:200] if text_val else None)
+    return sender_id, (text_val[:200] if text_val else None), str(msg_type)
 
 
 async def _build_rooms_from_sql(
@@ -194,9 +198,40 @@ async def _build_rooms_from_membership(
         .where(MessageRecord.id.in_(select(latest_sub.c.record_id)))
     )
     last_messages: dict[str, MessageRecord] = {}
+    receipt_room_ids: list[str] = []
     for rec in last_msg_result.scalars().all():
-        if rec.room_id:
+        if not rec.room_id:
+            continue
+        _, _, msg_type = _extract_text_preview(rec.envelope_json)
+        if msg_type in _RECEIPT_TYPES:
+            receipt_room_ids.append(rec.room_id)
+        else:
             last_messages[rec.room_id] = rec
+
+    # Second pass: for rooms whose latest record was a receipt, walk back to
+    # find the most recent real message (single batch query).
+    if receipt_room_ids:
+        fallback_dedup = (
+            select(
+                MessageRecord.room_id,
+                MessageRecord.msg_id,
+                func.min(MessageRecord.id).label("min_id"),
+            )
+            .where(MessageRecord.room_id.in_(receipt_room_ids))
+            .group_by(MessageRecord.room_id, MessageRecord.msg_id)
+            .subquery()
+        )
+        fallback_result = await db.execute(
+            select(MessageRecord)
+            .where(MessageRecord.id.in_(select(fallback_dedup.c.min_id)))
+            .order_by(MessageRecord.id.desc())
+        )
+        for rec in fallback_result.scalars().all():
+            rid = rec.room_id
+            if rid and rid not in last_messages:
+                _, _, mt = _extract_text_preview(rec.envelope_json)
+                if mt not in _RECEIPT_TYPES:
+                    last_messages[rid] = rec
 
     sender_ids = {rec.sender_id for rec in last_messages.values()}
     sender_names: dict[str, str] = {}
@@ -217,7 +252,7 @@ async def _build_rooms_from_membership(
         last_at = None
         last_sender = None
         if last_rec:
-            sid, preview = _extract_text_preview(last_rec.envelope_json)
+            sid, preview, _mt = _extract_text_preview(last_rec.envelope_json)
             last_preview = preview
             last_at = last_rec.created_at
             if last_at is not None and last_at.tzinfo is None:

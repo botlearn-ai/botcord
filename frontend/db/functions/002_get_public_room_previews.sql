@@ -82,6 +82,7 @@ as $$
     from message_records mr
     left join agents a on a.agent_id = mr.sender_id
     where mr.room_id in (select room_id from filtered_rooms)
+      and coalesce(mr.envelope_json::jsonb ->> 'type', 'message') not in ('ack', 'result', 'error')
   ),
   latest_message as (
     select
