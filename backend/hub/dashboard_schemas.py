@@ -24,6 +24,7 @@ class DashboardRoom(BaseModel):
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None
     last_sender_name: str | None = None
+    url: str
 
 
 class DashboardContactInfo(BaseModel):
@@ -136,6 +137,7 @@ class DiscoverRoom(BaseModel):
     visibility: str
     member_count: int
     required_subscription_product_id: str | None = None
+    url: str
 
 
 class DiscoverRoomsResponse(BaseModel):
@@ -152,6 +154,7 @@ class JoinRoomResponse(BaseModel):
     visibility: str
     member_count: int
     my_role: str
+    url: str
 
 
 # ---------------------------------------------------------------------------
