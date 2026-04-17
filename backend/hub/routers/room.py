@@ -122,6 +122,7 @@ def _build_room_response(room: Room) -> RoomResponse:
         members=[
             RoomMemberResponse(
                 agent_id=m.agent_id,
+                display_name=m.agent.display_name if m.agent is not None else None,
                 role=m.role.value,
                 muted=m.muted,
                 can_send=m.can_send,
@@ -159,7 +160,7 @@ async def _load_room(db: AsyncSession, room_id: str, *, fresh: bool = False) -> 
     result = await db.execute(
         select(Room)
         .where(Room.room_id == room_id)
-        .options(selectinload(Room.members))
+        .options(selectinload(Room.members).selectinload(RoomMember.agent))
     )
     room = result.scalar_one_or_none()
     if room is None:
@@ -586,7 +587,7 @@ async def list_my_rooms(
         select(Room)
         .join(RoomMember, RoomMember.room_id == Room.room_id)
         .where(RoomMember.agent_id == current_agent)
-        .options(selectinload(Room.members))
+        .options(selectinload(Room.members).selectinload(RoomMember.agent))
         .order_by(Room.created_at.desc())
         .limit(limit)
         .offset(offset)

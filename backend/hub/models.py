@@ -291,6 +291,13 @@ class RoomMember(Base):
     )
 
     room: Mapped["Room"] = relationship(back_populates="members")
+    agent: Mapped["Agent"] = relationship(
+        "Agent",
+        primaryjoin="RoomMember.agent_id == Agent.agent_id",
+        foreign_keys=[agent_id],
+        viewonly=True,
+        lazy="select",
+    )
 
 
 class RoomJoinRequest(Base):
