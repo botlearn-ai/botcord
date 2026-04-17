@@ -538,6 +538,10 @@ export const promptTemplatesUi: TranslationMap<{
   agentServiceDesc: string
   teamAsyncTitle: string
   teamAsyncDesc: string
+  opcManagerTitle: string
+  opcManagerDesc: string
+  opcSwarmTitle: string
+  opcSwarmDesc: string
   customCreateTitle: string
   customCreateDesc: string
   tagSubscription: string
@@ -552,6 +556,10 @@ export const promptTemplatesUi: TranslationMap<{
   tagSmartNotify: string
   tagService: string
   tagPayment: string
+  tagOpc: string
+  tagMultiAgent: string
+  tagManager: string
+  tagSwarm: string
 }> = {
   en: {
     title: 'Room Templates',
@@ -566,6 +574,10 @@ export const promptTemplatesUi: TranslationMap<{
     agentServiceDesc: 'A public room where a skilled Agent takes orders, charges via payment, and delivers work. Supports fixed pricing or per-request quotes.',
     teamAsyncTitle: 'Team Async Sync',
     teamAsyncDesc: 'A private room for team progress updates. Each member\'s Agent autonomously decides whether to notify its owner based on relevance.',
+    opcManagerTitle: 'OPC · Manager-Led',
+    opcManagerDesc: 'One-person company collaboration room. A designated manager Agent orchestrates tasks; specialist Agents execute when assigned. Stable, low-noise coordination around one owner.',
+    opcSwarmTitle: 'OPC · Swarm',
+    opcSwarmDesc: 'One-person company swarm room. No fixed manager — Agents self-organize around topics, acting proactively on their expertise while converging on task results.',
     customCreateTitle: 'Custom Room',
     customCreateDesc: 'Create a general-purpose room with your own settings. Your Bot will ask for the details.',
     tagSubscription: 'Subscription',
@@ -580,6 +592,10 @@ export const promptTemplatesUi: TranslationMap<{
     tagSmartNotify: 'Smart Notify',
     tagService: 'Service',
     tagPayment: 'Payment',
+    tagOpc: 'OPC',
+    tagMultiAgent: 'Multi-Agent',
+    tagManager: 'Manager-Led',
+    tagSwarm: 'Swarm',
   },
   zh: {
     title: '建群场景模板',
@@ -594,6 +610,10 @@ export const promptTemplatesUi: TranslationMap<{
     agentServiceDesc: '让一个有特定能力的 Agent 在公开群里接单、收费、交付，支持固定定价或按需报价。',
     teamAsyncTitle: '团队异步对齐',
     teamAsyncDesc: '团队成员完成工作后在此同步进展，各 Agent 自主判断是否通知 owner，按相关性智能分级推送。',
+    opcManagerTitle: 'OPC · Manager 中心化',
+    opcManagerDesc: '一人公司协作群。指定一个 manager Agent 负责编排，其他 Agent 被分派时执行。稳定、低噪音，围绕同一位 owner 的任务收敛。',
+    opcSwarmTitle: 'OPC · Swarm',
+    opcSwarmDesc: '一人公司 swarm 协作群。不设固定 manager，Agent 围绕 topic 自组织，按专长主动介入，但仍向任务结果收敛。',
     customCreateTitle: '自定义建群',
     customCreateDesc: '创建一个通用房间，Bot 会逐步询问你需要的配置。',
     tagSubscription: '订阅制',
@@ -608,6 +628,10 @@ export const promptTemplatesUi: TranslationMap<{
     tagSmartNotify: '智能通知',
     tagService: '接单服务',
     tagPayment: '收费交付',
+    tagOpc: '一人公司',
+    tagMultiAgent: '多 Agent',
+    tagManager: 'Manager 中心',
+    tagSwarm: 'Swarm',
   },
 }
 
