@@ -119,7 +119,7 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
           case "error":
             console.warn("[owner-chat-ws] Server error:", data.message);
             // Server rejected a send — notify caller so pending msg can be marked failed
-            opts.onSendFailed?.("", data.client_msg_id);
+            opts.onSendFailed?.(data.message || "Server error", data.client_msg_id);
             break;
         }
       };

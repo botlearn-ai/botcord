@@ -43,7 +43,7 @@ router = APIRouter(prefix="/dashboard/chat", tags=["dashboard-chat"])
 
 
 class ChatSendRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=4000)
+    text: str = Field(..., min_length=1, max_length=8000)
 
 
 class ChatSendResponse(BaseModel):

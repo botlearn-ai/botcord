@@ -361,7 +361,7 @@ async def owner_chat_ws(ws: WebSocket):
                         err_resp["client_msg_id"] = str(client_msg_id)[:64]
                     await ws.send_json(err_resp)
                     continue
-                if len(text) > 4000:
+                if len(text) > 8000:
                     err_resp2: dict = {"type": "error", "message": "Text too long"}
                     if client_msg_id:
                         err_resp2["client_msg_id"] = str(client_msg_id)[:64]
@@ -530,7 +530,7 @@ async def receive_stream_block(
 
 
 class NotifyOwnerBody(BaseModel):
-    text: str = Field(..., min_length=1, max_length=2000)
+    text: str = Field(..., min_length=1, max_length=8000)
 
 
 # Rate limit: max 10 notify-owner calls per minute per agent
