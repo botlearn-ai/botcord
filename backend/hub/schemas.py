@@ -516,6 +516,7 @@ class RoomResponse(BaseModel):
     member_count: int
     members: list[RoomMemberResponse]
     created_at: datetime.datetime
+    url: str
 
 
 class RoomPublicResponse(BaseModel):
@@ -530,6 +531,7 @@ class RoomPublicResponse(BaseModel):
     slow_mode_seconds: int | None = None
     member_count: int
     created_at: datetime.datetime
+    url: str
 
 
 class RoomDiscoveryResponse(BaseModel):
@@ -583,6 +585,7 @@ class DashboardRoom(BaseModel):
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None
     last_sender_name: str | None = None
+    url: str
 
 
 class DashboardContactInfo(BaseModel):

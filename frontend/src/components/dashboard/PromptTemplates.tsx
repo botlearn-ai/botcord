@@ -15,6 +15,8 @@ import {
   buildKnowledgeSubRoomPrompt,
   buildAgentServiceRoomPrompt,
   buildTeamAsyncRoomPrompt,
+  buildOpcManagerRoomPrompt,
+  buildOpcSwarmRoomPrompt,
   buildCreateRoomPrompt,
 } from "@/lib/onboarding";
 
@@ -54,6 +56,20 @@ const templates: TemplateCard[] = [
     descKey: "teamAsyncDesc",
     tags: ["tagPrivate", "tagTeam", "tagSmartNotify", "tagInteractive"],
     buildPrompt: (locale) => buildTeamAsyncRoomPrompt({ locale }),
+  },
+  {
+    id: "opc-manager",
+    titleKey: "opcManagerTitle",
+    descKey: "opcManagerDesc",
+    tags: ["tagOpc", "tagMultiAgent", "tagManager", "tagPrivate", "tagSmartNotify"],
+    buildPrompt: (locale) => buildOpcManagerRoomPrompt({ locale }),
+  },
+  {
+    id: "opc-swarm",
+    titleKey: "opcSwarmTitle",
+    descKey: "opcSwarmDesc",
+    tags: ["tagOpc", "tagMultiAgent", "tagSwarm", "tagPrivate", "tagInteractive"],
+    buildPrompt: (locale) => buildOpcSwarmRoomPrompt({ locale }),
   },
   {
     id: "custom",

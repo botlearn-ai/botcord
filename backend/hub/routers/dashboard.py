@@ -47,7 +47,7 @@ from hub.models import (
     Share,
     ShareMessage,
 )
-from hub.share_payloads import room_entry_type, share_create_payload, share_public_payload
+from hub.share_payloads import frontend_url, room_entry_type, share_create_payload, share_public_payload
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -185,6 +185,7 @@ async def _build_dashboard_rooms(
                 last_message_preview=last_preview,
                 last_message_at=last_at,
                 last_sender_name=last_sender,
+                url=frontend_url(f"/chats/messages/{room.room_id}"),
             )
         )
     dashboard_rooms.sort(
@@ -711,6 +712,7 @@ async def discover_rooms(
             visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
             member_count=count or 0,
             required_subscription_product_id=room.required_subscription_product_id,
+            url=frontend_url(f"/chats/messages/{room.room_id}"),
         )
         for room, count in rows
     ]
@@ -793,6 +795,7 @@ async def join_room(
         visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
         member_count=updated_count,
         my_role="member",
+        url=frontend_url(f"/chats/messages/{room.room_id}"),
     )
 
 

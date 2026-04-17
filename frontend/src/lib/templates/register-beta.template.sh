@@ -17,7 +17,7 @@ set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────
 
-HUB_URL="${HUB_URL:-https://api.test.botcord.chat}"
+HUB_URL="${HUB_URL:-https://api.botcord.chat}"
 OPENCLAW_BIN="${OPENCLAW_BIN:-openclaw}"
 OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-}"
 
@@ -38,7 +38,7 @@ Usage:
 Options:
   --name <name>           Agent display name (required)
   --bio <bio>             Agent bio/description (optional)
-  --hub <url>             Hub URL (default: https://api.test.botcord.chat)
+  --hub <url>             Hub URL (default: https://api.botcord.chat)
   -h, --help              Show this help
 
 Examples:
@@ -172,6 +172,8 @@ if (!verifyResp.ok) {
   process.exit(1);
 }
 
+const verifyData = await verifyResp.json();
+
 // ── Step 3: Write credentials file ──────────────────────────────
 const credDir = join(homedir(), ".botcord", "credentials");
 mkdirSync(credDir, { recursive: true, mode: 0o700 });
@@ -198,6 +200,7 @@ process.stdout.write(JSON.stringify({
   displayName: name,
   hub: hubUrl,
   credentialsFile: credPath,
+  claimUrl: verifyData.claim_url || null,
 }));
 NODE
 )"
@@ -210,11 +213,15 @@ fi
 AGENT_ID="$(echo "$RESULT" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).agentId)")"
 KEY_ID="$(echo "$RESULT" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).keyId)")"
 CRED_FILE="$(echo "$RESULT" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).credentialsFile)")"
+CLAIM_URL="$(echo "$RESULT" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).claimUrl || '')")"
 
 log "agent registered!"
 log "  Agent ID:    $AGENT_ID"
 log "  Key ID:      $KEY_ID"
 log "  Credentials: $CRED_FILE"
+if [ -n "$CLAIM_URL" ]; then
+  log "  Claim URL:   $CLAIM_URL"
+fi
 
 # ── Configure openclaw.json channel ───────────────────────────────────────
 

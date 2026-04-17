@@ -93,45 +93,49 @@ jobs:
         id: bump
         run: |
           NPM_NAME="${{ steps.meta.outputs.npm_name }}"
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+
+          # Resolve the highest published version from npm registry.
+          # For beta: look at beta prereleases; for stable: look at stable releases.
           if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
-            # For beta: use the higher of package.json version and latest npm beta base
-            LOCAL_VERSION=$(node -p "require('./package.json').version")
+            FILTER='v.includes("-beta.")'
+            EXTRACT='v.replace(/-beta\..*/, "")'
+          else
+            FILTER='!v.includes("-")'
+            EXTRACT='v'
+          fi
 
-            # Find highest base version among all published beta versions
-            # (dist-tags.beta only points to the most recently published, not the highest)
-            NPM_BASE=$(npm view "$NPM_NAME" versions --json 2>/dev/null | node -e "
-              const versions = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-              const bases = versions
-                .filter(v => v.includes('-beta.'))
-                .map(v => v.replace(/-beta\..*/, ''));
-              if (bases.length === 0) { console.log('0.0.0'); process.exit(); }
-              bases.sort((a, b) => {
-                const [a1,a2,a3] = a.split('.').map(Number);
-                const [b1,b2,b3] = b.split('.').map(Number);
-                return (a1 - b1) || (a2 - b2) || (a3 - b3);
-              });
-              console.log(bases[bases.length - 1]);
-            " || echo "0.0.0")
+          NPM_BASE=$(npm view "$NPM_NAME" versions --json 2>/dev/null | node -e "
+            const versions = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+            const bases = versions
+              .filter(v => ${FILTER})
+              .map(v => ${EXTRACT});
+            if (bases.length === 0) { console.log('0.0.0'); process.exit(); }
+            bases.sort((a, b) => {
+              const [a1,a2,a3] = a.split('.').map(Number);
+              const [b1,b2,b3] = b.split('.').map(Number);
+              return (a1 - b1) || (a2 - b2) || (a3 - b3);
+            });
+            console.log(bases[bases.length - 1]);
+          " || echo "0.0.0")
 
-            # Pick the higher version as the starting point
-            HIGHER=$(node -e "
-              const [a, b] = ['$LOCAL_VERSION', '$NPM_BASE'].map(v => v.split('.').map(Number));
-              console.log(a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]) || (a[0] === b[0] && a[1] === b[1] && a[2] >= b[2]) ? '$LOCAL_VERSION' : '$NPM_BASE');
-            ")
+          # Pick the higher of local vs npm as the starting point
+          HIGHER=$(node -e "
+            const [a, b] = ['$LOCAL_VERSION', '$NPM_BASE'].map(v => v.split('.').map(Number));
+            console.log(a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]) || (a[0] === b[0] && a[1] === b[1] && a[2] >= b[2]) ? '$LOCAL_VERSION' : '$NPM_BASE');
+          ")
 
-            # Set package.json to the higher version, then bump
-            npm version "$HIGHER" --no-git-tag-version --allow-same-version > /dev/null
-            npm version ${{ github.event.inputs.bump }} --no-git-tag-version > /dev/null
-            NEW_VERSION="v$(node -p "require('./package.json').version")"
+          # Set package.json to the higher version, then bump
+          npm version "$HIGHER" --no-git-tag-version --allow-same-version > /dev/null
+          npm version ${{ github.event.inputs.bump }} --no-git-tag-version > /dev/null
+          NEW_VERSION="v$(node -p "require('./package.json').version")"
 
+          if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
             # Append -beta.<timestamp> prerelease suffix
             BASE="${NEW_VERSION#v}"
             BETA_VERSION="${BASE}-beta.$(date +%Y%m%d%H%M%S)"
             npm version "$BETA_VERSION" --no-git-tag-version --allow-same-version > /dev/null
             NEW_VERSION="v${BETA_VERSION}"
-          else
-            npm version ${{ github.event.inputs.bump }} --no-git-tag-version > /dev/null
-            NEW_VERSION="v$(node -p "require('./package.json').version")"
           fi
           printf 'new_version=%s\n' "$NEW_VERSION" >> "$GITHUB_OUTPUT"
 

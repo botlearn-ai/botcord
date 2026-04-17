@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, Paperclip, X, FileText } from "lucide-react";
+import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, Paperclip, X, FileText, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
@@ -148,6 +148,15 @@ export default function UserChatPane() {
       });
     }
   }, [loading, messages]);
+
+  // ------ Auto-focus input when empty (onboarding) ------
+  useEffect(() => {
+    if (!loading && messages.length === 0 && inputRef.current) {
+      // Small delay so the welcome UI renders first
+      const timer = setTimeout(() => inputRef.current?.focus(), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, messages.length]);
 
   // ------ Scroll helpers ------
 
@@ -385,8 +394,65 @@ export default function UserChatPane() {
           </div>
         )}
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
-            <p>Send a message to start the conversation</p>
+          <div className="flex flex-col items-center justify-center h-full gap-4 px-6">
+            {/* Glowing avatar */}
+            <div className="relative">
+              <div className="absolute inset-0 rounded-2xl bg-cyan-500/20 blur-xl animate-pulse" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-500/40 bg-cyan-500/10">
+                <MessageSquare className="h-8 w-8 text-cyan-400" />
+              </div>
+            </div>
+
+            {/* Welcome text */}
+            <div className="text-center">
+              <p className="text-base font-semibold text-zinc-100">
+                {chatRoomName ? `${chatRoomName} is ready!` : "Your Bot is ready!"}
+              </p>
+              <p className="mt-1.5 text-sm text-zinc-400 max-w-sm">
+                Send your first message to start the conversation.
+              </p>
+            </div>
+
+            {/* Suggestion chips */}
+            <div className="flex flex-wrap justify-center gap-2 max-w-md">
+              {[
+                { emoji: "👋", text: "Hey! What can you do?" },
+                { emoji: "💡", text: "Tell me about yourself" },
+                { emoji: "🚀", text: "Let's get started!" },
+              ].map((suggestion) => (
+                <button
+                  key={suggestion.text}
+                  onClick={() => {
+                    const clientId = crypto.randomUUID();
+                    const optimisticMsg: OwnerChatMessage = {
+                      clientId,
+                      hubMsgId: null,
+                      sender: "user",
+                      text: suggestion.text,
+                      streamBlocks: [],
+                      status: "optimistic",
+                      createdAt: new Date().toISOString(),
+                      senderName: "You",
+                      type: "message",
+                      sendText: suggestion.text,
+                    };
+                    useOwnerChatStore.getState().addOptimistic(optimisticMsg);
+                    scrollToBottom();
+                    void sendMessage(suggestion.text, clientId);
+                  }}
+                  className="group flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-800/80 px-3.5 py-2 text-sm text-zinc-300 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/10 hover:text-cyan-300 hover:shadow-[0_0_12px_rgba(0,240,255,0.15)]"
+                >
+                  <span>{suggestion.emoji}</span>
+                  <span>{suggestion.text}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Bouncing arrow pointing to input */}
+            <div className="mt-2 flex flex-col items-center gap-1 text-zinc-500">
+              <span className="text-xs">or type your own message</span>
+              <ChevronDown className="h-5 w-5 animate-bounce" />
+            </div>
           </div>
         )}
 
@@ -568,7 +634,7 @@ export default function UserChatPane() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-zinc-800 px-4 py-3" onDrop={handleDrop} onDragOver={handleDragOver}>
+      <div className={`border-t px-4 py-3 transition-colors ${messages.length === 0 ? "border-cyan-500/30 bg-cyan-500/[0.03]" : "border-zinc-800"}`} onDrop={handleDrop} onDragOver={handleDragOver}>
         {pendingFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
             {pendingFiles.map((pf, idx) => (
@@ -609,8 +675,12 @@ export default function UserChatPane() {
           </button>
           <textarea
             ref={inputRef}
-            className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50"
-            placeholder="Type a message..."
+            className={`flex-1 bg-zinc-900 border rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-all ${
+              messages.length === 0
+                ? "border-cyan-500/40 shadow-[0_0_8px_rgba(0,240,255,0.1)] animate-[pulse-border_2s_ease-in-out_infinite]"
+                : "border-zinc-700"
+            }`}
+            placeholder={messages.length === 0 ? "Say something to your Bot..." : "Type a message..."}
             value={inputText}
             onChange={(e) => { setInputText(e.target.value); autoResize(); }}
             onKeyDown={handleKeyDown}

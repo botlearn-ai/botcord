@@ -699,3 +699,39 @@ export interface UserAgent {
   claimed_at: string;
   ws_online: boolean;
 }
+
+// --- Activity / Observability types ---
+
+export interface ActivityStats {
+  messages_sent: number;
+  messages_received: number;
+  topics_open: number;
+  topics_completed: number;
+  active_rooms: number;
+}
+
+export type ActivityEventType =
+  | "message_sent"
+  | "message_received"
+  | "message_failed"
+  | "topic_created"
+  | "topic_completed"
+  | "topic_failed"
+  | "topic_expired";
+
+export interface ActivityFeedItem {
+  type: ActivityEventType;
+  timestamp: string | null;
+  agent_id: string | null;
+  agent_name: string | null;
+  room_id: string | null;
+  room_name: string | null;
+  preview: string | null;
+  count: number;
+  meta: Record<string, any> | null;
+}
+
+export interface ActivityFeedResponse {
+  items: ActivityFeedItem[];
+  has_more: boolean;
+}
