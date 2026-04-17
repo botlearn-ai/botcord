@@ -493,6 +493,7 @@ class SetMemberPermissionsRequest(BaseModel):
 
 class RoomMemberResponse(BaseModel):
     agent_id: str
+    display_name: str | None = None
     role: str
     muted: bool
     can_send: bool | None = None
