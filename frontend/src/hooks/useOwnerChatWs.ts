@@ -167,15 +167,16 @@ export function useOwnerChatWs({
         }
       },
 
-      onSendFailed: (_text: string, clientMsgId?: string) => {
+      onSendFailed: (errorOrText: string, clientMsgId?: string) => {
+        const reason = errorOrText || "WebSocket send failed";
         if (clientMsgId) {
-          store.getState().failOptimistic(clientMsgId, "WebSocket send failed");
+          store.getState().failOptimistic(clientMsgId, reason);
         } else {
           // Fail the most recent optimistic message
           const msgs = store.getState().messages;
           const target = [...msgs].reverse().find((m) => m.status === "optimistic");
           if (target) {
-            store.getState().failOptimistic(target.clientId, "WebSocket send failed");
+            store.getState().failOptimistic(target.clientId, reason);
           }
         }
       },

@@ -442,7 +442,7 @@ class ContactRequestListResponse(BaseModel):
 class CreateRoomRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     description: str = ""
-    rule: str | None = Field(default=None, max_length=1000)
+    rule: str | None = Field(default=None, max_length=4000)
     visibility: RoomVisibility = RoomVisibility.private
     join_policy: RoomJoinPolicy = RoomJoinPolicy.invite_only
     required_subscription_product_id: str | None = None
@@ -456,7 +456,7 @@ class CreateRoomRequest(BaseModel):
 class UpdateRoomRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
-    rule: str | None = Field(default=None, max_length=1000)
+    rule: str | None = Field(default=None, max_length=4000)
     visibility: RoomVisibility | None = None
     join_policy: RoomJoinPolicy | None = None
     required_subscription_product_id: str | None = None

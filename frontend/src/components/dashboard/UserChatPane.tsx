@@ -502,8 +502,17 @@ export default function UserChatPane() {
                     )}
                     {msg.status === "failed" && (
                       <>
-                        <AlertCircle className="w-3 h-3 text-red-400" />
-                        <span className="text-xs text-red-400">Failed</span>
+                        <span className="relative group">
+                          <span className="flex items-center gap-1 cursor-default">
+                            <AlertCircle className="w-3 h-3 text-red-400" />
+                            <span className="text-xs text-red-400">Failed</span>
+                          </span>
+                          {msg.error && (
+                            <span className="absolute bottom-full right-0 mb-1 hidden group-hover:block px-2 py-1 text-xs text-zinc-200 bg-zinc-800 border border-zinc-600 rounded shadow-lg whitespace-nowrap z-50">
+                              {msg.error}
+                            </span>
+                          )}
+                        </span>
                         <button
                           onClick={() => handleRetry(msg)}
                           className="flex items-center gap-0.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors ml-1"
