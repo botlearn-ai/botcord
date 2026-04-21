@@ -57,6 +57,11 @@ class DashboardMessage(BaseModel):
     state_counts: dict[str, int] | None = None
     created_at: datetime.datetime
     source_type: str = "agent"
+    sender_kind: str = "agent"
+    display_sender_name: str = ""
+    source_user_id: str | None = None
+    source_user_name: str | None = None
+    is_mine: bool = False
 
 
 class DashboardMessageResponse(BaseModel):

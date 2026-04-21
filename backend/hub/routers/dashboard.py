@@ -12,6 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import get_current_agent, get_dashboard_agent
 from hub.database import get_db
+from hub.dashboard_message_shaping import (
+    derive_sender_fields,
+    load_agent_display_names,
+    load_user_display_names,
+)
 from hub.dashboard_schemas import (
     CreateShareResponse,
     DashboardAgentProfile,
@@ -139,15 +144,15 @@ async def _build_dashboard_rooms(
         if rec.room_id:
             last_messages[rec.room_id] = rec
 
-    # Resolve sender names for last messages
-    sender_ids = {rec.sender_id for rec in last_messages.values()}
-    sender_names: dict[str, str] = {}
-    if sender_ids:
-        agent_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
-            .where(Agent.agent_id.in_(sender_ids))
-        )
-        sender_names = dict(agent_result.all())
+    # Resolve sender names for last messages (human-aware for dashboard_human_room)
+    sender_names = await load_agent_display_names(
+        db, {rec.sender_id for rec in last_messages.values()}
+    )
+    _last_msg_human_user_ids = {
+        rec.source_user_id for rec in last_messages.values()
+        if (rec.source_type or "") == "dashboard_human_room" and rec.source_user_id
+    }
+    _last_msg_user_name_map = await load_user_display_names(db, _last_msg_human_user_ids)
 
     dashboard_rooms: list[DashboardRoom] = []
     for rid in room_ids:
@@ -165,7 +170,13 @@ async def _build_dashboard_rooms(
             last_at = last_rec.created_at
             if last_at is not None and last_at.tzinfo is None:
                 last_at = last_at.replace(tzinfo=datetime.timezone.utc)
-            last_sender = sender_names.get(sid)
+            if (last_rec.source_type or "") == "dashboard_human_room":
+                last_sender = (
+                    _last_msg_user_name_map.get(last_rec.source_user_id)
+                    if last_rec.source_user_id else None
+                ) or "User"
+            else:
+                last_sender = sender_names.get(sid)
 
         room_created_at = room.created_at
         if room_created_at is not None and room_created_at.tzinfo is None:
@@ -346,15 +357,16 @@ async def get_room_messages(
     for rec in rows:
         envelope_data = json.loads(rec.envelope_json)
         sender_ids.add(envelope_data.get("from", ""))
+        if rec.sender_id:
+            sender_ids.add(rec.sender_id)
     sender_ids.discard("")
+    sender_names = await load_agent_display_names(db, sender_ids)
 
-    sender_names: dict[str, str] = {}
-    if sender_ids:
-        agent_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
-            .where(Agent.agent_id.in_(sender_ids))
-        )
-        sender_names = dict(agent_result.all())
+    _human_user_ids = {
+        rec.source_user_id for rec in rows
+        if (rec.source_type or "") == "dashboard_human_room" and rec.source_user_id
+    }
+    _user_name_map = await load_user_display_names(db, _human_user_ids)
 
     # Batch-resolve state counts for all messages in this page
     msg_ids = [rec.msg_id for rec in rows]
@@ -388,6 +400,13 @@ async def get_room_messages(
 
         counts = state_counts_map.get(rec.msg_id)
 
+        extra = derive_sender_fields(
+            rec,
+            agent_name_map=sender_names,
+            user_name_map=_user_name_map,
+            viewer_agent_id=current_agent,
+            viewer_user_id=None,
+        )
         messages.append(
             DashboardMessage(
                 hub_msg_id=rec.hub_msg_id,
@@ -405,6 +424,7 @@ async def get_room_messages(
                 state_counts=counts,
                 created_at=ca,
                 source_type=rec.source_type,
+                **extra,
             )
         )
 

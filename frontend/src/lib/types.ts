@@ -95,6 +95,17 @@ export interface DashboardMessage {
   state_counts: Record<string, number> | null;
   created_at: string;
   source_type?: string;
+  sender_kind?: "agent" | "human";
+  display_sender_name?: string;
+  source_user_id?: string | null;
+  source_user_name?: string | null;
+  is_mine?: boolean;
+}
+
+export interface RoomHumanSendResponse {
+  hub_msg_id: string;
+  room_id: string;
+  status: string;
 }
 
 // --- User Chat types ---

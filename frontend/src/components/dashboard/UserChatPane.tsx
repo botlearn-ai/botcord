@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, Paperclip, X, FileText, ChevronDown } from "lucide-react";
+import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
@@ -22,6 +22,7 @@ import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import StreamBlocksView from "./StreamBlocksView";
 import CopyableId from "@/components/ui/CopyableId";
+import MessageComposer from "./MessageComposer";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -59,18 +60,6 @@ function TypewriterText({
 }
 
 // ---------------------------------------------------------------------------
-// File upload types
-// ---------------------------------------------------------------------------
-
-interface PendingAttachment {
-  file: File;
-  preview?: string;
-  uploaded?: Attachment;
-  uploading?: boolean;
-  error?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -89,13 +78,9 @@ export default function UserChatPane() {
   const roomId = useOwnerChatStore((s) => s.roomId);
 
   const [chatRoomName, setChatRoomName] = useState("");
-  const [inputText, setInputText] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
   const [initError, setInitError] = useState<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const animatedRef = useRef<Set<string>>(new Set());
   const initialLoadRef = useRef(true);
   const isLoadingMore = useRef(false);
@@ -149,15 +134,6 @@ export default function UserChatPane() {
     }
   }, [loading, messages]);
 
-  // ------ Auto-focus input when empty (onboarding) ------
-  useEffect(() => {
-    if (!loading && messages.length === 0 && inputRef.current) {
-      // Small delay so the welcome UI renders first
-      const timer = setTimeout(() => inputRef.current?.focus(), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, messages.length]);
-
   // ------ Scroll helpers ------
 
   const scrollToBottom = useCallback(() => {
@@ -192,11 +168,10 @@ export default function UserChatPane() {
 
   // ------ File handling ------
 
-  const uploadPendingFiles = useCallback(async (files: PendingAttachment[]): Promise<Attachment[]> => {
+  const uploadFiles = useCallback(async (rawFiles: File[]): Promise<Attachment[]> => {
     const results: Attachment[] = [];
-    for (const pf of files) {
-      if (pf.uploaded) { results.push(pf.uploaded); continue; }
-      const res = await api.uploadFile(pf.file);
+    for (const file of rawFiles) {
+      const res = await api.uploadFile(file);
       results.push({
         filename: res.original_filename,
         url: res.url,
@@ -205,37 +180,6 @@ export default function UserChatPane() {
       });
     }
     return results;
-  }, []);
-
-  const handleFileSelect = useCallback((files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setPendingFiles((prev) => {
-      const remaining = 10 - prev.length;
-      if (remaining <= 0) return prev;
-      const toAdd = Array.from(files).slice(0, remaining);
-      const newFiles: PendingAttachment[] = toAdd.map((file) => ({
-        file,
-        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
-      }));
-      return [...prev, ...newFiles];
-    });
-  }, []);
-
-  const removePendingFile = useCallback((index: number) => {
-    setPendingFiles((prev) => {
-      const removed = prev[index];
-      if (removed?.preview) URL.revokeObjectURL(removed.preview);
-      return prev.filter((_, i) => i !== index);
-    });
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      setPendingFiles((prev) => {
-        for (const pf of prev) { if (pf.preview) URL.revokeObjectURL(pf.preview); }
-        return [];
-      });
-    };
   }, []);
 
   // ------ Send message ------
@@ -260,25 +204,12 @@ export default function UserChatPane() {
     }
   }, [wsClientRef, wsConnected]);
 
-  const handleSend = useCallback(async () => {
-    const text = inputText.trim();
-    const hasFiles = pendingFiles.length > 0;
-    if ((!text && !hasFiles) || !roomId) return;
-
-    const filesToUpload = [...pendingFiles];
-    setInputText("");
-    setPendingFiles([]);
-    if (inputRef.current) {
-      inputRef.current.value = "";
-      inputRef.current.style.height = "auto";
-    }
-    for (const pf of filesToUpload) { if (pf.preview) URL.revokeObjectURL(pf.preview); }
+  const handleSend = useCallback(async (text: string, rawFiles: File[]) => {
+    if ((!text && rawFiles.length === 0) || !roomId) return;
 
     const clientId = crypto.randomUUID();
-    const rawFiles = filesToUpload.map((pf) => pf.file);
     const displayText = text || (rawFiles.length > 0 ? `[${rawFiles.length} file(s)]` : "");
 
-    // Add optimistic message to store
     const optimisticMsg: OwnerChatMessage = {
       clientId,
       hubMsgId: null,
@@ -296,49 +227,25 @@ export default function UserChatPane() {
     scrollToBottom();
 
     try {
-      const attachments = filesToUpload.length > 0 ? await uploadPendingFiles(filesToUpload) : undefined;
+      const attachments = rawFiles.length > 0 ? await uploadFiles(rawFiles) : undefined;
       await sendMessage(text, clientId, attachments);
     } catch (err: any) {
       useOwnerChatStore.getState().failOptimistic(clientId, err?.message || "Upload failed");
     }
-  }, [inputText, pendingFiles, roomId, sendMessage, uploadPendingFiles, scrollToBottom]);
+  }, [roomId, sendMessage, uploadFiles, scrollToBottom]);
 
   const handleRetry = useCallback(async (msg: OwnerChatMessage) => {
     useOwnerChatStore.getState().resetForRetry(msg.clientId);
     try {
       let attachments = msg.attachments;
       if (!attachments && msg.retryFiles && msg.retryFiles.length > 0) {
-        const pfs: PendingAttachment[] = msg.retryFiles.map((f) => ({ file: f }));
-        attachments = await uploadPendingFiles(pfs);
+        attachments = await uploadFiles(msg.retryFiles);
       }
       await sendMessage(msg.sendText || msg.text, msg.clientId, attachments);
     } catch (err: any) {
       useOwnerChatStore.getState().failOptimistic(msg.clientId, err?.message || "Retry failed");
     }
-  }, [sendMessage, uploadPendingFiles]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const autoResize = useCallback(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    handleFileSelect(e.dataTransfer.files);
-  }, [handleFileSelect]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-  }, []);
+  }, [sendMessage, uploadFiles]);
 
   // ------ Render guards ------
 
@@ -650,66 +557,18 @@ export default function UserChatPane() {
       </div>
 
       {/* Input — elevated above spotlight overlay so user can type */}
-      <div className={`border-t px-4 py-3 transition-colors ${showOnboarding ? "relative z-50 border-cyan-500/30 bg-zinc-900" : "border-zinc-800"}`} onDrop={handleDrop} onDragOver={handleDragOver}>
-        {pendingFiles.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            {pendingFiles.map((pf, idx) => (
-              <div key={idx} className="relative group flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-300 max-w-[200px]">
-                {pf.preview ? (
-                  <img src={pf.preview} alt={pf.file.name} className="w-8 h-8 rounded object-cover shrink-0" />
-                ) : (
-                  <FileText className="w-4 h-4 text-zinc-400 shrink-0" />
-                )}
-                <span className="truncate">{pf.file.name}</span>
-                <button
-                  onClick={() => removePendingFile(idx)}
-                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-zinc-600 text-zinc-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="flex items-end gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              handleFileSelect(e.target.files);
-              if (fileInputRef.current) fileInputRef.current.value = "";
-            }}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-center w-9 h-9 rounded-lg text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-colors"
-            title="Attach file"
-          >
-            <Paperclip className="w-4 h-4" />
-          </button>
-          <textarea
-            ref={inputRef}
-            className={`flex-1 bg-zinc-900 border rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-all ${
-              messages.length === 0
-                ? "border-cyan-500/40 shadow-[0_0_8px_rgba(0,240,255,0.1)] animate-[pulse-border_2s_ease-in-out_infinite]"
-                : "border-zinc-700"
-            }`}
-            placeholder={messages.length === 0 ? "Say something to your Bot..." : "Type a message..."}
-            value={inputText}
-            onChange={(e) => { setInputText(e.target.value); autoResize(); }}
-            onKeyDown={handleKeyDown}
-            rows={1}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!inputText.trim() && pendingFiles.length === 0}
-            className="flex items-center justify-center w-9 h-9 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </div>
+      <div
+        className={`border-t px-4 py-3 transition-colors ${
+          showOnboarding ? "relative z-50 border-cyan-500/30 bg-zinc-900" : "border-zinc-800"
+        }`}
+      >
+        <MessageComposer
+          onSend={handleSend}
+          allowAttachments
+          autoFocus={showOnboarding}
+          emptyState={showOnboarding}
+          placeholder={showOnboarding ? "Say something to your Bot..." : "Type a message..."}
+        />
       </div>
     </div>
   );

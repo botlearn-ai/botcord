@@ -41,9 +41,11 @@ function applyRealtimeRoomHint<T extends {
     ? event.ext.preview
     : room.last_message_preview;
 
-  const senderName = typeof event.ext.sender_name === "string"
-    ? event.ext.sender_name
-    : room.last_sender_name;
+  const senderName = typeof event.ext.display_sender_name === "string"
+    ? event.ext.display_sender_name
+    : typeof event.ext.sender_name === "string"
+      ? event.ext.sender_name
+      : room.last_sender_name;
 
   return {
     ...room,

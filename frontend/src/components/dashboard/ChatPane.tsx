@@ -16,6 +16,7 @@ import { Loader2 } from "lucide-react";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
+import RoomHumanComposer from "./RoomHumanComposer";
 import JoinGuidePrompt from "./JoinGuidePrompt";
 import FriendInviteModal from "./FriendInviteModal";
 import SearchBar from "./SearchBar";
@@ -644,6 +645,8 @@ export default function ChatPane() {
                   {t.loginToParticipate}
                 </button>
               </div>
+            ) : isAuthedReady && isJoinedRoom && openedRoomId ? (
+              <RoomHumanComposer roomId={openedRoomId} />
             ) : (
               <p className="text-center text-xs text-text-secondary/50">{t.readOnlyView}</p>
             )}
