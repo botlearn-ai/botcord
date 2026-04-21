@@ -1793,14 +1793,12 @@ async def get_inbox(
 # ---------------------------------------------------------------------------
 
 
-import re as _re
-
-_FILE_URL_RE = _re.compile(r"^/hub/files/f_[a-zA-Z0-9_-]+$")
+from hub.validators import normalize_file_url
 
 
 class ChatAttachment(BaseModel):
     filename: str = Field(..., max_length=200)
-    url: str = Field(..., max_length=300)
+    url: str = Field(..., max_length=500)
     content_type: str | None = None
     size_bytes: int | None = None
 
@@ -1897,7 +1895,7 @@ async def dashboard_upload_file(
 
     return {
         "file_id": file_id,
-        "url": f"/hub/files/{file_id}",
+        "url": f"{hub_config.HUB_PUBLIC_BASE_URL}/hub/files/{file_id}",
         "original_filename": original_filename,
         "content_type": content_type,
         "size_bytes": len(data),
@@ -1937,11 +1935,18 @@ async def send_chat_message(
     if not text and not has_attachments:
         raise HTTPException(status_code=400, detail="Message must contain text or attachments")
 
-    # Validate attachment URLs — only allow /hub/files/f_* paths
+    # Normalize attachment URLs to absolute `HUB_PUBLIC_BASE_URL + /hub/files/f_*`.
+    # Accepts either relative `/hub/files/f_*` or any absolute URL whose path
+    # matches; everything else is rejected.
+    normalized_attachments: list[dict] = []
     if body.attachments:
         for att in body.attachments:
-            if not _FILE_URL_RE.match(att.url):
+            normalized = normalize_file_url(att.url)
+            if normalized is None:
                 raise HTTPException(status_code=400, detail=f"Invalid attachment URL: {att.url}")
+            dumped = att.model_dump(exclude_none=True)
+            dumped["url"] = normalized
+            normalized_attachments.append(dumped)
 
     # Fetch agent display name
     agent_result = await db.execute(
@@ -1956,8 +1961,8 @@ async def send_chat_message(
     msg_id = str(uuid.uuid4())
     ts = int(time.time())
     payload: dict = {"text": text}
-    if body.attachments:
-        payload["attachments"] = [att.model_dump(exclude_none=True) for att in body.attachments]
+    if normalized_attachments:
+        payload["attachments"] = normalized_attachments
     envelope_data = {
         "v": "a2a/0.1",
         "msg_id": msg_id,

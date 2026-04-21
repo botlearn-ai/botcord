@@ -72,6 +72,11 @@ async def _register_and_verify(
     )
     assert resp.status_code == 200
     token = resp.json()["agent_token"]
+    await client.patch(
+        f"/registry/agents/{agent_id}/policy",
+        json={"message_policy": "open"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     return agent_id, key_id, token
 
 

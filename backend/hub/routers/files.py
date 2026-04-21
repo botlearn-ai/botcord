@@ -111,7 +111,7 @@ async def upload_file(
 
     return FileUploadResponse(
         file_id=file_id,
-        url=f"/hub/files/{file_id}",
+        url=f"{hub_config.HUB_PUBLIC_BASE_URL}/hub/files/{file_id}",
         original_filename=original_filename,
         content_type=content_type,
         size_bytes=total_size,

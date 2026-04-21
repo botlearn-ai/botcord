@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from typing import Any
 from collections import defaultdict, deque
 
@@ -1287,12 +1288,19 @@ async def poll_inbox(
     }
     user_name_map: dict[str, str | None] = {}
     if dashboard_user_ids:
-        user_result = await db.execute(
-            select(User.supabase_user_id, User.display_name).where(
-                User.supabase_user_id.in_(dashboard_user_ids)
+        dashboard_user_uuids = []
+        for uid in dashboard_user_ids:
+            try:
+                dashboard_user_uuids.append(uuid.UUID(uid))
+            except (ValueError, AttributeError):
+                continue
+        if dashboard_user_uuids:
+            user_result = await db.execute(
+                select(User.supabase_user_id, User.display_name).where(
+                    User.supabase_user_id.in_(dashboard_user_uuids)
+                )
             )
-        )
-        user_name_map = {str(uid): name for uid, name in user_result.all()}
+            user_name_map = {str(uid): name for uid, name in user_result.all()}
 
     # Build response
     messages: list[InboxMessage] = []
