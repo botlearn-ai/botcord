@@ -1,6 +1,7 @@
 "use client";
 
 import type { KeyboardEvent } from "react";
+import { User } from "lucide-react";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
@@ -92,12 +93,15 @@ function formatMessageTimestamp(isoTime: string): string {
   });
 }
 
-export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+export default function MessageBubble({ message, isOwn: isOwnProp }: MessageBubbleProps) {
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const stateConfig = useStateConfig();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
   const timestampLabel = formatMessageTimestamp(message.created_at);
+  const isOwn = typeof message.is_mine === "boolean" ? message.is_mine : isOwnProp;
+  const isHuman = message.sender_kind === "human";
+  const senderDisplayName = message.display_sender_name || message.sender_name || message.sender_id;
 
   const transferInfo = displayText
     ? parseTransferText(displayText) ?? parseTransferNotice(displayText, message.payload)
@@ -135,10 +139,17 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
           onKeyDown={handleSelectSenderByKey}
           className={`mb-0.5 flex items-center gap-1.5 rounded px-1 transition-colors hover:bg-glass-bg ${isOwn ? "justify-end" : "-ml-1"}`}
         >
-          <span className="text-xs font-medium text-neon-purple hover:underline">
-            {message.sender_name || message.sender_id}
+          {isHuman && (
+            <User className="h-3 w-3 text-neon-green/80" aria-label="human" />
+          )}
+          <span
+            className={`text-xs font-medium hover:underline ${
+              isHuman ? "text-neon-green" : "text-neon-purple"
+            }`}
+          >
+            {senderDisplayName}
           </span>
-          <CopyableId value={message.sender_id} />
+          {!isHuman && <CopyableId value={message.sender_id} />}
         </div>
 
         {/* Goal badge */}

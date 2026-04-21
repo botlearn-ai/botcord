@@ -42,6 +42,7 @@ import type {
   MySubscriptionsResponse,
   UserChatRoom,
   UserChatSendResponse,
+  RoomHumanSendResponse,
   CreateJoinRequestResponse,
   JoinRequestListResponse,
   MyJoinRequestResponse,
@@ -437,6 +438,10 @@ export const api = {
       body.attachments = attachments;
     }
     return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", body);
+  },
+
+  sendRoomHumanMessage(roomId: string, text: string) {
+    return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, { text });
   },
 
   async uploadFile(file: File): Promise<FileUploadResult> {
