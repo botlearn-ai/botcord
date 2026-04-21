@@ -192,6 +192,7 @@ async def _build_dashboard_rooms(
                 visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
                 member_count=member_counts.get(rid, 0),
                 my_role=my_roles.get(rid, "member"),
+                allow_human_send=room.allow_human_send,
                 created_at=room_created_at,
                 last_message_preview=last_preview,
                 last_message_at=last_at,
@@ -731,6 +732,7 @@ async def discover_rooms(
             owner_id=room.owner_id,
             visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
             member_count=count or 0,
+            allow_human_send=room.allow_human_send,
             required_subscription_product_id=room.required_subscription_product_id,
             url=frontend_url(f"/chats/messages/{room.room_id}"),
         )

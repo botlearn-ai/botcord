@@ -449,6 +449,7 @@ class CreateRoomRequest(BaseModel):
     max_members: int | None = Field(default=None, ge=1)
     default_send: bool = True
     default_invite: bool = False
+    allow_human_send: bool = True
     slow_mode_seconds: int | None = Field(default=None, ge=0)
     member_ids: list[str] = Field(default_factory=list)
 
@@ -463,6 +464,7 @@ class UpdateRoomRequest(BaseModel):
     max_members: int | None = None
     default_send: bool | None = None
     default_invite: bool | None = None
+    allow_human_send: bool | None = None
     slow_mode_seconds: int | None = Field(default=None, ge=0)
 
 
@@ -513,6 +515,7 @@ class RoomResponse(BaseModel):
     max_members: int | None = None
     default_send: bool
     default_invite: bool
+    allow_human_send: bool
     slow_mode_seconds: int | None = None
     member_count: int
     members: list[RoomMemberResponse]
@@ -530,6 +533,7 @@ class RoomPublicResponse(BaseModel):
     join_policy: str
     required_subscription_product_id: str | None = None
     slow_mode_seconds: int | None = None
+    allow_human_send: bool
     member_count: int
     created_at: datetime.datetime
     url: str
@@ -582,6 +586,7 @@ class DashboardRoom(BaseModel):
     visibility: str
     member_count: int
     my_role: str
+    allow_human_send: bool
     created_at: datetime.datetime | None = None
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None

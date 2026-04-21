@@ -245,6 +245,160 @@ async def test_happy_path_fanout(client: AsyncClient, seed: dict, db_session: As
 
 
 @pytest.mark.asyncio
+async def test_default_allow_human_send_is_true(db_session: AsyncSession, seed: dict):
+    row = await db_session.execute(select(Room).where(Room.room_id == "rm_humanroom"))
+    room = row.scalar_one()
+    assert room.allow_human_send is True
+
+
+@pytest.mark.asyncio
+async def test_member_send_blocked_when_allow_human_send_false(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    row = await db_session.execute(select(Room).where(Room.room_id == "rm_humanroom"))
+    room = row.scalar_one()
+    room.allow_human_send = False
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "hi"},
+    )
+    assert r.status_code == 403
+    assert "Human send disabled" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_non_member_detail_distinct_from_member_disabled(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # Disable human send on rm_nomember_ — a1 is NOT a member there.
+    row = await db_session.execute(select(Room).where(Room.room_id == "rm_nomember_"))
+    room = row.scalar_one()
+    room.allow_human_send = False
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_nomember_/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "hi"},
+    )
+    assert r.status_code == 403
+    non_member_detail = r.json()["detail"]
+    assert "Human send disabled" not in non_member_detail
+
+    # And a member-disabled room produces a different message
+    row2 = await db_session.execute(select(Room).where(Room.room_id == "rm_humanroom"))
+    room2 = row2.scalar_one()
+    room2.allow_human_send = False
+    await db_session.commit()
+
+    r2 = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "hi"},
+    )
+    assert r2.status_code == 403
+    member_disabled_detail = r2.json()["detail"]
+    assert member_disabled_detail != non_member_detail
+    assert "Human send disabled" in member_disabled_detail
+
+
+def _agent_auth(agent_id: str) -> dict:
+    from hub.auth import create_agent_token
+    token, _ = create_agent_token(agent_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.asyncio
+async def test_patch_room_owner_can_toggle_allow_human_send(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    r = await client.patch(
+        "/hub/rooms/rm_humanroom",
+        json={"allow_human_send": False},
+        headers=_agent_auth(seed["agent1"]),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["allow_human_send"] is False
+
+    db_session.expire_all()
+    row = await db_session.execute(select(Room).where(Room.room_id == "rm_humanroom"))
+    assert row.scalar_one().allow_human_send is False
+
+
+@pytest.mark.asyncio
+async def test_patch_room_admin_can_toggle_allow_human_send(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # agent2 is admin in rm_humanroom
+    r = await client.patch(
+        "/hub/rooms/rm_humanroom",
+        json={"allow_human_send": False},
+        headers=_agent_auth(seed["agent2"]),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["allow_human_send"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_room_member_cannot_toggle(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # agent3 is plain member in rm_humanroom
+    r = await client.patch(
+        "/hub/rooms/rm_humanroom",
+        json={"allow_human_send": False},
+        headers=_agent_auth(seed["agent3"]),
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_room_returns_allow_human_send(
+    client: AsyncClient, seed: dict
+):
+    r = await client.get(
+        "/hub/rooms/rm_humanroom",
+        headers=_agent_auth(seed["agent1"]),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["allow_human_send"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_my_rooms_returns_allow_human_send(
+    client: AsyncClient, seed: dict
+):
+    r = await client.get(
+        "/hub/rooms/me",
+        headers=_agent_auth(seed["agent1"]),
+    )
+    assert r.status_code == 200, r.text
+    rooms = r.json()["rooms"]
+    assert rooms
+    for room in rooms:
+        assert "allow_human_send" in room
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_rooms_include_allow_human_send(
+    client: AsyncClient, seed: dict
+):
+    r = await client.get(
+        "/api/dashboard/overview",
+        headers=_h(seed["token1"], seed["agent1"]),
+    )
+    assert r.status_code == 200, r.text
+    rooms = r.json()["rooms"]
+    assert rooms
+    for room in rooms:
+        assert "allow_human_send" in room
+        assert isinstance(room["allow_human_send"], bool)
+
+
+@pytest.mark.asyncio
 async def test_history_exposes_human_sender_fields(client: AsyncClient, seed: dict):
     # Send first
     r = await client.post(

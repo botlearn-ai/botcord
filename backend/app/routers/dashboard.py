@@ -307,6 +307,7 @@ async def _build_rooms_from_membership(
             "member_count": member_counts.get(rid, 0),
             "my_role": my_role,
             "can_invite": computed_can_invite,
+            "allow_human_send": room.allow_human_send,
             "last_message_preview": last_preview,
             "last_message_at": last_at.isoformat() if last_at else None,
             "last_sender_name": last_sender,
@@ -723,6 +724,7 @@ async def get_shared_rooms(
                 "owner_id": r.owner_id,
                 "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
                 "member_count": member_counts.get(r.room_id, 0),
+                "allow_human_send": r.allow_human_send,
             }
             for r in rooms
         ],
@@ -778,6 +780,7 @@ async def discover_rooms(
                 "join_policy": r.join_policy.value if hasattr(r.join_policy, "value") else str(r.join_policy),
                 "max_members": r.max_members,
                 "member_count": int(mc),
+                "allow_human_send": r.allow_human_send,
             }
             for r, mc in rows
         ],
@@ -847,6 +850,7 @@ async def join_room(
         "my_role": "member",
         "rule": room.rule,
         "required_subscription_product_id": room.required_subscription_product_id,
+        "allow_human_send": room.allow_human_send,
     }
 
 
@@ -1375,6 +1379,10 @@ async def human_room_send(
     active_member = member_result.scalar_one_or_none()
     if active_member is None:
         raise HTTPException(status_code=403, detail="Active agent is not a room member")
+
+    # Room-level human send gate (step 5.5)
+    if not room.allow_human_send:
+        raise HTTPException(status_code=403, detail="Human send disabled for this room")
 
     # _can_send (step 6)
     if not _room_can_send(room, active_member):
