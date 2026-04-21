@@ -48,6 +48,8 @@ import type {
   MyJoinRequestResponse,
   ActivityStats,
   ActivityFeedResponse,
+  RoomResponse,
+  UpdateRoomBody,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -162,6 +164,22 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
+  const init: RequestInit = { method: "PATCH", headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  const url = new URL(path, API_BASE);
+  const res = await fetch(url.toString(), init);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
+  }
+  return res.json();
+}
+
 async function apiDelete<T>(path: string): Promise<T> {
   const headers = await buildAuthHeaders();
   const url = new URL(path, API_BASE);
@@ -238,6 +256,10 @@ export const api = {
 
   joinRoom(roomId: string) {
     return apiPost<JoinRoomResponse>(`/api/dashboard/rooms/${roomId}/join`);
+  },
+
+  updateRoom(roomId: string, patch: UpdateRoomBody) {
+    return apiPatch<RoomResponse>(`/hub/rooms/${roomId}`, patch);
   },
 
   leaveRoom(roomId: string) {
