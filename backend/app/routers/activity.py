@@ -29,6 +29,15 @@ router = APIRouter(prefix="/api/dashboard", tags=["app-activity"])
 # ---------------------------------------------------------------------------
 
 
+_OWNER_CHAT_ROOM_PREFIX = "rm_oc_"
+
+# Reusable filter: exclude owner-chat rooms while keeping NULL room_id (direct messages)
+_not_owner_chat = or_(
+    MessageRecord.room_id.is_(None),
+    ~MessageRecord.room_id.startswith(_OWNER_CHAT_ROOM_PREFIX),
+)
+
+
 def _period_start(period: str) -> datetime.datetime:
     now = datetime.datetime.now(datetime.timezone.utc)
     if period == "7d":
@@ -77,6 +86,7 @@ async def get_activity_stats(
         select(func.count(distinct(MessageRecord.msg_id))).where(
             MessageRecord.sender_id == agent_id,
             MessageRecord.created_at >= start,
+            _not_owner_chat,
         )
     )
     messages_sent = sent_result.scalar() or 0
@@ -85,6 +95,7 @@ async def get_activity_stats(
         select(func.count()).select_from(MessageRecord).where(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.created_at >= start,
+            _not_owner_chat,
         )
     )
     messages_received = received_result.scalar() or 0
@@ -119,6 +130,7 @@ async def get_activity_stats(
     active_rooms_result = await db.execute(
         select(func.count(distinct(MessageRecord.room_id))).where(
             MessageRecord.room_id.isnot(None),
+            ~MessageRecord.room_id.startswith(_OWNER_CHAT_ROOM_PREFIX),
             MessageRecord.created_at >= start,
             or_(
                 MessageRecord.sender_id == agent_id,
@@ -178,6 +190,7 @@ async def get_activity_feed(
         .where(
             MessageRecord.sender_id == agent_id,
             MessageRecord.created_at >= start,
+            _not_owner_chat,
         )
         .group_by(MessageRecord.receiver_id, MessageRecord.room_id)
         .order_by(func.max(MessageRecord.created_at).desc())
@@ -227,6 +240,7 @@ async def get_activity_feed(
         .where(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.created_at >= start,
+            _not_owner_chat,
         )
         .group_by(MessageRecord.sender_id, MessageRecord.room_id)
         .order_by(func.max(MessageRecord.created_at).desc())
