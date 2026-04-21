@@ -3,6 +3,7 @@
 import datetime
 import json
 import logging
+import time as _time
 import uuid as _uuid
 
 import os
@@ -10,14 +11,21 @@ import os
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
-from hub.id_generators import generate_join_request_id
+from hub.dashboard_message_shaping import (
+    derive_sender_fields,
+    load_agent_display_names,
+    load_user_display_names,
+)
+from hub.id_generators import generate_hub_msg_id, generate_join_request_id
 from hub.models import (
     Agent,
+    Block,
     Contact,
     ContactRequest,
     ContactRequestState,
@@ -33,6 +41,15 @@ from hub.models import (
     Share,
     ShareMessage,
     Topic,
+    User,
+)
+from hub.routers.hub import (
+    _can_send as _room_can_send,
+    _check_duplicate_content,
+    _check_slow_mode,
+    _record_slow_mode_send,
+    build_message_realtime_event,
+    notify_inbox,
 )
 from hub.share_payloads import share_create_payload
 
@@ -1165,6 +1182,7 @@ async def get_room_messages(
 
     is_member = False
     viewer_agent_id = None
+    viewer_user_id: str | None = None
 
     # Try to resolve authenticated user and verify agent ownership
     if authorization and authorization.startswith("Bearer ") and x_active_agent:
@@ -1173,6 +1191,7 @@ async def get_room_messages(
             jwt_payload = _decode_supabase_token(token)
             supabase_uid = jwt_payload["sub"]
             user, _roles = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
+            viewer_user_id = str(user.id)
             # Verify agent belongs to authenticated user
             agent_check = await db.execute(
                 select(Agent).where(
@@ -1248,14 +1267,7 @@ async def get_room_messages(
     records = records[:limit]
 
     # Resolve sender names
-    sender_ids = {r.sender_id for r in records}
-    sender_names: dict[str, str] = {}
-    if sender_ids:
-        name_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
-            .where(Agent.agent_id.in_(sender_ids))
-        )
-        sender_names = dict(name_result.all())
+    sender_names = await load_agent_display_names(db, {r.sender_id for r in records})
 
     # Resolve topic info
     topic_ids = {r.topic_id for r in records if r.topic_id}
@@ -1267,9 +1279,23 @@ async def get_room_messages(
         for t in topic_result.scalars().all():
             topic_info[t.topic_id] = {"title": t.title}
 
+    # Resolve human sender user display names (only for human room rows)
+    human_user_ids = {
+        r.source_user_id for r in records
+        if (r.source_type or "") == "dashboard_human_room" and r.source_user_id
+    }
+    user_name_map = await load_user_display_names(db, human_user_ids)
+
     messages = []
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
+        extra = derive_sender_fields(
+            rec,
+            agent_name_map=sender_names,
+            user_name_map=user_name_map,
+            viewer_agent_id=viewer_agent_id,
+            viewer_user_id=viewer_user_id,
+        )
         msg = {
             "hub_msg_id": rec.hub_msg_id,
             "msg_id": rec.msg_id,
@@ -1283,12 +1309,202 @@ async def get_room_messages(
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
             "source_type": rec.source_type,
+            **extra,
         }
         if is_member:
             msg["mentioned"] = rec.mentioned
         messages.append(msg)
 
     return {"messages": messages, "has_more": has_more}
+
+
+# ---------------------------------------------------------------------------
+# Human-in-chat: POST /api/dashboard/rooms/{room_id}/send
+# MVP — see docs/human-room-chat-prd.md §5, §6.
+# text is required; mentions/topic are accepted but deferred (persisted text only).
+# ---------------------------------------------------------------------------
+
+
+class HumanRoomSendBody(BaseModel):
+    text: str = Field(..., min_length=1, max_length=8000)
+    mentions: list[str] | None = None
+    topic: str | None = None
+
+
+@router.post("/rooms/{room_id}/send", status_code=202)
+async def human_room_send(
+    room_id: str,
+    body: HumanRoomSendBody,
+    request: Request,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message to a room on behalf of the authenticated human user.
+
+    Active agent is the admission anchor; the message is persisted as
+    source_type='dashboard_human_room' and fanned out to all room members
+    (including the active agent themselves — see PRD §6.3).
+    """
+    active_agent_id = ctx.active_agent_id
+
+    # Verify agent is claimed (PRD §6.2 step 3)
+    agent_row = await db.execute(
+        select(Agent).where(Agent.agent_id == active_agent_id)
+    )
+    agent = agent_row.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if getattr(agent, "claimed_at", None) is None:
+        raise HTTPException(status_code=403, detail="Agent not claimed")
+
+    # Room exists (PRD §6.2 step 4)
+    room_result = await db.execute(
+        select(Room).where(Room.room_id == room_id)
+    )
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # Active agent is a RoomMember (step 5)
+    member_result = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == active_agent_id,
+        )
+    )
+    active_member = member_result.scalar_one_or_none()
+    if active_member is None:
+        raise HTTPException(status_code=403, detail="Active agent is not a room member")
+
+    # _can_send (step 6)
+    if not _room_can_send(room, active_member):
+        raise HTTPException(status_code=403, detail="Active agent cannot send in this room")
+
+    # Slow mode + duplicate content (step 7) keyed by (room_id, active_agent_id)
+    payload_for_checks = {"text": body.text}
+    try:
+        _check_slow_mode(room, active_member)
+        _check_duplicate_content(room_id, active_agent_id, payload_for_checks)
+    except HTTPException:
+        raise
+    _record_slow_mode_send(room_id, active_agent_id)
+
+    # Load all room members
+    members_result = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id)
+    )
+    all_members = list(members_result.scalars().all())
+
+    # Block check anchored on active_agent_id
+    member_ids = {m.agent_id for m in all_members}
+    blocked_by: set[str] = set()
+    if member_ids:
+        block_result = await db.execute(
+            select(Block.owner_id).where(
+                Block.owner_id.in_(member_ids),
+                Block.blocked_agent_id == active_agent_id,
+            )
+        )
+        blocked_by = {row[0] for row in block_result.all()}
+
+    # Fan-out targets: all members minus muted minus blockers.  Active agent
+    # is INCLUDED (PRD §6.3) — only skipped if they themselves are muted or
+    # happen to block themselves (shouldn't happen).
+    receivers = [
+        m for m in all_members
+        if not m.muted and m.agent_id not in blocked_by
+    ]
+    receiver_ids = [m.agent_id for m in receivers]
+
+    msg_id = str(_uuid.uuid4())
+    ts = int(_time.time())
+    payload: dict = {"text": body.text}
+    envelope_data = {
+        "v": "a2a/0.1",
+        "msg_id": msg_id,
+        "ts": ts,
+        "from": active_agent_id,
+        "to": room_id,
+        "type": "message",
+        "reply_to": None,
+        "ttl_sec": 3600,
+        "payload": payload,
+        "payload_hash": "",
+        "sig": {"alg": "ed25519", "key_id": "dashboard-human", "value": ""},
+    }
+    envelope_json = json.dumps(envelope_data)
+
+    source_user_id_str = str(ctx.user_id)
+    first_hub_msg_id: str | None = None
+    receiver_hub_msg_ids: dict[str, str] = {}
+    for receiver_id in receiver_ids:
+        hub_msg_id = generate_hub_msg_id()
+        if first_hub_msg_id is None:
+            first_hub_msg_id = hub_msg_id
+        receiver_hub_msg_ids[receiver_id] = hub_msg_id
+        record = MessageRecord(
+            hub_msg_id=hub_msg_id,
+            msg_id=msg_id,
+            sender_id=active_agent_id,
+            receiver_id=receiver_id,
+            room_id=room_id,
+            state=MessageState.queued,
+            envelope_json=envelope_json,
+            ttl_sec=3600,
+            mentioned=False,
+            source_type="dashboard_human_room",
+            source_user_id=source_user_id_str,
+            source_session_kind="room_human",
+            source_ip=request.client.host if request.client else None,
+            source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
+        )
+        try:
+            async with db.begin_nested():
+                db.add(record)
+                await db.flush()
+        except IntegrityError:
+            existing_res = await db.execute(
+                select(MessageRecord).where(
+                    MessageRecord.msg_id == msg_id,
+                    MessageRecord.receiver_id == receiver_id,
+                )
+            )
+            existing = existing_res.scalar_one()
+            receiver_hub_msg_ids[receiver_id] = existing.hub_msg_id
+            if first_hub_msg_id is None:
+                first_hub_msg_id = existing.hub_msg_id
+
+    await db.commit()
+
+    # Fetch user display name for realtime event
+    user_row = await db.execute(
+        select(User.display_name).where(User.id == ctx.user_id)
+    )
+    user_display_name = user_row.scalar_one_or_none() or "User"
+
+    for receiver_id in receiver_ids:
+        try:
+            rt_event = build_message_realtime_event(
+                type="message",
+                agent_id=receiver_id,
+                sender_id=active_agent_id,
+                room_id=room_id,
+                hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
+                payload=payload,
+                sender_name=user_display_name,
+            )
+            await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
+        except Exception as exc:
+            _logger.error(
+                "Human room fan-out notify failed receiver=%s room=%s err=%s",
+                receiver_id, room_id, exc, exc_info=True,
+            )
+
+    return {
+        "hub_msg_id": first_hub_msg_id,
+        "room_id": room_id,
+        "status": "queued",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1423,15 +1639,13 @@ async def create_share(
     )
     records = list(reversed(msg_result.scalars().all()))
 
-    # Resolve sender names for messages
-    sender_ids = {r.sender_id for r in records}
-    sender_map: dict[str, str] = {}
-    if sender_ids:
-        sn_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
-            .where(Agent.agent_id.in_(sender_ids))
-        )
-        sender_map = dict(sn_result.all())
+    # Resolve sender names for messages (human-aware)
+    sender_map = await load_agent_display_names(db, {r.sender_id for r in records})
+    share_human_user_ids = {
+        r.source_user_id for r in records
+        if (r.source_type or "") == "dashboard_human_room" and r.source_user_id
+    }
+    share_user_name_map = await load_user_display_names(db, share_human_user_ids)
 
     share = Share(
         share_id=share_id,
@@ -1445,12 +1659,18 @@ async def create_share(
 
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
+        if (rec.source_type or "") == "dashboard_human_room":
+            _snap_sender_name = (
+                share_user_name_map.get(rec.source_user_id) if rec.source_user_id else None
+            ) or "User"
+        else:
+            _snap_sender_name = sender_map.get(rec.sender_id, rec.sender_id)
         sm = ShareMessage(
             share_id=share_id,
             hub_msg_id=rec.hub_msg_id,
             msg_id=rec.msg_id,
             sender_id=rec.sender_id,
-            sender_name=sender_map.get(rec.sender_id, rec.sender_id),
+            sender_name=_snap_sender_name,
             type=parsed["type"] or "message",
             text=parsed["text"] or "",
             payload_json=json.dumps(parsed["payload"]),

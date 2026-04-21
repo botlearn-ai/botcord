@@ -677,6 +677,10 @@ def _can_send(room: Room, member: RoomMember) -> bool:
     return room.default_send
 
 
+# Public alias — imported by dashboard room-send paths (human-in-chat).
+can_send = _can_send
+
+
 def _check_slow_mode(room: Room, member: RoomMember) -> None:
     """Enforce slow mode interval. Owner/admin are exempt. Raises 429.
 
