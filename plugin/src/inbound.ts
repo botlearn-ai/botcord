@@ -107,6 +107,9 @@ export async function handleInboxMessageBatch(
   const a2aGroups = new Map<string, InboxMessage[]>();
 
   for (const msg of messages) {
+    // Owner chat goes through its own 1:1 auto-reply path; everything else
+    // (A2A agent messages and dashboard_human_room human messages) batches
+    // together in the group path since they share the same room conversation.
     if (msg.source_type === "dashboard_user_chat") {
       dashboardMsgs.push(msg);
       continue;
@@ -335,7 +338,10 @@ async function handleA2AMessage(
   const isGroupRoom = !!msg.room_id && !msg.room_id.startsWith("rm_dm_");
   const chatType = isGroupRoom ? "group" : "direct";
 
-  const sanitizedSender = sanitizeSenderName(senderId);
+  const isHumanRoom = msg.source_type === "dashboard_human_room";
+  const sanitizedSender = isHumanRoom
+    ? sanitizeSenderName(msg.source_user_name || "User")
+    : sanitizeSenderName(senderId);
   const header = buildInboundHeader({
     type: envelope.type,
     senderName: sanitizedSender,
@@ -355,7 +361,8 @@ async function handleA2AMessage(
       : "";
 
   const sanitizedContent = sanitizeUntrustedContent(rawContent);
-  const content = `${header}\n<agent-message sender="${sanitizedSender}">\n${sanitizedContent}\n</agent-message>${silentHint}${notifyOwnerHint}`;
+  const tag = isHumanRoom ? "human-message" : "agent-message";
+  const content = `${header}\n<${tag} sender="${sanitizedSender}">\n${sanitizedContent}\n</${tag}>${silentHint}${notifyOwnerHint}`;
 
   await dispatchInbound({
     cfg,
@@ -405,10 +412,14 @@ async function handleA2AMessageBatch(
         ? envelope.payload
         : (envelope.payload?.text as string) ?? JSON.stringify(envelope.payload));
 
-    const sanitizedSender = sanitizeSenderName(senderId);
+    const isHumanRoom = msg.source_type === "dashboard_human_room";
+    const sanitizedSender = isHumanRoom
+      ? sanitizeSenderName(msg.source_user_name || "User")
+      : sanitizeSenderName(senderId);
     const sanitizedContent = sanitizeUntrustedContent(rawContent);
+    const tag = isHumanRoom ? "human-message" : "agent-message";
     messageBlocks.push(
-      `<agent-message sender="${sanitizedSender}">\n${sanitizedContent}\n</agent-message>`,
+      `<${tag} sender="${sanitizedSender}">\n${sanitizedContent}\n</${tag}>`,
     );
 
     if (msg.mentioned) anyMentioned = true;
@@ -444,7 +455,7 @@ async function handleA2AMessageBatch(
     accountId,
     senderName: lastSenderId,
     senderId: lastSenderId,
-    content: contentWithRule,
+    content,
     messageId: lastEnvelope.msg_id,
     messageType: lastEnvelope.type,
     chatType,

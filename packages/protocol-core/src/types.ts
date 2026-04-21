@@ -34,7 +34,7 @@ export type BotCordMessageEnvelope = {
 };
 
 // Inbox poll response
-export type SourceType = "agent" | "dashboard_user_chat";
+export type SourceType = "agent" | "dashboard_user_chat" | "dashboard_human_room";
 
 export type InboxMessage = {
   hub_msg_id: string;
