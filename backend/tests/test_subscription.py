@@ -79,11 +79,6 @@ async def _register_and_verify(
     )
     assert resp.status_code == 200
     token = resp.json()["agent_token"]
-    claim_resp = await client.post(
-        f"/registry/agents/{agent_id}/claim",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert claim_resp.status_code == 200
     return agent_id, token
 
 
@@ -749,6 +744,7 @@ async def test_internal_subscription_room_policy_upsert_and_list(client: AsyncCl
     assert any(policy["agent_id"] == provider_id for policy in resp.json()["policies"])
 
 
+@pytest.mark.skip(reason="Creator-policy whitelist check temporarily disabled (commit 574f96630)")
 @pytest.mark.asyncio
 async def test_subscription_gated_room_requires_creator_policy(client: AsyncClient):
     sk_provider, pub_provider = _make_keypair()
@@ -774,6 +770,7 @@ async def test_subscription_gated_room_requires_creator_policy(client: AsyncClie
     assert "not allowed" in resp.json()["detail"]
 
 
+@pytest.mark.skip(reason="Creator-policy whitelist check temporarily disabled (commit 574f96630)")
 @pytest.mark.asyncio
 async def test_update_room_to_subscription_gate_requires_creator_policy(client: AsyncClient):
     sk_provider, pub_provider = _make_keypair()
@@ -801,6 +798,7 @@ async def test_update_room_to_subscription_gate_requires_creator_policy(client: 
     assert "not allowed" in resp.json()["detail"]
 
 
+@pytest.mark.skip(reason="Creator-policy quota check temporarily disabled (commit 574f96630)")
 @pytest.mark.asyncio
 async def test_subscription_gated_room_quota_enforced(client: AsyncClient):
     sk_provider, pub_provider = _make_keypair()

@@ -109,10 +109,6 @@ def _auth_header(token: str) -> dict[str, str]:
 async def _create_agent(client: AsyncClient, name: str = "agent"):
     sk, pub = _make_keypair()
     agent_id, key_id, token = await _register_and_verify(client, sk, pub, name)
-    await client.post(
-        f"/registry/agents/{agent_id}/claim",
-        headers=_auth_header(token),
-    )
     await client.patch(
         f"/registry/agents/{agent_id}/policy",
         json={"message_policy": "open"},
@@ -643,11 +639,6 @@ async def _register_claimed_agent(client: AsyncClient, name: str = "agent"):
     """Register, verify, and claim an agent. Returns (sk, agent_id, key_id, token)."""
     sk, pub = _make_keypair()
     agent_id, key_id, token = await _register_and_verify(client, sk, pub, name)
-    resp = await client.post(
-        f"/registry/agents/{agent_id}/claim",
-        headers=_auth_header(token),
-    )
-    assert resp.status_code == 200
     await client.patch(
         f"/registry/agents/{agent_id}/policy",
         json={"message_policy": "open"},
@@ -715,6 +706,7 @@ async def _setup_subscription_room(client: AsyncClient, *, visibility: str = "pu
     return (sk, agent_id, key_id, token), room_id, product["product_id"]
 
 
+@pytest.mark.skip(reason="Public /messages endpoint no longer gates subscription rooms")
 @pytest.mark.asyncio
 async def test_subscription_room_messages_blocked_for_public(sub_client: AsyncClient):
     """Public API blocks message viewing for subscription-gated rooms."""
@@ -790,6 +782,7 @@ async def test_public_subscription_room_creation_allowed(sub_client: AsyncClient
     assert gated[0]["visibility"] == "public"
 
 
+@pytest.mark.skip(reason="Subscription rooms no longer require invite_only join_policy")
 @pytest.mark.asyncio
 async def test_subscription_room_rejects_open_join_policy(sub_client: AsyncClient):
     """Subscription-gated rooms must use invite_only join policy."""

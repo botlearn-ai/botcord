@@ -84,11 +84,6 @@ async def _register_and_verify(client: AsyncClient, sk: SigningKey, pubkey_str: 
     )
     assert resp.status_code == 200
     token = resp.json()["agent_token"]
-    claim_resp = await client.post(
-        f"/registry/agents/{agent_id}/claim",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert claim_resp.status_code == 200
     return agent_id, token
 
 
@@ -127,7 +122,7 @@ async def test_wallet_created_on_verify(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_wallet_requires_claim_first(client: AsyncClient):
+async def test_wallet_requires_claim_first(client: AsyncClient, no_auto_claim):
     sk, pubkey = _make_keypair()
     resp = await client.post(
         "/registry/agents",

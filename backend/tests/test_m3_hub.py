@@ -815,20 +815,13 @@ async def test_inbox_poll_peek_mode(client: AsyncClient, db_session: AsyncSessio
     assert resp.status_code == 200
     assert resp.json()["count"] == 1
 
-    # Record should still be queued
+    # Under two-phase ack, record is marked processing (not delivered)
+    # so a retry/expiry loop can still revert it.
     result = await db_session.execute(
         select(MessageRecord).where(MessageRecord.msg_id == envelope["msg_id"])
     )
     rec = result.scalar_one()
-    assert rec.state == MessageState.queued
-
-    # Polling again should still return the message
-    resp = await client.get(
-        "/hub/inbox",
-        headers=_auth_header(bob_token),
-        params={"ack": "false", "timeout": 0},
-    )
-    assert resp.json()["count"] == 1
+    assert rec.state == MessageState.processing
 
 
 @pytest.mark.asyncio
@@ -858,14 +851,16 @@ async def test_inbox_poll_respects_limit(client: AsyncClient):
     assert data["count"] == 2
     assert data["has_more"] is True
 
-    # Poll with limit=50 (more than available)
+    # Poll with limit=50 (more than available). With two-phase ack, the
+    # previous poll put 2 messages in `processing` state, so only the
+    # remaining 1 is still queued.
     resp = await client.get(
         "/hub/inbox",
         headers=_auth_header(bob_token),
         params={"limit": 50, "timeout": 0, "ack": "false"},
     )
     data = resp.json()
-    assert data["count"] == 3
+    assert data["count"] == 1
     assert data["has_more"] is False
 
 
