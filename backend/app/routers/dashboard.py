@@ -1399,14 +1399,34 @@ async def human_room_send(
         raise
     _record_slow_mode_send(room_id, active_agent_id)
 
+    # Normalize mentions. Owner-chat rooms (rm_oc_) ignore mentions entirely.
+    # Human sends may only mention specific agent_ids — "@all" is not allowed
+    # here; any non-"ag_" string is dropped. Cap at 20 to avoid abuse.
+    raw_mentions = body.mentions or []
+    if room_id.startswith("rm_oc_"):
+        raw_mentions = []
+    if len(raw_mentions) > 20:
+        raise HTTPException(status_code=400, detail="Too many mentions (max 20)")
+    normalized_mentions: list[str] = []
+    seen_mentions: set[str] = set()
+    for m in raw_mentions:
+        if not isinstance(m, str) or not m.startswith("ag_") or m in seen_mentions:
+            continue
+        seen_mentions.add(m)
+        normalized_mentions.append(m)
+
     # Load all room members
     members_result = await db.execute(
         select(RoomMember).where(RoomMember.room_id == room_id)
     )
     all_members = list(members_result.scalars().all())
 
-    # Block check anchored on active_agent_id
+    # Drop mentions that aren't actually room members
     member_ids = {m.agent_id for m in all_members}
+    normalized_mentions = [m for m in normalized_mentions if m in member_ids]
+    mentioned_set: set[str] = set(normalized_mentions)
+
+    # Block check anchored on active_agent_id
     blocked_by: set[str] = set()
     if member_ids:
         block_result = await db.execute(
@@ -1441,6 +1461,7 @@ async def human_room_send(
         "payload": payload,
         "payload_hash": "",
         "sig": {"alg": "ed25519", "key_id": "dashboard-human", "value": ""},
+        "mentions": normalized_mentions or None,
     }
     envelope_json = json.dumps(envelope_data)
 
@@ -1464,7 +1485,7 @@ async def human_room_send(
             state=MessageState.queued,
             envelope_json=envelope_json,
             ttl_sec=3600,
-            mentioned=False,
+            mentioned=receiver_id in mentioned_set,
             source_type="dashboard_human_room",
             source_user_id=source_user_id_str,
             source_session_kind="room_human",
@@ -1505,6 +1526,9 @@ async def human_room_send(
                 hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
                 payload=payload,
                 sender_name=user_display_name,
+                source_type="dashboard_human_room",
+                source_user_id=source_user_id_str,
+                source_user_name=user_display_name,
             )
             await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
         except Exception as exc:

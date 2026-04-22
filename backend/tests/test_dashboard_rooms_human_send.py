@@ -483,3 +483,111 @@ async def test_hub_inbox_human_message_surfaces_source_user_name(
     assert human, f"no human message reached hub inbox; got={msgs}"
     assert human[0]["source_user_id"] == seed["supa1"]
     assert human[0]["source_user_name"] == seed["user1_name"]
+
+
+@pytest.mark.asyncio
+async def test_mentions_set_mentioned_flag_per_receiver(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "hey @carol", "mentions": ["ag_user3___"]},
+    )
+    assert r.status_code == 202, r.text
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
+    )).scalars().all()
+    by_receiver = {r.receiver_id: r for r in rows}
+    assert by_receiver["ag_user3___"].mentioned is True
+    assert by_receiver["ag_user1___"].mentioned is False  # sender not mentioned
+
+    # Envelope carries mentions
+    env = json.loads(by_receiver["ag_user3___"].envelope_json)
+    assert env["mentions"] == ["ag_user3___"]
+
+
+@pytest.mark.asyncio
+async def test_mentions_filter_non_member_agent_ids(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # ag_stranger exists but is NOT a member of rm_humanroom — must be filtered.
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "stranger ping", "mentions": ["ag_stranger", "ag_user3___"]},
+    )
+    assert r.status_code == 202, r.text
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
+    )).scalars().all()
+    env = json.loads(rows[0].envelope_json)
+    assert env["mentions"] == ["ag_user3___"]
+
+
+@pytest.mark.asyncio
+async def test_mentions_drop_at_all_and_non_ag_prefix(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "mass ping", "mentions": ["@all", "rm_notagent", "ag_user3___"]},
+    )
+    assert r.status_code == 202, r.text
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
+    )).scalars().all()
+    env = json.loads(rows[0].envelope_json)
+    assert env["mentions"] == ["ag_user3___"]
+
+
+@pytest.mark.asyncio
+async def test_mentions_cap_at_20(client: AsyncClient, seed: dict):
+    too_many = [f"ag_x{i:08d}" for i in range(21)]
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "spam", "mentions": too_many},
+    )
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.asyncio
+async def test_owner_chat_ignores_mentions(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # Create an owner-chat room (rm_oc_ prefix) where user1 is sender.
+    oc_room = Room(
+        room_id="rm_oc_test_",
+        name="OwnerChat",
+        description="",
+        owner_id=seed["agent1"],
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+        default_send=True,
+        max_members=2,
+    )
+    db_session.add(oc_room)
+    await db_session.flush()
+    db_session.add(RoomMember(room_id="rm_oc_test_", agent_id=seed["agent1"], role=RoomRole.owner))
+    db_session.add(RoomMember(room_id="rm_oc_test_", agent_id=seed["agent3"], role=RoomRole.member))
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_oc_test_/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "should ignore", "mentions": ["ag_user3___"]},
+    )
+    assert r.status_code == 202, r.text
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_oc_test_")
+    )).scalars().all()
+    for row in rows:
+        assert row.mentioned is False
+        env = json.loads(row.envelope_json)
+        assert env["mentions"] is None

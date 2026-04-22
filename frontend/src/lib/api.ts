@@ -462,8 +462,10 @@ export const api = {
     return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", body);
   },
 
-  sendRoomHumanMessage(roomId: string, text: string) {
-    return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, { text });
+  sendRoomHumanMessage(roomId: string, text: string, mentions?: string[]) {
+    const body: Record<string, unknown> = { text };
+    if (mentions && mentions.length > 0) body.mentions = mentions;
+    return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, body);
   },
 
   async uploadFile(file: File): Promise<FileUploadResult> {
