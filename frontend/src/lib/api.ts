@@ -259,7 +259,7 @@ export const api = {
   },
 
   updateRoom(roomId: string, patch: UpdateRoomBody) {
-    return apiPatch<RoomResponse>(`/hub/rooms/${roomId}`, patch);
+    return apiPatch<RoomResponse>(`/api/dashboard/rooms/${roomId}`, patch);
   },
 
   leaveRoom(roomId: string) {

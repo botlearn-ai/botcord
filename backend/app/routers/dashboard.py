@@ -51,6 +51,8 @@ from hub.routers.hub import (
     build_message_realtime_event,
     notify_inbox,
 )
+from hub.routers.room import update_room as _hub_update_room
+from hub.schemas import UpdateRoomRequest
 from hub.share_payloads import share_create_payload
 
 _logger = logging.getLogger(__name__)
@@ -1195,7 +1197,7 @@ async def get_room_messages(
             jwt_payload = _decode_supabase_token(token)
             supabase_uid = jwt_payload["sub"]
             user, _roles = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
-            viewer_user_id = str(user.id)
+            viewer_user_id = supabase_uid
             # Verify agent belongs to authenticated user
             agent_check = await db.execute(
                 select(Agent).where(
@@ -1442,7 +1444,10 @@ async def human_room_send(
     }
     envelope_json = json.dumps(envelope_data)
 
-    source_user_id_str = str(ctx.user_id)
+    # Store supabase_user_id in source_user_id to match the convention used by
+    # dashboard_user_chat, so inbox/display name lookups can resolve both via a
+    # single User.supabase_user_id join.
+    source_user_id_str = str(ctx.supabase_user_id)
     first_hub_msg_id: str | None = None
     receiver_hub_msg_ids: dict[str, str] = {}
     for receiver_id in receiver_ids:
@@ -1513,6 +1518,28 @@ async def human_room_send(
         "room_id": room_id,
         "status": "queued",
     }
+
+
+# ---------------------------------------------------------------------------
+# Room update BFF — PATCH /api/dashboard/rooms/{room_id}
+# Dashboard auth (Supabase JWT + X-Active-Agent); active agent must be
+# owner/admin of the room. Delegates to the hub-layer update_room.
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/rooms/{room_id}")
+async def dashboard_update_room(
+    room_id: str,
+    body: UpdateRoomRequest,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _hub_update_room(
+        room_id=room_id,
+        body=body,
+        db=db,
+        current_agent=ctx.active_agent_id,
+    )
 
 
 # ---------------------------------------------------------------------------

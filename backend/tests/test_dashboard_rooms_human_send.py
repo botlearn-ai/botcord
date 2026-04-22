@@ -162,6 +162,7 @@ async def seed(db_session: AsyncSession):
         "agent3": "ag_user3___",
         "agent_stranger": "ag_stranger",
         "uid1": str(uid1),
+        "supa1": str(supa1),
         "user1_name": "Alice",
     }
 
@@ -240,7 +241,7 @@ async def test_happy_path_fanout(client: AsyncClient, seed: dict, db_session: As
     for rec in rows:
         assert rec.source_type == "dashboard_human_room"
         assert rec.source_session_kind == "room_human"
-        assert rec.source_user_id == seed["uid1"]
+        assert rec.source_user_id == seed["supa1"]
         assert rec.sender_id == "ag_user1___"
 
 
@@ -422,6 +423,63 @@ async def test_history_exposes_human_sender_fields(client: AsyncClient, seed: di
     m = human_msgs[0]
     assert m["sender_kind"] == "human"
     assert m["display_sender_name"] == seed["user1_name"]
-    assert m["source_user_id"] == seed["uid1"]
+    assert m["source_user_id"] == seed["supa1"]
     assert m["source_user_name"] == seed["user1_name"]
     assert m["is_mine"] is True
+
+
+@pytest.mark.asyncio
+async def test_dashboard_patch_room_owner_can_toggle_via_bff(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # Owner (active agent = agent1) toggles via the BFF route using the
+    # browser-friendly Supabase JWT + X-Active-Agent.
+    r = await client.patch(
+        "/api/dashboard/rooms/rm_humanroom",
+        json={"allow_human_send": False},
+        headers=_h(seed["token1"], seed["agent1"]),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["allow_human_send"] is False
+
+    db_session.expire_all()
+    row = await db_session.execute(select(Room).where(Room.room_id == "rm_humanroom"))
+    assert row.scalar_one().allow_human_send is False
+
+
+@pytest.mark.asyncio
+async def test_dashboard_patch_room_member_rejected_via_bff(
+    client: AsyncClient, seed: dict
+):
+    # agent3 is a plain member; hub-layer update_room rejects non-admin/owner.
+    r = await client.patch(
+        "/api/dashboard/rooms/rm_humanroom",
+        json={"allow_human_send": False},
+        headers=_h(seed["token1"], seed["agent3"]),
+    )
+    # token1 (supa1) does not own agent3, so require_active_agent rejects at
+    # the BFF boundary before reaching the hub-layer check.
+    assert r.status_code in (403, 404), r.text
+
+
+@pytest.mark.asyncio
+async def test_hub_inbox_human_message_surfaces_source_user_name(
+    client: AsyncClient, seed: dict
+):
+    # Send as human
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "hi plugin"},
+    )
+    assert r.status_code == 202, r.text
+
+    # agent3 (room member) polls the hub inbox — should receive the human
+    # message with source_user_name populated via the Supabase UUID lookup.
+    r2 = await client.get("/hub/inbox", headers=_agent_auth(seed["agent3"]))
+    assert r2.status_code == 200, r2.text
+    msgs = r2.json()["messages"]
+    human = [m for m in msgs if m.get("source_type") == "dashboard_human_room"]
+    assert human, f"no human message reached hub inbox; got={msgs}"
+    assert human[0]["source_user_id"] == seed["supa1"]
+    assert human[0]["source_user_name"] == seed["user1_name"]

@@ -1279,20 +1279,31 @@ async def poll_inbox(
         )
         sender_name_map = dict(sender_result.all())
 
-    # Batch-load dashboard user display names
+    # Batch-load dashboard user display names (owner-chat + human-room rows
+    # both store the Supabase user UUID in source_user_id).
     dashboard_user_ids = {
         rec.source_user_id
         for rec in rows
-        if rec.source_type == "dashboard_user_chat" and rec.source_user_id
+        if rec.source_type in ("dashboard_user_chat", "dashboard_human_room")
+        and rec.source_user_id
     }
     user_name_map: dict[str, str | None] = {}
     if dashboard_user_ids:
-        user_result = await db.execute(
-            select(User.supabase_user_id, User.display_name).where(
-                User.supabase_user_id.in_(dashboard_user_ids)
+        # supabase_user_id column is Uuid — coerce strings before comparison.
+        import uuid as _uuid_mod
+        uuid_ids: list[_uuid_mod.UUID] = []
+        for s in dashboard_user_ids:
+            try:
+                uuid_ids.append(_uuid_mod.UUID(str(s)))
+            except (ValueError, TypeError):
+                continue
+        if uuid_ids:
+            user_result = await db.execute(
+                select(User.supabase_user_id, User.display_name).where(
+                    User.supabase_user_id.in_(uuid_ids)
+                )
             )
-        )
-        user_name_map = {str(uid): name for uid, name in user_result.all()}
+            user_name_map = {str(uid): name for uid, name in user_result.all()}
 
     # Build response
     messages: list[InboxMessage] = []
