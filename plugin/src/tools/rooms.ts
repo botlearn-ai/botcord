@@ -66,6 +66,11 @@ export function createRoomsTool() {
           type: "number" as const,
           description: "Slow mode interval in seconds — for create, update",
         },
+        allow_human_send: {
+          type: "boolean" as const,
+          description:
+            "Whether human-in-chat messages are allowed in this room (default true) — for create, update",
+        },
         required_subscription_product_id: {
           type: "string" as const,
           description: "Subscription product required to access this room — for create, update",
@@ -108,7 +113,7 @@ export function createRoomsTool() {
         switch (args.action) {
           case "create":
             if (!args.name) return validationError("name is required");
-            if (args.dry_run) return dryRunResult("POST", "/hub/rooms", { name: args.name, visibility: args.visibility || "private", join_policy: args.join_policy, member_ids: args.member_ids });
+            if (args.dry_run) return dryRunResult("POST", "/hub/rooms", { name: args.name, visibility: args.visibility || "private", join_policy: args.join_policy, member_ids: args.member_ids, allow_human_send: args.allow_human_send });
             return await client.createRoom({
               name: args.name,
               description: args.description,
@@ -120,6 +125,7 @@ export function createRoomsTool() {
               default_send: args.default_send,
               default_invite: args.default_invite,
               slow_mode_seconds: args.slow_mode_seconds,
+              allow_human_send: args.allow_human_send,
               member_ids: args.member_ids,
             });
 
@@ -132,7 +138,7 @@ export function createRoomsTool() {
 
           case "update":
             if (!args.room_id) return validationError("room_id is required");
-            if (args.dry_run) return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { name: args.name, description: args.description, rule: args.rule, visibility: args.visibility, join_policy: args.join_policy, required_subscription_product_id: args.required_subscription_product_id, max_members: args.max_members, default_send: args.default_send, default_invite: args.default_invite, slow_mode_seconds: args.slow_mode_seconds });
+            if (args.dry_run) return dryRunResult("PATCH", `/hub/rooms/${args.room_id}`, { name: args.name, description: args.description, rule: args.rule, visibility: args.visibility, join_policy: args.join_policy, required_subscription_product_id: args.required_subscription_product_id, max_members: args.max_members, default_send: args.default_send, default_invite: args.default_invite, slow_mode_seconds: args.slow_mode_seconds, allow_human_send: args.allow_human_send });
             return await client.updateRoom(args.room_id, {
               name: args.name,
               description: args.description,
@@ -144,6 +150,7 @@ export function createRoomsTool() {
               default_send: args.default_send,
               default_invite: args.default_invite,
               slow_mode_seconds: args.slow_mode_seconds,
+              allow_human_send: args.allow_human_send,
             });
 
           case "discover":

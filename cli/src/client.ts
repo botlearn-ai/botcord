@@ -451,6 +451,7 @@ export class BotCordClient {
     default_send?: boolean;
     default_invite?: boolean;
     slow_mode_seconds?: number;
+    allow_human_send?: boolean;
     member_ids?: string[];
   }): Promise<RoomInfo> {
     const resp = await this.hubFetch("/hub/rooms", {
@@ -520,6 +521,7 @@ export class BotCordClient {
       default_send?: boolean;
       default_invite?: boolean;
       slow_mode_seconds?: number | null;
+      allow_human_send?: boolean;
     },
   ): Promise<RoomInfo> {
     const resp = await this.hubFetch(`/hub/rooms/${roomId}`, {
