@@ -116,6 +116,7 @@ jobs:
         working-directory: cli
         run: |
           npm install
+          npm install ../packages/protocol-core
           npm run build
 
   # ── Deploy backend preview (shared across all PRs + main) ────────────────────
