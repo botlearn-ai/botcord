@@ -1456,31 +1456,44 @@ async def get_room_messages(
     viewer_user_id: str | None = None
 
     # Try to resolve authenticated user and verify agent ownership
-    if authorization and authorization.startswith("Bearer ") and x_active_agent:
+    if authorization and authorization.startswith("Bearer "):
         token = authorization[len("Bearer "):]
         try:
             jwt_payload = _decode_supabase_token(token)
             supabase_uid = jwt_payload["sub"]
             user, _roles = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
             viewer_user_id = str(user.id)
-            # Verify agent belongs to authenticated user
-            agent_check = await db.execute(
-                select(Agent).where(
-                    Agent.agent_id == x_active_agent,
-                    Agent.user_id == user.id,
-                )
-            )
-            if agent_check.scalar_one_or_none() is not None:
-                # Now check room membership
-                member_result = await db.execute(
-                    select(RoomMember).where(
-                        RoomMember.room_id == room_id,
-                        RoomMember.agent_id == x_active_agent,
+
+            # Agent-anchored membership (acting as agent)
+            if x_active_agent:
+                agent_check = await db.execute(
+                    select(Agent).where(
+                        Agent.agent_id == x_active_agent,
+                        Agent.user_id == user.id,
                     )
                 )
-                if member_result.scalar_one_or_none() is not None:
+                if agent_check.scalar_one_or_none() is not None:
+                    member_result = await db.execute(
+                        select(RoomMember).where(
+                            RoomMember.room_id == room_id,
+                            RoomMember.agent_id == x_active_agent,
+                        )
+                    )
+                    if member_result.scalar_one_or_none() is not None:
+                        is_member = True
+                        viewer_agent_id = x_active_agent
+
+            # Human-anchored membership (acting as human / no active agent)
+            if not is_member and user.human_id:
+                human_member_result = await db.execute(
+                    select(RoomMember).where(
+                        RoomMember.room_id == room_id,
+                        RoomMember.agent_id == user.human_id,
+                        RoomMember.participant_type == ParticipantType.human,
+                    )
+                )
+                if human_member_result.scalar_one_or_none() is not None:
                     is_member = True
-                    viewer_agent_id = x_active_agent
         except HTTPException:
             pass  # Invalid token — fall through to public view
 
