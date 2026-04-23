@@ -9,6 +9,7 @@ import {
   createPrivateKey,
   generateKeyPairSync,
   sign,
+  verify,
   randomUUID,
 } from "node:crypto";
 import type { BotCordMessageEnvelope, BotCordSignature, MessageType } from "./types.js";
@@ -65,6 +66,42 @@ export function derivePublicKey(privateKeyB64: string): string {
   const publicKey = createPublicKey(privateKey);
   const pubDer = publicKey.export({ type: "spki", format: "der" });
   return Buffer.from(pubDer.subarray(-32)).toString("base64");
+}
+
+// ── Build a public KeyObject from a 32-byte raw Ed25519 key ─────
+function publicKeyFromRaw(rawB64: string): ReturnType<typeof createPublicKey> {
+  // SPKI prefix for Ed25519 raw 32-byte key
+  const prefix = Buffer.from("302a300506032b6570032100", "hex");
+  const raw = Buffer.from(rawB64, "base64");
+  if (raw.length !== 32) {
+    throw new Error(`expected 32-byte Ed25519 public key, got ${raw.length}`);
+  }
+  return createPublicKey({
+    key: Buffer.concat([prefix, raw]),
+    format: "der",
+    type: "spki",
+  });
+}
+
+/**
+ * Verify an Ed25519 signature over `message` using the raw 32-byte public
+ * key (base64). Returns `true` on a valid signature; `false` on any
+ * tampering or shape error. Designed for Hub→daemon control-frame
+ * verification (plan §8.3).
+ */
+export function verifyEd25519(
+  publicKeyB64: string,
+  message: string | Buffer,
+  signatureB64: string,
+): boolean {
+  try {
+    const pk = publicKeyFromRaw(publicKeyB64);
+    const data = typeof message === "string" ? Buffer.from(message, "utf8") : message;
+    const sig = Buffer.from(signatureB64, "base64");
+    return verify(null, data, pk, sig);
+  } catch {
+    return false;
+  }
 }
 
 // ── Build and sign a full message envelope ──────────────────────

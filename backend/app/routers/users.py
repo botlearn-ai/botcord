@@ -24,14 +24,18 @@ from hub import config as hub_config
 from hub.auth import create_agent_token, verify_agent_token
 from hub.config import BIND_PROOF_SECRET, JWT_SECRET
 from hub.routers.hub import is_agent_ws_online
+from hub.routers.daemon_control import is_daemon_online, send_control_frame
 from hub.crypto import verify_challenge_sig
 from hub.database import async_session as _default_session_factory, get_db
-from hub.models import Agent, Role, ShortCode, SigningKey, User, UserRole
-from hub.id_generators import generate_key_id
+from hub.models import Agent, DaemonInstance, Role, ShortCode, SigningKey, User, UserRole
+from hub.id_generators import generate_agent_id, generate_key_id
 from hub.enums import KeyState
 from hub.schemas import ResetCredentialResponse
 from hub.services import wallet as wallet_svc
+from hub.services.wallet import get_or_create_wallet
 from hub.validators import parse_pubkey
+
+from nacl.signing import SigningKey as NaClSigningKey
 
 _logger = logging.getLogger(__name__)
 
@@ -1091,4 +1095,211 @@ async def reset_agent_credential(
         agent_token=agent_token,
         expires_at=expires_at,
         hub_url=None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/users/me/agents/provision
+# ---------------------------------------------------------------------------
+#
+# Create a fresh agent bound to one of the user's daemons. Hub is the
+# source-of-truth for runtime (see docs/agent-runtime-property-plan.md):
+# the `runtime` column is written here, and the daemon receives the cached
+# copy via the `provision_agent` control frame's `credentials` envelope.
+
+
+class ProvisionAgentBody(BaseModel):
+    daemon_instance_id: str
+    label: str
+    runtime: str
+    cwd: str | None = None
+    bio: str | None = None
+
+
+class ProvisionAgentResponse(BaseModel):
+    agent_id: str
+    display_name: str
+    runtime: str
+    daemon_instance_id: str
+    is_default: bool
+
+
+def _daemon_lists_runtime(instance: DaemonInstance, runtime: str) -> bool:
+    """Check that the daemon's last runtime probe lists `runtime` as available.
+
+    Empty / missing snapshots are treated permissively: the daemon may not
+    have completed its first probe yet, and rejecting here would deadlock
+    provisioning on a freshly-connected daemon. The daemon will still reject
+    unknown runtimes in `provision.ts` at the handler boundary.
+    """
+    snap = instance.runtimes_json
+    if not isinstance(snap, list) or not snap:
+        return True
+    for entry in snap:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("id") == runtime and entry.get("available") is True:
+            return True
+    return False
+
+
+@router.post(
+    "/me/agents/provision",
+    status_code=201,
+    response_model=ProvisionAgentResponse,
+)
+async def provision_agent(
+    body: ProvisionAgentBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> ProvisionAgentResponse:
+    """Create a new agent on one of the user's daemons.
+
+    Hub generates the Ed25519 keypair, inserts the Agent row (with
+    `runtime` column set), activates the signing key, issues a JWT, and
+    ships the credential envelope to the daemon over its control WS. The
+    daemon writes credentials to disk and hot-plugs a gateway channel.
+    """
+    # --- Validate daemon + ownership + online ---------------------------
+    label = (body.label or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="label is required")
+    runtime = (body.runtime or "").strip()
+    if not runtime:
+        raise HTTPException(status_code=400, detail="runtime is required")
+
+    result = await db.execute(
+        select(DaemonInstance).where(DaemonInstance.id == body.daemon_instance_id)
+    )
+    instance = result.scalar_one_or_none()
+    if instance is None or str(instance.user_id) != str(ctx.user_id):
+        raise HTTPException(status_code=404, detail="daemon_instance_not_found")
+    if instance.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="daemon_revoked")
+    if not is_daemon_online(body.daemon_instance_id):
+        raise HTTPException(status_code=409, detail="daemon_offline")
+    if not _daemon_lists_runtime(instance, runtime):
+        raise HTTPException(status_code=409, detail="runtime_unavailable")
+
+    # --- Quota check ---------------------------------------------------
+    user_result = await db.execute(select(User).where(User.id == ctx.user_id))
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    count_result = await db.execute(
+        select(sa_func.count()).select_from(Agent).where(Agent.user_id == ctx.user_id)
+    )
+    current_count = count_result.scalar_one()
+    if current_count >= user.max_agents:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent quota exceeded (max {user.max_agents})",
+        )
+    is_first = current_count == 0
+
+    # --- Generate keypair + derive agent_id -----------------------------
+    signing_key = NaClSigningKey.generate()
+    pubkey_raw = bytes(signing_key.verify_key)
+    private_key_raw = bytes(signing_key)
+    pubkey_b64 = base64.b64encode(pubkey_raw).decode("ascii")
+    private_key_b64 = base64.b64encode(private_key_raw).decode("ascii")
+    agent_id = generate_agent_id(pubkey_b64)
+
+    # Defensive: the derivation is deterministic, so collision means another
+    # row already exists for this pubkey. Since we freshly generated the key,
+    # a real collision is effectively 2^-128 and indicates data corruption.
+    dup_result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    if dup_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=500, detail="agent_id_collision")
+
+    # --- Insert Agent + SigningKey in one transaction -------------------
+    now = datetime.datetime.now(datetime.timezone.utc)
+    key_id = generate_key_id()
+    agent = Agent(
+        agent_id=agent_id,
+        display_name=label,
+        bio=body.bio,
+        user_id=ctx.user_id,
+        is_default=is_first,
+        claimed_at=now,
+        runtime=runtime,
+    )
+    db.add(agent)
+    db.add(
+        SigningKey(
+            agent_id=agent_id,
+            key_id=key_id,
+            pubkey=f"ed25519:{pubkey_b64}",
+            state=KeyState.active,
+        )
+    )
+    # Flush so FKs satisfy subsequent writes; commit happens after the
+    # daemon ack so we can roll back on dispatch failure.
+    await db.flush()
+
+    agent_token, token_expires_at = create_agent_token(agent_id)
+    agent.agent_token = agent_token
+    agent.token_expires_at = datetime.datetime.fromtimestamp(
+        token_expires_at, tz=datetime.timezone.utc
+    )
+    await get_or_create_wallet(db, agent_id)
+    await _ensure_agent_owner_role(db, ctx.user_id)
+    await db.flush()
+
+    # --- Dispatch provision_agent to the daemon, wait for ack -----------
+    frame_params: dict = {
+        "name": label,
+        "runtime": runtime,
+        "credentials": {
+            "agentId": agent_id,
+            "keyId": key_id,
+            "privateKey": private_key_b64,
+            "publicKey": pubkey_b64,
+            "hubUrl": hub_config.HUB_PUBLIC_BASE_URL,
+            "displayName": label,
+            "token": agent_token,
+            "tokenExpiresAt": token_expires_at * 1000,
+            "runtime": runtime,
+        },
+    }
+    if body.cwd:
+        frame_params["cwd"] = body.cwd
+        frame_params["credentials"]["cwd"] = body.cwd
+    if body.bio:
+        frame_params["bio"] = body.bio
+
+    try:
+        ack = await send_control_frame(
+            body.daemon_instance_id, "provision_agent", frame_params
+        )
+    except HTTPException:
+        # Roll back the uncommitted Agent / SigningKey so Hub doesn't get
+        # stuck with a phantom agent row while the daemon is offline or
+        # misbehaving (plan §8.4 事务性与回滚: step b fail → ack error, no state).
+        await db.rollback()
+        raise
+
+    if not isinstance(ack, dict) or not ack.get("ok"):
+        err = ack.get("error") if isinstance(ack, dict) else None
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        message = (err or {}).get("message") if isinstance(err, dict) else None
+        await db.rollback()
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "daemon_provision_failed",
+                "daemon_code": code,
+                "daemon_message": message,
+            },
+        )
+
+    await db.commit()
+    await db.refresh(agent)
+
+    return ProvisionAgentResponse(
+        agent_id=agent.agent_id,
+        display_name=agent.display_name,
+        runtime=runtime,
+        daemon_instance_id=body.daemon_instance_id,
+        is_default=agent.is_default,
     )
