@@ -23,6 +23,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const tc = common[locale];
   const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? EMPTY_CONTACTS;
   const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
+  const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
   // Identity signal — treat viewMode as the authoritative "who is acting".
   // viewMode defaults to "human" once the /api/humans/me bootstrap completes,
   // flipping to "agent" only in observer/agent-mode. No unified
@@ -41,7 +42,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const [visibility, setVisibility] = useState<"public" | "private">("public");
   const [joinPolicy, setJoinPolicy] = useState<"open" | "invite_only">("open");
   const [defaultSend, setDefaultSend] = useState(true);
-  const [defaultInvite, setDefaultInvite] = useState(false);
+  const [defaultInvite, setDefaultInvite] = useState(true);
   const [maxMembers, setMaxMembers] = useState("");
   const [slowMode, setSlowMode] = useState("");
   const [saving, setSaving] = useState(false);
@@ -102,7 +103,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
         return;
       }
       const room = await humansApi.createRoom(body);
-      await refreshOverview();
+      await Promise.all([refreshOverview(), refreshHumanRooms()]);
       onCreated?.(room);
       onClose();
     } catch (err) {
