@@ -8,6 +8,7 @@ import time
 from collections import defaultdict, deque
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from hub.i18n import I18nHTTPException
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +24,7 @@ from hub.id_generators import generate_room_id
 from hub.enums import SubscriptionProductStatus, SubscriptionStatus
 from hub.models import (
     Agent,
+    AgentApprovalQueue,
     AgentSubscription,
     Contact,
     MessagePolicy,
@@ -34,6 +36,7 @@ from hub.models import (
     SubscriptionRoomCreatorPolicy,
     SubscriptionProduct,
 )
+from hub.enums import ApprovalKind, ApprovalState
 from hub.schemas import (
     AddRoomMemberRequest,
     CreateRoomRequest,
@@ -758,6 +761,28 @@ async def add_member(
                     status_code=403,
                     message_key="admission_denied_target_contacts_only",
                 )
+
+        # Claimed agents: queue the invite for owner Human to approve
+        if target_agent.user_id is not None:
+            import json as _json
+            entry = AgentApprovalQueue(
+                agent_id=target_agent_id,
+                owner_user_id=target_agent.user_id,
+                kind=ApprovalKind.room_invite,
+                payload_json=_json.dumps({
+                    "room_id": room_id,
+                    "invited_by": current_agent,
+                    "can_send": body.can_send if body else None,
+                    "can_invite": body.can_invite if body else None,
+                }),
+                state=ApprovalState.pending,
+            )
+            db.add(entry)
+            await db.commit()
+            return JSONResponse(
+                {"status": "queued_for_approval", "approval_id": str(entry.id)},
+                status_code=202,
+            )
 
     # Check max_members
     if room.max_members is not None and len(room.members) >= room.max_members:
