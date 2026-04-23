@@ -24,6 +24,7 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
   const router = useRouter();
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const human = useDashboardSessionStore((state) => state.human);
+  const refreshHumanRooms = useDashboardSessionStore((state) => state.refreshHumanRooms);
   const locale = useLanguage();
   const tc = common[locale];
   const t = roomZeroState[locale];
@@ -44,6 +45,9 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
           ? `${human.display_name || "我"}的房间`
           : `${human.display_name || "My"}'s room`;
       const room = await humansApi.createRoom({ name: defaultName });
+      // Refresh so the sidebar room list picks up the new Human-owned room
+      // before we navigate — avoids a flash where the list is stale.
+      await refreshHumanRooms();
       router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
     } catch (err: any) {
       setCreateRoomError(err?.message || "Failed to create room");
