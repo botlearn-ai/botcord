@@ -169,6 +169,22 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
+  const init: RequestInit = { method: "PATCH", headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  const url = new URL(path, API_BASE);
+  const res = await fetch(url.toString(), init);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
+  }
+  return res.json();
+}
+
 async function apiDelete<T>(path: string): Promise<T> {
   const headers = await buildAuthHeaders();
   const url = new URL(path, API_BASE);
@@ -213,6 +229,13 @@ export const api = {
 
   createShareLink(roomId: string) {
     return apiPost<CreateShareResponse>(`/api/dashboard/rooms/${roomId}/share`);
+  },
+
+  updateRoomSettings(roomId: string, patch: { name?: string; description?: string; rule?: string | null }) {
+    return apiPatch<{ room_id: string; name: string; description: string | null; rule: string | null }>(
+      `/api/dashboard/rooms/${roomId}`,
+      patch,
+    );
   },
 
   getSharedRoom(shareId: string) {

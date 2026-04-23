@@ -1,25 +1,31 @@
 /**
  * [INPUT]: 依赖 session/ui/chat store 的当前房间选择、成员关系与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
- * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、成员入口、加入入口与分享动作
+ * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、规则(Info)、分享、Owner 设置、成员入口与加入入口
  * [POS]: dashboard 消息主视图的头部区域，承接当前房间的关键信息与快捷操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2, Settings, Share2, Users } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import SubscriptionBadge from "./SubscriptionBadge";
+import ShareModal from "./ShareModal";
+import RoomSettingsModal from "./RoomSettingsModal";
 
 export default function RoomHeader() {
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
+  const [showRulePopover, setShowRulePopover] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const rulePopoverRef = useRef<HTMLDivElement>(null);
   const locale = useLanguage();
   const t = roomList[locale];
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
@@ -71,6 +77,9 @@ export default function RoomHeader() {
   const isJoining = joiningRoomId === room?.room_id;
   const isInviteOnly = room?.join_policy === "invite_only" && !room?.required_subscription_product_id;
   const loginHref = room ? `/login?next=${encodeURIComponent(`/chats/messages/${room.room_id}`)}` : "/login";
+  const myRole = authRoom?.my_role;
+  const isOwnerOrAdmin = myRole === "owner" || myRole === "admin";
+  const canInvite = authRoom?.can_invite ?? true;
 
   useEffect(() => {
     if (!isAuthedReady || !room?.room_id || isJoined || !isInviteOnly) return;
@@ -85,6 +94,18 @@ export default function RoomHeader() {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [isAuthedReady, room?.room_id, isJoined, isInviteOnly]);
+
+  // Close rule popover on outside click
+  useEffect(() => {
+    if (!showRulePopover) return;
+    const onClick = (e: MouseEvent) => {
+      if (rulePopoverRef.current && !rulePopoverRef.current.contains(e.target as Node)) {
+        setShowRulePopover(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showRulePopover]);
 
   const handleOpenMembersPanel = () => {
     if (!rightPanelOpen) {
@@ -173,8 +194,11 @@ export default function RoomHeader() {
     );
   };
 
+  const iconBtn = "rounded p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary";
+
   return (
-      <div className="flex min-h-16 items-start justify-between border-b border-glass-border px-4 py-3">
+    <>
+      <div className="flex min-h-16 items-center justify-between border-b border-glass-border px-4 py-3">
         <div className="min-w-0 py-0.5">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-text-primary">{room.name}</h3>
@@ -182,6 +206,26 @@ export default function RoomHeader() {
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             ) : null}
             <CopyableId value={room.room_id} />
+            <div className="relative" ref={rulePopoverRef}>
+              <button
+                onClick={() => setShowRulePopover((v) => !v)}
+                className={`${iconBtn} ${roomRule ? "text-neon-cyan" : "text-text-secondary/60"}`}
+                title={t.viewRule}
+                aria-label={t.viewRule}
+              >
+                <Info className="h-4 w-4" />
+              </button>
+              {showRulePopover && (
+                <div className="absolute left-0 top-full z-30 mt-1 w-[min(32rem,calc(100vw-2rem))] rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                    {t.viewRule}
+                  </p>
+                  <p className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
+                    {roomRule || t.ruleEmpty}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center text-xs text-text-secondary">
             <button
@@ -190,15 +234,10 @@ export default function RoomHeader() {
             >
               {room.member_count} {room.member_count !== 1 ? t.members : t.member}
             </button>
-            {room.description && <span className="ml-2 text-text-secondary/60">· {room.description}</span>}
+            {room.description && <span className="ml-2 truncate text-text-secondary/60">· {room.description}</span>}
           </div>
-          {roomRule && (
-            <p className="mt-1 text-xs leading-5 text-text-secondary">
-              <span className="font-medium text-neon-cyan">{t.rule}</span> {roomRule}
-            </p>
-          )}
         </div>
-        <div className="flex items-center gap-2 self-start py-0.5">
+        <div className="flex items-center gap-1.5 self-start py-0.5">
           {identityBadge && !isGuest ? (
             <span
               className={
@@ -212,9 +251,9 @@ export default function RoomHeader() {
             </span>
           ) : null}
           {isAuthedReady && authRoom && (
-              <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
-                {authRoom.my_role}
-              </span>
+            <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
+              {authRoom.my_role}
+            </span>
           )}
           {renderJoinButton()}
           {isGuest && (
@@ -222,19 +261,56 @@ export default function RoomHeader() {
               {t.guest}
             </span>
           )}
+          {isJoined && (
+            <button
+              onClick={() => setShowShareModal(true)}
+              className={iconBtn}
+              title={t.shareRoom}
+              aria-label={t.shareRoom}
+            >
+              <Share2 className="h-4 w-4" />
+            </button>
+          )}
+          {isOwnerOrAdmin && (
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className={iconBtn}
+              title={t.roomSettings}
+              aria-label={t.roomSettings}
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={handleOpenMembersPanel}
-            className="rounded p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className={iconBtn}
             title={t.viewMembers}
+            aria-label={t.viewMembers}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="6" cy="5" r="2.5" />
-              <path d="M1.5 14c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5" />
-              <circle cx="11.5" cy="5.5" r="1.8" />
-              <path d="M11.5 9c1.8 0 3.2 1.2 3.5 3" />
-            </svg>
+            <Users className="h-4 w-4" />
           </button>
         </div>
       </div>
+
+      {showShareModal && (
+        <ShareModal
+          roomId={room.room_id}
+          roomName={room.name}
+          roomVisibility={room.visibility}
+          canInvite={canInvite}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
+
+      {showSettingsModal && (
+        <RoomSettingsModal
+          roomId={room.room_id}
+          initialName={room.name}
+          initialDescription={room.description || ""}
+          initialRule={room.rule || ""}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
+    </>
   );
 }

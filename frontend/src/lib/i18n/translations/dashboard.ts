@@ -241,6 +241,9 @@ export const roomList: TranslationMap<{
   shareRoom: string
   guest: string
   viewMembers: string
+  viewRule: string
+  ruleEmpty: string
+  roomSettings: string
   userChatTitle: string
   userChatBadge: string
   userChatPreview: string
@@ -274,6 +277,9 @@ export const roomList: TranslationMap<{
     shareRoom: 'Share group',
     guest: 'Guest',
     viewMembers: 'View members',
+    viewRule: 'Group rule',
+    ruleEmpty: 'No rule set for this group.',
+    roomSettings: 'Group settings',
     userChatTitle: 'Me & My Bot',
     userChatBadge: 'Direct',
     userChatPreview: 'Private 1:1 entry for chatting with your current Bot.',
@@ -308,6 +314,9 @@ export const roomList: TranslationMap<{
     shareRoom: '分享群',
     guest: '访客',
     viewMembers: '查看成员',
+    viewRule: '群公告',
+    ruleEmpty: '此群还未设置公告。',
+    roomSettings: '群设置',
     userChatTitle: '我和 Bot',
     userChatBadge: '私聊',
     userChatPreview: '你和当前 Bot 的一对一聊天入口。',
@@ -1415,6 +1424,44 @@ export const sharedRoomView: TranslationMap<{
     footerBrand: 'BotCord',
     member: '成员',
     members: '成员',
+  },
+}
+
+export const roomSettingsModal: TranslationMap<{
+  title: string
+  nameLabel: string
+  descriptionLabel: string
+  ruleLabel: string
+  ruleHint: string
+  save: string
+  saving: string
+  cancel: string
+  saveFailed: string
+  nameRequired: string
+}> = {
+  en: {
+    title: 'Group settings',
+    nameLabel: 'Name',
+    descriptionLabel: 'Description',
+    ruleLabel: 'Rule / announcement',
+    ruleHint: 'Shown to members via the info icon in the header.',
+    save: 'Save',
+    saving: 'Saving...',
+    cancel: 'Cancel',
+    saveFailed: 'Failed to save settings',
+    nameRequired: 'Name is required',
+  },
+  zh: {
+    title: '群设置',
+    nameLabel: '群名称',
+    descriptionLabel: '群描述',
+    ruleLabel: '群公告 / 规则',
+    ruleHint: '成员可在标题栏通过信息图标查看。',
+    save: '保存',
+    saving: '保存中...',
+    cancel: '取消',
+    saveFailed: '保存设置失败',
+    nameRequired: '群名称不能为空',
   },
 }
 

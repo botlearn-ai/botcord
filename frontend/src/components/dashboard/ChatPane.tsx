@@ -631,7 +631,7 @@ export default function ChatPane() {
       </div>
       {openedRoomId && !isPaidAndNotJoined && (
         <>
-          {isAuthedReady && (
+          {isAuthedReady && !isJoinedRoom && (
             <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
               <JoinGuidePrompt roomId={openedRoomId} />
             </div>
