@@ -262,3 +262,125 @@ describe("set_route handler", () => {
     expect(saved.routes[0].match.conversationPrefix).toBe("rm_oc_");
   });
 });
+
+// ---------------------------------------------------------------------------
+// provision_agent runtime / cwd persistence
+// ---------------------------------------------------------------------------
+
+describe("provision_agent handler writes runtime + cwd", () => {
+  it("persists runtime and cwd from the credentials envelope to the credentials file", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+
+    // Redirect $HOME so writeCredentialsFile lands in a sandbox.
+    const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "daemon-provision-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+
+      // A valid 32-byte Ed25519 seed → deterministic keypair. Any fresh
+      // 32-byte b64 works; writeCredentialsFile cross-checks publicKey if
+      // provided. Here we let the provisioner derive it from privateKey.
+      const privateKey = Buffer.alloc(32, 7).toString("base64");
+
+      const ack = await provisioner({
+        id: "req_prov",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "claude-code",
+          cwd: tmp,
+          credentials: {
+            agentId: "ag_runtime",
+            keyId: "k_runtime",
+            privateKey,
+            hubUrl: "https://hub.example",
+            displayName: "writer",
+            runtime: "claude-code",
+            cwd: tmp,
+          },
+        },
+      });
+
+      expect(ack.ok).toBe(true);
+      expect(gw.addChannel).toHaveBeenCalledOnce();
+
+      // File written with runtime + cwd fields preserved.
+      const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_runtime.json");
+      const raw = fs.readFileSync(credFile, "utf8");
+      const saved = JSON.parse(raw) as Record<string, unknown>;
+      expect(saved.runtime).toBe("claude-code");
+      expect(saved.cwd).toBe(tmp);
+      expect(saved.hubUrl).toBe("https://hub.example");
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unknown runtime ids before touching disk", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const privateKey = Buffer.alloc(32, 9).toString("base64");
+    await expect(
+      provisioner({
+        id: "req_bad",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "totally-fake",
+          credentials: {
+            agentId: "ag_bad",
+            keyId: "k_bad",
+            privateKey,
+            hubUrl: "https://hub.example",
+          },
+        },
+      }),
+    ).rejects.toThrow(/unknown runtime/);
+    expect(gw.addChannel).not.toHaveBeenCalled();
+  });
+
+  it("accepts the deprecated `adapter` alias from older Hub builds", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+    const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "daemon-provision-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 11).toString("base64");
+      const ack = await provisioner({
+        id: "req_alias",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          adapter: "claude-code",
+          credentials: {
+            agentId: "ag_alias",
+            keyId: "k_alias",
+            privateKey,
+            hubUrl: "https://hub.example",
+          },
+        },
+      });
+      expect(ack.ok).toBe(true);
+      const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_alias.json");
+      const saved = JSON.parse(fs.readFileSync(credFile, "utf8")) as Record<string, unknown>;
+      expect(saved.runtime).toBe("claude-code");
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
