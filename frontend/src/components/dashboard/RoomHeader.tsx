@@ -23,6 +23,9 @@ export default function RoomHeader() {
   const locale = useLanguage();
   const t = roomList[locale];
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
+  const human = useDashboardSessionStore((state) => state.human);
+  const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
+  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
   const { openedRoomId, rightPanelOpen, toggleRightPanel } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
     rightPanelOpen: state.rightPanelOpen,
@@ -38,6 +41,29 @@ export default function RoomHeader() {
   })));
   const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
+  const activeAgent = activeAgentId
+    ? ownedAgents.find((a) => a.agent_id === activeAgentId) ?? null
+    : null;
+  // Identity the user is effectively speaking as in this dashboard session.
+  // An activeAgentId takes precedence (the user is "piloting" an agent);
+  // otherwise fall back to Human identity. Human-only users see the Human
+  // badge throughout — the message composer will record the message with
+  // sender_kind="human" on the backend.
+  const identityBadge = activeAgent
+    ? {
+        label: locale === "zh"
+          ? `以 Agent · ${activeAgent.display_name} 发言`
+          : `as Agent · ${activeAgent.display_name}`,
+        tone: "cyan" as const,
+      }
+    : human
+      ? {
+          label: locale === "zh"
+            ? `以你自己（Human · ${human.display_name}）发言`
+            : `as you (Human · ${human.display_name})`,
+          tone: "purple" as const,
+        }
+      : null;
   const roomRule = room?.rule?.trim();
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
@@ -173,6 +199,18 @@ export default function RoomHeader() {
           )}
         </div>
         <div className="flex items-center gap-2 self-start py-0.5">
+          {identityBadge && !isGuest ? (
+            <span
+              className={
+                identityBadge.tone === "cyan"
+                  ? "rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-medium text-neon-cyan"
+                  : "rounded border border-neon-purple/40 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple"
+              }
+              title={identityBadge.label}
+            >
+              {identityBadge.label}
+            </span>
+          ) : null}
           {isAuthedReady && authRoom && (
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
                 {authRoom.my_role}
