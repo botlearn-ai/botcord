@@ -11,6 +11,7 @@ on:
           - plugin
           - cli
           - protocol-core
+          - daemon
       bump:
         description: "Version bump type"
         required: true
@@ -35,10 +36,10 @@ jobs:
       contents: write
     defaults:
       run:
-        working-directory: ${{ github.event.inputs.package == 'protocol-core' && 'packages/protocol-core' || github.event.inputs.package }}
+        working-directory: ${{ (github.event.inputs.package == 'protocol-core' || github.event.inputs.package == 'daemon') && format('packages/{0}', github.event.inputs.package) || github.event.inputs.package }}
     env:
       PKG: ${{ github.event.inputs.package }}
-      PKG_DIR: ${{ github.event.inputs.package == 'protocol-core' && 'packages/protocol-core' || github.event.inputs.package }}
+      PKG_DIR: ${{ (github.event.inputs.package == 'protocol-core' || github.event.inputs.package == 'daemon') && format('packages/{0}', github.event.inputs.package) || github.event.inputs.package }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,6 +53,7 @@ jobs:
             plugin) DISPLAY_NAME="Plugin" ;;
             cli) DISPLAY_NAME="CLI" ;;
             protocol-core) DISPLAY_NAME="Protocol Core" ;;
+            daemon) DISPLAY_NAME="Daemon" ;;
           esac
           echo "display_name=$DISPLAY_NAME" >> $GITHUB_OUTPUT
 
@@ -77,11 +79,11 @@ jobs:
           fi
 
       - name: Build
-        if: env.PKG == 'cli' || env.PKG == 'protocol-core'
+        if: env.PKG == 'cli' || env.PKG == 'protocol-core' || env.PKG == 'daemon'
         run: npm run build
 
       - name: Run tests
-        if: env.PKG == 'plugin'
+        if: env.PKG == 'plugin' || env.PKG == 'daemon'
         run: npm test
 
       - name: Configure git
@@ -173,6 +175,7 @@ jobs:
             plugin) TAG_PREFIX="" ;;
             cli) TAG_PREFIX="cli-" ;;
             protocol-core) TAG_PREFIX="protocol-core-" ;;
+            daemon) TAG_PREFIX="daemon-" ;;
           esac
           git commit -m "chore: release ${PKG} ${{ steps.bump.outputs.new_version }}"
           git tag "${TAG_PREFIX}${{ steps.bump.outputs.new_version }}"

@@ -4,8 +4,8 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # pull_request:
+  #   types: [opened, synchronize, reopened]
 
 permissions:
   contents: read

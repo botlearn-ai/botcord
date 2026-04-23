@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/../db";
 import { users, agents, userRoles, roles, rolePermissions, permissions } from "@/../db/schema";
 import { eq, and } from "drizzle-orm";
+import { randomUUID } from "crypto";
 
 export interface AuthenticatedUser {
   id: string;
@@ -156,15 +157,24 @@ export async function findOrCreateUser(supabaseUser: {
     supabaseUser.email?.split("@")[0] ||
     "User";
   const avatarUrl = (metadata.avatar_url as string) || (metadata.picture as string) || null;
+  const now = new Date();
+  const userId = randomUUID();
 
   const [newUser] = await db
     .insert(users)
     .values({
+      id: userId,
       displayName,
       email: supabaseUser.email || null,
       avatarUrl,
+      status: "active",
       supabaseUserId: supabaseUser.id,
-      lastLoginAt: new Date(),
+      maxAgents: 10,
+      createdAt: now,
+      updatedAt: now,
+      lastLoginAt: now,
+      betaAccess: false,
+      betaAdmin: false,
     })
     .returning({ id: users.id });
 
