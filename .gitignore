@@ -27,3 +27,4 @@ packages/protocol-core/dist/
 packages/protocol-core/tsconfig.tsbuildinfo
 
 .DS_Store
+.omx/
