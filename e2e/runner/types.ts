@@ -9,6 +9,10 @@ export interface EnvironmentConfig {
   allow_mutation: boolean;
   /** /botcord_env preset name (stable|beta|test) to switch Hub URL after install */
   botcord_env_preset: string;
+  /** Env var name holding a Supabase JWT for a pre-provisioned test dashboard user */
+  test_user_token_env?: string;
+  /** The test user's human_id (hu_...) known ahead of time */
+  test_human_id?: string;
 }
 
 // Scenario step definition (loaded from YAML)
@@ -123,6 +127,12 @@ export interface InstanceEvidence {
   // Social evidence
   /** Friend invite code generated */
   friendInviteCode?: string;
+
+  // Human-first evidence
+  /** AgentApprovalQueue entry ID returned when a contact_request/room_invite is queued */
+  approvalId?: string;
+  /** Response body from the most recent http.request step */
+  httpResponse?: Record<string, unknown>;
 
   // Cross-instance references (populated by runner for multi-bot scenarios)
   /** Agent ID of the peer instance (for 2-bot scenarios) */

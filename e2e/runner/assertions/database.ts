@@ -433,6 +433,134 @@ export async function assertContactRelationshipExists(
   }
 }
 
+export async function assertApprovalQueueEntryExists(
+  inst: InstanceState,
+  evidence: InstanceEvidence,
+  env: EnvironmentConfig,
+): Promise<AssertionResult> {
+  const agentId = evidence.peerAgentId ?? evidence.credentials?.["agentId"] as string | undefined;
+  if (!agentId) {
+    return {
+      id: "db.approval_queue_entry_exists",
+      instanceId: inst.id,
+      status: "skipped",
+      expected: "approval queue entry",
+      actual: null,
+      evidence: "No agentId available to query approval queue",
+    };
+  }
+
+  const dbUrl = process.env[env.db_url_env];
+  if (!dbUrl) {
+    return {
+      id: "db.approval_queue_entry_exists",
+      instanceId: inst.id,
+      status: "skipped",
+      expected: "approval queue entry",
+      actual: null,
+      evidence: `${env.db_url_env} not set`,
+    };
+  }
+
+  try {
+    const rows = await queryDb(
+      env,
+      "SELECT id, agent_id, kind, state FROM agent_approval_queue WHERE agent_id = $1 AND state = 'pending' ORDER BY created_at DESC LIMIT 1",
+      [agentId],
+    );
+    const exists = rows.length > 0;
+    if (exists && !evidence.approvalId) {
+      evidence.approvalId = String(rows[0]["id"]);
+    }
+    return makeResult(
+      "db.approval_queue_entry_exists",
+      inst.id,
+      exists,
+      "pending approval queue entry",
+      exists ? `found: kind=${rows[0]["kind"]}, id=${rows[0]["id"]}` : "not found",
+      `Queried agent_approval_queue WHERE agent_id='${agentId}' AND state='pending'`,
+    );
+  } catch (err) {
+    return {
+      id: "db.approval_queue_entry_exists",
+      instanceId: inst.id,
+      status: "error",
+      expected: "approval queue entry",
+      actual: null,
+      error: String(err),
+    };
+  }
+}
+
+export async function assertContactApproved(
+  inst: InstanceState,
+  evidence: InstanceEvidence,
+  env: EnvironmentConfig,
+): Promise<AssertionResult> {
+  const agentId = evidence.peerAgentId ?? evidence.credentials?.["agentId"] as string | undefined;
+  const approvalId = evidence.approvalId;
+  if (!agentId && !approvalId) {
+    return {
+      id: "db.contact_approved",
+      instanceId: inst.id,
+      status: "skipped",
+      expected: "contact_request approved",
+      actual: null,
+      evidence: "No agentId or approvalId available",
+    };
+  }
+
+  const dbUrl = process.env[env.db_url_env];
+  if (!dbUrl) {
+    return {
+      id: "db.contact_approved",
+      instanceId: inst.id,
+      status: "skipped",
+      expected: "contact_request approved",
+      actual: null,
+      evidence: `${env.db_url_env} not set`,
+    };
+  }
+
+  try {
+    let rows: Record<string, unknown>[];
+    if (approvalId) {
+      rows = await queryDb(
+        env,
+        "SELECT id, state FROM agent_approval_queue WHERE id = $1",
+        [approvalId],
+      );
+    } else {
+      rows = await queryDb(
+        env,
+        "SELECT id, state FROM agent_approval_queue WHERE agent_id = $1 AND kind = 'contact_request' ORDER BY created_at DESC LIMIT 1",
+        [agentId!],
+      );
+    }
+    if (rows.length === 0) {
+      return makeResult("db.contact_approved", inst.id, false, "approved state", "entry not found");
+    }
+    const approved = rows[0]["state"] === "approved";
+    return makeResult(
+      "db.contact_approved",
+      inst.id,
+      approved,
+      "state = approved",
+      `state = ${rows[0]["state"]}`,
+      approvalId ? `id=${approvalId}` : `agent=${agentId}`,
+    );
+  } catch (err) {
+    return {
+      id: "db.contact_approved",
+      instanceId: inst.id,
+      status: "error",
+      expected: "contact_request approved",
+      actual: null,
+      error: String(err),
+    };
+  }
+}
+
 export async function assertClaimCodePresent(
   inst: InstanceState,
   evidence: InstanceEvidence,
