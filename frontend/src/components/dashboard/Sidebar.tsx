@@ -21,7 +21,7 @@ import AccountMenu from "./AccountMenu";
 import AddFriendModal from "./AddFriendModal";
 import CreateRoomModal from "./CreateRoomModal";
 import RoomZeroState from "./RoomZeroState";
-import { UserPlus, Users, LogIn } from "lucide-react";
+import { UserPlus, MessageSquarePlus, Users, LogIn } from "lucide-react";
 import { messagesHeader } from "@/lib/i18n/translations/dashboard";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
