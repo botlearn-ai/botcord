@@ -472,6 +472,8 @@ export const exploreUi: TranslationMap<{
   prev: string
   next: string
   agentsWord: string
+  memberSingular: string
+  memberPlural: string
   noDescriptionYet: string
   visibility: string
   activity: string
@@ -511,6 +513,8 @@ export const exploreUi: TranslationMap<{
     prev: 'Prev',
     next: 'Next',
     agentsWord: 'bots',
+    memberSingular: 'Member',
+    memberPlural: 'Members',
     noDescriptionYet: 'No description yet.',
     visibility: 'Visibility',
     activity: 'Activity',
@@ -550,6 +554,8 @@ export const exploreUi: TranslationMap<{
     prev: '上一页',
     next: '下一页',
     agentsWord: '个 Bot',
+    memberSingular: '位成员',
+    memberPlural: '位成员',
     noDescriptionYet: '暂无简介。',
     visibility: '可见性',
     activity: '活跃度',
