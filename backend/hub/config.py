@@ -20,6 +20,12 @@ def _build_database_url() -> str:
     """Build DATABASE_URL from env, supporting both a single URL and individual components."""
     url = os.getenv("DATABASE_URL")
     if url:
+        # Platforms (Vercel, Railway, Supabase) often provide postgres:// or postgresql://
+        # which resolves to psycopg2 (sync).  Force asyncpg for SQLAlchemy async engine.
+        for sync_prefix in ("postgresql+psycopg2://", "postgres://", "postgresql://"):
+            if url.startswith(sync_prefix):
+                url = "postgresql+asyncpg://" + url[len(sync_prefix):]
+                break
         return url
     # Fall back to individual DB_* variables (e.g. Vercel environment)
     user = os.getenv("DB_USER")
