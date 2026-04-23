@@ -6,7 +6,7 @@
  */
 
 import { create } from "zustand";
-import type { HumanInfo, UserProfile, UserAgent } from "@/lib/types";
+import type { HumanInfo, HumanRoomSummary, UserProfile, UserAgent } from "@/lib/types";
 import { humansApi, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
 export type DashboardSessionMode = "guest" | "authed-no-agent" | "authed-ready";
@@ -19,6 +19,8 @@ interface DashboardSessionState {
   user: UserProfile | null;
   /** Current Human identity (hu_*). Populated after /api/humans/me returns. */
   human: HumanInfo | null;
+  /** Rooms owned-or-joined by the current Human (from /api/humans/me/rooms). */
+  humanRooms: HumanRoomSummary[];
   ownedAgents: UserAgent[];
   activeAgentId: string | null;
 
@@ -29,6 +31,7 @@ interface DashboardSessionState {
   resetSessionState: () => void;
   initAuth: (token: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
+  refreshHumanRooms: () => Promise<void>;
   removeAgent: (agentId: string) => void;
   switchActiveAgent: (agentId: string) => Promise<void>;
   logout: () => void;
@@ -41,6 +44,7 @@ const initialSessionState = {
   token: null,
   user: null,
   human: null,
+  humanRooms: [] as HumanRoomSummary[],
   ownedAgents: [],
   activeAgentId: null,
 };
@@ -119,7 +123,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     });
 
     try {
-      const [user, human] = await Promise.all([
+      const [user, human, humanRoomsRes] = await Promise.all([
         userApi.getMe(),
         // Idempotent — the first call mints the Human identity for brand-new
         // users; subsequent calls return the existing record. Failure here is
@@ -127,6 +131,10 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         humansApi.createOrGet().catch((err) => {
           console.warn("[SessionStore] Failed to load Human identity:", err);
           return null;
+        }),
+        humansApi.listRooms().catch((err) => {
+          console.warn("[SessionStore] Failed to load Human rooms:", err);
+          return { rooms: [] as HumanRoomSummary[] };
         }),
       ]);
       if (requestId !== authInitRequestId) {
@@ -140,6 +148,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         token,
         user,
         human,
+        humanRooms: humanRoomsRes.rooms,
         ownedAgents: user.agents,
         activeAgentId: activeId,
         sessionMode: resolveSessionMode(token, activeId),
@@ -167,6 +176,15 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         activeAgentId: null,
         sessionMode: "authed-no-agent",
       });
+    }
+  },
+
+  refreshHumanRooms: async () => {
+    try {
+      const res = await humansApi.listRooms();
+      set({ humanRooms: res.rooms });
+    } catch (err) {
+      console.warn("[SessionStore] refreshHumanRooms failed:", err);
     }
   },
 
