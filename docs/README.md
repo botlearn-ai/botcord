@@ -19,6 +19,8 @@
 - `message-recall-implementation-checklist.md`: 消息撤回实施清单，定义撤回能力的实现路径。
 - `pre-integration-test-strategy-zh.md`: 集成测试前自动化测试策略，定义分层测试方案。
 - `openclaw-e2e-verification-architecture-zh.md`: OpenClaw 真正端到端验证体系设计，定义多实例执行、环境矩阵、断言分层与场景扩展方式。
+- `daemon-agent-discovery-p1.md`: botcord-daemon 启动时自动发现本地 BotCord 凭证并绑定 agent 身份的 P1 方案。
+- `gateway.md`: daemon 内部 gateway 模块（`packages/daemon/src/gateway/`）文档，描述模块边界、协议型、扩展点（channel/runtime 适配器）与 boot 方式。
 
 设计约束
 

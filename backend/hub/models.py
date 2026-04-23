@@ -10,6 +10,7 @@ import datetime
 import uuid as _uuid
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -80,6 +81,9 @@ class Agent(Base):
     )
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Runtime selected at creation (claude-code / codex / gemini / ...).
+    # Null for agents created via bind_code; see docs/agent-runtime-property-plan.md.
+    runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")
@@ -1008,4 +1012,78 @@ class BetaWaitlistEntry(Base):
     reviewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_code_id: Mapped[_uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("beta_invite_codes.id"), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Daemon control plane (see docs/daemon-control-plane-plan.md)
+# ---------------------------------------------------------------------------
+
+
+class DaemonInstance(Base):
+    """A user's local daemon process registered with the Hub.
+
+    One row per machine where the user has authorized `botcord-daemon`.
+    `refresh_token_hash` stores SHA-256(hex) of the issued refresh token —
+    plaintext is never persisted.
+    """
+
+    __tablename__ = "daemon_instances"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # dm_<12 hex>
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Latest runtime-discovery snapshot pushed by the daemon (or pulled via
+    # list_runtimes). `runtimes_json` mirrors the protocol `runtimes` array;
+    # `runtimes_probed_at` is the daemon-side probe wall-clock in UTC.
+    runtimes_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    runtimes_probed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class DaemonDeviceCode(Base):
+    """Transient device-code rows for the daemon login flow.
+
+    The daemon polls `/daemon/auth/device-token` with `device_code`; the
+    user enters `user_code` on the dashboard `/activate` page. Once the
+    dashboard binds the row to a user (`approved`), the next daemon poll
+    consumes the row by reading `issued_token_json`.
+    """
+
+    __tablename__ = "daemon_device_codes"
+    __table_args__ = (
+        UniqueConstraint("user_code", name="uq_daemon_device_codes_user_code"),
+        Index("ix_daemon_device_codes_status", "status", "expires_at"),
+    )
+
+    device_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    daemon_instance_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    expires_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    approved_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    consumed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # pending | approved | consumed | denied
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    issued_token_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

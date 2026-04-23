@@ -16,6 +16,15 @@ export interface StoredBotCordCredentials {
   token?: string;
   tokenExpiresAt?: number;
   onboardedAt?: string;
+  /**
+   * Runtime bound to this agent (claude-code / codex / gemini / …). Cached
+   * from the Hub-side `agents.runtime` column so daemon can route turns
+   * offline. Only set for agents created via the daemon provision path; old
+   * bind-code credentials have no value here. Authoritative source is Hub.
+   */
+  runtime?: string;
+  /** Working directory pinned for this agent, cached alongside runtime. */
+  cwd?: string;
 }
 
 function normalizeCredentialValue(raw: any, keys: string[]): string | undefined {
@@ -86,6 +95,8 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
   }
 
   const onboardedAt = normalizeCredentialValue(raw, ["onboardedAt", "onboarded_at"]);
+  const runtime = normalizeCredentialValue(raw, ["runtime"]);
+  const cwd = normalizeCredentialValue(raw, ["cwd"]);
 
   return {
     version: 1,
@@ -99,6 +110,8 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     token,
     tokenExpiresAt,
     onboardedAt,
+    runtime,
+    cwd,
   };
 }
 

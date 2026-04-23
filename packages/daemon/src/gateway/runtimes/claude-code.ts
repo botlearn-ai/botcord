@@ -1,0 +1,151 @@
+import path from "node:path";
+import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
+import {
+  firstExistingPath,
+  readCommandVersion,
+  resolveCommandOnPath,
+  resolveHomePath,
+  type ProbeDeps,
+} from "./probe.js";
+import type { RuntimeProbeResult, RuntimeRunOptions, StreamBlock } from "../types.js";
+
+const CLAUDE_DESKTOP_CLI_RELATIVE_PATH = path.join(
+  "Applications",
+  "Claude Code URL Handler.app",
+  "Contents",
+  "MacOS",
+  "claude",
+);
+const CLAUDE_DESKTOP_CLI_SYSTEM_PATH =
+  "/Applications/Claude Code URL Handler.app/Contents/MacOS/claude";
+
+/** Resolve the Claude Code CLI path on PATH or the macOS desktop bundle fallback. */
+export function resolveClaudeCommand(deps: ProbeDeps = {}): string | null {
+  const onPath = resolveCommandOnPath("claude", deps);
+  if (onPath) return onPath;
+  if ((deps.platform ?? process.platform) !== "darwin") return null;
+  return firstExistingPath(
+    [resolveHomePath(CLAUDE_DESKTOP_CLI_RELATIVE_PATH, deps), CLAUDE_DESKTOP_CLI_SYSTEM_PATH],
+    deps,
+  );
+}
+
+/** Probe whether the Claude Code CLI is installed and report its version. */
+export function probeClaude(deps: ProbeDeps = {}): RuntimeProbeResult {
+  const command = resolveClaudeCommand(deps);
+  if (!command) return { available: false };
+  return {
+    available: true,
+    path: command,
+    version: readCommandVersion(command, [], deps) ?? undefined,
+  };
+}
+
+/**
+ * Claude Code adapter — spawns `claude -p "<text>" --output-format stream-json`
+ * (with `--resume <sid>` when available) and parses the ndjson stream.
+ *
+ * stream-json shape (abridged):
+ *   {type:"system", subtype:"init", session_id:"...", ...}
+ *   {type:"assistant", message:{content:[{type:"text", text:"..."} | {type:"tool_use", ...}]}}
+ *   {type:"user", message:{content:[{type:"tool_result", ...}]}}
+ *   {type:"result", subtype:"success", session_id:"...", total_cost_usd: 0.01, result:"final text"}
+ */
+export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
+  readonly id = "claude-code" as const;
+
+  private readonly explicitBinary: string | undefined;
+  private resolvedBinary: string | null = null;
+
+  constructor(opts?: { binary?: string }) {
+    super();
+    this.explicitBinary = opts?.binary ?? process.env.BOTCORD_CLAUDE_BIN;
+  }
+
+  probe(): RuntimeProbeResult {
+    return probeClaude();
+  }
+
+  protected resolveBinary(): string {
+    if (this.explicitBinary) return this.explicitBinary;
+    if (this.resolvedBinary) return this.resolvedBinary;
+    // Falls back to the macOS Claude Code URL Handler bundle when not on PATH.
+    this.resolvedBinary = resolveClaudeCommand() ?? "claude";
+    return this.resolvedBinary;
+  }
+
+  protected buildArgs(opts: RuntimeRunOptions): string[] {
+    const args = ["-p", opts.text, "--output-format", "stream-json", "--verbose"];
+    if (opts.sessionId) {
+      args.push("--resume", opts.sessionId);
+    }
+    // Permission-mode policy:
+    //  - owner: acceptEdits (owner trusts their own agent).
+    //  - non-owner (trusted/public): default (let Claude Code prompt / reject edits per its own rules).
+    // `extraArgs` still wins — operators who know what they're doing can override either.
+    if (!opts.extraArgs?.some((a) => a.startsWith("--permission-mode"))) {
+      if (opts.trustLevel === "owner") {
+        args.push("--permission-mode", "acceptEdits");
+      } else {
+        args.push("--permission-mode", "default");
+      }
+    }
+    // Claude Code's `--append-system-prompt` is applied per invocation and NOT
+    // persisted in the resumed session transcript — ideal for memory / digest
+    // content that should re-evaluate every turn.
+    if (opts.systemContext && !opts.extraArgs?.includes("--append-system-prompt")) {
+      args.push("--append-system-prompt", opts.systemContext);
+    }
+    if (opts.extraArgs?.length) args.push(...opts.extraArgs);
+    return args;
+  }
+
+  protected handleEvent(raw: unknown, ctx: NdjsonEventCtx): void {
+    const obj = raw as {
+      type?: string;
+      subtype?: string;
+      session_id?: string;
+      total_cost_usd?: number;
+      result?: string;
+      message?: { content?: Array<{ type?: string; text?: string }> };
+    };
+
+    ctx.emitBlock(normalizeBlock(obj, ctx.seq));
+
+    if (obj.type === "system" && obj.session_id) {
+      ctx.state.newSessionId = String(obj.session_id);
+      return;
+    }
+    if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
+      for (const c of obj.message.content) {
+        if (c?.type === "text" && typeof c.text === "string") {
+          ctx.appendAssistantText(c.text);
+        }
+      }
+      return;
+    }
+    if (obj.type === "result") {
+      if (typeof obj.session_id === "string") ctx.state.newSessionId = obj.session_id;
+      if (typeof obj.total_cost_usd === "number") ctx.state.costUsd = obj.total_cost_usd;
+      if (typeof obj.result === "string") ctx.state.finalText = obj.result;
+      if (obj.subtype && obj.subtype !== "success" && typeof obj.result === "string") {
+        ctx.state.errorText = obj.result;
+      }
+    }
+  }
+}
+
+function normalizeBlock(obj: any, seq: number): StreamBlock {
+  let kind: StreamBlock["kind"] = "other";
+  if (obj?.type === "assistant") {
+    const contents = Array.isArray(obj.message?.content) ? obj.message.content : [];
+    if (contents.some((c: any) => c?.type === "tool_use")) kind = "tool_use";
+    else if (contents.some((c: any) => c?.type === "text")) kind = "assistant_text";
+  } else if (obj?.type === "user") {
+    const contents = Array.isArray(obj.message?.content) ? obj.message.content : [];
+    if (contents.some((c: any) => c?.type === "tool_result")) kind = "tool_result";
+  } else if (obj?.type === "system") {
+    kind = "system";
+  }
+  return { raw: obj, kind, seq };
+}
