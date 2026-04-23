@@ -15,11 +15,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 import { humansApi } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
+import { pendingApprovalsPanel } from "@/lib/i18n/translations/dashboard";
 import type { PendingApproval } from "@/lib/types";
 
 type ActionState = { id: string; decision: "approve" | "reject" } | null;
 
 export default function PendingApprovalsPanel() {
+  const locale = useLanguage();
+  const t = pendingApprovalsPanel[locale];
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +38,7 @@ export default function PendingApprovalsPanel() {
     } catch (err: any) {
       // Not fatal: the panel stays hidden when the Human surface is
       // unavailable (e.g. legacy user without human_id, or pre-migration).
-      setError(err?.message || "Failed to load approvals");
+      setError(err?.message || t.errorLoad);
       setApprovals([]);
     } finally {
       setLoading(false);
@@ -52,7 +56,7 @@ export default function PendingApprovalsPanel() {
         await humansApi.resolvePendingApproval(id, decision);
         setApprovals((prev) => prev.filter((a) => a.id !== id));
       } catch (err: any) {
-        setError(err?.message || "Failed to resolve approval");
+        setError(err?.message || t.errorResolve);
       } finally {
         setAction(null);
       }
@@ -65,7 +69,7 @@ export default function PendingApprovalsPanel() {
       <div className="mb-4 rounded-2xl border border-glass-border bg-deep-black-light px-4 py-3">
         <div className="flex items-center gap-2 text-xs text-text-secondary">
           <Loader2 className="h-3 w-3 animate-spin" />
-          <span>Loading pending approvals…</span>
+          <span>{t.loading}</span>
         </div>
       </div>
     );
@@ -85,11 +89,10 @@ export default function PendingApprovalsPanel() {
       <header className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">
-            Approvals on your agents
+            {t.title}
           </h3>
           <p className="mt-0.5 text-xs text-text-secondary">
-            External requests directed at agents you own — approve or reject on
-            their behalf.
+            {t.subtitle}
           </p>
         </div>
         <button
@@ -97,7 +100,7 @@ export default function PendingApprovalsPanel() {
           onClick={() => void refresh()}
           className="rounded border border-glass-border px-2 py-1 text-[11px] text-text-secondary hover:bg-glass-bg"
         >
-          Refresh
+          {t.refresh}
         </button>
       </header>
 
@@ -133,7 +136,7 @@ export default function PendingApprovalsPanel() {
                       {entry.kind.replace(/_/g, " ")}
                     </span>
                     <span className="truncate font-mono text-[11px]">
-                      for {entry.agent_id}
+                      {t.forAgent} {entry.agent_id}
                     </span>
                   </p>
                   <p className="mt-1 truncate text-sm font-semibold text-text-primary">
@@ -160,7 +163,7 @@ export default function PendingApprovalsPanel() {
                     {isApproving ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : null}
-                    Approve
+                    {t.approve}
                   </button>
                   <button
                     type="button"
@@ -171,7 +174,7 @@ export default function PendingApprovalsPanel() {
                     {isRejecting ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : null}
-                    Reject
+                    {t.reject}
                   </button>
                 </div>
               </div>

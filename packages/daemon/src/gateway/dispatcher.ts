@@ -33,6 +33,12 @@ export interface DispatcherOptions {
   log: GatewayLogger;
   turnTimeoutMs?: number;
   /**
+   * Live reference to the Gateway's managed-route map. Dispatcher reads
+   * `values()` on every `resolveRoute` call so hot-add/remove take effect
+   * without restart.
+   */
+  managedRoutes?: Map<string, GatewayRoute>;
+  /**
    * Optional hook producing a `systemContext` string for each turn. Result is
    * forwarded to the runtime as `RuntimeRunOptions.systemContext`. Errors are
    * swallowed and logged — they never abort the turn.
@@ -88,6 +94,7 @@ export class Dispatcher {
   private readonly turnTimeoutMs: number;
   private readonly buildSystemContext?: SystemContextBuilder;
   private readonly onInbound?: InboundObserver;
+  private readonly managedRoutes?: Map<string, GatewayRoute>;
   private readonly queues: Map<string, QueueState> = new Map();
 
   constructor(opts: DispatcherOptions) {
@@ -99,6 +106,7 @@ export class Dispatcher {
     this.turnTimeoutMs = opts.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     this.buildSystemContext = opts.buildSystemContext;
     this.onInbound = opts.onInbound;
+    this.managedRoutes = opts.managedRoutes;
   }
 
   /** Consume one inbound envelope, ack it once ownership is decided, then run its turn. */
@@ -122,7 +130,8 @@ export class Dispatcher {
       return;
     }
 
-    const route = resolveRoute(msg, this.config);
+    const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;
+    const route = resolveRoute(msg, this.config, managed);
     const mode = resolveQueueMode(route, msg.conversation.kind);
     const queueKey = buildQueueKey(msg);
 

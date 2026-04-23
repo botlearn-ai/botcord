@@ -76,6 +76,46 @@ describe("resolveRoute", () => {
     const msg = makeMessage({ channel: "botcord" });
     expect(resolveRoute(msg, { defaultRoute, routes: [skip, hit] })).toBe(hit);
   });
+
+  describe("managedRoutes", () => {
+    it("user cfg.routes match wins over managed for same accountId", () => {
+      const user = makeRoute({ runtime: "user", match: { accountId: "ag_1" } });
+      const managed = makeRoute({ runtime: "managed", match: { accountId: "ag_1" } });
+      const msg = makeMessage({ accountId: "ag_1" });
+      expect(resolveRoute(msg, { defaultRoute, routes: [user] }, [managed])).toBe(user);
+    });
+
+    it("no user match + managed match → managed wins", () => {
+      const managed = makeRoute({ runtime: "managed", match: { accountId: "ag_1" } });
+      const msg = makeMessage({ accountId: "ag_1" });
+      expect(resolveRoute(msg, { defaultRoute, routes: [] }, [managed])).toBe(managed);
+    });
+
+    it("no user match + no managed match → defaultRoute wins", () => {
+      const user = makeRoute({ runtime: "user", match: { accountId: "ag_2" } });
+      const managed = makeRoute({ runtime: "managed", match: { accountId: "ag_3" } });
+      const msg = makeMessage({ accountId: "ag_1" });
+      expect(resolveRoute(msg, { defaultRoute, routes: [user] }, [managed])).toBe(defaultRoute);
+    });
+
+    it("no user routes defined + managed match → managed wins", () => {
+      const managed = makeRoute({ runtime: "managed", match: { accountId: "ag_1" } });
+      const msg = makeMessage({ accountId: "ag_1" });
+      expect(resolveRoute(msg, { defaultRoute }, [managed])).toBe(managed);
+    });
+
+    it("managed routes undefined behaves like no managed routes", () => {
+      const msg = makeMessage();
+      expect(resolveRoute(msg, { defaultRoute }, undefined)).toBe(defaultRoute);
+    });
+
+    it("first matching managed route wins when multiple match", () => {
+      const first = makeRoute({ runtime: "mfirst", match: { accountId: "ag_1" } });
+      const second = makeRoute({ runtime: "msecond", match: { accountId: "ag_1" } });
+      const msg = makeMessage({ accountId: "ag_1" });
+      expect(resolveRoute(msg, { defaultRoute, routes: [] }, [first, second])).toBe(first);
+    });
+  });
 });
 
 describe("matchesRoute", () => {

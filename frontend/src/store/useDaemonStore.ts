@@ -286,42 +286,47 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
   },
 
   provisionAgent: async (daemonId, input) => {
-    const params: Record<string, unknown> = {};
-    if (input.name) params.name = input.name;
-    if (input.bio) params.bio = input.bio;
-    if (input.runtime) params.runtime = input.runtime;
-    if (input.cwd) params.cwd = input.cwd;
+    // Hub owns keypair generation + DB insert; the backend ships the
+    // credential envelope to the daemon via the provision_agent control
+    // frame. The raw /dispatch path cannot be used here because it
+    // bypasses the Agent/SigningKey insert and leaves the new identity
+    // unclaimed in the registry.
+    const label = (input.name ?? "").trim() || `agent-${Date.now()}`;
+    const body: Record<string, unknown> = {
+      daemon_instance_id: daemonId,
+      label,
+    };
+    if (input.runtime) body.runtime = input.runtime;
+    if (input.cwd) body.cwd = input.cwd;
+    if (input.bio) body.bio = input.bio;
 
-    const res = await fetch(
-      `/api/daemon/instances/${encodeURIComponent(daemonId)}/dispatch`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "provision_agent", params }),
-      },
-    );
+    const res = await fetch("/api/users/me/agents/provision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
     if (!res.ok) {
+      const detail = await parseError(res);
       if (res.status === 409) {
-        throw new ProvisionAgentError("daemon_offline");
+        if (detail === "daemon_offline") {
+          throw new ProvisionAgentError("daemon_offline");
+        }
+        throw new ProvisionAgentError("http_error", detail);
       }
       if (res.status === 504) {
         throw new ProvisionAgentError("daemon_timeout");
       }
-      throw new ProvisionAgentError("http_error", await parseError(res));
+      if (res.status === 502) {
+        throw new ProvisionAgentError("daemon_failed", detail);
+      }
+      throw new ProvisionAgentError("http_error", detail);
     }
-    const data = await res.json().catch(() => null);
-    const ack = data?.ack as { ok?: boolean; result?: unknown; error?: { message?: string } } | undefined;
-    if (!ack || ack.ok !== true) {
-      const detail =
-        typeof ack?.error?.message === "string" ? ack.error.message : undefined;
-      throw new ProvisionAgentError("daemon_failed", detail);
-    }
-    const result = (ack.result ?? {}) as Record<string, unknown>;
+    const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
     const agentId =
-      typeof result.agentId === "string"
-        ? result.agentId
-        : typeof result.agent_id === "string"
-          ? (result.agent_id as string)
+      typeof data?.agent_id === "string"
+        ? (data.agent_id as string)
+        : typeof data?.agentId === "string"
+          ? (data.agentId as string)
           : null;
     if (!agentId) {
       throw new ProvisionAgentError("missing_agent_id");

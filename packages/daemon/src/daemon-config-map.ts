@@ -7,6 +7,7 @@ import type {
 } from "./gateway/index.js";
 import type { DaemonConfig, RouteRule } from "./config.js";
 import { resolveAgentIds } from "./config.js";
+import { agentWorkspaceDir } from "./agent-workspace.js";
 import { log as daemonLog } from "./log.js";
 
 /** Options accepted by {@link toGatewayConfig}. */
@@ -147,28 +148,53 @@ export function toGatewayConfig(
 
   const routes: GatewayRoute[] = (cfg.routes ?? []).map(mapRoute);
 
-  // Synthesize a per-agent terminal route for every agent that has a cached
-  // runtime in its credentials. Appended after the user's explicit routes so
-  // `cfg.routes` still wins on conflict, but ahead of the `defaultRoute`
-  // fallback so the agent's own runtime takes precedence over the daemon-wide
-  // default (docs/agent-runtime-property-plan.md §4.3).
-  const agentRuntimes = opts.agentRuntimes ?? {};
-  for (const agentId of agentIds) {
-    const meta = agentRuntimes[agentId];
-    if (!meta?.runtime) continue;
-    routes.push({
-      match: { accountId: agentId },
-      runtime: meta.runtime,
-      cwd: meta.cwd || defaultRoute.cwd,
-      // Inherit defaults for the rest. `extraArgs`/`queueMode`/`trustLevel`
-      // stay unset so the gateway's own defaults apply.
-    });
-  }
+  // Synthesize a per-agent route for every bound agent and hand it to the
+  // gateway via the managed-routes bucket (plan §10.1). User-authored
+  // `cfg.routes[]` stay untouched so an explicit operator override still
+  // wins on conflict — the gateway matches `routes[] → managedRoutes →
+  // defaultRoute` in that order.
+  const managedMap = buildManagedRoutes(
+    agentIds,
+    opts.agentRuntimes ?? {},
+    defaultRoute,
+  );
 
   return {
     channels,
     defaultRoute,
     routes,
+    managedRoutes: Array.from(managedMap.values()),
     streamBlocks: cfg.streamBlocks,
   };
+}
+
+/**
+ * Build the daemon's managed per-agent routes. Emits exactly one route per
+ * `agentId`, keyed by `accountId`. `runtime` comes from the agent's cached
+ * metadata when present (credentials file), otherwise falls back to
+ * `defaultRoute.runtime`. `cwd` prefers the cached value but falls back to
+ * the agent's workspace directory (see plan §10) so every agent runs inside
+ * its own dedicated tree by default.
+ *
+ * Iteration order of `agentIds` is preserved in the resulting Map for test
+ * determinism; the gateway router does not depend on map order.
+ *
+ * Exported so `reload_config` and `provisionAgent` hot-add can share the
+ * same synthesis logic (plan §10.5).
+ */
+export function buildManagedRoutes(
+  agentIds: string[],
+  agentRuntimes: Record<string, { runtime?: string; cwd?: string }>,
+  defaultRoute: GatewayRoute,
+): Map<string, GatewayRoute> {
+  const out = new Map<string, GatewayRoute>();
+  for (const agentId of agentIds) {
+    const meta = agentRuntimes[agentId] ?? {};
+    out.set(agentId, {
+      match: { accountId: agentId },
+      runtime: meta.runtime ?? defaultRoute.runtime,
+      cwd: meta.cwd || agentWorkspaceDir(agentId),
+    });
+  }
+  return out;
 }

@@ -593,8 +593,8 @@ export default function ChatPane() {
     getRoomSummary: state.getRoomSummary,
   })));
   const visibleMessageRooms = useMemo(
-    () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token }),
-    [overview, recentVisitedRooms, token],
+    () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms }),
+    [overview, recentVisitedRooms, token, humanRooms],
   );
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";

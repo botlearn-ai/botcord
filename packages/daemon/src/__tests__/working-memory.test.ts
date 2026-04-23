@@ -1,27 +1,65 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-let tmpDir = "";
+let tmpHome = "";
+let prevHome: string | undefined;
 
-// Point the shared DAEMON_DIR_PATH at an isolated tempdir so the real
-// ~/.botcord/daemon is never touched.
+// The legacy location lives under `<DAEMON_DIR_PATH>/memory/<agentId>`. The
+// mock keeps it inside our per-test tmp HOME so the migration read path can
+// see an old file without touching the real `~/.botcord/daemon`.
 vi.mock("../config.js", () => {
   return {
     get DAEMON_DIR_PATH() {
-      return tmpDir;
+      return path.join(tmpHome, ".botcord", "daemon");
     },
   };
 });
 
+const warnSpy = vi.fn();
+vi.mock("../log.js", () => ({
+  log: {
+    info: vi.fn(),
+    warn: (msg: string, fields?: Record<string, unknown>) => warnSpy(msg, fields),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 const wm = await import("../working-memory.js");
+const { agentStateDir } = await import("../agent-workspace.js");
+
+function newPathFor(agentId: string): string {
+  return path.join(agentStateDir(agentId), "working-memory.json");
+}
+
+function legacyPathFor(agentId: string): string {
+  return path.join(tmpHome, ".botcord", "daemon", "memory", agentId, "working-memory.json");
+}
+
+function writeLegacy(agentId: string, body: unknown): void {
+  const p = legacyPathFor(agentId);
+  mkdirSync(path.dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(body));
+}
+
+function writeNew(agentId: string, body: unknown): void {
+  const p = newPathFor(agentId);
+  mkdirSync(path.dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(body));
+}
 
 beforeEach(() => {
-  tmpDir = mkdtempSync(path.join(os.tmpdir(), "daemon-wm-"));
+  tmpHome = mkdtempSync(path.join(os.tmpdir(), "daemon-wm-"));
+  prevHome = process.env.HOME;
+  process.env.HOME = tmpHome;
+  warnSpy.mockClear();
 });
 afterEach(() => {
-  if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  if (prevHome === undefined) delete process.env.HOME;
+  else process.env.HOME = prevHome;
+  if (tmpHome) rmSync(tmpHome, { recursive: true, force: true });
 });
 
 describe("working-memory I/O", () => {
@@ -41,11 +79,16 @@ describe("working-memory I/O", () => {
     expect(got?.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("writes land in the new state dir", () => {
+    wm.updateWorkingMemory("ag_new", { goal: "g" });
+    expect(existsSync(newPathFor("ag_new"))).toBe(true);
+    expect(existsSync(legacyPathFor("ag_new"))).toBe(false);
+  });
+
   it("migrates v1 on read", () => {
     const dir = wm.resolveMemoryDir("ag_v1");
-    const fs = require("node:fs");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
       path.join(dir, "working-memory.json"),
       JSON.stringify({ version: 1, content: "old notes", updatedAt: "2024-01-01" }),
     );
@@ -93,6 +136,70 @@ describe("working-memory I/O", () => {
   });
 });
 
+describe("working-memory migration (§8)", () => {
+  it("reads from new path when present and ignores legacy", () => {
+    writeNew("ag_mig", { version: 2, sections: { notes: "fresh" }, updatedAt: "2026-01-01" });
+    writeLegacy("ag_mig", { version: 2, sections: { notes: "stale" }, updatedAt: "2024-01-01" });
+
+    const got = wm.readWorkingMemory("ag_mig");
+    expect(got?.sections.notes).toBe("fresh");
+    // Legacy is left in place when new wins; warning is emitted once.
+    expect(existsSync(legacyPathFor("ag_mig"))).toBe(true);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("renames legacy → new on first read when only legacy exists", () => {
+    writeLegacy("ag_onlyold", {
+      version: 2,
+      sections: { notes: "old notes" },
+      updatedAt: "2024-01-01",
+    });
+    expect(existsSync(newPathFor("ag_onlyold"))).toBe(false);
+
+    const got = wm.readWorkingMemory("ag_onlyold");
+    expect(got?.sections.notes).toBe("old notes");
+
+    // Legacy moved away; new path now holds the data.
+    expect(existsSync(legacyPathFor("ag_onlyold"))).toBe(false);
+    expect(existsSync(newPathFor("ag_onlyold"))).toBe(true);
+
+    // Subsequent reads come from new path — delete legacy dir tree to
+    // prove no re-read falls through to it.
+    const got2 = wm.readWorkingMemory("ag_onlyold");
+    expect(got2?.sections.notes).toBe("old notes");
+  });
+
+  it("returns null when neither path exists", () => {
+    expect(wm.readWorkingMemory("ag_none")).toBeNull();
+  });
+
+  it("falls back to reading legacy path and logs warning on rename failure", () => {
+    writeLegacy("ag_renamefail", {
+      version: 2,
+      sections: { notes: "still readable" },
+      updatedAt: "2024-01-01",
+    });
+
+    // Plant a regular file where the new state *directory* would live, so
+    // mkdirSync+renameSync inside the migration branch fails with ENOTDIR
+    // (the agent home's `state` path already exists as a file). The
+    // migration path must log and fall back to reading the legacy file.
+    const home = path.join(tmpHome, ".botcord", "agents", "ag_renamefail");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(path.join(home, "state"), "not a dir");
+
+    const got = wm.readWorkingMemory("ag_renamefail");
+    expect(got?.sections.notes).toBe("still readable");
+    // Legacy file remains untouched after a failed rename.
+    expect(existsSync(legacyPathFor("ag_renamefail"))).toBe(true);
+    expect(warnSpy).toHaveBeenCalled();
+    const warnArgs = warnSpy.mock.calls.find((c) =>
+      String(c[0]).includes("migration rename failed"),
+    );
+    expect(warnArgs).toBeDefined();
+  });
+});
+
 describe("buildWorkingMemoryPrompt", () => {
   it("returns a helpful empty-state block when memory is null", () => {
     const p = wm.buildWorkingMemoryPrompt({ workingMemory: null });
@@ -130,3 +237,4 @@ describe("buildWorkingMemoryPrompt", () => {
     expect(p).toContain("‹current_memory›");
   });
 });
+

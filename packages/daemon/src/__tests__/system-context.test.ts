@@ -4,16 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import type { GatewayInboundMessage } from "../gateway/index.js";
 
-// Shared tempdir used for both working-memory (via DAEMON_DIR_PATH) and the
-// activity tracker file. Working memory resolves its base path at read time
-// via `get DAEMON_DIR_PATH()`, so re-assigning the `let` before each test
-// gives us per-test isolation.
+// Shared tempdir used for both working-memory (resolved via $HOME since the
+// §8 migration) and the activity tracker file. Each test gets a fresh HOME
+// so `~/.botcord/agents/<id>/state/working-memory.json` is isolated.
 let tmpDir = "";
+let prevHome: string | undefined;
 
 vi.mock("../config.js", () => {
   return {
     get DAEMON_DIR_PATH() {
-      return tmpDir;
+      return path.join(tmpDir, ".botcord", "daemon");
     },
   };
 });
@@ -43,8 +43,12 @@ function makeMessage(
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "daemon-sc-"));
+  prevHome = process.env.HOME;
+  process.env.HOME = tmpDir;
 });
 afterEach(() => {
+  if (prevHome === undefined) delete process.env.HOME;
+  else process.env.HOME = prevHome;
   if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
 });
 

@@ -1891,14 +1891,16 @@ export const addFriendModal: TranslationMap<{
   copied: string
   invitePrompt: string
   close: string
+  kindBot: string
+  kindHuman: string
 }> = {
   en: {
     title: 'Add friend',
     tabSearch: 'Search community',
     tabInvite: 'Invite link',
-    searchPlaceholder: 'Search by Bot name or ID...',
-    searchEmpty: 'No Bots found. Try a different keyword.',
-    searchHint: 'Type a name or an ag_ ID to find Bots in the community.',
+    searchPlaceholder: 'Search by name or ID (ag_/hu_)...',
+    searchEmpty: 'No matches. Try a different keyword.',
+    searchHint: 'Type a name or an ag_/hu_ ID to find Bots or Humans in the community.',
     searching: 'Searching...',
     applyLabel: 'Apply to add',
     requestMessagePlaceholder: 'Optional: add a short note...',
@@ -1917,14 +1919,16 @@ export const addFriendModal: TranslationMap<{
     copied: 'Copied',
     invitePrompt: 'Invite prompt',
     close: 'Close',
+    kindBot: 'Bot',
+    kindHuman: 'Human',
   },
   zh: {
     title: '加好友',
     tabSearch: '搜索社区',
     tabInvite: '邀请链接',
-    searchPlaceholder: '搜索 Bot 名称或 ID...',
-    searchEmpty: '没有找到匹配的 Bot，换个关键词试试。',
-    searchHint: '输入名称或 ag_ 开头的 ID，查找社区里的 Bot。',
+    searchPlaceholder: '搜索名称或 ID (ag_/hu_)...',
+    searchEmpty: '没有找到匹配的联系人，换个关键词试试。',
+    searchHint: '输入名称或 ag_/hu_ 开头的 ID，查找社区里的 Bot 或 Human。',
     searching: '搜索中...',
     applyLabel: '申请加好友',
     requestMessagePlaceholder: '可选：附一句留言...',
@@ -1943,6 +1947,8 @@ export const addFriendModal: TranslationMap<{
     copied: '已复制',
     invitePrompt: '邀请 Prompt',
     close: '关闭',
+    kindBot: 'Bot',
+    kindHuman: 'Human',
   },
 }
 
@@ -2102,5 +2108,40 @@ export const subscriptionBadge: TranslationMap<{
     errorInsufficientBalance: '余额不足，请先前往钱包充值。',
     errorAlreadySubscribed: '你已订阅此商品。',
     errorGeneric: '操作失败，请稍后再试。',
+  },
+}
+
+export const pendingApprovalsPanel: TranslationMap<{
+  title: string
+  subtitle: string
+  refresh: string
+  approve: string
+  reject: string
+  loading: string
+  forAgent: string
+  errorLoad: string
+  errorResolve: string
+}> = {
+  en: {
+    title: "Approvals on your agents",
+    subtitle: "External requests directed at agents you own — approve or reject on their behalf.",
+    refresh: "Refresh",
+    approve: "Approve",
+    reject: "Reject",
+    loading: "Loading pending approvals…",
+    forAgent: "for",
+    errorLoad: "Failed to load approvals",
+    errorResolve: "Failed to resolve approval",
+  },
+  zh: {
+    title: "待审批请求",
+    subtitle: "外部对你名下 Agent 发起的请求，代理审批。",
+    refresh: "刷新",
+    approve: "批准",
+    reject: "拒绝",
+    loading: "加载中…",
+    forAgent: "目标 Agent：",
+    errorLoad: "加载审批列表失败",
+    errorResolve: "审批操作失败",
   },
 }

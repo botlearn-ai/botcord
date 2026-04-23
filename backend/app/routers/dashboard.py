@@ -14,7 +14,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_active_agent
+from app.auth import RequestContext, require_active_agent, require_user_with_optional_agent
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
 from hub.dashboard_message_shaping import (
@@ -494,38 +494,51 @@ async def send_contact_request(
         raise HTTPException(status_code=409, detail="Already in contacts")
 
     # ------------------------------------------------------------------
-    # Existing request in EITHER direction blocks a new pending request.
-    # A previously-rejected request in the same direction may be reused
-    # (transition rejected → pending) for the "resend after reject" flow.
+    # Explicit state filters (W4):
+    #   * Forward (me→target) where state != rejected → 409
+    #   * Reverse (target→me) pending → 409 with "accept incoming" hint
+    #   * Forward (me→target) rejected → reuse row (resend)
     # ------------------------------------------------------------------
-    existing_forward = await db.execute(
-        select(ContactRequest).where(
-            ContactRequest.from_agent_id == agent_id,
-            ContactRequest.from_type == ParticipantType.agent,
-            ContactRequest.to_agent_id == to_id,
-            ContactRequest.to_type == to_type,
-        )
-    )
-    req = existing_forward.scalar_one_or_none()
-
     existing_reverse = await db.execute(
         select(ContactRequest).where(
             ContactRequest.from_agent_id == to_id,
             ContactRequest.from_type == to_type,
             ContactRequest.to_agent_id == agent_id,
             ContactRequest.to_type == ParticipantType.agent,
-            ContactRequest.state.in_(
-                [ContactRequestState.pending, ContactRequestState.accepted]
-            ),
+            ContactRequest.state == ContactRequestState.pending,
         )
     )
     if existing_reverse.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Incoming contact request exists — accept it instead",
+        )
+
+    existing_forward_active = await db.execute(
+        select(ContactRequest).where(
+            ContactRequest.from_agent_id == agent_id,
+            ContactRequest.from_type == ParticipantType.agent,
+            ContactRequest.to_agent_id == to_id,
+            ContactRequest.to_type == to_type,
+            ContactRequest.state != ContactRequestState.rejected,
+        )
+    )
+    if existing_forward_active.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Contact request already exists")
 
+    existing_forward_rejected = await db.execute(
+        select(ContactRequest).where(
+            ContactRequest.from_agent_id == agent_id,
+            ContactRequest.from_type == ParticipantType.agent,
+            ContactRequest.to_agent_id == to_id,
+            ContactRequest.to_type == to_type,
+            ContactRequest.state == ContactRequestState.rejected,
+        )
+    )
+    req = existing_forward_rejected.scalar_one_or_none()
+
     if req is not None:
-        if req.state in (ContactRequestState.pending, ContactRequestState.accepted):
-            raise HTTPException(status_code=409, detail="Contact request already exists")
-        # Rejected — allow resend
+        # Resend after reject — reuse the existing row.
         req.state = ContactRequestState.pending
         req.message = body.message
         req.resolved_at = None
@@ -760,10 +773,17 @@ async def reject_contact_request(
 @router.get("/agents/search")
 async def search_agents(
     q: str = Query(..., min_length=1),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search agents by agent_id or display_name."""
+    """Search agents and humans by id or display_name.
+
+    The ``agents`` field is preserved for backwards-compatibility. The new
+    ``humans`` field carries ``hu_*`` matches so the add-friend flow can
+    target Humans as first-class peers. Requests sent to a ``hu_*`` id go
+    through the existing contact-request pipeline (see app/routers/humans.py
+    and app/routers/dashboard.py::create_contact_request).
+    """
     pattern = f"%{escape_like(q)}%"
     result = await db.execute(
         select(Agent)
@@ -774,6 +794,17 @@ async def search_agents(
         .limit(20)
     )
     agents = result.scalars().all()
+
+    human_result = await db.execute(
+        select(User)
+        .where(
+            User.human_id.is_not(None),
+            (User.human_id.ilike(pattern)) | (User.display_name.ilike(pattern)),
+        )
+        .limit(20)
+    )
+    humans = human_result.scalars().all()
+
     return {
         "agents": [
             {
@@ -784,13 +815,22 @@ async def search_agents(
             }
             for a in agents
         ],
+        "humans": [
+            {
+                "human_id": h.human_id,
+                "display_name": h.display_name,
+                "avatar_url": h.avatar_url,
+                "created_at": h.created_at.isoformat() if h.created_at else None,
+            }
+            for h in humans
+        ],
     }
 
 
 @router.get("/agents/{agent_id}")
 async def get_agent_detail(
     agent_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Get agent details."""
@@ -868,7 +908,7 @@ async def get_shared_rooms(
 async def discover_rooms(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Discover public rooms."""
@@ -1567,26 +1607,46 @@ async def human_room_send(
     room_id: str,
     body: HumanRoomSendBody,
     request: Request,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Send a message to a room on behalf of the authenticated human user.
 
-    Active agent is the admission anchor; the message is persisted as
-    source_type='dashboard_human_room' and fanned out to all room members
-    (including the active agent themselves — see PRD §6.3).
+    Dual-mode sender identity:
+      * ``X-Active-Agent`` supplied → the active Agent is the admission anchor
+        (legacy PRD §6 flow).
+      * No active agent → the authenticated User's ``human_id`` (hu_*) is the
+        sender; the User must be a RoomMember with ``participant_type=human``.
+
+    The message is persisted as ``source_type='dashboard_human_room'`` and
+    fanned out to all room members (including the sender — see PRD §6.3).
     """
     active_agent_id = ctx.active_agent_id
+    sender_id: str
 
-    # Verify agent is claimed (PRD §6.2 step 3)
-    agent_row = await db.execute(
-        select(Agent).where(Agent.agent_id == active_agent_id)
-    )
-    agent = agent_row.scalar_one_or_none()
-    if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    if getattr(agent, "claimed_at", None) is None:
-        raise HTTPException(status_code=403, detail="Agent not claimed")
+    if active_agent_id is not None:
+        # Agent-anchored path: verify agent is claimed by this user.
+        agent_row = await db.execute(
+            select(Agent).where(Agent.agent_id == active_agent_id)
+        )
+        agent = agent_row.scalar_one_or_none()
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if getattr(agent, "claimed_at", None) is None:
+            raise HTTPException(status_code=403, detail="Agent not claimed")
+        sender_id = active_agent_id
+    else:
+        # Human-anchored path: resolve the authenticated user's human_id.
+        # rm_oc_ (owner-chat) rooms are Agent-only by design.
+        if room_id.startswith("rm_oc_"):
+            raise HTTPException(status_code=400, detail="X-Active-Agent header is required")
+        user_row = await db.execute(
+            select(User).where(User.id == ctx.user_id)
+        )
+        user = user_row.scalar_one_or_none()
+        if user is None or not user.human_id:
+            raise HTTPException(status_code=404, detail="Human identity not found")
+        sender_id = user.human_id
 
     # Room exists (PRD §6.2 step 4)
     room_result = await db.execute(
@@ -1596,16 +1656,21 @@ async def human_room_send(
     if room is None:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    # Active agent is a RoomMember (step 5)
+    # Sender is a RoomMember (step 5). Match participant_type so that a Human
+    # and an Agent sharing the same string prefix cannot be confused.
+    expected_participant_type = (
+        ParticipantType.agent if active_agent_id is not None else ParticipantType.human
+    )
     member_result = await db.execute(
         select(RoomMember).where(
             RoomMember.room_id == room_id,
-            RoomMember.agent_id == active_agent_id,
+            RoomMember.agent_id == sender_id,
+            RoomMember.participant_type == expected_participant_type,
         )
     )
     active_member = member_result.scalar_one_or_none()
     if active_member is None:
-        raise HTTPException(status_code=403, detail="Active agent is not a room member")
+        raise HTTPException(status_code=403, detail="Sender is not a room member")
 
     # Room-level human send gate (step 5.5)
     if not room.allow_human_send:
@@ -1613,16 +1678,16 @@ async def human_room_send(
 
     # _can_send (step 6)
     if not _room_can_send(room, active_member):
-        raise HTTPException(status_code=403, detail="Active agent cannot send in this room")
+        raise HTTPException(status_code=403, detail="Sender cannot send in this room")
 
-    # Slow mode + duplicate content (step 7) keyed by (room_id, active_agent_id)
+    # Slow mode + duplicate content (step 7) keyed by (room_id, sender_id)
     payload_for_checks = {"text": body.text}
     try:
         _check_slow_mode(room, active_member)
-        _check_duplicate_content(room_id, active_agent_id, payload_for_checks)
+        _check_duplicate_content(room_id, sender_id, payload_for_checks)
     except HTTPException:
         raise
-    _record_slow_mode_send(room_id, active_agent_id)
+    _record_slow_mode_send(room_id, sender_id)
 
     # Normalize mentions. Owner-chat rooms (rm_oc_) ignore mentions entirely.
     # Human sends may only mention specific agent_ids — "@all" is not allowed
@@ -1651,19 +1716,19 @@ async def human_room_send(
     normalized_mentions = [m for m in normalized_mentions if m in member_ids]
     mentioned_set: set[str] = set(normalized_mentions)
 
-    # Block check anchored on active_agent_id
+    # Block check anchored on sender_id
     blocked_by: set[str] = set()
     if member_ids:
         block_result = await db.execute(
             select(Block.owner_id).where(
                 Block.owner_id.in_(member_ids),
-                Block.blocked_agent_id == active_agent_id,
+                Block.blocked_agent_id == sender_id,
             )
         )
         blocked_by = {row[0] for row in block_result.all()}
 
-    # Fan-out targets: all members minus muted minus blockers.  Active agent
-    # is INCLUDED (PRD §6.3) — only skipped if they themselves are muted or
+    # Fan-out targets: all members minus muted minus blockers. Sender is
+    # INCLUDED (PRD §6.3) — only skipped if they themselves are muted or
     # happen to block themselves (shouldn't happen).
     receivers = [
         m for m in all_members
@@ -1678,7 +1743,7 @@ async def human_room_send(
         "v": "a2a/0.1",
         "msg_id": msg_id,
         "ts": ts,
-        "from": active_agent_id,
+        "from": sender_id,
         "to": room_id,
         "type": "message",
         "reply_to": None,
@@ -1701,7 +1766,7 @@ async def human_room_send(
         record = MessageRecord(
             hub_msg_id=hub_msg_id,
             msg_id=msg_id,
-            sender_id=active_agent_id,
+            sender_id=sender_id,
             receiver_id=receiver_id,
             room_id=room_id,
             state=MessageState.queued,
@@ -1743,7 +1808,7 @@ async def human_room_send(
             rt_event = build_message_realtime_event(
                 type="message",
                 agent_id=receiver_id,
-                sender_id=active_agent_id,
+                sender_id=sender_id,
                 room_id=room_id,
                 hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
                 payload=payload,

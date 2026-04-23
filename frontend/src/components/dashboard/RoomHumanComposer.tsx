@@ -33,7 +33,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
   const activeAgent = activeAgentId
     ? ownedAgents.find((a) => a.agent_id === activeAgentId) ?? null
     : null;
-  const placeholder = activeAgent
+  const placeholder = (viewMode === "agent" && activeAgent)
     ? locale === "zh"
       ? `替我的 Agent · ${activeAgent.display_name} 发言…`
       : `Speak on behalf of Agent · ${activeAgent.display_name}…`

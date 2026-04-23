@@ -126,6 +126,33 @@ export interface RevokeAgentParams {
   agentId: string;
   /** When true, the credentials file on disk is deleted (default: true). */
   deleteCredentials?: boolean;
+  /**
+   * When true, the per-agent state directory (`~/.botcord/agents/{id}/state/`)
+   * is removed after credentials cleanup. Default semantics = value of
+   * `deleteCredentials` (default applied by the daemon, not here).
+   */
+  deleteState?: boolean;
+  /**
+   * When true, the per-agent workspace directory
+   * (`~/.botcord/agents/{id}/workspace/`) is removed. Default false
+   * (applied by the daemon). User-authored memory/notes are preserved
+   * by default and require explicit opt-in to delete.
+   */
+  deleteWorkspace?: boolean;
+}
+
+/**
+ * Result shape returned via `ControlAck.result` from a `revoke_agent`
+ * frame. Each `*Deleted` flag reflects whether the corresponding disk
+ * step actually completed — best-effort cleanup, so a `false` may mean
+ * "not requested" or "failed and logged". See plan §11.3.
+ */
+export interface RevokeAgentResult {
+  agentId: string;
+  removed: boolean;
+  credentialsDeleted: boolean;
+  stateDeleted: boolean;
+  workspaceDeleted: boolean;
 }
 
 /**
