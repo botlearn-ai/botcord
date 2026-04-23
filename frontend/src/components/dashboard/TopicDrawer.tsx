@@ -85,7 +85,7 @@ export default function TopicDrawer() {
         onClick={() => setOpenedTopicId(null)}
         className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm md:hidden"
       />
-      <aside className="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-glass-border bg-deep-black shadow-2xl">
+      <aside className="fixed right-0 top-0 z-40 flex h-full w-full max-w-[480px] flex-col border-l border-glass-border bg-deep-black shadow-2xl md:w-[440px]">
         <header className="flex items-start gap-2 border-b border-glass-border/60 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
