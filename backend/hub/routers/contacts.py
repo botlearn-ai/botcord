@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import get_current_claimed_agent
 from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
+from hub.routers.hub import is_agent_ws_online
 from hub.database import get_db
 from hub.id_generators import generate_hub_msg_id
 from hub.models import Agent, Block, Contact, MessagePolicy, MessageRecord, MessageState
@@ -135,6 +136,7 @@ async def list_contacts(
                 bio=bio,
                 alias=c.alias,
                 created_at=c.created_at,
+                online=is_agent_ws_online(c.contact_agent_id),
             )
             for c, dn, bio in result.all()
         ],
@@ -173,6 +175,7 @@ async def get_contact(
         bio=bio,
         alias=contact.alias,
         created_at=contact.created_at,
+        online=is_agent_ws_online(contact.contact_agent_id),
     )
 
 

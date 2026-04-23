@@ -116,7 +116,7 @@ describe("handleInboxMessage dashboard_human_room dispatch", () => {
 
     expect(mockDispatchReply).toHaveBeenCalledTimes(1);
     const fmtCall = mockFormatAgentEnvelope.mock.calls[0][0];
-    expect(fmtCall.body).toContain('<human-message sender="Alice">');
+    expect(fmtCall.body).toContain('<human-message sender="Alice" sender_kind="human">');
     expect(fmtCall.body).toContain("hello");
     expect(fmtCall.body).toContain("</human-message>");
     expect(fmtCall.body).not.toContain("<agent-message");
@@ -169,7 +169,7 @@ describe("handleInboxMessage dashboard_human_room dispatch", () => {
     await handleInboxMessage(msg, "ag_test", {});
 
     const fmtCall = mockFormatAgentEnvelope.mock.calls[0][0];
-    expect(fmtCall.body).toContain('<human-message sender="User">');
+    expect(fmtCall.body).toContain('<human-message sender="User" sender_kind="human">');
   });
 });
 
@@ -190,8 +190,8 @@ describe("handleInboxMessageBatch mixed A2A + human-room", () => {
     expect(handled).toContain("h_batch_agent");
 
     const fmtCall = mockFormatAgentEnvelope.mock.calls[0][0];
-    expect(fmtCall.body).toContain('<agent-message sender="ag_sender">');
-    expect(fmtCall.body).toContain('<human-message sender="Alice">');
+    expect(fmtCall.body).toContain('<agent-message sender="ag_sender" sender_kind="agent">');
+    expect(fmtCall.body).toContain('<human-message sender="Alice" sender_kind="human">');
     expect(fmtCall.body).toContain("from bot");
     expect(fmtCall.body).toContain("hello");
   });

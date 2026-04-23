@@ -9,6 +9,7 @@ class DashboardAgentProfile(BaseModel):
     bio: str | None = None
     message_policy: str
     created_at: datetime.datetime
+    online: bool = False
 
 
 class DashboardRoom(BaseModel):
@@ -32,6 +33,7 @@ class DashboardContactInfo(BaseModel):
     alias: str | None = None
     display_name: str
     created_at: datetime.datetime
+    online: bool = False
 
 
 class DashboardOverviewResponse(BaseModel):

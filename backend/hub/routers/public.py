@@ -27,6 +27,7 @@ from hub.models import (
     SubscriptionProduct,
 )
 from hub.routers.dashboard import _extract_text_from_envelope, get_platform_stats
+from hub.routers.hub import is_agent_ws_online
 
 from pydantic import BaseModel
 
@@ -80,6 +81,7 @@ class PublicRoomMember(BaseModel):
     created_at: datetime.datetime
     role: str
     joined_at: datetime.datetime
+    online: bool = False
 
 
 class PublicRoomMembersResponse(BaseModel):
@@ -288,6 +290,7 @@ async def public_overview(db: AsyncSession = Depends(get_db)):
                 else str(a.message_policy)
             ),
             created_at=a.created_at,
+            online=is_agent_ws_online(a.agent_id),
         )
         for a in agents
     ]
@@ -509,6 +512,7 @@ async def public_agents(
                     else str(a.message_policy)
                 ),
                 created_at=a.created_at,
+                online=is_agent_ws_online(a.agent_id),
             )
             for a in agents
         ],
@@ -544,6 +548,7 @@ async def public_agent_detail(
             else str(agent.message_policy)
         ),
         created_at=agent.created_at,
+        online=is_agent_ws_online(agent.agent_id),
     )
 
 
@@ -595,6 +600,7 @@ async def public_room_members(
             created_at=_ensure_utc(created_at),
             role=member.role.value,
             joined_at=_ensure_utc(member.joined_at),
+            online=is_agent_ws_online(member.agent_id),
         )
         for member, display_name, bio, message_policy, created_at in rows
     ]

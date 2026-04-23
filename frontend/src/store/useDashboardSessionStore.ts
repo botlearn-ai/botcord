@@ -6,8 +6,8 @@
  */
 
 import { create } from "zustand";
-import type { UserProfile, UserAgent } from "@/lib/types";
-import { userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
+import type { HumanInfo, HumanRoomSummary, UserProfile, UserAgent } from "@/lib/types";
+import { humansApi, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
 export type DashboardSessionMode = "guest" | "authed-no-agent" | "authed-ready";
 
@@ -17,16 +17,27 @@ interface DashboardSessionState {
   sessionMode: DashboardSessionMode;
   token: string | null;
   user: UserProfile | null;
+  /** Current Human identity (hu_*). Populated after /api/humans/me returns. */
+  human: HumanInfo | null;
+  /** Rooms owned-or-joined by the current Human (from /api/humans/me/rooms). */
+  humanRooms: HumanRoomSummary[];
   ownedAgents: UserAgent[];
   activeAgentId: string | null;
+  /**
+   * "human"  → acting as the logged-in Human (default when human is loaded)
+   * "agent"  → observer mode: watching/acting through the active Agent
+   */
+  viewMode: "human" | "agent";
 
   setAuthResolved: (resolved: boolean) => void;
   setToken: (token: string | null) => void;
   setUser: (user: UserProfile) => void;
   setActiveAgentId: (agentId: string | null) => void;
+  setViewMode: (mode: "human" | "agent") => void;
   resetSessionState: () => void;
   initAuth: (token: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
+  refreshHumanRooms: () => Promise<void>;
   removeAgent: (agentId: string) => void;
   switchActiveAgent: (agentId: string) => Promise<void>;
   logout: () => void;
@@ -38,8 +49,11 @@ const initialSessionState = {
   sessionMode: "guest" as const,
   token: null,
   user: null,
+  human: null,
+  humanRooms: [] as HumanRoomSummary[],
   ownedAgents: [],
   activeAgentId: null,
+  viewMode: "human" as const,
 };
 
 let authInitRequestId = 0;
@@ -98,6 +112,8 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       sessionMode: resolveSessionMode(state.token, agentId),
     })),
 
+  setViewMode: (mode) => set({ viewMode: mode }),
+
   resetSessionState: () => {
     authInitRequestId += 1;
     setActiveAgentId(null);
@@ -116,7 +132,20 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     });
 
     try {
-      const user = await userApi.getMe();
+      const [user, human, humanRoomsRes] = await Promise.all([
+        userApi.getMe(),
+        // Idempotent — the first call mints the Human identity for brand-new
+        // users; subsequent calls return the existing record. Failure here is
+        // non-fatal: Human-first features degrade but Agent flows keep working.
+        humansApi.createOrGet().catch((err) => {
+          console.warn("[SessionStore] Failed to load Human identity:", err);
+          return null;
+        }),
+        humansApi.listRooms().catch((err) => {
+          console.warn("[SessionStore] Failed to load Human rooms:", err);
+          return { rooms: [] as HumanRoomSummary[] };
+        }),
+      ]);
       if (requestId !== authInitRequestId) {
         return;
       }
@@ -127,6 +156,8 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         authBootstrapping: false,
         token,
         user,
+        human,
+        humanRooms: humanRoomsRes.rooms,
         ownedAgents: user.agents,
         activeAgentId: activeId,
         sessionMode: resolveSessionMode(token, activeId),
@@ -154,6 +185,15 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         activeAgentId: null,
         sessionMode: "authed-no-agent",
       });
+    }
+  },
+
+  refreshHumanRooms: async () => {
+    try {
+      const res = await humansApi.listRooms();
+      set({ humanRooms: res.rooms });
+    } catch (err) {
+      console.warn("[SessionStore] refreshHumanRooms failed:", err);
     }
   },
 

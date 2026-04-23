@@ -48,6 +48,7 @@ from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
 from hub.storage import storage_requires_local_disk
 
+from app.routers.humans import router as app_humans_router
 from app.routers.users import router as app_users_router
 from app.routers.dashboard import router as app_dashboard_router
 from app.routers.invites import router as app_invites_router
@@ -241,6 +242,7 @@ app.include_router(share_public_router)
 app.include_router(app_users_router)
 # Product routers: gated by beta_access
 _beta_gate = [Depends(require_beta_user)]
+app.include_router(app_humans_router, dependencies=_beta_gate)
 app.include_router(app_activity_router, dependencies=_beta_gate)
 app.include_router(app_dashboard_router, dependencies=_beta_gate)
 app.include_router(app_invites_router)

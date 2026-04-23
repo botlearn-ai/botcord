@@ -977,3 +977,101 @@ async def test_contact_request_without_message_field(client):
     )
     resp = await client.post("/hub/send", json=env, headers=_auth_header(alice_token))
     assert resp.status_code == 202
+
+
+# ===========================================================================
+# Test: contact_request to a claimed Agent is queued (not direct ContactRequest)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_contact_request_to_claimed_agent_routes_to_approval_queue(
+    client, db_session: AsyncSession
+):
+    """When an Agent sends contact_request to a claimed Agent, the hub inserts
+    an AgentApprovalQueue row instead of a ContactRequest row."""
+    from sqlalchemy import select as _select
+    from hub.models import (
+        AgentApprovalQueue,
+        ApprovalKind,
+        ApprovalState,
+        ContactRequest,
+        User,
+    )
+
+    alice, bob = await _setup_two_agents(client)
+    sk_a, alice_id, alice_key, alice_token = alice
+    _, bob_id, _, _ = bob
+
+    # Simulate Bob's agent being claimed: attach a user_id
+    bob_user = User(
+        supabase_user_id=uuid.uuid4(),
+        display_name="Bob Owner",
+        email="bobowner@example.com",
+    )
+    db_session.add(bob_user)
+    await db_session.flush()
+
+    from hub.models import Agent as _Agent
+    bob_agent_row = (
+        await db_session.execute(_select(_Agent).where(_Agent.agent_id == bob_id))
+    ).scalar_one()
+    bob_agent_row.user_id = bob_user.id
+    await db_session.commit()
+
+    env = _build_envelope(
+        sk_a, alice_key, alice_id, bob_id,
+        msg_type="contact_request",
+        payload={"message": "Hi Bob"},
+    )
+    resp = await client.post("/hub/send", json=env, headers=_auth_header(alice_token))
+    assert resp.status_code == 202
+
+    # One approval queue entry, zero ContactRequest rows
+    queue_rows = list(
+        (await db_session.execute(_select(AgentApprovalQueue))).scalars().all()
+    )
+    assert len(queue_rows) == 1
+    entry = queue_rows[0]
+    assert entry.agent_id == bob_id
+    assert entry.owner_user_id == bob_user.id
+    assert entry.kind == ApprovalKind.contact_request
+    assert entry.state == ApprovalState.pending
+
+    cr_rows = list(
+        (await db_session.execute(_select(ContactRequest))).scalars().all()
+    )
+    assert cr_rows == []
+
+
+@pytest.mark.asyncio
+async def test_contact_request_to_unclaimed_agent_creates_contact_request_a2a(
+    client, db_session: AsyncSession
+):
+    """Unclaimed agents still get a plain ContactRequest (legacy path unchanged)."""
+    from sqlalchemy import select as _select
+    from hub.models import AgentApprovalQueue, ContactRequest
+
+    alice, bob = await _setup_two_agents(client)
+    sk_a, alice_id, alice_key, alice_token = alice
+    _, bob_id, _, _ = bob
+
+    env = _build_envelope(
+        sk_a, alice_key, alice_id, bob_id,
+        msg_type="contact_request",
+        payload={"message": "hello"},
+    )
+    resp = await client.post("/hub/send", json=env, headers=_auth_header(alice_token))
+    assert resp.status_code == 202
+
+    cr_rows = list(
+        (await db_session.execute(_select(ContactRequest))).scalars().all()
+    )
+    assert len(cr_rows) == 1
+    assert cr_rows[0].from_agent_id == alice_id
+    assert cr_rows[0].to_agent_id == bob_id
+
+    queue_rows = list(
+        (await db_session.execute(_select(AgentApprovalQueue))).scalars().all()
+    )
+    assert queue_rows == []

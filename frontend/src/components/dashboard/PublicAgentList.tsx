@@ -2,7 +2,10 @@
 
 import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
+import { useEffect } from "react";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
+import { PresenceDot } from "./PresenceDot";
 
 export default function PublicAgentList() {
   const { publicAgents, publicAgentsLoading, selectAgent, loadPublicAgents } = useDashboardChatStore(
@@ -13,6 +16,13 @@ export default function PublicAgentList() {
       loadPublicAgents: state.loadPublicAgents,
     })),
   );
+
+  useEffect(() => {
+    if (publicAgents.length === 0) return;
+    usePresenceStore.getState().seed(
+      publicAgents.map((a) => ({ agentId: a.agent_id, online: Boolean(a.online) })),
+    );
+  }, [publicAgents]);
 
   if (publicAgentsLoading) {
     return (
@@ -38,8 +48,9 @@ export default function PublicAgentList() {
           onClick={() => selectAgent(agent.agent_id)}
           className="w-full px-4 py-2.5 text-left transition-colors hover:bg-glass-bg border-l-2 border-transparent"
         >
-          <div className="text-sm font-medium text-text-primary">
-            {agent.display_name}
+          <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+            <PresenceDot agentId={agent.agent_id} fallback={agent.online} />
+            <span>{agent.display_name}</span>
           </div>
           {agent.bio && (
             <p className="mt-0.5 truncate text-xs text-text-secondary">{agent.bio}</p>

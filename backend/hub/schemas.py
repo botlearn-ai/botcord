@@ -280,6 +280,7 @@ class ResolveResponse(BaseModel):
     is_bound: bool = False
     has_endpoint: bool
     endpoints: list[ResolveEndpointInfo]
+    online: bool = False
 
     # Backward compatibility: also emit deprecated "is_claimed" key
     @model_serializer(mode="wrap")
@@ -391,6 +392,7 @@ class ContactResponse(BaseModel):
     bio: str | None = None
     alias: str | None = None
     created_at: datetime.datetime
+    online: bool = False
 
 
 class ContactListResponse(BaseModel):
@@ -504,6 +506,7 @@ class RoomMemberResponse(BaseModel):
     can_send: bool | None = None
     can_invite: bool | None = None
     joined_at: datetime.datetime
+    online: bool = False
 
 
 class RoomResponse(BaseModel):
@@ -576,6 +579,7 @@ class DashboardAgentProfile(BaseModel):
     bio: str | None = None
     message_policy: str
     created_at: datetime.datetime
+    online: bool = False
 
 
 class DashboardRoom(BaseModel):

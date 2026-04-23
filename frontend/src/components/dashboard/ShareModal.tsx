@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { shareModal } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
+import { joinGuide } from '@/lib/i18n/translations/dashboard';
 import { api } from "@/lib/api";
 import type { CreateShareResponse, InvitePreviewResponse } from "@/lib/types";
 import { buildSharePrompt } from "@/lib/onboarding";
@@ -13,13 +14,15 @@ interface ShareModalProps {
   roomId: string;
   roomName: string;
   roomVisibility?: string;
+  canInvite?: boolean;
   onClose: () => void;
 }
 
-export default function ShareModal({ roomId, roomName, roomVisibility, onClose }: ShareModalProps) {
+export default function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClose }: ShareModalProps) {
   const locale = useLanguage();
   const t = shareModal[locale];
   const tc = common[locale];
+  const tj = joinGuide[locale];
   const [shareData, setShareData] = useState<(CreateShareResponse | InvitePreviewResponse) | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +110,22 @@ export default function ShareModal({ roomId, roomName, roomVisibility, onClose }
           </div>
         )}
 
-        {!shareData ? (
+        {!canInvite ? (
+          <div>
+            <div className="mb-4 flex items-start gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+              <span>🔒</span>
+              <p className="leading-relaxed">{tj.noInvitePermission}</p>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={onClose}
+                className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+              >
+                {tc.done}
+              </button>
+            </div>
+          </div>
+        ) : !shareData ? (
           <div className="flex justify-end gap-2">
             <button
               onClick={onClose}

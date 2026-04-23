@@ -17,6 +17,8 @@ import { Check, KeyRound, LogOut, Plus, RefreshCw, Settings, Unlink, User } from
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useShallow } from "zustand/react/shallow";
 
 interface AccountMenuProps {
   user: UserProfile | null;
@@ -54,6 +56,11 @@ export default function AccountMenu({
   const locale = useLanguage();
   const t = accountMenu[locale];
   const tc = common[locale];
+  const { human, viewMode, setViewMode } = useDashboardSessionStore(useShallow((state) => ({
+    human: state.human,
+    viewMode: state.viewMode,
+    setViewMode: state.setViewMode,
+  })));
 
   const activeAgent = useMemo(
     () => agents.find((agent) => agent.agent_id === activeAgentId) || null,
@@ -69,6 +76,8 @@ export default function AccountMenu({
             title={t.account}
           >
             {getAvatarSeed(user)}
+            {/* Mode indicator dot */}
+            <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-deep-black-light ${viewMode === "human" ? "bg-neon-purple" : "bg-neon-cyan"}`} />
             {pendingRequests > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-purple px-1 text-[9px] font-bold text-black">
                 {pendingRequests > 9 ? "9+" : pendingRequests}
@@ -88,6 +97,11 @@ export default function AccountMenu({
               <p className="text-sm font-medium leading-none text-text-primary">
                 {user?.display_name || user?.email || t.user}
               </p>
+              {human ? (
+                <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/70" title={human.human_id}>
+                  {human.human_id}
+                </p>
+              ) : null}
               <div className="text-xs leading-none text-text-secondary mt-1 flex items-center gap-1.5">
                 {activeAgent ? (
                   <>
@@ -117,6 +131,48 @@ export default function AccountMenu({
               </div>
             </div>
 
+            {/* Participant switcher: Human vs Agent observer mode */}
+            {human && (
+              <DropdownMenu.Group>
+                <DropdownMenu.Label className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                  {locale === "zh" ? "当前身份" : "View as"}
+                </DropdownMenu.Label>
+                <DropdownMenu.Item
+                  onClick={() => setViewMode("human")}
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus:bg-neon-purple/10"
+                >
+                  <span className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full mr-2 bg-neon-purple" />
+                  <span className="flex-1 truncate text-text-primary">
+                    {locale === "zh" ? "你 (Human)" : "You (Human)"}
+                  </span>
+                  {viewMode === "human" && <Check className="h-4 w-4 text-neon-purple ml-2" />}
+                </DropdownMenu.Item>
+                {agents.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto">
+                    {agents.map((agent) => (
+                      <DropdownMenu.Item
+                        key={agent.agent_id}
+                        onClick={() => { void onSwitchAgent(agent.agent_id); setViewMode("agent"); }}
+                        className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus:bg-glass-bg"
+                      >
+                        <span className={`inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full mr-2 ${agent.ws_online ? "bg-emerald-400" : "bg-zinc-500"}`} />
+                        <span className="flex-1 truncate text-text-primary">
+                          {agent.display_name}
+                        </span>
+                        <span className="ml-1.5 text-[10px] text-text-secondary/60">
+                          {locale === "zh" ? "旁观" : "observer"}
+                        </span>
+                        {viewMode === "agent" && agent.agent_id === activeAgentId && (
+                          <Check className="h-4 w-4 text-neon-cyan ml-2" />
+                        )}
+                      </DropdownMenu.Item>
+                    ))}
+                  </div>
+                )}
+              </DropdownMenu.Group>
+            )}
+
+            {/* Agent management section */}
             <DropdownMenu.Group>
               <DropdownMenu.Label className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center gap-2">
                 <User className="h-3 w-3" />

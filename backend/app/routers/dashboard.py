@@ -72,6 +72,12 @@ class CreateShareBody(BaseModel):
     expires_in_hours: int | None = None
 
 
+class UpdateRoomSettingsBody(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    rule: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -847,6 +853,59 @@ async def join_room(
         "my_role": "member",
         "rule": room.rule,
         "required_subscription_product_id": room.required_subscription_product_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Update room settings (owner/admin)
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/rooms/{room_id}")
+async def update_room_settings(
+    room_id: str,
+    body: UpdateRoomSettingsBody,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update room name/description/rule. Owner/admin only."""
+    agent_id = ctx.active_agent_id
+
+    room = (await db.execute(select(Room).where(Room.room_id == room_id))).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    member = (
+        await db.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == agent_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Only owner or admin can update room settings")
+
+    fields_set = body.model_fields_set
+    if "name" in fields_set:
+        name = (body.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        room.name = name
+    if "description" in fields_set:
+        room.description = (body.description or "").strip()
+    if "rule" in fields_set:
+        rule = (body.rule or "").strip()
+        room.rule = rule or None
+
+    await db.commit()
+    await db.refresh(room)
+
+    return {
+        "room_id": room.room_id,
+        "name": room.name,
+        "description": room.description,
+        "rule": room.rule,
     }
 
 

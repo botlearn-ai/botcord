@@ -21,6 +21,7 @@ import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionS
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
 import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
@@ -88,6 +89,10 @@ export default function DashboardApp() {
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
   const fallbackAgent =
     sessionStore.ownedAgents.find((agent) => agent.is_default) ?? sessionStore.ownedAgents[0] ?? null;
+  // Human-first: never force-block on "no agent". Authed users always proceed
+  // into /chats as their Human identity; creating an Agent is a later,
+  // optional CTA. AgentGateModal is kept for manual entry points (account
+  // menu, etc.) but must never auto-mount.
   const shouldShowAgentGate = false;
   const realtimeTopic = sessionStore.activeAgentId ? `agent:${sessionStore.activeAgentId}` : null;
   const continueTarget = searchParams.get("next");
@@ -193,11 +198,11 @@ export default function DashboardApp() {
   useEffect(() => {
     if (!sessionStore.authResolved) return;
 
-    if (sessionStore.sessionMode === "authed-no-agent") {
-      if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
-      if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
-      return;
-    }
+    // Previously: authed-no-agent short-circuited the router and forced
+    // focusedRoomId=null, pairing with the AgentGateModal block. Human-first
+    // drops that short-circuit so users without an Agent can still navigate
+    // /chats/messages, /chats/explore, /chats/contacts etc. as their Human
+    // identity.
 
     const tab = pathnameParts[1];
     const subtab = pathnameParts[2];
@@ -218,7 +223,7 @@ export default function DashboardApp() {
 
       if (
         tab === "contacts"
-        && (subtab === "agents" || subtab === "requests" || subtab === "rooms")
+        && (subtab === "agents" || subtab === "requests" || subtab === "rooms" || subtab === "created")
         && uiStore.contactsView !== subtab
       ) {
         uiStore.setContactsView(subtab);
@@ -443,6 +448,16 @@ export default function DashboardApp() {
             roomId: realtimeEvent.room_id,
             hubMsgId: realtimeEvent.hub_msg_id,
           });
+          if (realtimeEvent.type === "presence") {
+            const ext = realtimeEvent.ext || {};
+            const subject = typeof ext.subject_agent_id === "string" ? ext.subject_agent_id : null;
+            const online = Boolean(ext.online);
+            if (subject) {
+              const ts = realtimeEvent.created_at ? new Date(realtimeEvent.created_at).getTime() : Date.now();
+              usePresenceStore.getState().setOnline(subject, online, Number.isFinite(ts) ? ts : Date.now());
+            }
+            return;
+          }
           chatStore.applyRealtimeEventHint(realtimeEvent);
           if (!isOpenedRoomEvent) {
             unreadStore.applyRealtimeEvent(realtimeEvent);

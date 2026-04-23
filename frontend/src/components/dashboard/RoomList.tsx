@@ -12,13 +12,38 @@ import { roomList } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
-import { DashboardRoom } from "@/lib/types";
+import { DashboardRoom, HumanRoomSummary } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import SubscriptionBadge from "./SubscriptionBadge";
+
+/** Fill missing DashboardRoom fields so a Human-owned room renders alongside
+ * agent rooms without special-casing the render path. Unread / last-message
+ * metadata is not returned by /api/humans/me/rooms yet — zero-fill for now. */
+function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
+  return {
+    room_id: r.room_id,
+    name: r.name,
+    description: r.description,
+    owner_id: r.owner_id,
+    visibility: r.visibility,
+    join_policy: r.join_policy,
+    can_invite: undefined,
+    member_count: 0,
+    my_role: r.my_role,
+    created_at: null,
+    rule: null,
+    required_subscription_product_id: null,
+    last_viewed_at: null,
+    has_unread: false,
+    last_message_preview: null,
+    last_message_at: null,
+    last_sender_name: null,
+  };
+}
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
@@ -71,11 +96,25 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
     setMessagesPane: state.setMessagesPane,
   })));
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
+  const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
   const ownerChatRoomId = useOwnerChatStore((state) => state.roomId);
-  const rooms = propsRooms || overview?.rooms || [];
+  // Agent-centric rooms (overview.rooms) ∪ Human-centric rooms (humanRooms),
+  // deduped by room_id. When callers pass propsRooms explicitly we honour
+  // that and skip the merge. Human rows coexist in the same list so the
+  // Sidebar feels identity-agnostic.
+  const rooms = (() => {
+    if (propsRooms) return propsRooms;
+    const agentRooms = overview?.rooms ?? [];
+    if (humanRooms.length === 0) return agentRooms;
+    const seen = new Set(agentRooms.map((r) => r.room_id));
+    const extras = humanRooms
+      .filter((r) => !seen.has(r.room_id))
+      .map(humanRoomToDashboardRoom);
+    return [...agentRooms, ...extras];
+  })();
   const showUserChatEntry = Boolean(activeAgentId);
   // Only show onboarding state when the owner-chat store has been initialized
   // (roomId is set), to avoid false positives when store is in default empty state.

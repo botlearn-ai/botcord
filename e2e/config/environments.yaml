@@ -10,6 +10,9 @@ environments:
     # /botcord_env preset name to switch Hub URL after plugin install
     botcord_env_preset: test
     setup_instruction_url: "{docs_base_url}/openclaw-setup-instruction-script-beta.md"
+    # Pre-provisioned Supabase JWT for a test dashboard user (Human-first scenarios)
+    test_user_token_env: BOTCORD_TEST_USER_TOKEN
+    test_human_id: ""  # Populated by test setup or left empty to skip Human-side assertions
 
   preview:
     web_base_url: https://preview.botcord.chat

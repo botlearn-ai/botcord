@@ -29,6 +29,7 @@ from hub.enums import TopicStatus
 from hub.id_generators import generate_hub_msg_id, generate_topic_id
 from hub.models import (
     Agent,
+    AgentApprovalQueue,
     Block,
     Contact,
     ContactRequest,
@@ -45,6 +46,7 @@ from hub.models import (
     Topic,
     User,
 )
+from hub.enums import ApprovalKind, ApprovalState
 from hub.forward import (
     RoomContext as _RoomContext,
     build_flat_text as _build_flat_text,
@@ -231,6 +233,61 @@ async def _publish_agent_realtime_event(
             exc,
             exc_info=True,
         )
+
+
+async def _collect_presence_observers(
+    db: AsyncSession, agent_id: str
+) -> set[str]:
+    """Return agent_ids who should be notified when `agent_id` goes on/offline.
+
+    Observers = contacts (owners who have this agent as contact) + co-members
+    of any shared room. The agent itself is excluded.
+    """
+    observers: set[str] = set()
+
+    contact_rows = await db.execute(
+        select(Contact.owner_id).where(Contact.contact_agent_id == agent_id)
+    )
+    observers.update(contact_rows.scalars().all())
+
+    room_ids_stmt = select(RoomMember.room_id).where(RoomMember.agent_id == agent_id)
+    comember_rows = await db.execute(
+        select(RoomMember.agent_id).where(RoomMember.room_id.in_(room_ids_stmt))
+    )
+    observers.update(comember_rows.scalars().all())
+
+    observers.discard(agent_id)
+    return observers
+
+
+async def broadcast_presence(agent_id: str, online: bool) -> None:
+    """Fan out a presence event to the agent + all observers (contacts, co-members)."""
+    from hub.database import async_session
+
+    event_time = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        async with async_session() as db:
+            observers = await _collect_presence_observers(db, agent_id)
+            targets = observers | {agent_id}
+            for target in targets:
+                event = build_agent_realtime_event(
+                    type="presence",
+                    agent_id=target,
+                    ext={
+                        "subject_agent_id": agent_id,
+                        "online": online,
+                    },
+                    created_at=event_time,
+                )
+                try:
+                    await _publish_agent_realtime_event(db, event)
+                except Exception as exc:
+                    logger.warning(
+                        "presence publish failed subject=%s target=%s err=%s",
+                        agent_id, target, exc,
+                    )
+    except Exception as exc:
+        logger.error("broadcast_presence failed subject=%s err=%s", agent_id, exc, exc_info=True)
 
 
 async def notify_inbox(
@@ -562,14 +619,34 @@ async def _send_direct_message(
             elif existing_req.state == ContactRequestState.accepted:
                 raise I18nHTTPException(status_code=409, message_key="contact_request_already_accepted")
         else:
-            cr = ContactRequest(
-                from_agent_id=envelope.from_,
-                to_agent_id=envelope.to,
-                state=ContactRequestState.pending,
-                message=envelope.payload.get("message"),
+            # Check if target agent is claimed; if so, queue for owner approval
+            target_agent_result = await db.execute(
+                select(Agent).where(Agent.agent_id == envelope.to)
             )
-            db.add(cr)
-            await db.flush()
+            target_agent = target_agent_result.scalar_one_or_none()
+            if target_agent is not None and target_agent.user_id is not None:
+                import json as _json
+                db.add(AgentApprovalQueue(
+                    agent_id=envelope.to,
+                    owner_user_id=target_agent.user_id,
+                    kind=ApprovalKind.contact_request,
+                    payload_json=_json.dumps({
+                        "from_participant_id": envelope.from_,
+                        "message": envelope.payload.get("message"),
+                        "msg_id": envelope.msg_id,
+                    }),
+                    state=ApprovalState.pending,
+                ))
+                await db.flush()
+            else:
+                cr = ContactRequest(
+                    from_agent_id=envelope.from_,
+                    to_agent_id=envelope.to,
+                    state=ContactRequestState.pending,
+                    message=envelope.payload.get("message"),
+                )
+                db.add(cr)
+                await db.flush()
 
     # Resolve room_id: contact_request messages don't create a DM room
     room_id: str | None = None
@@ -1758,9 +1835,13 @@ async def websocket_inbox(ws: WebSocket):
         logger.info("WebSocket connected: agent=%s plugin_version=%s", agent_id, plugin_version)
 
         # --- Register this connection ---
+        was_offline = agent_id not in _ws_connections or not _ws_connections[agent_id]
         if agent_id not in _ws_connections:
             _ws_connections[agent_id] = set()
         _ws_connections[agent_id].add(ws)
+        # Edge: offline -> online, fan out presence
+        if was_offline:
+            asyncio.create_task(broadcast_presence(agent_id, True))
 
         # --- Main loop: heartbeat + listen for client messages ---
         # Track consecutive heartbeats without any client response to detect
@@ -1798,7 +1879,11 @@ async def websocket_inbox(ws: WebSocket):
         # --- Cleanup ---
         if agent_id:
             ws_set = _ws_connections.get(agent_id)
+            went_offline = False
             if ws_set:
                 ws_set.discard(ws)
                 if not ws_set:
                     _ws_connections.pop(agent_id, None)
+                    went_offline = True
+            if went_offline:
+                asyncio.create_task(broadcast_presence(agent_id, False))

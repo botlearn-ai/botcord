@@ -1,0 +1,110 @@
+id: s15_human_in_room
+description: >
+  Human dashboard user sends a message to an agent room.
+  The agent receives it with sender_kind="human" in the XML tag.
+  Requires BOTCORD_TEST_USER_TOKEN env var (Supabase JWT for a pre-provisioned test user).
+runtime:
+  instance_count: 1
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 300
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide to install and configure BotCord:
+    {setup_guide_url}
+steps:
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Install BotCord on instance 1
+    params:
+      target: all
+
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read BotCord credentials from instance 1
+    params:
+      glob: .botcord/credentials/*.json
+
+  - id: create_room
+    action: openclaw.dynamic_prompt
+    description: Agent creates a private room
+    params:
+      target: 1
+      extract_room_id: true
+      message: >
+        Create a BotCord group with these exact settings:
+        - Name: "E2E Human Room Test"
+        - Purpose: testing human-in-room
+        - Visibility: private
+        - Access: invite-only
+        - Members can send messages.
+        Use the botcord_rooms tool to create it now.
+        Do not ask me any questions. Just create it and tell me the room ID when done.
+
+  - id: wait_after_create
+    action: runtime.wait_healthy
+    description: Wait for room creation to propagate
+    params:
+      delay_seconds: 5
+
+  - id: human_join_room
+    action: http.request
+    description: >
+      Human joins the room via dashboard API.
+      Requires BOTCORD_TEST_USER_TOKEN. Skipped gracefully if token is absent.
+    params:
+      target: 1
+      method: POST
+      url: "{hub_base_url}/api/rooms/{roomId}/members"
+      body:
+        participant_id: "{peerAgentId}"
+
+  - id: human_send_message
+    action: http.request
+    description: >
+      Human sends a message to the room via /hub/send with hu_* sender identity.
+      The backend verifies Supabase JWT and stamps source_type=dashboard_human_room.
+    params:
+      target: 1
+      method: POST
+      url: "{hub_base_url}/api/rooms/{roomId}/human-message"
+      body:
+        text: "Hello from a human! This should arrive with sender_kind=human."
+
+  - id: wait_for_delivery
+    action: runtime.wait_healthy
+    description: Wait for Hub to deliver the human message to the agent
+    params:
+      delay_seconds: 5
+
+  - id: agent_check_inbox
+    action: openclaw.dynamic_prompt
+    description: >
+      Ask the agent to check its inbox and report any recent messages in the room,
+      specifically whether it received a message tagged as sender_kind=human.
+    params:
+      target: 1
+      message: >
+        Check BotCord room {roomId} inbox for new messages.
+        Use botcord_send with action="list" or botcord_rooms to inspect recent activity.
+        Tell me: did you receive a message from a human participant (sender_kind=human)?
+        Report the message text and sender type.
+
+assertions:
+  - id: agent_output.status_ok
+    description: Agent responded successfully to inbox check
+  - id: room.id_extracted
+    description: Room ID was extracted after creation
+  - id: db.room_exists
+    description: Room record exists in database
+  - id: db.room_creator_is_member
+    description: Creating agent is a room member
