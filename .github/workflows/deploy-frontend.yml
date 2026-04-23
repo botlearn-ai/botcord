@@ -54,6 +54,7 @@ jobs:
         run: pnpm add -g vercel@latest
 
       - name: Pull Vercel env
+        working-directory: ${{ github.workspace }}
         run: |
           ENV_FLAG="preview"
           if [ "${{ inputs.env_name }}" = "prod" ]; then ENV_FLAG="production"; fi
@@ -72,6 +73,7 @@ jobs:
             nextjs-${{ inputs.env_name }}-${{ runner.os }}-
 
       - name: Vercel build
+        working-directory: ${{ github.workspace }}
         run: |
           if [ "${{ inputs.env_name }}" = "prod" ]; then
             vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
@@ -84,6 +86,7 @@ jobs:
 
       - name: Vercel deploy
         id: deploy
+        working-directory: ${{ github.workspace }}
         run: |
           if [ "${{ inputs.env_name }}" = "prod" ]; then
             URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
@@ -98,6 +101,7 @@ jobs:
 
       - name: Alias deployment
         if: inputs.alias != ''
+        working-directory: ${{ github.workspace }}
         run: |
           vercel alias ${{ steps.deploy.outputs.deploy_url }} ${{ inputs.alias }} --token=${{ secrets.VERCEL_TOKEN }}
           echo "✅ Aliased to ${{ inputs.alias }}"
