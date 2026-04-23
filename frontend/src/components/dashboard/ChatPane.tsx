@@ -589,9 +589,10 @@ export default function ChatPane() {
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const { sessionMode, token } = useDashboardSessionStore(useShallow((state) => ({
+  const { sessionMode, token, humanRooms } = useDashboardSessionStore(useShallow((state) => ({
     sessionMode: state.sessionMode,
     token: state.token,
+    humanRooms: state.humanRooms,
   })));
   const { sidebarTab, focusedRoomId, openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     sidebarTab: state.sidebarTab,
@@ -609,6 +610,7 @@ export default function ChatPane() {
   );
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
+  const isAuthedHuman = sessionMode === "authed-no-agent";
   const showLoginModal = () => router.push("/login");
 
   if (sidebarTab === "explore") {
@@ -657,7 +659,10 @@ export default function ChatPane() {
   }
 
   const openedRoom = openedRoomId ? getRoomSummary(openedRoomId) : null;
-  const isJoinedRoom = Boolean(overview?.rooms.find((r) => r.room_id === openedRoomId));
+  const isJoinedRoom = Boolean(
+    overview?.rooms.find((r) => r.room_id === openedRoomId) ||
+    humanRooms.find((r) => r.room_id === openedRoomId),
+  );
   const isPaidRoom = Boolean(openedRoom?.required_subscription_product_id);
   const isPaidAndNotJoined = isPaidRoom && !isJoinedRoom;
   const loginHref = openedRoom ? `/login?next=${encodeURIComponent(`/chats/messages/${openedRoom.room_id}`)}` : "/login";
@@ -709,7 +714,7 @@ export default function ChatPane() {
                   {t.loginToParticipate}
                 </button>
               </div>
-            ) : isAuthedReady && isJoinedRoom && openedRoomId ? (
+            ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId ? (
               <RoomHumanComposer roomId={openedRoomId} />
             ) : (
               <p className="text-center text-xs text-text-secondary/50">{t.readOnlyView}</p>
