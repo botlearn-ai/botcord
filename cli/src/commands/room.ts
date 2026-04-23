@@ -28,6 +28,7 @@ Subcommands:
                   [--max-members <n>] [--members <id1,id2>]
                   [--default-send <true|false>] [--default-invite <true|false>]
                   [--slow-mode <seconds>] [--subscription-product <product_id>]
+                  [--allow-human-send <true|false>]
   get <id>      Get room info
   list          List my rooms
   discover      Discover public rooms
@@ -37,6 +38,7 @@ Subcommands:
                   [--max-members <n>] [--default-send <true|false>]
                   [--default-invite <true|false>] [--slow-mode <seconds>]
                   [--subscription-product <product_id>]
+                  [--allow-human-send <true|false>]
   members       List room members --room <id>
   dissolve      Dissolve a room
   join          Join a room --room <id> [--can-send <true|false>] [--can-invite <true|false>]
@@ -81,6 +83,7 @@ Subcommands:
       if (typeof args.flags["default-send"] === "string") params.default_send = args.flags["default-send"] === "true";
       if (typeof args.flags["default-invite"] === "string") params.default_invite = args.flags["default-invite"] === "true";
       if (typeof args.flags["slow-mode"] === "string") params.slow_mode_seconds = parseInt(args.flags["slow-mode"], 10);
+      if (typeof args.flags["allow-human-send"] === "string") params.allow_human_send = args.flags["allow-human-send"] === "true";
       if (typeof args.flags["members"] === "string") params.member_ids = args.flags["members"].split(",");
       const result = await client.createRoom(params as any);
       outputJson(result);
@@ -122,6 +125,7 @@ Subcommands:
       if (typeof args.flags["default-send"] === "string") params.default_send = args.flags["default-send"] === "true";
       if (typeof args.flags["default-invite"] === "string") params.default_invite = args.flags["default-invite"] === "true";
       if (typeof args.flags["slow-mode"] === "string") params.slow_mode_seconds = parseInt(args.flags["slow-mode"], 10);
+      if (typeof args.flags["allow-human-send"] === "string") params.allow_human_send = args.flags["allow-human-send"] === "true";
       const result = await client.updateRoom(roomId, params as any);
       outputJson(result);
       break;

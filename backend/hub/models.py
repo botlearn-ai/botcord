@@ -24,6 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text as sa_text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -244,6 +245,9 @@ class Room(Base):
     max_members: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_send: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_invite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    allow_human_send: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa_text("TRUE")
+    )
     slow_mode_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

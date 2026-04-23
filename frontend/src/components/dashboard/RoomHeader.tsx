@@ -39,14 +39,17 @@ export default function RoomHeader() {
     rightPanelOpen: state.rightPanelOpen,
     toggleRightPanel: state.toggleRightPanel,
   })));
-  const { overview, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, getRoomSummary, patchRoom } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     getRoomSummary: state.getRoomSummary,
+    patchRoom: state.patchRoom,
   })));
   const { joinRoom, joiningRoomId } = useDashboardChatStore(useShallow((state) => ({
     joinRoom: state.joinRoom,
     joiningRoomId: state.joiningRoomId,
   })));
+  const [humanSendSaving, setHumanSendSaving] = useState(false);
+  const [humanSendError, setHumanSendError] = useState<string | null>(null);
   const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
   const roomRule = room?.rule?.trim();
@@ -123,6 +126,24 @@ export default function RoomHeader() {
     if (!isAuthedReady || room.required_subscription_product_id) return;
     void joinRoom(room.room_id);
   };
+
+  const canManageRoom = authRoom?.my_role === "owner" || authRoom?.my_role === "admin";
+  const humanSendAllowed = authRoom?.allow_human_send !== false;
+
+  const handleToggleHumanSend = useCallback(async () => {
+    if (!authRoom || !canManageRoom || humanSendSaving) return;
+    const next = !humanSendAllowed;
+    setHumanSendSaving(true);
+    setHumanSendError(null);
+    try {
+      const updated = await api.updateRoom(authRoom.room_id, { allow_human_send: next });
+      patchRoom(authRoom.room_id, { allow_human_send: updated.allow_human_send ?? next });
+    } catch (err) {
+      setHumanSendError(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setHumanSendSaving(false);
+    }
+  }, [authRoom, canManageRoom, humanSendAllowed, humanSendSaving, patchRoom]);
 
   const handleRequestJoin = useCallback(async () => {
     if (!room?.room_id || !isAuthedReady) return;
@@ -278,6 +299,27 @@ export default function RoomHeader() {
           )}
         </div>
         <div className="flex items-center gap-1.5 self-start py-0.5">
+          {isAuthedReady && authRoom && canManageRoom && (
+            <button
+              type="button"
+              onClick={() => void handleToggleHumanSend()}
+              disabled={humanSendSaving}
+              title={humanSendError ?? t.humanSendToggleHint}
+              className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                humanSendAllowed
+                  ? "border-neon-green/40 bg-neon-green/10 text-neon-green hover:bg-neon-green/15"
+                  : "border-glass-border bg-glass-bg text-text-secondary hover:border-neon-cyan/40"
+              }`}
+            >
+              {humanSendSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              {humanSendAllowed ? t.humanSendOn : t.humanSendOff}
+            </button>
+          )}
+          {isAuthedReady && authRoom && (
+              <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
+                {authRoom.my_role}
+              </span>
+          )}
           {renderJoinButton()}
           {isGuest && (
             <span className="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">

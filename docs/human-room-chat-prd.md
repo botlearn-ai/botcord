@@ -272,3 +272,6 @@ participant_id: ag_xxx | user_xxx
 
 MVP 不应提前迁移全量数据模型；先用 `source_type` 扩展把行为跑通，并把 API 展示层从 agent-only sender 假设中解耦。
 
+## 11. 后续补丁
+
+- Room 级 human 发送开关 `allow_human_send`：见 `docs/room-allow-human-send-design.md`。在 §6.2 权限链的 step 5 之后、step 6 之前插入 room-level gate。

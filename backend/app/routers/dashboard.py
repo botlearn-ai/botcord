@@ -80,9 +80,11 @@ class UpdateRoomSettingsBody(BaseModel):
     join_policy: str | None = None
     default_send: bool | None = None
     default_invite: bool | None = None
+    allow_human_send: bool | None = None
     max_members: int | None = None
     slow_mode_seconds: int | None = None
     required_subscription_product_id: str | None = None
+
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +322,7 @@ async def _build_rooms_from_membership(
             "member_count": member_counts.get(rid, 0),
             "my_role": my_role,
             "can_invite": computed_can_invite,
+            "allow_human_send": room.allow_human_send,
             "last_message_preview": last_preview,
             "last_message_at": last_at.isoformat() if last_at else None,
             "last_sender_name": last_sender,
@@ -736,6 +739,7 @@ async def get_shared_rooms(
                 "owner_id": r.owner_id,
                 "visibility": r.visibility.value if hasattr(r.visibility, "value") else str(r.visibility),
                 "member_count": member_counts.get(r.room_id, 0),
+                "allow_human_send": r.allow_human_send,
             }
             for r in rooms
         ],
@@ -791,6 +795,7 @@ async def discover_rooms(
                 "join_policy": r.join_policy.value if hasattr(r.join_policy, "value") else str(r.join_policy),
                 "max_members": r.max_members,
                 "member_count": int(mc),
+                "allow_human_send": r.allow_human_send,
             }
             for r, mc in rows
         ],
@@ -860,6 +865,7 @@ async def join_room(
         "my_role": "member",
         "rule": room.rule,
         "required_subscription_product_id": room.required_subscription_product_id,
+        "allow_human_send": room.allow_human_send,
     }
 
 
@@ -930,6 +936,8 @@ async def update_room_settings(
         room.default_send = body.default_send
     if "default_invite" in fields_set and body.default_invite is not None:
         room.default_invite = body.default_invite
+    if "allow_human_send" in fields_set and body.allow_human_send is not None:
+        room.allow_human_send = body.allow_human_send
     if "max_members" in fields_set:
         if body.max_members is not None and body.max_members < 1:
             raise HTTPException(status_code=400, detail="max_members must be >= 1")
@@ -953,6 +961,7 @@ async def update_room_settings(
         "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
         "default_send": room.default_send,
         "default_invite": room.default_invite,
+        "allow_human_send": room.allow_human_send,
         "max_members": room.max_members,
         "slow_mode_seconds": room.slow_mode_seconds,
         "required_subscription_product_id": room.required_subscription_product_id,
@@ -1485,6 +1494,10 @@ async def human_room_send(
     if active_member is None:
         raise HTTPException(status_code=403, detail="Active agent is not a room member")
 
+    # Room-level human send gate (step 5.5)
+    if not room.allow_human_send:
+        raise HTTPException(status_code=403, detail="Human send disabled for this room")
+
     # _can_send (step 6)
     if not _room_can_send(room, active_member):
         raise HTTPException(status_code=403, detail="Active agent cannot send in this room")
@@ -1498,14 +1511,34 @@ async def human_room_send(
         raise
     _record_slow_mode_send(room_id, active_agent_id)
 
+    # Normalize mentions. Owner-chat rooms (rm_oc_) ignore mentions entirely.
+    # Human sends may only mention specific agent_ids — "@all" is not allowed
+    # here; any non-"ag_" string is dropped. Cap at 20 to avoid abuse.
+    raw_mentions = body.mentions or []
+    if room_id.startswith("rm_oc_"):
+        raw_mentions = []
+    if len(raw_mentions) > 20:
+        raise HTTPException(status_code=400, detail="Too many mentions (max 20)")
+    normalized_mentions: list[str] = []
+    seen_mentions: set[str] = set()
+    for m in raw_mentions:
+        if not isinstance(m, str) or not m.startswith("ag_") or m in seen_mentions:
+            continue
+        seen_mentions.add(m)
+        normalized_mentions.append(m)
+
     # Load all room members
     members_result = await db.execute(
         select(RoomMember).where(RoomMember.room_id == room_id)
     )
     all_members = list(members_result.scalars().all())
 
-    # Block check anchored on active_agent_id
+    # Drop mentions that aren't actually room members
     member_ids = {m.agent_id for m in all_members}
+    normalized_mentions = [m for m in normalized_mentions if m in member_ids]
+    mentioned_set: set[str] = set(normalized_mentions)
+
+    # Block check anchored on active_agent_id
     blocked_by: set[str] = set()
     if member_ids:
         block_result = await db.execute(
@@ -1540,6 +1573,7 @@ async def human_room_send(
         "payload": payload,
         "payload_hash": "",
         "sig": {"alg": "ed25519", "key_id": "dashboard-human", "value": ""},
+        "mentions": normalized_mentions or None,
     }
     envelope_json = json.dumps(envelope_data)
 
@@ -1560,7 +1594,7 @@ async def human_room_send(
             state=MessageState.queued,
             envelope_json=envelope_json,
             ttl_sec=3600,
-            mentioned=False,
+            mentioned=receiver_id in mentioned_set,
             source_type="dashboard_human_room",
             source_user_id=source_user_id_str,
             source_session_kind="room_human",
@@ -1601,6 +1635,9 @@ async def human_room_send(
                 hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
                 payload=payload,
                 sender_name=user_display_name,
+                source_type="dashboard_human_room",
+                source_user_id=source_user_id_str,
+                source_user_name=user_display_name,
             )
             await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
         except Exception as exc:

@@ -660,10 +660,10 @@ export default function ChatPane() {
   }
 
   const openedRoom = openedRoomId ? getRoomSummary(openedRoomId) : null;
-  const isJoinedRoom = Boolean(
-    overview?.rooms.find((r) => r.room_id === openedRoomId) ||
-    humanRooms.find((r) => r.room_id === openedRoomId),
-  );
+  const joinedRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
+  const joinedHumanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
+  const isJoinedRoom = Boolean(joinedRoom || joinedHumanRoom);
+  const humanSendAllowed = joinedRoom?.allow_human_send !== false;
   const isPaidRoom = Boolean(openedRoom?.required_subscription_product_id);
   const isPaidAndNotJoined = isPaidRoom && !isJoinedRoom;
   const loginHref = openedRoom ? `/login?next=${encodeURIComponent(`/chats/messages/${openedRoom.room_id}`)}` : "/login";
@@ -715,8 +715,10 @@ export default function ChatPane() {
                   {t.loginToParticipate}
                 </button>
               </div>
-            ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId ? (
+            ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId && humanSendAllowed ? (
               <RoomHumanComposer roomId={openedRoomId} />
+            ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && !humanSendAllowed ? (
+              <p className="text-center text-xs text-text-secondary/50">{t.humanSendDisabled}</p>
             ) : (
               <p className="text-center text-xs text-text-secondary/50">{t.readOnlyView}</p>
             )}

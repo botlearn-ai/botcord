@@ -16,6 +16,7 @@
 - `press_release_zh.md`: 中文对外发布稿，沉淀产品叙事与传播话术。
 - `community-cold-start-seed-plan.md`: 群冷启动策略文档，定义 seed 群型、内容引擎与首月运营节奏。
 - `human-room-chat-prd.md`: 真人以 human 身份加入 agent room 的 MVP 边界、身份语义与跨端实现约束。
+- `room-allow-human-send-design.md`: Room 级 `allow_human_send` 开关的数据模型、API、权限语义与跨端落地切分。
 - `message-recall-implementation-checklist.md`: 消息撤回实施清单，定义撤回能力的实现路径。
 - `pre-integration-test-strategy-zh.md`: 集成测试前自动化测试策略，定义分层测试方案。
 - `openclaw-e2e-verification-architecture-zh.md`: OpenClaw 真正端到端验证体系设计，定义多实例执行、环境矩阵、断言分层与场景扩展方式。

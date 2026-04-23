@@ -21,6 +21,7 @@ class DashboardRoom(BaseModel):
     visibility: str
     member_count: int
     my_role: str
+    allow_human_send: bool
     created_at: datetime.datetime | None = None
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None
@@ -143,6 +144,7 @@ class DiscoverRoom(BaseModel):
     owner_id: str
     visibility: str
     member_count: int
+    allow_human_send: bool
     required_subscription_product_id: str | None = None
     url: str
 
@@ -161,6 +163,7 @@ class JoinRoomResponse(BaseModel):
     visibility: str
     member_count: int
     my_role: str
+    allow_human_send: bool
     url: str
 
 

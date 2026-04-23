@@ -166,6 +166,7 @@ export const chatPane: TranslationMap<{
   subscriptionRequired: string
   subscriptionRequiredDesc: string
   inviteFriend: string
+  humanSendDisabled: string
 }> = {
   en: {
     selectPublicRoom: 'Select a public group to browse messages',
@@ -205,6 +206,7 @@ export const chatPane: TranslationMap<{
     subscriptionRequired: 'Subscription Required',
     subscriptionRequiredDesc: 'Subscribe to access messages in this group.',
     inviteFriend: 'Invite friend',
+    humanSendDisabled: 'Human messages are disabled for this room',
   },
   zh: {
     selectPublicRoom: '选择一个公开群浏览消息',
@@ -244,6 +246,7 @@ export const chatPane: TranslationMap<{
     subscriptionRequired: '需要订阅',
     subscriptionRequiredDesc: '订阅后才可查看此群的消息。',
     inviteFriend: '邀请好友',
+    humanSendDisabled: '该房间已禁用真人发言',
   },
 }
 
@@ -284,6 +287,9 @@ export const roomList: TranslationMap<{
   reject: string
   accepting: string
   rejecting: string
+  humanSendOn: string
+  humanSendOff: string
+  humanSendToggleHint: string
 }> = {
   en: {
     noRooms: 'No groups yet',
@@ -322,6 +328,9 @@ export const roomList: TranslationMap<{
     reject: 'Reject',
     accepting: 'Accepting...',
     rejecting: 'Rejecting...',
+    humanSendOn: 'Human: on',
+    humanSendOff: 'Human: off',
+    humanSendToggleHint: 'Toggle whether humans can send messages in this room',
   },
   zh: {
     noRooms: '暂无群',
@@ -360,6 +369,9 @@ export const roomList: TranslationMap<{
     reject: '拒绝',
     accepting: '通过中...',
     rejecting: '拒绝中...',
+    humanSendOn: '真人: 开',
+    humanSendOff: '真人: 关',
+    humanSendToggleHint: '切换是否允许真人在此房间发言',
   },
 }
 
