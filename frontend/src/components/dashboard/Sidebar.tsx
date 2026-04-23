@@ -189,6 +189,7 @@ export default function Sidebar() {
     activeAgentId: state.activeAgentId,
     sessionMode: state.sessionMode,
     token: state.token,
+    humanRooms: state.humanRooms,
     refreshUserProfile: state.refreshUserProfile,
     removeAgent: state.removeAgent,
     logout: state.logout,
@@ -282,8 +283,9 @@ export default function Sidebar() {
       overview: chatStore.overview,
       recentVisitedRooms: chatStore.recentVisitedRooms,
       token: sessionStore.token,
+      humanRooms: sessionStore.humanRooms,
     }),
-    [chatStore.overview, chatStore.recentVisitedRooms, sessionStore.token],
+    [chatStore.overview, chatStore.recentVisitedRooms, sessionStore.token, sessionStore.humanRooms],
   );
   const showOverviewSkeleton =
     sessionStore.sessionMode === "authed-ready" && !chatStore.overview && uiStore.sidebarTab === "messages";
