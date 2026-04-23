@@ -341,7 +341,12 @@ export default function DashboardApp() {
       subscriptionBoundAgentRef.current = sessionStore.activeAgentId;
       subscriptionStore.resetSubscriptionState();
     }
-    if (!chatStore.overview && !chatStore.overviewRefreshing && uiStore.sidebarTab !== "wallet") {
+    if (
+      !chatStore.overview
+      && !chatStore.overviewRefreshing
+      && !chatStore.overviewErrored
+      && uiStore.sidebarTab !== "wallet"
+    ) {
       void chatStore.refreshOverview();
     }
   }, [
@@ -353,6 +358,7 @@ export default function DashboardApp() {
     uiStore.resetUIState,
     chatStore.overview,
     chatStore.overviewRefreshing,
+    chatStore.overviewErrored,
     chatStore.resetChatState,
     chatStore.refreshOverview,
     unreadStore.resetUnreadState,
@@ -365,7 +371,7 @@ export default function DashboardApp() {
   useEffect(() => {
     if (!sessionStore.authResolved || sessionStore.sessionMode !== "authed-ready") return;
     if (uiStore.sidebarTab === "wallet" || uiStore.sidebarTab === "activity") return;
-    if (chatStore.overview || chatStore.overviewRefreshing) return;
+    if (chatStore.overview || chatStore.overviewRefreshing || chatStore.overviewErrored) return;
     void chatStore.refreshOverview();
   }, [
     sessionStore.authResolved,
@@ -373,6 +379,7 @@ export default function DashboardApp() {
     uiStore.sidebarTab,
     chatStore.overview,
     chatStore.overviewRefreshing,
+    chatStore.overviewErrored,
     chatStore.refreshOverview,
   ]);
 

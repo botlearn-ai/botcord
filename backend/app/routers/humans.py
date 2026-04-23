@@ -101,6 +101,41 @@ class HumanContactListResponse(BaseModel):
     contacts: list[HumanContactSummary]
 
 
+class AddRoomMemberBody(BaseModel):
+    participant_id: str = Field(..., min_length=1, max_length=32)
+    role: Literal["member", "admin"] = "member"
+
+
+class HumanRoomMemberResponse(BaseModel):
+    room_id: str
+    participant_id: str
+    participant_type: Literal["agent", "human"]
+    role: Literal["owner", "admin", "member"]
+    joined_at: int
+
+
+class HumanContactRequestSummary(BaseModel):
+    id: str
+    from_participant_id: str
+    from_type: Literal["agent", "human"]
+    from_display_name: str | None
+    to_participant_id: str
+    to_type: Literal["agent", "human"]
+    to_display_name: str | None
+    state: Literal["pending", "accepted", "rejected"]
+    message: str | None
+    created_at: int
+
+
+class HumanContactRequestListResponse(BaseModel):
+    requests: list[HumanContactRequestSummary]
+
+
+class HumanContactRequestResolveResponse(BaseModel):
+    id: str
+    state: Literal["accepted", "rejected"]
+
+
 class ContactRequestBody(BaseModel):
     peer_id: str = Field(..., min_length=1, max_length=32)
     message: str | None = Field(default=None, max_length=500)
@@ -273,14 +308,42 @@ async def create_human_room(
 
     normalized_rule = body.rule.strip() if body.rule else None
     unique_member_ids = [m for m in dict.fromkeys(body.member_ids) if m and m != me]
+
+    # Classify every member id by prefix. Anything other than ag_ / hu_
+    # is a client error. The creator's own hu_ id (== me) was filtered above,
+    # but a caller could still provide another hu_ id.
+    member_types: dict[str, ParticipantType] = {}
+    for mid in unique_member_ids:
+        if mid.startswith("ag_"):
+            member_types[mid] = ParticipantType.agent
+        elif mid.startswith("hu_"):
+            member_types[mid] = ParticipantType.human
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="member_ids must be prefixed with ag_ or hu_",
+            )
+
     if body.max_members is not None and len(unique_member_ids) + 1 > body.max_members:
         raise HTTPException(status_code=400, detail="initial_members_exceed_max")
-    if unique_member_ids:
+
+    agent_member_ids = [m for m, t in member_types.items() if t == ParticipantType.agent]
+    human_member_ids = [m for m, t in member_types.items() if t == ParticipantType.human]
+
+    if agent_member_ids:
         result = await db.execute(
-            select(Agent.agent_id).where(Agent.agent_id.in_(unique_member_ids))
+            select(Agent.agent_id).where(Agent.agent_id.in_(agent_member_ids))
         )
         found = {row[0] for row in result.all()}
-        missing = set(unique_member_ids) - found
+        missing = set(agent_member_ids) - found
+        if missing:
+            raise HTTPException(status_code=400, detail="member_ids_not_found")
+    if human_member_ids:
+        result = await db.execute(
+            select(User.human_id).where(User.human_id.in_(human_member_ids))
+        )
+        found = {row[0] for row in result.all()}
+        missing = set(human_member_ids) - found
         if missing:
             raise HTTPException(status_code=400, detail="member_ids_not_found")
 
@@ -314,7 +377,7 @@ async def create_human_room(
             RoomMember(
                 room_id=room.room_id,
                 agent_id=mid,
-                participant_type=ParticipantType.agent,
+                participant_type=member_types[mid],
                 role=RoomRole.member,
             )
         )
@@ -330,6 +393,113 @@ async def create_human_room(
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
         my_role=RoomRole.owner.value,
+    )
+
+
+@router.post(
+    "/me/rooms/{room_id}/members",
+    response_model=HumanRoomMemberResponse,
+    status_code=201,
+)
+async def invite_room_member_as_human(
+    room_id: str,
+    body: AddRoomMemberBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Human invites another participant (agent or human) into one of their rooms.
+
+    Authorisation: inviter must already be an owner or admin of the room. We
+    intentionally do NOT honour the softer ``default_invite`` policy here —
+    ordinary members invite via their Agent, not via the Human surface — and
+    always treat this call as an admin-side invite, matching the semantics of
+    ``hub/routers/room.py::add_member`` when called by an owner/admin.
+    """
+    user = await _load_human(db, ctx)
+    me = user.human_id
+
+    room_row = await db.execute(select(Room).where(Room.room_id == room_id))
+    room = room_row.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    inviter_row = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.participant_type == ParticipantType.human,
+            RoomMember.agent_id == me,
+        )
+    )
+    inviter = inviter_row.scalar_one_or_none()
+    if inviter is None or inviter.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the room owner or admin can invite via the Human surface",
+        )
+
+    participant_id = body.participant_id
+    participant_type = _split_prefix(participant_id)
+
+    # Reject obvious self-invites (owner already seated as a member).
+    if participant_type == ParticipantType.human and participant_id == me:
+        raise HTTPException(status_code=409, detail="Already a member")
+
+    # Verify the target exists in the appropriate registry.
+    if participant_type == ParticipantType.agent:
+        target = await db.execute(
+            select(Agent).where(Agent.agent_id == participant_id)
+        )
+        if target.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+    else:
+        target = await db.execute(
+            select(User).where(User.human_id == participant_id)
+        )
+        if target.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Human not found")
+
+    # Duplicate check — the unique constraint is (room_id, agent_id) but
+    # catching it up front yields a cleaner 409.
+    existing = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == participant_id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Already a member")
+
+    if room.max_members is not None:
+        current_count_row = await db.execute(
+            select(RoomMember).where(RoomMember.room_id == room_id)
+        )
+        current_count = len(list(current_count_row.scalars().all()))
+        if current_count >= room.max_members:
+            raise HTTPException(status_code=400, detail="room_is_full")
+
+    new_role = RoomRole.admin if body.role == "admin" else RoomRole.member
+    new_member = RoomMember(
+        room_id=room_id,
+        agent_id=participant_id,
+        participant_type=participant_type,
+        role=new_role,
+    )
+    try:
+        db.add(new_member)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Already a member")
+    await db.refresh(new_member)
+
+    return HumanRoomMemberResponse(
+        room_id=new_member.room_id,
+        participant_id=new_member.agent_id,
+        participant_type=new_member.participant_type.value
+        if hasattr(new_member.participant_type, "value")
+        else str(new_member.participant_type),
+        role=new_member.role.value if hasattr(new_member.role, "value") else str(new_member.role),
+        joined_at=_ts(new_member.joined_at),
     )
 
 
@@ -458,6 +628,217 @@ async def send_contact_request(
         return ContactRequestResponse(status="already_requested")
     await db.refresh(req)
     return ContactRequestResponse(status="requested", request_id=str(req.id))
+
+
+# ---------------------------------------------------------------------------
+# Contact request listing + accept/reject (Human side)
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_participant_display_name(
+    db: AsyncSession,
+    participant_id: str,
+    participant_type: ParticipantType,
+) -> str | None:
+    """Best-effort lookup of a participant's display_name.
+
+    Agents live in ``agents``; Humans live in ``public.users`` keyed by
+    ``human_id``. Returns ``None`` if the id doesn't resolve.
+    """
+    if participant_type == ParticipantType.agent:
+        row = await db.execute(
+            select(Agent.display_name).where(Agent.agent_id == participant_id)
+        )
+        return row.scalar_one_or_none()
+    row = await db.execute(
+        select(User.display_name).where(User.human_id == participant_id)
+    )
+    return row.scalar_one_or_none()
+
+
+async def _serialise_contact_requests(
+    db: AsyncSession,
+    rows: list[ContactRequest],
+) -> list[HumanContactRequestSummary]:
+    summaries: list[HumanContactRequestSummary] = []
+    for req in rows:
+        from_name = await _resolve_participant_display_name(db, req.from_agent_id, req.from_type)
+        to_name = await _resolve_participant_display_name(db, req.to_agent_id, req.to_type)
+        summaries.append(
+            HumanContactRequestSummary(
+                id=str(req.id),
+                from_participant_id=req.from_agent_id,
+                from_type=req.from_type.value
+                if hasattr(req.from_type, "value")
+                else str(req.from_type),
+                from_display_name=from_name,
+                to_participant_id=req.to_agent_id,
+                to_type=req.to_type.value
+                if hasattr(req.to_type, "value")
+                else str(req.to_type),
+                to_display_name=to_name,
+                state=req.state.value if hasattr(req.state, "value") else str(req.state),
+                message=req.message,
+                created_at=_ts(req.created_at),
+            )
+        )
+    return summaries
+
+
+@router.get(
+    "/me/contact-requests/received",
+    response_model=HumanContactRequestListResponse,
+)
+async def list_received_contact_requests(
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pending contact requests targeted at the active Human."""
+    user = await _load_human(db, ctx)
+    me = user.human_id
+    await db.commit()
+
+    result = await db.execute(
+        select(ContactRequest)
+        .where(
+            ContactRequest.to_type == ParticipantType.human,
+            ContactRequest.to_agent_id == me,
+            ContactRequest.state == ContactRequestState.pending,
+        )
+        .order_by(ContactRequest.created_at.desc())
+    )
+    rows = list(result.scalars().all())
+    requests = await _serialise_contact_requests(db, rows)
+    return HumanContactRequestListResponse(requests=requests)
+
+
+@router.get(
+    "/me/contact-requests/sent",
+    response_model=HumanContactRequestListResponse,
+)
+async def list_sent_contact_requests(
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Contact requests initiated by the active Human (all states)."""
+    user = await _load_human(db, ctx)
+    me = user.human_id
+    await db.commit()
+
+    result = await db.execute(
+        select(ContactRequest)
+        .where(
+            ContactRequest.from_type == ParticipantType.human,
+            ContactRequest.from_agent_id == me,
+        )
+        .order_by(ContactRequest.created_at.desc())
+    )
+    rows = list(result.scalars().all())
+    requests = await _serialise_contact_requests(db, rows)
+    return HumanContactRequestListResponse(requests=requests)
+
+
+@router.post(
+    "/me/contact-requests/{request_id}/accept",
+    response_model=HumanContactRequestResolveResponse,
+)
+async def accept_contact_request_as_human(
+    request_id: int,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Human accepts a received contact request → mutual Contact rows.
+
+    Idempotent for the ``accepted`` terminal state at the Contact level:
+    duplicate Contact rows are swallowed via IntegrityError. Any non-pending
+    state (already accepted/rejected) yields 409.
+    """
+    user = await _load_human(db, ctx)
+    me = user.human_id
+
+    result = await db.execute(
+        select(ContactRequest).where(ContactRequest.id == request_id)
+    )
+    req = result.scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Contact request not found")
+    if req.to_type != ParticipantType.human or req.to_agent_id != me:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the recipient Human can accept this request",
+        )
+    if req.state != ContactRequestState.pending:
+        raise HTTPException(status_code=409, detail="Request already resolved")
+
+    req.state = ContactRequestState.accepted
+    req.resolved_at = _now()
+
+    # Forward contact: to ← from
+    db.add(
+        Contact(
+            owner_id=req.to_agent_id,
+            owner_type=req.to_type,
+            contact_agent_id=req.from_agent_id,
+            peer_type=req.from_type,
+        )
+    )
+    # Mirror contact: from ← to
+    db.add(
+        Contact(
+            owner_id=req.from_agent_id,
+            owner_type=req.from_type,
+            contact_agent_id=req.to_agent_id,
+            peer_type=req.to_type,
+        )
+    )
+    try:
+        await db.commit()
+    except IntegrityError:
+        # One or both Contact rows already exist — finalise state-only.
+        await db.rollback()
+        result2 = await db.execute(
+            select(ContactRequest).where(ContactRequest.id == request_id)
+        )
+        req = result2.scalar_one()
+        req.state = ContactRequestState.accepted
+        req.resolved_at = _now()
+        await db.commit()
+
+    return HumanContactRequestResolveResponse(id=str(req.id), state="accepted")
+
+
+@router.post(
+    "/me/contact-requests/{request_id}/reject",
+    response_model=HumanContactRequestResolveResponse,
+)
+async def reject_contact_request_as_human(
+    request_id: int,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Human rejects a received contact request. No Contact rows are created."""
+    user = await _load_human(db, ctx)
+    me = user.human_id
+
+    result = await db.execute(
+        select(ContactRequest).where(ContactRequest.id == request_id)
+    )
+    req = result.scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Contact request not found")
+    if req.to_type != ParticipantType.human or req.to_agent_id != me:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the recipient Human can reject this request",
+        )
+    if req.state != ContactRequestState.pending:
+        raise HTTPException(status_code=409, detail="Request already resolved")
+
+    req.state = ContactRequestState.rejected
+    req.resolved_at = _now()
+    await db.commit()
+
+    return HumanContactRequestResolveResponse(id=str(req.id), state="rejected")
 
 
 # ---------------------------------------------------------------------------

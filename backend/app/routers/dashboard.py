@@ -31,6 +31,7 @@ from hub.models import (
     ContactRequestState,
     MessageRecord,
     MessageState,
+    ParticipantType,
     Room,
     RoomJoinPolicy,
     RoomJoinRequest,
@@ -64,7 +65,11 @@ router = APIRouter(prefix="/api/dashboard", tags=["app-dashboard"])
 
 
 class SendContactRequestBody(BaseModel):
-    to_agent_id: str
+    # Exactly one of ``to_agent_id`` or ``to_human_id`` must be provided.
+    # ``to_agent_id`` preserves backward compatibility (agent → agent).
+    # ``to_human_id`` (hu_*) targets a human participant (agent → human).
+    to_agent_id: str | None = None
+    to_human_id: str | None = None
     message: str | None = None
 
 
@@ -400,44 +405,122 @@ async def get_overview(
 # ---------------------------------------------------------------------------
 
 
+def _serialize_contact_request(
+    req: ContactRequest,
+    from_display_name: str | None = None,
+    to_display_name: str | None = None,
+) -> dict:
+    """Return the canonical JSON shape for a ContactRequest row."""
+
+    def _state(v):
+        return v.value if hasattr(v, "value") else str(v)
+
+    return {
+        "id": req.id,
+        "from_agent_id": req.from_agent_id,
+        "to_agent_id": req.to_agent_id,
+        "from_type": _state(req.from_type),
+        "to_type": _state(req.to_type),
+        "state": _state(req.state),
+        "message": req.message,
+        "created_at": req.created_at.isoformat() if req.created_at else None,
+        "resolved_at": req.resolved_at.isoformat() if req.resolved_at else None,
+        "from_display_name": from_display_name,
+        "to_display_name": to_display_name,
+    }
+
+
 @router.post("/contact-requests", status_code=201)
 async def send_contact_request(
     body: SendContactRequestBody,
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Send a contact request to another agent."""
+    """Send a contact request from the active agent to another agent or human.
+
+    Exactly one of ``to_agent_id`` (ag_* — legacy A→A path) or
+    ``to_human_id`` (hu_* — new A→H path) must be provided.
+    """
     agent_id = ctx.active_agent_id
 
-    if body.to_agent_id == agent_id:
-        raise HTTPException(status_code=400, detail="Cannot send request to yourself")
+    # ------------------------------------------------------------------
+    # Determine target + type (exactly one of to_agent_id / to_human_id)
+    # ------------------------------------------------------------------
+    provided = [x for x in (body.to_agent_id, body.to_human_id) if x]
+    if len(provided) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of to_agent_id or to_human_id",
+        )
 
-    # Check target agent exists
-    target = await db.execute(
-        select(Agent).where(Agent.agent_id == body.to_agent_id)
-    )
-    target_agent = target.scalar_one_or_none()
-    if target_agent is None:
-        raise HTTPException(status_code=404, detail="Target agent not found")
+    target_display_name: str | None = None
 
-    # Check not already contacts
+    if body.to_human_id is not None:
+        to_id = body.to_human_id
+        to_type = ParticipantType.human
+        if not to_id.startswith("hu_"):
+            raise HTTPException(status_code=400, detail="to_human_id must start with hu_")
+        # Verify the human exists via User.human_id lookup.
+        target_user = await db.execute(
+            select(User).where(User.human_id == to_id)
+        )
+        user_row = target_user.scalar_one_or_none()
+        if user_row is None:
+            raise HTTPException(status_code=404, detail="Target human not found")
+        target_display_name = user_row.display_name
+    else:
+        to_id = body.to_agent_id  # type: ignore[assignment]
+        to_type = ParticipantType.agent
+        if to_id == agent_id:
+            raise HTTPException(status_code=400, detail="Cannot send request to yourself")
+        target = await db.execute(select(Agent).where(Agent.agent_id == to_id))
+        target_agent = target.scalar_one_or_none()
+        if target_agent is None:
+            raise HTTPException(status_code=404, detail="Target agent not found")
+        target_display_name = target_agent.display_name
+
+    # ------------------------------------------------------------------
+    # Already in contacts?
+    # ------------------------------------------------------------------
     existing_contact = await db.execute(
         select(Contact).where(
             Contact.owner_id == agent_id,
-            Contact.contact_agent_id == body.to_agent_id,
+            Contact.owner_type == ParticipantType.agent,
+            Contact.contact_agent_id == to_id,
+            Contact.peer_type == to_type,
         )
     )
     if existing_contact.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Already in contacts")
 
-    # Check existing request
-    existing_req = await db.execute(
+    # ------------------------------------------------------------------
+    # Existing request in EITHER direction blocks a new pending request.
+    # A previously-rejected request in the same direction may be reused
+    # (transition rejected → pending) for the "resend after reject" flow.
+    # ------------------------------------------------------------------
+    existing_forward = await db.execute(
         select(ContactRequest).where(
             ContactRequest.from_agent_id == agent_id,
-            ContactRequest.to_agent_id == body.to_agent_id,
+            ContactRequest.from_type == ParticipantType.agent,
+            ContactRequest.to_agent_id == to_id,
+            ContactRequest.to_type == to_type,
         )
     )
-    req = existing_req.scalar_one_or_none()
+    req = existing_forward.scalar_one_or_none()
+
+    existing_reverse = await db.execute(
+        select(ContactRequest).where(
+            ContactRequest.from_agent_id == to_id,
+            ContactRequest.from_type == to_type,
+            ContactRequest.to_agent_id == agent_id,
+            ContactRequest.to_type == ParticipantType.agent,
+            ContactRequest.state.in_(
+                [ContactRequestState.pending, ContactRequestState.accepted]
+            ),
+        )
+    )
+    if existing_reverse.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="Contact request already exists")
 
     if req is not None:
         if req.state in (ContactRequestState.pending, ContactRequestState.accepted):
@@ -451,7 +534,9 @@ async def send_contact_request(
     else:
         req = ContactRequest(
             from_agent_id=agent_id,
-            to_agent_id=body.to_agent_id,
+            to_agent_id=to_id,
+            from_type=ParticipantType.agent,
+            to_type=to_type,
             state=ContactRequestState.pending,
             message=body.message,
         )
@@ -459,17 +544,38 @@ async def send_contact_request(
         await db.commit()
         await db.refresh(req)
 
-    return {
-        "id": req.id,
-        "from_agent_id": req.from_agent_id,
-        "to_agent_id": req.to_agent_id,
-        "state": req.state.value if hasattr(req.state, "value") else str(req.state),
-        "message": req.message,
-        "created_at": req.created_at.isoformat() if req.created_at else None,
-        "resolved_at": req.resolved_at.isoformat() if req.resolved_at else None,
-        "from_display_name": None,
-        "to_display_name": target_agent.display_name,
-    }
+    return _serialize_contact_request(
+        req,
+        from_display_name=None,
+        to_display_name=target_display_name,
+    )
+
+
+async def _resolve_display_names(
+    db: AsyncSession,
+    ids_by_type: dict[ParticipantType, set[str]],
+) -> dict[tuple[ParticipantType, str], str]:
+    """Bulk-resolve display names for a mixed set of agent/human ids."""
+    out: dict[tuple[ParticipantType, str], str] = {}
+
+    agent_ids = ids_by_type.get(ParticipantType.agent, set())
+    if agent_ids:
+        result = await db.execute(
+            select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
+        )
+        for agent_id, name in result.all():
+            out[(ParticipantType.agent, agent_id)] = name
+
+    human_ids = ids_by_type.get(ParticipantType.human, set())
+    if human_ids:
+        result = await db.execute(
+            select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
+        )
+        for human_id, name in result.all():
+            if human_id is not None:
+                out[(ParticipantType.human, human_id)] = name
+
+    return out
 
 
 @router.get("/contact-requests/received")
@@ -478,34 +584,40 @@ async def list_received_requests(
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List contact requests received by the active agent."""
+    """List contact requests received by the active agent.
+
+    The active agent only ever appears as an ``agent`` counterparty, so
+    ``to_type`` is always ``agent`` for rows returned here. The ``from``
+    side may be either an agent (legacy A→A) or a human (H→A).
+    """
     agent_id = ctx.active_agent_id
 
-    stmt = (
-        select(ContactRequest, Agent.display_name)
-        .outerjoin(Agent, Agent.agent_id == ContactRequest.from_agent_id)
-        .where(ContactRequest.to_agent_id == agent_id)
+    stmt = select(ContactRequest).where(
+        ContactRequest.to_agent_id == agent_id,
+        ContactRequest.to_type == ParticipantType.agent,
     )
     if state:
         stmt = stmt.where(ContactRequest.state == state)
 
     result = await db.execute(stmt)
-    rows = result.all()
+    rows = list(result.scalars().all())
+
+    ids_by_type: dict[ParticipantType, set[str]] = {
+        ParticipantType.agent: set(),
+        ParticipantType.human: set(),
+    }
+    for cr in rows:
+        ids_by_type[cr.from_type].add(cr.from_agent_id)
+    names = await _resolve_display_names(db, ids_by_type)
 
     return {
         "requests": [
-            {
-                "id": cr.id,
-                "from_agent_id": cr.from_agent_id,
-                "from_display_name": dn,
-                "to_agent_id": cr.to_agent_id,
-                "to_display_name": None,
-                "state": cr.state.value if hasattr(cr.state, "value") else str(cr.state),
-                "message": cr.message,
-                "created_at": cr.created_at.isoformat() if cr.created_at else None,
-                "resolved_at": cr.resolved_at.isoformat() if cr.resolved_at else None,
-            }
-            for cr, dn in rows
+            _serialize_contact_request(
+                cr,
+                from_display_name=names.get((cr.from_type, cr.from_agent_id)),
+                to_display_name=None,
+            )
+            for cr in rows
         ],
     }
 
@@ -516,34 +628,38 @@ async def list_sent_requests(
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List contact requests sent by the active agent."""
+    """List contact requests sent by the active agent.
+
+    ``from_type`` is always ``agent``. ``to_type`` may be agent or human.
+    """
     agent_id = ctx.active_agent_id
 
-    stmt = (
-        select(ContactRequest, Agent.display_name)
-        .outerjoin(Agent, Agent.agent_id == ContactRequest.to_agent_id)
-        .where(ContactRequest.from_agent_id == agent_id)
+    stmt = select(ContactRequest).where(
+        ContactRequest.from_agent_id == agent_id,
+        ContactRequest.from_type == ParticipantType.agent,
     )
     if state:
         stmt = stmt.where(ContactRequest.state == state)
 
     result = await db.execute(stmt)
-    rows = result.all()
+    rows = list(result.scalars().all())
+
+    ids_by_type: dict[ParticipantType, set[str]] = {
+        ParticipantType.agent: set(),
+        ParticipantType.human: set(),
+    }
+    for cr in rows:
+        ids_by_type[cr.to_type].add(cr.to_agent_id)
+    names = await _resolve_display_names(db, ids_by_type)
 
     return {
         "requests": [
-            {
-                "id": cr.id,
-                "from_agent_id": cr.from_agent_id,
-                "from_display_name": None,
-                "to_agent_id": cr.to_agent_id,
-                "to_display_name": dn,
-                "state": cr.state.value if hasattr(cr.state, "value") else str(cr.state),
-                "message": cr.message,
-                "created_at": cr.created_at.isoformat() if cr.created_at else None,
-                "resolved_at": cr.resolved_at.isoformat() if cr.resolved_at else None,
-            }
-            for cr, dn in rows
+            _serialize_contact_request(
+                cr,
+                from_display_name=None,
+                to_display_name=names.get((cr.to_type, cr.to_agent_id)),
+            )
+            for cr in rows
         ],
     }
 
@@ -554,7 +670,13 @@ async def accept_contact_request(
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Accept a pending contact request."""
+    """Accept a pending contact request targeted at the active agent.
+
+    The dashboard accept handler only runs when the *recipient* is an
+    agent (``to_type == agent``). Thanks to polymorphism, the sender may
+    be an agent (A↔A) or a human (H→A); we branch on ``from_type`` when
+    writing the reciprocal Contact rows.
+    """
     agent_id = ctx.active_agent_id
 
     result = await db.execute(
@@ -563,7 +685,7 @@ async def accept_contact_request(
     req = result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Contact request not found")
-    if req.to_agent_id != agent_id:
+    if req.to_type != ParticipantType.agent or req.to_agent_id != agent_id:
         raise HTTPException(status_code=403, detail="Not your request to accept")
     if req.state != ContactRequestState.pending:
         raise HTTPException(status_code=409, detail="Request is not pending")
@@ -571,34 +693,35 @@ async def accept_contact_request(
     req.state = ContactRequestState.accepted
     req.resolved_at = datetime.datetime.now(datetime.timezone.utc)
 
-    # Create bidirectional contacts (ignore if already exists)
-    for owner, contact_agent in [
-        (req.from_agent_id, req.to_agent_id),
-        (req.to_agent_id, req.from_agent_id),
+    # Create bidirectional Contact rows with correct owner_type/peer_type.
+    # Direction 1: from → to   (owner=from, peer=to)
+    # Direction 2: to → from   (owner=to,   peer=from)
+    for owner, owner_type, peer, peer_type in [
+        (req.from_agent_id, req.from_type, req.to_agent_id, req.to_type),
+        (req.to_agent_id, req.to_type, req.from_agent_id, req.from_type),
     ]:
         existing = await db.execute(
             select(Contact).where(
                 Contact.owner_id == owner,
-                Contact.contact_agent_id == contact_agent,
+                Contact.owner_type == owner_type,
+                Contact.contact_agent_id == peer,
+                Contact.peer_type == peer_type,
             )
         )
         if existing.scalar_one_or_none() is None:
-            db.add(Contact(owner_id=owner, contact_agent_id=contact_agent))
+            db.add(
+                Contact(
+                    owner_id=owner,
+                    owner_type=owner_type,
+                    contact_agent_id=peer,
+                    peer_type=peer_type,
+                )
+            )
 
     await db.commit()
     await db.refresh(req)
 
-    return {
-        "id": req.id,
-        "from_agent_id": req.from_agent_id,
-        "to_agent_id": req.to_agent_id,
-        "state": "accepted",
-        "message": req.message,
-        "created_at": req.created_at.isoformat() if req.created_at else None,
-        "resolved_at": req.resolved_at.isoformat() if req.resolved_at else None,
-        "from_display_name": None,
-        "to_display_name": None,
-    }
+    return _serialize_contact_request(req)
 
 
 @router.post("/contact-requests/{request_id}/reject")
@@ -616,7 +739,7 @@ async def reject_contact_request(
     req = result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Contact request not found")
-    if req.to_agent_id != agent_id:
+    if req.to_type != ParticipantType.agent or req.to_agent_id != agent_id:
         raise HTTPException(status_code=403, detail="Not your request to reject")
     if req.state != ContactRequestState.pending:
         raise HTTPException(status_code=409, detail="Request is not pending")
@@ -626,17 +749,7 @@ async def reject_contact_request(
     await db.commit()
     await db.refresh(req)
 
-    return {
-        "id": req.id,
-        "from_agent_id": req.from_agent_id,
-        "to_agent_id": req.to_agent_id,
-        "state": "rejected",
-        "message": req.message,
-        "created_at": req.created_at.isoformat() if req.created_at else None,
-        "resolved_at": req.resolved_at.isoformat() if req.resolved_at else None,
-        "from_display_name": None,
-        "to_display_name": None,
-    }
+    return _serialize_contact_request(req)
 
 
 # ---------------------------------------------------------------------------

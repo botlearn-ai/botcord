@@ -403,6 +403,476 @@ async def test_bad_peer_prefix_rejected(client, seed):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Mixed ag_/hu_ member_ids on room creation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_room_with_mixed_participant_types(
+    client, seed, db_session: AsyncSession
+):
+    """POST /api/humans/me/rooms must branch on the id prefix and stamp
+    participant_type accordingly for every initial member."""
+    # Seed a second Human (Bob) + an Agent.
+    bob_supa = uuid.uuid4()
+    bob = User(supabase_user_id=bob_supa, display_name="Bob")
+    db_session.add(bob)
+    await db_session.flush()
+    bob_human_id = bob.human_id
+
+    db_session.add(
+        Agent(
+            agent_id="ag_tool00001",
+            display_name="Helper",
+            message_policy=MessagePolicy.open,
+            user_id=None,
+        )
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    resp = await client.post(
+        "/api/humans/me/rooms",
+        headers=headers,
+        json={
+            "name": "Mixed Room",
+            "member_ids": [
+                "ag_tool00001",
+                bob_human_id,
+                # Duplicate the creator's own id — must be skipped.
+                seed["human_id"],
+            ],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    room_id = resp.json()["room_id"]
+
+    rows = await db_session.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id)
+    )
+    members = {m.agent_id: m for m in rows.scalars().all()}
+    assert set(members.keys()) == {seed["human_id"], "ag_tool00001", bob_human_id}
+    assert members[seed["human_id"]].participant_type == ParticipantType.human
+    assert members[seed["human_id"]].role == RoomRole.owner
+    assert members["ag_tool00001"].participant_type == ParticipantType.agent
+    assert members[bob_human_id].participant_type == ParticipantType.human
+
+
+@pytest.mark.asyncio
+async def test_create_room_rejects_unknown_prefix(client, seed):
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    resp = await client.post(
+        "/api/humans/me/rooms",
+        headers=headers,
+        json={"name": "Bad", "member_ids": ["xx_something"]},
+    )
+    assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/humans/me/rooms/{room_id}/members
+# ---------------------------------------------------------------------------
+
+
+async def _create_room_as(client: AsyncClient, token: str, name: str = "Room") -> str:
+    resp = await client.post(
+        "/api/humans/me/rooms",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": name},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["room_id"]
+
+
+@pytest.mark.asyncio
+async def test_invite_agent_via_members_endpoint(
+    client, seed, db_session: AsyncSession
+):
+    # Seed an unclaimed agent so the invite is direct (no approval queue).
+    db_session.add(
+        Agent(
+            agent_id="ag_tool00001",
+            display_name="Helper",
+            message_policy=MessagePolicy.open,
+            user_id=None,
+        )
+    )
+    await db_session.commit()
+
+    room_id = await _create_room_as(client, seed["token"], "Agent invite room")
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": "ag_tool00001"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["room_id"] == room_id
+    assert body["participant_id"] == "ag_tool00001"
+    assert body["participant_type"] == "agent"
+    assert body["role"] == "member"
+
+    # DB check
+    row = await db_session.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == "ag_tool00001",
+        )
+    )
+    m = row.scalar_one()
+    assert m.participant_type == ParticipantType.agent
+
+
+@pytest.mark.asyncio
+async def test_invite_human_via_members_endpoint(
+    client, seed, db_session: AsyncSession
+):
+    bob_supa = uuid.uuid4()
+    bob = User(supabase_user_id=bob_supa, display_name="Bob")
+    db_session.add(bob)
+    await db_session.commit()
+    bob_human_id = bob.human_id
+
+    room_id = await _create_room_as(client, seed["token"], "Human invite room")
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": bob_human_id, "role": "admin"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["participant_type"] == "human"
+    assert body["role"] == "admin"
+
+    row = await db_session.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == bob_human_id,
+        )
+    )
+    m = row.scalar_one()
+    assert m.participant_type == ParticipantType.human
+    assert m.role == RoomRole.admin
+
+
+@pytest.mark.asyncio
+async def test_invite_members_endpoint_requires_owner_or_admin(
+    client, seed, db_session: AsyncSession
+):
+    """A Human who is a plain member (not owner/admin) cannot invite."""
+    # Carol (room owner) + Alice (seed user, non-member).
+    carol_supa = uuid.uuid4()
+    carol = User(supabase_user_id=carol_supa, display_name="Carol")
+    db_session.add(carol)
+    await db_session.commit()
+    carol_human_id = carol.human_id
+
+    # Carol creates the room and adds Alice as a plain member.
+    carol_token = _token(str(carol_supa))
+    room_id = await _create_room_as(client, carol_token, "Carol's salon")
+
+    db_session.add(
+        RoomMember(
+            room_id=room_id,
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        )
+    )
+    # And a target agent for Alice to attempt to invite.
+    db_session.add(
+        Agent(
+            agent_id="ag_target0001",
+            display_name="Target",
+            message_policy=MessagePolicy.open,
+            user_id=None,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": "ag_target0001"},
+    )
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.asyncio
+async def test_invite_members_endpoint_rejects_bad_prefix(client, seed):
+    room_id = await _create_room_as(client, seed["token"])
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": "bogus"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_invite_members_endpoint_409_on_duplicate(
+    client, seed, db_session: AsyncSession
+):
+    db_session.add(
+        Agent(
+            agent_id="ag_dup0000001",
+            display_name="Dup",
+            message_policy=MessagePolicy.open,
+            user_id=None,
+        )
+    )
+    await db_session.commit()
+
+    room_id = await _create_room_as(client, seed["token"])
+    # First invite succeeds
+    r1 = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": "ag_dup0000001"},
+    )
+    assert r1.status_code == 201
+    # Second invite collides
+    r2 = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": "ag_dup0000001"},
+    )
+    assert r2.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Contact requests (Human-side accept/reject + listings)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_second_human(db_session: AsyncSession, display_name: str = "Bob") -> tuple[uuid.UUID, str, str]:
+    supa = uuid.uuid4()
+    u = User(supabase_user_id=supa, display_name=display_name)
+    db_session.add(u)
+    await db_session.commit()
+    await db_session.refresh(u)
+    return u.id, u.human_id, _token(str(supa))
+
+
+@pytest.mark.asyncio
+async def test_h2h_request_received_listing(
+    client, seed, db_session: AsyncSession
+):
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    # Alice requests contact with Bob directly via the existing endpoint.
+    resp = await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id, "message": "hi"},
+    )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "requested"
+
+    # Bob sees it in received.
+    received = await client.get(
+        "/api/humans/me/contact-requests/received",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert received.status_code == 200
+    reqs = received.json()["requests"]
+    assert len(reqs) == 1
+    assert reqs[0]["from_participant_id"] == seed["human_id"]
+    assert reqs[0]["from_type"] == "human"
+    assert reqs[0]["to_type"] == "human"
+    assert reqs[0]["message"] == "hi"
+    # Display-name resolution: Alice's User row.
+    assert reqs[0]["from_display_name"] == "Alice"
+    assert reqs[0]["to_display_name"] == "Bob"
+
+    # Alice sees the same request in sent.
+    sent = await client.get(
+        "/api/humans/me/contact-requests/sent",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert sent.status_code == 200
+    sent_rows = sent.json()["requests"]
+    assert len(sent_rows) == 1
+    assert sent_rows[0]["to_participant_id"] == bob_human_id
+
+
+@pytest.mark.asyncio
+async def test_h2h_accept_creates_mutual_contacts(
+    client, seed, db_session: AsyncSession
+):
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    resp = await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id},
+    )
+    assert resp.status_code == 202
+
+    # Bob inspects the pending request and finds its id from the listing.
+    received = await client.get(
+        "/api/humans/me/contact-requests/received",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    req_id = received.json()["requests"][0]["id"]
+
+    # Bob accepts.
+    accept = await client.post(
+        f"/api/humans/me/contact-requests/{req_id}/accept",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert accept.status_code == 200
+    assert accept.json()["state"] == "accepted"
+
+    # Both Contact rows materialised with correct polymorphic types.
+    rows = list(
+        (await db_session.execute(select(Contact))).scalars().all()
+    )
+    by_owner = {(c.owner_id, c.contact_agent_id): c for c in rows}
+    bob_side = by_owner[(bob_human_id, seed["human_id"])]
+    alice_side = by_owner[(seed["human_id"], bob_human_id)]
+    assert bob_side.owner_type == ParticipantType.human
+    assert bob_side.peer_type == ParticipantType.human
+    assert alice_side.owner_type == ParticipantType.human
+    assert alice_side.peer_type == ParticipantType.human
+
+    # Second accept → 409
+    again = await client.post(
+        f"/api/humans/me/contact-requests/{req_id}/accept",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert again.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_h2a_accept_creates_mutual_contacts_with_correct_types(
+    client, seed, db_session: AsyncSession
+):
+    """Human ← Agent contact request. Accept must stamp the peer_type pair
+    (agent, human) / (human, agent) on the two mirror Contact rows."""
+    # Seed an unclaimed Agent that will initiate the request.
+    db_session.add(
+        Agent(
+            agent_id="ag_init00001",
+            display_name="Initiator",
+            message_policy=MessagePolicy.open,
+            user_id=None,
+        )
+    )
+    # Directly insert the ContactRequest row — simulating an agent-initiated
+    # request, which would normally land via /hub/send contact_request.
+    req = ContactRequest(
+        from_agent_id="ag_init00001",
+        from_type=ParticipantType.agent,
+        to_agent_id=seed["human_id"],
+        to_type=ParticipantType.human,
+        state=ContactRequestState.pending,
+        message="hi human",
+    )
+    db_session.add(req)
+    await db_session.commit()
+    await db_session.refresh(req)
+    req_id = req.id
+
+    # Human accepts via the new endpoint.
+    accept = await client.post(
+        f"/api/humans/me/contact-requests/{req_id}/accept",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert accept.status_code == 200, accept.text
+    assert accept.json()["state"] == "accepted"
+
+    rows = list(
+        (await db_session.execute(select(Contact))).scalars().all()
+    )
+    pairs = {
+        (c.owner_id, c.owner_type, c.contact_agent_id, c.peer_type) for c in rows
+    }
+    assert (
+        seed["human_id"],
+        ParticipantType.human,
+        "ag_init00001",
+        ParticipantType.agent,
+    ) in pairs
+    assert (
+        "ag_init00001",
+        ParticipantType.agent,
+        seed["human_id"],
+        ParticipantType.human,
+    ) in pairs
+
+
+@pytest.mark.asyncio
+async def test_reject_transitions_state_only(
+    client, seed, db_session: AsyncSession
+):
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id},
+    )
+    received = await client.get(
+        "/api/humans/me/contact-requests/received",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    req_id = received.json()["requests"][0]["id"]
+
+    reject = await client.post(
+        f"/api/humans/me/contact-requests/{req_id}/reject",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert reject.status_code == 200
+    assert reject.json()["state"] == "rejected"
+
+    contacts = list((await db_session.execute(select(Contact))).scalars().all())
+    assert contacts == []
+
+    rows = list((await db_session.execute(select(ContactRequest))).scalars().all())
+    assert len(rows) == 1
+    assert rows[0].state == ContactRequestState.rejected
+
+    # Second resolve → 409
+    again = await client.post(
+        f"/api/humans/me/contact-requests/{req_id}/reject",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert again.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_non_recipient_cannot_accept_request(
+    client, seed, db_session: AsyncSession
+):
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+    _, _, carol_token = await _seed_second_human(db_session, "Carol")
+
+    await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id},
+    )
+    received = await client.get(
+        "/api/humans/me/contact-requests/received",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    req_id = received.json()["requests"][0]["id"]
+
+    # Carol (unrelated) tries to accept → 403.
+    resp = await client.post(
+        f"/api/humans/me/contact-requests/{req_id}/accept",
+        headers={"Authorization": f"Bearer {carol_token}"},
+    )
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# crypto short-circuit
+# ---------------------------------------------------------------------------
+
+
 def test_verify_envelope_sig_short_circuits_for_human():
     from hub.crypto import verify_envelope_sig
     from hub.schemas import MessageEnvelope, Signature

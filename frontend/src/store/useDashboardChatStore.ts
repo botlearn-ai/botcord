@@ -58,6 +58,7 @@ function applyRealtimeRoomHint<T extends {
 interface DashboardChatState {
   boundAgentId: string | null;
   overviewRefreshing: boolean;
+  overviewErrored: boolean;
   overview: DashboardOverview | null;
   messages: Record<string, DashboardMessage[]>;
   messagesLoading: Record<string, boolean>;
@@ -114,6 +115,7 @@ interface DashboardChatState {
 const initialChatState = {
   boundAgentId: null,
   overviewRefreshing: false,
+  overviewErrored: false,
   overview: null,
   messages: {},
   messagesLoading: {},
@@ -142,6 +144,7 @@ const initialChatState = {
 function hasTransientChatState(state: DashboardChatState): boolean {
   return (
     state.overviewRefreshing
+    || state.overviewErrored
     || state.overview !== null
     || Object.keys(state.messages).length > 0
     || Object.keys(state.messagesLoading).length > 0
@@ -287,7 +290,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         })),
 
       replaceOverview: (overview) => {
-        set({ overview, overviewRefreshing: false });
+        set({ overview, overviewRefreshing: false, overviewErrored: false });
         useDashboardUnreadStore.getState().reconcileUnreadRooms(overview.rooms);
       },
 
@@ -460,11 +463,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           return;
         }
         if (!hasReadyActiveAgent(token, activeAgentId)) {
-          set({ overview: null, overviewRefreshing: false });
+          set({ overview: null, overviewRefreshing: false, overviewErrored: false });
           return;
         }
 
-        set({ overviewRefreshing: true });
+        set({ overviewRefreshing: true, overviewErrored: false });
         try {
           const overview = await api.getOverview();
           get().replaceOverview(overview);
@@ -473,7 +476,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             void get().loadRoomMessages(openedRoomId);
           }
         } catch (error: any) {
-          set({ error: error?.message || "Failed to refresh", overviewRefreshing: false });
+          set({ error: error?.message || "Failed to refresh", overviewRefreshing: false, overviewErrored: true });
         }
       },
 

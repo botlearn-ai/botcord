@@ -57,6 +57,9 @@ import type {
   HumanContactRequestResponse,
   PendingApprovalListResponse,
   ResolveApprovalResponse,
+  HumanRoomMemberResponse,
+  HumanContactRequestListResponse,
+  HumanContactRequestResolveResponse,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -73,7 +76,12 @@ const API_BASE =
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
 
 const ACTIVE_AGENT_KEY = "botcord_active_agent_id";
+const ACTIVE_IDENTITY_KEY = "botcord_active_identity";
 const ME_CACHE_TTL_MS = 10_000;
+
+export type ActiveIdentity =
+  | { type: "human"; id: string }
+  | { type: "agent"; id: string };
 
 let meCache: { value: UserProfile; expiresAt: number } | null = null;
 let meInFlight: Promise<UserProfile> | null = null;
@@ -94,6 +102,50 @@ export function setActiveAgentId(agentId: string | null) {
   } else {
     localStorage.removeItem(ACTIVE_AGENT_KEY);
   }
+}
+
+export function getStoredActiveIdentity(): ActiveIdentity | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(ACTIVE_IDENTITY_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      (parsed as { type?: unknown }).type &&
+      typeof (parsed as { id?: unknown }).id === "string"
+    ) {
+      const t = (parsed as { type: string }).type;
+      const id = (parsed as { id: string }).id;
+      if ((t === "human" || t === "agent") && id) {
+        return { type: t, id };
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+export function setStoredActiveIdentity(identity: ActiveIdentity | null) {
+  if (typeof window === "undefined") return;
+  if (identity) {
+    localStorage.setItem(ACTIVE_IDENTITY_KEY, JSON.stringify(identity));
+  } else {
+    localStorage.removeItem(ACTIVE_IDENTITY_KEY);
+  }
+}
+
+/**
+ * Resolve the effective active identity, tolerating stores from older sessions
+ * that only wrote `botcord_active_agent_id`. Returns null when neither exists.
+ */
+export function getActiveIdentity(): ActiveIdentity | null {
+  const stored = getStoredActiveIdentity();
+  if (stored) return stored;
+  const legacyAgent = getActiveAgentId();
+  return legacyAgent ? { type: "agent", id: legacyAgent } : null;
 }
 
 function extractErrorMessage(body: Record<string, unknown>, fallback: string): string {
@@ -130,9 +182,11 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
-  const activeAgentId = getActiveAgentId();
-  if (activeAgentId) {
-    headers["X-Active-Agent"] = activeAgentId;
+  // New identity model: only send X-Active-Agent when acting as an agent.
+  // For type='human', the backend resolves human_id from the Supabase JWT.
+  const identity = getActiveIdentity();
+  if (identity?.type === "agent") {
+    headers["X-Active-Agent"] = identity.id;
   }
   return headers;
 }
@@ -736,6 +790,63 @@ const humansApi = {
     return apiPost<ResolveApprovalResponse>(
       `/api/humans/me/pending-approvals/${approvalId}/resolve`,
       { decision },
+    );
+  },
+
+  // -------------------------------------------------------------------------
+  // New Human-surface endpoints (paired with backend work in progress).
+  // -------------------------------------------------------------------------
+
+  /** Human (owner/admin) invites an agent or another Human into a room. */
+  async addRoomMember(
+    roomId: string,
+    body: { participant_id: string; role?: "member" | "admin" },
+  ): Promise<HumanRoomMemberResponse> {
+    return apiPost<HumanRoomMemberResponse>(
+      `/api/humans/me/rooms/${roomId}/members`,
+      body,
+    );
+  },
+
+  /** Received contact requests (pending-by-default). */
+  listReceivedContactRequests(
+    opts?: { state?: "pending" | "accepted" | "rejected" },
+  ): Promise<HumanContactRequestListResponse> {
+    const params: Record<string, string> = {};
+    if (opts?.state) params.state = opts.state;
+    return apiGet<HumanContactRequestListResponse>(
+      "/api/humans/me/contact-requests/received",
+      params,
+    );
+  },
+
+  /** Sent contact requests (pending-by-default). */
+  listSentContactRequests(
+    opts?: { state?: "pending" | "accepted" | "rejected" },
+  ): Promise<HumanContactRequestListResponse> {
+    const params: Record<string, string> = {};
+    if (opts?.state) params.state = opts.state;
+    return apiGet<HumanContactRequestListResponse>(
+      "/api/humans/me/contact-requests/sent",
+      params,
+    );
+  },
+
+  /** Accept a received contact request addressed to the current Human. */
+  acceptContactRequest(
+    requestId: string,
+  ): Promise<HumanContactRequestResolveResponse> {
+    return apiPost<HumanContactRequestResolveResponse>(
+      `/api/humans/me/contact-requests/${requestId}/accept`,
+    );
+  },
+
+  /** Reject a received contact request addressed to the current Human. */
+  rejectContactRequest(
+    requestId: string,
+  ): Promise<HumanContactRequestResolveResponse> {
+    return apiPost<HumanContactRequestResolveResponse>(
+      `/api/humans/me/contact-requests/${requestId}/reject`,
     );
   },
 };
