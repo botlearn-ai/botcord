@@ -77,7 +77,7 @@ export function createRoomsTool() {
         },
         agent_id: {
           type: "string" as const,
-          description: "Agent ID — for invite, remove_member, promote, transfer, permissions",
+          description: "Participant ID (ag_... agent or hu_... human) — for invite, remove_member, promote, transfer, permissions",
         },
         role: {
           type: "string" as const,
