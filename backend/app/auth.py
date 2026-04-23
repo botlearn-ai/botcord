@@ -244,3 +244,45 @@ async def require_active_agent(
         roles=roles,
         active_agent_id=x_active_agent,
     )
+
+
+async def require_user_with_optional_agent(
+    authorization: str | None = Header(default=None),
+    x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
+    db: AsyncSession = Depends(get_db),
+) -> RequestContext:
+    """Authenticated user context; X-Active-Agent is optional.
+
+    Use for endpoints that work for both Agent-operating and Human-only
+    (no active agent selected) sessions. If the header is present it is
+    validated for ownership and exposed via ``ctx.active_agent_id``;
+    otherwise ``active_agent_id`` is ``None``.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    token = authorization[len("Bearer "):]
+    jwt_payload = _decode_supabase_token(token)
+    supabase_user_id = jwt_payload["sub"]
+    user, roles = await _load_user_and_roles(supabase_user_id, db, jwt_payload=jwt_payload)
+
+    active_agent_id: str | None = None
+    if x_active_agent:
+        from hub.models import Agent
+
+        agent_result = await db.execute(
+            select(Agent).where(Agent.agent_id == x_active_agent)
+        )
+        agent = agent_result.scalar_one_or_none()
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if str(agent.user_id) != str(user.id):
+            raise HTTPException(status_code=403, detail="Agent not owned by user")
+        active_agent_id = x_active_agent
+
+    return RequestContext(
+        user_id=user.id,
+        supabase_user_id=supabase_user_id,
+        roles=roles,
+        active_agent_id=active_agent_id,
+    )

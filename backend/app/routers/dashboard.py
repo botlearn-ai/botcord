@@ -14,7 +14,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_active_agent
+from app.auth import RequestContext, require_active_agent, require_user_with_optional_agent
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
 from hub.dashboard_message_shaping import (
@@ -760,7 +760,7 @@ async def reject_contact_request(
 @router.get("/agents/search")
 async def search_agents(
     q: str = Query(..., min_length=1),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Search agents by agent_id or display_name."""
@@ -790,7 +790,7 @@ async def search_agents(
 @router.get("/agents/{agent_id}")
 async def get_agent_detail(
     agent_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Get agent details."""
@@ -868,7 +868,7 @@ async def get_shared_rooms(
 async def discover_rooms(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Discover public rooms."""
