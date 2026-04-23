@@ -17,6 +17,7 @@ import { Check, KeyRound, LogOut, Plus, RefreshCw, Settings, Unlink, User } from
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 interface AccountMenuProps {
   user: UserProfile | null;
@@ -54,6 +55,7 @@ export default function AccountMenu({
   const locale = useLanguage();
   const t = accountMenu[locale];
   const tc = common[locale];
+  const human = useDashboardSessionStore((state) => state.human);
 
   const activeAgent = useMemo(
     () => agents.find((agent) => agent.agent_id === activeAgentId) || null,
@@ -88,6 +90,11 @@ export default function AccountMenu({
               <p className="text-sm font-medium leading-none text-text-primary">
                 {user?.display_name || user?.email || t.user}
               </p>
+              {human ? (
+                <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/70" title={human.human_id}>
+                  {human.human_id}
+                </p>
+              ) : null}
               <div className="text-xs leading-none text-text-secondary mt-1 flex items-center gap-1.5">
                 {activeAgent ? (
                   <>
