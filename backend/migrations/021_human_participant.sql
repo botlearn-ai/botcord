@@ -17,6 +17,14 @@
 -- SQLAlchemy models.
 
 -- ---------------------------------------------------------------------------
+-- 0. Ensure agents.agent_id has a UNIQUE constraint (required for FK in step 9)
+--    create_all may have created the agents table before unique=True was added.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE agents
+    ADD CONSTRAINT IF NOT EXISTS uq_agents_agent_id UNIQUE (agent_id);
+
+-- ---------------------------------------------------------------------------
 -- 1. public.users.human_id
 -- ---------------------------------------------------------------------------
 
