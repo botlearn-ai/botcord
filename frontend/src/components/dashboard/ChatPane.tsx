@@ -17,6 +17,7 @@ import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
 import RoomHumanComposer from "./RoomHumanComposer";
+import TopicDrawer from "./TopicDrawer";
 import JoinGuidePrompt from "./JoinGuidePrompt";
 import FriendInviteModal from "./FriendInviteModal";
 import SearchBar from "./SearchBar";
@@ -722,6 +723,7 @@ export default function ChatPane() {
           </div>
         </>
       )}
+      <TopicDrawer />
     </div>
   );
 }

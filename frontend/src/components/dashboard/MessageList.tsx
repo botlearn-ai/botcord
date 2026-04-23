@@ -85,45 +85,95 @@ function buildTimelineItems(
   return items;
 }
 
-function TopicHeader({ group, isCollapsed, onToggle }: {
+const TOPIC_PREVIEW_COUNT = 2;
+
+function messagePreviewText(msg: DashboardMessage): string {
+  if (msg.text) return msg.text;
+  if (typeof msg.payload === "object" && msg.payload && "text" in msg.payload) {
+    const text = (msg.payload as { text?: unknown }).text;
+    if (typeof text === "string") return text;
+  }
+  return "";
+}
+
+function TopicCard({
+  group,
+  currentAgentId,
+  onOpen,
+}: {
   group: TopicGroup;
-  isCollapsed: boolean;
-  onToggle: () => void;
+  currentAgentId: string | undefined;
+  onOpen: () => void;
 }) {
   const topicStatusConfig = useTopicStatusConfig();
   const locale = useLanguage();
   const t = messageList[locale];
   const sc = group.topicInfo ? topicStatusConfig[group.topicInfo.status] : null;
 
+  const total = group.messages.length;
+  const preview = group.messages.slice(-TOPIC_PREVIEW_COUNT);
+  const hiddenCount = total - preview.length;
+
   return (
-    <button
-      onClick={onToggle}
-      className="sticky top-0 z-10 flex w-full items-center gap-2 rounded-t-xl bg-deep-black/90 px-3 py-2.5 backdrop-blur-sm transition-colors hover:bg-glass-bg border-b border-glass-border/30"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="group mb-4 cursor-pointer rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
     >
-      <span className="text-xs text-text-secondary/60">{isCollapsed ? "▶" : "▼"}</span>
-
-      <span className="text-sm font-medium text-text-primary truncate">
-        {group.topicName}
-      </span>
-
-      {sc && (
-        <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-[10px] font-medium ${sc.color}`}>
-          <span className="text-[8px]">{sc.icon}</span>
-          {sc.label}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-neon-cyan/70">💬</span>
+        <span className="truncate text-sm font-medium text-text-primary">
+          {group.topicName}
         </span>
-      )}
+        {sc && (
+          <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-[10px] font-medium ${sc.color}`}>
+            <span className="text-[8px]">{sc.icon}</span>
+            {sc.label}
+          </span>
+        )}
+        <span className="ml-auto text-[10px] text-text-secondary/50">
+          {total} {total !== 1 ? t.msgs : t.msg}
+        </span>
+      </div>
 
       {group.topicInfo?.goal && (
-        <span className="hidden sm:inline-flex items-center gap-1 rounded-lg border border-neon-purple/20 bg-neon-purple/5 px-1.5 py-px text-[10px] text-neon-purple/80 truncate max-w-[200px]">
-          <span>🎯</span>
-          {group.topicInfo.goal}
-        </span>
+        <div className="mt-1 truncate text-[11px] text-neon-purple/70">🎯 {group.topicInfo.goal}</div>
       )}
 
-      <span className="ml-auto text-[10px] text-text-secondary/50">
-        {group.messages.length} {group.messages.length !== 1 ? t.msgs : t.msg}
-      </span>
-    </button>
+      <div className="mt-2 space-y-1.5 border-l-2 border-neon-cyan/20 pl-2">
+        {preview.map((msg) => {
+          const text = messagePreviewText(msg);
+          const isOwn = msg.sender_id === currentAgentId;
+          const senderLabel = isOwn ? (locale === "zh" ? "你" : "You") : (msg.display_sender_name || msg.sender_name || msg.sender_id);
+          return (
+            <div key={msg.hub_msg_id} className="flex gap-2 text-xs">
+              <span className="shrink-0 font-medium text-text-secondary/80 max-w-[96px] truncate">
+                {senderLabel}
+              </span>
+              <span className="truncate text-text-primary/80">{text || <em className="text-text-secondary/50">…</em>}</span>
+            </div>
+          );
+        })}
+        {hiddenCount > 0 && (
+          <div className="text-[10px] text-text-secondary/60">
+            +{hiddenCount} {t.moreInThread}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-2 flex items-center justify-end">
+        <span className="text-[11px] font-medium text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
+          {t.viewThread} →
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -134,8 +184,9 @@ function isNearBottom(el: HTMLElement, threshold = 150): boolean {
 export default function MessageList() {
   const locale = useLanguage();
   const t = messageList[locale];
-  const { openedRoomId } = useDashboardUIStore(useShallow((state) => ({
+  const { openedRoomId, setOpenedTopicId } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
+    setOpenedTopicId: state.setOpenedTopicId,
   })));
   const { messagesByRoom, messagesLoading, messagesHasMore, loadMoreMessages, overview } = useDashboardChatStore(
     useShallow((state) => ({
@@ -156,7 +207,6 @@ export default function MessageList() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   const isLoadingMore = useRef(false);
-  const [collapsedTopics, setCollapsedTopics] = useState<Set<string>>(new Set());
   const [showNewMessagesBanner, setShowNewMessagesBanner] = useState(false);
   const showBannerRef = useRef(false);
   const wasNearBottomRef = useRef(true);
@@ -184,11 +234,11 @@ export default function MessageList() {
   }, [markRoomSeen, messagesByRoom, overview, publicRoomDetails, publicRooms, recentVisitedRooms]);
 
   useEffect(() => {
-    setCollapsedTopics(new Set());
+    setOpenedTopicId(null);
     prevLengthRef.current = 0;
     wasNearBottomRef.current = true;
     setShowNewMessagesBanner(false);
-  }, [roomId]);
+  }, [roomId, setOpenedTopicId]);
 
   const topicsMap = useMemo(() => {
     const m = new Map<string, TopicInfo>();
@@ -280,14 +330,6 @@ export default function MessageList() {
     }
   }, [roomId, commitRoomSeen]);
 
-  const toggleTopic = useCallback((topicKey: string) => {
-    setCollapsedTopics((prev) => {
-      const next = new Set(prev);
-      if (next.has(topicKey)) next.delete(topicKey);
-      else next.add(topicKey);
-      return next;
-    });
-  }, []);
 
   if (!roomId) return null;
 
@@ -351,30 +393,13 @@ export default function MessageList() {
 
           const { group } = item;
           const key = group.topicId || "__no_topic__";
-          const isCollapsed = collapsedTopics.has(key);
-          const statusColor = group.topicInfo
-            ? { completed: "border-green-400/40", failed: "border-red-400/40", expired: "border-yellow-400/40", open: "border-neon-cyan/40" }[group.topicInfo.status] || "border-neon-cyan/40"
-            : "border-glass-border";
-
           return (
-            <div key={key} className="mb-4 rounded-xl border border-glass-border/50 bg-glass-bg/30">
-              <TopicHeader
-                group={group}
-                isCollapsed={isCollapsed}
-                onToggle={() => toggleTopic(key)}
-              />
-              {!isCollapsed && (
-                <div className={`border-l-2 ${statusColor} ml-3 pl-3 pr-1 pb-2`}>
-                  {group.messages.map((msg) => (
-                    <MessageBubble
-                      key={msg.hub_msg_id}
-                      message={msg}
-                      isOwn={msg.sender_id === currentAgentId}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+            <TopicCard
+              key={key}
+              group={group}
+              currentAgentId={currentAgentId}
+              onOpen={() => group.topicId && setOpenedTopicId(group.topicId)}
+            />
           );
         })}
         <div ref={bottomRef} />

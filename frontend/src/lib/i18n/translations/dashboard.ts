@@ -1039,6 +1039,9 @@ export const messageList: TranslationMap<{
   msg: string
   msgs: string
   newMessages: string
+  topic: string
+  viewThread: string
+  moreInThread: string
 }> = {
   en: {
     open: 'Open',
@@ -1051,6 +1054,9 @@ export const messageList: TranslationMap<{
     msg: 'msg',
     msgs: 'msgs',
     newMessages: 'New messages ↓',
+    topic: 'Topic',
+    viewThread: 'View thread',
+    moreInThread: 'more in thread',
   },
   zh: {
     open: '进行中',
@@ -1063,6 +1069,9 @@ export const messageList: TranslationMap<{
     msg: '条消息',
     msgs: '条消息',
     newMessages: '有新消息 ↓',
+    topic: '话题',
+    viewThread: '查看话题',
+    moreInThread: '条消息在话题中',
   },
 }
 
