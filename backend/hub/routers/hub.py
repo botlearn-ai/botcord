@@ -29,6 +29,7 @@ from hub.enums import TopicStatus
 from hub.id_generators import generate_hub_msg_id, generate_topic_id
 from hub.models import (
     Agent,
+    AgentApprovalQueue,
     Block,
     Contact,
     ContactRequest,
@@ -45,6 +46,7 @@ from hub.models import (
     Topic,
     User,
 )
+from hub.enums import ApprovalKind, ApprovalState
 from hub.forward import (
     RoomContext as _RoomContext,
     build_flat_text as _build_flat_text,
@@ -562,14 +564,34 @@ async def _send_direct_message(
             elif existing_req.state == ContactRequestState.accepted:
                 raise I18nHTTPException(status_code=409, message_key="contact_request_already_accepted")
         else:
-            cr = ContactRequest(
-                from_agent_id=envelope.from_,
-                to_agent_id=envelope.to,
-                state=ContactRequestState.pending,
-                message=envelope.payload.get("message"),
+            # Check if target agent is claimed; if so, queue for owner approval
+            target_agent_result = await db.execute(
+                select(Agent).where(Agent.agent_id == envelope.to)
             )
-            db.add(cr)
-            await db.flush()
+            target_agent = target_agent_result.scalar_one_or_none()
+            if target_agent is not None and target_agent.user_id is not None:
+                import json as _json
+                db.add(AgentApprovalQueue(
+                    agent_id=envelope.to,
+                    owner_user_id=target_agent.user_id,
+                    kind=ApprovalKind.contact_request,
+                    payload_json=_json.dumps({
+                        "from_participant_id": envelope.from_,
+                        "message": envelope.payload.get("message"),
+                        "msg_id": envelope.msg_id,
+                    }),
+                    state=ApprovalState.pending,
+                ))
+                await db.flush()
+            else:
+                cr = ContactRequest(
+                    from_agent_id=envelope.from_,
+                    to_agent_id=envelope.to,
+                    state=ContactRequestState.pending,
+                    message=envelope.payload.get("message"),
+                )
+                db.add(cr)
+                await db.flush()
 
     # Resolve room_id: contact_request messages don't create a DM room
     room_id: str | None = None

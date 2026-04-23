@@ -523,13 +523,29 @@ async def resolve_pending_approval(
                         peer_type=ParticipantType.agent,
                     )
                 )
-        # Other kinds (room_invite, payment) reserved for later PRs; approval
-        # is recorded but side-effects are not materialised here.
+        elif entry.kind == ApprovalKind.room_invite:
+            try:
+                payload = json.loads(entry.payload_json or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            room_id_for_invite = payload.get("room_id")
+            if room_id_for_invite:
+                db.add(
+                    RoomMember(
+                        room_id=room_id_for_invite,
+                        agent_id=entry.agent_id,
+                        role=RoomRole.member,
+                        can_send=payload.get("can_send"),
+                        can_invite=payload.get("can_invite"),
+                    )
+                )
+
+        # For payment and future kinds, approval is recorded; side-effects
+        # are handled by their own downstream services.
         try:
             await db.commit()
         except IntegrityError:
-            # If contacts already existed, the unique constraint will fire;
-            # we still keep the approval as 'approved'.
+            # Duplicate contact / member row → still mark approved
             await db.rollback()
             result2 = await db.execute(
                 select(AgentApprovalQueue).where(AgentApprovalQueue.id == approval_id)
