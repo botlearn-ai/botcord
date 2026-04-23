@@ -111,7 +111,23 @@ function TopicCard({
   const sc = group.topicInfo ? topicStatusConfig[group.topicInfo.status] : null;
 
   const total = group.messages.length;
-  const preview = group.messages.slice(-TOPIC_PREVIEW_COUNT);
+  const firstMsg = group.messages[0];
+  const latestMsgs = group.messages.slice(-TOPIC_PREVIEW_COUNT);
+  // Ensure the first message always appears, followed by the most recent ones
+  // (deduped if overlap), so readers see both "what the topic is about" and the
+  // latest activity.
+  const seen = new Set<string>();
+  const preview: DashboardMessage[] = [];
+  if (firstMsg) {
+    preview.push(firstMsg);
+    seen.add(firstMsg.hub_msg_id);
+  }
+  for (const m of latestMsgs) {
+    if (!seen.has(m.hub_msg_id)) {
+      preview.push(m);
+      seen.add(m.hub_msg_id);
+    }
+  }
   const hiddenCount = total - preview.length;
 
   return (
