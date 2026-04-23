@@ -1,0 +1,122 @@
+id: s16_human_approves_contact_request
+description: >
+  Agent A sends a contact_request to Agent B, which is claimed by a dashboard user.
+  The Hub routes the request to AgentApprovalQueue instead of ContactRequest.
+  The Human owner approves via /api/humans/me/pending-approvals/{id}/resolve.
+  A Contact relationship is created in the database.
+  Requires BOTCORD_TEST_USER_TOKEN (Supabase JWT for the test user who claims Agent B).
+runtime:
+  instance_count: 2
+  model: google-vertex/gemini-3-flash-preview
+  health_timeout_seconds: 300
+  gateway_recovery_seconds: 10
+prompt:
+  source: frontend-derived
+  kind: homepage_quickstart
+  fallback: scenario-override
+  override_template: |
+    Please follow this setup guide to install and configure BotCord:
+    {setup_guide_url}
+steps:
+  - id: send_quickstart_prompt
+    action: openclaw.agent_prompt
+    description: Install BotCord on both instances
+    params:
+      target: all
+
+  - id: wait_gateway_recovered
+    action: runtime.wait_healthy
+    description: Wait for gateway to recover after plugin installation
+    params:
+      delay_seconds: 10
+
+  - id: read_credentials
+    action: filesystem.read_credentials
+    description: Read BotCord credentials from each instance
+    params:
+      glob: .botcord/credentials/*.json
+
+  - id: share_agent_ids
+    action: evidence.share_cross_instance
+    description: Share Agent A's ID to instance 2 and Agent B's ID to instance 1
+    params:
+      from_instance: 1
+      to_instance: 2
+      bidirectional: true
+
+  - id: claim_agent_b
+    action: http.request
+    description: >
+      The test dashboard user claims Agent B (instance 2) so it becomes a "claimed" agent.
+      This is what causes contact_request to go to AgentApprovalQueue.
+      POST /api/users/me/agents/claim with the claim_code from Agent B's credentials.
+      Skipped gracefully if BOTCORD_TEST_USER_TOKEN is absent.
+    params:
+      target: 2
+      method: POST
+      url: "{hub_base_url}/api/users/me/agents/claim"
+      body:
+        claim_code: ""
+
+  - id: wait_after_claim
+    action: runtime.wait_healthy
+    description: Wait for claim to propagate
+    params:
+      delay_seconds: 3
+
+  - id: agent_a_send_contact_request
+    action: openclaw.dynamic_prompt
+    description: >
+      Agent A sends a contact_request to Agent B.
+      Because Agent B is now claimed, the Hub routes this to AgentApprovalQueue.
+    params:
+      target: 1
+      message: >
+        Send a contact request to agent {peerAgentId} using the botcord_contacts tool
+        with action="send_request" and a friendly message "Hi from E2E test, please accept me."
+        Do not ask questions. Just send it and report the result.
+
+  - id: wait_for_queue
+    action: runtime.wait_healthy
+    description: Wait for approval queue entry to be created
+    params:
+      delay_seconds: 3
+
+  - id: human_list_approvals
+    action: http.request
+    description: >
+      Human fetches their pending approval queue to find the contact_request entry.
+      Extracts the approval ID for the resolve step.
+    params:
+      target: 2
+      method: GET
+      url: "{hub_base_url}/api/humans/me/pending-approvals"
+      extract_approval_id: true
+
+  - id: human_approve_request
+    action: http.request
+    description: >
+      Human approves the queued contact_request.
+      This materializes a ContactRequest (accepted) and Contact row in the database.
+    params:
+      target: 2
+      method: POST
+      url: "{hub_base_url}/api/humans/me/pending-approvals/{approvalId}/resolve"
+      body:
+        approved: true
+
+  - id: wait_after_approve
+    action: runtime.wait_healthy
+    description: Wait for contact relationship to be created
+    params:
+      delay_seconds: 3
+
+assertions:
+  - id: agent_output.status_ok
+    description: Agent A successfully sent the contact request
+  - id: db.approval_queue_entry_exists
+    description: AgentApprovalQueue has a pending or resolved entry for Agent B
+  - id: db.contact_approved
+    description: The approval queue entry state is approved
+  - id: db.contact_relationship_exists
+    description: Contact relationship exists between Agent A and Agent B
