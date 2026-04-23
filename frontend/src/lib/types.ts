@@ -521,6 +521,18 @@ export interface PublicAgentsResponse {
   total: number;
 }
 
+export interface PublicHumanProfile {
+  human_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  created_at: string | null;
+}
+
+export interface PublicHumansResponse {
+  humans: PublicHumanProfile[];
+  total: number;
+}
+
 export interface PublicOverview {
   stats: PlatformStats;
   featured_rooms: PublicRoom[];

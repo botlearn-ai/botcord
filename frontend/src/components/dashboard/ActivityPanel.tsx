@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import type { ActivityStats, ActivityFeedItem } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
 type Period = "today" | "7d" | "30d";
 
@@ -175,6 +176,8 @@ export default function ActivityPanel() {
   const locale = useLanguage();
   const zh = locale === "zh";
   const t = sidebar[locale];
+  const viewMode = useDashboardSessionStore((s) => s.viewMode);
+  const showPeriodTabs = viewMode === "agent";
 
   const [period, setPeriod] = useState<Period>("today");
   const [stats, setStats] = useState<ActivityStats | null>(null);
@@ -184,14 +187,14 @@ export default function ActivityPanel() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(
-    async (p: Period) => {
+  const loadAll = useCallback(
+    async (p: Period, withStats: boolean) => {
       setLoading(true);
       setError(null);
       try {
         const [statsRes, feedRes] = await Promise.all([
-          api.getActivityStats(p),
-          api.getActivityFeed({ period: p, limit: 30 }),
+          withStats ? api.getActivityStats(p) : Promise.resolve(null),
+          api.getActivityFeed({ limit: 30 }),
         ]);
         setStats(statsRes);
         setFeed(feedRes.items);
@@ -209,7 +212,7 @@ export default function ActivityPanel() {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const res = await api.getActivityFeed({ period, limit: 30, offset: feed.length });
+      const res = await api.getActivityFeed({ limit: 30, offset: feed.length });
       setFeed((prev) => [...prev, ...res.items]);
       setHasMore(res.has_more);
     } catch {
@@ -217,11 +220,30 @@ export default function ActivityPanel() {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, period, feed.length]);
+  }, [loadingMore, hasMore, feed.length]);
 
+  // Initial load (and when viewMode changes). Feed is not period-filtered.
   useEffect(() => {
-    void loadData(period);
-  }, [period, loadData]);
+    void loadAll(period, showPeriodTabs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPeriodTabs, loadAll]);
+
+  // Period changes only re-fetch stats (feed shows all).
+  useEffect(() => {
+    if (!showPeriodTabs) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const statsRes = await api.getActivityStats(period);
+        if (!cancelled) setStats(statsRes);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [period, showPeriodTabs]);
 
   const periodLabels: Record<Period, string> = {
     today: zh ? "\u4ECA\u65E5" : "Today",
@@ -236,21 +258,23 @@ export default function ActivityPanel() {
         <h1 className="text-base font-semibold text-text-primary">
           {t.activity}
         </h1>
-        <div className="flex gap-1 rounded-lg border border-glass-border bg-glass-bg p-0.5">
-          {(["today", "7d", "30d"] as Period[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                period === p
-                  ? "bg-neon-cyan/15 text-neon-cyan"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              {periodLabels[p]}
-            </button>
-          ))}
-        </div>
+        {showPeriodTabs && (
+          <div className="flex gap-1 rounded-lg border border-glass-border bg-glass-bg p-0.5">
+            {(["today", "7d", "30d"] as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  period === p
+                    ? "bg-neon-cyan/15 text-neon-cyan"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {periodLabels[p]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Body */}
@@ -259,13 +283,13 @@ export default function ActivityPanel() {
           <div className="flex flex-col items-center gap-3 py-12">
             <p className="text-sm text-red-400">{error}</p>
             <button
-              onClick={() => loadData(period)}
+              onClick={() => loadAll(period, showPeriodTabs)}
               className="rounded-lg border border-glass-border px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
             >
               {zh ? "\u91CD\u8BD5" : "Retry"}
             </button>
           </div>
-        ) : loading && !stats ? (
+        ) : loading && feed.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-glass-border border-t-neon-cyan" />
           </div>

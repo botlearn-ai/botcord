@@ -19,6 +19,7 @@ import type {
   PlatformStats,
   PublicRoomsResponse,
   PublicAgentsResponse,
+  PublicHumansResponse,
   PublicOverview,
   PublicRoomMembersResponse,
   WalletSummary,
@@ -426,6 +427,14 @@ export const api = {
     if (opts?.limit) params.limit = String(opts.limit);
     if (opts?.offset) params.offset = String(opts.offset);
     return apiGet<PublicAgentsResponse>("/api/public/agents", params);
+  },
+
+  getPublicHumans(opts?: { q?: string; limit?: number; offset?: number }) {
+    const params: Record<string, string> = {};
+    if (opts?.q) params.q = opts.q;
+    if (opts?.limit) params.limit = String(opts.limit);
+    if (opts?.offset) params.offset = String(opts.offset);
+    return apiGet<PublicHumansResponse>("/api/public/humans", params);
   },
 
   getPublicAgentProfile(agentId: string) {

@@ -188,6 +188,7 @@ export default function Sidebar() {
     ownedAgents: state.ownedAgents,
     activeAgentId: state.activeAgentId,
     sessionMode: state.sessionMode,
+    viewMode: state.viewMode,
     token: state.token,
     humanRooms: state.humanRooms,
     refreshUserProfile: state.refreshUserProfile,
@@ -277,7 +278,9 @@ export default function Sidebar() {
     activity: t.activity,
   };
 
-  const navItems = authNavItems;
+  const navItems = sessionStore.viewMode === "human"
+    ? authNavItems.filter((item) => item.key !== "activity")
+    : authNavItems;
 
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({
@@ -499,16 +502,16 @@ export default function Sidebar() {
             </SecondaryNavButton>
             <SecondaryNavButton
               onClick={() => {
-                uiStore.setExploreView("templates");
+                uiStore.setExploreView("humans");
                 startTransition(() => {
-                  router.push("/chats/explore/templates");
+                  router.push("/chats/explore/humans");
                 });
               }}
-              active={uiStore.exploreView === "templates"}
+              active={uiStore.exploreView === "humans"}
               className="mt-2"
               tone="purple"
             >
-              {t.promptTemplates}
+              {t.publicHumans}
             </SecondaryNavButton>
           </div>
         )}

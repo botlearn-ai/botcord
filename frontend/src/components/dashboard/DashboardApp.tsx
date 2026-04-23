@@ -217,7 +217,7 @@ export default function DashboardApp() {
       const nextSidebarTab = normalizedTab === "user-chat" ? "messages" : normalizedTab;
       if (uiStore.sidebarTab !== nextSidebarTab) uiStore.setSidebarTab(nextSidebarTab);
 
-      if (tab === "explore" && (subtab === "rooms" || subtab === "agents" || subtab === "templates") && uiStore.exploreView !== subtab) {
+      if (tab === "explore" && (subtab === "rooms" || subtab === "agents" || subtab === "humans") && uiStore.exploreView !== subtab) {
         uiStore.setExploreView(subtab);
       }
 
@@ -517,14 +517,20 @@ export default function DashboardApp() {
     if (!chatStore.publicAgentsLoaded && !chatStore.publicAgentsLoading) {
       void chatStore.loadPublicAgents();
     }
+    if (!chatStore.publicHumansLoaded && !chatStore.publicHumansLoading) {
+      void chatStore.loadPublicHumans();
+    }
   }, [
     sessionStore.authResolved,
     chatStore.publicRoomsLoaded,
     chatStore.publicRoomsLoading,
     chatStore.publicAgentsLoaded,
     chatStore.publicAgentsLoading,
+    chatStore.publicHumansLoaded,
+    chatStore.publicHumansLoading,
     chatStore.loadPublicRooms,
     chatStore.loadPublicAgents,
+    chatStore.loadPublicHumans,
   ]);
 
   useEffect(() => {
