@@ -10,12 +10,13 @@
 import { useMemo, useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import AgentBindDialog from "./AgentBindDialog";
+import CreateAgentDialog from "./CreateAgentDialog";
 import CredentialResetDialog from "./CredentialResetDialog";
 import UnbindAgentDialog from "./UnbindAgentDialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, KeyRound, LogOut, Plus, RefreshCw, Settings, Unlink, User } from "lucide-react";
+import { Bot, Check, KeyRound, LogOut, Plus, RefreshCw, Settings, Unlink, User } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
-import { accountMenu, bindDialog } from "@/lib/i18n/translations/dashboard";
+import { accountMenu, bindDialog, createAgentDialog } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useShallow } from "zustand/react/shallow";
@@ -50,11 +51,13 @@ export default function AccountMenu({
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const [showBindDialog, setShowBindDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [showUnbindDialog, setShowUnbindDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const locale = useLanguage();
   const t = accountMenu[locale];
+  const tCreate = createAgentDialog[locale];
   const tc = common[locale];
   const { human, viewMode, setViewMode } = useDashboardSessionStore(useShallow((state) => ({
     human: state.human,
@@ -214,6 +217,14 @@ export default function AccountMenu({
             </DropdownMenu.Item>
 
             <DropdownMenu.Item
+              onClick={() => setShowCreateDialog(true)}
+              className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-neon-cyan focus:bg-neon-cyan/10 focus:text-neon-cyan"
+            >
+              <Bot className="mr-2 h-4 w-4" />
+              <span>{tCreate.menuLabel}</span>
+            </DropdownMenu.Item>
+
+            <DropdownMenu.Item
               disabled={!activeAgentId}
               onClick={() => activeAgentId && setShowResetDialog(true)}
               className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-amber-300 focus:bg-amber-300/10 focus:text-amber-300 data-[disabled]:cursor-not-allowed data-[disabled]:text-text-secondary/50"
@@ -260,6 +271,12 @@ export default function AccountMenu({
       {showBindDialog && (
         <AgentBindDialog
           onClose={() => setShowBindDialog(false)}
+          onSuccess={onAgentBound}
+        />
+      )}
+      {showCreateDialog && (
+        <CreateAgentDialog
+          onClose={() => setShowCreateDialog(false)}
           onSuccess={onAgentBound}
         />
       )}
