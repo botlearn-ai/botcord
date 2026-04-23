@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import path from "node:path";
 import {
   loadConfig,
@@ -52,6 +52,18 @@ import {
 
 const ADAPTER_LIST = listAdapterIds().join("|");
 
+const DEFAULT_HUB = "https://api.botcord.chat";
+
+/**
+ * Fallback label when the operator doesn't pass `--label` at login.
+ * macOS hostnames often carry a `.local` mDNS suffix that's just noise in
+ * the dashboard — strip it. A null/empty hostname falls back to "daemon".
+ */
+function defaultLoginLabel(): string {
+  const raw = (hostname() || "").trim().replace(/\.local$/i, "");
+  return raw.length > 0 ? raw : "daemon";
+}
+
 const HELP = `botcord-daemon — BotCord local daemon
 
 Usage: botcord-daemon <command> [options]
@@ -65,11 +77,14 @@ Commands:
   start [--foreground] [--relogin] [--hub <url>] [--label <name>]
                                           Start the daemon. Without credentials
                                           and on a TTY, runs the interactive
-                                          device-code login first. --relogin
-                                          forces re-login. --label is sent to
-                                          the Hub on connect (e.g. "MacBook").
-                                          Non-TTY environments must mount a
-                                          pre-existing user-auth.json (plan §6.4).
+                                          device-code login first. --hub defaults
+                                          to ${DEFAULT_HUB} (or the URL stored in
+                                          a previous login). --relogin forces
+                                          re-login. --label is sent to the Hub
+                                          on connect for the dashboard device
+                                          list (defaults to hostname). Non-TTY
+                                          environments must mount a pre-existing
+                                          user-auth.json (plan §6.4).
   stop                                    Stop the running daemon (SIGTERM)
   status                                  Print daemon status (pid, agent)
   logs [-f]                               Print log tail (use -f to follow)
@@ -313,8 +328,8 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
     return existing;
   }
 
-  // Need a fresh login. Resolve hubUrl: explicit --hub > existing record.
-  const hubUrl = hubFlag ?? existing?.hubUrl;
+  // Need a fresh login. Resolve hubUrl: explicit --hub > existing record > DEFAULT_HUB.
+  const hubUrl = hubFlag ?? existing?.hubUrl ?? DEFAULT_HUB;
 
   if (!process.stdin.isTTY) {
     // Plan §6.4 — non-interactive environment. Fail fast with actionable
@@ -329,12 +344,8 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
     process.exit(1);
   }
 
-  if (!hubUrl) {
-    console.error("start: --hub <url> required for first-time device-code login");
-    process.exit(1);
-  }
-
-  return runDeviceCodeFlow({ hubUrl, ...(labelFlag ? { label: labelFlag } : {}) });
+  const label = labelFlag ?? defaultLoginLabel();
+  return runDeviceCodeFlow({ hubUrl, label });
 }
 
 async function cmdStart(args: ParsedArgs): Promise<void> {
