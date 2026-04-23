@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { DaemonConfig } from "../config.js";
 import {
   BOTCORD_CHANNEL_TYPE,
+  buildManagedRoutes,
   toGatewayConfig,
 } from "../daemon-config-map.js";
+import { agentWorkspaceDir } from "../agent-workspace.js";
+import type { GatewayRoute } from "../gateway/index.js";
 
 function baseConfig(partial: Partial<DaemonConfig> = {}): DaemonConfig {
   return {
@@ -304,43 +307,110 @@ describe("toGatewayConfig", () => {
     expect(gw.channels).toEqual([]);
   });
 
-  it("synthesizes a per-agent route from agentRuntimes, appended after explicit routes", () => {
+  it("routes user-authored cfg.routes[] through to GatewayConfig.routes unchanged", () => {
     const cfg = baseConfig({
       agentId: undefined,
-      agents: ["ag_one", "ag_two"],
+      agents: ["ag_one"],
       routes: [
         { match: { roomPrefix: "rm_oc_" }, adapter: "claude-code", cwd: "/work" },
       ],
     });
     const gw = toGatewayConfig(cfg, {
+      agentIds: ["ag_one"],
+      agentRuntimes: { ag_one: { runtime: "codex", cwd: "/home/alice/ag_one" } },
+    });
+    // User route stays in `routes[]` exactly as translated from `cfg.routes`.
+    expect(gw.routes).toHaveLength(1);
+    expect(gw.routes![0].match).toEqual({ conversationPrefix: "rm_oc_" });
+    // Synthesized per-agent route lives in `managedRoutes`, not `routes`.
+    expect(gw.managedRoutes).toEqual([
+      {
+        match: { accountId: "ag_one" },
+        runtime: "codex",
+        cwd: "/home/alice/ag_one",
+      },
+    ]);
+  });
+
+  it("synthesizes managed routes into GatewayConfig.managedRoutes, not GatewayConfig.routes", () => {
+    const cfg = baseConfig({
+      agentId: undefined,
+      agents: ["ag_one", "ag_two"],
+    });
+    const gw = toGatewayConfig(cfg, {
       agentIds: ["ag_one", "ag_two"],
       agentRuntimes: {
         ag_one: { runtime: "codex", cwd: "/home/alice/ag_one" },
-        // ag_two deliberately missing — it should fall back to defaultRoute
+        // ag_two deliberately missing — should still get a managed route.
       },
     });
-    expect(gw.routes).toHaveLength(2);
-    // Explicit route stays first (match-first-wins).
-    expect(gw.routes![0].match).toEqual({ conversationPrefix: "rm_oc_" });
-    // Synthesized per-agent route appended after, pinning by accountId.
-    expect(gw.routes![1]).toEqual({
+    expect(gw.routes).toEqual([]);
+    expect(gw.managedRoutes).toHaveLength(2);
+    expect(gw.managedRoutes![0]).toEqual({
       match: { accountId: "ag_one" },
       runtime: "codex",
       cwd: "/home/alice/ag_one",
     });
-  });
-
-  it("inherits defaultRoute.cwd when agentRuntimes omits cwd for an agent", () => {
-    const cfg = baseConfig({ agentId: undefined, agents: ["ag_one"] });
-    const gw = toGatewayConfig(cfg, {
-      agentIds: ["ag_one"],
-      agentRuntimes: { ag_one: { runtime: "codex" } },
+    expect(gw.managedRoutes![1]).toEqual({
+      match: { accountId: "ag_two" },
+      runtime: "claude-code",
+      cwd: agentWorkspaceDir("ag_two"),
     });
-    expect(gw.routes).toHaveLength(1);
-    expect(gw.routes![0]).toEqual({
+  });
+});
+
+describe("buildManagedRoutes", () => {
+  const defaultRoute: GatewayRoute = {
+    runtime: "claude-code",
+    cwd: "/home/default",
+  };
+
+  it("uses agentRuntimes[id].cwd when set", () => {
+    const map = buildManagedRoutes(
+      ["ag_one"],
+      { ag_one: { runtime: "codex", cwd: "/custom/ag_one" } },
+      defaultRoute,
+    );
+    expect(map.get("ag_one")).toEqual({
       match: { accountId: "ag_one" },
       runtime: "codex",
-      cwd: "/home/alice",
+      cwd: "/custom/ag_one",
     });
+  });
+
+  it("falls back to agentWorkspaceDir(id) when meta has no cwd", () => {
+    const map = buildManagedRoutes(
+      ["ag_one"],
+      { ag_one: { runtime: "codex" } },
+      defaultRoute,
+    );
+    expect(map.get("ag_one")?.cwd).toBe(agentWorkspaceDir("ag_one"));
+  });
+
+  it("falls back to defaultRoute.runtime when meta has no runtime (behavior change from pre-plan guard)", () => {
+    // Previously the synthesized route was only emitted when meta.runtime
+    // was truthy; agents without a cached runtime were silently skipped.
+    // Plan §10 makes the synthesis universal so every agent lands in its
+    // own workspace by default.
+    const map = buildManagedRoutes(["ag_one"], {}, defaultRoute);
+    expect(map.get("ag_one")).toEqual({
+      match: { accountId: "ag_one" },
+      runtime: "claude-code",
+      cwd: agentWorkspaceDir("ag_one"),
+    });
+  });
+
+  it("preserves agentIds insertion order in the returned map", () => {
+    const map = buildManagedRoutes(
+      ["ag_b", "ag_a", "ag_c"],
+      {},
+      defaultRoute,
+    );
+    expect(Array.from(map.keys())).toEqual(["ag_b", "ag_a", "ag_c"]);
+  });
+
+  it("emits an empty map when agentIds is empty", () => {
+    const map = buildManagedRoutes([], {}, defaultRoute);
+    expect(map.size).toBe(0);
   });
 });

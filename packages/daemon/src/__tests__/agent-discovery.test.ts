@@ -39,11 +39,13 @@ describe("discoverAgentCredentials", () => {
   });
 
   it("loads valid credential files and returns the internal agentId (not the filename)", () => {
+    const savedAt = "2025-01-01T00:00:00.000Z";
     const res = discoverAgentCredentials({
       credentialsDir: "/creds",
       readDir: () => ["wrong-name.json"],
       stat: () => fakeStat(100),
-      loadCredentials: () => fakeCreds("ag_internal", { displayName: "Alice" }),
+      loadCredentials: () =>
+        fakeCreds("ag_internal", { displayName: "Alice", savedAt }),
     });
     expect(res.agents).toEqual([
       {
@@ -51,9 +53,25 @@ describe("discoverAgentCredentials", () => {
         credentialsFile: "/creds/wrong-name.json",
         hubUrl: "https://hub.example.com",
         displayName: "Alice",
+        keyId: "k_1",
+        savedAt,
       },
     ]);
     expect(res.warnings).toEqual([]);
+  });
+
+  it("surfaces keyId and savedAt from the credentials file (plan §9 BootAgent shape)", () => {
+    const savedAt = "2026-04-23T12:00:00.000Z";
+    const res = discoverAgentCredentials({
+      credentialsDir: "/creds",
+      readDir: () => ["ag.json"],
+      stat: () => fakeStat(1),
+      loadCredentials: () =>
+        fakeCreds("ag_one", { keyId: "k_42", savedAt }),
+    });
+    expect(res.agents).toHaveLength(1);
+    expect(res.agents[0].keyId).toBe("k_42");
+    expect(res.agents[0].savedAt).toBe(savedAt);
   });
 
   it("ignores non-JSON files silently", () => {

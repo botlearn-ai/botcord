@@ -7,6 +7,7 @@ import type {
   ChannelAdapter,
   GatewayChannelConfig,
   GatewayConfig,
+  GatewayRoute,
   GatewayRuntimeSnapshot,
   InboundObserver,
   SystemContextBuilder,
@@ -50,6 +51,7 @@ export class Gateway {
   private readonly channelManager: ChannelManager;
   private readonly channelMap: Map<string, ChannelAdapter>;
   private readonly createChannelFn: (cfg: GatewayChannelConfig) => ChannelAdapter;
+  private readonly managedRoutes: Map<string, GatewayRoute> = new Map();
   private started = false;
   private stopped = false;
 
@@ -64,6 +66,21 @@ export class Gateway {
       const adapter = opts.createChannel(cfg);
       this.channelMap.set(adapter.id, adapter);
       channelList.push(adapter);
+    }
+
+    for (const route of opts.config.managedRoutes ?? []) {
+      const id = route.match?.accountId;
+      if (typeof id === "string") {
+        this.managedRoutes.set(id, route);
+      } else {
+        // Defensive: buildManagedRoutes always sets match.accountId, so
+        // reaching here means a caller constructed GatewayConfig directly
+        // with a malformed entry. Log so it's not silently dropped.
+        this.log.warn("gateway: dropping seed managed route with no accountId", {
+          runtime: route.runtime,
+          cwd: route.cwd,
+        });
+      }
     }
 
     this.sessionStore = new SessionStore({
@@ -82,6 +99,7 @@ export class Gateway {
       turnTimeoutMs: opts.turnTimeoutMs,
       buildSystemContext: opts.buildSystemContext,
       onInbound: opts.onInbound,
+      managedRoutes: this.managedRoutes,
     });
 
     this.channelManager = new ChannelManager({
@@ -114,6 +132,32 @@ export class Gateway {
       channels: this.channelManager.status(),
       turns: this.dispatcher.turns(),
     };
+  }
+
+  /**
+   * Read-only view of the synthesized per-agent routes. Exposed for
+   * snapshot/debug callers and tests; matching reads the live internal map.
+   */
+  listManagedRoutes(): GatewayRoute[] {
+    return Array.from(this.managedRoutes.values());
+  }
+
+  /** Replace all managed routes atomically. Used by `reload_config`. */
+  replaceManagedRoutes(routes: Map<string, GatewayRoute>): void {
+    this.managedRoutes.clear();
+    for (const [id, route] of routes) {
+      this.managedRoutes.set(id, route);
+    }
+  }
+
+  /** Add or update one managed route. Used by provision hot-add. */
+  upsertManagedRoute(accountId: string, route: GatewayRoute): void {
+    this.managedRoutes.set(accountId, route);
+  }
+
+  /** Drop one managed route. Used by revoke / removeChannel. */
+  removeManagedRoute(accountId: string): void {
+    this.managedRoutes.delete(accountId);
   }
 
   /**

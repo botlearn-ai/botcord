@@ -13,6 +13,7 @@ import { ActivityTracker } from "./activity-tracker.js";
 import type { DaemonConfig } from "./config.js";
 import { SESSIONS_PATH, SNAPSHOT_PATH } from "./config.js";
 import { resolveBootAgents, type BootAgentsResult } from "./agent-discovery.js";
+import { ensureAgentWorkspace } from "./agent-workspace.js";
 import { ControlChannel } from "./control-channel.js";
 import { toGatewayConfig } from "./daemon-config-map.js";
 import { log as daemonLog } from "./log.js";
@@ -240,17 +241,10 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     logger.warn("daemon.discovery.warning", { message: w });
   }
   const agentIds = boot.agents.map((a) => a.agentId);
-  const credentialPathByAgentId = new Map<string, string>();
-  const agentRuntimes: Record<string, { runtime?: string; cwd?: string }> = {};
-  for (const a of boot.agents) {
-    if (a.credentialsFile) credentialPathByAgentId.set(a.agentId, a.credentialsFile);
-    if (a.runtime || a.cwd) {
-      agentRuntimes[a.agentId] = {
-        ...(a.runtime ? { runtime: a.runtime } : {}),
-        ...(a.cwd ? { cwd: a.cwd } : {}),
-      };
-    }
-  }
+  const { credentialPathByAgentId, agentRuntimes } = backfillBootAgents(
+    boot.agents,
+    { logger },
+  );
 
   const gwConfig = toGatewayConfig(opts.config, { agentIds, agentRuntimes });
 
@@ -408,6 +402,70 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     stop,
     snapshot: () => gateway.snapshot(),
   };
+}
+
+/**
+ * Result of {@link backfillBootAgents}: the maps the boot flow needs to
+ * plumb into `toGatewayConfig` + the channel factory.
+ */
+export interface BootBackfillResult {
+  credentialPathByAgentId: Map<string, string>;
+  agentRuntimes: Record<string, { runtime?: string; cwd?: string }>;
+}
+
+/**
+ * Walk the boot-agent list and (a) populate the credential-path + runtime
+ * caches used downstream, and (b) idempotently create each agent's on-disk
+ * workspace tree (plan §9). One agent's failing workspace must not block
+ * the others — errors are warned and swallowed per agent. Exported for
+ * unit tests; `startDaemon` calls this inline.
+ */
+export function backfillBootAgents(
+  agents: BootAgentsResult["agents"],
+  opts: {
+    logger: GatewayLogger;
+    ensure?: typeof ensureAgentWorkspace;
+  },
+): BootBackfillResult {
+  const ensure = opts.ensure ?? ensureAgentWorkspace;
+  const credentialPathByAgentId = new Map<string, string>();
+  const agentRuntimes: Record<string, { runtime?: string; cwd?: string }> = {};
+  const failed: string[] = [];
+  for (const a of agents) {
+    if (a.credentialsFile) credentialPathByAgentId.set(a.agentId, a.credentialsFile);
+    if (a.runtime || a.cwd) {
+      agentRuntimes[a.agentId] = {
+        ...(a.runtime ? { runtime: a.runtime } : {}),
+        ...(a.cwd ? { cwd: a.cwd } : {}),
+      };
+    }
+    // Seed files are written only when missing (see `ensureAgentWorkspace`),
+    // so a legacy agent whose workspace dir doesn't exist yet gets one on
+    // the next boot — with zero risk of overwriting the user's edits.
+    try {
+      ensure(a.agentId, {
+        ...(a.displayName ? { displayName: a.displayName } : {}),
+        ...(a.runtime ? { runtime: a.runtime } : {}),
+        ...(a.keyId ? { keyId: a.keyId } : {}),
+        ...(a.savedAt ? { savedAt: a.savedAt } : {}),
+        // `bio` is not surfaced on BootAgent — identity.md renders a
+        // placeholder the user can fill in.
+      });
+    } catch (err) {
+      failed.push(a.agentId);
+      opts.logger.warn("ensureAgentWorkspace failed at boot; continuing", {
+        agentId: a.agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  if (failed.length > 0) {
+    opts.logger.warn("ensureAgentWorkspace: boot backfill incomplete", {
+      count: failed.length,
+      agentIds: failed,
+    });
+  }
+  return { credentialPathByAgentId, agentRuntimes };
 }
 
 /**

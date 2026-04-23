@@ -1,6 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
-import type { GatewayInboundMessage } from "../gateway/index.js";
-import { classifyActivitySender, createActivityRecorder } from "../daemon.js";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GatewayInboundMessage, GatewayLogger } from "../gateway/index.js";
+import {
+  backfillBootAgents,
+  classifyActivitySender,
+  createActivityRecorder,
+} from "../daemon.js";
+import type { DiscoveredAgentCredential } from "../agent-discovery.js";
+import { agentWorkspaceDir } from "../agent-workspace.js";
 
 function makeMsg(overrides: {
   conversationId?: string;
@@ -168,5 +183,118 @@ describe("createActivityRecorder", () => {
     });
     expect(record.mock.calls[0][0].lastInboundPreview).toBe("raw owner text");
     expect(record.mock.calls[0][0].lastSenderKind).toBe("owner");
+  });
+});
+
+function silentLogger(): GatewayLogger {
+  return {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    debug: () => {},
+  };
+}
+
+function bootAgent(
+  agentId: string,
+  extra: Partial<DiscoveredAgentCredential> = {},
+): DiscoveredAgentCredential {
+  return {
+    agentId,
+    credentialsFile: `/fake/${agentId}.json`,
+    hubUrl: "https://hub.example.com",
+    ...extra,
+  };
+}
+
+describe("backfillBootAgents", () => {
+  let tmpHome: string;
+  let origHome: string | undefined;
+
+  beforeEach(() => {
+    tmpHome = mkdtempSync(path.join(os.tmpdir(), "botcord-daemon-boot-"));
+    origHome = process.env.HOME;
+    process.env.HOME = tmpHome;
+  });
+
+  afterEach(() => {
+    if (origHome === undefined) delete process.env.HOME;
+    else process.env.HOME = origHome;
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it("creates the per-agent workspace for a legacy discovered agent that has none", () => {
+    // Simulates plan §9's primary use case: an agent was provisioned before
+    // the workspace feature existed, so `~/.botcord/agents/{id}/` doesn't
+    // exist yet. Boot backfill should materialize it — but leave the
+    // credentials file alone (no-credential-mutation invariant).
+    const res = backfillBootAgents(
+      [
+        bootAgent("ag_legacy", {
+          displayName: "Legacy",
+          keyId: "k_42",
+          savedAt: "2026-04-23T00:00:00.000Z",
+        }),
+      ],
+      { logger: silentLogger() },
+    );
+    const ws = agentWorkspaceDir("ag_legacy");
+    expect(existsSync(path.join(ws, "AGENTS.md"))).toBe(true);
+    expect(existsSync(path.join(ws, "identity.md"))).toBe(true);
+    const identity = readFileSync(path.join(ws, "identity.md"), "utf8");
+    expect(identity).toContain("ag_legacy");
+    expect(identity).toContain("Legacy");
+    expect(identity).toContain("k_42");
+    // Maps still populated for downstream `toGatewayConfig` consumption.
+    expect(res.credentialPathByAgentId.get("ag_legacy")).toBe(
+      "/fake/ag_legacy.json",
+    );
+    // No runtime/cwd on the boot agent → no entry in the runtimes map.
+    expect(res.agentRuntimes.ag_legacy).toBeUndefined();
+  });
+
+  it("is idempotent: a second call leaves user-edited files alone", () => {
+    backfillBootAgents([bootAgent("ag_one")], { logger: silentLogger() });
+    const memoryPath = path.join(agentWorkspaceDir("ag_one"), "memory.md");
+    const edited = "# My notes\n\nremembered thing\n";
+    // Simulate the LLM/user editing memory.md.
+    writeFileSync(memoryPath, edited);
+    backfillBootAgents([bootAgent("ag_one")], { logger: silentLogger() });
+    expect(readFileSync(memoryPath, "utf8")).toBe(edited);
+  });
+
+  it("warns and continues when ensureAgentWorkspace throws for one agent", () => {
+    // One agent's broken workspace (permission denied, full disk, etc.)
+    // must not block the other agents from being brought up.
+    const warn = vi.fn();
+    const ensure = vi.fn((agentId: string) => {
+      if (agentId === "ag_bad") throw new Error("EACCES");
+    });
+    const logger: GatewayLogger = { ...silentLogger(), warn };
+    const res = backfillBootAgents(
+      [bootAgent("ag_bad"), bootAgent("ag_good", { runtime: "codex" })],
+      { logger, ensure },
+    );
+    expect(ensure).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      "ensureAgentWorkspace failed at boot; continuing",
+      expect.objectContaining({ agentId: "ag_bad" }),
+    );
+    // Both agents are still plumbed into the downstream caches — the peer
+    // agent's channel and route are not taken down by the sibling's error.
+    expect(res.credentialPathByAgentId.has("ag_bad")).toBe(true);
+    expect(res.credentialPathByAgentId.has("ag_good")).toBe(true);
+    expect(res.agentRuntimes.ag_good).toEqual({ runtime: "codex" });
+  });
+
+  it("does not touch credential files (no-credential-mutation invariant)", () => {
+    // §9 "No credential mutation": boot backfill writes to the agent's
+    // workspace dir only; the credential file passed in via `credentialsFile`
+    // is not opened. We verify by using a path that doesn't exist on disk —
+    // if the backfill tried to read or rewrite it, we'd see an ENOENT.
+    expect(() =>
+      backfillBootAgents([bootAgent("ag_one")], { logger: silentLogger() }),
+    ).not.toThrow();
+    expect(existsSync("/fake/ag_one.json")).toBe(false);
   });
 });
