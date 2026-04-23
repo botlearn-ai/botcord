@@ -1,88 +1,355 @@
 name: Release
 
+# Production release — manual trigger.
+#
+# Source-branch semantics (mirrors botlearn model):
+#   main                 → normal release   (archives release/YYYY-MM-DD, promotes release/latest)
+#   hotfix/*             → hotfix release   (archives release/YYYY-MM-DD, promotes release/latest)
+#   release/latest       → redeploy         (no archive, no promote — just redeploy current latest)
+#   release/YYYY-MM-DD   → rollback         (no archive, but still promotes release/latest to that archive)
 on:
   workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'Branch to publish. Allowed: main, hotfix/*, release/latest, release/*'
+        required: false
+        default: 'main'
+        type: string
+      targets:
+        description: 'What to deploy'
+        required: false
+        default: 'both'
+        type: choice
+        options: [both, backend, frontend]
+      run_migrations:
+        description: 'Run production DB migrations before deploying'
+        required: false
+        default: false
+        type: boolean
+      notes:
+        description: 'Release notes (markdown, optional)'
+        required: false
+        type: string
 
 permissions:
   contents: write
+  deployments: write
 
 jobs:
-  release:
+  # ── Resolve publish mode, archive, version ───────────────────────────────────
+  prepare:
+    name: Prepare Release
     runs-on: self-hosted
+    timeout-minutes: 5
     outputs:
-      backup_branch: ${{ steps.backup.outputs.backup_branch }}
-      main_sha: ${{ steps.notify.outputs.main_sha }}
+      version: ${{ steps.version.outputs.version }}
+      publish_mode: ${{ steps.publish.outputs.publish_mode }}
+      source_branch: ${{ steps.publish.outputs.source_branch }}
+      source_sha: ${{ steps.publish.outputs.source_sha }}
+      archive_branch: ${{ steps.publish.outputs.archive_branch }}
+      deploy_branch: ${{ steps.publish.outputs.deploy_branch }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Backup current release branch
-        id: backup
+      - name: Resolve source branch + archive
+        id: publish
         run: |
-          DATE=$(date +%Y-%m-%d)
-          BACKUP_BRANCH="release-backup-${DATE}"
+          SOURCE_BRANCH="${{ inputs.source_branch }}"
+          DEPLOY_BRANCH="release/latest"
+          ARCHIVE_BRANCH=""
 
-          # Check if remote release branch exists
-          if ! git ls-remote --exit-code origin release >/dev/null 2>&1; then
-            echo "No existing release branch to backup"
-            echo "backup_branch=" >> $GITHUB_OUTPUT
-            exit 0
+          case "${SOURCE_BRANCH}" in
+            main) PUBLISH_MODE="normal" ;;
+            hotfix/*) PUBLISH_MODE="hotfix" ;;
+            release/latest) PUBLISH_MODE="redeploy" ;;
+            release/*) PUBLISH_MODE="rollback" ;;
+            *)
+              echo "❌ Unsupported source_branch: ${SOURCE_BRANCH}"
+              echo "   Allowed: main, hotfix/*, release/latest, release/*"
+              exit 1 ;;
+          esac
+
+          if ! git ls-remote --exit-code --heads origin "${SOURCE_BRANCH}" >/dev/null 2>&1; then
+            echo "❌ Source branch does not exist on origin: ${SOURCE_BRANCH}"
+            exit 1
           fi
 
-          # Handle naming collision: release-backup-2026-03-25, release-backup-2026-03-25-2, ...
-          CANDIDATE="$BACKUP_BRANCH"
-          SEQ=2
-          while git ls-remote --exit-code origin "$CANDIDATE" >/dev/null 2>&1; do
-            CANDIDATE="${BACKUP_BRANCH}-${SEQ}"
-            SEQ=$((SEQ + 1))
-          done
-          BACKUP_BRANCH="$CANDIDATE"
+          git fetch origin "${SOURCE_BRANCH}" --quiet
+          SOURCE_SHA=$(git rev-parse FETCH_HEAD)
 
-          git push origin origin/release:refs/heads/${BACKUP_BRANCH}
-          echo "backup_branch=${BACKUP_BRANCH}" >> $GITHUB_OUTPUT
-          echo "Backed up release → ${BACKUP_BRANCH}"
+          if [[ "${PUBLISH_MODE}" == "normal" || "${PUBLISH_MODE}" == "hotfix" ]]; then
+            DATE_BASE=$(date -u +%Y-%m-%d)
+            CANDIDATE="release/${DATE_BASE}"
+            SEQ=2
+            while git ls-remote --exit-code --heads origin "${CANDIDATE}" >/dev/null 2>&1; do
+              CANDIDATE="release/${DATE_BASE}-${SEQ}"
+              SEQ=$((SEQ + 1))
+            done
+            ARCHIVE_BRANCH="${CANDIDATE}"
+            git push origin "${SOURCE_SHA}:refs/heads/${ARCHIVE_BRANCH}"
+            echo "✅ Archived at ${ARCHIVE_BRANCH} (${SOURCE_SHA})"
+          fi
 
-      - name: Push main to release
+          echo "publish_mode=${PUBLISH_MODE}" >> $GITHUB_OUTPUT
+          echo "source_branch=${SOURCE_BRANCH}" >> $GITHUB_OUTPUT
+          echo "source_sha=${SOURCE_SHA}" >> $GITHUB_OUTPUT
+          echo "archive_branch=${ARCHIVE_BRANCH}" >> $GITHUB_OUTPUT
+          echo "deploy_branch=${DEPLOY_BRANCH}" >> $GITHUB_OUTPUT
+          echo "✅ Mode=${PUBLISH_MODE} Source=${SOURCE_BRANCH} SHA=${SOURCE_SHA}"
+
+      - name: Generate version tag
+        id: version
         run: |
-          git push origin main:refs/heads/release --force
-          echo "Release branch now points to main ($(git rev-parse origin/main))"
+          YEAR=$(date -u +'%Y'); MONTH=$(date -u +'%-m'); DAY=$(date -u +'%-d')
+          DATE_BASE="${YEAR}.${MONTH}.${DAY}"
+          git fetch --tags --quiet
+          EXISTING=$(git tag -l "v${DATE_BASE}" "v${DATE_BASE}-*" 2>/dev/null | sort -V)
+          if [ -z "$EXISTING" ]; then
+            VERSION="v${DATE_BASE}"
+          else
+            LAST=$(echo "$EXISTING" | sort -V | tail -1)
+            if [ "$LAST" = "v${DATE_BASE}" ]; then
+              VERSION="v${DATE_BASE}-2"
+            else
+              SUFFIX=$(echo "$LAST" | sed "s/v${DATE_BASE}-//")
+              NEXT=$((SUFFIX + 1))
+              VERSION="v${DATE_BASE}-${NEXT}"
+            fi
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "✅ Version: ${VERSION}"
 
-      - name: Prepare notification data
-        id: notify
-        run: |
-          MAIN_SHA=$(git rev-parse origin/main)
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s%n%n%b" origin/main | sed '/^$/d')
-          EOF_MARKER="EOF_$(date +%s)"
-          echo "commit_msg<<$EOF_MARKER" >> $GITHUB_OUTPUT
-          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo "$EOF_MARKER" >> $GITHUB_OUTPUT
-          echo "main_sha=${MAIN_SHA}" >> $GITHUB_OUTPUT
-
-      - name: Send Feishu notification
-        if: always()
-        uses: ./.github/actions/feishu-notify
+  # ── Production DB migrations (optional) ──────────────────────────────────────
+  migrate-prod:
+    name: Migrate (production)
+    needs: [prepare]
+    if: inputs.run_migrations == true
+    runs-on: self-hosted
+    environment: Production
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
         with:
-          webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          title: '🚀「BotCord」Release — 分支已就绪'
-          color: blue
-          fields: |
-            [
-              {"label": "操作", "value": "main → release (prod)"},
-              {"label": "备份", "value": "${{ steps.backup.outputs.backup_branch || '无（首次 release）' }}"},
-              {"label": "提交", "value": "[${{ steps.notify.outputs.main_sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ steps.notify.outputs.main_sha }})"},
-              {"label": "触发者", "value": "${{ github.actor }}"}
-            ]
-          commit_msg: ${{ steps.notify.outputs.commit_msg }}
-          buttons: |
-            [
-              {"text": "查看详情", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"}
-            ]
+          ref: ${{ needs.prepare.outputs.source_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Install deps
+        run: uv sync
+      - name: Run SQL migrations
+        run: uv run python scripts/run_sql_migrations.py
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
 
-  deploy-prod:
-    needs: release
+  # ── Deploy backend prod ──────────────────────────────────────────────────────
+  deploy-backend-prod:
+    name: Deploy Backend (prod)
+    needs: [prepare, migrate-prod]
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      (needs.migrate-prod.result == 'success' || needs.migrate-prod.result == 'skipped') &&
+      (inputs.targets == 'both' || inputs.targets == 'backend')
     uses: ./.github/workflows/deploy-backend.yml
     with:
-      env_override: prod
+      env_name: prod
+      ref: ${{ needs.prepare.outputs.source_sha }}
     secrets: inherit
+
+  # ── Deploy frontend prod ─────────────────────────────────────────────────────
+  deploy-frontend-prod:
+    name: Deploy Frontend (prod)
+    needs: [prepare, migrate-prod]
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      (needs.migrate-prod.result == 'success' || needs.migrate-prod.result == 'skipped') &&
+      (inputs.targets == 'both' || inputs.targets == 'frontend')
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      env_name: prod
+      ref: ${{ needs.prepare.outputs.source_sha }}
+    secrets: inherit
+
+  # ── Promote release/latest ──────────────────────────────────────────────────
+  promote-latest:
+    name: Promote release/latest
+    needs: [prepare, deploy-backend-prod, deploy-frontend-prod]
+    if: |
+      always() &&
+      (needs.deploy-backend-prod.result == 'success' || needs.deploy-backend-prod.result == 'skipped') &&
+      (needs.deploy-frontend-prod.result == 'success' || needs.deploy-frontend-prod.result == 'skipped') &&
+      !(needs.deploy-backend-prod.result == 'skipped' && needs.deploy-frontend-prod.result == 'skipped') &&
+      needs.prepare.outputs.publish_mode != 'redeploy'
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Update release/latest
+        run: |
+          git push origin "${{ needs.prepare.outputs.source_sha }}:refs/heads/${{ needs.prepare.outputs.deploy_branch }}" --force
+          echo "✅ ${{ needs.prepare.outputs.deploy_branch }} → ${{ needs.prepare.outputs.source_sha }}"
+
+  # ── GitHub Release + tag ────────────────────────────────────────────────────
+  create-release:
+    name: Create GitHub Release
+    needs: [prepare, deploy-backend-prod, deploy-frontend-prod, promote-latest]
+    if: |
+      always() &&
+      (needs.deploy-backend-prod.result == 'success' || needs.deploy-backend-prod.result == 'skipped') &&
+      (needs.deploy-frontend-prod.result == 'success' || needs.deploy-frontend-prod.result == 'skipped') &&
+      !(needs.deploy-backend-prod.result == 'skipped' && needs.deploy-frontend-prod.result == 'skipped') &&
+      (needs.promote-latest.result == 'success' || needs.promote-latest.result == 'skipped')
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+          echo "✅ Tagged $VERSION"
+
+      - name: Build changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${VERSION}^" 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log "${PREV_TAG}..${VERSION}" --oneline --no-merges)
+          else
+            CHANGES=$(git log "${VERSION}" --oneline --no-merges | head -30)
+          fi
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          {
+            echo "changes<<CHANGELOG_EOF"
+            echo "$CHANGES"
+            echo "CHANGELOG_EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
+        uses: actions/github-script@v9
+        env:
+          GH_VERSION: ${{ needs.prepare.outputs.version }}
+          GH_PUBLISH_MODE: ${{ needs.prepare.outputs.publish_mode }}
+          GH_SOURCE_BRANCH: ${{ needs.prepare.outputs.source_branch }}
+          GH_ARCHIVE_BRANCH: ${{ needs.prepare.outputs.archive_branch }}
+          GH_DEPLOY_BRANCH: ${{ needs.prepare.outputs.deploy_branch }}
+          GH_NOTES: ${{ inputs.notes }}
+          GH_CHANGES: ${{ steps.changelog.outputs.changes }}
+          GH_PREV_TAG: ${{ steps.changelog.outputs.prev_tag }}
+          GH_TARGETS: ${{ inputs.targets }}
+        with:
+          script: |
+            const v = process.env;
+            const changelog = v.GH_CHANGES
+              ? `## Changes\n\`\`\`\n${v.GH_CHANGES}\n\`\`\``
+              : '## Changes\n_First release — no previous tag found._';
+            const parts = [
+              v.GH_NOTES ? `## Release Notes\n${v.GH_NOTES}\n` : null,
+              changelog,
+              '\n---',
+              `**Publish Mode:** ${v.GH_PUBLISH_MODE}`,
+              `**Targets:** ${v.GH_TARGETS}`,
+              `**Source Branch:** ${v.GH_SOURCE_BRANCH}`,
+              v.GH_ARCHIVE_BRANCH ? `**Archive Branch:** ${v.GH_ARCHIVE_BRANCH}` : null,
+              `**Deploy Branch:** ${v.GH_DEPLOY_BRANCH}`,
+              v.GH_PREV_TAG ? `**Diff:** [${v.GH_PREV_TAG}...${v.GH_VERSION}](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${v.GH_PREV_TAG}...${v.GH_VERSION})` : null,
+            ].filter(Boolean).join('\n');
+
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: v.GH_VERSION,
+              name: v.GH_VERSION,
+              body: parts,
+              prerelease: false,
+              draft: false,
+            });
+            console.log(`✅ Created GitHub release: ${v.GH_VERSION}`);
+
+  # ── Feishu notification ──────────────────────────────────────────────────────
+  notify:
+    name: Notify Feishu
+    runs-on: self-hosted
+    needs: [prepare, migrate-prod, deploy-backend-prod, deploy-frontend-prod, promote-latest, create-release]
+    if: always() && needs.prepare.result == 'success'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - id: status
+        env:
+          DB: ${{ needs.deploy-backend-prod.result }}
+          DF: ${{ needs.deploy-frontend-prod.result }}
+          PROMOTE: ${{ needs.promote-latest.result }}
+          RELEASE: ${{ needs.create-release.result }}
+          MODE: ${{ needs.prepare.outputs.publish_mode }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          BE_OK=false; FE_OK=false
+          [[ "$DB" == "success" || "$DB" == "skipped" ]] && BE_OK=true
+          [[ "$DF" == "success" || "$DF" == "skipped" ]] && FE_OK=true
+
+          PROMOTE_OK=false
+          if [[ "$PROMOTE" == "success" ]] || [[ "$PROMOTE" == "skipped" && "$MODE" == "redeploy" ]]; then
+            PROMOTE_OK=true
+          fi
+
+          if [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$PROMOTE_OK" == "true" && "$RELEASE" == "success" ]]; then
+            echo "color=green" >> $GITHUB_OUTPUT
+            echo "title=🚀 BotCord ${VERSION} 发布成功（${MODE}）" >> $GITHUB_OUTPUT
+          elif [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$PROMOTE_OK" == "true" ]]; then
+            echo "color=grey" >> $GITHUB_OUTPUT
+            echo "title=⚠️ BotCord ${VERSION} 部署完成（${MODE}，Release 创建失败）" >> $GITHUB_OUTPUT
+          else
+            echo "color=red" >> $GITHUB_OUTPUT
+            echo "title=❌ BotCord ${VERSION} 发布失败（${MODE}）" >> $GITHUB_OUTPUT
+          fi
+      - uses: ./.github/actions/feishu-notify
+        with:
+          webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          title: ${{ steps.status.outputs.title }}
+          color: ${{ steps.status.outputs.color }}
+          fields: |
+            [
+              {"label": "版本", "value": "${{ needs.prepare.outputs.version }}"},
+              {"label": "发布模式", "value": "${{ needs.prepare.outputs.publish_mode }}"},
+              {"label": "部署目标", "value": "${{ inputs.targets }}"},
+              {"label": "源分支", "value": "${{ needs.prepare.outputs.source_branch }}"},
+              {"label": "归档分支", "value": "${{ needs.prepare.outputs.archive_branch || '无（回滚/重发）' }}"},
+              {"label": "部署分支", "value": "${{ needs.prepare.outputs.deploy_branch }}"},
+              {"label": "操作", "value": "${{ needs.prepare.outputs.source_branch }} → ${{ needs.prepare.outputs.deploy_branch }} (prod)"},
+              {"label": "触发者", "value": "${{ github.actor }}"},
+              {"label": "DB 迁移", "value": "${{ needs.migrate-prod.result }}"},
+              {"label": "Backend 部署", "value": "${{ needs.deploy-backend-prod.result }}"},
+              {"label": "Frontend 部署", "value": "${{ needs.deploy-frontend-prod.result }}"},
+              {"label": "更新 latest", "value": "${{ needs.promote-latest.result }}"},
+              {"label": "Release 创建", "value": "${{ needs.create-release.result }}"}
+            ]
+          buttons: |
+            [
+              {"text": "查看 Release", "url": "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.version }}", "type": "primary"},
+              {"text": "查看 Workflow", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+            ]

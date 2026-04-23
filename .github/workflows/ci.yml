@@ -1,0 +1,271 @@
+name: CI
+
+# dev + pr flow — lint/test changed packages, deploy preview to backend + frontend
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # ── Detect which packages changed ────────────────────────────────────────────
+  changes:
+    name: Detect Changes
+    runs-on: self-hosted
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+    timeout-minutes: 3
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      packages: ${{ steps.filter.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/deploy-backend.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/deploy-frontend.yml'
+            packages:
+              - 'plugin/**'
+              - 'cli/**'
+              - 'packages/**'
+              - '.github/workflows/ci.yml'
+
+  # ── Backend: pytest ──────────────────────────────────────────────────────────
+  backend-ci:
+    name: Backend CI
+    runs-on: self-hosted
+    needs: [changes]
+    if: needs.changes.outputs.backend == 'true'
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Install deps
+        run: uv sync
+      - name: Run tests
+        run: uv run pytest tests/
+
+  # ── Frontend: vitest ─────────────────────────────────────────────────────────
+  frontend-ci:
+    name: Frontend CI
+    runs-on: self-hosted
+    needs: [changes]
+    if: needs.changes.outputs.frontend == 'true'
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Run vitest
+        run: pnpm test -- --run
+
+  # ── Packages: protocol-core build, plugin tc+test, cli build ─────────────────
+  packages-ci:
+    name: Packages CI
+    runs-on: self-hosted
+    needs: [changes]
+    if: needs.changes.outputs.packages == 'true'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: protocol-core build
+        working-directory: packages/protocol-core
+        run: |
+          npm install
+          npm run build
+      - name: plugin typecheck + test
+        working-directory: plugin
+        run: |
+          npm install
+          npx tsc --noEmit
+          npm test
+      - name: cli build
+        working-directory: cli
+        run: |
+          npm install
+          npm run build
+
+  # ── Deploy backend preview (shared across all PRs + main) ────────────────────
+  deploy-backend-preview:
+    name: Deploy Backend (preview)
+    needs: [changes, backend-ci]
+    if: |
+      always() &&
+      needs.changes.outputs.backend == 'true' &&
+      needs.backend-ci.result == 'success'
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      env_name: preview
+    secrets: inherit
+
+  # ── Deploy frontend preview (per-PR URL; main aliased to preview.botcord.chat) ─
+  deploy-frontend-preview:
+    name: Deploy Frontend (preview)
+    needs: [changes, frontend-ci]
+    if: |
+      always() &&
+      needs.changes.outputs.frontend == 'true' &&
+      needs.frontend-ci.result == 'success'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      env_name: preview
+      alias: ${{ github.event_name == 'push' && 'preview.botcord.chat' || '' }}
+    secrets: inherit
+
+  # ── Sticky PR comment with preview links ─────────────────────────────────────
+  pr-comment:
+    name: PR Preview Comment
+    runs-on: self-hosted
+    needs: [changes, deploy-backend-preview, deploy-frontend-preview]
+    if: always() && github.event_name == 'pull_request'
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Post or update preview comment
+        uses: actions/github-script@v9
+        env:
+          FE_URL: ${{ needs.deploy-frontend-preview.outputs.deploy_url }}
+          FE_RESULT: ${{ needs.deploy-frontend-preview.result }}
+          BE_RESULT: ${{ needs.deploy-backend-preview.result }}
+          FE_CHANGED: ${{ needs.changes.outputs.frontend }}
+          BE_CHANGED: ${{ needs.changes.outputs.backend }}
+        with:
+          script: |
+            const fmt = (changed, result, extra) => {
+              if (changed !== 'true') return '_no change_';
+              if (result === 'success') return `✅ ${extra || 'deployed'}`;
+              if (result === 'skipped') return '⏭️ skipped';
+              if (result === 'failure') return '❌ failed';
+              return `⚠️ ${result}`;
+            };
+            const feUrl = process.env.FE_URL;
+            const feCell = fmt(
+              process.env.FE_CHANGED,
+              process.env.FE_RESULT,
+              feUrl ? `[${feUrl}](${feUrl})` : 'deployed'
+            );
+            const beCell = fmt(process.env.BE_CHANGED, process.env.BE_RESULT, 'preview restarted');
+
+            const sha = context.payload.pull_request.head.sha.substring(0, 7);
+            const branch = context.payload.pull_request.head.ref;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const commitUrl = `${context.payload.pull_request.head.repo.html_url}/commit/${context.payload.pull_request.head.sha}`;
+
+            const marker = '<!-- botcord-preview-deploy -->';
+            const body = [
+              marker,
+              '## 🚀 Preview Deployment',
+              '',
+              '| Key | Value |',
+              '|---|---|',
+              `| **Branch** | \`${branch}\` |`,
+              `| **Commit** | [\`${sha}\`](${commitUrl}) |`,
+              `| **Frontend** | ${feCell} |`,
+              `| **Backend** | ${beCell} |`,
+              `| **Workflow** | [View run](${runUrl}) |`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body,
+              });
+            }
+
+  # ── Feishu notification (main push only) ─────────────────────────────────────
+  notify:
+    name: Notify Feishu
+    runs-on: self-hosted
+    needs: [changes, backend-ci, frontend-ci, packages-ci, deploy-backend-preview, deploy-frontend-preview]
+    if: always() && github.event_name == 'push'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Determine status
+        id: status
+        env:
+          BE_CI: ${{ needs.backend-ci.result }}
+          FE_CI: ${{ needs.frontend-ci.result }}
+          PKG_CI: ${{ needs.packages-ci.result }}
+          BE_DEPLOY: ${{ needs.deploy-backend-preview.result }}
+          FE_DEPLOY: ${{ needs.deploy-frontend-preview.result }}
+        run: |
+          FAIL=0
+          for R in "$BE_CI" "$FE_CI" "$PKG_CI" "$BE_DEPLOY" "$FE_DEPLOY"; do
+            if [[ "$R" == "failure" || "$R" == "cancelled" ]]; then FAIL=1; fi
+          done
+          if [[ $FAIL -eq 0 ]]; then
+            echo "color=green" >> $GITHUB_OUTPUT
+            echo "title=✅ BotCord Preview 部署成功" >> $GITHUB_OUTPUT
+          else
+            echo "color=red" >> $GITHUB_OUTPUT
+            echo "title=❌ BotCord Preview CI / 部署失败" >> $GITHUB_OUTPUT
+          fi
+      - uses: ./.github/actions/feishu-notify
+        with:
+          webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          title: ${{ steps.status.outputs.title }}
+          color: ${{ steps.status.outputs.color }}
+          commit_msg: ${{ github.event.head_commit.message }}
+          fields: |
+            [
+              {"label": "分支", "value": "main"},
+              {"label": "触发者", "value": "${{ github.actor }}"},
+              {"label": "Commit", "value": "[${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"},
+              {"label": "Backend CI", "value": "${{ needs.backend-ci.result }}"},
+              {"label": "Frontend CI", "value": "${{ needs.frontend-ci.result }}"},
+              {"label": "Packages CI", "value": "${{ needs.packages-ci.result }}"},
+              {"label": "Backend 部署", "value": "${{ needs.deploy-backend-preview.result }}"},
+              {"label": "Frontend 部署", "value": "${{ needs.deploy-frontend-preview.result }}"},
+              {"label": "Frontend URL", "value": "${{ needs.deploy-frontend-preview.outputs.deploy_url || '（未变更）' }}"}
+            ]
+          buttons: |
+            [
+              {"text": "查看 Workflow", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"}
+            ]
