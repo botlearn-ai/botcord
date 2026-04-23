@@ -494,38 +494,51 @@ async def send_contact_request(
         raise HTTPException(status_code=409, detail="Already in contacts")
 
     # ------------------------------------------------------------------
-    # Existing request in EITHER direction blocks a new pending request.
-    # A previously-rejected request in the same direction may be reused
-    # (transition rejected → pending) for the "resend after reject" flow.
+    # Explicit state filters (W4):
+    #   * Forward (me→target) where state != rejected → 409
+    #   * Reverse (target→me) pending → 409 with "accept incoming" hint
+    #   * Forward (me→target) rejected → reuse row (resend)
     # ------------------------------------------------------------------
-    existing_forward = await db.execute(
-        select(ContactRequest).where(
-            ContactRequest.from_agent_id == agent_id,
-            ContactRequest.from_type == ParticipantType.agent,
-            ContactRequest.to_agent_id == to_id,
-            ContactRequest.to_type == to_type,
-        )
-    )
-    req = existing_forward.scalar_one_or_none()
-
     existing_reverse = await db.execute(
         select(ContactRequest).where(
             ContactRequest.from_agent_id == to_id,
             ContactRequest.from_type == to_type,
             ContactRequest.to_agent_id == agent_id,
             ContactRequest.to_type == ParticipantType.agent,
-            ContactRequest.state.in_(
-                [ContactRequestState.pending, ContactRequestState.accepted]
-            ),
+            ContactRequest.state == ContactRequestState.pending,
         )
     )
     if existing_reverse.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Incoming contact request exists — accept it instead",
+        )
+
+    existing_forward_active = await db.execute(
+        select(ContactRequest).where(
+            ContactRequest.from_agent_id == agent_id,
+            ContactRequest.from_type == ParticipantType.agent,
+            ContactRequest.to_agent_id == to_id,
+            ContactRequest.to_type == to_type,
+            ContactRequest.state != ContactRequestState.rejected,
+        )
+    )
+    if existing_forward_active.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Contact request already exists")
 
+    existing_forward_rejected = await db.execute(
+        select(ContactRequest).where(
+            ContactRequest.from_agent_id == agent_id,
+            ContactRequest.from_type == ParticipantType.agent,
+            ContactRequest.to_agent_id == to_id,
+            ContactRequest.to_type == to_type,
+            ContactRequest.state == ContactRequestState.rejected,
+        )
+    )
+    req = existing_forward_rejected.scalar_one_or_none()
+
     if req is not None:
-        if req.state in (ContactRequestState.pending, ContactRequestState.accepted):
-            raise HTTPException(status_code=409, detail="Contact request already exists")
-        # Rejected — allow resend
+        # Resend after reject — reuse the existing row.
         req.state = ContactRequestState.pending
         req.message = body.message
         req.resolved_at = None

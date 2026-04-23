@@ -127,16 +127,10 @@ function SearchPane({ onClose }: { onClose: () => void }) {
       const trimmedMsg = message.trim() || undefined;
 
       // Agent → Human goes to /api/dashboard/contact-requests with the
-      // polymorphic `to_human_id` field. `api.createContactRequest` is
-      // typed for the legacy `{ to_agent_id, message }` shape and owned by
-      // another agent; we cast to send the extended body without touching
-      // that declaration. If backend settles on `to_id`+`to_type` instead,
-      // adjust the cast here.
+      // polymorphic `to_human_id` field; A→A keeps `to_agent_id`.
+      // `createContactRequest` accepts the tagged-union body directly.
       const agentPayload = targetIsHuman
-        ? ({ to_human_id: targetId, message: trimmedMsg } as unknown as {
-            to_agent_id: string;
-            message?: string;
-          })
+        ? { to_human_id: targetId, message: trimmedMsg }
         : { to_agent_id: targetId, message: trimmedMsg };
 
       const res =

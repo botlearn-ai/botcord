@@ -464,7 +464,23 @@ export const api = {
     return apiGet<ContactRequestListResponse>("/api/dashboard/contact-requests/sent", params);
   },
 
-  createContactRequest(payload: { to_agent_id: string; message?: string }) {
+  createContactRequest(
+    payload:
+      | { to_agent_id: string; to_human_id?: undefined; message?: string }
+      | { to_human_id: string; to_agent_id?: undefined; message?: string },
+  ) {
+    // Runtime guard: exactly one of to_agent_id / to_human_id must be set.
+    const hasAgent = Boolean(
+      (payload as { to_agent_id?: string }).to_agent_id,
+    );
+    const hasHuman = Boolean(
+      (payload as { to_human_id?: string }).to_human_id,
+    );
+    if (hasAgent === hasHuman) {
+      throw new Error(
+        "createContactRequest: provide exactly one of to_agent_id or to_human_id",
+      );
+    }
     return apiPost<ContactRequestItem>("/api/dashboard/contact-requests", payload);
   },
 

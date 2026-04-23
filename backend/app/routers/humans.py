@@ -29,15 +29,18 @@ from hub.enums import (
     ApprovalKind,
     ApprovalState,
     ContactRequestState,
+    MessagePolicy,
     ParticipantType,
     RoomJoinPolicy,
     RoomRole,
     RoomVisibility,
+    SubscriptionStatus,
 )
 from hub.id_generators import generate_human_id, generate_room_id
 from hub.models import (
     Agent,
     AgentApprovalQueue,
+    AgentSubscription,
     Contact,
     ContactRequest,
     Room,
@@ -418,7 +421,14 @@ async def invite_room_member_as_human(
     user = await _load_human(db, ctx)
     me = user.human_id
 
-    room_row = await db.execute(select(Room).where(Room.room_id == room_id))
+    # Serialize concurrent invites for this room (C4): lock the room row
+    # up front so counting + inserting cannot race against a sibling call.
+    # On SQLite this with_for_update() is a no-op (no row-level locks), so
+    # we still rely on the unique (room_id, agent_id) constraint as a
+    # correctness backstop via IntegrityError below.
+    room_row = await db.execute(
+        select(Room).where(Room.room_id == room_id).with_for_update()
+    )
     room = room_row.scalar_one_or_none()
     if room is None:
         raise HTTPException(status_code=404, detail="Room not found")
@@ -445,17 +455,19 @@ async def invite_room_member_as_human(
         raise HTTPException(status_code=409, detail="Already a member")
 
     # Verify the target exists in the appropriate registry.
+    target_agent: Agent | None = None
     if participant_type == ParticipantType.agent:
-        target = await db.execute(
+        target_row = await db.execute(
             select(Agent).where(Agent.agent_id == participant_id)
         )
-        if target.scalar_one_or_none() is None:
+        target_agent = target_row.scalar_one_or_none()
+        if target_agent is None:
             raise HTTPException(status_code=404, detail="Agent not found")
     else:
-        target = await db.execute(
+        target_user_row = await db.execute(
             select(User).where(User.human_id == participant_id)
         )
-        if target.scalar_one_or_none() is None:
+        if target_user_row.scalar_one_or_none() is None:
             raise HTTPException(status_code=404, detail="Human not found")
 
     # Duplicate check — the unique constraint is (room_id, agent_id) but
@@ -469,6 +481,95 @@ async def invite_room_member_as_human(
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Already a member")
 
+    # Order of checks mirrors hub/routers/room.py::add_member exactly:
+    # 1) contacts_only admission  2) claimed-agent approval queue
+    # 3) subscription gate        4) max_members  5) insert
+    # Keeping these in the same order as the hub router prevents subtle
+    # divergence (e.g. a contacts_only target being 403'd on the sub-gate
+    # before its owner had a chance to approve/reject via the queue).
+
+    # --- W2: admission policy (contacts_only, agent targets only) ---------
+    if target_agent is not None and target_agent.message_policy == MessagePolicy.contacts_only:
+        contact_row = await db.execute(
+            select(Contact).where(
+                Contact.owner_id == participant_id,
+                Contact.owner_type == ParticipantType.agent,
+                Contact.contact_agent_id == me,
+            )
+        )
+        if contact_row.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=403,
+                detail="admission_denied_target_contacts_only",
+            )
+
+    # --- C2: claimed-agent approval queue (agent targets only) ------------
+    if (
+        target_agent is not None
+        and target_agent.user_id is not None
+        and target_agent.user_id != ctx.user_id
+    ):
+        from fastapi.responses import JSONResponse
+
+        entry = AgentApprovalQueue(
+            agent_id=participant_id,
+            owner_user_id=target_agent.user_id,
+            kind=ApprovalKind.room_invite,
+            payload_json=json.dumps(
+                {
+                    "room_id": room_id,
+                    "invited_by": me,
+                    "invited_by_type": ParticipantType.human.value,
+                    "role": body.role,
+                }
+            ),
+            state=ApprovalState.pending,
+        )
+        db.add(entry)
+        await db.commit()
+        await db.refresh(entry)
+        return JSONResponse(
+            {"status": "pending_approval", "approval_id": str(entry.id)},
+            status_code=202,
+        )
+
+    # --- W3: subscription gate (applies to both agent and human invitees) -
+    # Limitation: there is no human-side subscription concept yet, so a
+    # Human invitee can only enter a sub-gated room when they are the
+    # room's own owner (which is always admitted).
+    if room.required_subscription_product_id:
+        if participant_type == ParticipantType.agent:
+            # Owner of the room (if this agent happens to be the owner_id)
+            # bypasses — matches hub's _ensure_subscription_room_access.
+            if participant_id != room.owner_id:
+                sub_row = await db.execute(
+                    select(AgentSubscription).where(
+                        AgentSubscription.product_id == room.required_subscription_product_id,
+                        AgentSubscription.subscriber_agent_id == participant_id,
+                        AgentSubscription.status == SubscriptionStatus.active,
+                    )
+                )
+                if sub_row.scalar_one_or_none() is None:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Active subscription required to join this room",
+                    )
+        else:
+            # Human invitee: the owning Human of a sub-gated room is always
+            # admitted (they created the gate, they are not expected to pay
+            # themselves). All other Humans are blocked until a human-side
+            # subscription model exists.
+            is_owner_self_seat = (
+                room.owner_type == ParticipantType.human
+                and participant_id == room.owner_id
+            )
+            if not is_owner_self_seat:
+                raise HTTPException(
+                    status_code=403,
+                    detail="subscription-gated rooms do not yet support human members",
+                )
+
+    # --- C4: max_members check now runs under the row lock ----------------
     if room.max_members is not None:
         current_count_row = await db.execute(
             select(RoomMember).where(RoomMember.room_id == room_id)
@@ -491,6 +592,24 @@ async def invite_room_member_as_human(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Already a member")
     await db.refresh(new_member)
+
+    # --- W4: realtime broadcast (mirror hub's add_member) -----------------
+    try:
+        from hub.routers.room import _notify_room_member_change
+
+        members_row = await db.execute(
+            select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
+        )
+        all_member_ids = [row[0] for row in members_row.all()]
+        await _notify_room_member_change(
+            db,
+            event_type="room_member_added",
+            room_id=room_id,
+            changed_agent_id=participant_id,
+            notify_agent_ids=all_member_ids,
+        )
+    except Exception:  # pragma: no cover — notification must not break the HTTP response
+        _logger.exception("room_member_added broadcast failed for %s", room_id)
 
     return HumanRoomMemberResponse(
         room_id=new_member.room_id,
@@ -602,15 +721,60 @@ async def send_contact_request(
             )
 
     # Fall-through: unclaimed Agent or peer Human → plain ContactRequest.
-    dup_req = await db.execute(
+    #
+    # Mirror the three-branch state-machine from
+    # ``app/routers/dashboard.py::send_contact_request``:
+    #   (a) reverse-pending (target→me AND pending) → 409 hint to accept incoming
+    #   (b) forward-active (me→target AND state != rejected) → already_requested
+    #   (c) forward-rejected (me→target AND state == rejected) → resend by
+    #       flipping the existing row back to pending
+    # TODO: share with dashboard.py — logic duplicated intentionally to keep
+    # this patch narrow; extract into _contact_utils.py when touched again.
+    reverse_pending = await db.execute(
         select(ContactRequest).where(
-            ContactRequest.from_agent_id == me,
-            ContactRequest.to_agent_id == peer_id,
+            ContactRequest.from_agent_id == peer_id,
+            ContactRequest.from_type == peer_type,
+            ContactRequest.to_agent_id == me,
+            ContactRequest.to_type == ParticipantType.human,
             ContactRequest.state == ContactRequestState.pending,
         )
     )
-    if dup_req.scalar_one_or_none() is not None:
+    if reverse_pending.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Incoming contact request exists — accept it instead",
+        )
+
+    forward_active = await db.execute(
+        select(ContactRequest).where(
+            ContactRequest.from_agent_id == me,
+            ContactRequest.from_type == ParticipantType.human,
+            ContactRequest.to_agent_id == peer_id,
+            ContactRequest.to_type == peer_type,
+            ContactRequest.state != ContactRequestState.rejected,
+        )
+    )
+    if forward_active.scalar_one_or_none() is not None:
         return ContactRequestResponse(status="already_requested")
+
+    forward_rejected = await db.execute(
+        select(ContactRequest).where(
+            ContactRequest.from_agent_id == me,
+            ContactRequest.from_type == ParticipantType.human,
+            ContactRequest.to_agent_id == peer_id,
+            ContactRequest.to_type == peer_type,
+            ContactRequest.state == ContactRequestState.rejected,
+        )
+    )
+    req = forward_rejected.scalar_one_or_none()
+    if req is not None:
+        # Resend after reject — reuse the existing row.
+        req.state = ContactRequestState.pending
+        req.message = body.message
+        req.resolved_at = None
+        await db.commit()
+        await db.refresh(req)
+        return ContactRequestResponse(status="requested", request_id=str(req.id))
 
     req = ContactRequest(
         from_agent_id=me,
@@ -660,10 +824,40 @@ async def _serialise_contact_requests(
     db: AsyncSession,
     rows: list[ContactRequest],
 ) -> list[HumanContactRequestSummary]:
+    # Batch display-name resolution: collect unique (type, id) pairs across
+    # every row, issue one query per participant type, then serialise via a
+    # lookup dict. Mirrors ``app/routers/dashboard.py::_resolve_display_names``.
+    agent_ids: set[str] = set()
+    human_ids: set[str] = set()
+    for req in rows:
+        if req.from_type == ParticipantType.agent:
+            agent_ids.add(req.from_agent_id)
+        else:
+            human_ids.add(req.from_agent_id)
+        if req.to_type == ParticipantType.agent:
+            agent_ids.add(req.to_agent_id)
+        else:
+            human_ids.add(req.to_agent_id)
+
+    name_lookup: dict[tuple[ParticipantType, str], str | None] = {}
+    if agent_ids:
+        agent_rows = await db.execute(
+            select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
+        )
+        for aid, name in agent_rows.all():
+            name_lookup[(ParticipantType.agent, aid)] = name
+    if human_ids:
+        human_rows = await db.execute(
+            select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
+        )
+        for hid, name in human_rows.all():
+            if hid is not None:
+                name_lookup[(ParticipantType.human, hid)] = name
+
     summaries: list[HumanContactRequestSummary] = []
     for req in rows:
-        from_name = await _resolve_participant_display_name(db, req.from_agent_id, req.from_type)
-        to_name = await _resolve_participant_display_name(db, req.to_agent_id, req.to_type)
+        from_name = name_lookup.get((req.from_type, req.from_agent_id))
+        to_name = name_lookup.get((req.to_type, req.to_agent_id))
         summaries.append(
             HumanContactRequestSummary(
                 id=str(req.id),
@@ -772,37 +966,31 @@ async def accept_contact_request_as_human(
 
     req.state = ContactRequestState.accepted
     req.resolved_at = _now()
+    await db.flush()
 
-    # Forward contact: to ← from
-    db.add(
-        Contact(
-            owner_id=req.to_agent_id,
-            owner_type=req.to_type,
-            contact_agent_id=req.from_agent_id,
-            peer_type=req.from_type,
-        )
-    )
-    # Mirror contact: from ← to
-    db.add(
-        Contact(
-            owner_id=req.from_agent_id,
-            owner_type=req.from_type,
-            contact_agent_id=req.to_agent_id,
-            peer_type=req.to_type,
-        )
-    )
-    try:
-        await db.commit()
-    except IntegrityError:
-        # One or both Contact rows already exist — finalise state-only.
-        await db.rollback()
-        result2 = await db.execute(
-            select(ContactRequest).where(ContactRequest.id == request_id)
-        )
-        req = result2.scalar_one()
-        req.state = ContactRequestState.accepted
-        req.resolved_at = _now()
-        await db.commit()
+    # Insert each direction in its own savepoint so a collision on one side
+    # does not erase the other (C3). Pattern mirrored from
+    # hub/routers/contact_requests.py::accept flow.
+    for owner_id, owner_type, contact_id, peer_type in (
+        (req.to_agent_id, req.to_type, req.from_agent_id, req.from_type),
+        (req.from_agent_id, req.from_type, req.to_agent_id, req.to_type),
+    ):
+        try:
+            async with db.begin_nested():
+                db.add(
+                    Contact(
+                        owner_id=owner_id,
+                        owner_type=owner_type,
+                        contact_agent_id=contact_id,
+                        peer_type=peer_type,
+                    )
+                )
+                await db.flush()
+        except IntegrityError:
+            # Row already exists — keep the other direction intact.
+            pass
+
+    await db.commit()
 
     return HumanContactRequestResolveResponse(id=str(req.id), state="accepted")
 
