@@ -1,0 +1,605 @@
+import WebSocket from "ws";
+import {
+  BotCordClient,
+  buildHubWebSocketUrl,
+  defaultCredentialsFile,
+  loadStoredCredentials,
+  updateCredentialsToken,
+  type InboxMessage,
+} from "@botcord/protocol-core";
+import type {
+  ChannelAdapter,
+  ChannelSendContext,
+  ChannelSendResult,
+  ChannelStartContext,
+  ChannelStatusSnapshot,
+  ChannelStopContext,
+  ChannelStreamBlockContext,
+  GatewayInboundEnvelope,
+  GatewayInboundMessage,
+  GatewayLogger,
+} from "../index.js";
+import { sanitizeUntrustedContent } from "./sanitize.js";
+
+const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
+const KEEPALIVE_INTERVAL = 20_000;
+const MAX_AUTH_FAILURES = 5;
+const SEEN_MESSAGES_CAP = 500;
+const OWNER_CHAT_PREFIX = "rm_oc_";
+const DM_ROOM_PREFIX = "rm_dm_";
+
+/** Minimal surface the adapter needs from `BotCordClient`. Matches the subset used at runtime. */
+export interface BotCordChannelClient {
+  ensureToken(): Promise<string>;
+  refreshToken(): Promise<string>;
+  pollInbox(options?: {
+    limit?: number;
+    ack?: boolean;
+    timeout?: number;
+    roomId?: string;
+  }): Promise<{ messages: InboxMessage[]; count: number; has_more: boolean }>;
+  ackMessages(messageIds: string[]): Promise<void>;
+  sendMessage(
+    to: string,
+    text: string,
+    options?: { replyTo?: string; topic?: string },
+  ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
+  getHubUrl(): string;
+  onTokenRefresh?: (token: string, expiresAt: number) => void;
+}
+
+/** Factory that returns a ready-to-use BotCord client. Injection point for tests. */
+export type BotCordClientFactory = (input: {
+  agentId: string;
+  hubBaseUrl?: string;
+  credentialsPath?: string;
+}) => BotCordChannelClient;
+
+/** Options accepted by `createBotCordChannel()`. */
+export interface BotCordChannelOptions {
+  /** Channel instance id from config. */
+  id: string;
+  /** Gateway `accountId` — matches BotCord `agentId`. */
+  accountId: string;
+  /** BotCord `agentId` (usually identical to `accountId`). */
+  agentId: string;
+  /** Override for the credentials JSON path. Defaults to `~/.botcord/credentials/<agentId>.json`. */
+  credentialsPath?: string;
+  /** Override the Hub base URL. Defaults to the `hubUrl` stored in credentials. */
+  hubBaseUrl?: string;
+  /** Not used by the WS-only loop today; kept for future polling fallback. */
+  pollIntervalMs?: number;
+  /** Test hook: supply a pre-built client instead of loading credentials from disk. */
+  client?: BotCordChannelClient;
+  /** Test hook: supply a client factory. Ignored when `client` is provided. */
+  clientFactory?: BotCordClientFactory;
+  /**
+   * Test hook: override the raw WebSocket constructor. Useful for tests that
+   * can't spin up a real WS server.
+   */
+  webSocketCtor?: typeof WebSocket;
+}
+
+/** Default factory: wrap `loadStoredCredentials` + `new BotCordClient`. */
+function defaultClientFactory(input: {
+  agentId: string;
+  hubBaseUrl?: string;
+  credentialsPath?: string;
+}): BotCordChannelClient {
+  const credFile = input.credentialsPath ?? defaultCredentialsFile(input.agentId);
+  const creds = loadStoredCredentials(credFile);
+  const client = new BotCordClient({
+    hubUrl: input.hubBaseUrl ?? creds.hubUrl,
+    agentId: creds.agentId,
+    keyId: creds.keyId,
+    privateKey: creds.privateKey,
+    token: creds.token,
+    tokenExpiresAt: creds.tokenExpiresAt,
+  });
+  client.onTokenRefresh = (token, expiresAt) => {
+    try {
+      updateCredentialsToken(credFile, token, expiresAt);
+    } catch {
+      // persistence failures are non-fatal — next refresh will retry.
+    }
+  };
+  return client as unknown as BotCordChannelClient;
+}
+
+/**
+ * Classify inbound trust tier to decide whether to sanitize text.
+ *
+ * Mirrors `daemon/src/dispatcher.ts#classifyTrust`: owner-chat rooms
+ * (`rm_oc_` prefix) and `dashboard_user_chat` come from the operator and
+ * pass through verbatim; everything else gets sanitized before emit.
+ */
+function isOwnerTrust(msg: InboxMessage): boolean {
+  if (msg.room_id?.startsWith(OWNER_CHAT_PREFIX)) return true;
+  if (msg.source_type === "dashboard_user_chat") return true;
+  return false;
+}
+
+/**
+ * Map `InboxMessage` → `GatewayInboundMessage`. Field origins:
+ *
+ *   id                       → msg.hub_msg_id (inbox id, what dispatcher currently keys on)
+ *   channel                  → options.channelId (the adapter's unique instance id)
+ *   accountId                → options.accountId
+ *   conversation.id          → msg.room_id (required; we skip upstream if missing)
+ *   conversation.kind        → "direct" for rm_dm_ and rm_oc_ rooms, else "group"
+ *   conversation.title       → msg.room_name (daemon uses the same field in logs)
+ *   conversation.threadId    → msg.topic_id ?? msg.topic ?? null
+ *   sender.id                → msg.envelope.from
+ *   sender.name              → msg.source_user_name || undefined
+ *   sender.kind              → "user" when trust==owner or source_type=="dashboard_human_room",
+ *                              else "agent". "system" is not produced by daemon today.
+ *   text                     → sanitized msg.text / envelope.payload.text (owner passes verbatim)
+ *   raw                      → the full InboxMessage
+ *   replyTo                  → msg.envelope.reply_to ?? null
+ *   mentioned                → msg.mentioned ?? false
+ *   receivedAt               → Date.now() (InboxMessage has no timestamp field today)
+ *   trace.id                 → msg.hub_msg_id
+ *   trace.streamable         → true only for owner-chat rooms (matches daemon's stream-block rule)
+ */
+function normalizeInbox(
+  msg: InboxMessage,
+  options: { channelId: string; accountId: string },
+): GatewayInboundMessage | null {
+  const env = msg.envelope;
+  if (!env) return null;
+  if (env.type !== "message") return null;
+  if (!msg.room_id) return null;
+
+  const rawText =
+    msg.text ?? (typeof env.payload?.text === "string" ? (env.payload.text as string) : "");
+  if (typeof rawText !== "string") return null;
+
+  const ownerTrust = isOwnerTrust(msg);
+  const text = ownerTrust ? rawText : sanitizeUntrustedContent(rawText);
+
+  const isDm = msg.room_id.startsWith(DM_ROOM_PREFIX);
+  const isOwnerChat = msg.room_id.startsWith(OWNER_CHAT_PREFIX);
+  const senderKind: "user" | "agent" =
+    ownerTrust || msg.source_type === "dashboard_human_room" ? "user" : "agent";
+
+  const senderName = msg.source_user_name ?? undefined;
+  const threadId = msg.topic_id ?? msg.topic ?? null;
+  const streamable = isOwnerChat;
+
+  return {
+    id: msg.hub_msg_id,
+    channel: options.channelId,
+    accountId: options.accountId,
+    conversation: {
+      id: msg.room_id,
+      kind: isDm || isOwnerChat ? "direct" : "group",
+      ...(msg.room_name ? { title: msg.room_name } : {}),
+      threadId,
+    },
+    sender: {
+      id: env.from,
+      ...(senderName ? { name: senderName } : {}),
+      kind: senderKind,
+    },
+    text,
+    raw: msg,
+    replyTo: env.reply_to ?? null,
+    mentioned: msg.mentioned ?? false,
+    receivedAt: Date.now(),
+    trace: { id: msg.hub_msg_id, streamable },
+  };
+}
+
+/**
+ * Construct a BotCord channel adapter.
+ *
+ * `start()` connects to Hub WS, drains `/hub/inbox` on every `inbox_update`,
+ * normalizes messages, and emits envelopes with a `accept()` ack that commits
+ * to Hub. The returned promise stays pending until `abortSignal` fires.
+ */
+export function createBotCordChannel(options: BotCordChannelOptions): ChannelAdapter {
+  const channelType = "botcord";
+  const factory = options.clientFactory ?? defaultClientFactory;
+  let clientRef: BotCordChannelClient | null = options.client ?? null;
+  const seenMessages = new Set<string>();
+  let stopCallback: (() => void) | null = null;
+
+  let statusSnapshot: ChannelStatusSnapshot = {
+    channel: options.id,
+    accountId: options.accountId,
+    running: false,
+    connected: false,
+    reconnectAttempts: 0,
+    lastError: null,
+  };
+
+  function rememberSeen(hubMsgId: string): boolean {
+    if (seenMessages.has(hubMsgId)) return false;
+    seenMessages.add(hubMsgId);
+    if (seenMessages.size > SEEN_MESSAGES_CAP) {
+      const first = seenMessages.values().next().value;
+      if (first) seenMessages.delete(first);
+    }
+    return true;
+  }
+
+  function ensureClient(): BotCordChannelClient {
+    if (!clientRef) {
+      clientRef = factory({
+        agentId: options.agentId,
+        hubBaseUrl: options.hubBaseUrl,
+        credentialsPath: options.credentialsPath,
+      });
+    }
+    return clientRef;
+  }
+
+  async function drainInbox(
+    client: BotCordChannelClient,
+    emit: (env: GatewayInboundEnvelope) => Promise<void>,
+    log: GatewayLogger,
+  ): Promise<void> {
+    const resp = await client.pollInbox({ limit: 50, ack: false });
+    const msgs = resp.messages ?? [];
+    log.info("botcord inbox drained", { count: msgs.length });
+    if (msgs.length === 0) return;
+
+    for (const msg of msgs) {
+      if (!rememberSeen(msg.hub_msg_id)) {
+        // Already emitted; ack again so Hub stops requeueing.
+        try {
+          await client.ackMessages([msg.hub_msg_id]);
+        } catch (err) {
+          log.warn("botcord duplicate ack failed", { err: String(err) });
+        }
+        continue;
+      }
+      const normalized = normalizeInbox(msg, {
+        channelId: options.id,
+        accountId: options.accountId,
+      });
+      if (!normalized) {
+        // Not eligible (wrong type, missing room, etc.) — ack so it drops.
+        try {
+          await client.ackMessages([msg.hub_msg_id]);
+        } catch (err) {
+          log.warn("botcord skip ack failed", { err: String(err) });
+        }
+        continue;
+      }
+      const envelope: GatewayInboundEnvelope = {
+        message: normalized,
+        ack: {
+          accept: async () => {
+            try {
+              await client.ackMessages([msg.hub_msg_id]);
+            } catch (err) {
+              log.warn("botcord ack failed — relying on seen-cache dedup", {
+                hubMsgId: msg.hub_msg_id,
+                err: String(err),
+              });
+            }
+          },
+        },
+      };
+      try {
+        await emit(envelope);
+      } catch (err) {
+        log.error("botcord emit threw", {
+          hubMsgId: msg.hub_msg_id,
+          err: String(err),
+        });
+      }
+    }
+  }
+
+  function startWsLoop(
+    client: BotCordChannelClient,
+    ctx: ChannelStartContext,
+  ): Promise<void> {
+    const { abortSignal, log, emit, setStatus } = ctx;
+    const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
+    const wsCtor = options.webSocketCtor ?? WebSocket;
+
+    let ws: WebSocket | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let keepaliveTimer: NodeJS.Timeout | null = null;
+    let reconnectAttempt = 0;
+    let consecutiveAuthFailures = 0;
+    let running = true;
+    let processing = false;
+    let pendingUpdate = false;
+    let pendingRefresh: Promise<unknown> | null = null;
+    let resolveLoop: (() => void) | null = null;
+
+    const done = new Promise<void>((resolve) => {
+      resolveLoop = resolve;
+    });
+
+    function clearTimers() {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (keepaliveTimer) {
+        clearInterval(keepaliveTimer);
+        keepaliveTimer = null;
+      }
+    }
+
+    function markStatus(patch: Partial<ChannelStatusSnapshot>) {
+      statusSnapshot = { ...statusSnapshot, ...patch };
+      setStatus(patch);
+    }
+
+    async function fireInbox() {
+      if (processing) {
+        pendingUpdate = true;
+        return;
+      }
+      processing = true;
+      try {
+        do {
+          pendingUpdate = false;
+          await drainInbox(client, emit, log);
+        } while (pendingUpdate && running);
+      } catch (err) {
+        log.error("botcord inbox drain failed", { err: String(err) });
+      } finally {
+        processing = false;
+      }
+    }
+
+    function scheduleReconnect() {
+      if (!running) return;
+      const delay =
+        RECONNECT_BACKOFF[Math.min(reconnectAttempt, RECONNECT_BACKOFF.length - 1)];
+      reconnectAttempt += 1;
+      markStatus({
+        connected: false,
+        restartPending: true,
+        reconnectAttempts: reconnectAttempt,
+      });
+      log.info("botcord ws reconnect scheduled", { delayMs: delay, attempt: reconnectAttempt });
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, delay);
+    }
+
+    async function connect() {
+      if (!running) return;
+      markStatus({ connected: false, restartPending: false });
+      if (pendingRefresh) {
+        try {
+          await pendingRefresh;
+        } catch {
+          // already logged by scheduler
+        } finally {
+          pendingRefresh = null;
+        }
+      }
+      let token: string;
+      try {
+        token = await client.ensureToken();
+      } catch (err) {
+        log.error("botcord ws token refresh failed", { err: String(err) });
+        markStatus({ lastError: String(err) });
+        scheduleReconnect();
+        return;
+      }
+
+      const url = buildHubWebSocketUrl(hubUrl);
+      log.info("botcord ws connecting", { url, agentId: options.agentId });
+
+      try {
+        ws = new wsCtor(url);
+      } catch (err) {
+        log.error("botcord ws construct failed", { err: String(err) });
+        markStatus({ lastError: String(err) });
+        scheduleReconnect();
+        return;
+      }
+
+      ws.on("open", () => {
+        ws!.send(JSON.stringify({ type: "auth", token }));
+      });
+
+      ws.on("message", (data: WebSocket.RawData) => {
+        let msg: { type?: string; agent_id?: string } | null = null;
+        try {
+          msg = JSON.parse(String(data));
+        } catch {
+          return;
+        }
+        if (!msg || typeof msg.type !== "string") return;
+        if (msg.type === "auth_ok") {
+          reconnectAttempt = 0;
+          consecutiveAuthFailures = 0;
+          markStatus({
+            running: true,
+            connected: true,
+            reconnectAttempts: 0,
+            lastStartAt: Date.now(),
+            lastError: null,
+          });
+          log.info("botcord ws authenticated", { agentId: msg.agent_id });
+          void fireInbox();
+          keepaliveTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              try {
+                ws.send(JSON.stringify({ type: "ping" }));
+              } catch {
+                // ignore
+              }
+            }
+          }, KEEPALIVE_INTERVAL);
+        } else if (msg.type === "inbox_update") {
+          log.info("botcord ws inbox_update received");
+          void fireInbox();
+        } else if (msg.type === "heartbeat" || msg.type === "pong") {
+          // no-op
+        } else if (msg.type === "error" || msg.type === "auth_failed") {
+          log.warn("botcord ws server error", { msg });
+        }
+      });
+
+      ws.on("close", (code: number, reason: Buffer) => {
+        const reasonStr = reason?.toString() || "";
+        log.info("botcord ws closed", { code, reason: reasonStr });
+        clearTimers();
+        markStatus({ connected: false });
+        if (!running) {
+          if (resolveLoop) {
+            const r = resolveLoop;
+            resolveLoop = null;
+            r();
+          }
+          return;
+        }
+        if (code === 4001) {
+          consecutiveAuthFailures += 1;
+          if (consecutiveAuthFailures >= MAX_AUTH_FAILURES) {
+            log.error("botcord ws auth failing persistently — giving up reconnects", {
+              failures: consecutiveAuthFailures,
+            });
+            running = false;
+            markStatus({
+              running: false,
+              connected: false,
+              lastStopAt: Date.now(),
+              lastError: "auth failed repeatedly",
+            });
+            if (resolveLoop) {
+              const r = resolveLoop;
+              resolveLoop = null;
+              r();
+            }
+            return;
+          }
+          pendingRefresh = client
+            .refreshToken()
+            .catch((err) => log.error("botcord ws forced refresh failed", { err: String(err) }));
+        }
+        scheduleReconnect();
+      });
+
+      ws.on("error", (err: Error) => {
+        log.warn("botcord ws error", { err: String(err) });
+        markStatus({ lastError: String(err) });
+      });
+    }
+
+    function stopLoop() {
+      if (!running) return;
+      running = false;
+      clearTimers();
+      markStatus({
+        running: false,
+        connected: false,
+        lastStopAt: Date.now(),
+      });
+      if (ws) {
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+        ws = null;
+      }
+      if (resolveLoop) {
+        const r = resolveLoop;
+        resolveLoop = null;
+        r();
+      }
+    }
+
+    stopCallback = stopLoop;
+    abortSignal.addEventListener("abort", stopLoop, { once: true });
+    void connect();
+    return done;
+  }
+
+  const adapter: ChannelAdapter = {
+    id: options.id,
+    type: channelType,
+
+    async start(ctx: ChannelStartContext): Promise<void> {
+      const client = ensureClient();
+      // Only patch fields owned by the adapter; the manager is the single
+      // writer for `channel` (== adapter.id) and `accountId`.
+      const patch: Partial<ChannelStatusSnapshot> = {
+        running: true,
+        connected: false,
+        reconnectAttempts: 0,
+        lastStartAt: Date.now(),
+        lastError: null,
+      };
+      statusSnapshot = { ...statusSnapshot, ...patch };
+      ctx.setStatus(patch);
+      await startWsLoop(client, ctx);
+    },
+
+    async stop(_ctx: ChannelStopContext): Promise<void> {
+      if (stopCallback) {
+        stopCallback();
+        stopCallback = null;
+      }
+    },
+
+    async send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
+      const client = ensureClient();
+      const { message } = ctx;
+      const options: { replyTo?: string; topic?: string } = {};
+      if (message.replyTo) options.replyTo = message.replyTo;
+      if (message.threadId) options.topic = message.threadId;
+      const resp = await client.sendMessage(message.conversationId, message.text, options);
+      const providerMessageId =
+        (resp && typeof resp.hub_msg_id === "string" && resp.hub_msg_id) ||
+        (resp && typeof (resp as { message_id?: unknown }).message_id === "string"
+          ? (resp as { message_id: string }).message_id
+          : null);
+      return { providerMessageId: providerMessageId ?? null };
+    },
+
+    async streamBlock(ctx: ChannelStreamBlockContext): Promise<void> {
+      const client = ensureClient();
+      const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
+      try {
+        const token = await client.ensureToken();
+        const block = ctx.block as { raw?: unknown; kind?: string; seq?: number } | undefined;
+        const resp = await fetch(`${hubUrl}/hub/stream-block`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            trace_id: ctx.traceId,
+            seq: typeof block?.seq === "number" ? block.seq : 0,
+            block: ctx.block,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!resp.ok && resp.status !== 204) {
+          const body = await resp.text().catch(() => "");
+          ctx.log.warn("botcord stream-block non-ok", {
+            status: resp.status,
+            body: body.slice(0, 200),
+          });
+        }
+      } catch (err) {
+        ctx.log.warn("botcord stream-block failed", { err: String(err) });
+      }
+    },
+
+    status(): ChannelStatusSnapshot {
+      return { ...statusSnapshot };
+    },
+  };
+
+  return adapter;
+}
+
+// Re-export the normalizer for tests that want to exercise it directly.
+export { normalizeInbox as __normalizeInboxForTests };

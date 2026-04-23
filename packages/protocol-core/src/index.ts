@@ -3,3 +3,6 @@ export * from "./types.js";
 export * from "./hub-url.js";
 export * from "./credentials.js";
 export * from "./session-key.js";
+export * from "./client.js";
+export * from "./daemon-client.js";
+export * from "./control-frame.js";

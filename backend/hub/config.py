@@ -153,6 +153,41 @@ SENTRY_DSN: str | None = os.getenv("SENTRY_DSN")
 SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
 
 # ---------------------------------------------------------------------------
+# Daemon control plane (see docs/daemon-control-plane-plan.md)
+# ---------------------------------------------------------------------------
+
+# Default development keypair — DO NOT use in production. Override
+# BOTCORD_HUB_CONTROL_PRIVATE_KEY with a freshly generated 32-byte Ed25519
+# seed (base64). Matching public key is committed in
+# docs/daemon-control-plane-api-contract.md so the daemon can verify.
+_DAEMON_DEFAULT_PRIVATE_KEY_B64 = "R9yHQWAP+oLdwuXW67TGSi/RWbkYPGf1a31by04W1zA="
+
+DAEMON_HUB_CONTROL_PRIVATE_KEY_B64: str = os.getenv(
+    "BOTCORD_HUB_CONTROL_PRIVATE_KEY", _DAEMON_DEFAULT_PRIVATE_KEY_B64
+)
+if DAEMON_HUB_CONTROL_PRIVATE_KEY_B64 == _DAEMON_DEFAULT_PRIVATE_KEY_B64:
+    _logger.warning(
+        "BOTCORD_HUB_CONTROL_PRIVATE_KEY is using the insecure default seed. "
+        "Generate a fresh Ed25519 keypair before deploying to production."
+    )
+
+DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS: int = int(
+    os.getenv("DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS", "3600")
+)
+DAEMON_DEVICE_CODE_TTL_SECONDS: int = int(
+    os.getenv("DAEMON_DEVICE_CODE_TTL_SECONDS", "600")
+)
+DAEMON_DEVICE_CODE_INTERVAL_SECONDS: int = int(
+    os.getenv("DAEMON_DEVICE_CODE_INTERVAL_SECONDS", "5")
+)
+DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS: int = int(
+    os.getenv("DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS", "30000")
+)
+DAEMON_DISPATCH_MAX_TIMEOUT_MS: int = int(
+    os.getenv("DAEMON_DISPATCH_MAX_TIMEOUT_MS", "60000")
+)
+
+# ---------------------------------------------------------------------------
 # Cold-start claim gift
 # 固定窗口: 2026-04-07 00:00:00 +08:00 <= now < 2026-07-08 00:00:00 +08:00
 # 金额使用 COIN minor unit (1 COIN = 100 minor)，当前写死赠送 100 COIN = 10000 minor。

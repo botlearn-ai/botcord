@@ -1,0 +1,173 @@
+import { describe, expect, it, vi } from "vitest";
+
+// Hoisted mock for `../adapters/runtimes.js` so each suite can stub
+// `detectRuntimes()` independently — we want coverage of the "empty
+// gateway probe" and "single runtime" cases without touching the real
+// filesystem/$PATH.
+const mockState = {
+  entries: [] as Array<{
+    id: string;
+    displayName: string;
+    binary: string;
+    supportsRun: boolean;
+    result: { available: boolean; path?: string; version?: string };
+  }>,
+};
+
+vi.mock("../adapters/runtimes.js", async () => {
+  const actual = await vi.importActual<typeof import("../adapters/runtimes.js")>(
+    "../adapters/runtimes.js",
+  );
+  return {
+    ...actual,
+    detectRuntimes: () => mockState.entries.slice(),
+  };
+});
+
+const { collectRuntimeSnapshot, createProvisioner } = await import("../provision.js");
+const { pushRuntimeSnapshot } = await import("../daemon.js");
+const { CONTROL_FRAME_TYPES } = await import("@botcord/protocol-core");
+import type { GatewayChannelConfig, GatewayRuntimeSnapshot } from "../gateway/index.js";
+
+function setRuntimes(entries: typeof mockState.entries): void {
+  mockState.entries = entries;
+}
+
+describe("collectRuntimeSnapshot", () => {
+  it("returns an empty runtimes array when no adapters are registered", () => {
+    setRuntimes([]);
+    const snap = collectRuntimeSnapshot();
+    expect(Array.isArray(snap.runtimes)).toBe(true);
+    expect(snap.runtimes).toHaveLength(0);
+    expect(typeof snap.probedAt).toBe("number");
+    expect(snap.probedAt).toBeGreaterThan(0);
+  });
+
+  it("maps gateway probe entries to wire-level RuntimeProbeResult shape", () => {
+    setRuntimes([
+      {
+        id: "claude-code",
+        displayName: "Claude Code",
+        binary: "claude",
+        supportsRun: true,
+        result: { available: true, version: "1.2.3", path: "/usr/local/bin/claude" },
+      },
+      {
+        id: "codex",
+        displayName: "Codex",
+        binary: "codex",
+        supportsRun: true,
+        result: { available: false },
+      },
+    ]);
+    const snap = collectRuntimeSnapshot();
+    expect(snap.runtimes).toEqual([
+      {
+        id: "claude-code",
+        available: true,
+        version: "1.2.3",
+        path: "/usr/local/bin/claude",
+      },
+      { id: "codex", available: false },
+    ]);
+  });
+
+  it("omits optional fields rather than emitting explicit undefineds", () => {
+    setRuntimes([
+      {
+        id: "gemini",
+        displayName: "Gemini",
+        binary: "gemini",
+        supportsRun: true,
+        result: { available: true },
+      },
+    ]);
+    const [entry] = collectRuntimeSnapshot().runtimes;
+    expect(entry).toBeDefined();
+    expect(Object.keys(entry!).sort()).toEqual(["available", "id"]);
+  });
+});
+
+interface FakeGateway {
+  addChannel: ReturnType<typeof vi.fn>;
+  removeChannel: ReturnType<typeof vi.fn>;
+  snapshot: () => GatewayRuntimeSnapshot;
+}
+
+function makeFakeGateway(): FakeGateway {
+  return {
+    addChannel: vi.fn(async (_cfg: GatewayChannelConfig) => undefined),
+    removeChannel: vi.fn(async (_id: string) => undefined),
+    snapshot: (): GatewayRuntimeSnapshot => ({ channels: {}, turns: {} }),
+  };
+}
+
+describe("provisioner list_runtimes handler", () => {
+  it("acks with the collected runtime snapshot", async () => {
+    setRuntimes([
+      {
+        id: "claude-code",
+        displayName: "Claude Code",
+        binary: "claude",
+        supportsRun: true,
+        result: { available: true, version: "1.0.0" },
+      },
+    ]);
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_rt_1",
+      type: CONTROL_FRAME_TYPES.LIST_RUNTIMES,
+      ts: Date.now(),
+    });
+    expect(ack.ok).toBe(true);
+    const result = ack.result as {
+      runtimes: Array<{ id: string; available: boolean; version?: string }>;
+      probedAt: number;
+    };
+    expect(Array.isArray(result.runtimes)).toBe(true);
+    expect(result.runtimes).toHaveLength(1);
+    expect(result.runtimes[0]).toMatchObject({ id: "claude-code", available: true });
+    expect(typeof result.probedAt).toBe("number");
+  });
+});
+
+describe("pushRuntimeSnapshot (first-connect push)", () => {
+  it("sends exactly one runtime_snapshot frame with the fresh probe payload", () => {
+    setRuntimes([
+      {
+        id: "claude-code",
+        displayName: "Claude Code",
+        binary: "claude",
+        supportsRun: true,
+        result: { available: true, version: "1.0.0", path: "/usr/local/bin/claude" },
+      },
+    ]);
+    const send = vi.fn(() => true);
+    const ok = pushRuntimeSnapshot({ send });
+    expect(ok).toBe(true);
+    expect(send).toHaveBeenCalledOnce();
+    const frame = send.mock.calls[0]![0] as {
+      id: string;
+      type: string;
+      params: { runtimes: unknown[]; probedAt: number };
+      ts: number;
+    };
+    expect(frame.type).toBe(CONTROL_FRAME_TYPES.RUNTIME_SNAPSHOT);
+    expect(frame.id).toMatch(/^rt_/);
+    expect(typeof frame.ts).toBe("number");
+    expect(Array.isArray(frame.params.runtimes)).toBe(true);
+    expect(frame.params.runtimes).toHaveLength(1);
+    expect(typeof frame.params.probedAt).toBe("number");
+  });
+
+  it("returns false when the sink reports the WS is not open (non-fatal)", () => {
+    setRuntimes([]);
+    const send = vi.fn(() => false);
+    const ok = pushRuntimeSnapshot({ send });
+    expect(ok).toBe(false);
+    expect(send).toHaveBeenCalledOnce();
+  });
+});

@@ -96,3 +96,22 @@ def generate_subscription_charge_attempt_id() -> str:
 def generate_join_request_id() -> str:
     """Generate room join request ID: 'jr_' + 16 random hex chars."""
     return "jr_" + secrets.token_hex(8)
+
+
+def generate_daemon_instance_id() -> str:
+    """Generate daemon instance ID: 'dm_' + 12 random hex chars."""
+    return "dm_" + secrets.token_hex(6)
+
+
+def generate_daemon_device_code() -> str:
+    """Generate device-code secret: 'dc_' + 32 random hex chars."""
+    return "dc_" + secrets.token_hex(16)
+
+
+_USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # avoid I, O, 0, 1
+
+
+def generate_daemon_user_code() -> str:
+    """Generate human-friendly user code: ``XXXX-XXXX`` from a no-confusing alphabet."""
+    raw = "".join(secrets.choice(_USER_CODE_ALPHABET) for _ in range(8))
+    return f"{raw[:4]}-{raw[4:]}"
