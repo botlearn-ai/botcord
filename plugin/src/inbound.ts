@@ -788,7 +788,7 @@ export async function deliverNotification(
 
   // Inject into session history so the AI remembers the notification
   try {
-    core.channel.session.injectMessage({
+    (core.channel.session as any).injectMessage?.({
       sessionKey,
       message: text,
       label: "BotCord Notification",
