@@ -10,6 +10,7 @@ import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { PresenceDot } from "./PresenceDot";
 
 interface MessageBubbleProps {
   message: DashboardMessage;
@@ -141,8 +142,10 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           onKeyDown={handleSelectSenderByKey}
           className={`mb-0.5 flex items-center gap-1.5 rounded px-1 transition-colors hover:bg-glass-bg ${isOwn ? "justify-end" : "-ml-1"}`}
         >
-          {isHuman && (
+          {isHuman ? (
             <User className="h-3 w-3 text-neon-green/80" aria-label="human" />
+          ) : (
+            <PresenceDot agentId={message.sender_id} size="xs" showOffline={false} />
           )}
           <span
             className={`text-xs font-medium hover:underline ${

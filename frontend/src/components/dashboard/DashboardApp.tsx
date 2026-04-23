@@ -21,6 +21,7 @@ import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionS
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
 import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
@@ -447,6 +448,16 @@ export default function DashboardApp() {
             roomId: realtimeEvent.room_id,
             hubMsgId: realtimeEvent.hub_msg_id,
           });
+          if (realtimeEvent.type === "presence") {
+            const ext = realtimeEvent.ext || {};
+            const subject = typeof ext.subject_agent_id === "string" ? ext.subject_agent_id : null;
+            const online = Boolean(ext.online);
+            if (subject) {
+              const ts = realtimeEvent.created_at ? new Date(realtimeEvent.created_at).getTime() : Date.now();
+              usePresenceStore.getState().setOnline(subject, online, Number.isFinite(ts) ? ts : Date.now());
+            }
+            return;
+          }
           chatStore.applyRealtimeEventHint(realtimeEvent);
           if (!isOpenedRoomEvent) {
             unreadStore.applyRealtimeEvent(realtimeEvent);
