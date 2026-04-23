@@ -345,6 +345,10 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
       ? tryLoadUserAuth(logger)
       : opts.userAuth;
   if (userAuth?.current && !opts.disableControlChannel) {
+    logger.info("control-channel: enabling", {
+      userId: userAuth.current.userId,
+      hubUrl: userAuth.current.hubUrl,
+    });
     const provisioner = createProvisioner({ gateway });
     controlChannel = new ControlChannel({
       auth: userAuth,
@@ -355,7 +359,10 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
       // Plan §8.5 P0 — push one runtime snapshot immediately after connect
       // so Hub's `daemon_instances.runtimes_json` is populated for the
       // dashboard even before any user action. No periodic refresh in P0.
-      pushRuntimeSnapshot(controlChannel);
+      const pushed = pushRuntimeSnapshot(controlChannel);
+      logger.info("control-channel: initial runtime_snapshot push", {
+        ok: pushed,
+      });
     } catch (err) {
       logger.warn("control-channel failed to start; continuing without it", {
         error: err instanceof Error ? err.message : String(err),
