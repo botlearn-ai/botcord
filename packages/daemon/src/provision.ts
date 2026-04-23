@@ -67,12 +67,19 @@ export function createProvisioner(opts: ProvisionerOptions): (
   const register = opts.register ?? BotCordClient.register;
 
   return async (frame: ControlFrame): Promise<AckBody> => {
+    daemonLog.debug("provision.dispatch", { type: frame.type, id: frame.id });
     switch (frame.type) {
       case CONTROL_FRAME_TYPES.PING:
         return { ok: true, result: { pong: true, ts: Date.now() } };
 
       case CONTROL_FRAME_TYPES.PROVISION_AGENT: {
         const params = (frame.params ?? {}) as unknown as ProvisionAgentParams;
+        daemonLog.info("provision_agent: start", {
+          frameId: frame.id,
+          hasCredentials: !!params.credentials,
+          runtime: pickRuntime(params) ?? null,
+          name: params.name ?? null,
+        });
         const agent = await provisionAgent(params, { gateway, register });
         return {
           ok: true,
@@ -86,31 +93,44 @@ export function createProvisioner(opts: ProvisionerOptions): (
 
       case CONTROL_FRAME_TYPES.REVOKE_AGENT: {
         const params = (frame.params ?? {}) as unknown as RevokeAgentParams;
+        daemonLog.info("revoke_agent: start", {
+          frameId: frame.id,
+          agentId: params.agentId,
+          deleteCredentials: params.deleteCredentials !== false,
+        });
         const res = await revokeAgent(params, { gateway });
         return { ok: true, result: res };
       }
 
       case CONTROL_FRAME_TYPES.LIST_AGENTS: {
         const agents = listAgentsFromGateway(gateway);
+        daemonLog.debug("list_agents", { count: agents.length });
         return { ok: true, result: { agents } };
       }
 
       case CONTROL_FRAME_TYPES.RELOAD_CONFIG: {
+        daemonLog.info("reload_config: start", { frameId: frame.id });
         const res = await reloadConfig({ gateway });
         return { ok: true, result: res };
       }
 
       case CONTROL_FRAME_TYPES.SET_ROUTE: {
+        daemonLog.info("set_route: start", { frameId: frame.id });
         const res = setRoute(frame.params ?? {});
         return { ok: true, result: res };
       }
 
       case CONTROL_FRAME_TYPES.LIST_RUNTIMES: {
         const snapshot = collectRuntimeSnapshot();
+        daemonLog.debug("list_runtimes", { count: snapshot.runtimes.length });
         return { ok: true, result: snapshot };
       }
 
       default:
+        daemonLog.warn("provision.dispatch: unknown frame type", {
+          type: frame.type,
+          id: frame.id,
+        });
         return {
           ok: false,
           error: { code: "unknown_type", message: `unknown control frame type "${frame.type}"` },
@@ -138,6 +158,12 @@ async function provisionAgent(
 
   const cfg = loadConfig();
   const credentials = await materializeCredentials(params, cfg, ctx);
+  daemonLog.debug("provision: credentials materialized", {
+    agentId: credentials.agentId,
+    hubUrl: credentials.hubUrl,
+    runtime: credentials.runtime ?? null,
+    source: params.credentials ? "hub-supplied" : "registered",
+  });
 
   const credentialsFile = writeCredentialsFile(
     defaultCredentialsFile(credentials.agentId),

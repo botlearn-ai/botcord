@@ -206,6 +206,7 @@ async function cmdInit(args: ParsedArgs): Promise<void> {
   const agents = args.lists.agent ?? [];
   const cwd =
     typeof args.flags.cwd === "string" ? path.resolve(args.flags.cwd) : homedir();
+  log.info("cmd init", { agents, cwd });
   const cfg = initDefaultConfig(agents, cwd);
   saveConfig(cfg);
   console.log(`wrote ${CONFIG_FILE_PATH}`);
@@ -246,6 +247,10 @@ async function runDeviceCodeFlow(opts: {
   hubUrl: string;
   label?: string;
 }): Promise<UserAuthRecord> {
+  log.info("device-code flow: requesting code", {
+    hubUrl: opts.hubUrl,
+    label: opts.label ?? null,
+  });
   const dc: DeviceCodeResponse = await requestDeviceCode(
     opts.hubUrl,
     opts.label ? { label: opts.label } : undefined,
@@ -284,9 +289,17 @@ async function runDeviceCodeFlow(opts: {
     const record = userAuthFromTokenResponse(res, opts.label ? { label: opts.label } : undefined);
     saveUserAuth(record);
     clearAuthExpiredFlag();
+    log.info("device-code flow: authorized", {
+      userId: record.userId,
+      hubUrl: record.hubUrl,
+      label: opts.label ?? null,
+    });
     console.log(`Logged in as ${record.userId}`);
     return record;
   }
+  log.warn("device-code flow: expired without authorization", {
+    hubUrl: opts.hubUrl,
+  });
   throw new Error("device-code expired without authorization");
 }
 
@@ -351,6 +364,11 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
 async function cmdStart(args: ParsedArgs): Promise<void> {
   const cfg = loadConfig();
   const foreground = args.flags.foreground === true;
+  log.info("cmd start", {
+    foreground,
+    relogin: args.flags.relogin === true,
+    child: process.env.BOTCORD_DAEMON_CHILD === "1",
+  });
 
   const existing = readPid();
   if (existing && pidAlive(existing)) {
@@ -421,6 +439,7 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
 
 async function cmdStop(): Promise<void> {
   const pid = readPid();
+  log.info("cmd stop", { pid });
   if (!pid) {
     console.error("no pid file found");
     process.exit(1);
