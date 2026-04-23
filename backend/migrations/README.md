@@ -28,6 +28,8 @@
 021_create_daemon_instances.sql: 创建 daemon 控制面实例表与设备码兑换表，支撑 `/daemon/auth/*` 与 `/daemon/ws`。  
 022_daemon_instances_runtimes.sql: 给 daemon_instances 增加 runtimes_json / runtimes_probed_at 列，承载 daemon 运行时探测快照。  
 023_agents_runtime.sql: 给 agents 增加 runtime 列，记录 agent 创建时选择的运行时（claude-code / codex / gemini 等）。  
+024_human_participant.sql: 引入 Human 作为一等参与者（users.human_id + rooms/room_members/contacts/blocks/contact_requests 加 owner_type/participant_type 等判别列 + agent_approval_queue）。  
+025_add_room_allow_human_send.sql: 给 rooms 增加 allow_human_send 开关，控制房间是否允许 Human 发言。  
 
 法则: 成员完整·一行一文件·父级链接·技术词前置
 
