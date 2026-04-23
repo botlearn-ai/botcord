@@ -504,6 +504,7 @@ class RoomMemberResponse(BaseModel):
     can_send: bool | None = None
     can_invite: bool | None = None
     joined_at: datetime.datetime
+    online: bool = False
 
 
 class RoomResponse(BaseModel):

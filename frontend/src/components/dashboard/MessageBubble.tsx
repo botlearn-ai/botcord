@@ -14,6 +14,8 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 interface MessageBubbleProps {
   message: DashboardMessage;
   isOwn: boolean;
+  /** When true, the bubble fills the container width instead of capping at 70%. */
+  fullWidth?: boolean;
 }
 
 const stateColors: Record<string, { color: string; icon: string }> = {
@@ -93,7 +95,7 @@ function formatMessageTimestamp(isoTime: string): string {
   });
 }
 
-export default function MessageBubble({ message, isOwn: isOwnProp }: MessageBubbleProps) {
+export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false }: MessageBubbleProps) {
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const stateConfig = useStateConfig();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
@@ -124,9 +126,9 @@ export default function MessageBubble({ message, isOwn: isOwnProp }: MessageBubb
   };
 
   return (
-    <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-2`}>
+    <div className={`flex ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}>
       <div
-        className={`max-w-[70%] rounded-xl px-3 py-2 ${
+        className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
           isOwn
             ? "border border-neon-cyan/30 bg-neon-cyan/5"
             : "border border-glass-border bg-glass-bg"

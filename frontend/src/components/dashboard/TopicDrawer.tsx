@@ -122,6 +122,7 @@ export default function TopicDrawer() {
                 key={msg.hub_msg_id}
                 message={msg}
                 isOwn={msg.sender_id === activeAgentId}
+                fullWidth
               />
             ))
           )}
