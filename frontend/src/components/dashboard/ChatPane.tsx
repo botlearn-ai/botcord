@@ -82,13 +82,15 @@ function ContactsMainPane() {
     respondContactRequest: state.respondContactRequest,
   })));
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
+  const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [showFriendInvite, setShowFriendInvite] = useState(false);
   const isRequestsView = contactsView === "requests";
   const isRoomsView = contactsView === "rooms";
+  const isCreatedView = contactsView === "created";
   const contacts = overview?.contacts || [];
-  const joinedRooms = useMemo(
+  const sortedRooms = useMemo(
     () =>
       [...(overview?.rooms || [])].sort((a, b) => {
         const aTime = (a.last_message_at || a.created_at) ? Date.parse(a.last_message_at || a.created_at!) : 0;
@@ -96,6 +98,14 @@ function ContactsMainPane() {
         return bTime - aTime;
       }),
     [overview?.rooms],
+  );
+  const joinedRooms = useMemo(
+    () => sortedRooms.filter((room) => !activeAgentId || room.owner_id !== activeAgentId),
+    [sortedRooms, activeAgentId],
+  );
+  const createdRooms = useMemo(
+    () => sortedRooms.filter((room) => activeAgentId && room.owner_id === activeAgentId),
+    [sortedRooms, activeAgentId],
   );
   const pendingReceived = contactRequestsReceived.filter((item) => item.state === "pending");
 
@@ -116,7 +126,7 @@ function ContactsMainPane() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, contactsView, contacts.length, pendingReceived.length, joinedRooms.length]);
+  }, [query, contactsView, contacts.length, pendingReceived.length, joinedRooms.length, createdRooms.length]);
 
   const normalized = query.trim().toLowerCase();
   const filteredContacts = contacts.filter((item) => {
@@ -135,20 +145,24 @@ function ContactsMainPane() {
       (item.message || "").toLowerCase().includes(normalized)
     );
   });
-  const filteredJoinedRooms = joinedRooms.filter((room) => {
+  const roomMatcher = (room: typeof sortedRooms[number]) => {
     if (!normalized) return true;
     return (
       room.name.toLowerCase().includes(normalized) ||
       room.room_id.toLowerCase().includes(normalized) ||
       (room.description || "").toLowerCase().includes(normalized)
     );
-  });
+  };
+  const filteredJoinedRooms = joinedRooms.filter(roomMatcher);
+  const filteredCreatedRooms = createdRooms.filter(roomMatcher);
 
   const list = isRequestsView
     ? filteredRequests
     : isRoomsView
       ? filteredJoinedRooms
-      : filteredContacts;
+      : isCreatedView
+        ? filteredCreatedRooms
+        : filteredContacts;
   const totalPages = Math.max(1, Math.ceil(list.length / EXPLORE_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * EXPLORE_PAGE_SIZE;
@@ -168,23 +182,39 @@ function ContactsMainPane() {
     <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
       <div className="border-b border-glass-border px-5 py-4">
         <h2 className="text-base font-semibold text-text-primary">
-          {isRequestsView ? t.contactRequests : isRoomsView ? t.joinedRooms : t.contacts}
+          {isRequestsView
+            ? t.contactRequests
+            : isRoomsView
+              ? t.joinedRooms
+              : isCreatedView
+                ? t.createdRooms
+                : t.contacts}
         </h2>
         <p className="mt-1 text-xs text-text-secondary">
           {isRequestsView
             ? t.reviewRequests
             : isRoomsView
               ? t.roomsJoinedManually
-              : t.yourAgentContacts}
+              : isCreatedView
+                ? t.roomsCreatedByMe
+                : t.yourAgentContacts}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <div className="min-w-[240px] max-w-xl flex-1">
             <SearchBar
               onSearch={setQuery}
-              placeholder={isRequestsView ? t.searchRequests : isRoomsView ? t.searchJoinedRooms : t.searchContacts}
+              placeholder={
+                isRequestsView
+                  ? t.searchRequests
+                  : isRoomsView
+                    ? t.searchJoinedRooms
+                    : isCreatedView
+                      ? t.searchCreatedRooms
+                      : t.searchContacts
+              }
             />
           </div>
-          {!isRequestsView && !isRoomsView ? (
+          {!isRequestsView && !isRoomsView && !isCreatedView ? (
             <button
               type="button"
               onClick={() => setShowFriendInvite(true)}
@@ -259,6 +289,38 @@ function ContactsMainPane() {
                     <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
                     <span className="rounded border border-neon-green/40 bg-neon-green/10 px-1.5 py-0.5 text-[10px] text-neon-green">
                       {t.joinedBadge}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>
+                  {room.last_message_preview && (
+                    <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
+                  )}
+                  {room.last_message_at && (
+                    <p className="mt-2 text-[11px] text-text-secondary/70">
+                      {t.activeAt} {new Date(room.last_message_at).toLocaleString()}
+                    </p>
+                  )}
+                </button>
+              ))}
+            </div>
+          )
+        ) : isCreatedView ? (
+          !overview ? (
+            <GridSkeletonCards />
+          ) : pageItems.length === 0 ? (
+            <p className="text-xs text-text-secondary">{t.noCreatedRoomsFound}</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {(pageItems as typeof filteredCreatedRooms).map((room) => (
+                <button
+                  key={room.room_id}
+                  onClick={() => openJoinedRoom(room.room_id)}
+                  className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
+                    <span className="rounded border border-neon-purple/40 bg-neon-purple/10 px-1.5 py-0.5 text-[10px] text-neon-purple">
+                      {t.ownerBadge}
                     </span>
                   </div>
                   <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>

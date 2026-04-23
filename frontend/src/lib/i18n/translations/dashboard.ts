@@ -22,7 +22,10 @@ export const sidebar: TranslationMap<{
   loadingWallet: string
   noMessages: string
   requests: string
+  myFriends: string
+  friendRequests: string
   joinedRooms: string
+  createdRooms: string
   walletSupportTitle: string
   walletSupportDesc: string
   loginToUseWallet: string
@@ -50,7 +53,10 @@ export const sidebar: TranslationMap<{
     loadingWallet: 'Loading wallet...',
     noMessages: 'No messages yet',
     requests: 'Requests',
+    myFriends: 'My Friends',
+    friendRequests: 'Friend Requests',
     joinedRooms: 'Joined Groups',
+    createdRooms: 'Created Groups',
     walletSupportTitle: 'Wallet Support',
     walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
     loginToUseWallet: 'Log In to Use Wallet',
@@ -78,7 +84,10 @@ export const sidebar: TranslationMap<{
     loadingWallet: '加载钱包中...',
     noMessages: '暂无消息会话',
     requests: '请求',
-    joinedRooms: '已加入群',
+    myFriends: '我的好友',
+    friendRequests: '好友申请',
+    joinedRooms: '我加入的群',
+    createdRooms: '我创建的群',
     walletSupportTitle: '钱包支持',
     walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
     loginToUseWallet: '登录以使用钱包',
@@ -129,15 +138,19 @@ export const chatPane: TranslationMap<{
   readOnlyView: string
   contactRequests: string
   joinedRooms: string
+  createdRooms: string
   contacts: string
   reviewRequests: string
   roomsJoinedManually: string
+  roomsCreatedByMe: string
   yourAgentContacts: string
   searchRequests: string
   searchJoinedRooms: string
+  searchCreatedRooms: string
   searchContacts: string
   noPendingRequests: string
   noJoinedRoomsFound: string
+  noCreatedRoomsFound: string
   noContactsFound: string
   noRequestMessage: string
   accept: string
@@ -145,6 +158,7 @@ export const chatPane: TranslationMap<{
   accepting: string
   rejecting: string
   joinedBadge: string
+  ownerBadge: string
   activeAt: string
   addedAt: string
   display: string
@@ -163,15 +177,19 @@ export const chatPane: TranslationMap<{
     readOnlyView: 'Read-only view',
     contactRequests: 'Friend Requests',
     joinedRooms: 'Joined Groups',
+    createdRooms: 'Created Groups',
     contacts: 'Contacts',
     reviewRequests: 'Review and process incoming requests',
     roomsJoinedManually: 'Groups you joined. Notifications only apply here.',
+    roomsCreatedByMe: 'Groups created by your active Bot.',
     yourAgentContacts: 'Your Bot contacts',
     searchRequests: 'Search requests...',
     searchJoinedRooms: 'Search joined groups...',
+    searchCreatedRooms: 'Search created groups...',
     searchContacts: 'Search contacts...',
     noPendingRequests: 'No pending requests',
     noJoinedRoomsFound: 'No joined groups found',
+    noCreatedRoomsFound: 'No created groups found',
     noContactsFound: 'No contacts found',
     noRequestMessage: 'No request message',
     accept: 'Accept',
@@ -179,6 +197,7 @@ export const chatPane: TranslationMap<{
     accepting: 'Accepting...',
     rejecting: 'Rejecting...',
     joinedBadge: 'Joined',
+    ownerBadge: 'Owner',
     activeAt: 'Active at',
     addedAt: 'Added at',
     display: 'Display',
@@ -196,16 +215,20 @@ export const chatPane: TranslationMap<{
     loginToParticipate: '登录参与',
     readOnlyView: '只读视图',
     contactRequests: '好友请求',
-    joinedRooms: '已加入群',
+    joinedRooms: '我加入的群',
+    createdRooms: '我创建的群',
     contacts: '联系人',
     reviewRequests: '查看并处理收到的请求',
-    roomsJoinedManually: '你已加入的群。通知仅适用于此处。',
+    roomsJoinedManually: '你加入的群。通知仅适用于此处。',
+    roomsCreatedByMe: '由你当前 Bot 创建并管理的群。',
     yourAgentContacts: '你的 Bot 联系人',
     searchRequests: '搜索请求...',
-    searchJoinedRooms: '搜索已加入群...',
+    searchJoinedRooms: '搜索我加入的群...',
+    searchCreatedRooms: '搜索我创建的群...',
     searchContacts: '搜索联系人...',
     noPendingRequests: '暂无待处理请求',
-    noJoinedRoomsFound: '未找到已加入群',
+    noJoinedRoomsFound: '未找到我加入的群',
+    noCreatedRoomsFound: '未找到我创建的群',
     noContactsFound: '未找到联系人',
     noRequestMessage: '无请求消息',
     accept: '接受',
@@ -213,6 +236,7 @@ export const chatPane: TranslationMap<{
     accepting: '接受中...',
     rejecting: '拒绝中...',
     joinedBadge: '已加入',
+    ownerBadge: '群主',
     activeAt: '活跃于',
     addedAt: '添加于',
     display: '显示名称',

@@ -575,18 +575,6 @@ export default function Sidebar() {
           <div className="border-b border-glass-border p-3">
             <SecondaryNavButton
               onClick={() => {
-                uiStore.setContactsView("agents");
-                startTransition(() => {
-                  router.push("/chats/contacts/agents");
-                });
-              }}
-              active={uiStore.contactsView === "agents"}
-              tone="cyan"
-            >
-              {t.agents}
-            </SecondaryNavButton>
-            <SecondaryNavButton
-              onClick={() => {
                 uiStore.setContactsView("requests");
                 startTransition(() => {
                   router.push("/chats/contacts/requests");
@@ -598,10 +586,22 @@ export default function Sidebar() {
                   {pendingContactRequests > 99 ? "99+" : pendingContactRequests}
                 </span>
               ) : undefined}
+              tone="cyan"
+            >
+              {t.friendRequests}
+            </SecondaryNavButton>
+            <SecondaryNavButton
+              onClick={() => {
+                uiStore.setContactsView("agents");
+                startTransition(() => {
+                  router.push("/chats/contacts/agents");
+                });
+              }}
+              active={uiStore.contactsView === "agents"}
               className="mt-2"
               tone="cyan"
             >
-              {t.requests}
+              {t.myFriends}
             </SecondaryNavButton>
             <SecondaryNavButton
               onClick={() => {
@@ -615,6 +615,19 @@ export default function Sidebar() {
               tone="cyan"
             >
               {t.joinedRooms}
+            </SecondaryNavButton>
+            <SecondaryNavButton
+              onClick={() => {
+                uiStore.setContactsView("created");
+                startTransition(() => {
+                  router.push("/chats/contacts/created");
+                });
+              }}
+              active={uiStore.contactsView === "created"}
+              className="mt-2"
+              tone="cyan"
+            >
+              {t.createdRooms}
             </SecondaryNavButton>
           </div>
         )}

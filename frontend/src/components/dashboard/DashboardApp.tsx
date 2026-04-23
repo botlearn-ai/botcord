@@ -222,7 +222,7 @@ export default function DashboardApp() {
 
       if (
         tab === "contacts"
-        && (subtab === "agents" || subtab === "requests" || subtab === "rooms")
+        && (subtab === "agents" || subtab === "requests" || subtab === "rooms" || subtab === "created")
         && uiStore.contactsView !== subtab
       ) {
         uiStore.setContactsView(subtab);

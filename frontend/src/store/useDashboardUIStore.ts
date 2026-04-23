@@ -14,11 +14,13 @@ export interface DashboardUIState {
   userChatRoomId: string | null;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
+  /** When set, the topic side drawer is open for this topic_id in the opened room. */
+  openedTopicId: string | null;
   sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "activity";
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
   exploreView: "rooms" | "agents" | "templates";
-  contactsView: "agents" | "requests" | "rooms";
+  contactsView: "agents" | "requests" | "rooms" | "created";
 
   setFocusedRoomId: (roomId: string | null) => void;
   setOpenedRoomId: (roomId: string | null) => void;
