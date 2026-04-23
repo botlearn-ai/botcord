@@ -121,21 +121,11 @@ function TopicCard({
   const hiddenCount = total - shownCount;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className="group mb-4 cursor-pointer rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
-    >
-      <div className="flex items-center gap-2">
+    <div className="mb-4">
+      {/* Topic label row — sits above the first message like a lightweight title */}
+      <div className="mb-1 flex items-center gap-2 px-1">
         <span className="text-xs text-neon-cyan/70">💬</span>
-        <span className="truncate text-sm font-medium text-text-primary">
+        <span className="truncate text-xs font-medium text-text-secondary">
           {group.topicName}
         </span>
         {sc && (
@@ -144,52 +134,74 @@ function TopicCard({
             {sc.label}
           </span>
         )}
-        <span className="ml-auto text-[10px] text-text-secondary/50">
-          {total} {total !== 1 ? t.msgs : t.msg}
-        </span>
+        {group.topicInfo?.goal && (
+          <span className="hidden sm:inline-flex items-center gap-1 truncate text-[10px] text-neon-purple/70 max-w-[260px]">
+            🎯 {group.topicInfo.goal}
+          </span>
+        )}
       </div>
 
-      {group.topicInfo?.goal && (
-        <div className="mt-1 truncate text-[11px] text-neon-purple/70">🎯 {group.topicInfo.goal}</div>
-      )}
-
+      {/* The first message renders as a normal bubble — no outer wrapper. */}
       {firstMsg && (
-        <div className="mt-2">
-          <MessageBubble
-            message={firstMsg}
-            isOwn={firstMsg.sender_id === currentAgentId}
-            fullWidth
-          />
-        </div>
+        <MessageBubble
+          message={firstMsg}
+          isOwn={firstMsg.sender_id === currentAgentId}
+        />
       )}
 
-      {recentPreview.length > 0 && (
-        <div className="mt-1 space-y-1.5 border-l-2 border-neon-cyan/20 pl-2">
-          {recentPreview.map((msg) => {
-            const text = messagePreviewText(msg);
-            const isOwn = msg.sender_id === currentAgentId;
-            const senderLabel = isOwn ? (locale === "zh" ? "你" : "You") : (msg.display_sender_name || msg.sender_name || msg.sender_id);
-            return (
-              <div key={msg.hub_msg_id} className="flex gap-2 text-xs">
-                <span className="shrink-0 font-medium text-text-secondary/80 max-w-[96px] truncate">
-                  {senderLabel}
-                </span>
-                <span className="truncate text-text-primary/80">{text || <em className="text-text-secondary/50">…</em>}</span>
-              </div>
-            );
-          })}
-          {hiddenCount > 0 && (
-            <div className="text-[10px] text-text-secondary/60">
-              +{hiddenCount} {t.moreInThread}
+      {/* Inline thread footer — merged into the same visual layer as the
+          message above, like Feishu's "回复话题" row. Clicking opens the drawer. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+        className={`group ml-3 mt-1 cursor-pointer rounded-md px-2 py-1.5 transition-colors hover:bg-glass-bg/60 ${
+          firstMsg?.sender_id === currentAgentId ? "mr-3 ml-auto max-w-[70%]" : "max-w-[70%]"
+        }`}
+      >
+        {recentPreview.length > 0 ? (
+          <div className="space-y-0.5 border-l-2 border-neon-cyan/30 pl-2">
+            {recentPreview.map((msg) => {
+              const text = messagePreviewText(msg);
+              const isOwn = msg.sender_id === currentAgentId;
+              const senderLabel = isOwn
+                ? (locale === "zh" ? "你" : "You")
+                : (msg.display_sender_name || msg.sender_name || msg.sender_id);
+              return (
+                <div key={msg.hub_msg_id} className="flex gap-2 text-[11px] leading-tight">
+                  <span className="shrink-0 font-medium text-text-secondary/80 max-w-[96px] truncate">
+                    {senderLabel}
+                  </span>
+                  <span className="truncate text-text-primary/70">
+                    {text || <em className="text-text-secondary/50">…</em>}
+                  </span>
+                </div>
+              );
+            })}
+            <div className="flex items-center gap-1 pt-0.5 text-[11px] text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
+              <span>💬</span>
+              <span>
+                {hiddenCount > 0
+                  ? `${hiddenCount} ${t.moreInThread} · ${t.viewThread}`
+                  : t.viewThread}
+              </span>
+              <span>→</span>
             </div>
-          )}
-        </div>
-      )}
-
-      <div className="mt-2 flex items-center justify-end">
-        <span className="text-[11px] font-medium text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
-          {t.viewThread} →
-        </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 text-[11px] text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
+            <span>💬</span>
+            <span>{t.viewThread}</span>
+            <span className="text-text-secondary/50">· {total} {total !== 1 ? t.msgs : t.msg}</span>
+            <span>→</span>
+          </div>
+        )}
       </div>
     </div>
   );

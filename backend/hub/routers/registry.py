@@ -46,6 +46,7 @@ from hub.schemas import (
     VerifyRequest,
     VerifyResponse,
 )
+from hub.routers.hub import is_agent_ws_online
 from hub.services.wallet import get_or_create_wallet
 from hub.validators import check_agent_ownership, parse_pubkey, probe_endpoint, probe_endpoint_detailed, validate_endpoint_url
 
@@ -523,6 +524,7 @@ async def resolve_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         is_bound=agent.claimed_at is not None,
         has_endpoint=len(endpoints) > 0,
         endpoints=endpoints,
+        online=is_agent_ws_online(agent.agent_id),
     )
 
 
@@ -586,6 +588,7 @@ async def update_profile(
         is_bound=agent.claimed_at is not None,
         has_endpoint=len(endpoints) > 0,
         endpoints=endpoints,
+        online=is_agent_ws_online(agent.agent_id),
     )
 
 

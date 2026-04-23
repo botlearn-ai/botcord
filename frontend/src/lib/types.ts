@@ -11,6 +11,7 @@ export interface AgentProfile {
   bio: string | null;
   message_policy: string;
   created_at: string;
+  online?: boolean;
 }
 
 export interface DashboardRoom {
@@ -38,6 +39,7 @@ export interface ContactInfo {
   alias: string | null;
   display_name: string;
   created_at: string;
+  online?: boolean;
 }
 
 export interface ContactRequestItem {
@@ -280,7 +282,8 @@ export type RealtimeMetaEventType =
   | "ack"
   | "result"
   | "error"
-  | "typing";
+  | "typing"
+  | "presence";
 
 export interface RealtimeMetaEvent {
   type: RealtimeMetaEventType;
@@ -506,6 +509,7 @@ export interface PublicRoomMember {
   created_at: string;
   role: string;
   joined_at: string;
+  online?: boolean;
 }
 
 export interface PublicRoomMembersResponse {
