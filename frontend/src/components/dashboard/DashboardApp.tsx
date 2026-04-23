@@ -8,6 +8,8 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
+import { useLanguage } from "@/lib/i18n";
+import { sidebar as sidebarI18n } from "@/lib/i18n/translations/dashboard";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
 import { createClient } from "@/lib/supabase/client";
@@ -79,6 +81,8 @@ export default function DashboardApp() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  const locale = useLanguage();
+  const tSidebar = sidebarI18n[locale];
   const recoveredAgentRef = useRef<string | null>(null);
   const walletBoundAgentRef = useRef<string | null>(null);
   const contactBoundAgentRef = useRef<string | null>(null);
@@ -209,13 +213,21 @@ export default function DashboardApp() {
     const normalizedTab =
       tab === "dm" || tab === "rooms"
         ? "messages"
-        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet" || tab === "activity" || tab === "user-chat"
+        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet" || tab === "activity" || tab === "user-chat" || tab === "bots"
           ? tab
           : null;
 
     if (normalizedTab) {
       const nextSidebarTab = normalizedTab === "user-chat" ? "messages" : normalizedTab;
       if (uiStore.sidebarTab !== nextSidebarTab) uiStore.setSidebarTab(nextSidebarTab);
+
+      if (normalizedTab === "bots") {
+        const botIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
+        if (botIdFromPath !== uiStore.selectedBotAgentId) {
+          uiStore.setSelectedBotAgentId(botIdFromPath);
+        }
+        return;
+      }
 
       if (tab === "explore" && (subtab === "rooms" || subtab === "agents" || subtab === "humans") && uiStore.exploreView !== subtab) {
         uiStore.setExploreView(subtab);
@@ -608,6 +620,17 @@ export default function DashboardApp() {
         <ActivityPanel />
       ) : uiStore.sidebarTab === "wallet" ? (
         <WalletPanel />
+      ) : uiStore.sidebarTab === "bots" ? (
+        <div className="flex-1 min-w-0">
+          {uiStore.selectedBotAgentId ? (
+            <UserChatPane />
+          ) : (
+            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-secondary/70">
+              {/* Prompt rendered by DashboardApp to keep sidebar lean */}
+              <span>{tSidebar.selectBotPrompt}</span>
+            </div>
+          )}
+        </div>
       ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
         <div className="flex-1 min-w-0">
           <UserChatPane />

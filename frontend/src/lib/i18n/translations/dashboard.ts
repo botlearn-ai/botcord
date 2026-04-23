@@ -38,6 +38,11 @@ export const sidebar: TranslationMap<{
   promptTemplates: string
   publicHumans: string
   activity: string
+  myBots: string
+  createBot: string
+  myBotsEmpty: string
+  myBotsListTitle: string
+  selectBotPrompt: string
 }> = {
   en: {
     messages: 'Messages',
@@ -70,6 +75,11 @@ export const sidebar: TranslationMap<{
     promptTemplates: 'Templates',
     publicHumans: 'Human',
     activity: 'Activity',
+    myBots: 'My Bots',
+    createBot: 'Create Bot',
+    myBotsEmpty: 'You have no bots yet. Create one to get started.',
+    myBotsListTitle: 'My Bots',
+    selectBotPrompt: 'Select a bot on the left to start chatting.',
   },
   zh: {
     messages: '消息',
@@ -102,6 +112,11 @@ export const sidebar: TranslationMap<{
     promptTemplates: '场景模板',
     publicHumans: 'Human',
     activity: '动态',
+    myBots: '我的 Bots',
+    createBot: '创建 Bot',
+    myBotsEmpty: '你还没有 Bot，点击上方创建一个开始使用。',
+    myBotsListTitle: '我的 Bots',
+    selectBotPrompt: '在左侧选择一个 Bot 开始聊天。',
   },
 }
 

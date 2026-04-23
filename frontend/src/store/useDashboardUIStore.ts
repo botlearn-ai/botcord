@@ -16,7 +16,10 @@ export interface DashboardUIState {
   agentCardOpen: boolean;
   /** When set, the topic side drawer is open for this topic_id in the opened room. */
   openedTopicId: string | null;
-  sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "activity";
+  sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
+  /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
+  selectedBotAgentId: string | null;
+  setSelectedBotAgentId: (agentId: string | null) => void;
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
   exploreView: "rooms" | "agents" | "humans" | "templates";
@@ -46,7 +49,8 @@ const initialUIState = {
   rightPanelOpen: false,
   agentCardOpen: false,
   openedTopicId: null as string | null,
-  sidebarTab: "messages" as const,
+  sidebarTab: "messages" as DashboardUIState["sidebarTab"],
+  selectedBotAgentId: null as string | null,
   messagesPane: "room" as const,
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
@@ -64,6 +68,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
+  setSelectedBotAgentId: (selectedBotAgentId) =>
+    set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
   setMessagesPane: (messagesPane) =>
     set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
   setExploreView: (exploreView) =>
