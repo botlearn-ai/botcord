@@ -14,6 +14,15 @@ def generate_agent_id(pubkey_b64: str) -> str:
     return "ag_" + digest[:12]
 
 
+def generate_human_id() -> str:
+    """Generate human_id: 'hu_' + 12 random hex chars.
+
+    Matches the length/shape of ag_* so the two can coexist in a single
+    participant_id column without format-driven ambiguity beyond the prefix.
+    """
+    return "hu_" + secrets.token_hex(6)
+
+
 def generate_key_id() -> str:
     """Generate key_id: 'k_' + 12 random hex chars."""
     return "k_" + secrets.token_hex(6)

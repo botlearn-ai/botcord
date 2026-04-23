@@ -145,6 +145,32 @@ class BetaWaitlistStatus(str, enum.Enum):
     rejected = "rejected"
 
 
+class ParticipantType(str, enum.Enum):
+    """Discriminator for the participant polymorphism on Room/Contact/Block/etc.
+
+    Agents (ag_*) sign their own envelopes (Ed25519). Humans (hu_*) do not sign;
+    their identity is proven by a Supabase JWT whose user record owns the
+    `human_id`.
+    """
+
+    agent = "agent"
+    human = "human"
+
+
+class ApprovalKind(str, enum.Enum):
+    """Kinds of external requests a Human can approve on behalf of a claimed Agent."""
+
+    contact_request = "contact_request"
+    room_invite = "room_invite"
+    payment = "payment"
+
+
+class ApprovalState(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class ErrorCode(str, enum.Enum):
     INVALID_SIGNATURE = "INVALID_SIGNATURE"
     UNKNOWN_AGENT = "UNKNOWN_AGENT"
