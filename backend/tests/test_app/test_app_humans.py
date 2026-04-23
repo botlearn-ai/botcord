@@ -753,6 +753,105 @@ async def test_h2h_accept_creates_mutual_contacts(
 
 
 @pytest.mark.asyncio
+async def test_h2h_request_surfaces_in_pending_approvals(
+    client, seed, db_session: AsyncSession
+):
+    """Human → Human contact requests must merge into /me/pending-approvals so
+    the recipient only needs to poll a single endpoint, and resolve via the
+    same surface must materialise mutual Contact rows."""
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    send = await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id, "message": "ping"},
+    )
+    assert send.status_code == 202
+    assert send.json()["status"] == "requested"
+
+    listing = await client.get(
+        "/api/humans/me/pending-approvals",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert listing.status_code == 200
+    approvals = listing.json()["approvals"]
+    assert len(approvals) == 1
+    entry = approvals[0]
+    assert entry["id"].startswith("cr_")
+    assert entry["kind"] == "contact_request"
+    assert entry["agent_id"] == bob_human_id
+    assert entry["payload"]["from_participant_id"] == seed["human_id"]
+    assert entry["payload"]["from_type"] == "human"
+    assert entry["payload"]["from_display_name"] == "Alice"
+    assert entry["payload"]["message"] == "ping"
+
+    # Alice cannot resolve Bob's approval.
+    wrong = await client.post(
+        f"/api/humans/me/pending-approvals/{entry['id']}/resolve",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"decision": "approve"},
+    )
+    assert wrong.status_code == 403
+
+    approve = await client.post(
+        f"/api/humans/me/pending-approvals/{entry['id']}/resolve",
+        headers={"Authorization": f"Bearer {bob_token}"},
+        json={"decision": "approve"},
+    )
+    assert approve.status_code == 200
+    assert approve.json()["state"] == "approved"
+
+    rows = list((await db_session.execute(select(Contact))).scalars().all())
+    pairs = {(c.owner_id, c.contact_agent_id) for c in rows}
+    assert (bob_human_id, seed["human_id"]) in pairs
+    assert (seed["human_id"], bob_human_id) in pairs
+
+    # Second resolve → 409 on the merged surface.
+    again = await client.post(
+        f"/api/humans/me/pending-approvals/{entry['id']}/resolve",
+        headers={"Authorization": f"Bearer {bob_token}"},
+        json={"decision": "approve"},
+    )
+    assert again.status_code == 409
+
+    # And the listing is now empty.
+    empty = await client.get(
+        "/api/humans/me/pending-approvals",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert empty.json()["approvals"] == []
+
+
+@pytest.mark.asyncio
+async def test_h2h_reject_via_pending_approvals_does_not_create_contacts(
+    client, seed, db_session: AsyncSession
+):
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id},
+    )
+    listing = await client.get(
+        "/api/humans/me/pending-approvals",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    cr_id = listing.json()["approvals"][0]["id"]
+
+    reject = await client.post(
+        f"/api/humans/me/pending-approvals/{cr_id}/resolve",
+        headers={"Authorization": f"Bearer {bob_token}"},
+        json={"decision": "reject"},
+    )
+    assert reject.status_code == 200
+    assert reject.json()["state"] == "rejected"
+
+    rows = list((await db_session.execute(select(Contact))).scalars().all())
+    assert rows == []
+
+
+@pytest.mark.asyncio
 async def test_h2a_accept_creates_mutual_contacts_with_correct_types(
     client, seed, db_session: AsyncSession
 ):
