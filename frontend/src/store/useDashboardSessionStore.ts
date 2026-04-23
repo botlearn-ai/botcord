@@ -23,11 +23,17 @@ interface DashboardSessionState {
   humanRooms: HumanRoomSummary[];
   ownedAgents: UserAgent[];
   activeAgentId: string | null;
+  /**
+   * "human"  → acting as the logged-in Human (default when human is loaded)
+   * "agent"  → observer mode: watching/acting through the active Agent
+   */
+  viewMode: "human" | "agent";
 
   setAuthResolved: (resolved: boolean) => void;
   setToken: (token: string | null) => void;
   setUser: (user: UserProfile) => void;
   setActiveAgentId: (agentId: string | null) => void;
+  setViewMode: (mode: "human" | "agent") => void;
   resetSessionState: () => void;
   initAuth: (token: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
@@ -47,6 +53,7 @@ const initialSessionState = {
   humanRooms: [] as HumanRoomSummary[],
   ownedAgents: [],
   activeAgentId: null,
+  viewMode: "human" as const,
 };
 
 let authInitRequestId = 0;
@@ -104,6 +111,8 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       activeAgentId: agentId,
       sessionMode: resolveSessionMode(state.token, agentId),
     })),
+
+  setViewMode: (mode) => set({ viewMode: mode }),
 
   resetSessionState: () => {
     authInitRequestId += 1;
