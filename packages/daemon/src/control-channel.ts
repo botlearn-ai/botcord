@@ -136,6 +136,13 @@ export class ControlChannel {
     }
     if (this.connectInflight) return this.connectInflight;
     this.stopRequested = false;
+    daemonLog.info("control-channel starting", {
+      userId: this.auth.current.userId,
+      hubUrl: this.auth.current.hubUrl,
+      path: this.path,
+      label: this.label ?? null,
+      hubKeyConfigured: !!this.hubPublicKey,
+    });
     this.connectInflight = this.connect().catch((err) => {
       // Initial connect failure surfaces to the caller; subsequent
       // reconnects are handled opaquely inside onClose.
@@ -151,6 +158,9 @@ export class ControlChannel {
 
   /** Close the WS and stop reconnecting. Idempotent. */
   async stop(): Promise<void> {
+    if (!this.stopRequested) {
+      daemonLog.info("control-channel stopping", { wasConnected: this.connected });
+    }
     this.stopRequested = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -172,9 +182,17 @@ export class ControlChannel {
   /** Actively send a frame (used for event reports like `agent_provisioned`). */
   send(frame: ControlFrame): boolean {
     const ws = this.ws;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      daemonLog.debug("control-channel.send skipped (not open)", {
+        type: frame.type,
+        id: frame.id,
+        readyState: ws?.readyState ?? null,
+      });
+      return false;
+    }
     try {
       ws.send(JSON.stringify(frame));
+      daemonLog.debug("control-channel.send", { type: frame.type, id: frame.id });
       return true;
     } catch (err) {
       daemonLog.warn("control-channel.send failed", {
@@ -308,6 +326,11 @@ export class ControlChannel {
     if (typeof frame.ts === "number") {
       const skewMs = Math.abs(Date.now() - frame.ts);
       if (skewMs > 5 * 60 * 1000) {
+        daemonLog.warn("control-channel: rejecting frame with stale ts", {
+          type: frame.type,
+          id: frame.id,
+          skewMs,
+        });
         this.sendAck({
           id: frame.id,
           ok: false,
@@ -360,6 +383,10 @@ export class ControlChannel {
     // provisioner itself is the authoritative dedupe boundary for
     // stateful operations.
     if (this.seenFrameIds.includes(frame.id)) {
+      daemonLog.debug("control-channel: duplicate frame, acking as no-op", {
+        type: frame.type,
+        id: frame.id,
+      });
       this.sendAck({ id: frame.id, ok: true, result: { duplicate: true } });
       return;
     }
@@ -367,6 +394,11 @@ export class ControlChannel {
     if (this.seenFrameIds.length > REPLAY_DEDUPE_CAP) {
       this.seenFrameIds.splice(0, this.seenFrameIds.length - REPLAY_DEDUPE_CAP);
     }
+
+    daemonLog.debug("control-channel frame received", {
+      type: frame.type,
+      id: frame.id,
+    });
 
     // Plan §6.3 — instance-level revoke: write the expired flag, ack, and
     // tear down the control plane. Agent gateway stays up so existing
@@ -388,6 +420,11 @@ export class ControlChannel {
       const ack: ControlAck = result
         ? { id: frame.id, ...result }
         : { id: frame.id, ok: true };
+      daemonLog.debug("control-channel handler done", {
+        type: frame.type,
+        id: frame.id,
+        ok: ack.ok !== false,
+      });
       this.sendAck(ack);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

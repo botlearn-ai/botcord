@@ -24,6 +24,7 @@ import {
   type DaemonTokenResponse,
 } from "@botcord/protocol-core";
 import { DAEMON_DIR_PATH } from "./config.js";
+import { log as daemonLog } from "./log.js";
 
 export const USER_AUTH_PATH = path.join(DAEMON_DIR_PATH, "user-auth.json");
 export const AUTH_EXPIRED_FLAG_PATH = path.join(DAEMON_DIR_PATH, "auth-expired.flag");
@@ -126,12 +127,18 @@ export function saveUserAuth(
   chmodSync(tmp, 0o600);
   renameSync(tmp, file);
   chmodSync(file, 0o600);
+  daemonLog.debug("user-auth saved", {
+    file,
+    userId: record.userId,
+    expiresAt: record.expiresAt,
+  });
 }
 
 /** Remove user-auth (e.g. after a hard revoke). Safe on missing file. */
 export function clearUserAuth(file: string = USER_AUTH_PATH): void {
   try {
     unlinkSync(file);
+    daemonLog.info("user-auth cleared", { file });
   } catch {
     // ignore
   }
@@ -165,12 +172,14 @@ export function writeAuthExpiredFlag(file: string = AUTH_EXPIRED_FLAG_PATH): voi
   writeFileSync(file, JSON.stringify({ expiredAt: new Date().toISOString() }), {
     mode: 0o600,
   });
+  daemonLog.warn("user-auth expired flag written", { file });
 }
 
 /** Remove the auth-expired flag (e.g. after a successful re-login). */
 export function clearAuthExpiredFlag(file: string = AUTH_EXPIRED_FLAG_PATH): void {
   try {
     unlinkSync(file);
+    daemonLog.debug("user-auth expired flag cleared", { file });
   } catch {
     // ignore
   }
@@ -232,6 +241,11 @@ export class UserAuthManager {
     }
     if (this.refreshInflight) return this.refreshInflight;
     const current = this.record;
+    daemonLog.info("user-auth refresh: start", {
+      userId: current.userId,
+      hubUrl: current.hubUrl,
+      expiresInMs: current.expiresAt - Date.now(),
+    });
     this.refreshInflight = (async () => {
       const tok = await refreshDaemonToken(current.hubUrl, current.refreshToken);
       const next: UserAuthRecord = {
@@ -243,8 +257,18 @@ export class UserAuthManager {
       };
       saveUserAuth(next, this.file);
       this.record = next;
+      daemonLog.info("user-auth refresh: ok", {
+        userId: next.userId,
+        expiresAt: next.expiresAt,
+      });
       return next;
-    })().finally(() => {
+    })().catch((err) => {
+      daemonLog.warn("user-auth refresh: failed", {
+        userId: current.userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }).finally(() => {
       this.refreshInflight = null;
     });
     return this.refreshInflight;
@@ -255,11 +279,17 @@ export class UserAuthManager {
     saveUserAuth(record, this.file);
     this.record = record;
     clearAuthExpiredFlag();
+    daemonLog.info("user-auth replaced", {
+      userId: record.userId,
+      hubUrl: record.hubUrl,
+    });
   }
 
   /** Drop the record from memory + disk (e.g. after a hard revoke). */
   clear(): void {
+    const prevUserId = this.record?.userId ?? null;
     clearUserAuth(this.file);
     this.record = null;
+    daemonLog.info("user-auth manager cleared", { userId: prevUserId });
   }
 }
