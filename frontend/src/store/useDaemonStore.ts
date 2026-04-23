@@ -3,9 +3,19 @@
  * [OUTPUT]: useDaemonStore — list / refresh / revoke for the current user's daemon instances
  * [POS]: dashboard daemon control-plane store
  * [PROTOCOL]: update header on changes
+ *
+ * Identity notes:
+ *   Daemon instances are scoped to the authenticated user, NOT the active
+ *   agent, so list/refresh/revoke/refreshRuntimes all work regardless of
+ *   whether the active identity is Human or Agent. Any future agent-scoped
+ *   daemon action (e.g., dispatch to a specific agent) MUST first check
+ *   `useDashboardSessionStore.getState().activeIdentity` and no-op with a
+ *   "No agent selected" error when the identity is Human — see
+ *   `requireActiveAgentId` below.
  */
 
 import { create } from "zustand";
+import { useDashboardSessionStore } from "./useDashboardSessionStore";
 
 export interface DaemonRuntime {
   id: string;
@@ -83,6 +93,20 @@ const initialState = {
   refreshingRuntimesId: null as string | null,
   runtimeErrors: {} as Record<string, string>,
 };
+
+/**
+ * Returns the active agent id only when the session identity is "agent".
+ * If the user is acting as themselves (Human) or no agent is selected,
+ * returns null — agent-scoped daemon callers should treat this as a no-op
+ * and surface a "No agent selected" toast/error rather than crashing.
+ */
+export function requireActiveAgentId(): string | null {
+  const { activeIdentity, activeAgentId } = useDashboardSessionStore.getState();
+  if (activeIdentity?.type === "agent") return activeIdentity.id;
+  // Legacy fallback: no identity set yet but an agent id exists.
+  if (!activeIdentity && activeAgentId) return activeAgentId;
+  return null;
+}
 
 async function parseError(res: Response): Promise<string> {
   try {

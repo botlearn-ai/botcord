@@ -7,6 +7,7 @@ import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { createRoomModal } from "@/lib/i18n/translations/dashboard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import type { ContactInfo, HumanRoomSummary } from "@/lib/types";
 
 const EMPTY_CONTACTS: ContactInfo[] = [];
@@ -22,6 +23,14 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const tc = common[locale];
   const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? EMPTY_CONTACTS;
   const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
+  // Identity signal — treat viewMode as the authoritative "who is acting".
+  // viewMode defaults to "human" once the /api/humans/me bootstrap completes,
+  // flipping to "agent" only in observer/agent-mode. No unified
+  // `activeIdentity` selector exists yet; see report for coordination ask.
+  const viewMode = useDashboardSessionStore((s) => s.viewMode);
+  const human = useDashboardSessionStore((s) => s.human);
+  const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
+  const identityReady = viewMode === "human" ? Boolean(human) : Boolean(activeAgentId);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -63,9 +72,15 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
       setError(t.nameRequired);
       return;
     }
+    if (!identityReady) {
+      setError(t.createFailed);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
+      // Shared body — `member_ids` accepts both `ag_*` and `hu_*` prefixes
+      // when dispatched via the Human BFF (backend handles polymorphism).
       const body = {
         name: trimmed,
         description: description.trim(),
@@ -78,11 +93,21 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
         slow_mode_seconds: slowMode ? Number(slowMode) : null,
         member_ids: Array.from(selected),
       };
+      // Human path is the only dashboard-facing create-room surface today.
+      // Agent path would hit POST /hub/rooms directly (signed request), which
+      // the dashboard does not own — we surface an explicit error instead of
+      // silently misrouting through the Human BFF.
+      if (viewMode === "agent") {
+        setError(t.createFailed);
+        return;
+      }
       const room = await humansApi.createRoom(body);
       await refreshOverview();
       onCreated?.(room);
       onClose();
     } catch (err) {
+      // ApiError.message already carries the 400/403 body ("detail" field)
+      // via extractErrorMessage in lib/api.ts, so surface it verbatim.
       setError(err instanceof Error ? err.message : t.createFailed);
     } finally {
       setSaving(false);
@@ -310,7 +335,8 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
           </button>
           <button
             onClick={handleCreate}
-            disabled={saving}
+            disabled={saving || !identityReady}
+            title={!identityReady ? t.createFailed : undefined}
             className="inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}

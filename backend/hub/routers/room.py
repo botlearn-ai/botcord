@@ -1,4 +1,30 @@
-"""Unified Room management endpoints (replaces group, channel, session routers)."""
+"""Unified Room management endpoints (replaces group, channel, session routers).
+
+Hub / agent-protocol layer (``a2a/0.1``).
+
+All routes in this module serve the **agent-protocol layer**: every request is
+authenticated via :func:`hub.auth.get_current_claimed_agent`, which requires
+an ``Active-Agent-Id`` header plus a valid agent JWT (or a signed envelope).
+No Supabase / human JWT is accepted here.
+
+Human-scoped room operations (rooms that are owned by a human user and the
+BFF endpoints called from the dashboard while the user is signed in as a
+human) live at ``/api/humans/me/rooms*`` in ``app/routers/humans.py``. Human
+users MUST go through that router — they cannot create, invite, transfer, or
+otherwise operate on rooms through this router.
+
+Polymorphism notes (post Human-first merge):
+
+* ``Room.owner_type`` can be ``'agent'`` (default) or ``'human'``.
+* ``RoomMember.participant_type`` can be ``'agent'`` or ``'human'``.
+
+This router only creates ``owner_type='agent'`` rooms — ``hu_*`` ids are
+rejected on any input field (member ids, new owner id, promote target, etc.)
+with HTTP 400. The permission helpers in this module also make sure that
+when the caller is an agent we only ever look at the agent's own
+``RoomMember`` row (``participant_type='agent'``) so a human's row in the
+same room doesn't collide or grant the agent unintended privileges.
+"""
 
 from __future__ import annotations
 
@@ -96,6 +122,41 @@ def _require_internal(authorization: str | None = None):
 # ---------------------------------------------------------------------------
 
 
+_HUMAN_ID_ERROR = (
+    "human ids (hu_*) are not accepted on the hub router; "
+    "use /api/humans/me/rooms*"
+)
+
+
+def _reject_human_id(value: str | None, *, field: str = "id") -> None:
+    """Reject ``hu_*`` ids on any input field of this router.
+
+    Humans operate through ``/api/humans/*`` (Supabase-authenticated BFF),
+    never through the agent-protocol layer. We only validate inputs here —
+    read-only output fields that may legitimately contain ``hu_*`` ids
+    (e.g. a member list) are untouched.
+    """
+    if value is None:
+        return
+    if isinstance(value, str) and value.startswith("hu_"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{_HUMAN_ID_ERROR} (field={field}, value={value})",
+        )
+
+
+def _reject_human_ids(values, *, field: str = "ids") -> None:
+    """Batch version of :func:`_reject_human_id`."""
+    if not values:
+        return
+    for v in values:
+        _reject_human_id(v, field=field)
+
+
+def _room_owner_is_human(room: Room) -> bool:
+    return getattr(room, "owner_type", "agent") == "human"
+
+
 def _normalize_room_rule(rule: str | None) -> str | None:
     """Collapse blank/whitespace-only room rules to None."""
     if rule is None:
@@ -176,15 +237,32 @@ async def _load_room(db: AsyncSession, room_id: str, *, fresh: bool = False) -> 
 
 
 def _require_membership(room: Room, agent_id: str) -> RoomMember:
-    """Return the member record or raise 403."""
+    """Return the agent-member record for ``agent_id`` or raise 403.
+
+    Always filters by ``participant_type='agent'`` (when the column is
+    present) so a human's row — which may share the ``agent_id`` column —
+    does not accidentally satisfy the check for an agent caller.
+    """
     for m in room.members:
-        if m.agent_id == agent_id:
-            return m
+        if m.agent_id != agent_id:
+            continue
+        # Only match the agent-type row. Pre-Human-first the attribute
+        # does not exist; ``getattr`` default keeps old behaviour.
+        if getattr(m, "participant_type", "agent") != "agent":
+            continue
+        return m
     raise I18nHTTPException(status_code=403, message_key="not_a_member")
 
 
 def _require_admin_or_owner(room: Room, agent_id: str) -> RoomMember:
-    """Return the member record if owner/admin, else raise 403."""
+    """Return the agent-member record if owner/admin, else raise 403.
+
+    In a human-owned room (``room.owner_type='human'``) the hub-level
+    "owner" is a human, so no agent can be the owner — only an agent with
+    ``role=admin`` can satisfy this check from the hub side. A human user
+    who wants to administer the room must go through
+    ``/api/humans/me/rooms*``.
+    """
     member = _require_membership(room, agent_id)
     if member.role not in (RoomRole.owner, RoomRole.admin):
         raise I18nHTTPException(status_code=403, message_key="admin_or_owner_required")
@@ -192,16 +270,27 @@ def _require_admin_or_owner(room: Room, agent_id: str) -> RoomMember:
 
 
 def _can_invite(room: Room, member: RoomMember) -> bool:
-    """Check if a member can invite others to a room.
+    """Check if an agent-member can invite others to a room.
 
     Resolution order:
-      1. owner → always True
+      1. agent-owner → always True
+         (In a human-owned room no agent is the owner; we fall through.)
       2. public + open room → always True (anyone can join anyway)
       3. member.can_invite is not None → use explicit value
       4. admin → default True
       5. room.default_invite
+
+    Human-owned rooms are handled the same way as agent-owned rooms for
+    non-owner permissions: an agent member who has ``default_invite=True``
+    (or an explicit ``can_invite=True`` override) can still invite other
+    agents through this router.
     """
-    if member.role == RoomRole.owner:
+    # Only treat the member as the owner when the room itself is
+    # agent-owned. Belt-and-suspenders: ``_require_membership`` already
+    # filters to agent-type rows, but we also guard on owner_type so a
+    # mis-labelled row can't grant silent owner privileges to an agent in
+    # a human-owned room.
+    if member.role == RoomRole.owner and not _room_owner_is_human(room):
         return True
     if room.visibility == RoomVisibility.public and room.join_policy == RoomJoinPolicy.open:
         return True
@@ -374,7 +463,14 @@ async def create_room(
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_claimed_agent),
 ):
-    """Create a new room. Creator becomes the owner."""
+    """Create a new room. Creator becomes the owner.
+
+    Rooms created through this router default to ``owner_type='agent'``.
+    Human-owned rooms must be created via ``POST /api/humans/me/rooms``.
+    """
+    # Reject hu_* in any input list — humans cannot be invited through the
+    # agent-protocol layer.
+    _reject_human_ids(body.member_ids, field="member_ids")
     _validate_subscription_room_config(
         body.visibility, body.join_policy, body.required_subscription_product_id
     )
@@ -716,6 +812,11 @@ async def add_member(
     - Otherwise → invite (requires invite permission via _can_invite).
     - Admission policy: contacts_only agents require inviter in their contacts.
     """
+    # Reject hu_* on the body — humans are added through
+    # /api/humans/me/rooms*, never through this router.
+    if body is not None:
+        _reject_human_id(body.agent_id, field="agent_id")
+
     room = await _load_room(db, room_id)
     target_agent_id = body.agent_id if body and body.agent_id else None
     is_self_join = target_agent_id is None or target_agent_id == current_agent
@@ -838,6 +939,9 @@ async def remove_member(
     current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Remove a member from the room. Owner/admin only. Cannot remove the owner."""
+    # Humans cannot be removed via the hub router — route through
+    # /api/humans/me/rooms* instead.
+    _reject_human_id(agent_id, field="agent_id")
     room = await _load_room(db, room_id)
     caller = _require_admin_or_owner(room, current_agent)
 
@@ -912,7 +1016,12 @@ async def transfer_ownership(
     db: AsyncSession = Depends(get_db),
     current_agent: str = Depends(get_current_claimed_agent),
 ):
-    """Transfer room ownership to another member. Owner only."""
+    """Transfer room ownership to another member. Owner only.
+
+    Only agent-to-agent transfers are supported here. Transferring
+    ownership to a human must be done through the human BFF layer.
+    """
+    _reject_human_id(body.new_owner_id, field="new_owner_id")
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
@@ -951,6 +1060,7 @@ async def promote_demote(
     current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Promote/demote a member. Owner only. Valid roles: 'admin', 'member'."""
+    _reject_human_id(body.agent_id, field="agent_id")
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
@@ -1001,6 +1111,7 @@ async def set_member_permissions(
     - Cannot modify owner's permissions.
     - Admin cannot modify another admin's permissions.
     """
+    _reject_human_id(body.agent_id, field="agent_id")
     room = await _load_room(db, room_id)
     caller = _require_admin_or_owner(room, current_agent)
 

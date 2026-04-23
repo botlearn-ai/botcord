@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
@@ -30,10 +30,12 @@ export default function DiscoverRoomList() {
     })),
   );
 
+  const autoLoadedRef = useRef(false);
   useEffect(() => {
-    if (discoverRooms.length === 0 && !discoverLoading) {
-      void loadDiscoverRooms();
-    }
+    if (autoLoadedRef.current) return;
+    if (discoverRooms.length > 0 || discoverLoading) return;
+    autoLoadedRef.current = true;
+    void loadDiscoverRooms();
   }, [discoverRooms.length, discoverLoading, loadDiscoverRooms]);
 
   if (discoverLoading && discoverRooms.length === 0) {
