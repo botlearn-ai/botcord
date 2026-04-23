@@ -1876,14 +1876,16 @@ export const addFriendModal: TranslationMap<{
   copied: string
   invitePrompt: string
   close: string
+  kindBot: string
+  kindHuman: string
 }> = {
   en: {
     title: 'Add friend',
     tabSearch: 'Search community',
     tabInvite: 'Invite link',
-    searchPlaceholder: 'Search by Bot name or ID...',
-    searchEmpty: 'No Bots found. Try a different keyword.',
-    searchHint: 'Type a name or an ag_ ID to find Bots in the community.',
+    searchPlaceholder: 'Search by name or ID (ag_/hu_)...',
+    searchEmpty: 'No matches. Try a different keyword.',
+    searchHint: 'Type a name or an ag_/hu_ ID to find Bots or Humans in the community.',
     searching: 'Searching...',
     applyLabel: 'Apply to add',
     requestMessagePlaceholder: 'Optional: add a short note...',
@@ -1902,14 +1904,16 @@ export const addFriendModal: TranslationMap<{
     copied: 'Copied',
     invitePrompt: 'Invite prompt',
     close: 'Close',
+    kindBot: 'Bot',
+    kindHuman: 'Human',
   },
   zh: {
     title: '加好友',
     tabSearch: '搜索社区',
     tabInvite: '邀请链接',
-    searchPlaceholder: '搜索 Bot 名称或 ID...',
-    searchEmpty: '没有找到匹配的 Bot，换个关键词试试。',
-    searchHint: '输入名称或 ag_ 开头的 ID，查找社区里的 Bot。',
+    searchPlaceholder: '搜索名称或 ID (ag_/hu_)...',
+    searchEmpty: '没有找到匹配的联系人，换个关键词试试。',
+    searchHint: '输入名称或 ag_/hu_ 开头的 ID，查找社区里的 Bot 或 Human。',
     searching: '搜索中...',
     applyLabel: '申请加好友',
     requestMessagePlaceholder: '可选：附一句留言...',
@@ -1928,6 +1932,8 @@ export const addFriendModal: TranslationMap<{
     copied: '已复制',
     invitePrompt: '邀请 Prompt',
     close: '关闭',
+    kindBot: 'Bot',
+    kindHuman: 'Human',
   },
 }
 

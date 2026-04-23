@@ -9,7 +9,7 @@ import { addFriendModal } from "@/lib/i18n/translations/dashboard";
 import { buildFriendInvitePrompt, rebaseToCurrentOrigin } from "@/lib/onboarding";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
-import type { AgentProfile, ContactInfo, InvitePreviewResponse } from "@/lib/types";
+import type { ContactInfo, InvitePreviewResponse } from "@/lib/types";
 
 const EMPTY_CONTACTS: ContactInfo[] = [];
 
@@ -18,6 +18,15 @@ interface AddFriendModalProps {
 }
 
 type TabKey = "search" | "invite";
+
+type PeerKind = "agent" | "human";
+
+type PeerResult = {
+  id: string;
+  kind: PeerKind;
+  display_name: string;
+  bio: string | null;
+};
 
 export default function AddFriendModal({ onClose }: AddFriendModalProps) {
   const locale = useLanguage();
@@ -70,6 +79,21 @@ export default function AddFriendModal({ onClose }: AddFriendModalProps) {
   );
 }
 
+function PeerKindBadge({ kind }: { kind: PeerKind }) {
+  const locale = useLanguage();
+  const t = addFriendModal[locale];
+  const label = kind === "human" ? t.kindHuman : t.kindBot;
+  const cls =
+    kind === "human"
+      ? "border-neon-purple/50 bg-neon-purple/10 text-neon-purple"
+      : "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan";
+  return (
+    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
 function SearchPane({ onClose }: { onClose: () => void }) {
   const locale = useLanguage();
   const t = addFriendModal[locale];
@@ -84,12 +108,13 @@ function SearchPane({ onClose }: { onClose: () => void }) {
     () => new Set(contacts.map((c) => c.contact_agent_id)),
     [contacts],
   );
+  const myHumanId = human?.human_id ?? null;
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<AgentProfile[]>([]);
+  const [results, setResults] = useState<PeerResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<AgentProfile | null>(null);
+  const [selected, setSelected] = useState<PeerResult | null>(null);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<"idle" | "sent" | "exists" | "pending">("idle");
@@ -105,9 +130,22 @@ function SearchPane({ onClose }: { onClose: () => void }) {
       setError(null);
       try {
         const res = await api.searchAgents(q);
-        setResults(
-          res.agents.filter((a) => a.agent_id !== activeAgentId),
-        );
+        const agentPeers: PeerResult[] = res.agents.map((a) => ({
+          id: a.agent_id,
+          kind: "agent",
+          display_name: a.display_name,
+          bio: a.bio,
+        }));
+        const humanPeers: PeerResult[] = (res.humans ?? []).map((h) => ({
+          id: h.human_id,
+          kind: "human",
+          display_name: h.display_name,
+          bio: null,
+        }));
+        const selfIds = new Set<string>();
+        if (activeAgentId) selfIds.add(activeAgentId);
+        if (myHumanId) selfIds.add(myHumanId);
+        setResults([...agentPeers, ...humanPeers].filter((p) => !selfIds.has(p.id)));
       } catch (err) {
         setError(err instanceof Error ? err.message : "search failed");
       } finally {
@@ -115,15 +153,15 @@ function SearchPane({ onClose }: { onClose: () => void }) {
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [query, activeAgentId]);
+  }, [query, activeAgentId, myHumanId]);
 
   async function handleSend() {
     if (!selected) return;
     setSending(true);
     setError(null);
     try {
-      const targetId = selected.agent_id;
-      const targetIsHuman = targetId.startsWith("hu_");
+      const targetId = selected.id;
+      const targetIsHuman = selected.kind === "human";
       const trimmedMsg = message.trim() || undefined;
 
       // Agent → Human goes to /api/dashboard/contact-requests with the
@@ -167,7 +205,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
   }
 
   if (selected) {
-    const isContact = contactIds.has(selected.agent_id);
+    const isContact = contactIds.has(selected.id);
     return (
       <div className="space-y-4">
         <button
@@ -183,8 +221,11 @@ function SearchPane({ onClose }: { onClose: () => void }) {
         </button>
 
         <div className="rounded border border-glass-border bg-glass-bg p-4">
-          <p className="text-sm font-semibold text-text-primary">{selected.display_name}</p>
-          <p className="mt-0.5 font-mono text-[11px] text-text-secondary">{selected.agent_id}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-text-primary">{selected.display_name}</p>
+            <PeerKindBadge kind={selected.kind} />
+          </div>
+          <p className="mt-0.5 font-mono text-[11px] text-text-secondary">{selected.id}</p>
           {selected.bio && (
             <p className="mt-2 text-xs text-text-secondary">{selected.bio}</p>
           )}
@@ -263,10 +304,10 @@ function SearchPane({ onClose }: { onClose: () => void }) {
       ) : (
         <div className="divide-y divide-glass-border/60 rounded border border-glass-border">
           {results.map((a) => {
-            const isContact = contactIds.has(a.agent_id);
+            const isContact = contactIds.has(a.id);
             return (
               <button
-                key={a.agent_id}
+                key={a.id}
                 onClick={() => setSelected(a)}
                 className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-glass-bg"
               >
@@ -274,9 +315,12 @@ function SearchPane({ onClose }: { onClose: () => void }) {
                   {a.display_name.slice(0, 1)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-text-primary">{a.display_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm text-text-primary">{a.display_name}</p>
+                    <PeerKindBadge kind={a.kind} />
+                  </div>
                   <p className="truncate font-mono text-[10px] text-text-secondary/70">
-                    {a.agent_id}
+                    {a.id}
                   </p>
                 </div>
                 {isContact ? (

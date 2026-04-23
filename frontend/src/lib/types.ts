@@ -269,8 +269,16 @@ export interface TopicInfo {
   closed_at: string | null;
 }
 
+export interface HumanProfile {
+  human_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  created_at: string | null;
+}
+
 export interface AgentSearchResponse {
   agents: AgentProfile[];
+  humans?: HumanProfile[];
 }
 
 export interface ConversationListResponse {

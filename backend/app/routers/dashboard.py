@@ -776,7 +776,14 @@ async def search_agents(
     ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search agents by agent_id or display_name."""
+    """Search agents and humans by id or display_name.
+
+    The ``agents`` field is preserved for backwards-compatibility. The new
+    ``humans`` field carries ``hu_*`` matches so the add-friend flow can
+    target Humans as first-class peers. Requests sent to a ``hu_*`` id go
+    through the existing contact-request pipeline (see app/routers/humans.py
+    and app/routers/dashboard.py::create_contact_request).
+    """
     pattern = f"%{escape_like(q)}%"
     result = await db.execute(
         select(Agent)
@@ -787,6 +794,17 @@ async def search_agents(
         .limit(20)
     )
     agents = result.scalars().all()
+
+    human_result = await db.execute(
+        select(User)
+        .where(
+            User.human_id.is_not(None),
+            (User.human_id.ilike(pattern)) | (User.display_name.ilike(pattern)),
+        )
+        .limit(20)
+    )
+    humans = human_result.scalars().all()
+
     return {
         "agents": [
             {
@@ -796,6 +814,15 @@ async def search_agents(
                 "created_at": a.created_at.isoformat() if a.created_at else None,
             }
             for a in agents
+        ],
+        "humans": [
+            {
+                "human_id": h.human_id,
+                "display_name": h.display_name,
+                "avatar_url": h.avatar_url,
+                "created_at": h.created_at.isoformat() if h.created_at else None,
+            }
+            for h in humans
         ],
     }
 
