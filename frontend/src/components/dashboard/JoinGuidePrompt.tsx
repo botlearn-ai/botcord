@@ -26,7 +26,10 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
   })));
   const room = getRoomSummary(roomId);
   const roomName = room?.name || t.groupNameFallback;
-  const joinedRoom = overview?.rooms.find((entry) => entry.room_id === roomId);
+  // Wait for overview to load before deciding — otherwise isJoined is
+  // falsely false on first paint and the self-join guide flashes for members.
+  if (!overview) return null;
+  const joinedRoom = overview.rooms.find((entry) => entry.room_id === roomId);
   const isJoined = Boolean(joinedRoom);
   const isInviteOnly = room?.join_policy === "invite_only";
 

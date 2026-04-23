@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { api } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 import type { DashboardMessage } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -14,12 +15,24 @@ interface RoomHumanComposerProps {
 export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
   const user = useDashboardSessionStore((s) => s.user);
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
+  const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const insertMessage = useDashboardChatStore((s) => s.insertMessage);
   const loadRoomMessages = useDashboardChatStore((s) => s.loadRoomMessages);
+  const locale = useLanguage();
 
   const [error, setError] = useState<string | null>(null);
 
   const displayName = user?.display_name || "You";
+  const activeAgent = activeAgentId
+    ? ownedAgents.find((a) => a.agent_id === activeAgentId) ?? null
+    : null;
+  const placeholder = activeAgent
+    ? locale === "zh"
+      ? `替我的 Agent · ${activeAgent.display_name} 发言…`
+      : `Speak on behalf of Agent · ${activeAgent.display_name}…`
+    : locale === "zh"
+      ? `作为 ${displayName} 发言…`
+      : `Message as ${displayName}…`;
 
   const handleSend = useCallback(async (text: string) => {
     if (!text || !activeAgentId) return;
@@ -64,7 +77,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     <div className="flex flex-col gap-1">
       <MessageComposer
         onSend={handleSend}
-        placeholder={`Message as ${displayName}...`}
+        placeholder={placeholder}
       />
       {error && <p className="text-[11px] text-red-400">{error}</p>}
     </div>
