@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from unittest.mock import AsyncMock
 
+from hub.enums import ParticipantType
 from hub.models import (
     Agent,
     Base,
@@ -177,13 +178,15 @@ async def test_not_logged_in_rejected(client: AsyncClient, seed: dict):
 
 
 @pytest.mark.asyncio
-async def test_missing_active_agent(client: AsyncClient, seed: dict):
+async def test_missing_active_agent_without_human_membership(client: AsyncClient, seed: dict):
+    # No X-Active-Agent → Human path. Alice has no RoomMember row as Human,
+    # so she can't send as Human either → 403 "Sender is not a room member".
     r = await client.post(
         "/api/dashboard/rooms/rm_humanroom/send",
         headers={"Authorization": f"Bearer {seed['token1']}"},
         json={"text": "hi"},
     )
-    assert r.status_code == 400
+    assert r.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -242,6 +245,43 @@ async def test_happy_path_fanout(client: AsyncClient, seed: dict, db_session: As
         assert rec.source_session_kind == "room_human"
         assert rec.source_user_id == seed["uid1"]
         assert rec.sender_id == "ag_user1___"
+
+
+@pytest.mark.asyncio
+async def test_human_path_sends_without_active_agent(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # Add Alice as a Human RoomMember in rm_humanroom (hu_* identity, participant_type=human).
+    user_row = await db_session.execute(select(User).where(User.id == uuid.UUID(seed["uid1"])))
+    alice = user_row.scalar_one()
+    human_id = alice.human_id
+    assert human_id and human_id.startswith("hu_")
+    db_session.add(
+        RoomMember(
+            room_id="rm_humanroom",
+            agent_id=human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        )
+    )
+    await db_session.commit()
+
+    # POST without X-Active-Agent — should succeed via Human path.
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers={"Authorization": f"Bearer {seed['token1']}"},
+        json={"text": "hello from human"},
+    )
+    assert r.status_code == 202, r.text
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
+    )).scalars().all()
+    assert rows, "expected message records to be persisted"
+    for rec in rows:
+        assert rec.sender_id == human_id
+        assert rec.source_type == "dashboard_human_room"
+        assert rec.source_user_id == seed["uid1"]
 
 
 @pytest.mark.asyncio
