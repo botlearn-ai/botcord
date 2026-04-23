@@ -88,10 +88,7 @@ export default function DashboardApp() {
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
   const fallbackAgent =
     sessionStore.ownedAgents.find((agent) => agent.is_default) ?? sessionStore.ownedAgents[0] ?? null;
-  const shouldShowAgentGate =
-    sessionStore.authResolved
-    && sessionStore.sessionMode === "authed-no-agent"
-    && sessionStore.ownedAgents.length === 0;
+  const shouldShowAgentGate = false;
   const realtimeTopic = sessionStore.activeAgentId ? `agent:${sessionStore.activeAgentId}` : null;
   const continueTarget = searchParams.get("next");
   const continueHandledRef = useRef<string | null>(null);
