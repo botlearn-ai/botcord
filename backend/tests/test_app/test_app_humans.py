@@ -28,6 +28,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from hub.enums import RoomJoinPolicy, RoomVisibility
 from hub.models import (
     Agent,
     AgentApprovalQueue,
@@ -872,6 +873,189 @@ async def test_non_recipient_cannot_accept_request(
         headers={"Authorization": f"Bearer {carol_token}"},
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# W-R2-1: Symmetric duplicate-check semantics on /me/contacts/request
+# (parity with app/routers/dashboard.py::send_contact_request)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_h2h_resend_after_reject_reuses_row(
+    client, seed, db_session: AsyncSession
+):
+    """After Bob rejects Alice's H2H request, Alice can resend and the same
+    ContactRequest row flips back to ``pending`` (no duplicate row)."""
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+    alice_headers = {"Authorization": f"Bearer {seed['token']}"}
+
+    # 1) Alice → Bob
+    r1 = await client.post(
+        "/api/humans/me/contacts/request",
+        headers=alice_headers,
+        json={"peer_id": bob_human_id, "message": "first try"},
+    )
+    assert r1.status_code == 202
+    assert r1.json()["status"] == "requested"
+
+    # 2) Bob rejects.
+    received = await client.get(
+        "/api/humans/me/contact-requests/received",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    req_id = received.json()["requests"][0]["id"]
+    rej = await client.post(
+        f"/api/humans/me/contact-requests/{req_id}/reject",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert rej.status_code == 200
+
+    # 3) Alice resends — must succeed with the same underlying row.
+    r2 = await client.post(
+        "/api/humans/me/contacts/request",
+        headers=alice_headers,
+        json={"peer_id": bob_human_id, "message": "second try"},
+    )
+    assert r2.status_code == 202, r2.text
+    assert r2.json()["status"] == "requested"
+    assert r2.json()["request_id"] == req_id
+
+    # Exactly one ContactRequest row exists, now pending again with
+    # the latest message attached.
+    rows = list((await db_session.execute(select(ContactRequest))).scalars().all())
+    assert len(rows) == 1
+    assert rows[0].state == ContactRequestState.pending
+    assert rows[0].message == "second try"
+
+
+@pytest.mark.asyncio
+async def test_h2h_reverse_pending_hints_accept_incoming(
+    client, seed, db_session: AsyncSession
+):
+    """If Bob has already sent Alice a pending H2H request, Alice sending
+    the mirror request back must 409 with the 'accept incoming' hint
+    instead of silently creating a second row."""
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    # Bob → Alice first.
+    r1 = await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {bob_token}"},
+        json={"peer_id": seed["human_id"]},
+    )
+    assert r1.status_code == 202
+    assert r1.json()["status"] == "requested"
+
+    # Alice → Bob should now hit the reverse-pending branch.
+    r2 = await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id},
+    )
+    assert r2.status_code == 409, r2.text
+    assert "accept" in r2.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_h2h_duplicate_pending_returns_already_requested(
+    client, seed, db_session: AsyncSession
+):
+    """Alice → Bob twice in a row while the first is still pending must
+    short-circuit with ``already_requested`` (no IntegrityError path)."""
+    _, bob_human_id, _ = await _seed_second_human(db_session, "Bob")
+    alice_headers = {"Authorization": f"Bearer {seed['token']}"}
+
+    r1 = await client.post(
+        "/api/humans/me/contacts/request",
+        headers=alice_headers,
+        json={"peer_id": bob_human_id},
+    )
+    assert r1.status_code == 202
+    assert r1.json()["status"] == "requested"
+
+    r2 = await client.post(
+        "/api/humans/me/contacts/request",
+        headers=alice_headers,
+        json={"peer_id": bob_human_id},
+    )
+    assert r2.status_code == 202
+    assert r2.json()["status"] == "already_requested"
+
+    rows = list((await db_session.execute(select(ContactRequest))).scalars().all())
+    assert len(rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# W-R2-2: Subscription-gated room admits the Human owner
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sub_gated_room_admits_human_owner_exempt(
+    client, seed, db_session: AsyncSession
+):
+    """In a Human-owned sub-gated room, the owner is exempt from the
+    subscription check. Other Humans are still blocked with a clear
+    'humans not yet supported' 403.
+
+    Construction: Alice owns a sub-gated room; Bob is a co-admin. Bob tries
+    to re-add Alice (the owner) to the room — this is the only realistic
+    path to exercise the owner-exempt branch without the earlier self-invite
+    short-circuit. We first remove Alice's member row to simulate an edge
+    re-entry scenario; the sub-gate check must let her back in.
+    """
+    alice_human_id = seed["human_id"]
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    room_id = "rm_subgate0001"
+    db_session.add(
+        Room(
+            room_id=room_id,
+            name="Sub Gate",
+            description="",
+            owner_id=alice_human_id,
+            owner_type=ParticipantType.human,
+            visibility=RoomVisibility.private,
+            join_policy=RoomJoinPolicy.invite_only,
+            required_subscription_product_id="sp_fakeproduct",
+        )
+    )
+    db_session.add(
+        RoomMember(
+            room_id=room_id,
+            agent_id=bob_human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.admin,
+        )
+    )
+    await db_session.commit()
+
+    bob_headers = {"Authorization": f"Bearer {bob_token}"}
+
+    # Case A: Bob (admin) tries to invite a third Human → blocked by sub-gate
+    # with the human-limitation message.
+    _, carol_human_id, _ = await _seed_second_human(db_session, "Carol")
+    bad = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers=bob_headers,
+        json={"participant_id": carol_human_id},
+    )
+    assert bad.status_code == 403, bad.text
+    assert "subscription" in bad.json()["detail"].lower()
+
+    # Case B: Bob invites Alice (the room's Human owner). She has no
+    # AgentSubscription row, but the owner-exempt branch must let her
+    # through the sub-gate and succeed with 201.
+    ok = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers=bob_headers,
+        json={"participant_id": alice_human_id},
+    )
+    assert ok.status_code == 201, ok.text
+    body = ok.json()
+    assert body["participant_id"] == alice_human_id
+    assert body["participant_type"] == "human"
 
 
 # ---------------------------------------------------------------------------
