@@ -916,9 +916,16 @@ async def resolve_pending_approval(
             except json.JSONDecodeError:
                 payload = {}
             from_pid = payload.get("from_participant_id")
-            from_type_raw = payload.get("from_type", ParticipantType.human.value)
+            from_type_raw = payload.get("from_type")
             if from_pid:
-                from_type = ParticipantType(from_type_raw) if from_type_raw in {p.value for p in ParticipantType} else ParticipantType.human
+                if from_type_raw and from_type_raw in {p.value for p in ParticipantType}:
+                    from_type = ParticipantType(from_type_raw)
+                elif from_pid.startswith("ag_"):
+                    from_type = ParticipantType.agent
+                elif from_pid.startswith("hu_"):
+                    from_type = ParticipantType.human
+                else:
+                    from_type = ParticipantType.human
                 # Agent-side contact: Agent ← peer
                 db.add(
                     Contact(

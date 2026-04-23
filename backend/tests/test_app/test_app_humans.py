@@ -11,9 +11,15 @@ Scope covered here:
 
 from __future__ import annotations
 
+import base64
 import datetime
+import hashlib
+import time
 import uuid
 from unittest.mock import AsyncMock
+
+import jcs
+from nacl.signing import SigningKey
 
 import jwt
 import pytest
@@ -891,3 +897,137 @@ def test_verify_envelope_sig_short_circuits_for_human():
     )
     # pubkey is ignored when sender is Human
     assert verify_envelope_sig(env, "") is True
+
+
+# ---------------------------------------------------------------------------
+# A2A helpers for test_a2a_contact_request_approval_creates_correct_contacts
+# ---------------------------------------------------------------------------
+
+
+def _make_keypair() -> tuple[SigningKey, str]:
+    sk = SigningKey.generate()
+    pub_b64 = base64.b64encode(bytes(sk.verify_key)).decode()
+    return sk, f"ed25519:{pub_b64}"
+
+
+async def _register_and_verify_agent(
+    client: AsyncClient,
+    sk: SigningKey,
+    pubkey_str: str,
+    display_name: str,
+    db: AsyncSession | None = None,
+) -> tuple[str, str, str]:
+    resp = await client.post(
+        "/registry/agents",
+        json={"display_name": display_name, "pubkey": pubkey_str, "bio": "test"},
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    agent_id, key_id, challenge = data["agent_id"], data["key_id"], data["challenge"]
+    sig_b64 = base64.b64encode(
+        sk.sign(base64.b64decode(challenge)).signature
+    ).decode()
+    resp2 = await client.post(
+        f"/registry/agents/{agent_id}/verify",
+        json={"key_id": key_id, "challenge": challenge, "sig": sig_b64},
+    )
+    assert resp2.status_code == 200, resp2.text
+    # /hub/send requires claimed_at to be set — mark the agent as self-claimed
+    if db is not None:
+        result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+        agent = result.scalar_one()
+        agent.claimed_at = datetime.datetime.now(datetime.timezone.utc)
+        await db.commit()
+    return agent_id, key_id, resp2.json()["agent_token"]
+
+
+def _build_contact_request_envelope(
+    sk: SigningKey, key_id: str, from_id: str, to_id: str, message: str = ""
+) -> dict:
+    msg_id = str(uuid.uuid4())
+    ts = int(time.time())
+    payload = {"message": message}
+    canonical = jcs.canonicalize(payload)
+    payload_hash = "sha256:" + hashlib.sha256(canonical).hexdigest()
+    parts = [
+        "a2a/0.1", msg_id, str(ts), from_id, to_id,
+        "contact_request", "", "3600", payload_hash,
+    ]
+    sig_b64 = base64.b64encode(
+        sk.sign("\n".join(parts).encode()).signature
+    ).decode()
+    return {
+        "v": "a2a/0.1", "msg_id": msg_id, "ts": ts,
+        "from": from_id, "to": to_id, "type": "contact_request",
+        "reply_to": None, "ttl_sec": 3600,
+        "payload": payload, "payload_hash": payload_hash,
+        "sig": {"alg": "ed25519", "key_id": key_id, "value": sig_b64},
+    }
+
+
+# ---------------------------------------------------------------------------
+# A2A contact_request → approval queue → approve → peer_type=agent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a2a_contact_request_approval_creates_correct_contacts(
+    client, seed, db_session: AsyncSession
+):
+    """A2A contact_request to a claimed agent: approve → Contact rows have peer_type=agent."""
+    bob_supa = uuid.uuid4()
+    bob = User(supabase_user_id=bob_supa, display_name="Bob")
+    db_session.add(bob)
+    await db_session.flush()
+    db_session.add(
+        Agent(
+            agent_id="ag_claimed01234",
+            display_name="Claimed",
+            message_policy=MessagePolicy.contacts_only,
+            user_id=bob.id,
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    sk, pub = _make_keypair()
+    ext_id, ext_key, ext_token = await _register_and_verify_agent(
+        client, sk, pub, "external", db=db_session
+    )
+
+    env = _build_contact_request_envelope(sk, ext_key, ext_id, "ag_claimed01234", "hello")
+    resp = await client.post(
+        "/hub/send",
+        json=env,
+        headers={"Authorization": f"Bearer {ext_token}"},
+    )
+    assert resp.status_code in (200, 202), resp.text
+
+    queue = await db_session.execute(
+        select(AgentApprovalQueue).where(AgentApprovalQueue.agent_id == "ag_claimed01234")
+    )
+    entries = list(queue.scalars().all())
+    assert len(entries) == 1, "Expected exactly one approval queue entry"
+    entry = entries[0]
+    assert entry.kind == ApprovalKind.contact_request
+    assert entry.state == ApprovalState.pending
+    assert entry.owner_user_id == bob.id
+
+    bob_headers = {"Authorization": f"Bearer {_token(str(bob_supa))}"}
+    resolve = await client.post(
+        f"/api/humans/me/pending-approvals/{entry.id}/resolve",
+        headers=bob_headers,
+        json={"decision": "approve"},
+    )
+    assert resolve.status_code == 200, resolve.text
+    assert resolve.json()["state"] == "approved"
+
+    contacts = await db_session.execute(select(Contact))
+    rows = {
+        (c.owner_id, c.contact_agent_id, c.peer_type)
+        for c in contacts.scalars().all()
+    }
+    assert ("ag_claimed01234", ext_id, ParticipantType.agent) in rows, \
+        f"claimed→ext contact must have peer_type=agent; got rows={rows}"
+    assert (ext_id, "ag_claimed01234", ParticipantType.agent) in rows, \
+        f"ext→claimed contact must have peer_type=agent; got rows={rows}"
