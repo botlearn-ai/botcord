@@ -8,6 +8,7 @@ import {
 } from "@botcord/protocol-core";
 import type { DaemonConfig } from "./config.js";
 import { resolveConfiguredAgentIds } from "./config.js";
+import { log as daemonLog } from "./log.js";
 
 /**
  * Default location daemon looks at when discovering BotCord credentials at
@@ -83,11 +84,13 @@ export function discoverAgentCredentials(
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
+      daemonLog.debug("credentials dir missing", { dir });
       return { agents: [], warnings };
     }
     warnings.push(`credentials dir unreadable (${dir}): ${errMsg(err)}`);
     return { agents: [], warnings };
   }
+  daemonLog.debug("credentials dir scan", { dir, entryCount: entries.length });
 
   // Sort filenames lexically so the duplicate tie-breaker is deterministic
   // regardless of filesystem ordering.
@@ -159,6 +162,11 @@ export function discoverAgentCredentials(
   }
   // Stable order for downstream channel creation / logs.
   agents.sort((a, b) => a.agentId.localeCompare(b.agentId));
+  daemonLog.debug("credentials discovery done", {
+    dir,
+    agentCount: agents.length,
+    warningCount: warnings.length,
+  });
   return { agents, warnings };
 }
 
@@ -196,6 +204,11 @@ export function resolveBootAgents(
     opts.credentialsDir ?? cfg.agentDiscovery?.credentialsDir ?? DEFAULT_CREDENTIALS_DIR;
 
   const explicit = resolveConfiguredAgentIds(cfg);
+  daemonLog.debug("resolveBootAgents", {
+    credentialsDir,
+    source: explicit ? "config" : "credentials",
+    explicitCount: explicit?.length ?? 0,
+  });
   if (explicit) {
     // Best-effort enrich with runtime/cwd cached in credentials. A missing
     // or unreadable file is not fatal — the gateway channel will surface the
