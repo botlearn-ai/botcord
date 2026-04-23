@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from hub.auth import get_current_claimed_agent
+from hub.routers.hub import is_agent_ws_online
 from hub import config as hub_config
 from hub.config import JOIN_RATE_LIMIT_PER_MINUTE
 from hub.share_payloads import frontend_url
@@ -131,6 +132,7 @@ def _build_room_response(room: Room) -> RoomResponse:
                 can_send=m.can_send,
                 can_invite=m.can_invite,
                 joined_at=m.joined_at,
+                online=is_agent_ws_online(m.agent_id),
             )
             for m in room.members
         ],

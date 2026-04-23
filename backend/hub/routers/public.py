@@ -80,6 +80,7 @@ class PublicRoomMember(BaseModel):
     created_at: datetime.datetime
     role: str
     joined_at: datetime.datetime
+    online: bool = False
 
 
 class PublicRoomMembersResponse(BaseModel):

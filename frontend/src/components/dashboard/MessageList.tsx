@@ -112,23 +112,13 @@ function TopicCard({
 
   const total = group.messages.length;
   const firstMsg = group.messages[0];
-  const latestMsgs = group.messages.slice(-TOPIC_PREVIEW_COUNT);
-  // Ensure the first message always appears, followed by the most recent ones
-  // (deduped if overlap), so readers see both "what the topic is about" and the
-  // latest activity.
-  const seen = new Set<string>();
-  const preview: DashboardMessage[] = [];
-  if (firstMsg) {
-    preview.push(firstMsg);
-    seen.add(firstMsg.hub_msg_id);
-  }
-  for (const m of latestMsgs) {
-    if (!seen.has(m.hub_msg_id)) {
-      preview.push(m);
-      seen.add(m.hub_msg_id);
-    }
-  }
-  const hiddenCount = total - preview.length;
+  // Show the first message as a full bubble, and up to TOPIC_PREVIEW_COUNT of
+  // the most recent messages as compact preview rows (excluding the first).
+  const recentPreview = group.messages
+    .slice(-TOPIC_PREVIEW_COUNT)
+    .filter((m) => !firstMsg || m.hub_msg_id !== firstMsg.hub_msg_id);
+  const shownCount = (firstMsg ? 1 : 0) + recentPreview.length;
+  const hiddenCount = total - shownCount;
 
   return (
     <div
@@ -163,26 +153,38 @@ function TopicCard({
         <div className="mt-1 truncate text-[11px] text-neon-purple/70">🎯 {group.topicInfo.goal}</div>
       )}
 
-      <div className="mt-2 space-y-1.5 border-l-2 border-neon-cyan/20 pl-2">
-        {preview.map((msg) => {
-          const text = messagePreviewText(msg);
-          const isOwn = msg.sender_id === currentAgentId;
-          const senderLabel = isOwn ? (locale === "zh" ? "你" : "You") : (msg.display_sender_name || msg.sender_name || msg.sender_id);
-          return (
-            <div key={msg.hub_msg_id} className="flex gap-2 text-xs">
-              <span className="shrink-0 font-medium text-text-secondary/80 max-w-[96px] truncate">
-                {senderLabel}
-              </span>
-              <span className="truncate text-text-primary/80">{text || <em className="text-text-secondary/50">…</em>}</span>
+      {firstMsg && (
+        <div className="mt-2">
+          <MessageBubble
+            message={firstMsg}
+            isOwn={firstMsg.sender_id === currentAgentId}
+            fullWidth
+          />
+        </div>
+      )}
+
+      {recentPreview.length > 0 && (
+        <div className="mt-1 space-y-1.5 border-l-2 border-neon-cyan/20 pl-2">
+          {recentPreview.map((msg) => {
+            const text = messagePreviewText(msg);
+            const isOwn = msg.sender_id === currentAgentId;
+            const senderLabel = isOwn ? (locale === "zh" ? "你" : "You") : (msg.display_sender_name || msg.sender_name || msg.sender_id);
+            return (
+              <div key={msg.hub_msg_id} className="flex gap-2 text-xs">
+                <span className="shrink-0 font-medium text-text-secondary/80 max-w-[96px] truncate">
+                  {senderLabel}
+                </span>
+                <span className="truncate text-text-primary/80">{text || <em className="text-text-secondary/50">…</em>}</span>
+              </div>
+            );
+          })}
+          {hiddenCount > 0 && (
+            <div className="text-[10px] text-text-secondary/60">
+              +{hiddenCount} {t.moreInThread}
             </div>
-          );
-        })}
-        {hiddenCount > 0 && (
-          <div className="text-[10px] text-text-secondary/60">
-            +{hiddenCount} {t.moreInThread}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-2 flex items-center justify-end">
         <span className="text-[11px] font-medium text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
