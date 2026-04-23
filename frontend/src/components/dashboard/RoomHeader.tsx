@@ -29,9 +29,6 @@ export default function RoomHeader() {
   const locale = useLanguage();
   const t = roomList[locale];
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
-  const human = useDashboardSessionStore((state) => state.human);
-  const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
-  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
   const { openedRoomId, rightPanelOpen, toggleRightPanel } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
     rightPanelOpen: state.rightPanelOpen,
@@ -47,29 +44,6 @@ export default function RoomHeader() {
   })));
   const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
-  const activeAgent = activeAgentId
-    ? ownedAgents.find((a) => a.agent_id === activeAgentId) ?? null
-    : null;
-  // Identity the user is effectively speaking as in this dashboard session.
-  // An activeAgentId takes precedence (the user is "piloting" an agent);
-  // otherwise fall back to Human identity. Human-only users see the Human
-  // badge throughout — the message composer will record the message with
-  // sender_kind="human" on the backend.
-  const identityBadge = activeAgent
-    ? {
-        label: locale === "zh"
-          ? `以 Agent · ${activeAgent.display_name} 发言`
-          : `as Agent · ${activeAgent.display_name}`,
-        tone: "cyan" as const,
-      }
-    : human
-      ? {
-          label: locale === "zh"
-            ? `以你自己（Human · ${human.display_name}）发言`
-            : `as you (Human · ${human.display_name})`,
-          tone: "purple" as const,
-        }
-      : null;
   const roomRule = room?.rule?.trim();
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
@@ -80,6 +54,11 @@ export default function RoomHeader() {
   const myRole = authRoom?.my_role;
   const isOwnerOrAdmin = myRole === "owner" || myRole === "admin";
   const canInvite = authRoom?.can_invite ?? true;
+  const roleLabel = myRole
+    ? locale === "zh"
+      ? `你是 ${myRole}`
+      : `you are ${myRole}`
+    : null;
 
   useEffect(() => {
     if (!isAuthedReady || !room?.room_id || isJoined || !isInviteOnly) return;
@@ -205,56 +184,53 @@ export default function RoomHeader() {
             {room.required_subscription_product_id ? (
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             ) : null}
-            <CopyableId value={room.room_id} />
-            <div className="relative" ref={rulePopoverRef}>
-              <button
-                onClick={() => setShowRulePopover((v) => !v)}
-                className={`${iconBtn} ${roomRule ? "text-neon-cyan" : "text-text-secondary/60"}`}
-                title={t.viewRule}
-                aria-label={t.viewRule}
-              >
-                <Info className="h-4 w-4" />
-              </button>
-              {showRulePopover && (
-                <div className="absolute left-0 top-full z-30 mt-1 w-[min(32rem,calc(100vw-2rem))] rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl">
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
-                    {t.viewRule}
-                  </p>
-                  <p className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
-                    {roomRule || t.ruleEmpty}
-                  </p>
-                </div>
-              )}
-            </div>
+            {roomRule && (
+              <div className="relative" ref={rulePopoverRef}>
+                <button
+                  onClick={() => setShowRulePopover((v) => !v)}
+                  className={`${iconBtn} text-neon-cyan`}
+                  title={t.viewRule}
+                  aria-label={t.viewRule}
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+                {showRulePopover && (
+                  <div className="absolute left-0 top-full z-30 mt-1 w-[min(32rem,calc(100vw-2rem))] rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl">
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                      {t.viewRule}
+                    </p>
+                    <p className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
+                      {roomRule}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex items-center text-xs text-text-secondary">
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
             <button
               onClick={handleOpenMembersPanel}
               className="hover:text-neon-cyan hover:underline transition-colors"
             >
               {room.member_count} {room.member_count !== 1 ? t.members : t.member}
             </button>
-            {room.description && <span className="ml-2 truncate text-text-secondary/60">· {room.description}</span>}
+            {roleLabel && (
+              <>
+                <span className="text-text-secondary/40">·</span>
+                <span className="text-text-secondary/80">{roleLabel}</span>
+              </>
+            )}
+            <span className="text-text-secondary/40">·</span>
+            <CopyableId value={room.room_id} />
+            {room.description && (
+              <>
+                <span className="text-text-secondary/40">·</span>
+                <span className="truncate text-text-secondary/60">{room.description}</span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1.5 self-start py-0.5">
-          {identityBadge && !isGuest ? (
-            <span
-              className={
-                identityBadge.tone === "cyan"
-                  ? "rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-medium text-neon-cyan"
-                  : "rounded border border-neon-purple/40 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple"
-              }
-              title={identityBadge.label}
-            >
-              {identityBadge.label}
-            </span>
-          ) : null}
-          {isAuthedReady && authRoom && (
-            <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
-              {authRoom.my_role}
-            </span>
-          )}
           {renderJoinButton()}
           {isGuest && (
             <span className="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
