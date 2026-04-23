@@ -46,11 +46,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
-      - name: Install uv
-        run: pip install uv
       - name: Install deps
         run: uv sync
       - name: Run SQL migrations
@@ -71,11 +69,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
-      - name: Install uv
-        run: pip install uv
       - name: Install deps
         run: uv sync
       - name: Run SQL migrations
