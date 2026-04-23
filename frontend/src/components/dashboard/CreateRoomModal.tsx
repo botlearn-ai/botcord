@@ -29,8 +29,8 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [memberQuery, setMemberQuery] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [visibility, setVisibility] = useState<"public" | "private">("private");
-  const [joinPolicy, setJoinPolicy] = useState<"open" | "invite_only">("invite_only");
+  const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [joinPolicy, setJoinPolicy] = useState<"open" | "invite_only">("open");
   const [defaultSend, setDefaultSend] = useState(true);
   const [defaultInvite, setDefaultInvite] = useState(false);
   const [maxMembers, setMaxMembers] = useState("");

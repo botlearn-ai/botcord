@@ -76,8 +76,10 @@ interface DashboardChatState {
   publicRooms: PublicRoom[];
   publicRoomDetails: Record<string, PublicRoom>;
   publicRoomsLoading: boolean;
+  publicRoomsLoaded: boolean;
   publicAgents: AgentProfile[];
   publicAgentsLoading: boolean;
+  publicAgentsLoaded: boolean;
   recentVisitedRooms: PublicRoom[];
 
   setError: (error: string | null) => void;
@@ -130,8 +132,10 @@ const initialChatState = {
   publicRooms: [],
   publicRoomDetails: {},
   publicRoomsLoading: false,
+  publicRoomsLoaded: false,
   publicAgents: [],
   publicAgentsLoading: false,
+  publicAgentsLoaded: false,
   recentVisitedRooms: [],
 };
 
@@ -531,9 +535,10 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               ...Object.fromEntries(result.rooms.map((room) => [room.room_id, room])),
             },
             publicRoomsLoading: false,
+            publicRoomsLoaded: true,
           }));
         } catch {
-          set({ publicRoomsLoading: false });
+          set({ publicRoomsLoading: false, publicRoomsLoaded: true });
         }
       },
 
@@ -564,9 +569,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         set({ publicAgentsLoading: true });
         try {
           const result = await api.getPublicAgents({ limit: 50 });
-          set({ publicAgents: result.agents, publicAgentsLoading: false });
+          set({ publicAgents: result.agents, publicAgentsLoading: false, publicAgentsLoaded: true });
         } catch {
-          set({ publicAgentsLoading: false });
+          set({ publicAgentsLoading: false, publicAgentsLoaded: true });
         }
       },
 

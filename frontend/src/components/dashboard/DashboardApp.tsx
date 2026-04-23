@@ -504,17 +504,17 @@ export default function DashboardApp() {
   useEffect(() => {
     if (!sessionStore.authResolved) return;
 
-    if (chatStore.publicRooms.length === 0 && !chatStore.publicRoomsLoading) {
+    if (!chatStore.publicRoomsLoaded && !chatStore.publicRoomsLoading) {
       void chatStore.loadPublicRooms();
     }
-    if (chatStore.publicAgents.length === 0 && !chatStore.publicAgentsLoading) {
+    if (!chatStore.publicAgentsLoaded && !chatStore.publicAgentsLoading) {
       void chatStore.loadPublicAgents();
     }
   }, [
     sessionStore.authResolved,
-    chatStore.publicRooms.length,
+    chatStore.publicRoomsLoaded,
     chatStore.publicRoomsLoading,
-    chatStore.publicAgents.length,
+    chatStore.publicAgentsLoaded,
     chatStore.publicAgentsLoading,
     chatStore.loadPublicRooms,
     chatStore.loadPublicAgents,
