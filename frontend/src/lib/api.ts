@@ -668,8 +668,14 @@ const humansApi = {
   async createRoom(body: {
     name: string;
     description?: string;
+    rule?: string | null;
     visibility?: "public" | "private";
     join_policy?: "open" | "invite_only";
+    default_send?: boolean;
+    default_invite?: boolean;
+    max_members?: number | null;
+    slow_mode_seconds?: number | null;
+    member_ids?: string[];
   }): Promise<HumanRoomSummary> {
     return apiPost<HumanRoomSummary>("/api/humans/me/rooms", body);
   },

@@ -80,8 +80,14 @@ class HumanRoomListResponse(BaseModel):
 class CreateHumanRoomBody(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     description: str = ""
+    rule: str | None = Field(default=None, max_length=4000)
     visibility: Literal["public", "private"] = "private"
     join_policy: Literal["open", "invite_only"] = "invite_only"
+    default_send: bool = True
+    default_invite: bool = False
+    max_members: int | None = Field(default=None, ge=1)
+    slow_mode_seconds: int | None = Field(default=None, ge=0)
+    member_ids: list[str] = Field(default_factory=list)
 
 
 class HumanContactSummary(BaseModel):
@@ -265,14 +271,32 @@ async def create_human_room(
     user = await _load_human(db, ctx)
     me = user.human_id
 
+    normalized_rule = body.rule.strip() if body.rule else None
+    unique_member_ids = [m for m in dict.fromkeys(body.member_ids) if m and m != me]
+    if body.max_members is not None and len(unique_member_ids) + 1 > body.max_members:
+        raise HTTPException(status_code=400, detail="initial_members_exceed_max")
+    if unique_member_ids:
+        result = await db.execute(
+            select(Agent.agent_id).where(Agent.agent_id.in_(unique_member_ids))
+        )
+        found = {row[0] for row in result.all()}
+        missing = set(unique_member_ids) - found
+        if missing:
+            raise HTTPException(status_code=400, detail="member_ids_not_found")
+
     room = Room(
         room_id=generate_room_id(),
         name=body.name,
         description=body.description,
+        rule=normalized_rule,
         owner_id=me,
         owner_type=ParticipantType.human,
         visibility=RoomVisibility(body.visibility),
         join_policy=RoomJoinPolicy(body.join_policy),
+        default_send=body.default_send,
+        default_invite=body.default_invite,
+        max_members=body.max_members,
+        slow_mode_seconds=body.slow_mode_seconds,
     )
     db.add(room)
     await db.flush()
@@ -285,6 +309,15 @@ async def create_human_room(
             role=RoomRole.owner,
         )
     )
+    for mid in unique_member_ids:
+        db.add(
+            RoomMember(
+                room_id=room.room_id,
+                agent_id=mid,
+                participant_type=ParticipantType.agent,
+                role=RoomRole.member,
+            )
+        )
     await db.commit()
     await db.refresh(room)
 
