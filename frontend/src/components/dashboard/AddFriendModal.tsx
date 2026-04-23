@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, Copy, Loader2, Search } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { addFriendModal } from "@/lib/i18n/translations/dashboard";
@@ -75,6 +75,11 @@ function SearchPane({ onClose }: { onClose: () => void }) {
   const t = addFriendModal[locale];
   const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? EMPTY_CONTACTS;
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
+  // Identity signal: viewMode flips to "human" once /api/humans/me loads.
+  const viewMode = useDashboardSessionStore((s) => s.viewMode);
+  const human = useDashboardSessionStore((s) => s.human);
+  const identityReady =
+    viewMode === "human" ? Boolean(human) : Boolean(activeAgentId);
   const contactIds = useMemo(
     () => new Set(contacts.map((c) => c.contact_agent_id)),
     [contacts],
@@ -117,11 +122,46 @@ function SearchPane({ onClose }: { onClose: () => void }) {
     setSending(true);
     setError(null);
     try {
-      await api.createContactRequest({
-        to_agent_id: selected.agent_id,
-        message: message.trim() || undefined,
-      });
-      setStatus("sent");
+      const targetId = selected.agent_id;
+      const targetIsHuman = targetId.startsWith("hu_");
+      const trimmedMsg = message.trim() || undefined;
+
+      // Agent → Human goes to /api/dashboard/contact-requests with the
+      // polymorphic `to_human_id` field. `api.createContactRequest` is
+      // typed for the legacy `{ to_agent_id, message }` shape and owned by
+      // another agent; we cast to send the extended body without touching
+      // that declaration. If backend settles on `to_id`+`to_type` instead,
+      // adjust the cast here.
+      const agentPayload = targetIsHuman
+        ? ({ to_human_id: targetId, message: trimmedMsg } as unknown as {
+            to_agent_id: string;
+            message?: string;
+          })
+        : { to_agent_id: targetId, message: trimmedMsg };
+
+      const res =
+        viewMode === "human"
+          ? await humansApi.sendContactRequest({
+              peer_id: targetId,
+              message: trimmedMsg,
+            })
+          : await api.createContactRequest(agentPayload);
+
+      // Human BFF returns a structured ContactRequestOutcome; agent BFF just
+      // returns 201 on success or throws. Translate to existing UI states.
+      if (
+        res &&
+        typeof res === "object" &&
+        "status" in res &&
+        typeof (res as { status: unknown }).status === "string"
+      ) {
+        const s = (res as { status: string }).status;
+        if (s === "already_contact") setStatus("exists");
+        else if (s === "already_requested") setStatus("pending");
+        else setStatus("sent");
+      } else {
+        setStatus("sent");
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t.requestFailed;
       if (/already.*contact/i.test(msg)) setStatus("exists");
@@ -189,7 +229,8 @@ function SearchPane({ onClose }: { onClose: () => void }) {
             )}
             <button
               onClick={handleSend}
-              disabled={sending}
+              disabled={sending || !identityReady}
+              title={!identityReady ? t.requestFailed : undefined}
               className="inline-flex w-full items-center justify-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
             >
               {sending && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -846,3 +846,40 @@ export interface ResolveApprovalResponse {
   id: string;
   state: "approved" | "rejected";
 }
+
+// ---------------------------------------------------------------------------
+// Human-surface room membership & contact-request summaries (new endpoints:
+// POST /api/humans/me/rooms/{room_id}/members,
+// GET /api/humans/me/contact-requests/{received,sent},
+// POST /api/humans/me/contact-requests/{id}/{accept,reject})
+// ---------------------------------------------------------------------------
+
+export interface HumanRoomMemberResponse {
+  room_id: string;
+  participant_id: string;
+  participant_type: ParticipantType;
+  role: "owner" | "admin" | "member";
+  joined_at: number;
+}
+
+export interface HumanContactRequestSummary {
+  id: string;
+  from_participant_id: string;
+  from_type: ParticipantType;
+  from_display_name: string | null;
+  to_participant_id: string;
+  to_type: ParticipantType;
+  to_display_name: string | null;
+  state: "pending" | "accepted" | "rejected";
+  message: string | null;
+  created_at: number;
+}
+
+export interface HumanContactRequestListResponse {
+  requests: HumanContactRequestSummary[];
+}
+
+export interface HumanContactRequestResolveResponse {
+  id: string;
+  state: "accepted" | "rejected";
+}

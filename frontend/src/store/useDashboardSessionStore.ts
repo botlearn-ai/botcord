@@ -7,9 +7,20 @@
 
 import { create } from "zustand";
 import type { HumanInfo, HumanRoomSummary, UserProfile, UserAgent } from "@/lib/types";
-import { humansApi, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
+import {
+  humansApi,
+  userApi,
+  getActiveAgentId,
+  setActiveAgentId,
+  getStoredActiveIdentity,
+  setStoredActiveIdentity,
+} from "@/lib/api";
 
 export type DashboardSessionMode = "guest" | "authed-no-agent" | "authed-ready";
+
+export type ActiveIdentity =
+  | { type: "human"; id: string }
+  | { type: "agent"; id: string };
 
 interface DashboardSessionState {
   authResolved: boolean;
@@ -28,12 +39,20 @@ interface DashboardSessionState {
    * "agent"  → observer mode: watching/acting through the active Agent
    */
   viewMode: "human" | "agent";
+  /**
+   * Richer identity record persisted in localStorage. Gates the
+   * ``X-Active-Agent`` header in ``buildAuthHeaders`` — when ``type==='human'``
+   * no header is sent and the backend resolves ``human_id`` from the
+   * Supabase JWT. Kept in-sync with ``viewMode`` / ``activeAgentId``.
+   */
+  activeIdentity: ActiveIdentity | null;
 
   setAuthResolved: (resolved: boolean) => void;
   setToken: (token: string | null) => void;
   setUser: (user: UserProfile) => void;
   setActiveAgentId: (agentId: string | null) => void;
   setViewMode: (mode: "human" | "agent") => void;
+  setActiveIdentity: (identity: ActiveIdentity | null) => void;
   resetSessionState: () => void;
   initAuth: (token: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
@@ -54,7 +73,12 @@ const initialSessionState = {
   ownedAgents: [],
   activeAgentId: null,
   viewMode: "human" as const,
+  activeIdentity: null as ActiveIdentity | null,
 };
+
+function deriveIdentityFromAgent(agentId: string | null): ActiveIdentity | null {
+  return agentId ? { type: "agent", id: agentId } : null;
+}
 
 let authInitRequestId = 0;
 
@@ -81,6 +105,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     if (!token) {
       authInitRequestId += 1;
       setActiveAgentId(null);
+      setStoredActiveIdentity(null);
       set({
         ...initialSessionState,
         authResolved: true,
@@ -90,11 +115,15 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     }
 
     const activeAgentId = get().activeAgentId || getActiveAgentId();
+    const storedIdentity = getStoredActiveIdentity();
+    const activeIdentity: ActiveIdentity | null =
+      storedIdentity ?? deriveIdentityFromAgent(activeAgentId);
     set({
       authResolved: true,
       authBootstrapping: false,
       token,
       activeAgentId,
+      activeIdentity,
       sessionMode: resolveSessionMode(token, activeAgentId),
     });
   },
@@ -107,16 +136,56 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     })),
 
   setActiveAgentId: (agentId) =>
-    set((state) => ({
-      activeAgentId: agentId,
-      sessionMode: resolveSessionMode(state.token, agentId),
-    })),
+    set((state) => {
+      const nextIdentity: ActiveIdentity | null = agentId
+        ? { type: "agent", id: agentId }
+        : state.activeIdentity?.type === "agent"
+          ? null
+          : state.activeIdentity;
+      if (nextIdentity?.type === "agent" || nextIdentity === null) {
+        setStoredActiveIdentity(nextIdentity);
+      }
+      return {
+        activeAgentId: agentId,
+        activeIdentity: nextIdentity,
+        sessionMode: resolveSessionMode(state.token, agentId),
+      };
+    }),
 
-  setViewMode: (mode) => set({ viewMode: mode }),
+  setViewMode: (mode) =>
+    set((state) => {
+      // Keep the richer activeIdentity field in-sync with the legacy
+      // viewMode toggle. When switching to "human" we forget the agent
+      // identity; when switching to "agent" we materialize one from the
+      // active agent id (if any).
+      let nextIdentity: ActiveIdentity | null = state.activeIdentity;
+      if (mode === "human") {
+        const humanId = state.human?.human_id ?? state.user?.id ?? null;
+        nextIdentity = humanId ? { type: "human", id: humanId } : null;
+      } else if (mode === "agent") {
+        nextIdentity = deriveIdentityFromAgent(state.activeAgentId);
+      }
+      setStoredActiveIdentity(nextIdentity);
+      return { viewMode: mode, activeIdentity: nextIdentity };
+    }),
+
+  setActiveIdentity: (identity) => {
+    setStoredActiveIdentity(identity);
+    if (identity?.type === "agent") {
+      setActiveAgentId(identity.id);
+    }
+    set((state) => ({
+      activeIdentity: identity,
+      activeAgentId: identity?.type === "agent" ? identity.id : state.activeAgentId,
+      viewMode: identity?.type === "human" ? "human" : state.viewMode,
+      sessionMode: resolveSessionMode(state.token, state.activeAgentId),
+    }));
+  },
 
   resetSessionState: () => {
     authInitRequestId += 1;
     setActiveAgentId(null);
+    setStoredActiveIdentity(null);
     set({ ...initialSessionState });
   },
 
@@ -151,6 +220,10 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       }
       const activeId = resolveStoredActiveAgentId(user);
       setActiveAgentId(activeId);
+      const stored = getStoredActiveIdentity();
+      const activeIdentity: ActiveIdentity | null =
+        stored ?? (human ? { type: "human", id: human.human_id } : deriveIdentityFromAgent(activeId));
+      if (activeIdentity) setStoredActiveIdentity(activeIdentity);
       set({
         authResolved: true,
         authBootstrapping: false,
@@ -160,6 +233,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         humanRooms: humanRoomsRes.rooms,
         ownedAgents: user.agents,
         activeAgentId: activeId,
+        activeIdentity,
         sessionMode: resolveSessionMode(token, activeId),
       });
     } catch (err: any) {
@@ -168,6 +242,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       }
       if (err?.status === 401 || err?.status === 403) {
         setActiveAgentId(null);
+        setStoredActiveIdentity(null);
         set({
           ...initialSessionState,
           authResolved: true,
@@ -176,6 +251,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         return;
       }
       setActiveAgentId(null);
+      setStoredActiveIdentity(null);
       set({
         authResolved: true,
         authBootstrapping: false,
@@ -183,6 +259,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         user: null,
         ownedAgents: [],
         activeAgentId: null,
+        activeIdentity: null,
         sessionMode: "authed-no-agent",
       });
     }
@@ -202,39 +279,61 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       const user = await userApi.getMe({ force: true });
       const activeAgentId = resolveStoredActiveAgentId(user);
       setActiveAgentId(activeAgentId);
-      set((state) => ({
-        user,
-        ownedAgents: user.agents,
-        activeAgentId,
-        sessionMode: resolveSessionMode(state.token, activeAgentId),
-      }));
+      set((state) => {
+        // Preserve human identity if already active; otherwise track agent.
+        const nextIdentity: ActiveIdentity | null =
+          state.activeIdentity?.type === "human"
+            ? state.activeIdentity
+            : deriveIdentityFromAgent(activeAgentId);
+        if (nextIdentity?.type !== "human") {
+          setStoredActiveIdentity(nextIdentity);
+        }
+        return {
+          user,
+          ownedAgents: user.agents,
+          activeAgentId,
+          activeIdentity: nextIdentity,
+          sessionMode: resolveSessionMode(state.token, activeAgentId),
+        };
+      });
     } catch (err) {
       console.error("[SessionStore] Failed to refresh user profile:", err);
     }
   },
 
   removeAgent: (agentId: string) => {
-    const { ownedAgents, activeAgentId, token } = get();
+    const { ownedAgents, activeAgentId, activeIdentity, token } = get();
     const remaining = ownedAgents.filter((a) => a.agent_id !== agentId);
     const newActiveId = agentId === activeAgentId
       ? (remaining.find((a) => a.is_default) || remaining[0])?.agent_id ?? null
       : activeAgentId;
     setActiveAgentId(newActiveId);
+    const nextIdentity: ActiveIdentity | null =
+      activeIdentity?.type === "human"
+        ? activeIdentity
+        : deriveIdentityFromAgent(newActiveId);
+    if (nextIdentity?.type !== "human") {
+      setStoredActiveIdentity(nextIdentity);
+    }
     set({
       ownedAgents: remaining,
       activeAgentId: newActiveId,
+      activeIdentity: nextIdentity,
       sessionMode: resolveSessionMode(token, newActiveId),
     });
   },
 
   switchActiveAgent: async (agentId: string) => {
     setActiveAgentId(agentId);
-    set({ activeAgentId: agentId });
+    const identity: ActiveIdentity = { type: "agent", id: agentId };
+    setStoredActiveIdentity(identity);
+    set({ activeAgentId: agentId, activeIdentity: identity });
   },
 
   logout: () => {
     authInitRequestId += 1;
     setActiveAgentId(null);
+    setStoredActiveIdentity(null);
     set({
       ...initialSessionState,
       authResolved: true,

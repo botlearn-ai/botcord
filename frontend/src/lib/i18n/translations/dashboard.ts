@@ -1114,6 +1114,10 @@ export const accountMenu: TranslationMap<{
   wsOnline: string
   wsOffline: string
   refreshStatus: string
+  switchTo: string
+  humanSelf: string
+  activeHuman: string
+  noAgentSelected: string
 }> = {
   en: {
     account: 'Account',
@@ -1130,6 +1134,10 @@ export const accountMenu: TranslationMap<{
     wsOnline: 'Online',
     wsOffline: 'Offline',
     refreshStatus: 'Refresh status',
+    switchTo: 'Switch to',
+    humanSelf: 'Human (you)',
+    activeHuman: 'Acting as you',
+    noAgentSelected: 'No agent selected',
   },
   zh: {
     account: '账户',
@@ -1146,6 +1154,10 @@ export const accountMenu: TranslationMap<{
     wsOnline: '在线',
     wsOffline: '离线',
     refreshStatus: '刷新状态',
+    switchTo: '切换到',
+    humanSelf: '你自己 (Human)',
+    activeHuman: '以你自己的身份',
+    noAgentSelected: '未选择 Bot',
   },
 }
 
