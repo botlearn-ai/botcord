@@ -26,7 +26,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from hub.id_generators import generate_human_id
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
+    ApprovalKind,
+    ApprovalState,
     BetaCodeStatus,
     BetaWaitlistStatus,
     BillingInterval,
@@ -36,6 +39,7 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     KeyState,
     MessagePolicy,
     MessageState,
+    ParticipantType,
     RoomJoinPolicy,
     RoomJoinRequestStatus,
     RoomRole,
@@ -210,8 +214,16 @@ class Room(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     rule: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Holds either an ag_* or hu_* participant id. FK removed because the
+    # column is now polymorphic — the discriminator is ``owner_type``.
     owner_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    owner_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     visibility: Mapped[RoomVisibility] = mapped_column(
         Enum(RoomVisibility), nullable=False, default=RoomVisibility.private
@@ -274,8 +286,18 @@ class RoomMember(Base):
     room_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("rooms.room_id"), nullable=False, index=True
     )
+    # ``agent_id`` is kept as the column name for backward compatibility with
+    # the unique constraint and legacy queries, but now stores any participant
+    # id (ag_* or hu_*). The FK to agents was dropped so Human members are
+    # legal; ``participant_type`` is the discriminator.
     agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    participant_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     role: Mapped[RoomRole] = mapped_column(
         Enum(RoomRole), nullable=False, default=RoomRole.member
@@ -339,8 +361,11 @@ class MessageRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     hub_msg_id: Mapped[str] = mapped_column(String(48), unique=True, nullable=False, index=True)
     msg_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # ``sender_id`` is polymorphic (ag_* or hu_*). FK dropped so Human-originated
+    # messages (source_type="human") can be recorded without a corresponding
+    # agents row. The prefix is self-describing.
     sender_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
     )
     receiver_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     room_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -383,10 +408,25 @@ class Contact(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Polymorphic participant ids — ``owner_type`` / ``peer_type`` discriminate.
     owner_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
     )
+    owner_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
+    )
+    # Column retains its legacy name for unique-constraint compatibility; now
+    # holds any participant id (ag_* or hu_*).
     contact_agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    peer_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
+    )
     alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -401,9 +441,21 @@ class Block(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    owner_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     blocked_agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    blocked_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -509,10 +561,22 @@ class ContactRequest(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     from_agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    from_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     to_agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    to_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     state: Mapped[ContactRequestState] = mapped_column(
         Enum(ContactRequestState), nullable=False, default=ContactRequestState.pending
@@ -868,6 +932,16 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     supabase_user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, unique=True, nullable=False, index=True)
+    # Social-identity ID used as ``from``/``participant_id`` for Human-as-first-class
+    # messages and memberships. Always ``hu_<12 hex>``. Generated on first login;
+    # see ``hub.id_generators.generate_human_id``.
+    human_id: Mapped[str] = mapped_column(
+        String(32),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=generate_human_id,
+    )
     max_agents: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     banned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ban_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1008,4 +1082,57 @@ class BetaWaitlistEntry(Base):
     reviewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_code_id: Mapped[_uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("beta_invite_codes.id"), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Human-as-first-class: approval queue for Human-owned Agents
+# ---------------------------------------------------------------------------
+
+
+class AgentApprovalQueue(Base):
+    """External requests to a claimed Agent that need its owner Human to approve.
+
+    When an external party sends a ``contact_request`` / ``room_invite`` / payment
+    request to an Agent that has been claimed by a user, we queue a pending row
+    here instead of auto-accepting. The owning Human resolves it from the
+    dashboard (``approved`` / ``rejected``).
+
+    Unclaimed Agents sidestep this queue and fall back to their existing
+    auto-accept / policy logic — so older A2A flows are unaffected.
+    """
+
+    __tablename__ = "agent_approval_queue"
+    __table_args__ = (
+        Index("ix_agent_approval_agent_state", "agent_id", "state"),
+        Index("ix_agent_approval_owner_state", "owner_user_id", "state"),
+    )
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False
+    )
+    owner_user_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("public.users.id"), nullable=False
+    )
+    kind: Mapped[ApprovalKind] = mapped_column(
+        Enum(ApprovalKind, name="approvalkind"), nullable=False
+    )
+    # Opaque structured payload describing the pending action
+    # (e.g. for contact_request: ``{"from_participant_id": "ag_x", "message": "..."}``).
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    state: Mapped[ApprovalState] = mapped_column(
+        Enum(ApprovalState, name="approvalstate"),
+        nullable=False,
+        default=ApprovalState.pending,
+        server_default=ApprovalState.pending.value,
+    )
+    resolved_by_user_id: Mapped[_uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

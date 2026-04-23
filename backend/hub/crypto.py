@@ -119,7 +119,14 @@ def verify_envelope_sig(envelope, pubkey_b64: str) -> bool:
     """Verify the Ed25519 signature on *envelope*.
 
     Returns True if the signature is valid, False otherwise.
+
+    Human-originated envelopes (``from`` prefixed with ``hu_``) bypass this
+    check: their identity is proven by the Supabase JWT at the transport
+    layer, not by an Ed25519 signature. Callers must enforce that JWT path
+    separately (see app/routers/humans.py).
     """
+    if isinstance(envelope.from_, str) and envelope.from_.startswith("hu_"):
+        return True
     try:
         signing_input = build_signing_input(envelope)
         sig_bytes = base64.b64decode(envelope.sig.value)
