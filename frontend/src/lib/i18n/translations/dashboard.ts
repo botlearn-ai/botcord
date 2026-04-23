@@ -1202,6 +1202,98 @@ export const bindDialog: TranslationMap<{
   },
 }
 
+export const createAgentDialog: TranslationMap<{
+  menuLabel: string
+  title: string
+  description: string
+  daemonLabel: string
+  noDaemonTitle: string
+  noDaemonHint: string
+  commandHint: string
+  copy: string
+  copied: string
+  openActivate: string
+  refreshDaemons: string
+  runtimeLabel: string
+  noRuntimesDetected: string
+  probeRuntimes: string
+  runtimeUnavailable: string
+  nameLabel: string
+  namePlaceholder: string
+  bioLabel: string
+  bioPlaceholder: string
+  submit: string
+  submitting: string
+  cancel: string
+  errorGeneric: string
+  errorDaemonOffline: string
+  errorDaemonTimeout: string
+  errorDaemonFailed: string
+  errorMissingAgentId: string
+  successMessage: string
+}> = {
+  en: {
+    menuLabel: 'Create Agent',
+    title: 'Create Agent',
+    description: 'Create a new BotCord agent on a daemon running on your machine. The daemon hosts the agent process and routes it to a local AI runtime.',
+    daemonLabel: 'Daemon',
+    noDaemonTitle: 'No daemon detected',
+    noDaemonHint: 'Install and start a daemon on this machine, then come back — it will appear here automatically.',
+    commandHint: 'Run this in your terminal:',
+    copy: 'Copy',
+    copied: 'Copied',
+    openActivate: 'Open activation page',
+    refreshDaemons: 'Refresh',
+    runtimeLabel: 'Runtime',
+    noRuntimesDetected: 'No runtimes detected on this daemon.',
+    probeRuntimes: 'Probe runtimes',
+    runtimeUnavailable: 'unavailable',
+    nameLabel: 'Name',
+    namePlaceholder: 'my-agent',
+    bioLabel: 'Bio (optional)',
+    bioPlaceholder: 'What does this agent do?',
+    submit: 'Create',
+    submitting: 'Creating...',
+    cancel: 'Cancel',
+    errorGeneric: 'Failed to create agent',
+    errorDaemonOffline: 'Daemon is offline — start it first and try again.',
+    errorDaemonTimeout: 'Daemon did not respond in time. Try again.',
+    errorDaemonFailed: 'Daemon reported a failure',
+    errorMissingAgentId: 'Daemon response missing agent id',
+    successMessage: 'Agent created',
+  },
+  zh: {
+    menuLabel: '创建 Agent',
+    title: '创建 Agent',
+    description: '在你本地运行的 daemon 上创建一个新的 BotCord agent。Daemon 托管 agent 进程，并把它路由到本地的 AI runtime。',
+    daemonLabel: 'Daemon',
+    noDaemonTitle: '没有检测到 daemon',
+    noDaemonHint: '在本机安装并启动一个 daemon，然后回到这里，它会自动出现在列表中。',
+    commandHint: '在终端执行：',
+    copy: '复制',
+    copied: '已复制',
+    openActivate: '打开授权页面',
+    refreshDaemons: '刷新',
+    runtimeLabel: 'Runtime',
+    noRuntimesDetected: '该 daemon 上未检测到可用 runtime。',
+    probeRuntimes: '重新探测 runtime',
+    runtimeUnavailable: '不可用',
+    nameLabel: '名称',
+    namePlaceholder: 'my-agent',
+    bioLabel: '简介（可选）',
+    bioPlaceholder: '这个 agent 用来做什么？',
+    submit: '创建',
+    submitting: '创建中...',
+    cancel: '取消',
+    errorGeneric: '创建 agent 失败',
+    errorDaemonOffline: 'Daemon 离线 — 请先启动 daemon 再试。',
+    errorDaemonTimeout: 'Daemon 响应超时，请重试。',
+    errorDaemonFailed: 'Daemon 报告执行失败',
+    errorMissingAgentId: 'Daemon 返回缺少 agent id',
+    successMessage: 'Agent 创建成功',
+  },
+}
+
 export const credentialResetDialog: TranslationMap<{
   title: string
   description: string
