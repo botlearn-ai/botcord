@@ -1,5 +1,7 @@
 import { randomBytes } from "crypto";
 
+export const generateHumanId = () => "hu_" + randomBytes(6).toString("hex");
+
 export const generateShareId = () => "sh_" + randomBytes(6).toString("hex");
 export const generateTxId = () => "tx_" + randomBytes(8).toString("hex");
 export const generateWalletEntryId = () => "we_" + randomBytes(8).toString("hex");

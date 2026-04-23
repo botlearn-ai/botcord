@@ -3,6 +3,7 @@ import { db } from "@/../db";
 import { users, agents, userRoles, roles, rolePermissions, permissions } from "@/../db/schema";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { generateHumanId } from "@/lib/id-generators";
 
 export interface AuthenticatedUser {
   id: string;
@@ -175,6 +176,7 @@ export async function findOrCreateUser(supabaseUser: {
       lastLoginAt: now,
       betaAccess: false,
       betaAdmin: false,
+      humanId: generateHumanId(),
     })
     .returning({ id: users.id });
 
