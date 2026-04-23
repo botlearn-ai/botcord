@@ -624,6 +624,68 @@ async function executeSteps(
         break;
       }
 
+      // ── HTTP request (for Human dashboard API calls) ─────────────
+      case "http.request": {
+        const rawUrl = step.params?.url as string | undefined;
+        if (!rawUrl) { console.warn("  http.request: missing url param — skipping"); break; }
+        const method = ((step.params?.method as string) ?? "GET").toUpperCase();
+        const tokenEnvName = step.params?.token_env as string | undefined;
+
+        for (const inst of targets) {
+          const ev = evidenceMap.get(inst.id)!;
+          // Resolve placeholders in URL
+          let url = rawUrl
+            .replace(/\{hub_base_url\}/g, env.hub_base_url)
+            .replace(/\{web_base_url\}/g, env.web_base_url)
+            .replace(/\{agentId\}/g, (ev.credentials?.["agentId"] as string) ?? "")
+            .replace(/\{roomId\}/g, ev.roomId ?? ev.peerRoomId ?? "")
+            .replace(/\{peerAgentId\}/g, ev.peerAgentId ?? "")
+            .replace(/\{approvalId\}/g, ev.approvalId ?? "");
+
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          const tokenEnv = tokenEnvName ?? env.test_user_token_env;
+          if (tokenEnv) {
+            const token = process.env[tokenEnv];
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+          }
+
+          const bodyParam = step.params?.body;
+          try {
+            console.log(`  [${inst.id}] ${method} ${url}`);
+            const resp = await fetch(url, {
+              method,
+              headers,
+              body: bodyParam !== undefined ? JSON.stringify(bodyParam) : undefined,
+              signal: AbortSignal.timeout(15_000),
+            });
+            const json = await resp.json().catch(() => null) as Record<string, unknown> | null;
+            ev.httpResponse = { status: resp.status, body: json };
+            console.log(`  [${inst.id}] HTTP ${resp.status}`);
+
+            // Extract approval_id if requested
+            if (step.params?.extract_approval_id && json) {
+              const aid = json["approval_id"] ?? json["id"];
+              if (aid) {
+                ev.approvalId = String(aid);
+                console.log(`  [${inst.id}] Extracted approvalId: ${ev.approvalId}`);
+              }
+            }
+            // Extract roomId if requested
+            if (step.params?.extract_room_id && json) {
+              const rid = json["room_id"] ?? json["id"];
+              if (rid && String(rid).startsWith("rm_")) {
+                ev.roomId = String(rid);
+                console.log(`  [${inst.id}] Extracted roomId: ${ev.roomId}`);
+              }
+            }
+          } catch (err) {
+            console.error(`  [${inst.id}] http.request failed: ${err}`);
+            ev.httpResponse = { status: 0, error: String(err) };
+          }
+        }
+        break;
+      }
+
       // ── Verify container logs (check for error patterns) ────────
       case "runtime.check_logs": {
         const errorPatterns = (step.params?.error_patterns as string[]) ?? [];
