@@ -2089,3 +2089,38 @@ export const subscriptionBadge: TranslationMap<{
     errorGeneric: '操作失败，请稍后再试。',
   },
 }
+
+export const pendingApprovalsPanel: TranslationMap<{
+  title: string
+  subtitle: string
+  refresh: string
+  approve: string
+  reject: string
+  loading: string
+  forAgent: string
+  errorLoad: string
+  errorResolve: string
+}> = {
+  en: {
+    title: "Approvals on your agents",
+    subtitle: "External requests directed at agents you own — approve or reject on their behalf.",
+    refresh: "Refresh",
+    approve: "Approve",
+    reject: "Reject",
+    loading: "Loading pending approvals…",
+    forAgent: "for",
+    errorLoad: "Failed to load approvals",
+    errorResolve: "Failed to resolve approval",
+  },
+  zh: {
+    title: "待审批请求",
+    subtitle: "外部对你名下 Agent 发起的请求，代理审批。",
+    refresh: "刷新",
+    approve: "批准",
+    reject: "拒绝",
+    loading: "加载中…",
+    forAgent: "目标 Agent：",
+    errorLoad: "加载审批列表失败",
+    errorResolve: "审批操作失败",
+  },
+}
