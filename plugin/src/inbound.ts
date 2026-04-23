@@ -74,6 +74,8 @@ export interface InboundParams {
   accountId: string;
   senderName: string;
   senderId: string;
+  /** "human" when the sender is a hu_* Human identity; "agent" otherwise. */
+  senderKind?: "human" | "agent";
   content: string;
   messageId?: string;
   messageType?: MessageType;
@@ -338,8 +340,10 @@ async function handleA2AMessage(
   const isGroupRoom = !!msg.room_id && !msg.room_id.startsWith("rm_dm_");
   const chatType = isGroupRoom ? "group" : "direct";
 
-  const isHumanRoom = msg.source_type === "dashboard_human_room";
-  const sanitizedSender = isHumanRoom
+  // Human sender: dashboard_human_room source type OR hu_* ID prefix
+  const isHumanSender = msg.source_type === "dashboard_human_room" || senderId.startsWith("hu_");
+  const senderKind: "human" | "agent" = isHumanSender ? "human" : "agent";
+  const sanitizedSender = isHumanSender
     ? sanitizeSenderName(msg.source_user_name || "User")
     : sanitizeSenderName(senderId);
   const header = buildInboundHeader({
@@ -361,14 +365,15 @@ async function handleA2AMessage(
       : "";
 
   const sanitizedContent = sanitizeUntrustedContent(rawContent);
-  const tag = isHumanRoom ? "human-message" : "agent-message";
-  const content = `${header}\n<${tag} sender="${sanitizedSender}">\n${sanitizedContent}\n</${tag}>${silentHint}${notifyOwnerHint}`;
+  const tag = isHumanSender ? "human-message" : "agent-message";
+  const content = `${header}\n<${tag} sender="${sanitizedSender}" sender_kind="${senderKind}">\n${sanitizedContent}\n</${tag}>${silentHint}${notifyOwnerHint}`;
 
   await dispatchInbound({
     cfg,
     accountId,
     senderName: senderId,
     senderId,
+    senderKind,
     content,
     messageId: envelope.msg_id,
     messageType: envelope.type,
@@ -412,14 +417,15 @@ async function handleA2AMessageBatch(
         ? envelope.payload
         : (envelope.payload?.text as string) ?? JSON.stringify(envelope.payload));
 
-    const isHumanRoom = msg.source_type === "dashboard_human_room";
-    const sanitizedSender = isHumanRoom
+    const isHumanSender = msg.source_type === "dashboard_human_room" || senderId.startsWith("hu_");
+    const kind: "human" | "agent" = isHumanSender ? "human" : "agent";
+    const sanitizedSender = isHumanSender
       ? sanitizeSenderName(msg.source_user_name || "User")
       : sanitizeSenderName(senderId);
     const sanitizedContent = sanitizeUntrustedContent(rawContent);
-    const tag = isHumanRoom ? "human-message" : "agent-message";
+    const tag = isHumanSender ? "human-message" : "agent-message";
     messageBlocks.push(
-      `<${tag} sender="${sanitizedSender}">\n${sanitizedContent}\n</${tag}>`,
+      `<${tag} sender="${sanitizedSender}" sender_kind="${kind}">\n${sanitizedContent}\n</${tag}>`,
     );
 
     if (msg.mentioned) anyMentioned = true;
@@ -449,12 +455,14 @@ async function handleA2AMessageBatch(
   const last = msgs[msgs.length - 1];
   const lastEnvelope = last.envelope;
   const lastSenderId = lastEnvelope.from || "unknown";
+  const lastIsHuman = last.source_type === "dashboard_human_room" || lastSenderId.startsWith("hu_");
 
   await dispatchInbound({
     cfg,
     accountId,
     senderName: lastSenderId,
     senderId: lastSenderId,
+    senderKind: lastIsHuman ? "human" : "agent",
     content,
     messageId: lastEnvelope.msg_id,
     messageType: lastEnvelope.type,
