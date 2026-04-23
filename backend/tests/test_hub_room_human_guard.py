@@ -128,96 +128,84 @@ async def test_agent_can_invite_in_human_owned_room_with_default_invite(
     client: AsyncClient,
     db_session,
 ):
-    """Simulate a human-owned room: an agent that is a member (not the
-    owner) with ``default_invite=True`` must be able to invite another
-    agent without crashing and without needing owner/admin role.
+    """Human-owned room: an agent member (not owner) with ``default_invite=True``
+    must be able to invite another agent — no monkey-patching.
 
-    We build this state directly against the DB to avoid depending on the
-    /api/humans BFF layer (which may not be present on every branch). We
-    defensively set ``owner_type``/``participant_type`` via ``setattr`` so
-    the test works both pre- and post-Human-first merge.
+    We build the state directly: create a User with a ``human_id``, a Room
+    with ``owner_type='human'`` and ``owner_id=<hu_*>``, and seat alice as
+    a plain agent-type member.
     """
-    from hub.models import Room, RoomMember, RoomRole, RoomVisibility, RoomJoinPolicy
+    import uuid
+
+    from hub.models import (
+        ParticipantType,
+        Room,
+        RoomJoinPolicy,
+        RoomMember,
+        RoomRole,
+        RoomVisibility,
+        User,
+    )
+    from hub.id_generators import generate_human_id, generate_room_id
 
     # Two agents — alice (member, will invite) and bob (to be invited).
     _sk_a, alice_id, _a_key, alice_token = await _create_agent(client, "alice")
     _sk_b, bob_id, _b_key, _bob_token = await _create_agent(client, "bob")
 
-    # Build a synthetic human-owned room. We use a ``hu_*`` id for the
-    # owner_id column. The column is an FK to agents on pre-merge schemas,
-    # so we insert it through raw SQL and accept that the FK may or may
-    # not be present — if the FK is still tight this test becomes a no-op
-    # and skips.
-    from sqlalchemy import text
-    from hub.id_generators import generate_room_id
-
-    room_id = generate_room_id()
+    # Create a real human owner (User row + hu_* id). Skip if the schema
+    # cannot accept a human-owned room (e.g. pre-merge FK still tight).
+    human_id = generate_human_id()
     try:
-        await db_session.execute(
-            text(
-                "INSERT INTO rooms (room_id, name, description, owner_id, "
-                "visibility, join_policy, default_send, default_invite, max_members) "
-                "VALUES (:room_id, :name, :description, :owner_id, "
-                ":visibility, :join_policy, :default_send, :default_invite, :max_members)"
-            ),
-            {
-                "room_id": room_id,
-                "name": "Human Room",
-                "description": "",
-                # Pre-merge: owner_id FK to agents.agent_id — we can only
-                # simulate "human owner" if we drop the FK constraint.
-                # When FK is present, use alice_id as a stand-in and set
-                # owner_type='human' via attribute assignment below so
-                # _room_owner_is_human() returns True.
-                "owner_id": alice_id,
-                "visibility": "public",
-                "join_policy": "invite_only",
-                "default_send": True,
-                "default_invite": True,
-                "max_members": None,
-            },
+        owner_user = User(
+            id=uuid.uuid4(),
+            supabase_user_id=uuid.uuid4(),
+            email=f"owner-{human_id}@example.com",
+            display_name="Room Owner",
+            status="active",
+            human_id=human_id,
         )
+        db_session.add(owner_user)
+        await db_session.flush()
+
+        room = Room(
+            room_id=generate_room_id(),
+            name="Human Room",
+            description="",
+            owner_id=human_id,
+            owner_type=ParticipantType.human,
+            visibility=RoomVisibility.public,
+            join_policy=RoomJoinPolicy.invite_only,
+            default_send=True,
+            default_invite=True,
+        )
+        db_session.add(room)
+        await db_session.flush()
     except Exception:
+        await db_session.rollback()
         pytest.skip("Cannot synthesise human-owned room on this schema")
 
-    # Alice joins as a plain member (not owner).
-    await db_session.execute(
-        text(
-            "INSERT INTO room_members (room_id, agent_id, role, muted) "
-            "VALUES (:room_id, :agent_id, :role, :muted)"
-        ),
-        {
-            "room_id": room_id,
-            "agent_id": alice_id,
-            "role": "member",
-            "muted": False,
-        },
+    # Alice joins as a plain agent-type member (not owner).
+    db_session.add(
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=alice_id,
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        )
     )
     await db_session.commit()
 
-    # Patch the Room instance to report owner_type='human' so the
-    # permission helpers treat it as a human-owned room. We monkey-patch
-    # the attribute lookup via a SQLAlchemy event — or more simply, we
-    # override it by setting the attribute after load via a router
-    # helper. Easiest path: set it as a class-level default for this test.
-    # Since _room_owner_is_human uses getattr(room, 'owner_type', 'agent'),
-    # we can expose a 'owner_type' attribute at the instance level.
-    from hub.routers import room as room_router
+    room_id = room.room_id
 
-    original_is_human = room_router._room_owner_is_human
-    room_router._room_owner_is_human = lambda _room: True  # type: ignore[assignment]
-    try:
-        # Alice invites Bob. Alice is role='member' but default_invite=True.
-        resp = await client.post(
-            f"/hub/rooms/{room_id}/members",
-            json={"agent_id": bob_id},
-            headers=_auth_header(alice_token),
-        )
-        # Should succeed — default_invite=True lets any agent member invite.
-        assert resp.status_code == 201, resp.text
-        data = resp.json()
-        member_ids = {m["agent_id"] for m in data["members"]}
-        assert alice_id in member_ids
-        assert bob_id in member_ids
-    finally:
-        room_router._room_owner_is_human = original_is_human  # type: ignore[assignment]
+    # Alice invites Bob. Alice is role='member' but default_invite=True,
+    # and the real owner_type='human' drives _room_owner_is_human() natively.
+    resp = await client.post(
+        f"/hub/rooms/{room_id}/members",
+        json={"agent_id": bob_id},
+        headers=_auth_header(alice_token),
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    member_ids = {m["agent_id"] for m in data["members"]}
+    assert alice_id in member_ids
+    assert bob_id in member_ids

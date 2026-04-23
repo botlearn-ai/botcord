@@ -154,14 +154,20 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
 
   setViewMode: (mode) =>
     set((state) => {
-      // Keep the richer activeIdentity field in-sync with the legacy
-      // viewMode toggle. When switching to "human" we forget the agent
-      // identity; when switching to "agent" we materialize one from the
-      // active agent id (if any).
+      // W1: when switching to "human" without a loaded hu_* id, refuse to
+      // change mode (previously fell back to Supabase UUID, which broke any
+      // hu_*-aware check downstream). Caller should await humansApi.createOrGet()
+      // first. Agent-direction is unchanged.
       let nextIdentity: ActiveIdentity | null = state.activeIdentity;
       if (mode === "human") {
-        const humanId = state.human?.human_id ?? state.user?.id ?? null;
-        nextIdentity = humanId ? { type: "human", id: humanId } : null;
+        const humanId = state.human?.human_id ?? null;
+        if (!humanId) {
+          console.warn(
+            "[SessionStore] setViewMode('human') ignored — no human.human_id loaded yet",
+          );
+          return {};
+        }
+        nextIdentity = { type: "human", id: humanId };
       } else if (mode === "agent") {
         nextIdentity = deriveIdentityFromAgent(state.activeAgentId);
       }

@@ -246,9 +246,12 @@ def _require_membership(room: Room, agent_id: str) -> RoomMember:
     for m in room.members:
         if m.agent_id != agent_id:
             continue
-        # Only match the agent-type row. Pre-Human-first the attribute
-        # does not exist; ``getattr`` default keeps old behaviour.
-        if getattr(m, "participant_type", "agent") != "agent":
+        # Only match the agent-type row. Pre-Human-first the attribute is
+        # absent; legacy rows (and tests that bypass model defaults) can
+        # also leave ``participant_type`` NULL — both count as 'agent'.
+        # Explicit 'human' is still excluded.
+        ptype = getattr(m, "participant_type", None)
+        if ptype is not None and ptype != "agent" and getattr(ptype, "value", None) != "agent":
             continue
         return m
     raise I18nHTTPException(status_code=403, message_key="not_a_member")
