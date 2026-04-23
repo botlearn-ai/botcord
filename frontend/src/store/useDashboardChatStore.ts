@@ -91,6 +91,7 @@ interface DashboardChatState {
   hasMessage: (roomId: string, hubMsgId: string) => boolean;
   applyRealtimeEventHint: (event: RealtimeMetaEvent) => void;
   replaceOverview: (overview: DashboardOverview) => void;
+  patchRoom: (roomId: string, patch: Partial<DashboardRoom>) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
   loadRoomMessages: (roomId: string) => Promise<void>;
@@ -285,6 +286,18 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         set({ overview, overviewRefreshing: false });
         useDashboardUnreadStore.getState().reconcileUnreadRooms(overview.rooms);
       },
+
+      patchRoom: (roomId, patch) =>
+        set((state) => ({
+          overview: state.overview
+            ? {
+              ...state.overview,
+              rooms: state.overview.rooms.map((room) =>
+                room.room_id === roomId ? { ...room, ...patch } : room,
+              ),
+            }
+            : state.overview,
+        })),
 
       loadRoomMessages: async (roomId: string) => {
         if (roomMessagesInFlight.has(roomId)) return;

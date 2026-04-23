@@ -458,6 +458,7 @@ export class BotCordClient {
     max_members?: number;
     default_send?: boolean;
     default_invite?: boolean;
+    allow_human_send?: boolean;
     slow_mode_seconds?: number;
     member_ids?: string[];
   }): Promise<RoomInfo> {
@@ -527,6 +528,7 @@ export class BotCordClient {
       max_members?: number | null;
       default_send?: boolean;
       default_invite?: boolean;
+      allow_human_send?: boolean;
       slow_mode_seconds?: number | null;
     },
   ): Promise<RoomInfo> {

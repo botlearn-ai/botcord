@@ -32,6 +32,32 @@ export interface DashboardRoom {
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;
+  allow_human_send?: boolean;
+}
+
+export interface RoomResponse {
+  room_id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  visibility: string;
+  join_policy?: string;
+  can_invite?: boolean;
+  member_count: number;
+  my_role?: string;
+  rule: string | null;
+  required_subscription_product_id?: string | null;
+  allow_human_send?: boolean;
+  created_at?: string | null;
+}
+
+export interface UpdateRoomBody {
+  name?: string;
+  description?: string;
+  rule?: string | null;
+  visibility?: string;
+  join_policy?: string;
+  allow_human_send?: boolean;
 }
 
 export interface ContactInfo {

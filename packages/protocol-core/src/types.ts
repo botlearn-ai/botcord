@@ -83,6 +83,7 @@ export type RoomInfo = {
   default_send: boolean;
   default_invite?: boolean;
   slow_mode_seconds?: number | null;
+  allow_human_send?: boolean;
   member_count: number;
   created_at: string;
 };

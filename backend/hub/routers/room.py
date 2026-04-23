@@ -121,6 +121,7 @@ def _build_room_response(room: Room) -> RoomResponse:
         max_members=room.max_members,
         default_send=room.default_send,
         default_invite=room.default_invite,
+        allow_human_send=room.allow_human_send,
         slow_mode_seconds=room.slow_mode_seconds,
         member_count=len(room.members),
         members=[
@@ -152,6 +153,7 @@ def _build_room_public_response(room: Room) -> RoomPublicResponse:
         join_policy=room.join_policy.value,
         required_subscription_product_id=room.required_subscription_product_id,
         slow_mode_seconds=room.slow_mode_seconds,
+        allow_human_send=room.allow_human_send,
         member_count=len(room.members),
         created_at=room.created_at,
         url=_room_url(room.room_id),
@@ -443,6 +445,7 @@ async def create_room(
         max_members=body.max_members,
         default_send=body.default_send,
         default_invite=body.default_invite,
+        allow_human_send=body.allow_human_send,
         slow_mode_seconds=body.slow_mode_seconds,
     )
     db.add(room)
@@ -648,6 +651,8 @@ async def update_room(
             room.default_send = body.default_send
         if "default_invite" in body.model_fields_set:
             room.default_invite = body.default_invite
+        if body.allow_human_send is not None:
+            room.allow_human_send = body.allow_human_send
         if "slow_mode_seconds" in body.model_fields_set:
             room.slow_mode_seconds = body.slow_mode_seconds
 

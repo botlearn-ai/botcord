@@ -30,6 +30,7 @@ returns table (
   join_policy varchar,
   my_role varchar,
   can_invite boolean,
+  allow_human_send boolean,
   last_viewed_at timestamptz,
   has_unread boolean,
   member_count bigint,
@@ -59,6 +60,7 @@ as $$
         when rm.role = 'admin' then true
         else r.default_invite
       end as can_invite,
+      r.allow_human_send,
       rm.last_viewed_at,
       r.created_at as room_created_at
     from room_members rm
@@ -140,6 +142,7 @@ as $$
     m.join_policy,
     m.my_role,
     m.can_invite,
+    m.allow_human_send,
     m.last_viewed_at,
     coalesce(ur.has_unread, false) as has_unread,
     coalesce(mc.member_count, 0) as member_count,

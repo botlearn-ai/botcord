@@ -24,6 +24,7 @@ from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent, ver
 from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
 from hub.constants import MIN_PLUGIN_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
+from hub.dashboard_message_shaping import load_user_display_names
 from hub.database import get_db
 from hub.enums import TopicStatus
 from hub.id_generators import generate_hub_msg_id, generate_topic_id
@@ -149,20 +150,30 @@ def build_message_realtime_event(
     mentioned: bool = False,
     payload: dict[str, Any] | None = None,
     sender_name: str | None = None,
+    source_type: str | None = None,
+    source_user_id: str | None = None,
+    source_user_name: str | None = None,
 ) -> dict[str, Any]:
+    ext: dict[str, Any] = {
+        "sender_id": sender_id,
+        "sender_name": sender_name,
+        "topic_id": topic_id,
+        "preview": _message_preview(payload or {}),
+        "mentioned": mentioned,
+    }
+    if source_type is not None:
+        ext["source_type"] = source_type
+    if source_user_id is not None:
+        ext["source_user_id"] = source_user_id
+    if source_user_name is not None:
+        ext["source_user_name"] = source_user_name
     return build_agent_realtime_event(
         type=type,
         agent_id=agent_id,
         room_id=room_id,
         hub_msg_id=hub_msg_id,
         created_at=created_at,
-        ext={
-            "sender_id": sender_id,
-            "sender_name": sender_name,
-            "topic_id": topic_id,
-            "preview": _message_preview(payload or {}),
-            "mentioned": mentioned,
-        },
+        ext=ext,
     )
 
 
@@ -1357,27 +1368,16 @@ async def poll_inbox(
         )
         sender_name_map = dict(sender_result.all())
 
-    # Batch-load dashboard user display names
+    # Batch-load dashboard user display names (owner-chat + human-room rows
+    # store an internal User.id in source_user_id — the shared helper falls
+    # back to supabase_user_id for legacy rows).
     dashboard_user_ids = {
         rec.source_user_id
         for rec in rows
-        if rec.source_type == "dashboard_user_chat" and rec.source_user_id
+        if rec.source_type in ("dashboard_user_chat", "dashboard_human_room")
+        and rec.source_user_id
     }
-    user_name_map: dict[str, str | None] = {}
-    if dashboard_user_ids:
-        dashboard_user_uuids = []
-        for uid in dashboard_user_ids:
-            try:
-                dashboard_user_uuids.append(uuid.UUID(uid))
-            except (ValueError, AttributeError):
-                continue
-        if dashboard_user_uuids:
-            user_result = await db.execute(
-                select(User.supabase_user_id, User.display_name).where(
-                    User.supabase_user_id.in_(dashboard_user_uuids)
-                )
-            )
-            user_name_map = {str(uid): name for uid, name in user_result.all()}
+    user_name_map: dict[str, str | None] = await load_user_display_names(db, dashboard_user_ids)
 
     # Build response
     messages: list[InboxMessage] = []

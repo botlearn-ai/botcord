@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
-import type { DashboardMessage } from "@/lib/types";
+import type { DashboardMessage, PublicRoomMember } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useShallow } from "zustand/react/shallow";
-import MessageComposer from "./MessageComposer";
+import MessageComposer, { type MentionCandidate } from "./MessageComposer";
 
 interface RoomHumanComposerProps {
   roomId: string;
@@ -26,8 +26,10 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
   const loadRoomMessages = useDashboardChatStore((s) => s.loadRoomMessages);
 
   const [error, setError] = useState<string | null>(null);
+  const [members, setMembers] = useState<PublicRoomMember[]>([]);
 
   const displayName = user?.display_name || "You";
+  const isOwnerChat = roomId.startsWith("rm_oc_");
   const activeAgent = activeAgentId
     ? ownedAgents.find((a) => a.agent_id === activeAgentId) ?? null
     : null;
@@ -41,7 +43,28 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
   const senderId = human?.human_id ?? activeAgentId ?? "pending";
   const isObserverMode = viewMode === "agent";
 
-  const handleSend = useCallback(async (text: string) => {
+  useEffect(() => {
+    if (isOwnerChat) { setMembers([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.getRoomMembers(roomId);
+        if (!cancelled) setMembers(res.members);
+      } catch {
+        if (!cancelled) setMembers([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [roomId, isOwnerChat]);
+
+  const mentionCandidates = useMemo<MentionCandidate[]>(() => {
+    if (isOwnerChat) return [];
+    return members
+      .filter((m) => m.agent_id !== activeAgentId)
+      .map((m) => ({ agent_id: m.agent_id, display_name: m.display_name }));
+  }, [members, activeAgentId, isOwnerChat]);
+
+  const handleSend = useCallback(async (text: string, _files: File[], mentions?: string[]) => {
     if (!text) return;
 
     const clientTempId = `tmp_${crypto.randomUUID()}`;
@@ -73,7 +96,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     setError(null);
 
     try {
-      await api.sendRoomHumanMessage(roomId, text);
+      await api.sendRoomHumanMessage(roomId, text, mentions);
       await loadRoomMessages(roomId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send");
@@ -92,6 +115,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
       <MessageComposer
         onSend={handleSend}
         placeholder={placeholder}
+        mentionCandidates={mentionCandidates}
       />
       {error && <p className="text-[11px] text-red-400">{error}</p>}
     </div>
