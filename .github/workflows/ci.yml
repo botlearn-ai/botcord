@@ -219,12 +219,12 @@ jobs:
               });
             }
 
-  # ── Feishu notification (main push only) ─────────────────────────────────────
+  # ── Feishu notification (push + PR) ──────────────────────────────────────────
   notify:
     name: Notify Feishu
     runs-on: self-hosted
     needs: [changes, backend-ci, frontend-ci, packages-ci, deploy-backend-preview, deploy-frontend-preview]
-    if: always() && github.event_name == 'push'
+    if: always()
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
@@ -253,10 +253,10 @@ jobs:
           webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
           title: ${{ steps.status.outputs.title }}
           color: ${{ steps.status.outputs.color }}
-          commit_msg: ${{ github.event.head_commit.message }}
+          commit_msg: ${{ github.event.head_commit.message || github.event.pull_request.title }}
           fields: |
             [
-              {"label": "分支", "value": "main"},
+              {"label": "分支", "value": "${{ github.head_ref || github.ref_name }}"},
               {"label": "触发者", "value": "${{ github.actor }}"},
               {"label": "Commit", "value": "[${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"},
               {"label": "Backend CI", "value": "${{ needs.backend-ci.result }}"},
