@@ -21,8 +21,16 @@
 --    create_all may have created the agents table before unique=True was added.
 -- ---------------------------------------------------------------------------
 
-ALTER TABLE agents
-    ADD CONSTRAINT IF NOT EXISTS uq_agents_agent_id UNIQUE (agent_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'uq_agents_agent_id'
+          AND conrelid = 'agents'::regclass
+    ) THEN
+        ALTER TABLE agents ADD CONSTRAINT uq_agents_agent_id UNIQUE (agent_id);
+    END IF;
+END$$;
 
 -- ---------------------------------------------------------------------------
 -- 1. public.users.human_id
@@ -31,11 +39,10 @@ ALTER TABLE agents
 ALTER TABLE public.users
     ADD COLUMN IF NOT EXISTS human_id VARCHAR(32);
 
--- Backfill existing rows. ``gen_random_bytes`` is the pgcrypto equivalent of
--- ``secrets.token_hex(6)`` used by hub.id_generators.generate_human_id.
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- Backfill existing rows using gen_random_uuid() (built-in, no extension needed).
+-- Take 12 hex chars from a random UUID to match hub.id_generators.generate_human_id format.
 UPDATE public.users
-    SET human_id = 'hu_' || encode(gen_random_bytes(6), 'hex')
+    SET human_id = 'hu_' || substring(replace(gen_random_uuid()::text, '-', ''), 1, 12)
     WHERE human_id IS NULL;
 
 ALTER TABLE public.users

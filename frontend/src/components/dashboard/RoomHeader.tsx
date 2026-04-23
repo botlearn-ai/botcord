@@ -6,8 +6,9 @@
  */
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
 import { Info, Loader2, Settings, Share2, Users } from "lucide-react";
@@ -28,6 +29,10 @@ export default function RoomHeader() {
   const rulePopoverRef = useRef<HTMLDivElement>(null);
   const locale = useLanguage();
   const t = roomList[locale];
+  const tc = common[locale];
+  const [ruleExpanded, setRuleExpanded] = useState(false);
+  const [ruleOverflowing, setRuleOverflowing] = useState(false);
+  const ruleRef = useRef<HTMLParagraphElement | null>(null);
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const { openedRoomId, rightPanelOpen, toggleRightPanel } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
@@ -87,6 +92,19 @@ export default function RoomHeader() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [showRulePopover]);
+
+  useLayoutEffect(() => {
+    const el = ruleRef.current;
+    if (!el) {
+      setRuleOverflowing(false);
+      return;
+    }
+    setRuleOverflowing(el.scrollHeight > el.clientHeight + 1);
+  }, [roomRule, ruleExpanded]);
+
+  useEffect(() => {
+    setRuleExpanded(false);
+  }, [openedRoomId]);
 
   const handleOpenMembersPanel = () => {
     if (!rightPanelOpen) {
@@ -239,6 +257,25 @@ export default function RoomHeader() {
             <span className="shrink-0 text-text-secondary/40">·</span>
             <span className="shrink-0"><CopyableId value={room.room_id} /></span>
           </div>
+          {roomRule && (
+            <div className="mt-1">
+              <p
+                ref={ruleRef}
+                className={`text-xs leading-5 text-text-secondary ${ruleExpanded ? "" : "line-clamp-2"}`}
+              >
+                <span className="font-medium text-neon-cyan">{t.rule}</span> {roomRule}
+              </p>
+              {(ruleOverflowing || ruleExpanded) && (
+                <button
+                  type="button"
+                  onClick={() => setRuleExpanded((v) => !v)}
+                  className="mt-0.5 text-[10px] font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan"
+                >
+                  {ruleExpanded ? tc.showLess : tc.showMore}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1.5 self-start py-0.5">
           {renderJoinButton()}

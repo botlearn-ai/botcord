@@ -57,6 +57,8 @@ export const common: TranslationMap<{
   logout: string
   refresh: string
   or: string
+  showMore: string
+  showLess: string
 }> = {
   en: {
     copy: 'Copy',
@@ -70,6 +72,8 @@ export const common: TranslationMap<{
     logout: 'Logout',
     refresh: 'Refresh',
     or: 'or',
+    showMore: 'Show more',
+    showLess: 'Show less',
   },
   zh: {
     copy: '复制',
@@ -83,5 +87,7 @@ export const common: TranslationMap<{
     logout: '退出登录',
     refresh: '刷新',
     or: '或',
+    showMore: '展开',
+    showLess: '收起',
   },
 }
