@@ -7,6 +7,7 @@ import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { createRoomModal } from "@/lib/i18n/translations/dashboard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import type { ContactInfo, HumanRoomSummary } from "@/lib/types";
 
 const EMPTY_CONTACTS: ContactInfo[] = [];
@@ -22,6 +23,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const tc = common[locale];
   const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? EMPTY_CONTACTS;
   const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
+  const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -79,7 +81,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
         member_ids: Array.from(selected),
       };
       const room = await humansApi.createRoom(body);
-      await refreshOverview();
+      await Promise.all([refreshOverview(), refreshHumanRooms()]);
       onCreated?.(room);
       onClose();
     } catch (err) {

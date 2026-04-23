@@ -9,6 +9,7 @@ import type {
   DashboardMessage,
   DashboardOverview,
   DashboardRoom,
+  HumanRoomSummary,
   PublicRoom,
 } from "@/lib/types";
 import { getActiveAgentId } from "@/lib/api";
@@ -51,17 +52,41 @@ function isOwnerChatRoom(roomId: string): boolean {
   return roomId.startsWith("rm_oc_");
 }
 
+export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
+  return {
+    room_id: r.room_id,
+    name: r.name,
+    description: r.description,
+    owner_id: r.owner_id,
+    visibility: r.visibility,
+    join_policy: r.join_policy,
+    member_count: 0,
+    my_role: r.my_role,
+    rule: null,
+    required_subscription_product_id: null,
+    last_viewed_at: null,
+    has_unread: false,
+    last_message_preview: null,
+    last_message_at: null,
+    last_sender_name: null,
+  };
+}
+
 export function buildVisibleMessageRooms(state: {
   overview: DashboardOverview | null;
   recentVisitedRooms: PublicRoom[];
   token: string | null;
+  humanRooms?: HumanRoomSummary[];
 }): DashboardRoom[] {
   const joinedRooms = (state.overview?.rooms || []).filter((room) => !isOwnerChatRoom(room.room_id));
   const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
   const recentUnjoinedRooms = state.recentVisitedRooms
     .filter((room) => !joinedRoomIds.has(room.room_id) && !isOwnerChatRoom(room.room_id))
     .map(toRoomSummary);
-  const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms].sort((a, b) => {
+  const humanOnlyRooms = (state.humanRooms || [])
+    .filter((r) => !joinedRoomIds.has(r.room_id) && !isOwnerChatRoom(r.room_id))
+    .map(humanRoomToDashboardRoom);
+  const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms, ...humanOnlyRooms].sort((a, b) => {
     const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
     const bTs = b.last_message_at ? Date.parse(b.last_message_at) : 0;
     return bTs - aTs;
