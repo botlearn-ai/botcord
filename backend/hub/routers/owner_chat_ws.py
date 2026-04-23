@@ -6,7 +6,6 @@ import asyncio
 import datetime
 import json
 import logging
-import re
 import time
 import uuid
 from collections import deque
@@ -35,6 +34,7 @@ from hub.routers.hub import (
     notify_inbox,
     build_message_realtime_event,
 )
+from hub.validators import normalize_file_url
 
 import jwt as pyjwt
 
@@ -46,9 +46,6 @@ _WS_HEARTBEAT_INTERVAL = 30  # seconds
 
 # Maximum stream blocks per trace before auto-discarding (W7: unbounded buffer)
 _MAX_STREAM_BLOCKS_PER_TRACE = 200
-
-# Strict regex for attachment URLs — must match /hub/files/f_{id}
-_FILE_URL_RE = re.compile(r"^/hub/files/f_[a-zA-Z0-9_-]+$")
 
 # ---------------------------------------------------------------------------
 # In-memory connection & trace state
@@ -328,21 +325,22 @@ async def owner_chat_ws(ws: WebSocket):
                 text = (msg.get("text") or "").strip()
                 client_msg_id = msg.get("client_msg_id") or None
 
-                # Optional attachments (pre-uploaded via /api/dashboard/upload)
+                # Optional attachments (pre-uploaded via /api/dashboard/upload).
+                # URLs are normalized to absolute `HUB_PUBLIC_BASE_URL + /hub/files/f_*`;
+                # arbitrary external hosts are rejected.
                 raw_atts = msg.get("attachments") or []
                 attachments: list[dict] = []
                 skipped_atts = 0
                 for att in raw_atts[:10]:
                     if isinstance(att, dict) and att.get("url") and att.get("filename"):
-                        url_str = str(att["url"])
-                        # Only allow /hub/files/f_* URLs — reject arbitrary external links
-                        if not _FILE_URL_RE.match(url_str):
+                        normalized = normalize_file_url(str(att["url"]))
+                        if normalized is None:
                             skipped_atts += 1
                             continue
                         attachments.append({
                             k: v for k, v in {
                                 "filename": str(att["filename"])[:200],
-                                "url": url_str,
+                                "url": normalized,
                                 "content_type": str(att["content_type"]) if att.get("content_type") else None,
                                 "size_bytes": att.get("size_bytes") if isinstance(att.get("size_bytes"), int) else None,
                             }.items() if v is not None

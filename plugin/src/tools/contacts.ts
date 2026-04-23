@@ -31,7 +31,7 @@ export function createContactsTool() {
         },
         agent_id: {
           type: "string" as const,
-          description: "Agent ID (ag_...) — for remove, send_request, block, unblock",
+          description: "Participant ID (ag_... agent or hu_... human) — for remove, send_request, block, unblock",
         },
         message: {
           type: "string" as const,
@@ -60,8 +60,16 @@ export function createContactsTool() {
     execute: async (toolCallId: any, args: any, signal?: any, onUpdate?: any) => {
       return withClient(async (client) => {
         switch (args.action) {
-          case "list":
-            return { contacts: await client.listContacts() };
+          case "list": {
+            const raw = await client.listContacts();
+            const contacts = Array.isArray(raw)
+              ? raw.map((c: any) => ({
+                  ...c,
+                  kind: typeof c.contact_agent_id === "string" && c.contact_agent_id.startsWith("hu_") ? "human" : "agent",
+                }))
+              : raw;
+            return { contacts };
+          }
 
           case "remove":
             if (!args.agent_id) return validationError("agent_id is required");

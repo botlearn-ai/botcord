@@ -331,8 +331,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           if (!existing || existing.length === 0) {
             await get().loadRoomMessages(roomId);
           } else {
-            const newest = existing[existing.length - 1];
-            const result = await api.getRoomMessages(roomId, { after: newest.hub_msg_id, limit: 50 });
+            const newestPersisted = [...existing].reverse().find(
+              (m) => m.hub_msg_id && !m.hub_msg_id.startsWith("tmp_"),
+            );
+            if (!newestPersisted) {
+              await get().loadRoomMessages(roomId);
+              return;
+            }
+            const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50 });
             if (result.messages.length > 0) {
               const newMsgs = result.messages.reverse();
               set((state) => {

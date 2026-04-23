@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from typing import Any
 from collections import defaultdict, deque
 
@@ -23,11 +24,13 @@ from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent, ver
 from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
 from hub.constants import MIN_PLUGIN_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
+from hub.dashboard_message_shaping import load_user_display_names
 from hub.database import get_db
 from hub.enums import TopicStatus
 from hub.id_generators import generate_hub_msg_id, generate_topic_id
 from hub.models import (
     Agent,
+    AgentApprovalQueue,
     Block,
     Contact,
     ContactRequest,
@@ -44,6 +47,7 @@ from hub.models import (
     Topic,
     User,
 )
+from hub.enums import ApprovalKind, ApprovalState
 from hub.forward import (
     RoomContext as _RoomContext,
     build_flat_text as _build_flat_text,
@@ -146,20 +150,30 @@ def build_message_realtime_event(
     mentioned: bool = False,
     payload: dict[str, Any] | None = None,
     sender_name: str | None = None,
+    source_type: str | None = None,
+    source_user_id: str | None = None,
+    source_user_name: str | None = None,
 ) -> dict[str, Any]:
+    ext: dict[str, Any] = {
+        "sender_id": sender_id,
+        "sender_name": sender_name,
+        "topic_id": topic_id,
+        "preview": _message_preview(payload or {}),
+        "mentioned": mentioned,
+    }
+    if source_type is not None:
+        ext["source_type"] = source_type
+    if source_user_id is not None:
+        ext["source_user_id"] = source_user_id
+    if source_user_name is not None:
+        ext["source_user_name"] = source_user_name
     return build_agent_realtime_event(
         type=type,
         agent_id=agent_id,
         room_id=room_id,
         hub_msg_id=hub_msg_id,
         created_at=created_at,
-        ext={
-            "sender_id": sender_id,
-            "sender_name": sender_name,
-            "topic_id": topic_id,
-            "preview": _message_preview(payload or {}),
-            "mentioned": mentioned,
-        },
+        ext=ext,
     )
 
 
@@ -230,6 +244,61 @@ async def _publish_agent_realtime_event(
             exc,
             exc_info=True,
         )
+
+
+async def _collect_presence_observers(
+    db: AsyncSession, agent_id: str
+) -> set[str]:
+    """Return agent_ids who should be notified when `agent_id` goes on/offline.
+
+    Observers = contacts (owners who have this agent as contact) + co-members
+    of any shared room. The agent itself is excluded.
+    """
+    observers: set[str] = set()
+
+    contact_rows = await db.execute(
+        select(Contact.owner_id).where(Contact.contact_agent_id == agent_id)
+    )
+    observers.update(contact_rows.scalars().all())
+
+    room_ids_stmt = select(RoomMember.room_id).where(RoomMember.agent_id == agent_id)
+    comember_rows = await db.execute(
+        select(RoomMember.agent_id).where(RoomMember.room_id.in_(room_ids_stmt))
+    )
+    observers.update(comember_rows.scalars().all())
+
+    observers.discard(agent_id)
+    return observers
+
+
+async def broadcast_presence(agent_id: str, online: bool) -> None:
+    """Fan out a presence event to the agent + all observers (contacts, co-members)."""
+    from hub.database import async_session
+
+    event_time = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        async with async_session() as db:
+            observers = await _collect_presence_observers(db, agent_id)
+            targets = observers | {agent_id}
+            for target in targets:
+                event = build_agent_realtime_event(
+                    type="presence",
+                    agent_id=target,
+                    ext={
+                        "subject_agent_id": agent_id,
+                        "online": online,
+                    },
+                    created_at=event_time,
+                )
+                try:
+                    await _publish_agent_realtime_event(db, event)
+                except Exception as exc:
+                    logger.warning(
+                        "presence publish failed subject=%s target=%s err=%s",
+                        agent_id, target, exc,
+                    )
+    except Exception as exc:
+        logger.error("broadcast_presence failed subject=%s err=%s", agent_id, exc, exc_info=True)
 
 
 async def notify_inbox(
@@ -561,14 +630,34 @@ async def _send_direct_message(
             elif existing_req.state == ContactRequestState.accepted:
                 raise I18nHTTPException(status_code=409, message_key="contact_request_already_accepted")
         else:
-            cr = ContactRequest(
-                from_agent_id=envelope.from_,
-                to_agent_id=envelope.to,
-                state=ContactRequestState.pending,
-                message=envelope.payload.get("message"),
+            # Check if target agent is claimed; if so, queue for owner approval
+            target_agent_result = await db.execute(
+                select(Agent).where(Agent.agent_id == envelope.to)
             )
-            db.add(cr)
-            await db.flush()
+            target_agent = target_agent_result.scalar_one_or_none()
+            if target_agent is not None and target_agent.user_id is not None:
+                import json as _json
+                db.add(AgentApprovalQueue(
+                    agent_id=envelope.to,
+                    owner_user_id=target_agent.user_id,
+                    kind=ApprovalKind.contact_request,
+                    payload_json=_json.dumps({
+                        "from_participant_id": envelope.from_,
+                        "message": envelope.payload.get("message"),
+                        "msg_id": envelope.msg_id,
+                    }),
+                    state=ApprovalState.pending,
+                ))
+                await db.flush()
+            else:
+                cr = ContactRequest(
+                    from_agent_id=envelope.from_,
+                    to_agent_id=envelope.to,
+                    state=ContactRequestState.pending,
+                    message=envelope.payload.get("message"),
+                )
+                db.add(cr)
+                await db.flush()
 
     # Resolve room_id: contact_request messages don't create a DM room
     room_id: str | None = None
@@ -1280,30 +1369,15 @@ async def poll_inbox(
         sender_name_map = dict(sender_result.all())
 
     # Batch-load dashboard user display names (owner-chat + human-room rows
-    # both store the Supabase user UUID in source_user_id).
+    # store an internal User.id in source_user_id — the shared helper falls
+    # back to supabase_user_id for legacy rows).
     dashboard_user_ids = {
         rec.source_user_id
         for rec in rows
         if rec.source_type in ("dashboard_user_chat", "dashboard_human_room")
         and rec.source_user_id
     }
-    user_name_map: dict[str, str | None] = {}
-    if dashboard_user_ids:
-        # supabase_user_id column is Uuid — coerce strings before comparison.
-        import uuid as _uuid_mod
-        uuid_ids: list[_uuid_mod.UUID] = []
-        for s in dashboard_user_ids:
-            try:
-                uuid_ids.append(_uuid_mod.UUID(str(s)))
-            except (ValueError, TypeError):
-                continue
-        if uuid_ids:
-            user_result = await db.execute(
-                select(User.supabase_user_id, User.display_name).where(
-                    User.supabase_user_id.in_(uuid_ids)
-                )
-            )
-            user_name_map = {str(uid): name for uid, name in user_result.all()}
+    user_name_map: dict[str, str | None] = await load_user_display_names(db, dashboard_user_ids)
 
     # Build response
     messages: list[InboxMessage] = []
@@ -1761,9 +1835,13 @@ async def websocket_inbox(ws: WebSocket):
         logger.info("WebSocket connected: agent=%s plugin_version=%s", agent_id, plugin_version)
 
         # --- Register this connection ---
+        was_offline = agent_id not in _ws_connections or not _ws_connections[agent_id]
         if agent_id not in _ws_connections:
             _ws_connections[agent_id] = set()
         _ws_connections[agent_id].add(ws)
+        # Edge: offline -> online, fan out presence
+        if was_offline:
+            asyncio.create_task(broadcast_presence(agent_id, True))
 
         # --- Main loop: heartbeat + listen for client messages ---
         # Track consecutive heartbeats without any client response to detect
@@ -1801,7 +1879,11 @@ async def websocket_inbox(ws: WebSocket):
         # --- Cleanup ---
         if agent_id:
             ws_set = _ws_connections.get(agent_id)
+            went_offline = False
             if ws_set:
                 ws_set.discard(ws)
                 if not ws_set:
                     _ws_connections.pop(agent_id, None)
+                    went_offline = True
+            if went_offline:
+                asyncio.create_task(broadcast_presence(agent_id, False))

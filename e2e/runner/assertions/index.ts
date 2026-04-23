@@ -30,6 +30,8 @@ import {
   assertRoomCreatorIsMember,
   assertRoomMemberExists,
   assertContactRelationshipExists,
+  assertApprovalQueueEntryExists,
+  assertContactApproved,
 } from "./database.js";
 import { assertAgentRegistered, assertClaimUrlAccessible } from "./hub-state.js";
 import {
@@ -93,6 +95,8 @@ const ASSERTION_REGISTRY: Record<string, SyncAssertionFn | AsyncAssertionFn> = {
   "db.room_creator_is_member": (inst, ev, env) => assertRoomCreatorIsMember(inst, ev, env),
   "db.room_member_exists": (inst, ev, env) => assertRoomMemberExists(inst, ev, env),
   "db.contact_relationship_exists": (inst, ev, env) => assertContactRelationshipExists(inst, ev, env),
+  "db.approval_queue_entry_exists": (inst, ev, env) => assertApprovalQueueEntryExists(inst, ev, env),
+  "db.contact_approved": (inst, ev, env) => assertContactApproved(inst, ev, env),
 
   // ── Hub API ─────────────────────────────────────────────────────
   "hub.agent_registered": (inst, ev, env) => assertAgentRegistered(inst, ev, env),

@@ -1,184 +1,102 @@
-name: Deploy Backend
+name: Deploy Backend (reusable)
 
+# Reusable backend deploy — called by ci.yml (preview) and release.yml (prod).
+# Builds Docker image, pushes to ECR, restarts the appropriate runtime.
 on:
-  push:
-    branches: ["main", "release"]
-  pull_request:
-    branches: ["main"]
-    paths:
-      - "backend/**"
   workflow_call:
     inputs:
-      env_override:
-        description: "Override environment name (test/preview/prod)"
+      env_name:
+        description: 'Target environment: preview | prod'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to checkout (default: current SHA)'
         required: false
         type: string
-  workflow_dispatch:
+        default: ''
+    outputs:
+      image_tag:
+        description: 'ECR image tag pushed'
+        value: ${{ jobs.deploy.outputs.image_tag }}
 
 env:
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   PROJECT: botcord-backend
 
 jobs:
-  setup:
-    runs-on: self-hosted
-    outputs:
-      env_name: ${{ steps.set-env.outputs.env_name }}
-    steps:
-      - name: Determine environment
-        id: set-env
-        run: |
-          if [ -n "${{ inputs.env_override }}" ]; then
-            echo "env_name=${{ inputs.env_override }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "env_name=test" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref_name }}" = "release" ]; then
-            echo "env_name=prod" >> $GITHUB_OUTPUT
-          else
-            echo "env_name=preview" >> $GITHUB_OUTPUT
-          fi
-
+  # ── Build + push docker image ────────────────────────────────────────────────
   deploy:
-    needs: setup
+    name: Build & Push
     runs-on: self-hosted
-    env:
-      ENV_NAME: ${{ needs.setup.outputs.env_name }}
+    timeout-minutes: 20
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Build docker image
+        id: build
         run: |
-          echo "Branch: ${{ github.head_ref || github.ref_name }}, Project: $PROJECT, Env: $ENV_NAME"
-          if [ -f "backend/Dockerfile" ]; then
-            docker build -f backend/Dockerfile -t $PROJECT:$ENV_NAME backend/
-          else
-            echo "No Dockerfile found, skipping build."
-            exit 0
+          ENV_NAME="${{ inputs.env_name }}"
+          if [ ! -f "backend/Dockerfile" ]; then
+            echo "❌ backend/Dockerfile missing" >&2
+            exit 1
           fi
+          docker build -f backend/Dockerfile -t $PROJECT:$ENV_NAME backend/
+          echo "image_tag=$ENV_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Built $PROJECT:$ENV_NAME"
 
-      - name: Push docker image to ECR
+      - name: Push to ECR
         run: |
-          if [ -f "backend/Dockerfile" ]; then
-            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
-            docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
-            docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
-          fi
+          ENV_NAME="${{ inputs.env_name }}"
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
+          docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
+          echo "✅ Pushed $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME"
 
-  restart:
-    needs: [setup, deploy]
-    if: needs.setup.outputs.env_name != 'prod'
+  # ── Restart preview (docker-compose) ─────────────────────────────────────────
+  restart-preview:
+    name: Restart Preview
+    needs: [deploy]
+    if: inputs.env_name == 'preview'
     runs-on: self-hosted
+    timeout-minutes: 10
     env:
-      ENV_NAME: ${{ needs.setup.outputs.env_name }}
+      PROJECT: botcord-backend
     steps:
-      - name: Restart service
+      - name: docker compose down/up
         run: |
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-$ENV_NAME/docker-compose.yaml down
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-$ENV_NAME/docker-compose.yaml up -d
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-preview/docker-compose.yaml down
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-preview/docker-compose.yaml up -d
+          echo "✅ Preview restarted"
 
+  # ── Rollout prod (k8s) ───────────────────────────────────────────────────────
   restart-prod:
-    needs: [setup, deploy]
-    if: needs.setup.outputs.env_name == 'prod'
+    name: Rollout Production
+    needs: [deploy]
+    if: inputs.env_name == 'prod'
     runs-on: self-hosted
+    timeout-minutes: 15
+    env:
+      PROJECT: botcord-backend
     steps:
       - name: Apply k8s config
         run: kubectl apply -f ${{ secrets.K8S_PROD_CONFIG }}
 
       - name: Rollout restart
-        run: kubectl rollout restart deployment/${{ env.PROJECT }} -n prod
+        run: kubectl rollout restart deployment/$PROJECT -n prod
 
       - name: Wait for rollout
         run: |
-          if ! kubectl rollout status deployment/${{ env.PROJECT }} -n prod --timeout=300s; then
-            echo "Rollout timed out"
+          if ! kubectl rollout status deployment/$PROJECT -n prod --timeout=300s; then
+            echo "❌ Rollout timed out"
             exit 1
           fi
+          echo "✅ Rollout complete"
 
       - name: Check pod status
         run: |
-          kubectl get pods -n prod -l app=${{ env.PROJECT }}
-          kubectl logs -n prod -l app=${{ env.PROJECT }} --tail=20 || true
-
-  report:
-    needs: [setup, deploy, restart, restart-prod]
-    if: always()
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Prepare notification data
-        id: notify-data
-        env:
-          ENV_NAME: ${{ needs.setup.outputs.env_name }}
-          DEPLOY_RESULT: ${{ needs.deploy.result }}
-          RESTART_RESULT: ${{ needs.restart.result }}
-          RESTART_PROD_RESULT: ${{ needs.restart-prod.result }}
-        run: |
-          if [ "$ENV_NAME" = "prod" ]; then
-            if [ "$DEPLOY_RESULT" = "success" ] && [ "$RESTART_PROD_RESULT" = "success" ]; then
-              EFFECTIVE_RESULT="success"
-            elif [ "$DEPLOY_RESULT" = "failure" ] || [ "$RESTART_PROD_RESULT" = "failure" ]; then
-              EFFECTIVE_RESULT="failure"
-            else
-              EFFECTIVE_RESULT="$DEPLOY_RESULT"
-            fi
-          elif [ "$DEPLOY_RESULT" = "success" ] && [ "$RESTART_RESULT" = "success" ]; then
-            EFFECTIVE_RESULT="success"
-          elif [ "$DEPLOY_RESULT" = "failure" ] || [ "$RESTART_RESULT" = "failure" ]; then
-            EFFECTIVE_RESULT="failure"
-          elif [ "$DEPLOY_RESULT" = "skipped" ] || [ "$RESTART_RESULT" = "skipped" ]; then
-            EFFECTIVE_RESULT="skipped"
-          else
-            EFFECTIVE_RESULT="cancelled"
-          fi
-
-          if [ "$EFFECTIVE_RESULT" = "success" ]; then
-            echo "status_icon=✅" >> $GITHUB_OUTPUT
-            echo "status_text=成功" >> $GITHUB_OUTPUT
-            echo "status_color=green" >> $GITHUB_OUTPUT
-            echo "status_desc=部署成功" >> $GITHUB_OUTPUT
-          elif [ "$EFFECTIVE_RESULT" = "failure" ]; then
-            echo "status_icon=❌" >> $GITHUB_OUTPUT
-            echo "status_text=失败" >> $GITHUB_OUTPUT
-            echo "status_color=red" >> $GITHUB_OUTPUT
-            echo "status_desc=部署失败" >> $GITHUB_OUTPUT
-          elif [ "$EFFECTIVE_RESULT" = "skipped" ]; then
-            echo "status_icon=⏭️" >> $GITHUB_OUTPUT
-            echo "status_text=跳过" >> $GITHUB_OUTPUT
-            echo "status_color=grey" >> $GITHUB_OUTPUT
-            echo "status_desc=部署已跳过" >> $GITHUB_OUTPUT
-          else
-            echo "status_icon=⚠️" >> $GITHUB_OUTPUT
-            echo "status_text=已取消" >> $GITHUB_OUTPUT
-            echo "status_color=orange" >> $GITHUB_OUTPUT
-            echo "status_desc=部署已取消" >> $GITHUB_OUTPUT
-          fi
-
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s%n%n%b" | sed '/^$/d')
-          EOF_MARKER="EOF_$(date +%s)"
-          echo "commit_msg<<$EOF_MARKER" >> $GITHUB_OUTPUT
-          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo "$EOF_MARKER" >> $GITHUB_OUTPUT
-
-      - name: Send Feishu notification
-        if: always()
-        uses: ./.github/actions/feishu-notify
-        with:
-          webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          title: '${{ steps.notify-data.outputs.status_icon }}「BotCord Hub」Deploy (${{ needs.setup.outputs.env_name }}) - ${{ steps.notify-data.outputs.status_text }}'
-          color: ${{ steps.notify-data.outputs.status_color }}
-          fields: |
-            [
-              {"label": "环境", "value": "${{ needs.setup.outputs.env_name }}"},
-              {"label": "状态", "value": "${{ steps.notify-data.outputs.status_desc }}"},
-              {"label": "分支", "value": "${{ github.head_ref || github.ref_name }}"},
-              {"label": "提交", "value": "[${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"},
-              {"label": "触发者", "value": "${{ github.actor }}"}
-            ]
-          commit_msg: ${{ steps.notify-data.outputs.commit_msg }}
-          buttons: |
-            [
-              {"text": "查看详情", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"}
-            ]
+          kubectl get pods -n prod -l app=$PROJECT
+          kubectl logs -n prod -l app=$PROJECT --tail=20 || true

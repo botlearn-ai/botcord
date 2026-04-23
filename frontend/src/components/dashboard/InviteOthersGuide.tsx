@@ -7,7 +7,7 @@
 
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
@@ -30,6 +30,10 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
   const [shareData, setShareData] = useState<CreateShareResponse | InvitePreviewResponse | null>(null);
   const [promptError, setPromptError] = useState<string | null>(null);
   const [isPreparingPrompt, setIsPreparingPrompt] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const promptRef = useRef<HTMLDivElement | null>(null);
+  const COLLAPSED_MAX_PX = 120;
 
   const needsInviteLink = visibility === "private";
 
@@ -90,6 +94,12 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
     });
   }, [isPreparingPrompt, locale, promptError, roomName, shareData, t.preparingPrompt, t.promptUnavailable]);
 
+  useLayoutEffect(() => {
+    const el = promptRef.current;
+    if (!el) return;
+    setIsOverflowing(el.scrollHeight > COLLAPSED_MAX_PX + 1);
+  }, [combinedPrompt]);
+
   const handleCopy = () => {
     if (!shareData || typeof navigator === "undefined" || !navigator.clipboard) return;
     navigator.clipboard.writeText(combinedPrompt).then(() => {
@@ -148,10 +158,28 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
       </div>
 
       <div className="group relative overflow-hidden rounded border border-glass-border/50 bg-deep-black-light/50">
-        <div className="bg-deep-black/30 p-2.5 font-mono text-[10px] leading-relaxed text-text-secondary/80 whitespace-pre-wrap break-all">
+        <div
+          ref={promptRef}
+          className="overflow-hidden bg-deep-black/30 p-2.5 font-mono text-[10px] leading-relaxed text-text-secondary/80 whitespace-pre-wrap break-all transition-[max-height] duration-200"
+          style={{ maxHeight: !expanded && isOverflowing ? `${COLLAPSED_MAX_PX}px` : "none" }}
+        >
           <span className="text-text-primary/90">{combinedPrompt}</span>
         </div>
+        {isOverflowing && !expanded && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-deep-black/80 to-transparent" />
+        )}
       </div>
+      {isOverflowing && (
+        <div className="mt-1.5 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[10px] font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan"
+          >
+            {expanded ? tc.showLess : tc.showMore}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

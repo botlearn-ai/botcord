@@ -24,6 +24,7 @@ from hub.expiry import message_expiry_loop
 from hub.subscription_billing import subscription_billing_loop
 from hub.version_poll import version_poll_loop
 from hub.routers.contact_requests import router as contact_requests_router
+from hub.routers.daemon_control import router as daemon_control_router
 from hub.routers.contacts import router as contacts_router
 from hub.routers.dashboard import router as dashboard_router
 from hub.routers.dashboard import share_public_router
@@ -47,6 +48,7 @@ from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
 from hub.storage import storage_requires_local_disk
 
+from app.routers.humans import router as app_humans_router
 from app.routers.users import router as app_users_router
 from app.routers.dashboard import router as app_dashboard_router
 from app.routers.invites import router as app_invites_router
@@ -240,6 +242,7 @@ app.include_router(share_public_router)
 app.include_router(app_users_router)
 # Product routers: gated by beta_access
 _beta_gate = [Depends(require_beta_user)]
+app.include_router(app_humans_router, dependencies=_beta_gate)
 app.include_router(app_activity_router, dependencies=_beta_gate)
 app.include_router(app_dashboard_router, dependencies=_beta_gate)
 app.include_router(app_invites_router)
@@ -251,3 +254,4 @@ app.include_router(app_subscriptions_router, dependencies=_beta_gate)
 app.include_router(app_beta_router)
 app.include_router(app_admin_beta_router)
 app.include_router(app_prompts_router)
+app.include_router(daemon_control_router)

@@ -17,6 +17,34 @@ function extractFilename(url: string): string {
   }
 }
 
+const FILE_PATH_RE = /^\/hub\/files\/f_[a-zA-Z0-9_-]+$/;
+
+/**
+ * Normalize an attachment URL supplied by the LLM.
+ *
+ * - If the URL path is `/hub/files/f_*`, rewrite the host to the plugin's
+ *   configured `hubUrl`. This defeats host hallucinations (e.g. the model
+ *   emitting `https://api.test.botcord.chat/hub/files/...` when running on
+ *   stable) by anchoring every hub file URL to the account's actual hub.
+ * - External URLs (non `/hub/files/*`) are passed through unchanged.
+ * - Relative `/hub/files/f_*` paths are promoted to absolute against hubUrl.
+ */
+function normalizeAttachmentUrl(url: string, hubUrl: string): string {
+  const base = hubUrl.replace(/\/$/, "");
+  let path: string;
+  try {
+    const parsed = new URL(url, base);
+    path = parsed.pathname;
+    if (!FILE_PATH_RE.test(path)) {
+      // Not a hub file URL — leave unchanged so arbitrary external links still work.
+      return url;
+    }
+  } catch {
+    return url;
+  }
+  return `${base}${path}`;
+}
+
 /** Guess MIME type from file extension. */
 function guessMimeType(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase();
@@ -156,10 +184,14 @@ export function createMessagingTool() {
           attachments.push(...uploaded);
         }
 
-        // Add pre-existing URL attachments
+        // Add pre-existing URL attachments. Hub file URLs are anchored to the
+        // plugin's own hubUrl to prevent host hallucinations from leaking into
+        // the envelope.
         if (args.file_urls && args.file_urls.length > 0) {
+          const hubUrl = client.getHubUrl();
           for (const url of args.file_urls) {
-            attachments.push({ filename: extractFilename(url), url });
+            const normalized = normalizeAttachmentUrl(url, hubUrl);
+            attachments.push({ filename: extractFilename(normalized), url: normalized });
           }
         }
 

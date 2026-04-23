@@ -1,0 +1,110 @@
+name: Deploy Frontend (reusable)
+
+# Reusable Next.js/Vercel deploy — called by ci.yml (preview) and release.yml (prod).
+on:
+  workflow_call:
+    inputs:
+      env_name:
+        description: 'Target environment: preview | prod'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to checkout (default: current SHA)'
+        required: false
+        type: string
+        default: ''
+      alias:
+        description: 'Optional alias domain for the deployment (e.g. preview.botcord.chat)'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      deploy_url:
+        description: 'Vercel deployment URL'
+        value: ${{ jobs.deploy.outputs.deploy_url }}
+
+jobs:
+  deploy:
+    name: Vercel Deploy
+    runs-on: self-hosted
+    timeout-minutes: 20
+    outputs:
+      deploy_url: ${{ steps.deploy.outputs.deploy_url }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: '9'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Vercel CLI
+        run: pnpm add -g vercel@latest
+
+      - name: Pull Vercel env
+        working-directory: ${{ github.workspace }}
+        run: |
+          ENV_FLAG="preview"
+          if [ "${{ inputs.env_name }}" = "prod" ]; then ENV_FLAG="production"; fi
+          vercel pull --yes --environment=$ENV_FLAG --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v5
+        with:
+          path: frontend/.next/cache
+          key: nextjs-${{ inputs.env_name }}-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-${{ hashFiles('frontend/**/*.ts', 'frontend/**/*.tsx', 'frontend/**/*.scss') }}
+          restore-keys: |
+            nextjs-${{ inputs.env_name }}-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-
+            nextjs-${{ inputs.env_name }}-${{ runner.os }}-
+
+      - name: Vercel build
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ "${{ inputs.env_name }}" = "prod" ]; then
+            vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            vercel build --token=${{ secrets.VERCEL_TOKEN }}
+          fi
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Vercel deploy
+        id: deploy
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ "${{ inputs.env_name }}" = "prod" ]; then
+            URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          else
+            URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          fi
+          echo "deploy_url=$URL" >> $GITHUB_OUTPUT
+          echo "✅ Deployed: $URL"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Alias deployment
+        if: inputs.alias != ''
+        working-directory: ${{ github.workspace }}
+        run: |
+          vercel alias ${{ steps.deploy.outputs.deploy_url }} ${{ inputs.alias }} --token=${{ secrets.VERCEL_TOKEN }}
+          echo "✅ Aliased to ${{ inputs.alias }}"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

@@ -14,6 +14,15 @@ def generate_agent_id(pubkey_b64: str) -> str:
     return "ag_" + digest[:12]
 
 
+def generate_human_id() -> str:
+    """Generate human_id: 'hu_' + 12 random hex chars.
+
+    Matches the length/shape of ag_* so the two can coexist in a single
+    participant_id column without format-driven ambiguity beyond the prefix.
+    """
+    return "hu_" + secrets.token_hex(6)
+
+
 def generate_key_id() -> str:
     """Generate key_id: 'k_' + 12 random hex chars."""
     return "k_" + secrets.token_hex(6)
@@ -87,3 +96,22 @@ def generate_subscription_charge_attempt_id() -> str:
 def generate_join_request_id() -> str:
     """Generate room join request ID: 'jr_' + 16 random hex chars."""
     return "jr_" + secrets.token_hex(8)
+
+
+def generate_daemon_instance_id() -> str:
+    """Generate daemon instance ID: 'dm_' + 12 random hex chars."""
+    return "dm_" + secrets.token_hex(6)
+
+
+def generate_daemon_device_code() -> str:
+    """Generate device-code secret: 'dc_' + 32 random hex chars."""
+    return "dc_" + secrets.token_hex(16)
+
+
+_USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # avoid I, O, 0, 1
+
+
+def generate_daemon_user_code() -> str:
+    """Generate human-friendly user code: ``XXXX-XXXX`` from a no-confusing alphabet."""
+    raw = "".join(secrets.choice(_USER_CODE_ALPHABET) for _ in range(8))
+    return f"{raw[:4]}-{raw[4:]}"

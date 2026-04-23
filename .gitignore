@@ -1,6 +1,7 @@
 .claude
 .vercel
 
+node_modules/
 # env files: ignore all, but keep example templates
 .env*
 !.env.example
@@ -27,3 +28,4 @@ packages/protocol-core/dist/
 packages/protocol-core/tsconfig.tsbuildinfo
 
 .DS_Store
+.omx/

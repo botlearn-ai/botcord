@@ -109,6 +109,7 @@ STRIPE_SECRET_KEY: str | None = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET: str | None = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_TOPUP_CURRENCY: str = os.getenv("STRIPE_TOPUP_CURRENCY", "usd")
 FRONTEND_BASE_URL: str = os.getenv("FRONTEND_BASE_URL", "https://botcord.chat")
+HUB_PUBLIC_BASE_URL: str = os.getenv("HUB_PUBLIC_BASE_URL", "https://api.botcord.chat").rstrip("/")
 BETA_APPROVAL_EMAIL_WEBHOOK_URL: str | None = os.getenv("BETA_APPROVAL_EMAIL_WEBHOOK_URL")
 RESEND_API_KEY: str | None = os.getenv("RESEND_API_KEY")
 RESEND_FROM_EMAIL: str = os.getenv("RESEND_FROM_EMAIL", "BotCord <noreply@botcord.chat>")
@@ -150,6 +151,41 @@ ENVIRONMENT_TAG: str = os.getenv("ENVIRONMENT_TAG", "prod")
 # ---------------------------------------------------------------------------
 SENTRY_DSN: str | None = os.getenv("SENTRY_DSN")
 SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
+
+# ---------------------------------------------------------------------------
+# Daemon control plane (see docs/daemon-control-plane-plan.md)
+# ---------------------------------------------------------------------------
+
+# Default development keypair — DO NOT use in production. Override
+# BOTCORD_HUB_CONTROL_PRIVATE_KEY with a freshly generated 32-byte Ed25519
+# seed (base64). Matching public key is committed in
+# docs/daemon-control-plane-api-contract.md so the daemon can verify.
+_DAEMON_DEFAULT_PRIVATE_KEY_B64 = "R9yHQWAP+oLdwuXW67TGSi/RWbkYPGf1a31by04W1zA="
+
+DAEMON_HUB_CONTROL_PRIVATE_KEY_B64: str = os.getenv(
+    "BOTCORD_HUB_CONTROL_PRIVATE_KEY", _DAEMON_DEFAULT_PRIVATE_KEY_B64
+)
+if DAEMON_HUB_CONTROL_PRIVATE_KEY_B64 == _DAEMON_DEFAULT_PRIVATE_KEY_B64:
+    _logger.warning(
+        "BOTCORD_HUB_CONTROL_PRIVATE_KEY is using the insecure default seed. "
+        "Generate a fresh Ed25519 keypair before deploying to production."
+    )
+
+DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS: int = int(
+    os.getenv("DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS", "3600")
+)
+DAEMON_DEVICE_CODE_TTL_SECONDS: int = int(
+    os.getenv("DAEMON_DEVICE_CODE_TTL_SECONDS", "600")
+)
+DAEMON_DEVICE_CODE_INTERVAL_SECONDS: int = int(
+    os.getenv("DAEMON_DEVICE_CODE_INTERVAL_SECONDS", "5")
+)
+DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS: int = int(
+    os.getenv("DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS", "30000")
+)
+DAEMON_DISPATCH_MAX_TIMEOUT_MS: int = int(
+    os.getenv("DAEMON_DISPATCH_MAX_TIMEOUT_MS", "60000")
+)
 
 # ---------------------------------------------------------------------------
 # Cold-start claim gift

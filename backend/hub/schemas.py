@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
+from hub.config import HUB_PUBLIC_BASE_URL
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ContactRequestState,
     ErrorCode,
@@ -62,13 +63,17 @@ class MessageEnvelope(BaseModel):
         if self.type == MessageType.message:
             text = p.get("text") or p.get("body") or p.get("message")
             body = text if text else json.dumps(p, ensure_ascii=False)
-            # Append file attachment info if present
+            # Append file attachment info if present. URLs stored as relative
+            # paths (legacy records) are rendered as absolute using the hub's
+            # public base URL so agents receive a directly-fetchable link.
             attachments = p.get("attachments", [])
             if attachments:
                 att_lines = []
                 for att in attachments:
                     name = att.get("filename", "file")
                     url = att.get("url", "")
+                    if url.startswith("/"):
+                        url = f"{HUB_PUBLIC_BASE_URL}{url}"
                     size = att.get("size_bytes")
                     size_str = f", {size} bytes" if size else ""
                     att_lines.append(f"  📎 {name}{size_str}: {url}")
@@ -275,6 +280,7 @@ class ResolveResponse(BaseModel):
     is_bound: bool = False
     has_endpoint: bool
     endpoints: list[ResolveEndpointInfo]
+    online: bool = False
 
     # Backward compatibility: also emit deprecated "is_claimed" key
     @model_serializer(mode="wrap")
@@ -386,6 +392,7 @@ class ContactResponse(BaseModel):
     bio: str | None = None
     alias: str | None = None
     created_at: datetime.datetime
+    online: bool = False
 
 
 class ContactListResponse(BaseModel):
@@ -501,6 +508,7 @@ class RoomMemberResponse(BaseModel):
     can_send: bool | None = None
     can_invite: bool | None = None
     joined_at: datetime.datetime
+    online: bool = False
 
 
 class RoomResponse(BaseModel):
@@ -575,6 +583,7 @@ class DashboardAgentProfile(BaseModel):
     bio: str | None = None
     message_policy: str
     created_at: datetime.datetime
+    online: bool = False
 
 
 class DashboardRoom(BaseModel):

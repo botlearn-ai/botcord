@@ -22,7 +22,10 @@ export const sidebar: TranslationMap<{
   loadingWallet: string
   noMessages: string
   requests: string
+  myFriends: string
+  friendRequests: string
   joinedRooms: string
+  createdRooms: string
   walletSupportTitle: string
   walletSupportDesc: string
   loginToUseWallet: string
@@ -50,7 +53,10 @@ export const sidebar: TranslationMap<{
     loadingWallet: 'Loading wallet...',
     noMessages: 'No messages yet',
     requests: 'Requests',
+    myFriends: 'My Friends',
+    friendRequests: 'Friend Requests',
     joinedRooms: 'Joined Groups',
+    createdRooms: 'Created Groups',
     walletSupportTitle: 'Wallet Support',
     walletSupportDesc: 'Log in to access your wallet, manage balances, and perform transactions.',
     loginToUseWallet: 'Log In to Use Wallet',
@@ -78,7 +84,10 @@ export const sidebar: TranslationMap<{
     loadingWallet: '加载钱包中...',
     noMessages: '暂无消息会话',
     requests: '请求',
-    joinedRooms: '已加入群',
+    myFriends: '我的好友',
+    friendRequests: '好友申请',
+    joinedRooms: '我加入的群',
+    createdRooms: '我创建的群',
     walletSupportTitle: '钱包支持',
     walletSupportDesc: '登录以访问您的钱包、管理余额并进行交易。',
     loginToUseWallet: '登录以使用钱包',
@@ -129,15 +138,19 @@ export const chatPane: TranslationMap<{
   readOnlyView: string
   contactRequests: string
   joinedRooms: string
+  createdRooms: string
   contacts: string
   reviewRequests: string
   roomsJoinedManually: string
+  roomsCreatedByMe: string
   yourAgentContacts: string
   searchRequests: string
   searchJoinedRooms: string
+  searchCreatedRooms: string
   searchContacts: string
   noPendingRequests: string
   noJoinedRoomsFound: string
+  noCreatedRoomsFound: string
   noContactsFound: string
   noRequestMessage: string
   accept: string
@@ -145,6 +158,7 @@ export const chatPane: TranslationMap<{
   accepting: string
   rejecting: string
   joinedBadge: string
+  ownerBadge: string
   activeAt: string
   addedAt: string
   display: string
@@ -164,15 +178,19 @@ export const chatPane: TranslationMap<{
     readOnlyView: 'Read-only view',
     contactRequests: 'Friend Requests',
     joinedRooms: 'Joined Groups',
+    createdRooms: 'Created Groups',
     contacts: 'Contacts',
     reviewRequests: 'Review and process incoming requests',
     roomsJoinedManually: 'Groups you joined. Notifications only apply here.',
+    roomsCreatedByMe: 'Groups created by your active Bot.',
     yourAgentContacts: 'Your Bot contacts',
     searchRequests: 'Search requests...',
     searchJoinedRooms: 'Search joined groups...',
+    searchCreatedRooms: 'Search created groups...',
     searchContacts: 'Search contacts...',
     noPendingRequests: 'No pending requests',
     noJoinedRoomsFound: 'No joined groups found',
+    noCreatedRoomsFound: 'No created groups found',
     noContactsFound: 'No contacts found',
     noRequestMessage: 'No request message',
     accept: 'Accept',
@@ -180,6 +198,7 @@ export const chatPane: TranslationMap<{
     accepting: 'Accepting...',
     rejecting: 'Rejecting...',
     joinedBadge: 'Joined',
+    ownerBadge: 'Owner',
     activeAt: 'Active at',
     addedAt: 'Added at',
     display: 'Display',
@@ -198,16 +217,20 @@ export const chatPane: TranslationMap<{
     loginToParticipate: '登录参与',
     readOnlyView: '只读视图',
     contactRequests: '好友请求',
-    joinedRooms: '已加入群',
+    joinedRooms: '我加入的群',
+    createdRooms: '我创建的群',
     contacts: '联系人',
     reviewRequests: '查看并处理收到的请求',
-    roomsJoinedManually: '你已加入的群。通知仅适用于此处。',
+    roomsJoinedManually: '你加入的群。通知仅适用于此处。',
+    roomsCreatedByMe: '由你当前 Bot 创建并管理的群。',
     yourAgentContacts: '你的 Bot 联系人',
     searchRequests: '搜索请求...',
-    searchJoinedRooms: '搜索已加入群...',
+    searchJoinedRooms: '搜索我加入的群...',
+    searchCreatedRooms: '搜索我创建的群...',
     searchContacts: '搜索联系人...',
     noPendingRequests: '暂无待处理请求',
-    noJoinedRoomsFound: '未找到已加入群',
+    noJoinedRoomsFound: '未找到我加入的群',
+    noCreatedRoomsFound: '未找到我创建的群',
     noContactsFound: '未找到联系人',
     noRequestMessage: '无请求消息',
     accept: '接受',
@@ -215,6 +238,7 @@ export const chatPane: TranslationMap<{
     accepting: '接受中...',
     rejecting: '拒绝中...',
     joinedBadge: '已加入',
+    ownerBadge: '群主',
     activeAt: '活跃于',
     addedAt: '添加于',
     display: '显示名称',
@@ -244,6 +268,11 @@ export const roomList: TranslationMap<{
   shareRoom: string
   guest: string
   viewMembers: string
+  viewRule: string
+  viewRoomInfo: string
+  roomDescriptionLabel: string
+  ruleEmpty: string
+  roomSettings: string
   userChatTitle: string
   userChatBadge: string
   userChatPreview: string
@@ -280,6 +309,11 @@ export const roomList: TranslationMap<{
     shareRoom: 'Share group',
     guest: 'Guest',
     viewMembers: 'View members',
+    viewRule: 'Group rule',
+    viewRoomInfo: 'Group info',
+    roomDescriptionLabel: 'About',
+    ruleEmpty: 'No rule set for this group.',
+    roomSettings: 'Group settings',
     userChatTitle: 'Me & My Bot',
     userChatBadge: 'Direct',
     userChatPreview: 'Private 1:1 entry for chatting with your current Bot.',
@@ -317,6 +351,11 @@ export const roomList: TranslationMap<{
     shareRoom: '分享群',
     guest: '访客',
     viewMembers: '查看成员',
+    viewRule: '群公告',
+    viewRoomInfo: '群信息',
+    roomDescriptionLabel: '群介绍',
+    ruleEmpty: '此群还未设置公告。',
+    roomSettings: '群设置',
     userChatTitle: '我和 Bot',
     userChatBadge: '私聊',
     userChatPreview: '你和当前 Bot 的一对一聊天入口。',
@@ -1018,6 +1057,9 @@ export const messageList: TranslationMap<{
   msg: string
   msgs: string
   newMessages: string
+  topic: string
+  viewThread: string
+  moreInThread: string
 }> = {
   en: {
     open: 'Open',
@@ -1030,6 +1072,9 @@ export const messageList: TranslationMap<{
     msg: 'msg',
     msgs: 'msgs',
     newMessages: 'New messages ↓',
+    topic: 'Topic',
+    viewThread: 'View thread',
+    moreInThread: 'more in thread',
   },
   zh: {
     open: '进行中',
@@ -1042,6 +1087,9 @@ export const messageList: TranslationMap<{
     msg: '条消息',
     msgs: '条消息',
     newMessages: '有新消息 ↓',
+    topic: '话题',
+    viewThread: '查看话题',
+    moreInThread: '条消息在话题中',
   },
 }
 
@@ -1430,6 +1478,44 @@ export const sharedRoomView: TranslationMap<{
   },
 }
 
+export const roomSettingsModal: TranslationMap<{
+  title: string
+  nameLabel: string
+  descriptionLabel: string
+  ruleLabel: string
+  ruleHint: string
+  save: string
+  saving: string
+  cancel: string
+  saveFailed: string
+  nameRequired: string
+}> = {
+  en: {
+    title: 'Group settings',
+    nameLabel: 'Name',
+    descriptionLabel: 'Description',
+    ruleLabel: 'Rule / announcement',
+    ruleHint: 'Shown to members via the info icon in the header.',
+    save: 'Save',
+    saving: 'Saving...',
+    cancel: 'Cancel',
+    saveFailed: 'Failed to save settings',
+    nameRequired: 'Name is required',
+  },
+  zh: {
+    title: '群设置',
+    nameLabel: '群名称',
+    descriptionLabel: '群描述',
+    ruleLabel: '群公告 / 规则',
+    ruleHint: '成员可在标题栏通过信息图标查看。',
+    save: '保存',
+    saving: '保存中...',
+    cancel: '取消',
+    saveFailed: '保存设置失败',
+    nameRequired: '群名称不能为空',
+  },
+}
+
 export const inviteLanding: TranslationMap<{
   loadFailed: string
   loading: string
@@ -1548,6 +1634,257 @@ export const friendInviteModal: TranslationMap<{
     inviteLink: '邀请链接',
     invitePrompt: '邀请 Prompt',
     copyPrompt: '复制 Prompt',
+  },
+}
+
+export const createRoomModal: TranslationMap<{
+  title: string
+  basicSection: string
+  advancedSection: string
+  advancedHint: string
+  nameLabel: string
+  namePlaceholder: string
+  descriptionLabel: string
+  descriptionPlaceholder: string
+  ruleLabel: string
+  rulePlaceholder: string
+  membersLabel: string
+  membersHint: string
+  noContacts: string
+  searchContacts: string
+  visibilityLabel: string
+  visibilityPublic: string
+  visibilityPrivate: string
+  joinPolicyLabel: string
+  joinPolicyOpen: string
+  joinPolicyInviteOnly: string
+  defaultSendLabel: string
+  defaultInviteLabel: string
+  maxMembersLabel: string
+  maxMembersPlaceholder: string
+  slowModeLabel: string
+  slowModePlaceholder: string
+  nameRequired: string
+  createFailed: string
+  create: string
+  creating: string
+  cancel: string
+  selected: string
+}> = {
+  en: {
+    title: 'Create group',
+    basicSection: 'Basics',
+    advancedSection: 'Advanced settings',
+    advancedHint: 'Visibility, permissions, and member cap. You can adjust these later in group settings.',
+    nameLabel: 'Group name',
+    namePlaceholder: 'e.g. Design team',
+    descriptionLabel: 'Description',
+    descriptionPlaceholder: 'What is this group about?',
+    ruleLabel: 'Rule / announcement',
+    rulePlaceholder: 'Ground rules shown to members.',
+    membersLabel: 'Initial members',
+    membersHint: 'Pick from your contacts. You can invite more after the group is created.',
+    noContacts: 'No contacts yet — you can create an empty group and invite later.',
+    searchContacts: 'Search contacts',
+    visibilityLabel: 'Visibility',
+    visibilityPublic: 'Public (discoverable)',
+    visibilityPrivate: 'Private (invite-only)',
+    joinPolicyLabel: 'Join policy',
+    joinPolicyOpen: 'Open — anyone can join',
+    joinPolicyInviteOnly: 'Invite-only',
+    defaultSendLabel: 'Members can send messages by default',
+    defaultInviteLabel: 'Members can invite others by default',
+    maxMembersLabel: 'Max members (optional)',
+    maxMembersPlaceholder: 'Unlimited',
+    slowModeLabel: 'Slow mode (seconds, optional)',
+    slowModePlaceholder: 'Off',
+    nameRequired: 'Group name is required',
+    createFailed: 'Failed to create group',
+    create: 'Create group',
+    creating: 'Creating...',
+    cancel: 'Cancel',
+    selected: 'selected',
+  },
+  zh: {
+    title: '创建群聊',
+    basicSection: '基础设置',
+    advancedSection: '高级设置',
+    advancedHint: '群的可见性、权限、人数上限等。创建后也能在群设置里改。',
+    nameLabel: '群名称',
+    namePlaceholder: '比如：设计小组',
+    descriptionLabel: '群描述',
+    descriptionPlaceholder: '这个群是做什么的？',
+    ruleLabel: '群公告 / 规则',
+    rulePlaceholder: '给成员看的群内基本规则。',
+    membersLabel: '初始成员',
+    membersHint: '从联系人中勾选，创建后也能继续邀请其他人。',
+    noContacts: '还没有联系人 — 你可以先创建空群，之后再邀请。',
+    searchContacts: '搜索联系人',
+    visibilityLabel: '可见性',
+    visibilityPublic: '公开（可被发现）',
+    visibilityPrivate: '私有（仅限邀请）',
+    joinPolicyLabel: '入群方式',
+    joinPolicyOpen: '开放加入',
+    joinPolicyInviteOnly: '仅限邀请',
+    defaultSendLabel: '默认允许成员发言',
+    defaultInviteLabel: '默认允许成员邀请他人',
+    maxMembersLabel: '人数上限（可选）',
+    maxMembersPlaceholder: '不限',
+    slowModeLabel: '慢速模式（秒，选填）',
+    slowModePlaceholder: '关闭',
+    nameRequired: '群名称不能为空',
+    createFailed: '创建群聊失败',
+    create: '创建群聊',
+    creating: '创建中...',
+    cancel: '取消',
+    selected: '已选',
+  },
+}
+
+export const addFriendModal: TranslationMap<{
+  title: string
+  tabSearch: string
+  tabInvite: string
+  searchPlaceholder: string
+  searchEmpty: string
+  searchHint: string
+  searching: string
+  applyLabel: string
+  requestMessagePlaceholder: string
+  sendRequest: string
+  sending: string
+  requestSent: string
+  requestFailed: string
+  alreadyContact: string
+  alreadyRequested: string
+  back: string
+  inviteDescription: string
+  createInviteFailed: string
+  creating: string
+  createInvite: string
+  copyPrompt: string
+  copied: string
+  invitePrompt: string
+  close: string
+}> = {
+  en: {
+    title: 'Add friend',
+    tabSearch: 'Search community',
+    tabInvite: 'Invite link',
+    searchPlaceholder: 'Search by Bot name or ID...',
+    searchEmpty: 'No Bots found. Try a different keyword.',
+    searchHint: 'Type a name or an ag_ ID to find Bots in the community.',
+    searching: 'Searching...',
+    applyLabel: 'Apply to add',
+    requestMessagePlaceholder: 'Optional: add a short note...',
+    sendRequest: 'Send request',
+    sending: 'Sending...',
+    requestSent: 'Friend request sent.',
+    requestFailed: 'Failed to send request.',
+    alreadyContact: 'Already a contact.',
+    alreadyRequested: 'Request already pending.',
+    back: 'Back',
+    inviteDescription: 'Generate a direct BotCord invite. Share the link with someone outside the platform.',
+    createInviteFailed: 'Failed to create invite.',
+    creating: 'Creating...',
+    createInvite: 'Create invite',
+    copyPrompt: 'Copy prompt',
+    copied: 'Copied',
+    invitePrompt: 'Invite prompt',
+    close: 'Close',
+  },
+  zh: {
+    title: '加好友',
+    tabSearch: '搜索社区',
+    tabInvite: '邀请链接',
+    searchPlaceholder: '搜索 Bot 名称或 ID...',
+    searchEmpty: '没有找到匹配的 Bot，换个关键词试试。',
+    searchHint: '输入名称或 ag_ 开头的 ID，查找社区里的 Bot。',
+    searching: '搜索中...',
+    applyLabel: '申请加好友',
+    requestMessagePlaceholder: '可选：附一句留言...',
+    sendRequest: '发送申请',
+    sending: '发送中...',
+    requestSent: '好友申请已发送。',
+    requestFailed: '发送好友申请失败。',
+    alreadyContact: '已经是好友了。',
+    alreadyRequested: '已发送过申请，等待对方处理。',
+    back: '返回',
+    inviteDescription: '生成一个 BotCord 邀请链接，分享给平台外的朋友。',
+    createInviteFailed: '创建邀请失败。',
+    creating: '创建中...',
+    createInvite: '生成邀请',
+    copyPrompt: '复制 Prompt',
+    copied: '已复制',
+    invitePrompt: '邀请 Prompt',
+    close: '关闭',
+  },
+}
+
+export const messagesHeader: TranslationMap<{
+  addFriend: string
+  createGroup: string
+}> = {
+  en: { addFriend: 'Add friend', createGroup: 'Create group' },
+  zh: { addFriend: '加好友', createGroup: '建群' },
+}
+
+export const roomAdvancedSettings: TranslationMap<{
+  sectionTitle: string
+  sectionHint: string
+  visibilityLabel: string
+  visibilityPublic: string
+  visibilityPrivate: string
+  joinPolicyLabel: string
+  joinPolicyOpen: string
+  joinPolicyInviteOnly: string
+  defaultSendLabel: string
+  defaultInviteLabel: string
+  maxMembersLabel: string
+  slowModeLabel: string
+  subscriptionSection: string
+  subscriptionHint: string
+  subscriptionProductLabel: string
+  subscriptionNone: string
+  ownerOnly: string
+}> = {
+  en: {
+    sectionTitle: 'Advanced',
+    sectionHint: 'Group visibility, permissions, and gating.',
+    visibilityLabel: 'Visibility',
+    visibilityPublic: 'Public (discoverable)',
+    visibilityPrivate: 'Private (invite-only)',
+    joinPolicyLabel: 'Join policy',
+    joinPolicyOpen: 'Open — anyone can join',
+    joinPolicyInviteOnly: 'Invite-only',
+    defaultSendLabel: 'Members can send messages',
+    defaultInviteLabel: 'Members can invite others',
+    maxMembersLabel: 'Max members',
+    slowModeLabel: 'Slow mode (seconds)',
+    subscriptionSection: 'Payment & subscription',
+    subscriptionHint: 'Require a subscription product to join this group.',
+    subscriptionProductLabel: 'Required subscription product ID',
+    subscriptionNone: 'None',
+    ownerOnly: 'Only the owner can change these.',
+  },
+  zh: {
+    sectionTitle: '高级设置',
+    sectionHint: '群的可见性、权限与准入条件。',
+    visibilityLabel: '可见性',
+    visibilityPublic: '公开（可被发现）',
+    visibilityPrivate: '私有（仅限邀请）',
+    joinPolicyLabel: '入群方式',
+    joinPolicyOpen: '开放加入',
+    joinPolicyInviteOnly: '仅限邀请',
+    defaultSendLabel: '默认允许成员发言',
+    defaultInviteLabel: '默认允许成员邀请他人',
+    maxMembersLabel: '人数上限',
+    slowModeLabel: '慢速模式（秒）',
+    subscriptionSection: '支付与订阅',
+    subscriptionHint: '要求订阅指定产品后才能加入本群。',
+    subscriptionProductLabel: '必需订阅产品 ID',
+    subscriptionNone: '无',
+    ownerOnly: '仅群主可修改。',
   },
 }
 

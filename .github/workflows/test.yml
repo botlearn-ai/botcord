@@ -1,0 +1,106 @@
+name: Tests
+
+# Callable from ci.yml/release.yml, or triggered manually.
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Which test suite to run'
+        required: false
+        default: 'all'
+        type: choice
+        options: [backend, node, e2e, all]
+      base_url:
+        description: 'Base URL for E2E tests (required when suite includes e2e)'
+        required: false
+        type: string
+      environment:
+        description: 'Deployment environment label'
+        required: false
+        default: 'preview'
+        type: choice
+        options: [preview, production]
+  workflow_call:
+    inputs:
+      suite:
+        required: false
+        type: string
+        default: 'all'
+      base_url:
+        required: false
+        type: string
+        default: ''
+      environment:
+        required: false
+        type: string
+        default: 'preview'
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Backend pytest ───────────────────────────────────────────────────────────
+  backend-tests:
+    name: Backend Tests
+    runs-on: self-hosted
+    if: inputs.suite == 'backend' || inputs.suite == 'all'
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Install deps
+        run: uv sync
+      - name: Run pytest
+        run: uv run pytest tests/
+
+  # ── Node tests (plugin vitest + frontend vitest) ─────────────────────────────
+  node-tests:
+    name: Node Tests
+    runs-on: self-hosted
+    if: inputs.suite == 'node' || inputs.suite == 'all'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: plugin tests
+        working-directory: plugin
+        run: |
+          npm install
+          npx tsc --noEmit
+          npm test
+      - name: frontend tests
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test -- --run
+
+  # ── E2E tests (only when base_url is provided) ───────────────────────────────
+  e2e-tests:
+    name: E2E Tests
+    runs-on: self-hosted
+    if: (inputs.suite == 'e2e' || inputs.suite == 'all') && inputs.base_url != ''
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm install
+      - name: Run E2E
+        run: npm test
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          BOTCORD_HUB_URL: ${{ inputs.base_url }}

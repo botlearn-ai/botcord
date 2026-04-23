@@ -247,6 +247,25 @@ export default function UserChatPane() {
     }
   }, [sendMessage, uploadFiles]);
 
+  const sendSuggestion = useCallback((text: string) => {
+    const clientId = crypto.randomUUID();
+    const optimisticMsg: OwnerChatMessage = {
+      clientId,
+      hubMsgId: null,
+      sender: "user",
+      text,
+      streamBlocks: [],
+      status: "optimistic",
+      createdAt: new Date().toISOString(),
+      senderName: "You",
+      type: "message",
+      sendText: text,
+    };
+    useOwnerChatStore.getState().addOptimistic(optimisticMsg);
+    scrollToBottom();
+    void sendMessage(text, clientId);
+  }, [scrollToBottom, sendMessage]);
+
   // ------ Render guards ------
 
   if (!activeAgentId) {
@@ -280,25 +299,6 @@ export default function UserChatPane() {
 
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
   const showOnboarding = messages.length === 0;
-
-  const sendSuggestion = useCallback((text: string) => {
-    const clientId = crypto.randomUUID();
-    const optimisticMsg: OwnerChatMessage = {
-      clientId,
-      hubMsgId: null,
-      sender: "user",
-      text,
-      streamBlocks: [],
-      status: "optimistic",
-      createdAt: new Date().toISOString(),
-      senderName: "You",
-      type: "message",
-      sendText: text,
-    };
-    useOwnerChatStore.getState().addOptimistic(optimisticMsg);
-    scrollToBottom();
-    void sendMessage(text, clientId);
-  }, [scrollToBottom, sendMessage]);
 
   return (
     <div className="relative flex flex-col h-full">

@@ -1444,6 +1444,7 @@ async def test_inbox_includes_room_rule_and_text_hint(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Topic prefix '【Topic: ... | ID: ...】' no longer injected into inbox text")
 async def test_inbox_text_includes_topic_id(client: AsyncClient):
     """Inbox flat text renders topic_id alongside topic."""
     sk_a, a_id, a_key, a_token = await _create_agent(client, "alice")

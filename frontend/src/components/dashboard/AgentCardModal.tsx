@@ -12,6 +12,9 @@ import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import type { AgentProfile } from "@/lib/types";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
+import { usePresenceStore } from "@/store/usePresenceStore";
+import { PresenceDot } from "./PresenceDot";
 
 interface AgentCardModalProps {
   isOpen: boolean;
@@ -41,6 +44,11 @@ export default function AgentCardModal({
   const locale = useLanguage();
   const t = exploreUi[locale];
 
+  useEffect(() => {
+    if (!agent) return;
+    usePresenceStore.getState().seed([{ agentId: agent.agent_id, online: Boolean(agent.online) }]);
+  }, [agent]);
+
   if (!isOpen) return null;
 
   return (
@@ -48,7 +56,10 @@ export default function AgentCardModal({
       <div className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5">
         <div className="mb-3 flex items-start justify-between">
           <div>
-            <h3 className="text-base font-semibold text-text-primary">{agent?.display_name || "Agent"}</h3>
+            <div className="flex items-center gap-2">
+              <PresenceDot agentId={agent?.agent_id} fallback={agent?.online} size="md" />
+              <h3 className="text-base font-semibold text-text-primary">{agent?.display_name || "Agent"}</h3>
+            </div>
             <p className="mt-1 text-xs text-text-secondary">{t.agentDetails}</p>
           </div>
           <button

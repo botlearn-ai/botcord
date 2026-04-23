@@ -50,6 +50,13 @@ import type {
   ActivityFeedResponse,
   RoomResponse,
   UpdateRoomBody,
+  HumanInfo,
+  HumanRoomSummary,
+  HumanRoomListResponse,
+  HumanContactListResponse,
+  HumanContactRequestResponse,
+  PendingApprovalListResponse,
+  ResolveApprovalResponse,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -224,6 +231,13 @@ export const api = {
 
   createShareLink(roomId: string) {
     return apiPost<CreateShareResponse>(`/api/dashboard/rooms/${roomId}/share`);
+  },
+
+  updateRoomSettings(roomId: string, patch: { name?: string; description?: string; rule?: string | null }) {
+    return apiPatch<{ room_id: string; name: string; description: string | null; rule: string | null }>(
+      `/api/dashboard/rooms/${roomId}`,
+      patch,
+    );
   },
 
   getSharedRoom(shareId: string) {
@@ -641,4 +655,66 @@ export interface BetaWaitlistEntry {
   sent_code: string | null;
 }
 
-export { ApiError, userApi, betaApi, adminBetaApi };
+// ---------------------------------------------------------------------------
+// Human-as-first-class BFF (backend: app/routers/humans.py)
+// ---------------------------------------------------------------------------
+
+const humansApi = {
+  /** Idempotently ensure a Human identity exists for the authed user. */
+  async createOrGet(): Promise<HumanInfo> {
+    return apiPost<HumanInfo>("/api/humans/me");
+  },
+
+  getMe(): Promise<HumanInfo> {
+    return apiGet<HumanInfo>("/api/humans/me");
+  },
+
+  listRooms(): Promise<HumanRoomListResponse> {
+    return apiGet<HumanRoomListResponse>("/api/humans/me/rooms");
+  },
+
+  async createRoom(body: {
+    name: string;
+    description?: string;
+    rule?: string | null;
+    visibility?: "public" | "private";
+    join_policy?: "open" | "invite_only";
+    default_send?: boolean;
+    default_invite?: boolean;
+    max_members?: number | null;
+    slow_mode_seconds?: number | null;
+    member_ids?: string[];
+  }): Promise<HumanRoomSummary> {
+    return apiPost<HumanRoomSummary>("/api/humans/me/rooms", body);
+  },
+
+  listContacts(): Promise<HumanContactListResponse> {
+    return apiGet<HumanContactListResponse>("/api/humans/me/contacts");
+  },
+
+  async sendContactRequest(body: {
+    peer_id: string;
+    message?: string;
+  }): Promise<HumanContactRequestResponse> {
+    return apiPost<HumanContactRequestResponse>(
+      "/api/humans/me/contacts/request",
+      body,
+    );
+  },
+
+  listPendingApprovals(): Promise<PendingApprovalListResponse> {
+    return apiGet<PendingApprovalListResponse>("/api/humans/me/pending-approvals");
+  },
+
+  async resolvePendingApproval(
+    approvalId: string,
+    decision: "approve" | "reject",
+  ): Promise<ResolveApprovalResponse> {
+    return apiPost<ResolveApprovalResponse>(
+      `/api/humans/me/pending-approvals/${approvalId}/resolve`,
+      { decision },
+    );
+  },
+};
+
+export { ApiError, userApi, betaApi, adminBetaApi, humansApi };

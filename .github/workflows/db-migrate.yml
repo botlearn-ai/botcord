@@ -1,0 +1,125 @@
+name: Database Migration
+
+# Manual trigger — run SQL migrations (backend/migrations/*.sql) against preview or production.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target database environment'
+        required: true
+        default: 'preview'
+        type: choice
+        options: [preview, production]
+      confirm_prod:
+        description: '(production only) Type "yes" to confirm production migration'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Safety gate for production ───────────────────────────────────────────────
+  prod-gate:
+    name: Production Guard
+    runs-on: self-hosted
+    if: inputs.environment == 'production'
+    timeout-minutes: 3
+    steps:
+      - name: Confirm production intent
+        run: |
+          if [ "${{ inputs.confirm_prod }}" != "yes" ]; then
+            echo "❌ Production migration requires confirm_prod = 'yes'"
+            echo "   Re-run the workflow and set confirm_prod to 'yes'"
+            exit 1
+          fi
+          echo "✅ Production migration confirmed"
+
+  # ── Preview migration ────────────────────────────────────────────────────────
+  migrate-preview:
+    name: Migrate (preview)
+    runs-on: self-hosted
+    if: inputs.environment == 'preview'
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Install deps
+        run: uv sync
+      - name: Run SQL migrations
+        run: uv run python scripts/run_sql_migrations.py
+        env:
+          DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+
+  # ── Production migration ─────────────────────────────────────────────────────
+  migrate-prod:
+    name: Migrate (production)
+    runs-on: self-hosted
+    needs: [prod-gate]
+    if: inputs.environment == 'production' && needs.prod-gate.result == 'success'
+    environment: Production
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Install deps
+        run: uv sync
+      - name: Run SQL migrations
+        run: uv run python scripts/run_sql_migrations.py
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+  # ── Feishu notification ──────────────────────────────────────────────────────
+  notify:
+    name: Notify Feishu
+    runs-on: self-hosted
+    needs: [migrate-preview, migrate-prod]
+    if: always() && (needs.migrate-preview.result != 'skipped' || needs.migrate-prod.result != 'skipped')
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - id: status
+        run: |
+          ENV="${{ inputs.environment }}"
+          if [[ "$ENV" == "preview" ]]; then
+            R="${{ needs.migrate-preview.result }}"
+          else
+            R="${{ needs.migrate-prod.result }}"
+          fi
+          if [[ "$R" == "success" ]]; then
+            echo "color=green" >> $GITHUB_OUTPUT
+            echo "title=✅ BotCord 数据库迁移完成 (${ENV})" >> $GITHUB_OUTPUT
+          else
+            echo "color=red" >> $GITHUB_OUTPUT
+            echo "title=❌ BotCord 数据库迁移失败 (${ENV})" >> $GITHUB_OUTPUT
+          fi
+          echo "result=${R}" >> $GITHUB_OUTPUT
+      - uses: ./.github/actions/feishu-notify
+        with:
+          webhook_url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          title: ${{ steps.status.outputs.title }}
+          color: ${{ steps.status.outputs.color }}
+          fields: |
+            [
+              {"label": "环境", "value": "${{ inputs.environment }}"},
+              {"label": "触发者", "value": "${{ github.actor }}"},
+              {"label": "结果", "value": "${{ steps.status.outputs.result }}"}
+            ]
+          buttons: |
+            [
+              {"text": "查看 Workflow", "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "type": "primary"}
+            ]

@@ -162,7 +162,6 @@ async def seed(db_session: AsyncSession):
         "agent3": "ag_user3___",
         "agent_stranger": "ag_stranger",
         "uid1": str(uid1),
-        "supa1": str(supa1),
         "user1_name": "Alice",
     }
 
@@ -241,7 +240,7 @@ async def test_happy_path_fanout(client: AsyncClient, seed: dict, db_session: As
     for rec in rows:
         assert rec.source_type == "dashboard_human_room"
         assert rec.source_session_kind == "room_human"
-        assert rec.source_user_id == seed["supa1"]
+        assert rec.source_user_id == seed["uid1"]
         assert rec.sender_id == "ag_user1___"
 
 
@@ -423,7 +422,7 @@ async def test_history_exposes_human_sender_fields(client: AsyncClient, seed: di
     m = human_msgs[0]
     assert m["sender_kind"] == "human"
     assert m["display_sender_name"] == seed["user1_name"]
-    assert m["source_user_id"] == seed["supa1"]
+    assert m["source_user_id"] == seed["uid1"]
     assert m["source_user_name"] == seed["user1_name"]
     assert m["is_mine"] is True
 
@@ -481,7 +480,7 @@ async def test_hub_inbox_human_message_surfaces_source_user_name(
     msgs = r2.json()["messages"]
     human = [m for m in msgs if m.get("source_type") == "dashboard_human_room"]
     assert human, f"no human message reached hub inbox; got={msgs}"
-    assert human[0]["source_user_id"] == seed["supa1"]
+    assert human[0]["source_user_id"] == seed["uid1"]
     assert human[0]["source_user_name"] == seed["user1_name"]
 
 

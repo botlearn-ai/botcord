@@ -14,6 +14,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomZeroState } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { buildCreateRoomPrompt } from "@/lib/onboarding";
+import { humansApi } from "@/lib/api";
 
 interface RoomZeroStateProps {
   compact?: boolean;
@@ -22,13 +23,38 @@ interface RoomZeroStateProps {
 export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
   const router = useRouter();
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
+  const human = useDashboardSessionStore((state) => state.human);
+  const refreshHumanRooms = useDashboardSessionStore((state) => state.refreshHumanRooms);
   const locale = useLanguage();
   const tc = common[locale];
   const t = roomZeroState[locale];
   const [copied, setCopied] = useState(false);
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
   const showLoginModal = () => router.push("/login");
+
+  const handleCreateHumanRoom = async () => {
+    if (!human) return;
+    setCreatingRoom(true);
+    setCreateRoomError(null);
+    try {
+      const defaultName =
+        locale === "zh"
+          ? `${human.display_name || "我"}的房间`
+          : `${human.display_name || "My"}'s room`;
+      const room = await humansApi.createRoom({ name: defaultName });
+      // Refresh so the sidebar room list picks up the new Human-owned room
+      // before we navigate — avoids a flash where the list is stale.
+      await refreshHumanRooms();
+      router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    } catch (err: any) {
+      setCreateRoomError(err?.message || "Failed to create room");
+    } finally {
+      setCreatingRoom(false);
+    }
+  };
 
   const createRoomPrompt = useMemo(() => {
     return buildCreateRoomPrompt({ locale });
@@ -55,6 +81,22 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
       </div>
 
       <div className={`mt-4 flex ${compact ? "flex-col" : "flex-wrap justify-center"} gap-3`}>
+        {!isGuest && human ? (
+          <button
+            type="button"
+            onClick={() => void handleCreateHumanRoom()}
+            disabled={creatingRoom}
+            className="rounded-xl border border-neon-purple/40 bg-neon-purple/10 px-4 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-50"
+          >
+            {creatingRoom
+              ? locale === "zh"
+                ? "创建中…"
+                : "Creating…"
+              : locale === "zh"
+                ? "以 Human 创建房间"
+                : "Create a room as yourself"}
+          </button>
+        ) : null}
         {isAuthedReady && (
           <button
             type="button"
@@ -81,6 +123,9 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
           </button>
         )}
       </div>
+      {createRoomError ? (
+        <p className="mt-3 text-xs text-red-300">{createRoomError}</p>
+      ) : null}
 
       {isAuthedReady && (
         <div className="mt-4 w-full overflow-hidden rounded-2xl border border-glass-border/70 bg-deep-black/40 text-left">

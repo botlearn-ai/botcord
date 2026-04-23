@@ -14,11 +14,13 @@ export interface DashboardUIState {
   userChatRoomId: string | null;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
+  /** When set, the topic side drawer is open for this topic_id in the opened room. */
+  openedTopicId: string | null;
   sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "activity";
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
   exploreView: "rooms" | "agents" | "templates";
-  contactsView: "agents" | "requests" | "rooms";
+  contactsView: "agents" | "requests" | "rooms" | "created";
 
   setFocusedRoomId: (roomId: string | null) => void;
   setOpenedRoomId: (roomId: string | null) => void;
@@ -27,6 +29,7 @@ export interface DashboardUIState {
   setMessagesPane: (pane: DashboardUIState["messagesPane"]) => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
+  setOpenedTopicId: (topicId: string | null) => void;
   toggleRightPanel: () => void;
   openAgentCard: () => void;
   closeAgentCard: () => void;
@@ -42,6 +45,7 @@ const initialUIState = {
   userChatRoomId: null,
   rightPanelOpen: false,
   agentCardOpen: false,
+  openedTopicId: null as string | null,
   sidebarTab: "messages" as const,
   messagesPane: "room" as const,
   exploreView: "rooms" as const,
@@ -66,6 +70,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.exploreView === exploreView ? state : { exploreView })),
   setContactsView: (contactsView) =>
     set((state) => (state.contactsView === contactsView ? state : { contactsView })),
+  setOpenedTopicId: (openedTopicId) =>
+    set((state) => (state.openedTopicId === openedTopicId ? state : { openedTopicId })),
   setSidebarWidth: (sidebarWidth) =>
     set((state) => (state.sidebarWidth === sidebarWidth ? state : { sidebarWidth })),
   toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),

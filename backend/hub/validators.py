@@ -3,18 +3,48 @@
 import base64
 import ipaddress
 import logging
+import re
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import HTTPException
 
-from hub.config import ALLOW_PRIVATE_ENDPOINTS, ENDPOINT_PROBE_ENABLED, ENDPOINT_PROBE_TIMEOUT_SECONDS
+from hub.config import (
+    ALLOW_PRIVATE_ENDPOINTS,
+    ENDPOINT_PROBE_ENABLED,
+    ENDPOINT_PROBE_TIMEOUT_SECONDS,
+    HUB_PUBLIC_BASE_URL,
+)
 from hub.i18n import I18nHTTPException
 from hub.schemas import EndpointProbeReport, ProbePathResult
 
 logger = logging.getLogger(__name__)
 
 _BLOCKED_HOSTNAME_SUFFIXES = (".local", ".internal", ".localhost")
+
+_FILE_PATH_RE = re.compile(r"^/hub/files/f_[a-zA-Z0-9_-]+$")
+
+
+def normalize_file_url(url: str) -> str | None:
+    """Normalize a hub file URL to an absolute URL anchored at HUB_PUBLIC_BASE_URL.
+
+    Accepts either a relative path `/hub/files/f_xxx` or any absolute URL whose
+    path is `/hub/files/f_xxx`. In both cases the returned URL uses the trusted
+    `HUB_PUBLIC_BASE_URL` as host — arbitrary external hosts are never echoed
+    back into envelopes. Returns `None` if the path shape is invalid.
+    """
+    if not url:
+        return None
+    if url.startswith("/"):
+        path = url
+    else:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return None
+        path = parsed.path
+    if not _FILE_PATH_RE.match(path):
+        return None
+    return f"{HUB_PUBLIC_BASE_URL}{path}"
 
 
 def check_agent_ownership(path_agent_id: str, token_agent_id: str) -> None:

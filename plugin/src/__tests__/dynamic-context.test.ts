@@ -150,9 +150,9 @@ describe("buildDynamicContext", () => {
 
   it("returns context as string suitable for appendSystemContext", async () => {
     vi.spyOn(memory, "readWorkingMemory").mockReturnValue({
-      content: "important fact",
+      version: 2,
+      sections: { notes: "important fact" },
       updatedAt: "2026-01-01T00:00:00Z",
-      version: 1,
     });
 
     const result = await buildDynamicContext({ sessionKey });

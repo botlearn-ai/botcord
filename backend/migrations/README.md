@@ -25,6 +25,9 @@
 018_waitlist_unique_user_id.sql: 给 waitlist redemption 增加唯一 user 约束。  
 019_create_short_codes.sql: 创建短码表，统一 bind/reset 等一次性兑换入口。  
 020_add_wallet_grant_tx_type.sql: 扩展钱包交易枚举，支持系统赠送 `grant`。  
+021_create_daemon_instances.sql: 创建 daemon 控制面实例表与设备码兑换表，支撑 `/daemon/auth/*` 与 `/daemon/ws`。  
+022_daemon_instances_runtimes.sql: 给 daemon_instances 增加 runtimes_json / runtimes_probed_at 列，承载 daemon 运行时探测快照。  
+023_agents_runtime.sql: 给 agents 增加 runtime 列，记录 agent 创建时选择的运行时（claude-code / codex / gemini 等）。  
 
 法则: 成员完整·一行一文件·父级链接·技术词前置
 

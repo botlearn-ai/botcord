@@ -49,6 +49,10 @@ const TEMPLATES: Record<string, TemplateEntry> = {
     file: "install-beta.template.sh",
     contentType: "text/x-shellscript; charset=utf-8",
   },
+  "install-native.sh": {
+    file: "install-native.template.sh",
+    contentType: "text/x-shellscript; charset=utf-8",
+  },
   "register-beta.sh": {
     file: "register-beta.template.sh",
     contentType: "text/x-shellscript; charset=utf-8",

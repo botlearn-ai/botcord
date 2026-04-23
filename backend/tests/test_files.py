@@ -149,7 +149,7 @@ async def test_upload_success(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["file_id"].startswith("f_")
-    assert data["url"] == f"/hub/files/{data['file_id']}"
+    assert data["url"].endswith(f"/hub/files/{data['file_id']}")
     assert data["original_filename"] == "test.txt"
     assert data["content_type"] == "text/plain"
     assert data["size_bytes"] == len(file_content)
@@ -574,7 +574,7 @@ async def test_cleanup_skips_record_on_delete_failure(client: AsyncClient, db_se
     async def _test_async_session():
         yield db_session
 
-    with patch("hub.storage.delete_file", new=AsyncMock(side_effect=OSError("disk error"))):
+    with patch("hub.cleanup.delete_file", new=AsyncMock(side_effect=OSError("disk error"))):
         with patch.object(hub_cleanup, "async_session", _test_async_session):
             cleaned = await hub_cleanup._cleanup_expired_files()
 

@@ -21,6 +21,8 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
+import { PresenceDot } from "./PresenceDot";
 import JoinRequestsPanel from "./JoinRequestsPanel";
 import { roomList as roomListI18n } from "@/lib/i18n/translations/dashboard";
 
@@ -103,6 +105,9 @@ export default function AgentBrowser() {
       .then((result) => {
         if (cancelled) return;
         setRoomMembers(result.members);
+        usePresenceStore.getState().seed(
+          result.members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
+        );
       })
       .catch(() => {
         if (cancelled) return;
@@ -207,7 +212,10 @@ export default function AgentBrowser() {
                       onClick={() => selectAgent(member.agent_id)}
                       className="min-w-0 flex-1 text-left"
                     >
-                      <div className="truncate text-xs font-medium text-text-primary">{member.display_name}</div>
+                      <div className="flex items-center gap-1.5 truncate text-xs font-medium text-text-primary">
+                        <PresenceDot agentId={member.agent_id} fallback={member.online} size="xs" />
+                        <span className="truncate">{member.display_name}</span>
+                      </div>
                     </button>
                     <CopyableId value={member.agent_id} className="mt-0.5" />
                     <span className={`ml-2 shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
@@ -285,7 +293,10 @@ export default function AgentBrowser() {
                     onClick={() => selectAgent(agent.agent_id)}
                     className="w-full text-left"
                   >
-                    <div className="text-sm text-text-primary">{agent.display_name}</div>
+                    <div className="flex items-center gap-2 text-sm text-text-primary">
+                      <PresenceDot agentId={agent.agent_id} fallback={agent.online} />
+                      <span>{agent.display_name}</span>
+                    </div>
                   </button>
                   <CopyableId value={agent.agent_id} />
                 </div>
@@ -300,8 +311,9 @@ export default function AgentBrowser() {
             <h4 className="mb-3 text-xs font-medium text-text-secondary">{t.agentProfile}</h4>
             <div className="space-y-2">
               <div>
-                <div className="text-sm font-medium text-text-primary">
-                  {selectedAgentProfile.display_name}
+                <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+                  <PresenceDot agentId={selectedAgentProfile.agent_id} fallback={selectedAgentProfile.online} />
+                  <span>{selectedAgentProfile.display_name}</span>
                 </div>
                 <CopyableId value={selectedAgentProfile.agent_id} />
               </div>

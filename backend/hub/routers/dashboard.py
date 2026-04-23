@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import get_current_agent, get_dashboard_agent
 from hub.database import get_db
+from hub.routers.hub import is_agent_ws_online
 from hub.dashboard_message_shaping import (
     derive_sender_fields,
     load_agent_display_names,
@@ -234,6 +235,7 @@ async def get_overview(
         bio=agent.bio,
         message_policy=agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         created_at=agent.created_at,
+        online=is_agent_ws_online(agent.agent_id),
     )
 
     # Rooms where current agent is a member
@@ -255,6 +257,7 @@ async def get_overview(
             alias=c.alias,
             display_name=dn or c.contact_agent_id,
             created_at=c.created_at,
+            online=is_agent_ws_online(c.contact_agent_id),
         )
         for c, dn in contact_result.all()
     ]
@@ -468,6 +471,7 @@ async def search_agents(
                 bio=a.bio,
                 message_policy=a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy),
                 created_at=a.created_at,
+                online=is_agent_ws_online(a.agent_id),
             )
             for a in agents
         ]
@@ -499,6 +503,7 @@ async def get_agent(
         bio=agent.bio,
         message_policy=agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         created_at=agent.created_at,
+        online=is_agent_ws_online(agent.agent_id),
     )
 
 
@@ -817,6 +822,7 @@ async def join_room(
         visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
         member_count=updated_count,
         my_role="member",
+        allow_human_send=room.allow_human_send,
         url=frontend_url(f"/chats/messages/{room.room_id}"),
     )
 

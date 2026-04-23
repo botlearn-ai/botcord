@@ -10,6 +10,7 @@ import datetime
 import uuid as _uuid
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -27,7 +28,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from hub.id_generators import generate_human_id
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
+    ApprovalKind,
+    ApprovalState,
     BetaCodeStatus,
     BetaWaitlistStatus,
     BillingInterval,
@@ -37,6 +41,7 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     KeyState,
     MessagePolicy,
     MessageState,
+    ParticipantType,
     RoomJoinPolicy,
     RoomJoinRequestStatus,
     RoomRole,
@@ -81,6 +86,9 @@ class Agent(Base):
     )
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Runtime selected at creation (claude-code / codex / gemini / ...).
+    # Null for agents created via bind_code; see docs/agent-runtime-property-plan.md.
+    runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")
@@ -211,8 +219,16 @@ class Room(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     rule: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Holds either an ag_* or hu_* participant id. FK removed because the
+    # column is now polymorphic — the discriminator is ``owner_type``.
     owner_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    owner_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     visibility: Mapped[RoomVisibility] = mapped_column(
         Enum(RoomVisibility), nullable=False, default=RoomVisibility.private
@@ -278,8 +294,18 @@ class RoomMember(Base):
     room_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("rooms.room_id"), nullable=False, index=True
     )
+    # ``agent_id`` is kept as the column name for backward compatibility with
+    # the unique constraint and legacy queries, but now stores any participant
+    # id (ag_* or hu_*). The FK to agents was dropped so Human members are
+    # legal; ``participant_type`` is the discriminator.
     agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    participant_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     role: Mapped[RoomRole] = mapped_column(
         Enum(RoomRole), nullable=False, default=RoomRole.member
@@ -343,8 +369,11 @@ class MessageRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     hub_msg_id: Mapped[str] = mapped_column(String(48), unique=True, nullable=False, index=True)
     msg_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # ``sender_id`` is polymorphic (ag_* or hu_*). FK dropped so Human-originated
+    # messages (source_type="human") can be recorded without a corresponding
+    # agents row. The prefix is self-describing.
     sender_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
     )
     receiver_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     room_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -387,10 +416,25 @@ class Contact(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Polymorphic participant ids — ``owner_type`` / ``peer_type`` discriminate.
     owner_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
     )
+    owner_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
+    )
+    # Column retains its legacy name for unique-constraint compatibility; now
+    # holds any participant id (ag_* or hu_*).
     contact_agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    peer_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
+    )
     alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -405,9 +449,21 @@ class Block(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    owner_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     blocked_agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    blocked_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -513,10 +569,22 @@ class ContactRequest(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     from_agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    from_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     to_agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    to_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     state: Mapped[ContactRequestState] = mapped_column(
         Enum(ContactRequestState), nullable=False, default=ContactRequestState.pending
@@ -872,6 +940,16 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     supabase_user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, unique=True, nullable=False, index=True)
+    # Social-identity ID used as ``from``/``participant_id`` for Human-as-first-class
+    # messages and memberships. Always ``hu_<12 hex>``. Generated on first login;
+    # see ``hub.id_generators.generate_human_id``.
+    human_id: Mapped[str] = mapped_column(
+        String(32),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=generate_human_id,
+    )
     max_agents: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     banned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ban_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1012,4 +1090,131 @@ class BetaWaitlistEntry(Base):
     reviewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_code_id: Mapped[_uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("beta_invite_codes.id"), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Daemon control plane (see docs/daemon-control-plane-plan.md)
+# ---------------------------------------------------------------------------
+
+
+class DaemonInstance(Base):
+    """A user's local daemon process registered with the Hub.
+
+    One row per machine where the user has authorized `botcord-daemon`.
+    `refresh_token_hash` stores SHA-256(hex) of the issued refresh token —
+    plaintext is never persisted.
+    """
+
+    __tablename__ = "daemon_instances"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # dm_<12 hex>
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Latest runtime-discovery snapshot pushed by the daemon (or pulled via
+    # list_runtimes). `runtimes_json` mirrors the protocol `runtimes` array;
+    # `runtimes_probed_at` is the daemon-side probe wall-clock in UTC.
+    runtimes_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    runtimes_probed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class DaemonDeviceCode(Base):
+    """Transient device-code rows for the daemon login flow.
+
+    The daemon polls `/daemon/auth/device-token` with `device_code`; the
+    user enters `user_code` on the dashboard `/activate` page. Once the
+    dashboard binds the row to a user (`approved`), the next daemon poll
+    consumes the row by reading `issued_token_json`.
+    """
+
+    __tablename__ = "daemon_device_codes"
+    __table_args__ = (
+        UniqueConstraint("user_code", name="uq_daemon_device_codes_user_code"),
+        Index("ix_daemon_device_codes_status", "status", "expires_at"),
+    )
+
+    device_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    daemon_instance_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    expires_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    approved_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    consumed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # pending | approved | consumed | denied
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    issued_token_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Human-as-first-class: approval queue for Human-owned Agents
+# ---------------------------------------------------------------------------
+
+
+class AgentApprovalQueue(Base):
+    """External requests to a claimed Agent that need its owner Human to approve.
+
+    When an external party sends a ``contact_request`` / ``room_invite`` / payment
+    request to an Agent that has been claimed by a user, we queue a pending row
+    here instead of auto-accepting. The owning Human resolves it from the
+    dashboard (``approved`` / ``rejected``).
+
+    Unclaimed Agents sidestep this queue and fall back to their existing
+    auto-accept / policy logic — so older A2A flows are unaffected.
+    """
+
+    __tablename__ = "agent_approval_queue"
+    __table_args__ = (
+        Index("ix_agent_approval_agent_state", "agent_id", "state"),
+        Index("ix_agent_approval_owner_state", "owner_user_id", "state"),
+    )
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id"), nullable=False
+    )
+    owner_user_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("public.users.id"), nullable=False
+    )
+    kind: Mapped[ApprovalKind] = mapped_column(
+        Enum(ApprovalKind, name="approvalkind"), nullable=False
+    )
+    # Opaque structured payload describing the pending action
+    # (e.g. for contact_request: ``{"from_participant_id": "ag_x", "message": "..."}``).
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    state: Mapped[ApprovalState] = mapped_column(
+        Enum(ApprovalState, name="approvalstate"),
+        nullable=False,
+        default=ApprovalState.pending,
+        server_default=ApprovalState.pending.value,
+    )
+    resolved_by_user_id: Mapped[_uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

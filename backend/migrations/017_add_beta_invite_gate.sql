@@ -1,7 +1,13 @@
 -- Beta invite gate: invite codes, redemptions, waitlist, and user access flags.
 
-create type betacodestatus as enum ('active', 'revoked');
-create type betawaitliststatus as enum ('pending', 'approved', 'rejected');
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'betacodestatus') THEN
+        CREATE TYPE betacodestatus AS ENUM ('active', 'revoked');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'betawaitliststatus') THEN
+        CREATE TYPE betawaitliststatus AS ENUM ('pending', 'approved', 'rejected');
+    END IF;
+END$$;
 
 create table if not exists beta_invite_codes (
     id uuid primary key default gen_random_uuid(),
