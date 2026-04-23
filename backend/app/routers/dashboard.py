@@ -51,8 +51,6 @@ from hub.routers.hub import (
     build_message_realtime_event,
     notify_inbox,
 )
-from hub.routers.room import update_room as _hub_update_room
-from hub.schemas import UpdateRoomRequest
 from hub.share_payloads import share_create_payload
 
 _logger = logging.getLogger(__name__)
@@ -72,6 +70,21 @@ class SendContactRequestBody(BaseModel):
 
 class CreateShareBody(BaseModel):
     expires_in_hours: int | None = None
+
+
+class UpdateRoomSettingsBody(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    rule: str | None = None
+    visibility: str | None = None
+    join_policy: str | None = None
+    default_send: bool | None = None
+    default_invite: bool | None = None
+    allow_human_send: bool | None = None
+    max_members: int | None = None
+    slow_mode_seconds: int | None = None
+    required_subscription_product_id: str | None = None
+
 
 
 # ---------------------------------------------------------------------------
@@ -857,6 +870,105 @@ async def join_room(
 
 
 # ---------------------------------------------------------------------------
+# Update room settings (owner/admin)
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/rooms/{room_id}")
+async def update_room_settings(
+    room_id: str,
+    body: UpdateRoomSettingsBody,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update room name/description/rule. Owner/admin only."""
+    agent_id = ctx.active_agent_id
+
+    room = (await db.execute(select(Room).where(Room.room_id == room_id))).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    member = (
+        await db.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == agent_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Only owner or admin can update room settings")
+
+    fields_set = body.model_fields_set
+    owner_only_fields = {
+        "visibility",
+        "join_policy",
+        "default_send",
+        "default_invite",
+        "max_members",
+        "slow_mode_seconds",
+        "required_subscription_product_id",
+    }
+    if fields_set & owner_only_fields and member.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the owner can change advanced settings")
+
+    if "name" in fields_set:
+        name = (body.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        room.name = name
+    if "description" in fields_set:
+        room.description = (body.description or "").strip()
+    if "rule" in fields_set:
+        rule = (body.rule or "").strip()
+        room.rule = rule or None
+    if "visibility" in fields_set and body.visibility is not None:
+        try:
+            room.visibility = RoomVisibility(body.visibility)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid visibility") from exc
+    if "join_policy" in fields_set and body.join_policy is not None:
+        try:
+            room.join_policy = RoomJoinPolicy(body.join_policy)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid join_policy") from exc
+    if "default_send" in fields_set and body.default_send is not None:
+        room.default_send = body.default_send
+    if "default_invite" in fields_set and body.default_invite is not None:
+        room.default_invite = body.default_invite
+    if "allow_human_send" in fields_set and body.allow_human_send is not None:
+        room.allow_human_send = body.allow_human_send
+    if "max_members" in fields_set:
+        if body.max_members is not None and body.max_members < 1:
+            raise HTTPException(status_code=400, detail="max_members must be >= 1")
+        room.max_members = body.max_members
+    if "slow_mode_seconds" in fields_set:
+        if body.slow_mode_seconds is not None and body.slow_mode_seconds < 0:
+            raise HTTPException(status_code=400, detail="slow_mode_seconds must be >= 0")
+        room.slow_mode_seconds = body.slow_mode_seconds
+    if "required_subscription_product_id" in fields_set:
+        room.required_subscription_product_id = body.required_subscription_product_id or None
+
+    await db.commit()
+    await db.refresh(room)
+
+    return {
+        "room_id": room.room_id,
+        "name": room.name,
+        "description": room.description,
+        "rule": room.rule,
+        "visibility": room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
+        "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
+        "default_send": room.default_send,
+        "default_invite": room.default_invite,
+        "allow_human_send": room.allow_human_send,
+        "max_members": room.max_members,
+        "slow_mode_seconds": room.slow_mode_seconds,
+        "required_subscription_product_id": room.required_subscription_product_id,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Leave room
 # ---------------------------------------------------------------------------
 
@@ -1539,28 +1651,6 @@ async def human_room_send(
         "room_id": room_id,
         "status": "queued",
     }
-
-
-# ---------------------------------------------------------------------------
-# Room update BFF — PATCH /api/dashboard/rooms/{room_id}
-# Dashboard auth (Supabase JWT + X-Active-Agent); active agent must be
-# owner/admin of the room. Delegates to the hub-layer update_room.
-# ---------------------------------------------------------------------------
-
-
-@router.patch("/rooms/{room_id}")
-async def dashboard_update_room(
-    room_id: str,
-    body: UpdateRoomRequest,
-    ctx: RequestContext = Depends(require_active_agent),
-    db: AsyncSession = Depends(get_db),
-):
-    return await _hub_update_room(
-        room_id=room_id,
-        body=body,
-        db=db,
-        current_agent=ctx.active_agent_id,
-    )
 
 
 # ---------------------------------------------------------------------------

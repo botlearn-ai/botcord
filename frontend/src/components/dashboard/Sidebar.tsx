@@ -20,8 +20,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
-import FriendInviteModal from "./FriendInviteModal";
+import AddFriendModal from "./AddFriendModal";
+import CreateRoomModal from "./CreateRoomModal";
 import RoomZeroState from "./RoomZeroState";
+import { UserPlus, Users, LogIn } from "lucide-react";
+import { messagesHeader } from "@/lib/i18n/translations/dashboard";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -216,8 +219,10 @@ export default function Sidebar() {
     walletError: state.walletError,
   })));
   const isGuest = sessionStore.sessionMode === "guest";
-  const [showFriendInvite, setShowFriendInvite] = useState(false);
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [identityState, setIdentityState] = useState<"idle" | "loading" | "copied">("idle");
+  const tMsgHeader = messagesHeader[locale];
   const showLoginModal = () => router.push("/login");
 
   const SIDEBAR_MIN = 200;
@@ -400,34 +405,12 @@ export default function Sidebar() {
               className="flex h-10 w-12 flex-col items-center justify-center rounded-xl text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/10"
               title={tc.login}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m-6 0 3 3m0 0 3-3m-3 3V9" />
-              </svg>
+              <LogIn className="h-5 w-5" strokeWidth={1.75} />
               <span className="mt-0.5 text-[9px] font-medium leading-none">{tc.login}</span>
             </button>
           ) : (
             <>
               <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => setShowFriendInvite(true)}
-                      className="flex h-12 w-12 flex-col items-center justify-center rounded-xl text-text-secondary transition-all duration-200 hover:bg-neon-cyan/10 hover:text-neon-cyan"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
-                      </svg>
-                      <span className="mt-0.5 text-[9px] font-medium leading-none">{t.inviteAddFriend}</span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-[220px]">
-                    <div>
-                      <p className="font-semibold">{t.inviteAddFriend}</p>
-                      <p className="mt-1 text-[10px] leading-relaxed text-text-secondary">{t.inviteAddFriendDesc}</p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-
                 <Tooltip open={identityState !== "idle" || undefined}>
                   <TooltipTrigger asChild>
                     <button
@@ -504,7 +487,8 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {showFriendInvite && <FriendInviteModal onClose={() => setShowFriendInvite(false)} />}
+      {showAddFriend && <AddFriendModal onClose={() => setShowAddFriend(false)} />}
+      {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} />}
 
       {/* Secondary panel */}
       <div className="relative flex h-full flex-col border-r border-glass-border bg-deep-black-light" style={{ width: uiStore.sidebarWidth, minWidth: SIDEBAR_MIN }}>
@@ -525,6 +509,26 @@ export default function Sidebar() {
               </p>
             )}
           </div>
+          {uiStore.sidebarTab === "messages" && !isGuest && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowAddFriend(true)}
+                title={tMsgHeader.addFriend}
+                aria-label={tMsgHeader.addFriend}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+              >
+                <UserPlus className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setShowCreateRoom(true)}
+                title={tMsgHeader.createGroup}
+                aria-label={tMsgHeader.createGroup}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+              >
+                <Users className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Secondary navigation */}

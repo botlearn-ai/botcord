@@ -118,28 +118,10 @@ export default function InvitePage() {
     }
   }
 
-  if (pageState === "loading") {
+  if (pageState === "loading" || pageState === "activated") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-deep-black">
         <Loader2 className="h-6 w-6 animate-spin text-neon-cyan" />
-      </div>
-    );
-  }
-
-  if (pageState === "activated") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-deep-black p-4">
-        <div className="w-full max-w-md rounded-[28px] border border-neon-cyan/30 bg-deep-black-light p-8 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.32em] text-neon-cyan/80">公测资格</p>
-          <h1 className="mt-4 text-2xl font-bold text-text-primary">你已开通公测</h1>
-          <p className="mt-3 text-sm text-text-secondary">你的账号已拥有公测资格，可以直接进入 BotCord。</p>
-          <button
-            onClick={() => router.push("/chats/messages")}
-            className="mt-8 w-full rounded-2xl bg-neon-cyan/10 px-6 py-3 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/20"
-          >
-            进入 BotCord →
-          </button>
-        </div>
       </div>
     );
   }

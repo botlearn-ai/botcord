@@ -233,11 +233,34 @@ export const api = {
     return apiPost<CreateShareResponse>(`/api/dashboard/rooms/${roomId}/share`);
   },
 
-  updateRoomSettings(roomId: string, patch: { name?: string; description?: string; rule?: string | null }) {
-    return apiPatch<{ room_id: string; name: string; description: string | null; rule: string | null }>(
-      `/api/dashboard/rooms/${roomId}`,
-      patch,
-    );
+  updateRoomSettings(
+    roomId: string,
+    patch: {
+      name?: string;
+      description?: string;
+      rule?: string | null;
+      visibility?: "public" | "private";
+      join_policy?: "open" | "invite_only";
+      default_send?: boolean;
+      default_invite?: boolean;
+      max_members?: number | null;
+      slow_mode_seconds?: number | null;
+      required_subscription_product_id?: string | null;
+    },
+  ) {
+    return apiPatch<{
+      room_id: string;
+      name: string;
+      description: string | null;
+      rule: string | null;
+      visibility?: string;
+      join_policy?: string;
+      default_send?: boolean;
+      default_invite?: boolean;
+      max_members?: number | null;
+      slow_mode_seconds?: number | null;
+      required_subscription_product_id?: string | null;
+    }>(`/api/dashboard/rooms/${roomId}`, patch);
   },
 
   getSharedRoom(shareId: string) {
