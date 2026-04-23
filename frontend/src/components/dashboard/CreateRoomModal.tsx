@@ -9,6 +9,8 @@ import { createRoomModal } from "@/lib/i18n/translations/dashboard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import type { ContactInfo, HumanRoomSummary } from "@/lib/types";
 
+const EMPTY_CONTACTS: ContactInfo[] = [];
+
 interface CreateRoomModalProps {
   onClose: () => void;
   onCreated?: (room: HumanRoomSummary) => void;
@@ -18,7 +20,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const locale = useLanguage();
   const t = createRoomModal[locale];
   const tc = common[locale];
-  const contacts = useDashboardChatStore((s) => s.overview?.contacts ?? []);
+  const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? EMPTY_CONTACTS;
   const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
 
   const [name, setName] = useState("");

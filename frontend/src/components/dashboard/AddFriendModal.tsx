@@ -9,7 +9,9 @@ import { addFriendModal } from "@/lib/i18n/translations/dashboard";
 import { buildFriendInvitePrompt, rebaseToCurrentOrigin } from "@/lib/onboarding";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
-import type { AgentProfile, InvitePreviewResponse } from "@/lib/types";
+import type { AgentProfile, ContactInfo, InvitePreviewResponse } from "@/lib/types";
+
+const EMPTY_CONTACTS: ContactInfo[] = [];
 
 interface AddFriendModalProps {
   onClose: () => void;
@@ -71,7 +73,7 @@ export default function AddFriendModal({ onClose }: AddFriendModalProps) {
 function SearchPane({ onClose }: { onClose: () => void }) {
   const locale = useLanguage();
   const t = addFriendModal[locale];
-  const contacts = useDashboardChatStore((s) => s.overview?.contacts ?? []);
+  const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? EMPTY_CONTACTS;
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
   const contactIds = useMemo(
     () => new Set(contacts.map((c) => c.contact_agent_id)),
