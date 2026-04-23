@@ -28,6 +28,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import RoomZeroState from "./RoomZeroState";
 import PromptTemplates from "./PromptTemplates";
+import PendingApprovalsPanel from "./PendingApprovalsPanel";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 const EXPLORE_PAGE_SIZE = 12;
@@ -196,6 +197,7 @@ function ContactsMainPane() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
+        {isRequestsView ? <PendingApprovalsPanel /> : null}
         {isRequestsView ? (
           contactRequestsLoading ? (
             <GridSkeletonCards />
