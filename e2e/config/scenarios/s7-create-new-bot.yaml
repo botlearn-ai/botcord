@@ -37,6 +37,9 @@ steps:
     description: Read original BotCord credentials
     params:
       glob: .botcord/credentials/*.json
+  - id: auto_claim
+    action: runtime.auto_claim
+    description: Auto-claim agents via DB so LLM can proceed without asking user to claim
   # -- Create-specific steps ------------------------------------------
   - id: backup_credentials
     action: filesystem.backup_credentials

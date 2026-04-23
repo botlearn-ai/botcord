@@ -28,6 +28,9 @@ steps:
     description: Read BotCord credentials from each instance
     params:
       glob: .botcord/credentials/*.json
+  - id: auto_claim
+    action: runtime.auto_claim
+    description: Auto-claim agents via DB so LLM can proceed without asking user to claim
   - id: create_room
     action: openclaw.dynamic_prompt
     description: Create a new room on each instance
