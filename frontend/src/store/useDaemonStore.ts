@@ -26,6 +26,35 @@ export interface DaemonInstance {
   runtimes_probed_at?: string | null;
 }
 
+export interface ProvisionAgentInput {
+  name?: string;
+  bio?: string;
+  runtime?: string;
+  cwd?: string;
+}
+
+export interface ProvisionAgentResult {
+  agentId: string;
+}
+
+export type ProvisionAgentErrorCode =
+  | "daemon_offline"
+  | "daemon_timeout"
+  | "daemon_failed"
+  | "missing_agent_id"
+  | "http_error";
+
+export class ProvisionAgentError extends Error {
+  readonly code: ProvisionAgentErrorCode;
+  readonly detail?: string;
+  constructor(code: ProvisionAgentErrorCode, detail?: string) {
+    super(detail ? `${code}: ${detail}` : code);
+    this.name = "ProvisionAgentError";
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
 interface DaemonState {
   daemons: DaemonInstance[];
   loading: boolean;
@@ -38,6 +67,10 @@ interface DaemonState {
   refresh: () => Promise<void>;
   revoke: (id: string) => Promise<void>;
   refreshRuntimes: (id: string) => Promise<void>;
+  provisionAgent: (
+    daemonId: string,
+    input: ProvisionAgentInput,
+  ) => Promise<ProvisionAgentResult>;
   reset: () => void;
 }
 
@@ -226,6 +259,50 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         runtimeErrors: { ...state.runtimeErrors, [id]: msg },
       }));
     }
+  },
+
+  provisionAgent: async (daemonId, input) => {
+    const params: Record<string, unknown> = {};
+    if (input.name) params.name = input.name;
+    if (input.bio) params.bio = input.bio;
+    if (input.runtime) params.runtime = input.runtime;
+    if (input.cwd) params.cwd = input.cwd;
+
+    const res = await fetch(
+      `/api/daemon/instances/${encodeURIComponent(daemonId)}/dispatch`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "provision_agent", params }),
+      },
+    );
+    if (!res.ok) {
+      if (res.status === 409) {
+        throw new ProvisionAgentError("daemon_offline");
+      }
+      if (res.status === 504) {
+        throw new ProvisionAgentError("daemon_timeout");
+      }
+      throw new ProvisionAgentError("http_error", await parseError(res));
+    }
+    const data = await res.json().catch(() => null);
+    const ack = data?.ack as { ok?: boolean; result?: unknown; error?: { message?: string } } | undefined;
+    if (!ack || ack.ok !== true) {
+      const detail =
+        typeof ack?.error?.message === "string" ? ack.error.message : undefined;
+      throw new ProvisionAgentError("daemon_failed", detail);
+    }
+    const result = (ack.result ?? {}) as Record<string, unknown>;
+    const agentId =
+      typeof result.agentId === "string"
+        ? result.agentId
+        : typeof result.agent_id === "string"
+          ? (result.agent_id as string)
+          : null;
+    if (!agentId) {
+      throw new ProvisionAgentError("missing_agent_id");
+    }
+    return { agentId };
   },
 
   reset: () => set({ ...initialState }),
