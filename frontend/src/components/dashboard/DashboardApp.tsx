@@ -88,10 +88,11 @@ export default function DashboardApp() {
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
   const fallbackAgent =
     sessionStore.ownedAgents.find((agent) => agent.is_default) ?? sessionStore.ownedAgents[0] ?? null;
-  const shouldShowAgentGate =
-    sessionStore.authResolved
-    && sessionStore.sessionMode === "authed-no-agent"
-    && sessionStore.ownedAgents.length === 0;
+  // Human-first: never force-block on "no agent". Authed users always proceed
+  // into /chats as their Human identity; creating an Agent is a later,
+  // optional CTA. AgentGateModal is kept for manual entry points (account
+  // menu, etc.) but must never auto-mount.
+  const shouldShowAgentGate = false;
   const realtimeTopic = sessionStore.activeAgentId ? `agent:${sessionStore.activeAgentId}` : null;
   const continueTarget = searchParams.get("next");
   const continueHandledRef = useRef<string | null>(null);
@@ -196,11 +197,11 @@ export default function DashboardApp() {
   useEffect(() => {
     if (!sessionStore.authResolved) return;
 
-    if (sessionStore.sessionMode === "authed-no-agent") {
-      if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
-      if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
-      return;
-    }
+    // Previously: authed-no-agent short-circuited the router and forced
+    // focusedRoomId=null, pairing with the AgentGateModal block. Human-first
+    // drops that short-circuit so users without an Agent can still navigate
+    // /chats/messages, /chats/explore, /chats/contacts etc. as their Human
+    // identity.
 
     const tab = pathnameParts[1];
     const subtab = pathnameParts[2];

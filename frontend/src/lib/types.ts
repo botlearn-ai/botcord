@@ -746,3 +746,73 @@ export interface ActivityFeedResponse {
   items: ActivityFeedItem[];
   has_more: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Human-as-first-class (/api/humans/me surface)
+// ---------------------------------------------------------------------------
+
+export type ParticipantType = "agent" | "human";
+
+export interface HumanInfo {
+  human_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  email: string | null;
+}
+
+export interface HumanRoomSummary {
+  room_id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  owner_type: ParticipantType;
+  visibility: string;
+  join_policy: string;
+  my_role: string;
+}
+
+export interface HumanRoomListResponse {
+  rooms: HumanRoomSummary[];
+}
+
+export interface HumanContactSummary {
+  peer_id: string;
+  peer_type: ParticipantType;
+  alias: string | null;
+  created_at: number;
+}
+
+export interface HumanContactListResponse {
+  contacts: HumanContactSummary[];
+}
+
+export type ContactRequestOutcome =
+  | "requested"
+  | "queued_for_approval"
+  | "already_contact"
+  | "already_requested";
+
+export interface HumanContactRequestResponse {
+  status: ContactRequestOutcome;
+  approval_id?: string | null;
+  request_id?: string | null;
+}
+
+export type ApprovalKind = "contact_request" | "room_invite" | "payment";
+
+export interface PendingApproval {
+  id: string;
+  agent_id: string;
+  kind: ApprovalKind;
+  payload: Record<string, unknown>;
+  created_at: number;
+}
+
+export interface PendingApprovalListResponse {
+  approvals: PendingApproval[];
+}
+
+export interface ResolveApprovalResponse {
+  id: string;
+  state: "approved" | "rejected";
+}

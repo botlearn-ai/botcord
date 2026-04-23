@@ -6,8 +6,8 @@
  */
 
 import { create } from "zustand";
-import type { UserProfile, UserAgent } from "@/lib/types";
-import { userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
+import type { HumanInfo, UserProfile, UserAgent } from "@/lib/types";
+import { humansApi, userApi, getActiveAgentId, setActiveAgentId } from "@/lib/api";
 
 export type DashboardSessionMode = "guest" | "authed-no-agent" | "authed-ready";
 
@@ -17,6 +17,8 @@ interface DashboardSessionState {
   sessionMode: DashboardSessionMode;
   token: string | null;
   user: UserProfile | null;
+  /** Current Human identity (hu_*). Populated after /api/humans/me returns. */
+  human: HumanInfo | null;
   ownedAgents: UserAgent[];
   activeAgentId: string | null;
 
@@ -38,6 +40,7 @@ const initialSessionState = {
   sessionMode: "guest" as const,
   token: null,
   user: null,
+  human: null,
   ownedAgents: [],
   activeAgentId: null,
 };
@@ -116,7 +119,16 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     });
 
     try {
-      const user = await userApi.getMe();
+      const [user, human] = await Promise.all([
+        userApi.getMe(),
+        // Idempotent — the first call mints the Human identity for brand-new
+        // users; subsequent calls return the existing record. Failure here is
+        // non-fatal: Human-first features degrade but Agent flows keep working.
+        humansApi.createOrGet().catch((err) => {
+          console.warn("[SessionStore] Failed to load Human identity:", err);
+          return null;
+        }),
+      ]);
       if (requestId !== authInitRequestId) {
         return;
       }
@@ -127,6 +139,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         authBootstrapping: false,
         token,
         user,
+        human,
         ownedAgents: user.agents,
         activeAgentId: activeId,
         sessionMode: resolveSessionMode(token, activeId),
