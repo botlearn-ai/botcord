@@ -6,7 +6,7 @@
  *
  * See `docs/daemon-control-plane-plan.md` §4.3, §5.3, §8.
  */
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import {
@@ -21,6 +21,7 @@ import {
   type ListRuntimesResult,
   type ProvisionAgentParams,
   type RevokeAgentParams,
+  type RevokeAgentResult,
   type RuntimeProbeResult,
   type StoredBotCordCredentials,
 } from "@botcord/protocol-core";
@@ -37,7 +38,13 @@ import {
   type RouteRule,
   type RouteRuleMatch,
 } from "./config.js";
-import { BOTCORD_CHANNEL_TYPE } from "./daemon-config-map.js";
+import { BOTCORD_CHANNEL_TYPE, buildManagedRoutes } from "./daemon-config-map.js";
+import {
+  agentHomeDir,
+  agentStateDir,
+  agentWorkspaceDir,
+  ensureAgentWorkspace,
+} from "./agent-workspace.js";
 import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
 import { log as daemonLog } from "./log.js";
 
@@ -154,10 +161,15 @@ async function provisionAgent(
   params: ProvisionAgentParams,
   ctx: ProvisionCtx,
 ): Promise<ProvisionedAgent> {
-  assertSafeCwd(params.cwd);
+  // Validate both caller-supplied cwd sources up front. Previously only
+  // `params.cwd` was checked, so `params.credentials.cwd` could smuggle an
+  // arbitrary path (e.g. `/etc`) into the credentials file; plan §7 closes
+  // that hole by moving the check to the union of both.
+  const explicitCwd = params.credentials?.cwd ?? params.cwd;
+  assertSafeCwd(explicitCwd);
 
   const cfg = loadConfig();
-  const credentials = await materializeCredentials(params, cfg, ctx);
+  const credentials = await materializeCredentials(params, cfg, ctx, explicitCwd);
   daemonLog.debug("provision: credentials materialized", {
     agentId: credentials.agentId,
     hubUrl: credentials.hubUrl,
@@ -169,6 +181,26 @@ async function provisionAgent(
     defaultCredentialsFile(credentials.agentId),
     credentials,
   );
+
+  // Seed the per-agent workspace directory. On failure, unlink the fresh
+  // credentials file but do NOT `rm -rf` the agent dir — partial contents
+  // may belong to a pre-existing workspace we must not touch.
+  try {
+    ensureAgentWorkspace(credentials.agentId, {
+      displayName: credentials.displayName,
+      bio: params.bio,
+      runtime: credentials.runtime,
+      keyId: credentials.keyId,
+      savedAt: credentials.savedAt,
+    });
+  } catch (err) {
+    try {
+      unlinkSync(credentialsFile);
+    } catch {
+      // best-effort
+    }
+    throw err;
+  }
 
   try {
     const updated = addAgentToConfig(cfg, credentials.agentId);
@@ -213,6 +245,40 @@ async function provisionAgent(
     throw err;
   }
 
+  // Hot-add the synthesized per-agent managed route so the next turn picks
+  // the agent's runtime + workspace cwd without waiting for reload_config.
+  try {
+    ctx.gateway.upsertManagedRoute(credentials.agentId, {
+      match: { accountId: credentials.agentId },
+      runtime: credentials.runtime ?? cfg.defaultRoute.adapter,
+      cwd: credentials.cwd ?? agentWorkspaceDir(credentials.agentId),
+    });
+  } catch (err) {
+    // Rollback the channel + config + credentials on managed-route failure
+    // (shouldn't happen — pure map op — but keeps the invariant tight).
+    daemonLog.error("provision.upsertManagedRoute failed, rolling back", {
+      agentId: credentials.agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    try {
+      await ctx.gateway.removeChannel(credentials.agentId, "provision rollback");
+    } catch {
+      // ignore
+    }
+    try {
+      const revertCfg = removeAgentFromConfig(loadConfig(), credentials.agentId);
+      if (revertCfg) saveConfig(revertCfg);
+    } catch {
+      // ignore
+    }
+    try {
+      unlinkSync(credentialsFile);
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+
   daemonLog.info("agent provisioned", {
     agentId: credentials.agentId,
     credentialsFile,
@@ -229,13 +295,13 @@ async function materializeCredentials(
   params: ProvisionAgentParams,
   cfg: DaemonConfig,
   ctx: ProvisionCtx,
+  explicitCwd: string | undefined,
 ): Promise<StoredBotCordCredentials> {
   // Runtime is an agent property (docs/agent-runtime-property-plan.md §4.1).
   // Hub is authoritative; top-level `runtime` wins, `adapter` is a one-release
   // alias, and `credentials.runtime` is the per-agent cached copy.
   const runtime = pickRuntime(params);
   if (runtime) assertKnownRuntime(runtime);
-  const cwd = params.credentials?.cwd ?? params.cwd;
 
   // Fast path: Hub handed us the credential envelope directly.
   if (params.credentials) {
@@ -253,6 +319,7 @@ async function materializeCredentials(
     if (!hubUrl) {
       throw new Error("provision_agent.credentials missing hubUrl");
     }
+    const cwd = explicitCwd ?? agentWorkspaceDir(c.agentId);
     const record: StoredBotCordCredentials = {
       version: 1,
       hubUrl,
@@ -266,7 +333,7 @@ async function materializeCredentials(
     if (c.token) record.token = c.token;
     if (typeof c.tokenExpiresAt === "number") record.tokenExpiresAt = c.tokenExpiresAt;
     if (runtime) record.runtime = runtime;
-    if (cwd) record.cwd = cwd;
+    record.cwd = cwd;
     return record;
   }
 
@@ -281,6 +348,7 @@ async function materializeCredentials(
   }
   const name = params.name || `agent-${Date.now()}`;
   const reg = await ctx.register(hubUrl, name, params.bio);
+  const cwd = explicitCwd ?? agentWorkspaceDir(reg.agentId);
   const record: StoredBotCordCredentials = {
     version: 1,
     hubUrl: reg.hubUrl,
@@ -294,30 +362,42 @@ async function materializeCredentials(
     tokenExpiresAt: reg.expiresAt,
   };
   if (runtime) record.runtime = runtime;
-  if (cwd) record.cwd = cwd;
+  record.cwd = cwd;
   return record;
-}
-
-interface RevokeResult {
-  agentId: string;
-  removed: boolean;
-  credentialsDeleted: boolean;
 }
 
 async function revokeAgent(
   params: RevokeAgentParams,
   ctx: { gateway: Gateway },
-): Promise<RevokeResult> {
+): Promise<RevokeAgentResult> {
   if (!params.agentId) {
     throw new Error("revoke_agent requires params.agentId");
   }
   const agentId = params.agentId;
   const deleteCreds = params.deleteCredentials !== false;
+  // `deleteState` defaults to whatever `deleteCredentials` resolves to —
+  // vanilla revoke wipes runtime state, but explicit `deleteCredentials:false`
+  // (keep-creds) also implies keep-state unless the caller says otherwise.
+  const deleteState = params.deleteState ?? deleteCreds;
+  // Workspace is precious (user-authored memory/notes); require explicit opt-in.
+  const deleteWorkspace = params.deleteWorkspace === true;
 
+  // In-memory gateway ops run first so any in-flight turn is aborted before
+  // disk state changes. Both run unconditionally — the channel is revoked
+  // regardless of whether disk state survives, and the synthesized managed
+  // route is now dangling.
   try {
     await ctx.gateway.removeChannel(agentId, "revoked by hub");
   } catch (err) {
     daemonLog.warn("revoke.removeChannel failed", {
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  try {
+    ctx.gateway.removeManagedRoute(agentId);
+  } catch (err) {
+    daemonLog.warn("revoke.removeManagedRoute failed", {
       agentId,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -355,8 +435,50 @@ async function revokeAgent(
     }
   }
 
-  daemonLog.info("agent revoked", { agentId, removed, credentialsDeleted });
-  return { agentId, removed, credentialsDeleted };
+  // Disk steps are independent and best-effort: a failure at one step logs a
+  // warning but does not prevent the next (matches `deleteCredentials`).
+  let stateDeleted = false;
+  let workspaceDeleted = false;
+  if (deleteWorkspace) {
+    // Workspace deletion subsumes state — remove the whole agent home.
+    const home = agentHomeDir(agentId);
+    try {
+      if (existsSync(home)) {
+        rmSync(home, { recursive: true, force: true });
+        workspaceDeleted = true;
+        stateDeleted = true;
+      }
+    } catch (err) {
+      daemonLog.warn("revoke.rmWorkspace failed", {
+        agentId,
+        path: home,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else if (deleteState) {
+    const state = agentStateDir(agentId);
+    try {
+      if (existsSync(state)) {
+        rmSync(state, { recursive: true, force: true });
+        stateDeleted = true;
+      }
+    } catch (err) {
+      daemonLog.warn("revoke.rmState failed", {
+        agentId,
+        path: state,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  daemonLog.info("agent revoked", {
+    agentId,
+    removed,
+    credentialsDeleted,
+    stateDeleted,
+    workspaceDeleted,
+  });
+  return { agentId, removed, credentialsDeleted, stateDeleted, workspaceDeleted };
 }
 
 /** Reject paths outside the operator's home directory (plan §8.3). */
@@ -491,8 +613,52 @@ export async function reloadConfig(ctx: { gateway: Gateway }): Promise<ReloadRes
     }
   }
 
+  // Re-synthesize managed routes so `set_route` + `reload_config` actually
+  // applies at runtime (plan §10.5). User-authored `cfg.routes[]` lives in a
+  // different bucket and is unaffected.
+  try {
+    const freshCfg = loadConfig();
+    const freshAgents = resolveConfiguredAgentIds(freshCfg) ?? [];
+    const agentRuntimes = readAgentRuntimesFromCredentials(freshAgents);
+    const freshDefault = {
+      runtime: freshCfg.defaultRoute.adapter,
+      cwd: freshCfg.defaultRoute.cwd,
+    };
+    const managed = buildManagedRoutes(freshAgents, agentRuntimes, freshDefault);
+    ctx.gateway.replaceManagedRoutes(managed);
+  } catch (err) {
+    daemonLog.warn("reload_config.replaceManagedRoutes failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   daemonLog.info("config reloaded", { added, removed });
   return { reloaded: true, added, removed };
+}
+
+/**
+ * Read cached `runtime`/`cwd` from each agent's credentials file. Missing
+ * files or malformed entries are skipped silently — callers fall back to
+ * the daemon's `defaultRoute` for those agents.
+ */
+function readAgentRuntimesFromCredentials(
+  agentIds: string[],
+): Record<string, { runtime?: string; cwd?: string }> {
+  const out: Record<string, { runtime?: string; cwd?: string }> = {};
+  for (const id of agentIds) {
+    const file = defaultCredentialsFile(id);
+    try {
+      if (!existsSync(file)) continue;
+      const creds = loadStoredCredentials(file);
+      const entry: { runtime?: string; cwd?: string } = {};
+      if (creds.runtime) entry.runtime = creds.runtime;
+      if (creds.cwd) entry.cwd = creds.cwd;
+      if (entry.runtime || entry.cwd) out[id] = entry;
+    } catch {
+      // best-effort — skip agents with unreadable credentials
+    }
+  }
+  return out;
 }
 
 /**

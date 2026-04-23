@@ -38,6 +38,12 @@ export interface DiscoveredAgentCredential {
   runtime?: string;
   /** Working directory cached alongside `runtime`. */
   cwd?: string;
+  /** Key id from the credentials file — surfaced so boot-time workspace
+   * seeding (see daemon-agent-workspace-plan.md §9) can render identity.md
+   * without re-reading the file. */
+  keyId?: string;
+  /** ISO timestamp of when the credentials file was written. */
+  savedAt?: string;
 }
 
 /** Result of one discovery pass — explicit about what was dropped and why. */
@@ -158,6 +164,8 @@ export function discoverAgentCredentials(
     if (creds.displayName) entry.displayName = creds.displayName;
     if (creds.runtime) entry.runtime = creds.runtime;
     if (creds.cwd) entry.cwd = creds.cwd;
+    if (creds.keyId) entry.keyId = creds.keyId;
+    if (creds.savedAt) entry.savedAt = creds.savedAt;
     agents.push(entry);
   }
   // Stable order for downstream channel creation / logs.
@@ -228,6 +236,8 @@ export function resolveBootAgents(
         if (creds.displayName) entry.displayName = creds.displayName;
         if (creds.runtime) entry.runtime = creds.runtime;
         if (creds.cwd) entry.cwd = creds.cwd;
+        if (creds.keyId) entry.keyId = creds.keyId;
+        if (creds.savedAt) entry.savedAt = creds.savedAt;
       } catch (err) {
         // Silent on any read failure: the file may not exist yet (it gets
         // written by provision flows or legacy CLI) and the gateway channel

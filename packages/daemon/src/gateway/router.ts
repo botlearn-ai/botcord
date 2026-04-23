@@ -36,14 +36,25 @@ export function matchesRoute(
   return true;
 }
 
-/** Picks the first matching route from config.routes; falls back to config.defaultRoute. */
+/**
+ * Picks the first matching route in priority order:
+ *   1. `config.routes[]` (user-authored)
+ *   2. `managedRoutes` (daemon-synthesized per-agent)
+ *   3. `config.defaultRoute`
+ */
 export function resolveRoute(
   message: GatewayInboundMessage,
   config: Pick<GatewayConfig, "defaultRoute" | "routes">,
+  managedRoutes?: readonly GatewayRoute[],
 ): GatewayRoute {
   const routes = config.routes ?? [];
   for (const route of routes) {
     if (matchesRoute(message, route.match)) return route;
+  }
+  if (managedRoutes) {
+    for (const route of managedRoutes) {
+      if (matchesRoute(message, route.match)) return route;
+    }
   }
   return config.defaultRoute;
 }

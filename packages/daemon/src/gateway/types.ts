@@ -52,6 +52,12 @@ export interface GatewayConfig {
   channels: GatewayChannelConfig[];
   defaultRoute: GatewayRoute;
   routes?: GatewayRoute[];
+  /**
+   * Daemon-synthesized per-agent routes. Snapshot/debug-only surface —
+   * `resolveRoute` reads the live map on the Gateway, not this array.
+   * Matched after `routes[]` and before `defaultRoute`.
+   */
+  managedRoutes?: GatewayRoute[];
   streamBlocks?: boolean;
 }
 

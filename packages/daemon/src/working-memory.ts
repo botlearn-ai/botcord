@@ -1,16 +1,25 @@
 /**
  * Working memory — persistent, account-scoped notes injected into every turn.
  *
- * Stored at `~/.botcord/daemon/memory/{agentId}/working-memory.json`. A distinct
- * directory from the plugin's `~/.botcord/memory/{agentId}/` so daemon and
- * plugin don't step on each other — share later if we decide the semantics match.
+ * Stored at `~/.botcord/agents/{agentId}/state/working-memory.json` (the
+ * per-agent state dir owned by the daemon; see docs/daemon-agent-workspace-plan.md §8).
  *
  * Ported from plugin/src/memory.ts (dropping workspace + OpenClaw runtime
  * branches) and plugin/src/memory-protocol.ts (prompt builder).
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+import { agentStateDir } from "./agent-workspace.js";
 import { DAEMON_DIR_PATH } from "./config.js";
+import { log as daemonLog } from "./log.js";
 
 export interface WorkingMemory {
   version: 2;
@@ -40,14 +49,92 @@ const RESERVED_TAGS_RE = /<\/?(?:current_memory|section_\w+)\b[^>]*>/gi;
 
 // ── Path resolution ────────────────────────────────────────────────
 
-/** Base directory: `<DAEMON_DIR_PATH>/memory/<agentId>`. */
+/**
+ * Canonical per-agent state directory. Returns the new location
+ * (`~/.botcord/agents/{agentId}/state`). The legacy location under
+ * `~/.botcord/daemon/memory/{agentId}` is migrated lazily on first read —
+ * see §8 of the daemon-agent-workspace plan.
+ */
 export function resolveMemoryDir(agentId: string): string {
   if (!agentId) throw new Error("resolveMemoryDir: agentId is required");
+  return agentStateDir(agentId);
+}
+
+/** Legacy location retained for one-shot migration on read. */
+function legacyMemoryDir(agentId: string): string {
   return path.join(DAEMON_DIR_PATH, "memory", agentId);
 }
 
 function workingMemoryPath(agentId: string): string {
   return path.join(resolveMemoryDir(agentId), "working-memory.json");
+}
+
+function legacyWorkingMemoryPath(agentId: string): string {
+  return path.join(legacyMemoryDir(agentId), "working-memory.json");
+}
+
+// Migration conflict warnings are emitted at most once per agent per
+// process. Reset only by daemon restart — good enough for a one-release
+// transitional branch that gets removed later.
+const warnedMigrationConflict = new Set<string>();
+
+/**
+ * Resolve the path to read from, migrating from the legacy location if
+ * necessary. Returns the path the caller should read, or `null` when no
+ * memory file exists anywhere.
+ *
+ * Migration branch (the `else if` on `legacyExists` below) is meant to be
+ * deleted one release after this change ships; see plan §8 step 6.
+ */
+function resolveReadPath(agentId: string): string | null {
+  const newPath = workingMemoryPath(agentId);
+  const oldPath = legacyWorkingMemoryPath(agentId);
+  const newExists = existsSync(newPath);
+  const oldExists = existsSync(oldPath);
+
+  if (newExists) {
+    if (oldExists && !warnedMigrationConflict.has(agentId)) {
+      warnedMigrationConflict.add(agentId);
+      daemonLog.warn("working-memory: both new and legacy paths exist; using new", {
+        agentId,
+        oldPath,
+        newPath,
+      });
+    }
+    return newPath;
+  }
+  if (oldExists) {
+    try {
+      mkdirSync(path.dirname(newPath), { recursive: true, mode: 0o700 });
+      try {
+        renameSync(oldPath, newPath);
+      } catch (err) {
+        // EXDEV = legacy and new paths live on different filesystems
+        // (bind mounts, tmpfs overlays). `renameSync` cannot cross fs
+        // boundaries, so fall back to copy + unlink. Without this, the
+        // next write would go to newPath while legacy still has the old
+        // payload — silent divergence the reviewer of §8 flagged.
+        if ((err as NodeJS.ErrnoException).code === "EXDEV") {
+          copyFileSync(oldPath, newPath);
+          unlinkSync(oldPath);
+        } else {
+          throw err;
+        }
+      }
+      return newPath;
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      daemonLog.warn("working-memory: migration rename failed; reading legacy path", {
+        agentId,
+        oldPath,
+        newPath,
+        code: e.code,
+        error: e.message ?? String(err),
+      });
+      return oldPath;
+    }
+  }
+  return null;
 }
 
 // ── File I/O ───────────────────────────────────────────────────────
@@ -100,8 +187,8 @@ function normalize(raw: unknown): WorkingMemory | null {
 }
 
 export function readWorkingMemory(agentId: string): WorkingMemory | null {
-  const p = workingMemoryPath(agentId);
-  if (!existsSync(p)) return null;
+  const p = resolveReadPath(agentId);
+  if (!p) return null;
   return normalize(readJson<unknown>(p));
 }
 
