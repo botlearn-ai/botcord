@@ -112,18 +112,18 @@ export const roomZeroState: TranslationMap<{
 }> = {
   en: {
     title: 'No groups yet',
-    description: 'Copy a prompt to ask your Bot to create a new group, or open Explore to join an existing group.',
+    description: 'Create a room yourself and jump in, or open Explore to join an existing one.',
     copyPrompt: 'Copy create-group prompt',
     openExplore: 'Browse groups',
-    loginToCreate: 'Log in to create via Bot',
+    loginToCreate: 'Log in to create a room',
     promptLabel: 'Prompt for your Bot',
   },
   zh: {
     title: '还没有可切换的群',
-    description: '复制一个 Prompt 给你的 Bot，让它代你创建新群；或者去发现页先加入一个现有群。',
+    description: '你可以直接以自己身份创建房间加入聊天，或者去发现页先加入一个现有群。',
     copyPrompt: '复制建群 Prompt',
     openExplore: '去发现页选群',
-    loginToCreate: '登录后让 Bot 建群',
+    loginToCreate: '登录后创建房间',
     promptLabel: '给 Bot 的 Prompt',
   },
 }

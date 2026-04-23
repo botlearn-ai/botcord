@@ -7,13 +7,11 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
-import { common } from "@/lib/i18n/translations/common";
 import { roomZeroState } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
-import { buildCreateRoomPrompt } from "@/lib/onboarding";
 import { humansApi } from "@/lib/api";
 
 interface RoomZeroStateProps {
@@ -26,13 +24,10 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
   const human = useDashboardSessionStore((state) => state.human);
   const refreshHumanRooms = useDashboardSessionStore((state) => state.refreshHumanRooms);
   const locale = useLanguage();
-  const tc = common[locale];
   const t = roomZeroState[locale];
-  const [copied, setCopied] = useState(false);
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [createRoomError, setCreateRoomError] = useState<string | null>(null);
   const isGuest = sessionMode === "guest";
-  const isAuthedReady = sessionMode === "authed-ready";
   const showLoginModal = () => router.push("/login");
 
   const handleCreateHumanRoom = async () => {
@@ -54,19 +49,6 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
     } finally {
       setCreatingRoom(false);
     }
-  };
-
-  const createRoomPrompt = useMemo(() => {
-    return buildCreateRoomPrompt({ locale });
-  }, [locale]);
-
-  const handleCopyPrompt = async () => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) {
-      return;
-    }
-    await navigator.clipboard.writeText(createRoomPrompt);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
   };
 
   const containerClassName = compact
@@ -97,15 +79,6 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
                 : "Create a room as yourself"}
           </button>
         ) : null}
-        {isAuthedReady && (
-          <button
-            type="button"
-            onClick={() => void handleCopyPrompt()}
-            className="rounded-xl border border-neon-cyan/35 bg-neon-cyan/10 px-4 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
-          >
-            {copied ? tc.copied : t.copyPrompt}
-          </button>
-        )}
         <button
           type="button"
           onClick={() => router.push("/chats/explore/rooms")}
@@ -126,17 +99,6 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
       {createRoomError ? (
         <p className="mt-3 text-xs text-red-300">{createRoomError}</p>
       ) : null}
-
-      {isAuthedReady && (
-        <div className="mt-4 w-full overflow-hidden rounded-2xl border border-glass-border/70 bg-deep-black/40 text-left">
-          <div className="border-b border-glass-border/60 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-text-secondary/70">
-            {t.promptLabel}
-          </div>
-          <pre className="whitespace-pre-wrap break-words px-4 py-3 font-mono text-[11px] leading-5 text-text-secondary/85">
-            {createRoomPrompt}
-          </pre>
-        </div>
-      )}
     </div>
   );
 }
