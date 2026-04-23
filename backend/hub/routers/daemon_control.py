@@ -25,6 +25,7 @@ import logging
 import secrets
 import uuid as _uuid
 from dataclasses import dataclass
+from urllib.parse import quote
 from typing import Any
 
 import jcs
@@ -252,6 +253,7 @@ class _DeviceCodeResponse(BaseModel):
     device_code: str
     user_code: str
     verification_uri: str
+    verification_uri_complete: str
     expires_in: int
     interval: int
 
@@ -281,10 +283,12 @@ async def issue_device_code(db: AsyncSession = Depends(get_db)) -> _DeviceCodeRe
     await db.commit()
 
     verification_uri = f"{FRONTEND_BASE_URL.rstrip('/')}/activate"
+    verification_uri_complete = f"{verification_uri}?code={quote(user_code, safe='')}"
     return _DeviceCodeResponse(
         device_code=device_code,
         user_code=user_code,
         verification_uri=verification_uri,
+        verification_uri_complete=verification_uri_complete,
         expires_in=DAEMON_DEVICE_CODE_TTL_SECONDS,
         interval=DAEMON_DEVICE_CODE_INTERVAL_SECONDS,
     )
