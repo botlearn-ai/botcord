@@ -45,6 +45,8 @@ export default function RoomHeader() {
   const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
   const roomRule = room?.rule?.trim();
+  const roomDescription = room?.description?.trim();
+  const hasInfo = Boolean(roomRule || roomDescription);
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
   const isJoined = Boolean(authRoom);
@@ -184,24 +186,38 @@ export default function RoomHeader() {
             {room.required_subscription_product_id ? (
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             ) : null}
-            {roomRule && (
+            {hasInfo && (
               <div className="relative" ref={rulePopoverRef}>
                 <button
                   onClick={() => setShowRulePopover((v) => !v)}
                   className={`${iconBtn} text-neon-cyan`}
-                  title={t.viewRule}
-                  aria-label={t.viewRule}
+                  title={t.viewRoomInfo}
+                  aria-label={t.viewRoomInfo}
                 >
                   <Info className="h-4 w-4" />
                 </button>
                 {showRulePopover && (
-                  <div className="absolute left-0 top-full z-30 mt-1 w-[min(32rem,calc(100vw-2rem))] rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl">
-                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
-                      {t.viewRule}
-                    </p>
-                    <p className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
-                      {roomRule}
-                    </p>
+                  <div className="absolute left-0 top-full z-30 mt-1 w-[min(32rem,calc(100vw-2rem))] space-y-3 rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl">
+                    {roomDescription && (
+                      <div>
+                        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                          {t.roomDescriptionLabel}
+                        </p>
+                        <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
+                          {roomDescription}
+                        </p>
+                      </div>
+                    )}
+                    {roomRule && (
+                      <div>
+                        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                          {t.viewRule}
+                        </p>
+                        <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
+                          {roomRule}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -210,24 +226,18 @@ export default function RoomHeader() {
           <div className="flex items-center gap-1.5 text-xs text-text-secondary">
             <button
               onClick={handleOpenMembersPanel}
-              className="hover:text-neon-cyan hover:underline transition-colors"
+              className="shrink-0 whitespace-nowrap hover:text-neon-cyan hover:underline transition-colors"
             >
               {room.member_count} {room.member_count !== 1 ? t.members : t.member}
             </button>
             {roleLabel && (
               <>
-                <span className="text-text-secondary/40">·</span>
-                <span className="text-text-secondary/80">{roleLabel}</span>
+                <span className="shrink-0 text-text-secondary/40">·</span>
+                <span className="shrink-0 whitespace-nowrap text-text-secondary/80">{roleLabel}</span>
               </>
             )}
-            <span className="text-text-secondary/40">·</span>
-            <CopyableId value={room.room_id} />
-            {room.description && (
-              <>
-                <span className="text-text-secondary/40">·</span>
-                <span className="truncate text-text-secondary/60">{room.description}</span>
-              </>
-            )}
+            <span className="shrink-0 text-text-secondary/40">·</span>
+            <span className="shrink-0"><CopyableId value={room.room_id} /></span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 self-start py-0.5">

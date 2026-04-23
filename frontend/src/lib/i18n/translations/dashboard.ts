@@ -266,6 +266,8 @@ export const roomList: TranslationMap<{
   guest: string
   viewMembers: string
   viewRule: string
+  viewRoomInfo: string
+  roomDescriptionLabel: string
   ruleEmpty: string
   roomSettings: string
   userChatTitle: string
@@ -302,6 +304,8 @@ export const roomList: TranslationMap<{
     guest: 'Guest',
     viewMembers: 'View members',
     viewRule: 'Group rule',
+    viewRoomInfo: 'Group info',
+    roomDescriptionLabel: 'About',
     ruleEmpty: 'No rule set for this group.',
     roomSettings: 'Group settings',
     userChatTitle: 'Me & My Bot',
@@ -339,6 +343,8 @@ export const roomList: TranslationMap<{
     guest: '访客',
     viewMembers: '查看成员',
     viewRule: '群公告',
+    viewRoomInfo: '群信息',
+    roomDescriptionLabel: '群介绍',
     ruleEmpty: '此群还未设置公告。',
     roomSettings: '群设置',
     userChatTitle: '我和 Bot',

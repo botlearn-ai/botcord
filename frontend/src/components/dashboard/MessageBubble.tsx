@@ -145,7 +145,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           {isHuman ? (
             <User className="h-3 w-3 text-neon-green/80" aria-label="human" />
           ) : (
-            <PresenceDot agentId={message.sender_id} size="xs" showOffline={false} />
+            <PresenceDot agentId={message.sender_id} size="xs" />
           )}
           <span
             className={`text-xs font-medium hover:underline ${
