@@ -87,6 +87,47 @@ cd frontend && pnpm install && pnpm dev
 4. Request review from a maintainer
 5. Address any review feedback
 
+## Branch Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Main development line — all PRs target here |
+| `hotfix/*` | Hot-fix branches cut from a known-good production state |
+| `release/YYYY-MM-DD` | Immutable archive created automatically on each release; do not push to these manually |
+| `release/latest` | Moving pointer to the current production commit — auto-maintained by the release workflow; **do not push manually** |
+
+## CI Flow (PR → main)
+
+Every pull request and every push to `main` runs [`ci.yml`](.github/workflows/ci.yml):
+
+1. **Detect changes** — only affected packages (backend / frontend / packages) are tested, keeping CI fast.
+2. **Run tests** — `pytest` for backend, `vitest` for frontend, typecheck + test for plugin/cli.
+3. **Deploy preview** — changed packages are deployed to a preview environment; the workflow posts (or updates) a sticky comment on the PR with preview URLs.
+4. **Main push** — on merge to `main` the frontend preview is aliased to `preview.botcord.chat`.
+
+No manual steps are needed — CI runs automatically on every PR and push.
+
+## Release Flow
+
+Production releases are triggered **manually** via [Actions → Release](https://github.com/botlearn-ai/botcord/actions/workflows/release.yml) (`workflow_dispatch`). Choose `source_branch` to select the publish mode:
+
+| `source_branch` | Mode | What happens |
+|-----------------|------|--------------|
+| `main` *(default)* | **normal** | Archives to `release/YYYY-MM-DD`, promotes `release/latest`, deploys prod |
+| `hotfix/*` | **hotfix** | Same as normal — archives + promotes + deploys |
+| `release/latest` | **redeploy** | Redeploys current latest without archiving or promoting |
+| `release/YYYY-MM-DD` | **rollback** | Promotes that archive to `release/latest` and redeploys |
+
+Additional inputs:
+
+- **targets** — `both` (default), `backend`, or `frontend`
+- **run_migrations** — check to run production DB migrations before deploying
+- **notes** — optional markdown text included in the GitHub Release body
+
+Version numbers (`vYYYY.M.D[-N]`) are generated automatically. Do not create release tags manually.
+
+After a successful run the workflow creates a GitHub Release (with changelog) and sends a Feishu notification.
+
 ## Design Principles
 
 When contributing, keep these principles in mind:
