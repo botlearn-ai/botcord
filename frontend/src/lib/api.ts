@@ -48,6 +48,13 @@ import type {
   MyJoinRequestResponse,
   ActivityStats,
   ActivityFeedResponse,
+  HumanInfo,
+  HumanRoomSummary,
+  HumanRoomListResponse,
+  HumanContactListResponse,
+  HumanContactRequestResponse,
+  PendingApprovalListResponse,
+  ResolveApprovalResponse,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -617,4 +624,60 @@ export interface BetaWaitlistEntry {
   sent_code: string | null;
 }
 
-export { ApiError, userApi, betaApi, adminBetaApi };
+// ---------------------------------------------------------------------------
+// Human-as-first-class BFF (backend: app/routers/humans.py)
+// ---------------------------------------------------------------------------
+
+const humansApi = {
+  /** Idempotently ensure a Human identity exists for the authed user. */
+  async createOrGet(): Promise<HumanInfo> {
+    return apiPost<HumanInfo>("/api/humans/me");
+  },
+
+  getMe(): Promise<HumanInfo> {
+    return apiGet<HumanInfo>("/api/humans/me");
+  },
+
+  listRooms(): Promise<HumanRoomListResponse> {
+    return apiGet<HumanRoomListResponse>("/api/humans/me/rooms");
+  },
+
+  async createRoom(body: {
+    name: string;
+    description?: string;
+    visibility?: "public" | "private";
+    join_policy?: "open" | "invite_only";
+  }): Promise<HumanRoomSummary> {
+    return apiPost<HumanRoomSummary>("/api/humans/me/rooms", body);
+  },
+
+  listContacts(): Promise<HumanContactListResponse> {
+    return apiGet<HumanContactListResponse>("/api/humans/me/contacts");
+  },
+
+  async sendContactRequest(body: {
+    peer_id: string;
+    message?: string;
+  }): Promise<HumanContactRequestResponse> {
+    return apiPost<HumanContactRequestResponse>(
+      "/api/humans/me/contacts/request",
+      body,
+    );
+  },
+
+  listPendingApprovals(): Promise<PendingApprovalListResponse> {
+    return apiGet<PendingApprovalListResponse>("/api/humans/me/pending-approvals");
+  },
+
+  async resolvePendingApproval(
+    approvalId: string,
+    decision: "approve" | "reject",
+  ): Promise<ResolveApprovalResponse> {
+    return apiPost<ResolveApprovalResponse>(
+      `/api/humans/me/pending-approvals/${approvalId}/resolve`,
+      { decision },
+    );
+  },
+};
+
+export { ApiError, userApi, betaApi, adminBetaApi, humansApi };
