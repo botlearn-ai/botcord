@@ -206,6 +206,7 @@ export default function Sidebar() {
     setExploreView: state.setExploreView,
     setContactsView: state.setContactsView,
     setSidebarWidth: state.setSidebarWidth,
+    setOpenedRoomId: state.setOpenedRoomId,
   })));
   const chatStore = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -416,7 +417,16 @@ export default function Sidebar() {
       </div>
 
       {showAddFriend && <AddFriendModal onClose={() => setShowAddFriend(false)} />}
-      {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} />}
+      {showCreateRoom && (
+        <CreateRoomModal
+          onClose={() => setShowCreateRoom(false)}
+          onCreated={(room) => {
+            setShowCreateRoom(false);
+            uiStore.setOpenedRoomId(room.room_id);
+            router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+          }}
+        />
+      )}
 
       {/* Secondary panel */}
       <div className="relative flex h-full flex-col border-r border-glass-border bg-deep-black-light" style={{ width: uiStore.sidebarWidth, minWidth: SIDEBAR_MIN }}>

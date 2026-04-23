@@ -83,8 +83,9 @@ export function buildVisibleMessageRooms(state: {
   const recentUnjoinedRooms = state.recentVisitedRooms
     .filter((room) => !joinedRoomIds.has(room.room_id) && !isOwnerChatRoom(room.room_id))
     .map(toRoomSummary);
+  const allKnownRoomIds = new Set([...joinedRoomIds, ...recentUnjoinedRooms.map((r) => r.room_id)]);
   const humanOnlyRooms = (state.humanRooms || [])
-    .filter((r) => !joinedRoomIds.has(r.room_id) && !isOwnerChatRoom(r.room_id))
+    .filter((r) => !allKnownRoomIds.has(r.room_id) && !isOwnerChatRoom(r.room_id))
     .map(humanRoomToDashboardRoom);
   const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms, ...humanOnlyRooms].sort((a, b) => {
     const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
