@@ -331,6 +331,10 @@ export default function RoomHeader() {
           initialName={room.name}
           initialDescription={room.description || ""}
           initialRule={room.rule || ""}
+          initialVisibility={room.visibility}
+          initialJoinPolicy={room.join_policy}
+          initialSubscriptionProductId={room.required_subscription_product_id ?? null}
+          isOwner={authRoom?.my_role === "owner"}
           onClose={() => setShowSettingsModal(false)}
         />
       )}

@@ -76,6 +76,13 @@ class UpdateRoomSettingsBody(BaseModel):
     name: str | None = None
     description: str | None = None
     rule: str | None = None
+    visibility: str | None = None
+    join_policy: str | None = None
+    default_send: bool | None = None
+    default_invite: bool | None = None
+    max_members: int | None = None
+    slow_mode_seconds: int | None = None
+    required_subscription_product_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -887,6 +894,18 @@ async def update_room_settings(
         raise HTTPException(status_code=403, detail="Only owner or admin can update room settings")
 
     fields_set = body.model_fields_set
+    owner_only_fields = {
+        "visibility",
+        "join_policy",
+        "default_send",
+        "default_invite",
+        "max_members",
+        "slow_mode_seconds",
+        "required_subscription_product_id",
+    }
+    if fields_set & owner_only_fields and member.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the owner can change advanced settings")
+
     if "name" in fields_set:
         name = (body.name or "").strip()
         if not name:
@@ -897,6 +916,30 @@ async def update_room_settings(
     if "rule" in fields_set:
         rule = (body.rule or "").strip()
         room.rule = rule or None
+    if "visibility" in fields_set and body.visibility is not None:
+        try:
+            room.visibility = RoomVisibility(body.visibility)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid visibility") from exc
+    if "join_policy" in fields_set and body.join_policy is not None:
+        try:
+            room.join_policy = RoomJoinPolicy(body.join_policy)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid join_policy") from exc
+    if "default_send" in fields_set and body.default_send is not None:
+        room.default_send = body.default_send
+    if "default_invite" in fields_set and body.default_invite is not None:
+        room.default_invite = body.default_invite
+    if "max_members" in fields_set:
+        if body.max_members is not None and body.max_members < 1:
+            raise HTTPException(status_code=400, detail="max_members must be >= 1")
+        room.max_members = body.max_members
+    if "slow_mode_seconds" in fields_set:
+        if body.slow_mode_seconds is not None and body.slow_mode_seconds < 0:
+            raise HTTPException(status_code=400, detail="slow_mode_seconds must be >= 0")
+        room.slow_mode_seconds = body.slow_mode_seconds
+    if "required_subscription_product_id" in fields_set:
+        room.required_subscription_product_id = body.required_subscription_product_id or None
 
     await db.commit()
     await db.refresh(room)
@@ -906,6 +949,13 @@ async def update_room_settings(
         "name": room.name,
         "description": room.description,
         "rule": room.rule,
+        "visibility": room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
+        "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
+        "default_send": room.default_send,
+        "default_invite": room.default_invite,
+        "max_members": room.max_members,
+        "slow_mode_seconds": room.slow_mode_seconds,
+        "required_subscription_product_id": room.required_subscription_product_id,
     }
 
 
