@@ -15,4 +15,5 @@ export const users = pgTable("users", {
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   betaAccess: boolean("beta_access").default(false).notNull(),
   betaAdmin: boolean("beta_admin").default(false).notNull(),
+  humanId: varchar("human_id", { length: 32 }).notNull().unique(),
 });
