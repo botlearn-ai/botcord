@@ -234,6 +234,60 @@ describe("createDaemonSystemContextBuilder", () => {
     expect(out).toBeUndefined();
   });
 
+  it("awaits roomContextBuilder and slots the [BotCord Room Context] block between memory and digest", async () => {
+    updateWorkingMemory("ag_me", { goal: "ship feature" });
+    const tracker = new ActivityTracker({
+      filePath: path.join(tmpDir, "activity.json"),
+    });
+    tracker.record({
+      agentId: "ag_me",
+      roomId: "rm_other",
+      topic: null,
+      lastInboundPreview: "ping",
+      lastSenderKind: "agent",
+      lastSender: "ag_peer",
+    });
+
+    const builder = createDaemonSystemContextBuilder({
+      agentId: "ag_me",
+      activityTracker: tracker,
+      roomContextBuilder: async () => "[BotCord Room Context]\nRoom: Team (rm_team)",
+    });
+    const out = await builder(
+      makeMessage({ conversation: { id: "rm_team", kind: "group", title: "Team" } }),
+    );
+    expect(typeof out).toBe("string");
+    const s = out as string;
+    const memoryIdx = s.indexOf("[BotCord Working Memory]");
+    const roomIdx = s.indexOf("[BotCord Room Context]");
+    const digestIdx = s.indexOf("[BotCord Cross-Room Awareness]");
+    expect(memoryIdx).toBeGreaterThanOrEqual(0);
+    expect(roomIdx).toBeGreaterThan(memoryIdx);
+    expect(digestIdx).toBeGreaterThan(roomIdx);
+  });
+
+  it("falls back to sync output when roomContextBuilder is not provided", () => {
+    updateWorkingMemory("ag_me", { goal: "sync-only" });
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const result = builder(makeMessage());
+    // No Promise wrapper — the factory picks the sync branch when no fetcher.
+    expect(typeof result).toBe("string");
+  });
+
+  it("skips the room block gracefully if the fetcher throws", async () => {
+    const builder = createDaemonSystemContextBuilder({
+      agentId: "ag_me",
+      roomContextBuilder: async () => {
+        throw new Error("hub 500");
+      },
+    });
+    // Empty working memory + no tracker + thrown room fetch ⇒ no blocks ⇒ undefined.
+    const out = await builder(
+      makeMessage({ conversation: { id: "rm_team", kind: "group" } }),
+    );
+    expect(out).toBeUndefined();
+  });
+
   it("translates GatewayInboundMessage.conversation.id → old `room_id` for the digest exclude key", () => {
     const tracker = new ActivityTracker({
       filePath: path.join(tmpDir, "activity.json"),
