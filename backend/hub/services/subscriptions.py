@@ -241,8 +241,8 @@ async def create_subscription(
     }
     tx = await create_transfer(
         session,
-        from_agent_id=subscriber_agent_id,
-        to_agent_id=product.owner_agent_id,
+        from_owner_id=subscriber_agent_id,
+        to_owner_id=product.owner_agent_id,
         amount_minor=product.amount_minor,
         idempotency_key=idempotency_key or f"subscription:first:{subscription_id}",
         reference_type="subscription_charge",
@@ -306,8 +306,8 @@ async def _reactivate_subscription(
     }
     tx = await create_transfer(
         session,
-        from_agent_id=subscription.subscriber_agent_id,
-        to_agent_id=product.owner_agent_id,
+        from_owner_id=subscription.subscriber_agent_id,
+        to_owner_id=product.owner_agent_id,
         amount_minor=product.amount_minor,
         idempotency_key=idempotency_key or f"subscription:reactivate:{subscription.subscription_id}:{now.isoformat()}",
         reference_type="subscription_charge",
@@ -493,8 +493,8 @@ async def _charge_subscription(
     try:
         tx = await create_transfer(
             session,
-            from_agent_id=subscription.subscriber_agent_id,
-            to_agent_id=subscription.provider_agent_id,
+            from_owner_id=subscription.subscriber_agent_id,
+            to_owner_id=subscription.provider_agent_id,
             amount_minor=subscription.amount_minor,
             idempotency_key=f"subscription:charge:{subscription.subscription_id}:{billing_cycle_key}",
             reference_type="subscription_charge",

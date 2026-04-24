@@ -42,7 +42,7 @@ async def wallet_summary(
     wallet = await wallet_svc.get_wallet_summary(db, current_agent)
     total = wallet.available_balance_minor + wallet.locked_balance_minor
     return WalletSummaryResponse(
-        agent_id=wallet.agent_id,
+        agent_id=wallet.owner_id,
         asset_code=wallet.asset_code,
         available_balance_minor=str(wallet.available_balance_minor),
         locked_balance_minor=str(wallet.locked_balance_minor),
@@ -68,7 +68,7 @@ async def wallet_ledger(
             LedgerEntryResponse(
                 entry_id=entry.entry_id,
                 tx_id=entry.tx_id,
-                agent_id=entry.agent_id,
+                agent_id=entry.owner_id,
                 asset_code=entry.asset_code,
                 direction=entry.direction.value,
                 tx_type=tx.type.value if tx is not None and hasattr(tx.type, "value") else (str(tx.type) if tx is not None else None),
@@ -100,8 +100,8 @@ async def create_transfer(
     try:
         tx = await wallet_svc.create_transfer(
             db,
-            from_agent_id=current_agent,
-            to_agent_id=req.to_agent_id,
+            from_owner_id=current_agent,
+            to_owner_id=req.to_agent_id,
             amount_minor=amount,
             idempotency_key=req.idempotency_key,
             memo=req.memo,
@@ -140,7 +140,7 @@ async def create_topup(
     return TopupResponse(
         topup_id=topup.topup_id,
         tx_id=topup.tx_id,
-        agent_id=topup.agent_id,
+        agent_id=topup.owner_id,
         asset_code=topup.asset_code,
         amount_minor=str(topup.amount_minor),
         status=topup.status.value,
@@ -196,7 +196,7 @@ async def get_transaction(
     if tx is None:
         raise I18nHTTPException(status_code=404, message_key="transaction_not_found")
     # Authorization: agent must be sender or receiver
-    if tx.from_agent_id != current_agent and tx.to_agent_id != current_agent:
+    if tx.from_owner_id != current_agent and tx.to_owner_id != current_agent:
         raise I18nHTTPException(status_code=403, message_key="not_authorized")
     return _tx_response(tx)
 
@@ -259,7 +259,7 @@ async def internal_complete_topup(
     return TopupResponse(
         topup_id=topup.topup_id,
         tx_id=topup.tx_id,
-        agent_id=topup.agent_id,
+        agent_id=topup.owner_id,
         asset_code=topup.asset_code,
         amount_minor=str(topup.amount_minor),
         status=topup.status.value,
@@ -285,7 +285,7 @@ async def internal_fail_topup(
     return TopupResponse(
         topup_id=topup.topup_id,
         tx_id=topup.tx_id,
-        agent_id=topup.agent_id,
+        agent_id=topup.owner_id,
         asset_code=topup.asset_code,
         amount_minor=str(topup.amount_minor),
         status=topup.status.value,
@@ -358,8 +358,8 @@ def _tx_response(tx) -> TransactionResponse:
         asset_code=tx.asset_code,
         amount_minor=str(tx.amount_minor),
         fee_minor=str(tx.fee_minor),
-        from_agent_id=tx.from_agent_id,
-        to_agent_id=tx.to_agent_id,
+        from_agent_id=tx.from_owner_id,
+        to_agent_id=tx.to_owner_id,
         reference_type=tx.reference_type,
         reference_id=tx.reference_id,
         idempotency_key=tx.idempotency_key,
@@ -374,7 +374,7 @@ def _wd_response(wd) -> WithdrawalResponse:
     return WithdrawalResponse(
         withdrawal_id=wd.withdrawal_id,
         tx_id=wd.tx_id,
-        agent_id=wd.agent_id,
+        agent_id=wd.owner_id,
         asset_code=wd.asset_code,
         amount_minor=str(wd.amount_minor),
         fee_minor=str(wd.fee_minor),

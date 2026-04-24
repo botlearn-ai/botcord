@@ -287,7 +287,7 @@ async def test_create_checkout_stripe_failure_marks_topup_failed(client, db_sess
     from sqlalchemy import select
     result = await db_session.execute(
         select(TopupRequestModel).where(
-            TopupRequestModel.agent_id == agent_id,
+            TopupRequestModel.owner_id == agent_id,
             TopupRequestModel.channel == "stripe",
         )
     )
