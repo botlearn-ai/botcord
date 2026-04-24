@@ -131,6 +131,117 @@ describe("composeBotCordUserTurn", () => {
     expect(out).not.toContain("contact request from");
   });
 
+  it("renders a multi-message batch as [BotCord Messages (N new)] with one block per sender", () => {
+    const batch = [
+      {
+        hub_msg_id: "m1",
+        text: "first message",
+        envelope: { from: "ag_alice", type: "message" },
+      },
+      {
+        hub_msg_id: "m2",
+        text: "second message",
+        envelope: { from: "ag_bob", type: "message" },
+        mentioned: true,
+      },
+    ];
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "second message",
+        sender: { id: "ag_bob", kind: "agent" },
+        conversation: { id: "rm_team", kind: "group", title: "Ouraca" },
+        mentioned: true,
+        raw: { batch, envelope: { type: "message", from: "ag_bob" } },
+      }),
+    );
+    expect(out).toContain("[BotCord Messages (2 new)]");
+    expect(out).toContain("room: Ouraca");
+    expect(out).toContain("mentioned: true");
+    expect(out).toContain('<agent-message sender="ag_alice" sender_kind="agent">');
+    expect(out).toContain("first message");
+    expect(out).toContain('<agent-message sender="ag_bob" sender_kind="agent">');
+    expect(out).toContain("second message");
+    // Single-message header must NOT appear in batch mode.
+    expect(out).not.toContain("[BotCord Message]");
+    // Group hint still appears after the blocks.
+    expect(out).toContain("do NOT reply unless");
+  });
+
+  it("batched path tags dashboard_human_room senders as human-message", () => {
+    const batch = [
+      {
+        hub_msg_id: "m1",
+        text: "hi bot",
+        envelope: { from: "ag_me", type: "message" },
+        source_type: "dashboard_human_room",
+        source_user_name: "Alice",
+      },
+      {
+        hub_msg_id: "m2",
+        text: "你好",
+        envelope: { from: "ag_peer", type: "message" },
+      },
+    ];
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "你好",
+        sender: { id: "ag_peer", kind: "agent" },
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { batch, envelope: { type: "message", from: "ag_peer" } },
+      }),
+    );
+    expect(out).toContain('<human-message sender="Alice" sender_kind="human">');
+    expect(out).toContain("hi bot");
+    expect(out).toContain('<agent-message sender="ag_peer" sender_kind="agent">');
+  });
+
+  it("batched path appends a single notify-owner hint listing every contact_request sender", () => {
+    const batch = [
+      {
+        hub_msg_id: "m1",
+        text: "please add me",
+        envelope: { from: "ag_stranger_a", type: "contact_request" },
+      },
+      {
+        hub_msg_id: "m2",
+        text: "add me too",
+        envelope: { from: "ag_stranger_b", type: "contact_request" },
+      },
+      {
+        hub_msg_id: "m3",
+        text: "normal reply",
+        envelope: { from: "ag_old_friend", type: "message" },
+      },
+    ];
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "normal reply",
+        sender: { id: "ag_old_friend", kind: "agent" },
+        conversation: { id: "rm_dm_x", kind: "direct" },
+        raw: { batch, envelope: { type: "message", from: "ag_old_friend" } },
+      }),
+    );
+    expect(out).toContain("contact request from ag_stranger_a, ag_stranger_b");
+    // Direct hint (not group) for a DM room.
+    expect(out).toContain("naturally concluded");
+  });
+
+  it("falls back to the single-message path when raw.batch has only one entry", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        raw: {
+          batch: [
+            { hub_msg_id: "m1", text: "solo", envelope: { from: "ag_x", type: "message" } },
+          ],
+          envelope: { type: "message", from: "ag_x" },
+        },
+      }),
+    );
+    // batch length 1 → readBatch returns null → single-message header.
+    expect(out).toContain("[BotCord Message]");
+    expect(out).not.toContain("[BotCord Messages (");
+  });
+
   it("sanitizes room names so newline-based injection can't reshape the header", () => {
     const out = composeBotCordUserTurn(
       makeMessage({

@@ -197,6 +197,66 @@ function normalizeInbox(
 }
 
 /**
+ * Shape of the `raw` field when the channel batches multiple messages into
+ * one envelope. Keeps the latest message's InboxMessage fields at top level
+ * so existing accesses (`raw.envelope.type`, `raw.source_type`, …) still
+ * work, and exposes the full list via `raw.batch`. `composeBotCordUserTurn`
+ * reads `raw.batch` to build one `<agent-message>` / `<human-message>` block
+ * per entry.
+ */
+export interface BatchedInboxRaw extends InboxMessage {
+  batch: InboxMessage[];
+}
+
+/**
+ * Normalize a group of InboxMessages for the same `(room, topic)` into a
+ * single `GatewayInboundMessage`. The envelope carries the latest msg's
+ * metadata (routing, session key, trace) and a `raw.batch` array the
+ * composer uses to render per-sender blocks.
+ *
+ * `mentioned` is sticky: true if ANY message in the group is a mention.
+ * Returns null if no message in the group is normalizable on its own.
+ */
+function normalizeInboxBatch(
+  msgs: InboxMessage[],
+  options: { channelId: string; accountId: string },
+): GatewayInboundMessage | null {
+  if (msgs.length === 0) return null;
+  if (msgs.length === 1) return normalizeInbox(msgs[0]!, options);
+
+  const latest = msgs[msgs.length - 1]!;
+  const base = normalizeInbox(latest, options);
+  if (!base) return null;
+
+  // Fold sibling metadata into the base envelope. `text` is kept non-empty
+  // when at least one batched member has a body, so the dispatcher's empty-
+  // text skip rule doesn't drop the whole batch just because the latest
+  // envelope was e.g. a zero-payload contact_request.
+  const anyMentioned = msgs.some((m) => m.mentioned === true);
+  let representativeText = base.text ?? "";
+  if (!representativeText.trim()) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]!;
+      const candidate =
+        m.text ??
+        (typeof m.envelope?.payload?.text === "string"
+          ? (m.envelope.payload.text as string)
+          : "");
+      if (candidate && candidate.trim()) {
+        representativeText = candidate;
+        break;
+      }
+    }
+  }
+  return {
+    ...base,
+    text: representativeText,
+    mentioned: anyMentioned,
+    raw: { ...latest, batch: msgs } satisfies BatchedInboxRaw,
+  };
+}
+
+/**
  * Construct a BotCord channel adapter.
  *
  * `start()` connects to Hub WS, drains `/hub/inbox` on every `inbox_update`,
@@ -250,9 +310,14 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     log.info("botcord inbox drained", { count: msgs.length });
     if (msgs.length === 0) return;
 
+    // First pass: ack duplicates/skipped messages so Hub stops requeueing,
+    // and collect eligible messages preserving poll order. Grouping by
+    // `(room_id, topic)` mirrors plugin's `handleInboxMessageBatch` — the
+    // same conversation thread folds into one turn so the agent sees all
+    // new messages at once instead of running N turns back-to-back.
+    const eligible: InboxMessage[] = [];
     for (const msg of msgs) {
       if (!rememberSeen(msg.hub_msg_id)) {
-        // Already emitted; ack again so Hub stops requeueing.
         try {
           await client.ackMessages([msg.hub_msg_id]);
         } catch (err) {
@@ -265,7 +330,6 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         accountId: options.accountId,
       });
       if (!normalized) {
-        // Not eligible (wrong type, missing room, etc.) — ack so it drops.
         try {
           await client.ackMessages([msg.hub_msg_id]);
         } catch (err) {
@@ -273,15 +337,41 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         }
         continue;
       }
+      eligible.push(msg);
+    }
+
+    if (eligible.length === 0) return;
+
+    // Group by `(room_id, topic)`. Insertion order is the poll order, so
+    // iterating the map yields groups with the same external chronology.
+    const groups = new Map<string, InboxMessage[]>();
+    for (const msg of eligible) {
+      const topic = msg.topic_id ?? msg.topic ?? "";
+      const key = `${msg.room_id ?? ""}:${topic}`;
+      const list = groups.get(key);
+      if (list) list.push(msg);
+      else groups.set(key, [msg]);
+    }
+
+    for (const group of groups.values()) {
+      const normalized = normalizeInboxBatch(group, {
+        channelId: options.id,
+        accountId: options.accountId,
+      });
+      if (!normalized) continue;
+
+      const hubIds = group.map((m) => m.hub_msg_id);
       const envelope: GatewayInboundEnvelope = {
         message: normalized,
         ack: {
           accept: async () => {
             try {
-              await client.ackMessages([msg.hub_msg_id]);
+              // Ack the entire batch together so Hub never re-delivers any
+              // member of this turn if the agent succeeds on the group.
+              await client.ackMessages(hubIds);
             } catch (err) {
               log.warn("botcord ack failed — relying on seen-cache dedup", {
-                hubMsgId: msg.hub_msg_id,
+                hubMsgIds: hubIds,
                 err: String(err),
               });
             }
@@ -292,7 +382,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         await emit(envelope);
       } catch (err) {
         log.error("botcord emit threw", {
-          hubMsgId: msg.hub_msg_id,
+          hubMsgIds: hubIds,
           err: String(err),
         });
       }

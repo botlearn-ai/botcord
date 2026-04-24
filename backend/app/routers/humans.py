@@ -15,7 +15,7 @@ import datetime
 import json
 import logging
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -523,6 +523,116 @@ async def create_human_room(
 
 
 @router.post(
+    "/me/rooms/{room_id}/join",
+    response_model=HumanRoomSummary,
+    status_code=201,
+)
+async def join_room_as_human(
+    room_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Human self-joins a public + open room.
+
+    Mirrors the self-join branch of ``hub/routers/room.py::add_member``:
+    only public + open rooms accept a self-join. Invite-only rooms require
+    an owner/admin to invite via ``POST /me/rooms/{room_id}/members``, or
+    the caller must go through the join-request flow. Subscription-gated
+    rooms are not yet reachable by Humans (no human-side subscription
+    concept), except when the caller is already the owner.
+    """
+    user = await _load_human(db, ctx)
+    me = user.human_id
+
+    room_row = await db.execute(
+        select(Room).where(Room.room_id == room_id).with_for_update()
+    )
+    room = room_row.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    existing = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == me,
+            RoomMember.participant_type == ParticipantType.human,
+        )
+    )
+    existing_member = existing.scalar_one_or_none()
+    if existing_member is not None:
+        raise HTTPException(status_code=409, detail="Already a member")
+
+    if (
+        room.visibility != RoomVisibility.public
+        or room.join_policy != RoomJoinPolicy.open
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="self_join_public_open_only",
+        )
+
+    if room.required_subscription_product_id:
+        is_owner_self_seat = (
+            room.owner_type == ParticipantType.human and room.owner_id == me
+        )
+        if not is_owner_self_seat:
+            raise HTTPException(
+                status_code=403,
+                detail="subscription-gated rooms do not yet support human members",
+            )
+
+    if room.max_members is not None:
+        current_count_row = await db.execute(
+            select(RoomMember).where(RoomMember.room_id == room_id)
+        )
+        current_count = len(list(current_count_row.scalars().all()))
+        if current_count >= room.max_members:
+            raise HTTPException(status_code=400, detail="room_is_full")
+
+    new_member = RoomMember(
+        room_id=room_id,
+        agent_id=me,
+        participant_type=ParticipantType.human,
+        role=RoomRole.member,
+    )
+    try:
+        db.add(new_member)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Already a member")
+    await db.refresh(new_member)
+
+    try:
+        from hub.routers.room import _notify_room_member_change
+
+        members_row = await db.execute(
+            select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
+        )
+        all_member_ids = [row[0] for row in members_row.all()]
+        await _notify_room_member_change(
+            db,
+            event_type="room_member_added",
+            room_id=room_id,
+            changed_agent_id=me,
+            notify_agent_ids=all_member_ids,
+        )
+    except Exception:  # pragma: no cover — notification must not break the HTTP response
+        _logger.exception("room_member_added broadcast failed for %s", room_id)
+
+    return HumanRoomSummary(
+        room_id=room.room_id,
+        name=room.name,
+        description=room.description or "",
+        owner_id=room.owner_id,
+        owner_type=room.owner_type.value,
+        visibility=room.visibility.value,
+        join_policy=room.join_policy.value,
+        my_role=RoomRole.member.value,
+    )
+
+
+@router.post(
     "/me/rooms/{room_id}/share",
     status_code=201,
 )
@@ -552,7 +662,7 @@ async def create_room_share_as_human(
 
     expires_at = None
     if body and body.expires_in_hours:
-      expires_at = _now() + datetime.timedelta(hours=body.expires_in_hours)
+        expires_at = _now() + datetime.timedelta(hours=body.expires_in_hours)
 
     dedup_sub = (
         select(
@@ -572,13 +682,12 @@ async def create_room_share_as_human(
     records = list(reversed(msg_result.scalars().all()))
 
     share = Share(
-        share_id=f"sh_{UUID(int=UUID(bytes=b'0' * 16).int).hex[:0]}",
+        share_id=f"sh_{uuid4().hex[:24]}",
         room_id=room_id,
         shared_by_agent_id=me,
         shared_by_name=user.display_name or me,
         expires_at=expires_at,
     )
-    share.share_id = f"sh_{__import__('uuid').uuid4().hex[:24]}"
     db.add(share)
     await db.flush()
 
@@ -622,7 +731,9 @@ async def create_room_share_as_human(
     return share_create_payload(
         share_id=share.share_id,
         room=room,
-        created_at=share.created_at.isoformat() if share.created_at else _now().isoformat(),
+        created_at=share.created_at.isoformat()
+        if share.created_at
+        else _now().isoformat(),
         expires_at=expires_at.isoformat() if expires_at else None,
     )
 
@@ -654,22 +765,39 @@ async def create_room_invite_as_human(
     )
     if inviter is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
-    if inviter.role not in (RoomRole.owner, RoomRole.admin) and not bool(inviter.can_invite or room.default_invite):
-        raise HTTPException(status_code=403, detail="You do not have invite permission")
+    if inviter.role not in (RoomRole.owner, RoomRole.admin) and not bool(
+        inviter.can_invite or room.default_invite
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have invite permission",
+        )
 
     invite = Invite(
-        code=f"iv_{__import__('uuid').uuid4().hex[:20]}",
+        code=f"iv_{uuid4().hex[:20]}",
         kind="room",
         creator_agent_id=me,
         room_id=room_id,
-        expires_at=_now() + datetime.timedelta(hours=payload.expires_in_hours) if payload.expires_in_hours else None,
+        expires_at=_now() + datetime.timedelta(hours=payload.expires_in_hours)
+        if payload.expires_in_hours
+        else None,
         max_uses=max(1, payload.max_uses),
     )
     db.add(invite)
     await db.commit()
 
-    member_count = await db.scalar(select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)) or 0
-    return _serialize_human_room_invite_preview(invite, creator=user, room=room, member_count=member_count)
+    member_count = (
+        await db.scalar(
+            select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)
+        )
+        or 0
+    )
+    return _serialize_human_room_invite_preview(
+        invite,
+        creator=user,
+        room=room,
+        member_count=member_count,
+    )
 
 
 @router.post(

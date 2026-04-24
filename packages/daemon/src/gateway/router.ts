@@ -38,9 +38,14 @@ export function matchesRoute(
 
 /**
  * Picks the first matching route in priority order:
- *   1. `config.routes[]` (user-authored)
- *   2. `managedRoutes` (daemon-synthesized per-agent)
- *   3. `config.defaultRoute`
+ *   1. `config.routes[]` entries whose `match.accountId` names this message's
+ *      accountId — explicit operator override for a specific agent.
+ *   2. `managedRoutes` (daemon-synthesized per-agent, reflects the runtime
+ *      the user picked when provisioning the agent). Broad user routes do
+ *      NOT clobber this, because the agent's runtime is itself an explicit
+ *      user choice — a catch-all prefix rule shouldn't silently downgrade it.
+ *   3. Remaining `config.routes[]` (broad prefix/kind/channel rules).
+ *   4. `config.defaultRoute`.
  */
 export function resolveRoute(
   message: GatewayInboundMessage,
@@ -48,13 +53,22 @@ export function resolveRoute(
   managedRoutes?: readonly GatewayRoute[],
 ): GatewayRoute {
   const routes = config.routes ?? [];
+
   for (const route of routes) {
-    if (matchesRoute(message, route.match)) return route;
+    if (route.match?.accountId === message.accountId && matchesRoute(message, route.match)) {
+      return route;
+    }
   }
+
   if (managedRoutes) {
     for (const route of managedRoutes) {
       if (matchesRoute(message, route.match)) return route;
     }
   }
+
+  for (const route of routes) {
+    if (matchesRoute(message, route.match)) return route;
+  }
+
   return config.defaultRoute;
 }

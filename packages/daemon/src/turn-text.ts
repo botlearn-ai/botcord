@@ -24,7 +24,7 @@
  * model the context it needs.
  */
 import type { GatewayInboundMessage } from "./gateway/index.js";
-import { sanitizeSenderName } from "./gateway/index.js";
+import { sanitizeSenderName, sanitizeUntrustedContent } from "./gateway/index.js";
 import { classifyActivitySender } from "./sender-classify.js";
 
 const GROUP_HINT =
@@ -47,6 +47,55 @@ function readEnvelopeType(raw: unknown): string | undefined {
   return typeof t === "string" ? t : undefined;
 }
 
+/** Minimal shape of one batched inbound entry. Matches the BotCord channel
+ * `BatchedInboxRaw.batch[]` elements but expressed structurally so the
+ * composer doesn't import channel internals. */
+interface BatchedEntry {
+  hub_msg_id?: unknown;
+  text?: unknown;
+  envelope?: { from?: unknown; type?: unknown; payload?: { text?: unknown } };
+  source_type?: unknown;
+  source_user_name?: unknown;
+  mentioned?: unknown;
+}
+
+/**
+ * Read the `raw.batch` array emitted by the BotCord channel when inbox
+ * drain groups multiple messages for the same `(room, topic)`. Returns the
+ * list when present and well-shaped, else null. Single-message envelopes
+ * have no `batch` field and fall through to the single-message path.
+ */
+function readBatch(raw: unknown): BatchedEntry[] | null {
+  if (!raw || typeof raw !== "object") return null;
+  const b = (raw as { batch?: unknown }).batch;
+  if (!Array.isArray(b) || b.length < 2) return null;
+  return b as BatchedEntry[];
+}
+
+function entryFromLabel(e: BatchedEntry): {
+  label: string;
+  kind: "human" | "agent";
+  envelopeType: string | undefined;
+} {
+  const envType = typeof e.envelope?.type === "string" ? e.envelope.type : undefined;
+  const isHuman =
+    e.source_type === "dashboard_human_room" ||
+    (typeof e.envelope?.from === "string" && e.envelope.from.startsWith("hu_"));
+  const fromId = typeof e.envelope?.from === "string" ? e.envelope.from : "unknown";
+  const label = isHuman
+    ? typeof e.source_user_name === "string" && e.source_user_name
+      ? e.source_user_name
+      : "User"
+    : fromId;
+  return { label, kind: isHuman ? "human" : "agent", envelopeType: envType };
+}
+
+function entryText(e: BatchedEntry): string {
+  if (typeof e.text === "string") return e.text;
+  if (typeof e.envelope?.payload?.text === "string") return e.envelope.payload.text;
+  return "";
+}
+
 /**
  * Compose the user-turn text for a BotCord inbound message.
  *
@@ -66,6 +115,11 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
   // Owner messages pass through verbatim. The scene prompt in
   // system-context handles context; wrapping here would just add noise.
   if (sender.kind === "owner") return trimmed;
+
+  const batch = readBatch(msg.raw);
+  if (batch) {
+    return composeBatchedTurn(msg, batch);
+  }
 
   const conversation = msg.conversation;
   const isGroup = conversation.kind === "group";
@@ -118,6 +172,70 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
   ];
   if (contactRequestHint) {
     lines.push("", contactRequestHint);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Render a batched turn (≥2 messages from the same room/topic folded into
+ * one envelope by `botcord.ts:normalizeInboxBatch`). Mirrors plugin's
+ * `handleA2AGroup` output shape so Claude Code sees the same prompt
+ * whether driven by OpenClaw or by daemon.
+ */
+function composeBatchedTurn(
+  msg: GatewayInboundMessage,
+  batch: BatchedEntry[],
+): string {
+  const conversation = msg.conversation;
+  const isGroup = conversation.kind === "group";
+  const roomTitle =
+    typeof conversation.title === "string" ? conversation.title : undefined;
+
+  const header: string[] = [
+    `[BotCord Messages (${batch.length} new)]`,
+    `to: ${msg.accountId}`,
+  ];
+  if (isGroup && roomTitle) {
+    const safeRoom = sanitizeSenderName(roomTitle.replace(/[\r\n]+/g, " "));
+    header.push(`room: ${safeRoom}`);
+  }
+  if (msg.mentioned) {
+    header.push("mentioned: true");
+  }
+
+  const blocks: string[] = [];
+  const contactRequestSenders: string[] = [];
+  for (const entry of batch) {
+    const { label, kind, envelopeType } = entryFromLabel(entry);
+    const safeLabel = sanitizeSenderName(label);
+    const raw = entryText(entry);
+    // Owner-trust bypass is handled at the outer level — by the time we
+    // reach a batched turn the sender classifier has already returned
+    // non-owner. Still sanitize defensively.
+    const safeBody = sanitizeUntrustedContent(raw);
+    const tag = kind === "human" ? "human-message" : "agent-message";
+    blocks.push(
+      `<${tag} sender="${safeLabel}" sender_kind="${kind}">\n${safeBody}\n</${tag}>`,
+    );
+    if (envelopeType === "contact_request") {
+      contactRequestSenders.push(safeLabel);
+    }
+  }
+
+  const hint = isGroup ? GROUP_HINT : DIRECT_HINT;
+  const lines: string[] = [header.join(" | "), blocks.join("\n"), "", hint];
+
+  if (contactRequestSenders.length > 0) {
+    // Dedup + list — multiple distinct senders show as "A, B".
+    const unique = Array.from(new Set(contactRequestSenders));
+    lines.push(
+      "",
+      "[You received a contact request from " +
+        unique.join(", ") +
+        ". Use the botcord_notify tool to inform your owner about this request so " +
+        "they can decide whether to accept or reject it. Include the sender's " +
+        "agent ID and any message they attached.]",
+    );
   }
   return lines.join("\n");
 }
