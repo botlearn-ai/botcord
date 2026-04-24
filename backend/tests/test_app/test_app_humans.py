@@ -187,6 +187,85 @@ async def test_human_creates_and_lists_room(client, seed, db_session: AsyncSessi
     assert "Human HQ" in names
 
 
+@pytest.mark.asyncio
+async def test_list_owned_agent_rooms_excludes_current_human_rooms(
+    client, seed, db_session: AsyncSession
+):
+    agent = Agent(
+        agent_id="ag_alice00001",
+        display_name="Alice Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    included = Room(
+        room_id="rm_bot_only",
+        name="Bot Only",
+        description="agent present, human absent",
+        owner_id="ag_other00001",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    human_member = Room(
+        room_id="rm_human_member",
+        name="Human Member",
+        description="excluded because human is a member",
+        owner_id="ag_other00001",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    human_owner = Room(
+        room_id="rm_human_owner",
+        name="Human Owner",
+        description="excluded because human owns it",
+        owner_id=seed["human_id"],
+        owner_type=ParticipantType.human,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([agent, included, human_member, human_owner])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id="rm_bot_only",
+            agent_id="ag_alice00001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id="rm_human_member",
+            agent_id="ag_alice00001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id="rm_human_member",
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id="rm_human_owner",
+            agent_id="ag_alice00001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/humans/me/agent-rooms",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    rooms = resp.json()["rooms"]
+    assert [room["room_id"] for room in rooms] == ["rm_bot_only"]
+    assert rooms[0]["bots"] == [
+        {"agent_id": "ag_alice00001", "display_name": "Alice Bot", "role": "member"}
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Contact request → Agent (claimed)
 # ---------------------------------------------------------------------------
