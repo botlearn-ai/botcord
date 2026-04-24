@@ -54,6 +54,7 @@ import type {
   RoomResponse,
   UpdateRoomBody,
   HumanInfo,
+  HumanAgentRoomListResponse,
   HumanRoomSummary,
   HumanRoomListResponse,
   HumanContactListResponse,
@@ -833,6 +834,10 @@ const humansApi = {
 
   listRooms(): Promise<HumanRoomListResponse> {
     return apiGet<HumanRoomListResponse>("/api/humans/me/rooms");
+  },
+
+  listAgentRooms(): Promise<HumanAgentRoomListResponse> {
+    return apiGet<HumanAgentRoomListResponse>("/api/humans/me/agent-rooms");
   },
 
   /** Human self-joins a public+open room. */

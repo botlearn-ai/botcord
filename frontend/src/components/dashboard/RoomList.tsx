@@ -49,6 +49,8 @@ interface RoomListProps {
   rooms?: DashboardRoom[];
   loading?: boolean;
   searchQuery?: string;
+  includeUserChat?: boolean;
+  roomMeta?: Record<string, string>;
 }
 
 const USER_CHAT_PATH = "/chats/messages/__user-chat__";
@@ -80,7 +82,13 @@ function formatLastMessageTime(isoTime: string | null): string {
     : date.toLocaleDateString();
 }
 
-export default function RoomList({ rooms: propsRooms, loading = false, searchQuery = "" }: RoomListProps) {
+export default function RoomList({
+  rooms: propsRooms,
+  loading = false,
+  searchQuery = "",
+  includeUserChat = true,
+  roomMeta,
+}: RoomListProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = roomList[locale];
@@ -118,7 +126,7 @@ export default function RoomList({ rooms: propsRooms, loading = false, searchQue
       .map(humanRoomToDashboardRoom);
     return [...agentRooms, ...extras];
   })();
-  const showUserChatEntry = Boolean(activeAgentId) && viewMode === "agent" && (
+  const showUserChatEntry = includeUserChat && Boolean(activeAgentId) && viewMode === "agent" && (
     !normalizedSearchQuery ||
     [t.userChatTitle, t.userChatPreview, t.userChatTooltip, activeAgentId]
       .join("\n")
@@ -256,6 +264,7 @@ export default function RoomList({ rooms: propsRooms, loading = false, searchQue
           previewSender = "";
         }
         const previewLine = previewSender ? `${previewSender}: ${previewText}` : previewText;
+        const metaLine = roomMeta?.[room.room_id] ?? null;
         const messageTime = formatLastMessageTime(room.last_message_at);
         const avatarLabel = buildRoomAvatarLabel(room.name);
         const avatarTone = buildAvatarTone(room.room_id);
@@ -306,6 +315,11 @@ export default function RoomList({ rooms: propsRooms, loading = false, searchQue
                     {previewLine}
                   </p>
                 </div>
+                {metaLine && (
+                  <p className="mt-1 truncate text-[10px] text-neon-cyan/70">
+                    {metaLine}
+                  </p>
+                )}
               </div>
             </div>
           </div>
