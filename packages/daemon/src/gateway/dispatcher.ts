@@ -409,6 +409,14 @@ export class Dispatcher {
       if (!result) return;
 
       // Persist session before reply so next turn sees the new id even if send fails.
+      //
+      // Adapter contract:
+      //   result.newSessionId truthy  → upsert the entry
+      //   result.newSessionId empty + had-inbound-sessionId + result.error
+      //                               → the prior session is dead (e.g. Claude Code
+      //                                 "--resume <missing-uuid>"); delete the entry so
+      //                                 we don't keep resuming a stale id every turn
+      //   otherwise                   → no-op (e.g. codex intentionally never persists)
       if (result.newSessionId) {
         const session: GatewaySessionEntry = {
           key,
@@ -426,6 +434,20 @@ export class Dispatcher {
           await this.sessionStore.set(session);
         } catch (err) {
           this.log.warn("dispatcher: session-store.set failed", {
+            key,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } else if (sessionId && result.error) {
+        try {
+          await this.sessionStore.delete(key);
+          this.log.info("dispatcher: dropped stale runtime session", {
+            key,
+            prevRuntimeSessionId: sessionId,
+            error: result.error,
+          });
+        } catch (err) {
+          this.log.warn("dispatcher: session-store.delete failed", {
             key,
             error: err instanceof Error ? err.message : String(err),
           });

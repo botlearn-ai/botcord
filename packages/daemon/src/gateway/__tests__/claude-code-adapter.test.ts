@@ -113,6 +113,30 @@ process.exit(2);
     expect(res.error).toMatch(/auth failure/);
   });
 
+  it("wipes newSessionId on non-success result so dispatcher can drop the stale entry", async () => {
+    // Mirrors what Claude Code emits when `--resume <missing-uuid>` is used:
+    // a fresh `session_id` for the just-spawned empty session, plus a non-success
+    // result subtype. Persisting that new id would trap us into re-resuming a
+    // useless UUID every turn.
+    const script = makeScript(
+      "resume-miss.js",
+      `
+process.stderr.write("No conversation found\\n");
+process.stdout.write(JSON.stringify({
+  type:"result",
+  subtype:"error_during_execution",
+  session_id:"sid-useless",
+  is_error:true,
+  errors:["No conversation found with session ID: 00000000-0000-0000-0000-000000000000"]
+}) + "\\n");
+process.exit(1);
+`,
+    );
+    const res = await runAdapter(script);
+    expect(res.newSessionId).toBe("");
+    expect(res.error).toBeDefined();
+  });
+
   it("picks up result.result even if assistant text is empty", async () => {
     const script = makeScript(
       "resultonly.js",

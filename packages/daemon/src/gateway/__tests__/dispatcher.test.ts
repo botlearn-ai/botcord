@@ -65,6 +65,7 @@ interface FakeRuntimeOptions {
   newSessionId?: string | ((opts: RuntimeRunOptions) => string);
   delayMs?: number;
   throwError?: Error | string;
+  errorText?: string;
   blocks?: StreamBlock[];
   hang?: boolean;
   observeRun?: (opts: RuntimeRunOptions) => void;
@@ -121,6 +122,7 @@ class FakeRuntime implements RuntimeAdapter {
     return {
       text: this.opts.reply ?? "hello back",
       newSessionId,
+      ...(this.opts.errorText ? { error: this.opts.errorText } : {}),
     };
   }
 }
@@ -282,6 +284,42 @@ describe("Dispatcher", () => {
       }),
     );
     expect(seen).toEqual([null, "sid-2"]);
+  });
+
+  it("drops the stored session when runtime signals an invalid resume (empty newSessionId + error)", async () => {
+    let callNo = 0;
+    const runtimeFactory: RuntimeFactory = () => {
+      callNo += 1;
+      // Turn 1: normal success, writes sid-1.
+      if (callNo === 1) return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+      // Turn 2: simulate Claude Code's "--resume <missing-uuid>" failure:
+      //   adapter wipes newSessionId and sets error.
+      return new FakeRuntime({ newSessionId: "", errorText: "No conversation found" });
+    };
+    const { dispatcher, store } = await scaffold({ runtimeFactory });
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_1", conversation: { id: "rm_x", kind: "direct" } }),
+    );
+    expect(store.all().length).toBe(1);
+    expect(store.all()[0].runtimeSessionId).toBe("sid-1");
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_2", conversation: { id: "rm_x", kind: "direct" } }),
+    );
+    // Stale entry must be gone so the next turn starts fresh instead of
+    // re-resuming the missing UUID forever.
+    expect(store.all().length).toBe(0);
+  });
+
+  it("does not crash when an errored turn has no prior session entry", async () => {
+    const runtime = new FakeRuntime({ newSessionId: "", errorText: "boom" });
+    const { dispatcher, store } = await scaffold({ runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_1", conversation: { id: "rm_y", kind: "direct" } }),
+    );
+    expect(store.all().length).toBe(0);
   });
 
   it("cancel-previous: prior turn is aborted and does not write session, new turn writes", async () => {
