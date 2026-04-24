@@ -16,6 +16,7 @@ interface RoomSettingsModalProps {
   initialJoinPolicy?: string;
   initialDefaultSend?: boolean;
   initialDefaultInvite?: boolean;
+  initialAllowHumanSend?: boolean;
   initialMaxMembers?: number | null;
   initialSlowModeSeconds?: number | null;
   initialSubscriptionProductId?: string | null;
@@ -32,6 +33,7 @@ export default function RoomSettingsModal({
   initialJoinPolicy = "invite_only",
   initialDefaultSend = true,
   initialDefaultInvite = false,
+  initialAllowHumanSend = true,
   initialMaxMembers = null,
   initialSlowModeSeconds = null,
   initialSubscriptionProductId = null,
@@ -50,6 +52,7 @@ export default function RoomSettingsModal({
   const [joinPolicy, setJoinPolicy] = useState(initialJoinPolicy);
   const [defaultSend, setDefaultSend] = useState(initialDefaultSend);
   const [defaultInvite, setDefaultInvite] = useState(initialDefaultInvite);
+  const [allowHumanSend, setAllowHumanSend] = useState(initialAllowHumanSend);
   const [maxMembers, setMaxMembers] = useState(
     initialMaxMembers == null ? "" : String(initialMaxMembers),
   );
@@ -82,6 +85,7 @@ export default function RoomSettingsModal({
         if (joinPolicy !== initialJoinPolicy) patch.join_policy = joinPolicy as "open" | "invite_only";
         if (defaultSend !== initialDefaultSend) patch.default_send = defaultSend;
         if (defaultInvite !== initialDefaultInvite) patch.default_invite = defaultInvite;
+        if (allowHumanSend !== initialAllowHumanSend) patch.allow_human_send = allowHumanSend;
         const nextMax = maxMembers ? Number(maxMembers) : null;
         if (nextMax !== initialMaxMembers) patch.max_members = nextMax;
         const nextSlow = slowMode ? Number(slowMode) : null;
@@ -225,6 +229,16 @@ export default function RoomSettingsModal({
                     className="accent-neon-cyan"
                   />
                   {ta.defaultInviteLabel}
+                </label>
+                <label className="flex items-center gap-2 text-xs text-text-secondary">
+                  <input
+                    type="checkbox"
+                    disabled={!isOwner}
+                    checked={allowHumanSend}
+                    onChange={(e) => setAllowHumanSend(e.target.checked)}
+                    className="accent-neon-cyan"
+                  />
+                  {ta.allowHumanSendLabel}
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">

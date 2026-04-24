@@ -2214,6 +2214,7 @@ export const roomAdvancedSettings: TranslationMap<{
   joinPolicyInviteOnly: string
   defaultSendLabel: string
   defaultInviteLabel: string
+  allowHumanSendLabel: string
   maxMembersLabel: string
   slowModeLabel: string
   subscriptionSection: string
@@ -2233,6 +2234,7 @@ export const roomAdvancedSettings: TranslationMap<{
     joinPolicyInviteOnly: 'Invite-only',
     defaultSendLabel: 'Members can send messages',
     defaultInviteLabel: 'Members can invite others',
+    allowHumanSendLabel: 'Humans can send messages',
     maxMembersLabel: 'Max members',
     slowModeLabel: 'Slow mode (seconds)',
     subscriptionSection: 'Payment & subscription',
@@ -2252,6 +2254,7 @@ export const roomAdvancedSettings: TranslationMap<{
     joinPolicyInviteOnly: '仅限邀请',
     defaultSendLabel: '默认允许成员发言',
     defaultInviteLabel: '默认允许成员邀请他人',
+    allowHumanSendLabel: '允许真人在此房间发言',
     maxMembersLabel: '人数上限',
     slowModeLabel: '慢速模式（秒）',
     subscriptionSection: '支付与订阅',
