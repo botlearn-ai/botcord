@@ -2,12 +2,25 @@
  * Per-agent on-disk workspace. Each provisioned agent gets a dedicated
  * directory tree under `~/.botcord/agents/{agentId}/`:
  *
- *   workspace/  — runtime cwd; seed Markdown files live here (LLM-owned)
- *   state/      — daemon-owned JSON (e.g. working-memory.json)
+ *   workspace/   — runtime cwd; seed Markdown files live here (LLM-owned)
+ *   state/       — daemon-owned JSON (e.g. working-memory.json)
+ *   codex-home/  — per-agent CODEX_HOME used by the codex adapter so codex
+ *                  reads a daemon-written AGENTS.md (systemContext carrier)
+ *                  and stores its sessions/ without touching ~/.codex.
  *
  * See docs/daemon-agent-workspace-plan.md §4 for the full layout rationale.
  */
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -35,6 +48,16 @@ export function agentWorkspaceDir(agentId: string): string {
 
 export function agentStateDir(agentId: string): string {
   return path.join(agentHomeDir(agentId), "state");
+}
+
+/**
+ * Per-agent CODEX_HOME. The codex adapter sets the `CODEX_HOME` env var
+ * to this path so codex reads a daemon-managed `AGENTS.md` (written fresh
+ * each turn with the agent's systemContext) and stores its `sessions/`
+ * here — neither touching `~/.codex/` nor the agent's `workspace/` cwd.
+ */
+export function agentCodexHomeDir(agentId: string): string {
+  return path.join(agentHomeDir(agentId), "codex-home");
 }
 
 export interface WorkspaceSeed {
@@ -142,6 +165,59 @@ function writeIfMissing(filePath: string, content: string): void {
 }
 
 /**
+ * Best-effort link user's `~/.codex/auth.json` into the per-agent CODEX_HOME.
+ * Prefers a symlink (auto-follows `codex login` refreshes) and falls back to
+ * a copy on filesystems that reject symlinks. A no-op if the user has never
+ * run `codex login` — codex will then prompt on first use.
+ */
+function linkCodexAuth(codexHome: string): void {
+  const source = path.join(homedir(), ".codex", "auth.json");
+  if (!existsSync(source)) return;
+  const target = path.join(codexHome, "auth.json");
+  try {
+    if (existsSync(target) || isSymlink(target)) {
+      if (isSymlink(target) && readlinkSync(target) === source) return;
+      unlinkSync(target);
+    }
+  } catch {
+    // Unlink failure is rare but tolerable — symlink/copy below will fail
+    // loudly if the collision is real.
+  }
+  try {
+    symlinkSync(source, target);
+    return;
+  } catch {
+    // Fall through to copy on filesystems without symlink support.
+  }
+  try {
+    copyFileSync(source, target);
+    chmodSync(target, 0o600);
+  } catch {
+    /* best-effort */
+  }
+}
+
+function isSymlink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Idempotently create the per-agent CODEX_HOME directory and link the
+ * user's codex `auth.json` into it. Does NOT write an initial `AGENTS.md`
+ * — the codex adapter writes it fresh per turn from `systemContext`.
+ */
+export function ensureAgentCodexHome(agentId: string): string {
+  const dir = agentCodexHomeDir(agentId);
+  mkdirTolerant(dir);
+  linkCodexAuth(dir);
+  return dir;
+}
+
+/**
  * Idempotently create the agent's home / workspace / state directories and
  * seed the workspace Markdown files. Existing files are never overwritten —
  * users' edits to AGENTS.md, memory.md, etc. are preserved across calls.
@@ -158,6 +234,7 @@ export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void
   mkdirTolerant(workspace);
   mkdirTolerant(notes);
   mkdirTolerant(state);
+  ensureAgentCodexHome(agentId);
 
   const agentsMdPath = path.join(workspace, "AGENTS.md");
   const claudeMdPath = path.join(workspace, "CLAUDE.md");

@@ -380,6 +380,7 @@ export class Dispatcher {
           text,
           sessionId,
           cwd: route.cwd,
+          accountId: msg.accountId,
           extraArgs: route.extraArgs,
           signal: controller.signal,
           trustLevel,

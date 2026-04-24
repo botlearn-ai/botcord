@@ -1,13 +1,38 @@
-import { afterAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CodexAdapter } from "../runtimes/codex.js";
+import { agentCodexHomeDir } from "../../agent-workspace.js";
 
 // The adapter spawns whatever binary we point it at; we point it at a small
 // Node script so we control stdout/stderr/exit precisely without needing the
 // real `codex` CLI.
 const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "gateway-codex-"));
+
+// Isolate per-agent workspace writes — agent-workspace.ts resolves paths via
+// `os.homedir()`, which on POSIX follows `process.env.HOME`. Redirecting it
+// to `tmpRoot` keeps these tests from scribbling on `~/.botcord/`.
+const originalHome = process.env.HOME;
+const agentHomeRoot = mkdtempSync(path.join(os.tmpdir(), "gateway-codex-home-"));
+
+beforeAll(() => {
+  process.env.HOME = agentHomeRoot;
+});
+
+afterAll(() => {
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  rmSync(tmpRoot, { recursive: true, force: true });
+  rmSync(agentHomeRoot, { recursive: true, force: true });
+});
 
 function makeScript(name: string, body: string): string {
   const p = path.join(tmpRoot, name);
@@ -16,16 +41,13 @@ function makeScript(name: string, body: string): string {
   return p;
 }
 
-afterAll(() => {
-  rmSync(tmpRoot, { recursive: true, force: true });
-});
-
 function runAdapter(script: string, sessionId: string | null = null) {
   const adapter = new CodexAdapter({ binary: script });
   const ctrl = new AbortController();
   return adapter.run({
     text: "hi",
     sessionId,
+    accountId: "ag_test",
     cwd: tmpRoot,
     signal: ctrl.signal,
     trustLevel: "owner",
@@ -33,12 +55,12 @@ function runAdapter(script: string, sessionId: string | null = null) {
 }
 
 describe("CodexAdapter", () => {
-  it("parses final agent_message text (newSessionId intentionally empty — resume disabled)", async () => {
+  it("parses final agent_message text and persists thread_id as newSessionId", async () => {
     const script = makeScript(
       "happy.js",
       `
 const lines = [
-  {type:"thread.started", thread_id:"tid-123"},
+  {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcdef"},
   {type:"turn.started"},
   {type:"item.completed", item:{id:"i0", type:"agent_message", text:"hello from codex"}},
   {type:"turn.completed", usage:{input_tokens:1, output_tokens:2}},
@@ -48,9 +70,9 @@ process.exit(0);
 `,
     );
     const res = await runAdapter(script);
-    // See adapter class doc: Codex always spawns fresh — thread_id is observed
-    // but NOT persisted, so the dispatcher's SessionStore stays empty.
-    expect(res.newSessionId).toBe("");
+    // Resume is now safe (systemContext lives in AGENTS.md, not transcript),
+    // so thread_id IS persisted for the next turn.
+    expect(res.newSessionId).toBe("01234567-89ab-7def-8123-456789abcdef");
     expect(res.text).toBe("hello from codex");
     expect(res.error).toBeUndefined();
   });
@@ -60,7 +82,7 @@ process.exit(0);
       "toolblock.js",
       `
 const lines = [
-  {type:"thread.started", thread_id:"tid-2"},
+  {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde0"},
   {type:"item.started", item:{id:"i0", type:"command_execution", command:"ls"}},
   {type:"item.completed", item:{id:"i1", type:"agent_message", text:"done"}},
 ];
@@ -73,6 +95,7 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     const res = await adapter.run({
       text: "x",
       sessionId: null,
+      accountId: "ag_test",
       cwd: tmpRoot,
       signal: ctrl.signal,
       trustLevel: "owner",
@@ -84,12 +107,27 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     expect(seen).toContain("system");
   });
 
-  it("ignores sessionId and always spawns fresh `codex exec` (no resume subcommand)", async () => {
+  it("no sessionId → `exec` subcommand (no resume)", async () => {
     const script = makeScript(
-      "resume.js",
+      "fresh-argv.js",
       `
 const argv = process.argv.slice(2);
-process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"tid-fresh"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde1"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:"agent_message", text:JSON.stringify(argv)}}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, null);
+    const argv = JSON.parse(res.text) as string[];
+    expect(argv[0]).toBe("exec");
+    expect(argv[1]).not.toBe("resume");
+  });
+
+  it("with sessionId → `exec resume <uuid>` subcommand", async () => {
+    const script = makeScript(
+      "resume-argv.js",
+      `
+const argv = process.argv.slice(2);
+process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde2"}) + "\\n");
 process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:"agent_message", text:JSON.stringify(argv)}}) + "\\n");
 `,
     );
@@ -97,9 +135,10 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
     const res = await runAdapter(script, uuid);
     const argv = JSON.parse(res.text) as string[];
     expect(argv[0]).toBe("exec");
-    expect(argv).not.toContain("resume");
-    expect(argv).not.toContain(uuid);
-    expect(res.newSessionId).toBe("");
+    expect(argv[1]).toBe("resume");
+    expect(argv[2]).toBe(uuid);
+    // Sandbox policy uses `-c` overrides (resume doesn't accept `-s`).
+    expect(argv).not.toContain("-s");
   });
 
   it("rejects non-UUID sessionId before spawn", async () => {
@@ -110,11 +149,72 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
       adapter.run({
         text: "x",
         sessionId: "--not-a-uuid",
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
       }),
     ).rejects.toThrow(/invalid sessionId/);
+  });
+
+  it("writes systemContext to <CODEX_HOME>/AGENTS.md atomically before spawn", async () => {
+    // Capture CODEX_HOME seen by the child so we can verify the adapter's env.
+    const script = makeScript(
+      "echo-codex-home.js",
+      `
+const home = process.env.CODEX_HOME ?? "";
+process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde3"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:"agent_message", text: home}}) + "\\n");
+`,
+    );
+    const adapter = new CodexAdapter({ binary: script });
+    const ctrl = new AbortController();
+    const res = await adapter.run({
+      text: "do the thing",
+      sessionId: null,
+      accountId: "ag_codex_test",
+      cwd: tmpRoot,
+      signal: ctrl.signal,
+      trustLevel: "owner",
+      systemContext: "MEMORY: remember X\nDIGEST: room Y was active",
+    });
+    const expectedHome = agentCodexHomeDir("ag_codex_test");
+    expect(res.text).toBe(expectedHome);
+    const agentsMd = path.join(expectedHome, "AGENTS.md");
+    expect(existsSync(agentsMd)).toBe(true);
+    const body = readFileSync(agentsMd, "utf8");
+    expect(body).toContain("MEMORY: remember X");
+    expect(body).toContain("DIGEST: room Y was active");
+    // No tmp leftovers from the atomic rename.
+    const stray = path.join(expectedHome, `.AGENTS.md.${process.pid}.tmp`);
+    expect(existsSync(stray)).toBe(false);
+  });
+
+  it("does NOT prepend systemContext to the positional prompt", async () => {
+    const script = makeScript(
+      "echo-prompt.js",
+      `
+const argv = process.argv.slice(2);
+const dashIdx = argv.indexOf("--");
+const prompt = dashIdx >= 0 ? argv.slice(dashIdx + 1).join(" ") : "";
+process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde4"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:"agent_message", text: prompt}}) + "\\n");
+`,
+    );
+    const adapter = new CodexAdapter({ binary: script });
+    const ctrl = new AbortController();
+    const res = await adapter.run({
+      text: "do the thing",
+      sessionId: null,
+      accountId: "ag_test",
+      cwd: tmpRoot,
+      signal: ctrl.signal,
+      trustLevel: "owner",
+      systemContext: "MEMORY: remember X",
+    });
+    expect(res.text).toBe("do the thing");
+    expect(res.text).not.toContain("MEMORY:");
+    expect(res.text).not.toContain("---");
   });
 
   it("returns early when signal is already aborted", async () => {
@@ -125,6 +225,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
     const res = await adapter.run({
       text: "x",
       sessionId: null,
+      accountId: "ag_test",
       cwd: tmpRoot,
       signal: ctrl.signal,
       trustLevel: "owner",
@@ -138,7 +239,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
       "failed.js",
       `
 const lines = [
-  {type:"thread.started", thread_id:"tid-3"},
+  {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde5"},
   {type:"turn.completed", turn:{status:"failed", error:{message:"rate limited"}}},
 ];
 for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
@@ -162,7 +263,7 @@ process.exit(3);
     expect(res.error).toMatch(/auth required/);
   });
 
-  describe("trustLevel → sandbox defaults", () => {
+  describe("trustLevel → sandbox defaults (expressed as `-c` so `resume` accepts them)", () => {
     // Echo argv back via the same `thread.started` / `agent_message` shape
     // so we can assert on the flags the adapter chose.
     const echoScript = () =>
@@ -170,101 +271,80 @@ process.exit(3);
         "echo-argv.js",
         `
 const argv = process.argv.slice(2);
-process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"tid-echo"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcdea"}) + "\\n");
 process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:"agent_message", text: JSON.stringify(argv)}}) + "\\n");
 `,
       );
 
-    it("owner → --dangerously-bypass-approvals-and-sandbox", async () => {
+    it("owner → sandbox_mode=\"danger-full-access\" + approval_policy=\"never\"", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
       });
       const argv = JSON.parse(res.text) as string[];
-      expect(argv).toContain("--dangerously-bypass-approvals-and-sandbox");
+      expect(argv).toContain('sandbox_mode="danger-full-access"');
+      expect(argv).toContain('approval_policy="never"');
+      expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
       expect(argv).not.toContain("-s");
     });
 
-    it("public → `-s workspace-write`, no bypass", async () => {
+    it("public → sandbox_mode=\"workspace-write\" + approval_policy=\"on-request\"", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "public",
       });
       const argv = JSON.parse(res.text) as string[];
+      expect(argv).toContain('sandbox_mode="workspace-write"');
+      expect(argv).toContain('approval_policy="on-request"');
       expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
-      const sIdx = argv.indexOf("-s");
-      expect(sIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[sIdx + 1]).toBe("workspace-write");
     });
 
-    it("trusted → `-s workspace-write`, no bypass", async () => {
+    it("trusted → sandbox_mode=\"workspace-write\" + approval_policy=\"on-request\"", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "trusted",
       });
       const argv = JSON.parse(res.text) as string[];
-      expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
-      const sIdx = argv.indexOf("-s");
-      expect(sIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[sIdx + 1]).toBe("workspace-write");
+      expect(argv).toContain('sandbox_mode="workspace-write"');
+      expect(argv).toContain('approval_policy="on-request"');
     });
 
-    it("systemContext is prepended to the positional prompt (new session each turn — safe)", async () => {
-      const script = makeScript(
-        "echo-prompt.js",
-        `
-const argv = process.argv.slice(2);
-const dashIdx = argv.indexOf("--");
-const prompt = dashIdx >= 0 ? argv.slice(dashIdx + 1).join(" ") : "";
-process.stdout.write(JSON.stringify({type:"thread.started", thread_id:"tid-x"}) + "\\n");
-process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:"agent_message", text: prompt}}) + "\\n");
-`,
-      );
-      const adapter = new CodexAdapter({ binary: script });
-      const ctrl = new AbortController();
-      const res = await adapter.run({
-        text: "do the thing",
-        sessionId: null,
-        cwd: tmpRoot,
-        signal: ctrl.signal,
-        trustLevel: "owner",
-        systemContext: "MEMORY: remember X",
-      });
-      expect(res.text).toContain("MEMORY: remember X");
-      expect(res.text).toContain("do the thing");
-      expect(res.text).toContain("---");
-    });
-
-    it("extraArgs `-s read-only` overrides the public default", async () => {
+    it("extraArgs `-s read-only` suppresses the default sandbox `-c`s", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "public",
         extraArgs: ["-s", "read-only"],
       });
       const argv = JSON.parse(res.text) as string[];
-      // Only one `-s` appears — the one we passed.
+      // Only the operator-supplied `-s` appears; our defaults are suppressed.
       expect(argv.filter((a) => a === "-s").length).toBe(1);
       expect(argv[argv.indexOf("-s") + 1]).toBe("read-only");
+      expect(argv).not.toContain('sandbox_mode="workspace-write"');
+      expect(argv).not.toContain('sandbox_mode="danger-full-access"');
     });
   });
 });
