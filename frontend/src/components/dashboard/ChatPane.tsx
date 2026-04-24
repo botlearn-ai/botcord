@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 session/ui/chat/contact store 与 RoomHeader/MessageList/ExploreEntityCard 等内容组件
- * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图
+ * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图，并把公开目录搜索委托给远端查询
  * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -13,7 +13,7 @@ import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
-import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
+import { buildVisibleMessageRooms, compareRoomsByActivityDesc } from "@/store/dashboard-shared";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
 import RoomHumanComposer from "./RoomHumanComposer";
@@ -91,12 +91,7 @@ function ContactsMainPane() {
   const isCreatedView = contactsView === "created";
   const contacts = overview?.contacts || [];
   const sortedRooms = useMemo(
-    () =>
-      [...(overview?.rooms || [])].sort((a, b) => {
-        const aTime = (a.last_message_at || a.created_at) ? Date.parse(a.last_message_at || a.created_at!) : 0;
-        const bTime = (b.last_message_at || b.created_at) ? Date.parse(b.last_message_at || b.created_at!) : 0;
-        return bTime - aTime;
-      }),
+    () => [...(overview?.rooms || [])].sort(compareRoomsByActivityDesc),
     [overview?.rooms],
   );
   const joinedRooms = useMemo(
@@ -427,52 +422,15 @@ function ExploreMainPane() {
 
   useEffect(() => {
     if (!authResolved) return;
-    if (isRoomsView && !publicRoomsLoading) {
-      void loadPublicRooms();
-    } else if (isAgentsView && !publicAgentsLoading) {
-      void loadPublicAgents();
-    } else if (isHumansView && !publicHumansLoading) {
-      void loadPublicHumans();
+    const normalizedQuery = query.trim();
+    if (isRoomsView) {
+      void loadPublicRooms(normalizedQuery);
+    } else if (isAgentsView) {
+      void loadPublicAgents(normalizedQuery);
+    } else if (isHumansView) {
+      void loadPublicHumans(normalizedQuery);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally refresh on view switch, not on data length
-  }, [exploreView, authResolved]);
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredRooms = useMemo(
-    () =>
-      publicRooms.filter((room) => {
-        if (!normalizedQuery) return true;
-        return (
-          room.name.toLowerCase().includes(normalizedQuery) ||
-          room.room_id.toLowerCase().includes(normalizedQuery) ||
-          (room.description || "").toLowerCase().includes(normalizedQuery)
-        );
-      }),
-    [publicRooms, normalizedQuery],
-  );
-  const filteredAgents = useMemo(
-    () =>
-      publicAgents.filter((agent) => {
-        if (!normalizedQuery) return true;
-        return (
-          agent.display_name.toLowerCase().includes(normalizedQuery) ||
-          agent.agent_id.toLowerCase().includes(normalizedQuery) ||
-          (agent.bio || "").toLowerCase().includes(normalizedQuery)
-        );
-      }),
-    [publicAgents, normalizedQuery],
-  );
-  const filteredHumans = useMemo(
-    () =>
-      publicHumans.filter((human) => {
-        if (!normalizedQuery) return true;
-        return (
-          human.display_name.toLowerCase().includes(normalizedQuery) ||
-          human.human_id.toLowerCase().includes(normalizedQuery)
-        );
-      }),
-    [publicHumans, normalizedQuery],
-  );
+  }, [authResolved, isRoomsView, isAgentsView, isHumansView, query, loadPublicRooms, loadPublicAgents, loadPublicHumans]);
   const publicRoomsById = useMemo(
     () => Object.fromEntries(publicRooms.map((room) => [room.room_id, room])),
     [publicRooms],
@@ -533,9 +491,10 @@ function ExploreMainPane() {
   const emptyText = isRoomsView ? t.noRoomsFound : isAgentsView ? t.noAgentsFound : t.noHumansFound;
 
   const handleRefresh = () => {
-    if (isRoomsView) void loadPublicRooms();
-    else if (isAgentsView) void loadPublicAgents();
-    else if (isHumansView) void loadPublicHumans();
+    const normalizedQuery = query.trim();
+    if (isRoomsView) void loadPublicRooms(normalizedQuery);
+    else if (isAgentsView) void loadPublicAgents(normalizedQuery);
+    else if (isHumansView) void loadPublicHumans(normalizedQuery);
   };
 
   return (
@@ -564,11 +523,11 @@ function ExploreMainPane() {
         {loading ? (
           <GridSkeletonCards />
         ) : isRoomsView ? (
-          filteredRooms.length === 0 ? (
+          publicRooms.length === 0 ? (
             <p className="text-xs text-text-secondary">{emptyText}</p>
           ) : (
             <div className={EXPLORE_GRID_CLASS}>
-              {filteredRooms.map((room) => (
+              {publicRooms.map((room) => (
                 <ExploreEntityCard
                   key={room.room_id}
                   kind="room"
@@ -580,11 +539,11 @@ function ExploreMainPane() {
             </div>
           )
         ) : isAgentsView ? (
-          filteredAgents.length === 0 ? (
+          publicAgents.length === 0 ? (
             <p className="text-xs text-text-secondary">{emptyText}</p>
           ) : (
             <div className={EXPLORE_GRID_CLASS}>
-              {filteredAgents.map((agent) => (
+              {publicAgents.map((agent) => (
                 <ExploreEntityCard
                   key={agent.agent_id}
                   kind="agent"
@@ -595,11 +554,11 @@ function ExploreMainPane() {
               ))}
             </div>
           )
-        ) : filteredHumans.length === 0 ? (
+        ) : publicHumans.length === 0 ? (
           <p className="text-xs text-text-secondary">{emptyText}</p>
         ) : (
           <div className={EXPLORE_GRID_CLASS}>
-            {filteredHumans.map((human) => (
+            {publicHumans.map((human) => (
               <ExploreEntityCard
                 key={human.human_id}
                 kind="human"

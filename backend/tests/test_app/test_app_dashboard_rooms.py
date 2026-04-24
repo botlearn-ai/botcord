@@ -368,6 +368,16 @@ async def test_shared_conversations(client: AsyncClient, seed: dict):
 
 
 @pytest.mark.asyncio
+async def test_shared_conversations_human_session_returns_empty(client: AsyncClient, seed: dict):
+    resp = await client.get(
+        f"/api/dashboard/agents/{seed['agent2']}/conversations",
+        headers={"Authorization": f"Bearer {seed['token1']}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"conversations": []}
+
+
+@pytest.mark.asyncio
 async def test_inbox_basic(client: AsyncClient, seed: dict, db_session: AsyncSession):
     """GET /api/dashboard/inbox returns queued messages and ack consumes them."""
     # Seed a queued message for agent1

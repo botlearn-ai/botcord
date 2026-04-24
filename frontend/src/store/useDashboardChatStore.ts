@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand/persist 保存 dashboard 会话与目录数据，依赖 @/lib/api 发起房间/目录/Agent 查询，依赖 session/ui/unread/contact store 提供鉴权、界面上下文与未读协调
- * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、消息缓存、公开房间/Agent、Agent 卡片数据与 chat 相关异步动作
+ * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、消息缓存、公开目录远端搜索结果、Agent 卡片数据与 chat 相关异步动作
  * [POS]: frontend dashboard 的 chat 数据状态源，负责真正的会话数据与目录数据，不负责阅读语义和连接生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -28,6 +28,10 @@ import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+
+let publicRoomsRequestSeq = 0;
+let publicAgentsRequestSeq = 0;
+let publicHumansRequestSeq = 0;
 
 function applyRealtimeRoomHint<T extends {
   room_id: string;
@@ -109,10 +113,10 @@ interface DashboardChatState {
   loadDiscoverRooms: () => Promise<void>;
   joinRoom: (roomId: string) => Promise<void>;
   leaveRoom: (roomId: string) => Promise<void>;
-  loadPublicRooms: () => Promise<void>;
+  loadPublicRooms: (q?: string) => Promise<void>;
   loadPublicRoomDetail: (roomId: string) => Promise<PublicRoom | null>;
-  loadPublicAgents: () => Promise<void>;
-  loadPublicHumans: () => Promise<void>;
+  loadPublicAgents: (q?: string) => Promise<void>;
+  loadPublicHumans: (q?: string) => Promise<void>;
   switchActiveAgent: (agentId: string) => Promise<void>;
 }
 
@@ -404,7 +408,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       selectAgent: async (agentId: string) => {
-        const { token } = useDashboardSessionStore.getState();
         useDashboardUIStore.getState().openAgentCard();
         set({
           selectedAgentId: agentId,
@@ -414,27 +417,13 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           selectedAgentConversations: null,
         });
         try {
-          if (token) {
-            const [profile, convos] = await Promise.all([
-              api.getAgentProfile(agentId),
-              api.getConversations(agentId),
-            ]);
-            set({
-              selectedAgentId: agentId,
-              selectedAgentLoading: false,
-              selectedAgentError: null,
-              selectedAgentProfile: profile,
-              selectedAgentConversations: convos.conversations,
-            });
-            return;
-          }
-          const profile = await api.getPublicAgentProfile(agentId);
+          const result = await api.getAgentCard(agentId);
           set({
             selectedAgentId: agentId,
             selectedAgentLoading: false,
             selectedAgentError: null,
-            selectedAgentProfile: profile,
-            selectedAgentConversations: null,
+            selectedAgentProfile: result.profile,
+            selectedAgentConversations: result.conversations,
           });
         } catch (error: any) {
           console.error("[ChatStore] Failed to select agent:", error);
@@ -450,10 +439,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           set({ searchResults: null });
           return;
         }
-        const { token } = useDashboardSessionStore.getState();
         try {
-          const result = token ? await api.searchAgents(q) : await api.getPublicAgents({ q });
-          set({ searchResults: result.agents });
+          const agents = await api.searchAgentDirectory(q);
+          set({ searchResults: agents });
         } catch (error) {
           console.error("[ChatStore] Search failed:", error);
         }
@@ -533,10 +521,12 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
       },
 
-      loadPublicRooms: async () => {
+      loadPublicRooms: async (q = "") => {
+        const requestId = ++publicRoomsRequestSeq;
         set({ publicRoomsLoading: true });
         try {
-          const result = await api.getPublicRooms({ limit: 50 });
+          const result = await api.getPublicRooms({ q: q.trim() || undefined, limit: 50 });
+          if (requestId !== publicRoomsRequestSeq) return;
           set((state) => ({
             publicRooms: result.rooms,
             publicRoomDetails: {
@@ -547,6 +537,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             publicRoomsLoaded: true,
           }));
         } catch {
+          if (requestId !== publicRoomsRequestSeq) return;
           set({ publicRoomsLoading: false, publicRoomsLoaded: true });
         }
       },
@@ -574,22 +565,28 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
       },
 
-      loadPublicAgents: async () => {
+      loadPublicAgents: async (q = "") => {
+        const requestId = ++publicAgentsRequestSeq;
         set({ publicAgentsLoading: true });
         try {
-          const result = await api.getPublicAgents({ limit: 50 });
+          const result = await api.getPublicAgents({ q: q.trim() || undefined, limit: 50 });
+          if (requestId !== publicAgentsRequestSeq) return;
           set({ publicAgents: result.agents, publicAgentsLoading: false, publicAgentsLoaded: true });
         } catch {
+          if (requestId !== publicAgentsRequestSeq) return;
           set({ publicAgentsLoading: false, publicAgentsLoaded: true });
         }
       },
 
-      loadPublicHumans: async () => {
+      loadPublicHumans: async (q = "") => {
+        const requestId = ++publicHumansRequestSeq;
         set({ publicHumansLoading: true });
         try {
-          const result = await api.getPublicHumans({ limit: 100 });
+          const result = await api.getPublicHumans({ q: q.trim() || undefined, limit: 100 });
+          if (requestId !== publicHumansRequestSeq) return;
           set({ publicHumans: result.humans, publicHumansLoading: false, publicHumansLoaded: true });
         } catch {
+          if (requestId !== publicHumansRequestSeq) return;
           set({ publicHumansLoading: false, publicHumansLoaded: true });
         }
       },

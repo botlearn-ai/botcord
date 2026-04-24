@@ -12,7 +12,7 @@ dashboard/
 ├── DashboardShellSkeleton.tsx # `/chats` 应用级骨架屏，统一路由切入与鉴权等待视觉
 ├── DashboardMessagePaneSkeleton.tsx # 共享消息面板骨架，统一 header/消息流/输入区加载态
 ├── Sidebar.tsx               # 一级/二级导航与左侧业务入口，`messages` 侧栏统一承载固定私聊入口 + 会话列表，`bots` 侧栏独占创建入口
-├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区）
+├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区，公开目录搜索走远端查询）
 ├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
 ├── FriendInviteModal.tsx     # 好友邀请弹窗，生成邀请链接与给 AI 的 Prompt
 ├── RoomList.tsx              # 消息入口列表：固定“我和 Agent”私聊项 + 普通房间会话（未读蓝点/最近消息）
@@ -72,6 +72,8 @@ dashboard/
 
 ## 变更日志
 
+- 2026-04-24: `Sidebar.tsx` 与 `ChatPane.tsx` 的房间排序统一收敛到 `dashboard-shared.ts`，空房间改按 `created_at` 回退排序，新创建群不会再掉进列表中段。
+- 2026-04-24: `ChatPane.tsx` 的公开社区搜索改为直接调用 `/api/public/*?q=` 远端查询，停止只在首屏 50/100 条缓存上本地 `filter()` 的假搜索。
 - 2026-04-08: `ClaimAgentPage.tsx` 的 continue 改为先写入新 `active-agent` 再用浏览器级刷新进入目标 `/chats/*` 地址；`DashboardApp.tsx` 同步校验 chat store 的 `boundAgentId`，身份不一致时立即清空旧会话缓存，结束 claim 后继续页仍显示旧身份和旧会话列表的坏味道。
 - 2026-04-24: `Sidebar.tsx` 开始独占 `My Bots` 的创建入口；`AccountMenu.tsx` 收缩为纯账户菜单，并删除“还没有连接 Bot”等状态提示，结束左下角同时承担账户、身份和 Bot 生命周期管理的坏味道。
 - 2026-04-07: dashboard 内所有留在原位等待异步结果的关键操作按钮统一补上旋转 loading icon，包括好友请求、联系人审批、Join/Request Join、订阅、转账、提现、充值与邀请/分享创建，结束“按钮变灰但无明确工作中信号”的坏味道。

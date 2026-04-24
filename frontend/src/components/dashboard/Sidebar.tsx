@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 react 的 startTransition/useEffect 解耦导航切换与路由提交，依赖 session/ui/chat/unread/wallet store 提供导航状态、会话未读与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 与 CreateAgentDialog 提供账户出口和 Bot 创建入口
+ * [INPUT]: 依赖 react 的 startTransition/useEffect/useMemo/useState 解耦导航切换、侧栏搜索与路由提交，依赖 session/ui/chat/unread/wallet store 提供导航状态、会话未读与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu/CreateAgentDialog/SearchBar 提供账户出口、Bot 创建入口与消息列表搜索
  * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表、未读提示、Bot 创建入口与左下角账户菜单
  * [POS]: dashboard 左侧导航骨架，负责频道切换、未读入口提示与 My Bots 面板编排；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -22,6 +22,7 @@ import AddFriendModal from "./AddFriendModal";
 import CreateRoomModal from "./CreateRoomModal";
 import CreateAgentDialog from "./CreateAgentDialog";
 import RoomZeroState from "./RoomZeroState";
+import SearchBar from "./SearchBar";
 import { UserPlus, MessageSquarePlus, Users, LogIn, Bot, Plus } from "lucide-react";
 import { messagesHeader } from "@/lib/i18n/translations/dashboard";
 import { createClient } from "@/lib/supabase/client";
@@ -221,6 +222,7 @@ export default function Sidebar() {
   })));
   const chatStore = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
+    messages: state.messages,
     recentVisitedRooms: state.recentVisitedRooms,
     switchActiveAgent: state.switchActiveAgent,
   })));
@@ -233,6 +235,7 @@ export default function Sidebar() {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showCreateBot, setShowCreateBot] = useState(false);
+  const [messageQuery, setMessageQuery] = useState("");
   const tMsgHeader = messagesHeader[locale];
   const showLoginModal = () => router.push("/login");
 
@@ -303,6 +306,32 @@ export default function Sidebar() {
     }),
     [chatStore.overview, chatStore.recentVisitedRooms, sessionStore.token, sessionStore.humanRooms],
   );
+  const normalizedMessageQuery = messageQuery.trim().toLowerCase();
+  const filteredMessageRooms = useMemo(() => {
+    if (!normalizedMessageQuery) {
+      return visibleMessageRooms;
+    }
+
+    return visibleMessageRooms.filter((room) => {
+      const cachedLatestMessage = chatStore.messages[room.room_id]?.findLast(
+        (message) => message.type !== "ack" && message.type !== "result" && message.type !== "error",
+      );
+      const searchHaystack = [
+        room.name,
+        room.room_id,
+        room.description,
+        room.last_message_preview,
+        room.last_sender_name,
+        cachedLatestMessage?.text,
+        cachedLatestMessage?.sender_name,
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase();
+
+      return searchHaystack.includes(normalizedMessageQuery);
+    });
+  }, [chatStore.messages, normalizedMessageQuery, visibleMessageRooms]);
   const showOverviewSkeleton =
     sessionStore.sessionMode === "authed-ready" && !chatStore.overview && uiStore.sidebarTab === "messages";
   const hasUnreadMessages = optimisticUnreadRoomIds.length > 0 || visibleMessageRooms.some((room) => room.has_unread);
@@ -611,10 +640,17 @@ export default function Sidebar() {
         <div className="flex-1 overflow-y-auto">
           {uiStore.sidebarTab === "messages" && (
             <div className="py-1">
+              <div className="border-b border-glass-border px-3 pb-3">
+                <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
+              </div>
               {visibleMessageRooms.length === 0 && !sessionStore.activeAgentId ? (
                 <RoomZeroState compact />
+              ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 && !sessionStore.activeAgentId ? (
+                <div className="px-4 py-6 text-center text-xs text-text-secondary">
+                  {t.noMessages}
+                </div>
               ) : (
-                <RoomList rooms={visibleMessageRooms} loading={showOverviewSkeleton} />
+                <RoomList rooms={filteredMessageRooms} loading={showOverviewSkeleton} searchQuery={messageQuery} />
               )}
             </div>
           )}

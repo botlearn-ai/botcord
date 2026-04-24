@@ -48,6 +48,7 @@ function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
 interface RoomListProps {
   rooms?: DashboardRoom[];
   loading?: boolean;
+  searchQuery?: string;
 }
 
 const USER_CHAT_PATH = "/chats/messages/__user-chat__";
@@ -79,7 +80,7 @@ function formatLastMessageTime(isoTime: string | null): string {
     : date.toLocaleDateString();
 }
 
-export default function RoomList({ rooms: propsRooms, loading = false }: RoomListProps) {
+export default function RoomList({ rooms: propsRooms, loading = false, searchQuery = "" }: RoomListProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = roomList[locale];
@@ -101,6 +102,7 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
   const ownerChatRoomId = useOwnerChatStore((state) => state.roomId);
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   // Agent-centric rooms (overview.rooms) ∪ Human-centric rooms (humanRooms),
   // deduped by room_id. When callers pass propsRooms explicitly we honour
   // that and skip the merge. Human rows coexist in the same list so the
@@ -115,7 +117,13 @@ export default function RoomList({ rooms: propsRooms, loading = false }: RoomLis
       .map(humanRoomToDashboardRoom);
     return [...agentRooms, ...extras];
   })();
-  const showUserChatEntry = Boolean(activeAgentId);
+  const showUserChatEntry = Boolean(activeAgentId) && (
+    !normalizedSearchQuery ||
+    [t.userChatTitle, t.userChatPreview, t.userChatTooltip, activeAgentId]
+      .join("\n")
+      .toLowerCase()
+      .includes(normalizedSearchQuery)
+  );
   // Only show onboarding state when the owner-chat store has been initialized
   // (roomId is set), to avoid false positives when store is in default empty state.
   const isOwnerChatEmpty = showUserChatEntry && Boolean(ownerChatRoomId) && !ownerChatLoading && ownerChatMessages.length === 0;

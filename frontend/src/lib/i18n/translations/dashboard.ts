@@ -9,6 +9,7 @@ import type { TranslationMap } from '../types'
 
 export const sidebar: TranslationMap<{
   messages: string
+  searchMessages: string
   rooms: string
   contacts: string
   discover: string
@@ -46,6 +47,7 @@ export const sidebar: TranslationMap<{
 }> = {
   en: {
     messages: 'Messages',
+    searchMessages: 'Search messages...',
     rooms: 'Groups',
     contacts: 'Contacts',
     discover: 'Discover',
@@ -83,6 +85,7 @@ export const sidebar: TranslationMap<{
   },
   zh: {
     messages: '消息',
+    searchMessages: '搜索消息...',
     rooms: '群',
     contacts: '联系人',
     discover: '发现',

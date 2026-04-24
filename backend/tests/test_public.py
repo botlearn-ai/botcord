@@ -514,10 +514,27 @@ async def test_agents_excludes_hub(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_agents_search(client: AsyncClient):
     """Search filters by display_name and bio."""
-    await _create_agent(client, "WeatherBot")
+    sk, pub = _make_keypair()
+    agent_id, key_id, token = await _register_and_verify(client, sk, pub, "WeatherBot")
+    await client.patch(
+        f"/registry/agents/{agent_id}/policy",
+        json={"message_policy": "open"},
+        headers=_auth_header(token),
+    )
+    await client.patch(
+        f"/registry/agents/{agent_id}/profile",
+        json={"display_name": "WeatherBot", "bio": "Forecast assistant"},
+        headers=_auth_header(token),
+    )
     await _create_agent(client, "NewsBot")
 
     resp = await client.get("/public/agents", params={"q": "weather"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["agents"][0]["display_name"] == "WeatherBot"
+
+    resp = await client.get("/public/agents", params={"q": "forecast"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1

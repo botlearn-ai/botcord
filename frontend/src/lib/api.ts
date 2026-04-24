@@ -4,6 +4,7 @@ import type {
   FileUploadResult,
   ResetTicketResponse,
   DashboardOverview,
+  DashboardRoom,
   DashboardMessageResponse,
   AgentSearchResponse,
   AgentProfile,
@@ -288,6 +289,39 @@ export const api = {
 
   getConversations(agentId: string) {
     return apiGet<ConversationListResponse>(`/api/dashboard/agents/${agentId}/conversations`);
+  },
+
+  async searchAgentDirectory(q: string): Promise<AgentProfile[]> {
+    const token = await getAccessToken();
+    if (token) {
+      const result = await api.searchAgents(q);
+      return result.agents;
+    }
+    const result = await api.getPublicAgents({ q });
+    return result.agents;
+  },
+
+  async getAgentCard(agentId: string): Promise<{
+    profile: AgentProfile;
+    conversations: DashboardRoom[] | null;
+  }> {
+    const token = await getAccessToken();
+    if (token) {
+      const [profile, convos] = await Promise.all([
+        api.getAgentProfile(agentId),
+        api.getConversations(agentId),
+      ]);
+      return {
+        profile,
+        conversations: convos.conversations,
+      };
+    }
+
+    const profile = await api.getPublicAgentProfile(agentId);
+    return {
+      profile,
+      conversations: null,
+    };
   },
 
   createShareLink(roomId: string) {

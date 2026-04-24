@@ -47,6 +47,19 @@ export function getIsoTimestampValue(isoTime: string | null | undefined): number
   return Number.isNaN(value) ? 0 : value;
 }
 
+type RoomActivityLike = {
+  last_message_at: string | null;
+  created_at?: string | null;
+};
+
+export function getRoomActivityTimestamp(room: RoomActivityLike): number {
+  return getIsoTimestampValue(room.last_message_at) || getIsoTimestampValue(room.created_at);
+}
+
+export function compareRoomsByActivityDesc<T extends RoomActivityLike>(a: T, b: T): number {
+  return getRoomActivityTimestamp(b) - getRoomActivityTimestamp(a);
+}
+
 /** Owner-chat rooms (rm_oc_*) are shown via the dedicated UserChatPane entry, not the room list. */
 function isOwnerChatRoom(roomId: string): boolean {
   return roomId.startsWith("rm_oc_");
@@ -87,11 +100,7 @@ export function buildVisibleMessageRooms(state: {
   const humanOnlyRooms = (state.humanRooms || [])
     .filter((r) => !allKnownRoomIds.has(r.room_id) && !isOwnerChatRoom(r.room_id))
     .map(humanRoomToDashboardRoom);
-  const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms, ...humanOnlyRooms].sort((a, b) => {
-    const aTs = a.last_message_at ? Date.parse(a.last_message_at) : 0;
-    const bTs = b.last_message_at ? Date.parse(b.last_message_at) : 0;
-    return bTs - aTs;
-  });
+  const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms, ...humanOnlyRooms].sort(compareRoomsByActivityDesc);
   return state.token ? mergedRooms : state.recentVisitedRooms.map(toRoomSummary);
 }
 

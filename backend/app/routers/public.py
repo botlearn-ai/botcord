@@ -1,4 +1,9 @@
-"""Public (no-auth) API routes under /api/public."""
+"""
+[INPUT]: 依赖 FastAPI Query/Depends、数据库 session、hub models 与公共文本提取辅助函数
+[OUTPUT]: 对外提供 /api/public 下的公开概览、房间目录、Agent 目录、Human 目录与公开房间消息接口
+[POS]: backend public router，承接无需鉴权的社区浏览能力，并为前端公开目录搜索提供真相源
+[PROTOCOL]: 变更时更新此头部，然后检查 README.md
+"""
 
 import logging
 
@@ -88,7 +93,9 @@ async def _get_public_room_previews(
     if q:
         pattern = f"%{escape_like(q)}%"
         stmt = stmt.where(
-            (Room.name.ilike(pattern)) | (Room.room_id.ilike(pattern))
+            (Room.name.ilike(pattern))
+            | (Room.room_id.ilike(pattern))
+            | (Room.description.ilike(pattern))
         )
 
     stmt = stmt.group_by(Room.id).offset(offset).limit(limit)
@@ -245,7 +252,9 @@ async def list_public_rooms(
     if q:
         pattern = f"%{escape_like(q)}%"
         count_stmt = count_stmt.where(
-            (Room.name.ilike(pattern)) | (Room.room_id.ilike(pattern))
+            (Room.name.ilike(pattern))
+            | (Room.room_id.ilike(pattern))
+            | (Room.description.ilike(pattern))
         )
     total_result = await db.execute(count_stmt)
     total = total_result.scalar() or 0
@@ -397,14 +406,18 @@ async def list_public_agents(
     if q:
         pattern = f"%{escape_like(q)}%"
         stmt = stmt.where(
-            (Agent.agent_id.ilike(pattern)) | (Agent.display_name.ilike(pattern))
+            (Agent.agent_id.ilike(pattern))
+            | (Agent.display_name.ilike(pattern))
+            | (Agent.bio.ilike(pattern))
         )
 
     # Count total
     count_stmt = select(func.count()).select_from(Agent).where(Agent.agent_id != "hub")
     if q:
         count_stmt = count_stmt.where(
-            (Agent.agent_id.ilike(pattern)) | (Agent.display_name.ilike(pattern))
+            (Agent.agent_id.ilike(pattern))
+            | (Agent.display_name.ilike(pattern))
+            | (Agent.bio.ilike(pattern))
         )
     total_result = await db.execute(count_stmt)
     total = total_result.scalar() or 0

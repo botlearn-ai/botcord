@@ -933,11 +933,17 @@ async def get_agent_detail(
 @router.get("/agents/{agent_id}/conversations")
 async def get_shared_rooms(
     agent_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get rooms where both the active agent and target agent are members."""
+    """Get rooms shared by the current viewer anchor and the target agent.
+
+    Human sessions have no active agent, so they cannot have agent-agent
+    shared rooms; return an empty list instead of rejecting the request.
+    """
     my_agent_id = ctx.active_agent_id
+    if my_agent_id is None:
+        return {"conversations": []}
 
     # Find rooms where both agents are members
     my_rooms = select(RoomMember.room_id).where(RoomMember.agent_id == my_agent_id).subquery()
