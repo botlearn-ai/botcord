@@ -513,10 +513,12 @@ export const exploreUi: TranslationMap<{
   personaContactsOnly: string
   personaFallbackBio: string
   agentDetails: string
+  humanDetails: string
   close: string
   noBio: string
   alreadyInContacts: string
   friendRequestAlreadyPending: string
+  friendRequestSent: string
   sendFriendRequest: string
   sendingFriendRequest: string
 }> = {
@@ -558,10 +560,12 @@ export const exploreUi: TranslationMap<{
     personaContactsOnly: 'Contacts-first communication',
     personaFallbackBio: 'I am ready to collaborate and communicate with your bots.',
     agentDetails: 'Bot Details',
+    humanDetails: 'Human Details',
     close: 'Close',
     noBio: 'No bio',
     alreadyInContacts: 'Already in contacts',
     friendRequestAlreadyPending: 'Friend request already pending',
+    friendRequestSent: 'Friend request sent.',
     sendFriendRequest: 'Send Friend Request',
     sendingFriendRequest: 'Sending request...',
   },
@@ -603,10 +607,12 @@ export const exploreUi: TranslationMap<{
     personaContactsOnly: '优先联系人沟通',
     personaFallbackBio: '我已准备好与你的 Bot 协作沟通。',
     agentDetails: 'Bot 详情',
+    humanDetails: 'Human 详情',
     close: '关闭',
     noBio: '暂无简介',
     alreadyInContacts: '已在联系人中',
     friendRequestAlreadyPending: '好友请求已在处理中',
+    friendRequestSent: '好友申请已发送。',
     sendFriendRequest: '发送好友请求',
     sendingFriendRequest: '发送请求中...',
   },
@@ -2123,6 +2129,97 @@ export const subscriptionBadge: TranslationMap<{
     errorInsufficientBalance: '余额不足，请先前往钱包充值。',
     errorAlreadySubscribed: '你已订阅此商品。',
     errorGeneric: '操作失败，请稍后再试。',
+  },
+}
+
+export const dmSettingsModal: TranslationMap<{
+  titleMyAgent: string
+  titleFriend: string
+  agentId: string
+  displayName: string
+  bio: string
+  noBio: string
+  removeFriend: string
+  removingFriend: string
+  removeFriendConfirm: string
+  removeFriendFailed: string
+  close: string
+}> = {
+  en: {
+    titleMyAgent: 'Agent Settings',
+    titleFriend: 'Contact Info',
+    agentId: 'Agent ID',
+    displayName: 'Name',
+    bio: 'Bio',
+    noBio: 'No bio set.',
+    removeFriend: 'Remove Contact',
+    removingFriend: 'Removing...',
+    removeFriendConfirm: 'Are you sure you want to remove this contact?',
+    removeFriendFailed: 'Failed to remove contact',
+    close: 'Close',
+  },
+  zh: {
+    titleMyAgent: 'Agent 设置',
+    titleFriend: '好友信息',
+    agentId: 'Agent ID',
+    displayName: '名称',
+    bio: '简介',
+    noBio: '暂无简介。',
+    removeFriend: '移除好友',
+    removingFriend: '移除中...',
+    removeFriendConfirm: '确定要移除该好友吗？',
+    removeFriendFailed: '移除好友失败',
+    close: '关闭',
+  },
+}
+
+export const roomMemberSettingsModal: TranslationMap<{
+  title: string
+  name: string
+  description: string
+  rule: string
+  noDescription: string
+  noRule: string
+  leaveRoom: string
+  leavingRoom: string
+  cancelSubscription: string
+  cancellingSubscription: string
+  ownerCannotLeave: string
+  leaveRoomFailed: string
+  cancelSubscriptionFailed: string
+  close: string
+}> = {
+  en: {
+    title: 'Group Info',
+    name: 'Name',
+    description: 'Description',
+    rule: 'Rule / Announcement',
+    noDescription: 'No description.',
+    noRule: 'No rule set.',
+    leaveRoom: 'Leave Group',
+    leavingRoom: 'Leaving...',
+    cancelSubscription: 'Cancel Subscription',
+    cancellingSubscription: 'Cancelling...',
+    ownerCannotLeave: 'Group owner cannot leave directly. Transfer ownership first.',
+    leaveRoomFailed: 'Failed to leave group',
+    cancelSubscriptionFailed: 'Failed to cancel subscription',
+    close: 'Close',
+  },
+  zh: {
+    title: '群信息',
+    name: '群名称',
+    description: '群描述',
+    rule: '群公告 / 规则',
+    noDescription: '暂无群描述。',
+    noRule: '暂未设置公告。',
+    leaveRoom: '退出群',
+    leavingRoom: '退出中...',
+    cancelSubscription: '取消订阅',
+    cancellingSubscription: '取消中...',
+    ownerCannotLeave: '群主不能直接退出，请先转移所有权。',
+    leaveRoomFailed: '退出群失败',
+    cancelSubscriptionFailed: '取消订阅失败',
+    close: '关闭',
   },
 }
 

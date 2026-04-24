@@ -250,6 +250,7 @@ async function apiDelete<T>(path: string): Promise<T> {
     const data = await res.json().catch(() => ({ error: res.statusText }));
     throw new ApiError(res.status, extractErrorMessage(data, res.statusText));
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -356,6 +357,10 @@ export const api = {
 
   leaveRoom(roomId: string) {
     return apiPost<LeaveRoomResponse>(`/api/dashboard/rooms/${roomId}/leave`);
+  },
+
+  removeContact(contactAgentId: string) {
+    return apiDelete<void>(`/api/dashboard/contacts/${contactAgentId}`);
   },
 
   createJoinRequest(roomId: string, message?: string) {

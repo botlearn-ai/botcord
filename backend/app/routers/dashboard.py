@@ -766,6 +766,45 @@ async def reject_contact_request(
 
 
 # ---------------------------------------------------------------------------
+# Contact management
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/contacts/{contact_agent_id}", status_code=204)
+async def remove_contact(
+    contact_agent_id: str,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a contact (bidirectional delete)."""
+    agent_id = ctx.agent_id
+
+    result = await db.execute(
+        select(Contact).where(
+            Contact.owner_id == agent_id,
+            Contact.contact_agent_id == contact_agent_id,
+        )
+    )
+    contact = result.scalar_one_or_none()
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    await db.delete(contact)
+
+    reverse_result = await db.execute(
+        select(Contact).where(
+            Contact.owner_id == contact_agent_id,
+            Contact.contact_agent_id == agent_id,
+        )
+    )
+    reverse_contact = reverse_result.scalar_one_or_none()
+    if reverse_contact is not None:
+        await db.delete(reverse_contact)
+
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Agent search / details
 # ---------------------------------------------------------------------------
 

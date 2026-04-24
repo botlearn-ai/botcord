@@ -20,6 +20,8 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
+import DMSettingsModal from "./DMSettingsModal";
+import RoomMemberSettingsModal from "./RoomMemberSettingsModal";
 
 export default function RoomHeader() {
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
@@ -34,15 +36,17 @@ export default function RoomHeader() {
   const [ruleOverflowing, setRuleOverflowing] = useState(false);
   const ruleRef = useRef<HTMLParagraphElement | null>(null);
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
+  const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const { openedRoomId, rightPanelOpen, toggleRightPanel } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
     rightPanelOpen: state.rightPanelOpen,
     toggleRightPanel: state.toggleRightPanel,
   })));
-  const { overview, getRoomSummary, patchRoom } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, getRoomSummary, patchRoom, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     getRoomSummary: state.getRoomSummary,
     patchRoom: state.patchRoom,
+    refreshOverview: state.refreshOverview,
   })));
   const { joinRoom, joiningRoomId } = useDashboardChatStore(useShallow((state) => ({
     joinRoom: state.joinRoom,
@@ -63,6 +67,18 @@ export default function RoomHeader() {
   const loginHref = room ? `/login?next=${encodeURIComponent(`/chats/messages/${room.room_id}`)}` : "/login";
   const myRole = authRoom?.my_role;
   const isOwnerOrAdmin = myRole === "owner" || myRole === "admin";
+
+  // DM room detection: room_id prefix "rm_dm_"
+  const isDMRoom = Boolean(openedRoomId?.startsWith("rm_dm_"));
+  // For DM rooms, figure out the partner agent by filtering activeAgentId from the room ID parts
+  const dmPartnerAgentId = isDMRoom && openedRoomId && activeAgentId
+    ? openedRoomId.replace("rm_dm_", "").split("_ag_")
+        .map((p) => (p ? "ag_" + p : "")).find((id) => id && id !== activeAgentId) ?? null
+    : null;
+  const isOwnAgentDM = isDMRoom && dmPartnerAgentId === null;
+  const dmContact = isDMRoom && dmPartnerAgentId
+    ? (overview?.contacts.find((c) => c.contact_agent_id === dmPartnerAgentId) ?? null)
+    : null;
   const canInvite = authRoom?.can_invite ?? true;
   const roleLabel = myRole
     ? locale === "zh"
@@ -326,7 +342,7 @@ export default function RoomHeader() {
               {t.guest}
             </span>
           )}
-          {isJoined && (
+          {isJoined && !isDMRoom && (
             <button
               onClick={() => setShowShareModal(true)}
               className={iconBtn}
@@ -336,7 +352,7 @@ export default function RoomHeader() {
               <Share2 className="h-4 w-4" />
             </button>
           )}
-          {isOwnerOrAdmin && (
+          {isAuthedReady && (isJoined || isDMRoom) && (
             <button
               onClick={() => setShowSettingsModal(true)}
               className={iconBtn}
@@ -346,14 +362,16 @@ export default function RoomHeader() {
               <Settings className="h-4 w-4" />
             </button>
           )}
-          <button
-            onClick={handleOpenMembersPanel}
-            className={iconBtn}
-            title={t.viewMembers}
-            aria-label={t.viewMembers}
-          >
-            <Users className="h-4 w-4" />
-          </button>
+          {!isDMRoom && (
+            <button
+              onClick={handleOpenMembersPanel}
+              className={iconBtn}
+              title={t.viewMembers}
+              aria-label={t.viewMembers}
+            >
+              <Users className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -367,7 +385,17 @@ export default function RoomHeader() {
         />
       )}
 
-      {showSettingsModal && (
+      {showSettingsModal && isDMRoom && (
+        <DMSettingsModal
+          contact={dmContact}
+          ownAgentName={overview?.agent.display_name}
+          ownAgentId={activeAgentId ?? undefined}
+          onClose={() => setShowSettingsModal(false)}
+          onContactRemoved={() => void refreshOverview()}
+        />
+      )}
+
+      {showSettingsModal && !isDMRoom && isOwnerOrAdmin && (
         <RoomSettingsModal
           roomId={room.room_id}
           initialName={room.name}
@@ -377,6 +405,18 @@ export default function RoomHeader() {
           initialJoinPolicy={room.join_policy}
           initialSubscriptionProductId={room.required_subscription_product_id ?? null}
           isOwner={authRoom?.my_role === "owner"}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
+
+      {showSettingsModal && !isDMRoom && !isOwnerOrAdmin && myRole && (
+        <RoomMemberSettingsModal
+          roomId={room.room_id}
+          roomName={room.name}
+          roomDescription={room.description}
+          roomRule={room.rule}
+          myRole={myRole}
+          requiredSubscriptionProductId={room.required_subscription_product_id}
           onClose={() => setShowSettingsModal(false)}
         />
       )}

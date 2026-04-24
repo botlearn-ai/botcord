@@ -20,9 +20,11 @@ import RoomHumanComposer from "./RoomHumanComposer";
 import TopicDrawer from "./TopicDrawer";
 import JoinGuidePrompt from "./JoinGuidePrompt";
 import FriendInviteModal from "./FriendInviteModal";
+import HumanCardModal from "./HumanCardModal";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import { PublicHumanProfile, PublicRoom } from "@/lib/types";
+import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -401,7 +403,22 @@ function ExploreMainPane() {
     selectAgent: state.selectAgent,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
+  const { viewMode } = useDashboardSessionStore(useShallow((state) => ({
+    viewMode: state.viewMode,
+  })));
+  const contactAgentIds = useMemo(
+    () => new Set((useDashboardChatStore.getState().overview?.contacts ?? []).map((c) => c.contact_agent_id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   const [query, setQuery] = useState("");
+  const [humanModal, setHumanModal] = useState<{
+    human: PublicHumanProfile;
+    sending: boolean;
+    status: "idle" | "sent" | "exists" | "pending";
+    error: string | null;
+  } | null>(null);
   const isRoomsView = exploreView === "rooms";
   const isAgentsView = exploreView === "agents";
   const isHumansView = exploreView === "humans";
@@ -478,10 +495,33 @@ function ExploreMainPane() {
     }
   };
 
-  const openHumanFromExplore = (_human: PublicHumanProfile) => {
-    // Human profile modal/contact-request flow is not wired yet — clicking
-    // the card is a no-op placeholder, symmetric with selectAgent() for Agents.
-    // Hook into a Human contact-request modal here once it lands.
+  const openHumanFromExplore = (human: PublicHumanProfile) => {
+    setHumanModal({ human, sending: false, status: "idle", error: null });
+  };
+
+  const sendHumanContactRequest = async () => {
+    if (!humanModal) return;
+    setHumanModal((prev) => prev && { ...prev, sending: true, error: null });
+    try {
+      const targetId = humanModal.human.human_id;
+      const res =
+        viewMode === "human"
+          ? await humansApi.sendContactRequest({ peer_id: targetId })
+          : await api.createContactRequest({ to_human_id: targetId });
+      if (res && typeof res === "object" && "status" in res) {
+        const s = (res as { status: string }).status;
+        if (s === "already_contact") setHumanModal((prev) => prev && { ...prev, sending: false, status: "exists" });
+        else if (s === "already_requested") setHumanModal((prev) => prev && { ...prev, sending: false, status: "pending" });
+        else setHumanModal((prev) => prev && { ...prev, sending: false, status: "sent" });
+      } else {
+        setHumanModal((prev) => prev && { ...prev, sending: false, status: "sent" });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Request failed";
+      if (/already.*contact/i.test(msg)) setHumanModal((prev) => prev && { ...prev, sending: false, status: "exists" });
+      else if (/already.*request|pending/i.test(msg)) setHumanModal((prev) => prev && { ...prev, sending: false, status: "pending" });
+      else setHumanModal((prev) => prev && { ...prev, sending: false, error: msg });
+    }
   };
 
   const title = isRoomsView ? t.publicRooms : isAgentsView ? t.publicAgents : t.publicHumans;
@@ -569,6 +609,18 @@ function ExploreMainPane() {
           </div>
         )}
       </div>
+
+      <HumanCardModal
+        isOpen={humanModal !== null}
+        human={humanModal?.human ?? null}
+        onClose={() => setHumanModal(null)}
+        alreadyInContacts={humanModal?.status === "exists" || (humanModal ? contactAgentIds.has(humanModal.human.human_id) : false)}
+        requestAlreadyPending={humanModal?.status === "pending"}
+        requestSent={humanModal?.status === "sent"}
+        sendingFriendRequest={humanModal?.sending ?? false}
+        onSendFriendRequest={sendHumanContactRequest}
+        error={humanModal?.error ?? null}
+      />
     </div>
   );
 }
