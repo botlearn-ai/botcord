@@ -437,15 +437,29 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       // Upgrade streaming placeholder to delivered
       const existing = state.messages[idx];
+      // Preserve the streamed assistant text if it is richer than the final
+      // `message` text (e.g. Codex streams long intermediate reasoning/answer
+      // segments but only sends a short summary via botcord_send).
+      const streamedText = extractAssistantText(existing.streamBlocks);
+      const finalText = finalData.text || "";
+      let mergedText: string;
+      if (streamedText.length > finalText.length) {
+        mergedText =
+          finalText && !streamedText.includes(finalText)
+            ? `${streamedText}\n\n${finalText}`
+            : streamedText;
+      } else {
+        mergedText = finalText;
+      }
       const finalizedMsg: OwnerChatMessage = {
         ...existing,
         hubMsgId: finalData.hubMsgId,
-        text: finalData.text,
+        text: mergedText,
         senderName: finalData.senderName,
         createdAt: finalData.createdAt,
         attachments: finalData.attachments,
         status: "delivered",
-        // Keep only execution blocks (strip assistant text — now in the final message text)
+        // Keep only execution blocks (assistant text now lives in `text`)
         streamBlocks: existing.streamBlocks.filter((b) => b.block.kind !== "assistant"),
       };
 
