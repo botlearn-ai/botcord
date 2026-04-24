@@ -78,11 +78,37 @@ describe("resolveRoute", () => {
   });
 
   describe("managedRoutes", () => {
-    it("user cfg.routes match wins over managed for same accountId", () => {
+    it("user route with explicit accountId wins over managed for same agent", () => {
       const user = makeRoute({ runtime: "user", match: { accountId: "ag_1" } });
       const managed = makeRoute({ runtime: "managed", match: { accountId: "ag_1" } });
       const msg = makeMessage({ accountId: "ag_1" });
       expect(resolveRoute(msg, { defaultRoute, routes: [user] }, [managed])).toBe(user);
+    });
+
+    it("broad user route (no accountId) does NOT override managed per-agent route", () => {
+      const broad = makeRoute({
+        runtime: "broad",
+        match: { conversationPrefix: "rm_oc_" },
+      });
+      const managed = makeRoute({ runtime: "managed", match: { accountId: "ag_1" } });
+      const msg = makeMessage({
+        accountId: "ag_1",
+        conversation: { id: "rm_oc_abc", kind: "group" },
+      });
+      expect(resolveRoute(msg, { defaultRoute, routes: [broad] }, [managed])).toBe(managed);
+    });
+
+    it("broad user route applies when no managed route matches the agent", () => {
+      const broad = makeRoute({
+        runtime: "broad",
+        match: { conversationPrefix: "rm_oc_" },
+      });
+      const managed = makeRoute({ runtime: "managed", match: { accountId: "ag_other" } });
+      const msg = makeMessage({
+        accountId: "ag_1",
+        conversation: { id: "rm_oc_abc", kind: "group" },
+      });
+      expect(resolveRoute(msg, { defaultRoute, routes: [broad] }, [managed])).toBe(broad);
     });
 
     it("no user match + managed match → managed wins", () => {

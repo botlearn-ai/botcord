@@ -150,9 +150,10 @@ export function toGatewayConfig(
 
   // Synthesize a per-agent route for every bound agent and hand it to the
   // gateway via the managed-routes bucket (plan §10.1). User-authored
-  // `cfg.routes[]` stay untouched so an explicit operator override still
-  // wins on conflict — the gateway matches `routes[] → managedRoutes →
-  // defaultRoute` in that order.
+  // `cfg.routes[]` stay untouched. Match priority (see router.ts):
+  // `routes[] with explicit accountId → managedRoutes → other routes[] →
+  // defaultRoute`. Broad prefix/kind rules no longer clobber the agent's
+  // chosen runtime — only routes that name the agent by `accountId` do.
   const managedMap = buildManagedRoutes(
     agentIds,
     opts.agentRuntimes ?? {},
