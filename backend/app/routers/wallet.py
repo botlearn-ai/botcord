@@ -1,7 +1,9 @@
 """Wallet, topup, withdrawal, and Stripe routes under /api/wallet.
 
-Uses Supabase JWT auth via ``require_active_agent`` and delegates to
-the existing hub service layer.
+Auth uses Supabase JWT via ``require_user_with_optional_agent``; each
+route accepts ``?as=agent|human`` (default ``agent``) to pick whose
+wallet to operate on. ``as=agent`` still requires the
+``X-Active-Agent`` header; ``as=human`` uses ``ctx.human_id``.
 """
 
 import json
@@ -11,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_active_agent
+from app.auth import RequestContext, require_user_with_optional_agent
 from hub import config as hub_config
 from hub.database import get_db
 from hub.models import WithdrawalRequest
@@ -42,6 +44,22 @@ router = APIRouter(prefix="/api/wallet", tags=["app-wallet"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _resolve_owner(ctx: RequestContext, as_: str) -> str:
+    """Resolve owner id based on `?as=agent|human` query parameter."""
+    if as_ == "human":
+        if not ctx.human_id:
+            raise HTTPException(status_code=400, detail="User has no human_id")
+        return ctx.human_id
+    if as_ == "agent":
+        if not ctx.active_agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail="X-Active-Agent header is required when as=agent",
+            )
+        return ctx.active_agent_id
+    raise HTTPException(status_code=400, detail=f"Invalid `as` value: {as_!r}")
 
 
 def _wallet_summary(wallet) -> dict:
@@ -114,10 +132,12 @@ def _withdrawal_response(wd) -> dict:
 
 @router.get("/summary")
 async def get_wallet_summary(
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    wallet = await wallet_svc.get_or_create_wallet(db, ctx.active_agent_id)
+    owner_id = _resolve_owner(ctx, as_)
+    wallet = await wallet_svc.get_or_create_wallet(db, owner_id)
     return _wallet_summary(wallet)
 
 
@@ -131,11 +151,13 @@ async def get_wallet_ledger(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     type: str | None = Query(default=None),
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = _resolve_owner(ctx, as_)
     entries, next_cursor, has_more = await wallet_svc.list_wallet_ledger(
-        db, ctx.active_agent_id, cursor=cursor, limit=limit, tx_type=type,
+        db, owner_id, cursor=cursor, limit=limit, tx_type=type,
     )
     return {
         "entries": [
@@ -165,7 +187,8 @@ async def get_wallet_ledger(
 @router.post("/transfers", status_code=201)
 async def create_transfer(
     body: TransferRequest,
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -173,10 +196,12 @@ async def create_transfer(
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid amount_minor")
 
+    from_owner_id = _resolve_owner(ctx, as_)
+
     try:
         tx = await wallet_svc.create_transfer(
             db,
-            from_owner_id=ctx.active_agent_id,
+            from_owner_id=from_owner_id,
             to_owner_id=body.to_agent_id,
             amount_minor=amount,
             memo=body.memo,
@@ -200,7 +225,8 @@ async def create_transfer(
 @router.post("/topups", status_code=201)
 async def create_topup(
     body: TopupCreateRequest,
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -208,10 +234,12 @@ async def create_topup(
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid amount_minor")
 
+    owner_id = _resolve_owner(ctx, as_)
+
     try:
         topup, tx = await wallet_svc.create_topup_request(
             db,
-            ctx.active_agent_id,
+            owner_id,
             amount,
             channel=body.channel,
             metadata=body.metadata,
@@ -231,12 +259,14 @@ async def create_topup(
 
 @router.get("/withdrawals")
 async def list_withdrawals(
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = _resolve_owner(ctx, as_)
     result = await db.execute(
         select(WithdrawalRequest)
-        .where(WithdrawalRequest.owner_id == ctx.active_agent_id)
+        .where(WithdrawalRequest.owner_id == owner_id)
         .order_by(WithdrawalRequest.created_at.desc())
         .limit(20)
     )
@@ -247,7 +277,8 @@ async def list_withdrawals(
 @router.post("/withdrawals", status_code=201)
 async def create_withdrawal(
     body: WithdrawalCreateRequest,
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -258,10 +289,12 @@ async def create_withdrawal(
 
     destination_json = json.dumps(body.destination) if body.destination else None
 
+    owner_id = _resolve_owner(ctx, as_)
+
     try:
         wd, _tx = await wallet_svc.create_withdrawal_request(
             db,
-            ctx.active_agent_id,
+            owner_id,
             amount,
             fee_minor=fee,
             destination_type=body.destination_type,
@@ -278,12 +311,14 @@ async def create_withdrawal(
 @router.post("/withdrawals/{withdrawal_id}/cancel")
 async def cancel_withdrawal(
     withdrawal_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = _resolve_owner(ctx, as_)
     try:
         wd = await wallet_svc.cancel_withdrawal_request(
-            db, withdrawal_id, ctx.active_agent_id,
+            db, withdrawal_id, owner_id,
         )
         await db.commit()
     except ValueError as exc:
@@ -300,15 +335,17 @@ async def cancel_withdrawal(
 @router.get("/transactions/{tx_id}")
 async def get_transaction(
     tx_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     tx = await wallet_svc.get_transaction(db, tx_id)
     if tx is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # Authorization: agent must be sender or receiver
-    if ctx.active_agent_id not in (tx.from_owner_id, tx.to_owner_id):
+    owner_id = _resolve_owner(ctx, as_)
+    # Authorization: owner must be sender or receiver
+    if owner_id not in (tx.from_owner_id, tx.to_owner_id):
         raise HTTPException(status_code=403, detail="Not authorized to view this transaction")
 
     return _tx_response(tx)
@@ -343,13 +380,15 @@ async def list_stripe_packages():
 @router.post("/stripe/checkout-session", status_code=201)
 async def create_stripe_checkout(
     body: StripeCheckoutRequest,
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = _resolve_owner(ctx, as_)
     try:
         result = await stripe_svc.create_checkout_session(
             db,
-            ctx.active_agent_id,
+            owner_id,
             body.package_code,
             body.idempotency_key,
             quantity=body.quantity,
@@ -369,12 +408,14 @@ async def create_stripe_checkout(
 @router.get("/stripe/session-status")
 async def get_stripe_session_status(
     session_id: str = Query(...),
-    ctx: RequestContext = Depends(require_active_agent),
+    as_: str = Query(default="agent", alias="as"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = _resolve_owner(ctx, as_)
     try:
         result = await stripe_svc.get_checkout_status(
-            db, session_id, agent_id=ctx.active_agent_id,
+            db, session_id, agent_id=owner_id,
         )
         await db.commit()
     except ValueError as exc:

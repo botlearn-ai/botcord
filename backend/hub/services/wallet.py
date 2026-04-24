@@ -29,6 +29,7 @@ from hub.id_generators import (
 from hub.models import (
     Agent,
     TopupRequest,
+    User,
     WalletAccount,
     WalletEntry,
     WalletTransaction,
@@ -41,6 +42,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+async def _assert_owner_exists(session: AsyncSession, owner_id: str) -> None:
+    """Validate an owner id refers to a real agent or human user.
+
+    `ag_*` → agents.agent_id; `hu_*` → users.human_id. Any other shape is an
+    immediate programming error.
+    """
+    if owner_id.startswith("ag_"):
+        result = await session.execute(select(Agent).where(Agent.agent_id == owner_id))
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Recipient agent not found")
+        return
+    if owner_id.startswith("hu_"):
+        result = await session.execute(select(User).where(User.human_id == owner_id))
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Recipient human not found")
+        return
+    raise ValueError(f"Unsupported owner id prefix: {owner_id!r}")
 
 
 async def get_or_create_wallet(
@@ -230,9 +250,7 @@ async def create_grant(
     if amount_minor <= 0:
         raise ValueError("Amount must be positive")
 
-    recipient = await session.execute(select(Agent).where(Agent.agent_id == owner_id))
-    if recipient.scalar_one_or_none() is None:
-        raise ValueError("Recipient agent not found")
+    await _assert_owner_exists(session, owner_id)
 
     wallet = await _lock_wallet(session, owner_id, asset_code)
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -331,12 +349,10 @@ async def create_transfer(
     if amount_minor <= 0:
         raise ValueError("Amount must be positive")
 
-    # Verify recipient exists
-    recipient = await session.execute(
-        select(Agent).where(Agent.agent_id == to_owner_id)
-    )
-    if recipient.scalar_one_or_none() is None:
-        raise ValueError("Recipient agent not found")
+    # Verify both parties exist. Sender is normally the caller (already
+    # authenticated), but we validate anyway to catch malformed ids.
+    await _assert_owner_exists(session, from_owner_id)
+    await _assert_owner_exists(session, to_owner_id)
 
     # Lock wallets (consistent ordering to avoid deadlock)
     ids_sorted = sorted([from_owner_id, to_owner_id])
@@ -435,6 +451,8 @@ async def create_topup_request(
     """Create a pending topup request and associated transaction."""
     if amount_minor <= 0:
         raise ValueError("Amount must be positive")
+
+    await _assert_owner_exists(session, owner_id)
 
     # Idempotency check — scoped to (type, initiator, key)
     if idempotency_key:
@@ -599,6 +617,8 @@ async def create_withdrawal_request(
         raise ValueError("Amount must be positive")
     if fee_minor < 0:
         raise ValueError("Fee must be non-negative")
+
+    await _assert_owner_exists(session, owner_id)
 
     total = amount_minor + fee_minor
 
