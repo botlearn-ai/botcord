@@ -62,10 +62,12 @@ export default function SubscriptionBadge({
 
   if (!productId) return null;
 
-  const { activeAgentId, sessionMode } = useDashboardSessionStore(useShallow((state) => ({
+  const { activeAgentId, sessionMode, activeIdentityType } = useDashboardSessionStore(useShallow((state) => ({
     activeAgentId: state.activeAgentId,
     sessionMode: state.sessionMode,
+    activeIdentityType: state.activeIdentity?.type ?? null,
   })));
+  const isAgentMode = activeIdentityType === "agent" && !!activeAgentId;
   const { joinRoom, loadRoomMessages } = useDashboardChatStore(useShallow((state) => ({
     joinRoom: state.joinRoom,
     loadRoomMessages: state.loadRoomMessages,
@@ -120,7 +122,7 @@ export default function SubscriptionBadge({
 
   useEffect(() => {
     let cancelled = false;
-    if (!isAuthedReady || !activeAgentId) {
+    if (!isAuthedReady || !isAgentMode) {
       return () => {
         cancelled = true;
       };
@@ -136,7 +138,7 @@ export default function SubscriptionBadge({
     return () => {
       cancelled = true;
     };
-  }, [activeAgentId, ensureSubscriptions, isAuthedReady]);
+  }, [activeAgentId, isAgentMode, ensureSubscriptions, isAuthedReady]);
 
   const loadData = async () => {
     const productPromise = productCache.has(productId)
@@ -144,7 +146,7 @@ export default function SubscriptionBadge({
       : api.getSubscriptionProduct(productId);
     const [productResult] = await Promise.all([
       productPromise,
-      isAuthedReady && activeAgentId ? ensureSubscriptions() : Promise.resolve([]),
+      isAuthedReady && isAgentMode ? ensureSubscriptions() : Promise.resolve([]),
     ]);
 
     productCache.set(productId, productResult.product);
@@ -173,7 +175,7 @@ export default function SubscriptionBadge({
       showLoginModal();
       return;
     }
-    if (!isAuthedReady || !activeAgentId) {
+    if (!isAuthedReady || !isAgentMode) {
       setError(t.selectAgentFirst);
       return;
     }
@@ -209,7 +211,7 @@ export default function SubscriptionBadge({
     : "bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30";
   const primaryLabel = isGuest
     ? t.loginToSubscribe
-    : !isAuthedReady || !activeAgentId
+    : !isAuthedReady || !isAgentMode
       ? t.selectActiveAgent
       : roomId
         ? alreadySubscribed
@@ -322,7 +324,7 @@ export default function SubscriptionBadge({
                   </div>
                 ) : null}
 
-                {!subscription && !isGuest && !activeAgentId ? (
+                {!subscription && !isGuest && !isAgentMode ? (
                   <div className="rounded border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
                     {t.chooseAgentHint}
                   </div>
@@ -358,7 +360,7 @@ export default function SubscriptionBadge({
                   </button>
                   <button
                     onClick={handlePrimaryAction}
-                    disabled={subscribing || (!isGuest && !activeAgentId)}
+                    disabled={subscribing || (!isGuest && !isAgentMode)}
                     className="inline-flex items-center gap-2 rounded border border-yellow-500/50 bg-yellow-500/20 px-4 py-2 text-sm font-medium text-yellow-500 hover:bg-yellow-500/30 disabled:opacity-50"
                   >
                     {subscribing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

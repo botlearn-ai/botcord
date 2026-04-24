@@ -600,7 +600,11 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
-    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) return;
+    if (
+      sessionStore.sessionMode !== "authed-ready"
+      || !sessionStore.activeAgentId
+      || sessionStore.activeIdentity?.type !== "agent"
+    ) return;
 
     if (!walletStore.wallet && !walletStore.walletLoading && !walletStore.walletError) {
       void walletStore.loadWallet();
@@ -615,6 +619,7 @@ export default function DashboardApp() {
   }, [
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
+    sessionStore.activeIdentity?.type,
     walletStore.wallet,
     walletStore.walletLoading,
     walletStore.walletError,
