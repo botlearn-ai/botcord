@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖 dashboard i18n 文案、contacts API 与 CopyableId 展示 DM 对侧或自有 Agent 的身份信息
+ * [OUTPUT]: 对外提供 DMSettingsModal 组件，渲染私聊设置弹窗并支持解除好友关系
+ * [POS]: dashboard 消息视图的 DM 设置面板，承接“查看身份信息/移除联系人”动作
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -85,7 +92,7 @@ export default function DMSettingsModal({
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.agentId}
                 </p>
-                <CopyableId id={ownAgentId ?? ""} />
+                <CopyableId value={ownAgentId ?? ""} />
               </div>
             </div>
           ) : (
@@ -100,7 +107,7 @@ export default function DMSettingsModal({
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.agentId}
                 </p>
-                <CopyableId id={contact!.contact_agent_id} />
+                <CopyableId value={contact!.contact_agent_id} />
               </div>
             </div>
           )}
