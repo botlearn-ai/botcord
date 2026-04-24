@@ -124,6 +124,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       token,
       activeAgentId,
       activeIdentity,
+      viewMode: activeIdentity?.type === "agent" ? "agent" : "human",
       sessionMode: resolveSessionMode(token, activeAgentId),
     });
   },
@@ -240,6 +241,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         ownedAgents: user.agents,
         activeAgentId: activeId,
         activeIdentity,
+        viewMode: activeIdentity?.type === "agent" ? "agent" : "human",
         sessionMode: resolveSessionMode(token, activeId),
       });
     } catch (err: any) {
