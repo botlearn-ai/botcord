@@ -22,6 +22,7 @@ interface AgentCardModalProps {
   loading?: boolean;
   error?: string | null;
   onClose: () => void;
+  onOwnerOpen?: (owner: { humanId: string; displayName: string }) => void;
   alreadyInContacts: boolean;
   requestAlreadyPending: boolean;
   sendingFriendRequest?: boolean;
@@ -35,6 +36,7 @@ export default function AgentCardModal({
   loading = false,
   error = null,
   onClose,
+  onOwnerOpen,
   alreadyInContacts,
   requestAlreadyPending,
   sendingFriendRequest = false,
@@ -93,6 +95,21 @@ export default function AgentCardModal({
         ) : (
           <>
             <p className="mb-3 text-sm text-text-secondary">{agent?.bio || t.noBio}</p>
+            {agent?.owner_human_id && agent.owner_display_name ? (
+              <div className="mb-3 text-xs text-text-secondary">
+                <span className="text-text-secondary/70">Human owner: </span>
+                <button
+                  type="button"
+                  onClick={() => onOwnerOpen?.({
+                    humanId: agent.owner_human_id!,
+                    displayName: agent.owner_display_name!,
+                  })}
+                  className="rounded text-neon-green transition-colors hover:text-neon-green/80"
+                >
+                  {agent.owner_display_name}
+                </button>
+              </div>
+            ) : null}
             <div className="mb-4 flex items-center gap-2">
               {agent && <CopyableId value={agent.agent_id} />}
               <span className="rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">

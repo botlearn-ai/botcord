@@ -59,10 +59,11 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
 
   const mentionCandidates = useMemo<MentionCandidate[]>(() => {
     if (isOwnerChat) return [];
+    const selfId = viewMode === "agent" ? activeAgentId : human?.human_id;
     return members
-      .filter((m) => m.agent_id !== activeAgentId)
+      .filter((m) => m.agent_id !== selfId)
       .map((m) => ({ agent_id: m.agent_id, display_name: m.display_name }));
-  }, [members, activeAgentId, isOwnerChat]);
+  }, [members, activeAgentId, human?.human_id, viewMode, isOwnerChat]);
 
   const handleSend = useCallback(async (text: string, _files: File[], mentions?: string[]) => {
     if (!text) return;

@@ -25,6 +25,7 @@ from hub.models import (
     RoomMember,
     RoomVisibility,
     SubscriptionProduct,
+    User,
 )
 from hub.routers.dashboard import _extract_text_from_envelope, get_platform_stats
 from hub.routers.hub import is_agent_ws_online
@@ -491,30 +492,33 @@ async def public_agents(
     total = (await db.execute(count_stmt)).scalar() or 0
 
     stmt = (
-        select(Agent)
+        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        .outerjoin(User, User.id == Agent.user_id)
         .where(*base_filter)
         .order_by(Agent.created_at.desc())
         .limit(limit)
         .offset(offset)
     )
     result = await db.execute(stmt)
-    agents = result.scalars().all()
+    rows = result.all()
 
     return PublicAgentsResponse(
         agents=[
             DashboardAgentProfile(
-                agent_id=a.agent_id,
-                display_name=a.display_name,
-                bio=a.bio,
+                agent_id=agent.agent_id,
+                display_name=agent.display_name,
+                bio=agent.bio,
                 message_policy=(
-                    a.message_policy.value
-                    if hasattr(a.message_policy, "value")
-                    else str(a.message_policy)
+                    agent.message_policy.value
+                    if hasattr(agent.message_policy, "value")
+                    else str(agent.message_policy)
                 ),
-                created_at=a.created_at,
-                online=is_agent_ws_online(a.agent_id),
+                created_at=agent.created_at,
+                owner_human_id=owner_human_id,
+                owner_display_name=owner_display_name,
+                online=is_agent_ws_online(agent.agent_id),
             )
-            for a in agents
+            for agent, owner_human_id, owner_display_name in rows
         ],
         total=total,
     )
@@ -532,11 +536,14 @@ async def public_agent_detail(
 ):
     """Get a single agent's public profile."""
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id)
+        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        .outerjoin(User, User.id == Agent.user_id)
+        .where(Agent.agent_id == agent_id)
     )
-    agent = result.scalar_one_or_none()
-    if agent is None:
+    row = result.one_or_none()
+    if row is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    agent, owner_human_id, owner_display_name = row
 
     return DashboardAgentProfile(
         agent_id=agent.agent_id,
@@ -548,6 +555,8 @@ async def public_agent_detail(
             else str(agent.message_policy)
         ),
         created_at=agent.created_at,
+        owner_human_id=owner_human_id,
+        owner_display_name=owner_display_name,
         online=is_agent_ws_online(agent.agent_id),
     )
 

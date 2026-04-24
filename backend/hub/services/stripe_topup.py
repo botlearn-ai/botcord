@@ -66,7 +66,7 @@ async def create_checkout_session(
     # --- Idempotency: look for an existing topup with the same key ----------
     existing = await session.execute(
         select(TopupRequest).where(
-            TopupRequest.agent_id == agent_id,
+            TopupRequest.owner_id == agent_id,
             TopupRequest.channel == "stripe",
             TopupRequest.metadata_json.isnot(None),
         )
@@ -318,7 +318,7 @@ async def get_checkout_status(
         raise ValueError("Checkout session not found")
 
     # Ownership check
-    if topup.agent_id != agent_id:
+    if topup.owner_id != agent_id:
         raise PermissionError("Not authorized to view this topup")
 
     # Attempt fulfillment as compensation

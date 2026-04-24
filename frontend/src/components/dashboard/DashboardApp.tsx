@@ -7,14 +7,14 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar as sidebarI18n } from "@/lib/i18n/translations/dashboard";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
 import { createClient } from "@/lib/supabase/client";
-import { api } from "@/lib/api";
-import type { RealtimeMetaEvent } from "@/lib/types";
+import { api, humansApi } from "@/lib/api";
+import type { PublicHumanProfile, RealtimeMetaEvent } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardRealtimeStore } from "@/store/useDashboardRealtimeStore";
@@ -29,6 +29,7 @@ import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
 import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
+import HumanCardModal from "./HumanCardModal";
 import Sidebar from "./Sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
@@ -101,6 +102,13 @@ export default function DashboardApp() {
   const realtimeTopic = sessionStore.activeAgentId ? `agent:${sessionStore.activeAgentId}` : null;
   const continueTarget = searchParams.get("next");
   const continueHandledRef = useRef<string | null>(null);
+  const [ownerHumanCard, setOwnerHumanCard] = useState<{
+    human: PublicHumanProfile | null;
+    loading: boolean;
+    error: string | null;
+    sending: boolean;
+    status: "idle" | "sent" | "exists" | "pending";
+  } | null>(null);
 
   useEffect(() => {
     const debugRealtime = async (): Promise<BotcordDebugRealtimeSnapshot> => {
@@ -683,6 +691,93 @@ export default function DashboardApp() {
     void contactStore.sendContactRequest(selectedAgentForCard.agent_id);
   };
 
+  const handleOpenHumanCard = async (owner: { humanId: string; displayName: string }) => {
+    const placeholder: PublicHumanProfile = {
+      human_id: owner.humanId,
+      display_name: owner.displayName,
+      avatar_url: null,
+      created_at: null,
+    };
+    setOwnerHumanCard({
+      human: placeholder,
+      loading: true,
+      error: null,
+      sending: false,
+      status: "idle",
+    });
+    try {
+      const human = await api.getPublicHuman(owner.humanId);
+      setOwnerHumanCard({
+        human,
+        loading: false,
+        error: null,
+        sending: false,
+        status: "idle",
+      });
+    } catch (error) {
+      setOwnerHumanCard((prev) => prev && {
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to load human profile",
+      });
+    }
+  };
+
+  const handleRetryOwnerHumanCard = () => {
+    const human = ownerHumanCard?.human;
+    if (!human) return;
+    void handleOpenHumanCard({
+      humanId: human.human_id,
+      displayName: human.display_name,
+    });
+  };
+
+  const handleSendOwnerHumanFriendRequest = async () => {
+    const human = ownerHumanCard?.human;
+    if (!human) return;
+    if (sessionStore.sessionMode === "guest") {
+      router.push("/login");
+      return;
+    }
+    setOwnerHumanCard((prev) => prev && { ...prev, sending: true, error: null });
+    try {
+      const response =
+        sessionStore.viewMode === "human"
+          ? await humansApi.sendContactRequest({ peer_id: human.human_id })
+          : await api.createContactRequest({ to_human_id: human.human_id });
+      const status =
+        response && typeof response === "object" && "status" in response
+          ? String((response as { status: string }).status)
+          : "sent";
+      setOwnerHumanCard((prev) => prev && {
+        ...prev,
+        sending: false,
+        status:
+          status === "already_contact"
+            ? "exists"
+            : status === "already_requested"
+              ? "pending"
+              : "sent",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed";
+      setOwnerHumanCard((prev) => prev && {
+        ...prev,
+        sending: false,
+        status:
+          /already.*contact/i.test(message)
+            ? "exists"
+            : /already.*request|pending/i.test(message)
+              ? "pending"
+              : prev.status,
+        error:
+          /already.*contact|already.*request|pending/i.test(message)
+            ? null
+            : message,
+      });
+    }
+  };
+
   return (
     <div className="relative flex h-screen overflow-hidden">
       <Sidebar />
@@ -707,7 +802,14 @@ export default function DashboardApp() {
         </div>
       ) : (
         <>
-          <ChatPane />
+          <ChatPane
+            onHumanOpen={(human) => {
+              void handleOpenHumanCard({
+                humanId: human.human_id,
+                displayName: human.display_name,
+              });
+            }}
+          />
           {uiStore.sidebarTab !== "explore" && uiStore.rightPanelOpen && <AgentBrowser />}
         </>
       )}
@@ -729,6 +831,9 @@ export default function DashboardApp() {
           uiStore.closeAgentCard();
           chatStore.closeAgentCardState();
         }}
+        onOwnerOpen={(owner) => {
+          void handleOpenHumanCard(owner);
+        }}
         alreadyInContacts={alreadyInContacts}
         requestAlreadyPending={requestAlreadyPending}
         sendingFriendRequest={isSendingFriendRequest}
@@ -737,6 +842,20 @@ export default function DashboardApp() {
           if (!chatStore.selectedAgentId) return;
           void chatStore.selectAgent(chatStore.selectedAgentId);
         }}
+      />
+      <HumanCardModal
+        isOpen={ownerHumanCard !== null}
+        human={ownerHumanCard?.human ?? null}
+        loading={ownerHumanCard?.loading ?? false}
+        error={ownerHumanCard?.error ?? null}
+        onClose={() => setOwnerHumanCard(null)}
+        isSelf={ownerHumanCard?.human?.human_id === sessionStore.human?.human_id}
+        alreadyInContacts={ownerHumanCard?.status === "exists"}
+        requestAlreadyPending={ownerHumanCard?.status === "pending"}
+        requestSent={ownerHumanCard?.status === "sent"}
+        sendingFriendRequest={ownerHumanCard?.sending ?? false}
+        onSendFriendRequest={handleSendOwnerHumanFriendRequest}
+        onRetry={handleRetryOwnerHumanCard}
       />
       {chatStore.error && (
         <div className="pointer-events-none absolute right-4 top-4 rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs text-red-200">

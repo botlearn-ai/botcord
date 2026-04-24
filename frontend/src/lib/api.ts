@@ -340,6 +340,7 @@ export const api = {
       join_policy?: "open" | "invite_only";
       default_send?: boolean;
       default_invite?: boolean;
+      allow_human_send?: boolean;
       max_members?: number | null;
       slow_mode_seconds?: number | null;
       required_subscription_product_id?: string | null;
@@ -354,6 +355,7 @@ export const api = {
       join_policy?: string;
       default_send?: boolean;
       default_invite?: boolean;
+      allow_human_send?: boolean;
       max_members?: number | null;
       slow_mode_seconds?: number | null;
       required_subscription_product_id?: string | null;

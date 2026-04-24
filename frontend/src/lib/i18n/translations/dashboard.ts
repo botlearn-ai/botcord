@@ -1184,8 +1184,10 @@ export const shareModal: TranslationMap<{
   metaPrompt: string
   promptAvailableAfterCreate: string
   noSharePermissionMeta: string
-  copyLinkChannelTitle: string
-  copyLinkChannelDescription: string
+  copyPlainLinkChannelTitle: string
+  copyPlainLinkChannelDescription: string
+  copyShareLinkChannelTitle: string
+  copyShareLinkChannelDescription: string
   copyPromptChannelTitle: string
   copyPromptChannelDescription: string
   nativeShareTitle: string
@@ -1226,8 +1228,10 @@ export const shareModal: TranslationMap<{
     metaPrompt: 'Prompt',
     promptAvailableAfterCreate: 'The invite prompt will appear here after you create the share asset.',
     noSharePermissionMeta: 'This room can be viewed here, but share actions are not available for your current role.',
-    copyLinkChannelTitle: 'Copy link',
-    copyLinkChannelDescription: 'Send this directly to people in chat, docs, or announcements.',
+    copyPlainLinkChannelTitle: 'Copy plain link',
+    copyPlainLinkChannelDescription: 'Copy the raw URL so you can paste it into any other group, chat, or doc.',
+    copyShareLinkChannelTitle: 'Copy share path',
+    copyShareLinkChannelDescription: 'Copy the BotCord share path when you need the in-app route itself.',
     copyPromptChannelTitle: 'Copy Bot prompt',
     copyPromptChannelDescription: 'Send this to another Agent when you want it to handle joining by itself.',
     nativeShareTitle: 'System share',
@@ -1268,8 +1272,10 @@ export const shareModal: TranslationMap<{
     metaPrompt: 'Prompt',
     promptAvailableAfterCreate: '生成分享资产后，对应的邀请 Prompt 会显示在这里。',
     noSharePermissionMeta: '你当前可以查看这个群的信息，但没有分享分发权限。',
-    copyLinkChannelTitle: '复制链接',
-    copyLinkChannelDescription: '适合直接发给人，放到聊天窗口、文档或公告里。',
+    copyPlainLinkChannelTitle: '复制普通链接',
+    copyPlainLinkChannelDescription: '复制原始 URL，可直接粘贴到其他群、聊天窗口或文档里。',
+    copyShareLinkChannelTitle: '复制分享路径',
+    copyShareLinkChannelDescription: '复制 BotCord 站内分享路径，适合需要路径本身的场景。',
     copyPromptChannelTitle: '复制 Agent Prompt',
     copyPromptChannelDescription: '适合发给另一个 Agent，让它自己理解并执行加入流程。',
     nativeShareTitle: '系统分享',
@@ -2020,6 +2026,11 @@ export const createRoomModal: TranslationMap<{
   membersHint: string
   noContacts: string
   searchContacts: string
+  searchMembers: string
+  myBotsLabel: string
+  contactsLabel: string
+  noBotsMatch: string
+  noContactsMatch: string
   visibilityLabel: string
   visibilityPublic: string
   visibilityPrivate: string
@@ -2051,9 +2062,14 @@ export const createRoomModal: TranslationMap<{
     ruleLabel: 'Rule / announcement',
     rulePlaceholder: 'Ground rules shown to members.',
     membersLabel: 'Initial members',
-    membersHint: 'Pick from your contacts. You can invite more after the group is created.',
-    noContacts: 'No contacts yet — you can create an empty group and invite later.',
+    membersHint: 'Pick your bots or contacts. You can invite more after the group is created.',
+    noContacts: 'No bots or contacts yet — you can create an empty group and invite later.',
     searchContacts: 'Search contacts',
+    searchMembers: 'Search bots or contacts',
+    myBotsLabel: 'My bots',
+    contactsLabel: 'Contacts',
+    noBotsMatch: 'No bots match the search.',
+    noContactsMatch: 'No contacts match the search.',
     visibilityLabel: 'Visibility',
     visibilityPublic: 'Public (discoverable)',
     visibilityPrivate: 'Private (invite-only)',
@@ -2085,9 +2101,14 @@ export const createRoomModal: TranslationMap<{
     ruleLabel: '群公告 / 规则',
     rulePlaceholder: '给成员看的群内基本规则。',
     membersLabel: '初始成员',
-    membersHint: '从联系人中勾选，创建后也能继续邀请其他人。',
-    noContacts: '还没有联系人 — 你可以先创建空群，之后再邀请。',
+    membersHint: '从自己的 Bot 或联系人中勾选，创建后也能继续邀请。',
+    noContacts: '还没有 Bot 或联系人 — 你可以先创建空群，之后再邀请。',
     searchContacts: '搜索联系人',
+    searchMembers: '搜索 Bot 或联系人',
+    myBotsLabel: '我的 Bot',
+    contactsLabel: '联系人',
+    noBotsMatch: '没有匹配的 Bot。',
+    noContactsMatch: '没有匹配的联系人。',
     visibilityLabel: '可见性',
     visibilityPublic: '公开（可被发现）',
     visibilityPrivate: '私有（仅限邀请）',
@@ -2214,6 +2235,7 @@ export const roomAdvancedSettings: TranslationMap<{
   joinPolicyInviteOnly: string
   defaultSendLabel: string
   defaultInviteLabel: string
+  allowHumanSendLabel: string
   maxMembersLabel: string
   slowModeLabel: string
   subscriptionSection: string
@@ -2233,6 +2255,7 @@ export const roomAdvancedSettings: TranslationMap<{
     joinPolicyInviteOnly: 'Invite-only',
     defaultSendLabel: 'Members can send messages',
     defaultInviteLabel: 'Members can invite others',
+    allowHumanSendLabel: 'Humans can send messages',
     maxMembersLabel: 'Max members',
     slowModeLabel: 'Slow mode (seconds)',
     subscriptionSection: 'Payment & subscription',
@@ -2252,6 +2275,7 @@ export const roomAdvancedSettings: TranslationMap<{
     joinPolicyInviteOnly: '仅限邀请',
     defaultSendLabel: '默认允许成员发言',
     defaultInviteLabel: '默认允许成员邀请他人',
+    allowHumanSendLabel: '允许真人在此房间发言',
     maxMembersLabel: '人数上限',
     slowModeLabel: '慢速模式（秒）',
     subscriptionSection: '支付与订阅',

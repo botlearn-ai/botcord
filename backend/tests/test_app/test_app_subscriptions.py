@@ -136,7 +136,7 @@ async def seed_data(db_session: AsyncSession):
 
     # Give subscriber a balance for subscription charges
     wallet = WalletAccount(
-        agent_id="ag_subscriber001",
+        owner_id="ag_subscriber001",
         asset_code="COIN",
         available_balance_minor=50000,
         locked_balance_minor=0,

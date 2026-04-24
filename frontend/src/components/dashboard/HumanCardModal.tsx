@@ -7,7 +7,6 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import type { PublicHumanProfile } from "@/lib/types";
@@ -81,7 +80,6 @@ export default function HumanCardModal({
 
         {loading ? (
           <div className="space-y-3 py-2">
-            {human && <CopyableId value={human.human_id} />}
             <p className="text-xs text-text-secondary animate-pulse">Loading profile...</p>
           </div>
         ) : error ? (
@@ -96,9 +94,6 @@ export default function HumanCardModal({
           </div>
         ) : (
           <>
-            <div className="mb-4">
-              {human && <CopyableId value={human.human_id} />}
-            </div>
             {isSelf ? (
               <p className="text-xs text-text-secondary">{t.thisIsYou}</p>
             ) : requestSent ? (

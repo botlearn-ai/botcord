@@ -20,11 +20,10 @@ import RoomHumanComposer from "./RoomHumanComposer";
 import TopicDrawer from "./TopicDrawer";
 import JoinGuidePrompt from "./JoinGuidePrompt";
 import FriendInviteModal from "./FriendInviteModal";
-import HumanCardModal from "./HumanCardModal";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import { PublicHumanProfile, PublicRoom } from "@/lib/types";
-import { api, humansApi } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -356,7 +355,11 @@ function ContactsMainPane() {
   );
 }
 
-function ExploreMainPane() {
+interface ChatPaneProps {
+  onHumanOpen?: (human: PublicHumanProfile) => void;
+}
+
+function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = exploreUi[locale];
@@ -398,24 +401,7 @@ function ExploreMainPane() {
     selectAgent: state.selectAgent,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
-  const { viewMode, myHumanId } = useDashboardSessionStore(useShallow((state) => ({
-    viewMode: state.viewMode,
-    myHumanId: state.human?.human_id ?? null,
-  })));
-  const contactAgentIds = useMemo(
-    () => new Set((useDashboardChatStore.getState().overview?.contacts ?? []).map((c) => c.contact_agent_id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
   const [query, setQuery] = useState("");
-  const [humanModal, setHumanModal] = useState<{
-    human: PublicHumanProfile;
-    isSelf: boolean;
-    sending: boolean;
-    status: "idle" | "sent" | "exists" | "pending";
-    error: string | null;
-  } | null>(null);
   const isRoomsView = exploreView === "rooms";
   const isAgentsView = exploreView === "agents";
   const isHumansView = exploreView === "humans";
@@ -455,46 +441,17 @@ function ExploreMainPane() {
     }
   };
 
-  const openHumanFromExplore = (human: PublicHumanProfile) => {
-    setHumanModal({ human, isSelf: human.human_id === myHumanId, sending: false, status: "idle", error: null });
-  };
-
   const openHumanOwnerFromAgent = async (humanId: string) => {
     const existing = publicHumansById[humanId];
     if (existing) {
-      openHumanFromExplore(existing);
+      onHumanOpen?.(existing);
       return;
     }
     try {
       const human = await api.getPublicHuman(humanId);
-      openHumanFromExplore(human);
+      onHumanOpen?.(human);
     } catch {
       // Swallow lookup failure; the owner link should not break agent-card navigation.
-    }
-  };
-
-  const sendHumanContactRequest = async () => {
-    if (!humanModal) return;
-    setHumanModal((prev) => prev && { ...prev, sending: true, error: null });
-    try {
-      const targetId = humanModal.human.human_id;
-      const res =
-        viewMode === "human"
-          ? await humansApi.sendContactRequest({ peer_id: targetId })
-          : await api.createContactRequest({ to_human_id: targetId });
-      if (res && typeof res === "object" && "status" in res) {
-        const s = (res as { status: string }).status;
-        if (s === "already_contact") setHumanModal((prev) => prev && { ...prev, sending: false, status: "exists" });
-        else if (s === "already_requested") setHumanModal((prev) => prev && { ...prev, sending: false, status: "pending" });
-        else setHumanModal((prev) => prev && { ...prev, sending: false, status: "sent" });
-      } else {
-        setHumanModal((prev) => prev && { ...prev, sending: false, status: "sent" });
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Request failed";
-      if (/already.*contact/i.test(msg)) setHumanModal((prev) => prev && { ...prev, sending: false, status: "exists" });
-      else if (/already.*request|pending/i.test(msg)) setHumanModal((prev) => prev && { ...prev, sending: false, status: "pending" });
-      else setHumanModal((prev) => prev && { ...prev, sending: false, error: msg });
     }
   };
 
@@ -579,30 +536,17 @@ function ExploreMainPane() {
                 kind="human"
                 data={publicHumansById[human.human_id]}
                 humansById={publicHumansById}
-                onHumanOpen={openHumanFromExplore}
+                onHumanOpen={onHumanOpen}
               />
             ))}
           </div>
         )}
       </div>
-
-      <HumanCardModal
-        isOpen={humanModal !== null}
-        human={humanModal?.human ?? null}
-        onClose={() => setHumanModal(null)}
-        isSelf={humanModal?.isSelf ?? false}
-        alreadyInContacts={humanModal?.status === "exists" || (humanModal ? contactAgentIds.has(humanModal.human.human_id) : false)}
-        requestAlreadyPending={humanModal?.status === "pending"}
-        requestSent={humanModal?.status === "sent"}
-        sendingFriendRequest={humanModal?.sending ?? false}
-        onSendFriendRequest={sendHumanContactRequest}
-        error={humanModal?.error ?? null}
-      />
     </div>
   );
 }
 
-export default function ChatPane() {
+export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
@@ -631,7 +575,7 @@ export default function ChatPane() {
   const showLoginModal = () => router.push("/login");
 
   if (sidebarTab === "explore") {
-    return <ExploreMainPane />;
+    return <ExploreMainPane onHumanOpen={onHumanOpen} />;
   }
 
   if (sidebarTab === "contacts") {
