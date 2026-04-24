@@ -9,12 +9,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
-import { agentBrowser, roomList } from "@/lib/i18n/translations/dashboard";
+import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { Info, Loader2, Settings, Share2, UserPlus, Users } from "lucide-react";
+import { Info, Loader2, Settings, Share2, Users } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
-import type { PublicRoomMember } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -23,22 +22,17 @@ import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
 import RoomMemberSettingsModal from "./RoomMemberSettingsModal";
-import AddRoomMemberModal from "./AddRoomMemberModal";
 
 export default function RoomHeader() {
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
   const [showRulePopover, setShowRulePopover] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
-  const [addMemberMemberIds, setAddMemberMemberIds] = useState<string[]>([]);
-  const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [humanJoining, setHumanJoining] = useState(false);
   const rulePopoverRef = useRef<HTMLDivElement>(null);
   const locale = useLanguage();
   const t = roomList[locale];
   const tc = common[locale];
-  const tAgent = agentBrowser[locale];
   const [ruleExpanded, setRuleExpanded] = useState(false);
   const [ruleOverflowing, setRuleOverflowing] = useState(false);
   const ruleRef = useRef<HTMLParagraphElement | null>(null);
@@ -52,18 +46,15 @@ export default function RoomHeader() {
     rightPanelOpen: state.rightPanelOpen,
     toggleRightPanel: state.toggleRightPanel,
   })));
-  const { overview, getRoomSummary, patchRoom, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, getRoomSummary, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     getRoomSummary: state.getRoomSummary,
-    patchRoom: state.patchRoom,
     refreshOverview: state.refreshOverview,
   })));
   const { joinRoom, joiningRoomId } = useDashboardChatStore(useShallow((state) => ({
     joinRoom: state.joinRoom,
     joiningRoomId: state.joiningRoomId,
   })));
-  const [humanSendSaving, setHumanSendSaving] = useState(false);
-  const [humanSendError, setHumanSendError] = useState<string | null>(null);
   const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const humanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
   const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
@@ -164,40 +155,6 @@ export default function RoomHeader() {
     }
     void joinRoom(room.room_id);
   };
-
-  const handleOpenAddMember = async () => {
-    if (!room?.room_id || addMemberLoading) return;
-    setAddMemberLoading(true);
-    try {
-      const result = await api
-        .getRoomMembers(room.room_id)
-        .catch(() => api.getPublicRoomMembers(room.room_id));
-      setAddMemberMemberIds(result.members.map((m: PublicRoomMember) => m.agent_id));
-    } catch {
-      setAddMemberMemberIds([]);
-    } finally {
-      setAddMemberLoading(false);
-      setShowAddMemberModal(true);
-    }
-  };
-
-  const canManageRoom = authRoom?.my_role === "owner" || authRoom?.my_role === "admin";
-  const humanSendAllowed = authRoom?.allow_human_send !== false;
-
-  const handleToggleHumanSend = useCallback(async () => {
-    if (!authRoom || !canManageRoom || humanSendSaving) return;
-    const next = !humanSendAllowed;
-    setHumanSendSaving(true);
-    setHumanSendError(null);
-    try {
-      const updated = await api.updateRoom(authRoom.room_id, { allow_human_send: next });
-      patchRoom(authRoom.room_id, { allow_human_send: updated.allow_human_send ?? next });
-    } catch (err) {
-      setHumanSendError(err instanceof Error ? err.message : "Failed to update");
-    } finally {
-      setHumanSendSaving(false);
-    }
-  }, [authRoom, canManageRoom, humanSendAllowed, humanSendSaving, patchRoom]);
 
   const handleRequestJoin = useCallback(async () => {
     if (!room?.room_id || !isAuthedReady) return;
@@ -353,43 +310,12 @@ export default function RoomHeader() {
           )}
         </div>
         <div className="flex items-center gap-1.5 self-start py-0.5">
-          {isAuthedReady && authRoom && canManageRoom && (
-            <button
-              type="button"
-              onClick={() => void handleToggleHumanSend()}
-              disabled={humanSendSaving}
-              title={humanSendError ?? t.humanSendToggleHint}
-              className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                humanSendAllowed
-                  ? "border-neon-green/40 bg-neon-green/10 text-neon-green hover:bg-neon-green/15"
-                  : "border-glass-border bg-glass-bg text-text-secondary hover:border-neon-cyan/40"
-              }`}
-            >
-              {humanSendSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-              {humanSendAllowed ? t.humanSendOn : t.humanSendOff}
-            </button>
-          )}
           {isAuthedReady && isJoined && myRole && (
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
                 {myRole}
               </span>
           )}
           {renderJoinButton()}
-          {isAuthedReady && isHumanView && isJoined && canInvite && !isDMRoom && (
-            <button
-              onClick={() => void handleOpenAddMember()}
-              disabled={addMemberLoading}
-              className="inline-flex items-center gap-1.5 rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
-              title={tAgent.addMembersEntry}
-            >
-              {addMemberLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <UserPlus className="h-3.5 w-3.5" />
-              )}
-              {tAgent.addMembersEntry}
-            </button>
-          )}
           {isGuest && (
             <span className="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
               {t.guest}
@@ -475,17 +401,6 @@ export default function RoomHeader() {
         />
       )}
 
-      {showAddMemberModal && (
-        <AddRoomMemberModal
-          roomId={room.room_id}
-          existingMemberIds={addMemberMemberIds}
-          onClose={() => setShowAddMemberModal(false)}
-          onAdded={async () => {
-            await refreshOverview().catch(() => {});
-            await refreshHumanRooms().catch(() => {});
-          }}
-        />
-      )}
     </>
   );
 }
