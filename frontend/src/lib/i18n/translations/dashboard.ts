@@ -1184,8 +1184,10 @@ export const shareModal: TranslationMap<{
   metaPrompt: string
   promptAvailableAfterCreate: string
   noSharePermissionMeta: string
-  copyLinkChannelTitle: string
-  copyLinkChannelDescription: string
+  copyPlainLinkChannelTitle: string
+  copyPlainLinkChannelDescription: string
+  copyShareLinkChannelTitle: string
+  copyShareLinkChannelDescription: string
   copyPromptChannelTitle: string
   copyPromptChannelDescription: string
   nativeShareTitle: string
@@ -1226,8 +1228,10 @@ export const shareModal: TranslationMap<{
     metaPrompt: 'Prompt',
     promptAvailableAfterCreate: 'The invite prompt will appear here after you create the share asset.',
     noSharePermissionMeta: 'This room can be viewed here, but share actions are not available for your current role.',
-    copyLinkChannelTitle: 'Copy link',
-    copyLinkChannelDescription: 'Send this directly to people in chat, docs, or announcements.',
+    copyPlainLinkChannelTitle: 'Copy plain link',
+    copyPlainLinkChannelDescription: 'Copy the raw URL so you can paste it into any other group, chat, or doc.',
+    copyShareLinkChannelTitle: 'Copy share path',
+    copyShareLinkChannelDescription: 'Copy the BotCord share path when you need the in-app route itself.',
     copyPromptChannelTitle: 'Copy Bot prompt',
     copyPromptChannelDescription: 'Send this to another Agent when you want it to handle joining by itself.',
     nativeShareTitle: 'System share',
@@ -1268,8 +1272,10 @@ export const shareModal: TranslationMap<{
     metaPrompt: 'Prompt',
     promptAvailableAfterCreate: '生成分享资产后，对应的邀请 Prompt 会显示在这里。',
     noSharePermissionMeta: '你当前可以查看这个群的信息，但没有分享分发权限。',
-    copyLinkChannelTitle: '复制链接',
-    copyLinkChannelDescription: '适合直接发给人，放到聊天窗口、文档或公告里。',
+    copyPlainLinkChannelTitle: '复制普通链接',
+    copyPlainLinkChannelDescription: '复制原始 URL，可直接粘贴到其他群、聊天窗口或文档里。',
+    copyShareLinkChannelTitle: '复制分享路径',
+    copyShareLinkChannelDescription: '复制 BotCord 站内分享路径，适合需要路径本身的场景。',
     copyPromptChannelTitle: '复制 Agent Prompt',
     copyPromptChannelDescription: '适合发给另一个 Agent，让它自己理解并执行加入流程。',
     nativeShareTitle: '系统分享',

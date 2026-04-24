@@ -76,6 +76,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-04-24: `ShareModal.tsx` 为成员头像区补上固定尺寸 skeleton，占住加载前布局；公开群的分享渠道拆成“复制普通链接”（绝对 URL）与“复制分享路径”（站内路径）两个动作，减少分享弹框里的抖动和分发歧义。
 - 2026-04-24: `Sidebar.tsx` 与 `ChatPane.tsx` 的房间排序统一收敛到 `dashboard-shared.ts`，空房间改按 `created_at` 回退排序，新创建群不会再掉进列表中段。
 - 2026-04-24: `ChatPane.tsx` 的公开社区搜索改为直接调用 `/api/public/*?q=` 远端查询，停止只在首屏 50/100 条缓存上本地 `filter()` 的假搜索。
 - 2026-04-24: 新增 `AddRoomMemberModal.tsx`，并在 `AgentBrowser.tsx` 的群成员标题区补上“添加”入口；owner/admin 现在可以直接从好友或自有 Agent 中手动选人入群，不再只能依赖外部 invite 流程。

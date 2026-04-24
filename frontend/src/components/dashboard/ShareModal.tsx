@@ -31,23 +31,27 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   const [shareData, setShareData] = useState<(CreateShareResponse | InvitePreviewResponse) | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedField, setCopiedField] = useState<"link" | "prompt" | null>(null);
+  const [copiedField, setCopiedField] = useState<"plain-link" | "share-link" | "prompt" | null>(null);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [memberTotal, setMemberTotal] = useState(0);
+  const [membersLoading, setMembersLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    setMembersLoading(true);
     api.getRoomMembers(roomId)
       .catch(() => api.getPublicRoomMembers(roomId))
       .then((result) => {
         if (cancelled) return;
         setMembers(result.members.slice(0, 8));
         setMemberTotal(result.total || result.members.length);
+        setMembersLoading(false);
       })
       .catch(() => {
         if (cancelled) return;
         setMembers([]);
         setMemberTotal(0);
+        setMembersLoading(false);
       });
     return () => {
       cancelled = true;
@@ -80,7 +84,8 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
     return undefined;
   };
 
-  const shareUrl = shareData ? ("link_url" in shareData ? shareData.link_url : shareData.invite_url) : "";
+  const plainLinkUrl = shareData ? ("link_url" in shareData ? shareData.link_url : shareData.invite_url) : "";
+  const internalSharePath = shareData && "share_url" in shareData ? shareData.share_url : "";
   const entryType = shareData?.entry_type;
   const promptText = useMemo(() => buildSharePrompt({
     shareId: shareData && "share_id" in shareData ? shareData.share_id : undefined,
@@ -117,27 +122,36 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
     "from-[#fde68a]/80 to-[#d97706]/80",
     "from-[#93c5fd]/80 to-[#2563eb]/80",
   ] as const;
+  const memberSkeletonCount = 4;
 
-  const handleCopyLink = async () => {
-    if (!shareData) return;
+  const flashCopiedField = (field: "plain-link" | "share-link" | "prompt") => {
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const handleCopyText = async (value: string, field: "plain-link" | "share-link" | "prompt") => {
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopiedField("link");
-      setTimeout(() => setCopiedField(null), 2000);
+      await navigator.clipboard.writeText(value);
+      flashCopiedField(field);
     } catch {
       setError(t.failedToCopy);
     }
   };
 
+  const handleCopyPlainLink = async () => {
+    if (!shareData) return;
+    await handleCopyText(plainLinkUrl, "plain-link");
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!shareData || !internalSharePath) return;
+    await handleCopyText(internalSharePath, "share-link");
+  };
+
   const handleCopyPrompt = async () => {
     if (!shareData) return;
-    try {
-      await navigator.clipboard.writeText(promptText);
-      setCopiedField("prompt");
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch {
-      setError(t.failedToCopy);
-    }
+    await handleCopyText(promptText, "prompt");
   };
 
   return (
@@ -192,7 +206,17 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                         <p className="mt-3 text-sm leading-6 text-white/72">{t.createShareAssets}</p>
                       </div>
                     </div>
-                    {visibleMembers.length > 0 ? (
+                    {membersLoading ? (
+                      <div className="flex items-center gap-2 overflow-hidden" aria-hidden="true">
+                        {Array.from({ length: memberSkeletonCount }, (_, index) => (
+                          <div
+                            key={`member-skeleton-${index}`}
+                            className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-white/12"
+                          />
+                        ))}
+                        <div className="h-10 w-16 shrink-0 animate-pulse rounded-full bg-white/10" />
+                      </div>
+                    ) : visibleMembers.length > 0 ? (
                       <div className="flex items-center gap-2 overflow-hidden">
                         {visibleMembers.map((member, index) => (
                           <div
@@ -229,9 +253,9 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                       </button>
                     </div>
                   ) : (
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       <button
-                        onClick={() => void handleCopyLink()}
+                        onClick={() => void handleCopyPlainLink()}
                         className="flex items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
                       >
                         <div className="flex items-start gap-3">
@@ -239,14 +263,40 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                             <Link2 className="h-4 w-4" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-text-primary">{t.copyLinkChannelTitle}</p>
-                            <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyLinkChannelDescription}</p>
+                            <p className="text-sm font-medium text-text-primary">{t.copyPlainLinkChannelTitle}</p>
+                            <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyPlainLinkChannelDescription}</p>
+                            {plainLinkUrl ? (
+                              <p className="mt-2 max-w-[18rem] truncate text-[11px] leading-5 text-text-secondary/80">{plainLinkUrl}</p>
+                            ) : null}
                           </div>
                         </div>
                         <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
-                          {copiedField === "link" ? tc.copied : tc.copy}
+                          {copiedField === "plain-link" ? tc.copied : tc.copy}
                         </span>
                       </button>
+
+                      {"share_url" in shareData ? (
+                        <button
+                          onClick={() => void handleCopyShareLink()}
+                          className="flex items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 rounded-xl bg-sky-400/12 p-2 text-sky-300">
+                              <Copy className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-text-primary">{t.copyShareLinkChannelTitle}</p>
+                              <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyShareLinkChannelDescription}</p>
+                              {internalSharePath ? (
+                                <p className="mt-2 max-w-[18rem] truncate text-[11px] leading-5 text-text-secondary/80">{internalSharePath}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                            {copiedField === "share-link" ? tc.copied : tc.copy}
+                          </span>
+                        </button>
+                      ) : null}
 
                       <button
                         onClick={() => void handleCopyPrompt()}
