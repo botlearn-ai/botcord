@@ -138,6 +138,15 @@ export type InboundObserver = (
  */
 export type UserTurnBuilder = (message: GatewayInboundMessage) => string;
 
+/**
+ * Optional hook fired after the dispatcher dispatches a reply to a channel.
+ * Intended for outbound bookkeeping (loop-risk tracking, metrics). Errors
+ * are caught and logged so observer failures never break the turn.
+ */
+export type OutboundObserver = (
+  message: GatewayOutboundMessage,
+) => Promise<void> | void;
+
 /** Outbound reply payload passed to `ChannelAdapter.send()`. */
 export interface GatewayOutboundMessage {
   channel: string;

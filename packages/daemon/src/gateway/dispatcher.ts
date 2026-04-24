@@ -9,6 +9,7 @@ import type {
   GatewayRoute,
   GatewaySessionEntry,
   InboundObserver,
+  OutboundObserver,
   QueueMode,
   RuntimeAdapter,
   StreamBlock,
@@ -58,6 +59,12 @@ export interface DispatcherOptions {
    * a fallback so a buggy composer cannot drop turns.
    */
   composeUserTurn?: UserTurnBuilder;
+  /**
+   * Optional observer fired after each reply is dispatched. Intended for
+   * outbound bookkeeping such as loop-risk tracking. Errors are logged
+   * and suppressed so observer failures never break the turn.
+   */
+  onOutbound?: OutboundObserver;
 }
 
 interface TurnSlot {
@@ -102,6 +109,7 @@ export class Dispatcher {
   private readonly turnTimeoutMs: number;
   private readonly buildSystemContext?: SystemContextBuilder;
   private readonly onInbound?: InboundObserver;
+  private readonly onOutbound?: OutboundObserver;
   private readonly composeUserTurn?: UserTurnBuilder;
   private readonly managedRoutes?: Map<string, GatewayRoute>;
   private readonly queues: Map<string, QueueState> = new Map();
@@ -115,6 +123,7 @@ export class Dispatcher {
     this.turnTimeoutMs = opts.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     this.buildSystemContext = opts.buildSystemContext;
     this.onInbound = opts.onInbound;
+    this.onOutbound = opts.onOutbound;
     this.composeUserTurn = opts.composeUserTurn;
     this.managedRoutes = opts.managedRoutes;
   }
@@ -532,6 +541,17 @@ export class Dispatcher {
         conversationId: outbound.conversationId,
         error: err instanceof Error ? err.message : String(err),
       });
+      return;
+    }
+    if (this.onOutbound) {
+      try {
+        await this.onOutbound(outbound);
+      } catch (err) {
+        this.log.warn("dispatcher: onOutbound threw — continuing", {
+          conversationId: outbound.conversationId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 }

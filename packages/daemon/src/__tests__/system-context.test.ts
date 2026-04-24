@@ -288,6 +288,41 @@ describe("createDaemonSystemContextBuilder", () => {
     expect(out).toBeUndefined();
   });
 
+  it("appends loopRiskBuilder output at the end of the system context", async () => {
+    const builder = createDaemonSystemContextBuilder({
+      agentId: "ag_me",
+      roomContextBuilder: async () => null,
+      loopRiskBuilder: () => "[BotCord loop-risk check]\nObserved signals:\n- x",
+    });
+    const out = await builder(
+      makeMessage({ conversation: { id: "rm_team", kind: "group" } }),
+    );
+    expect(typeof out).toBe("string");
+    expect(out).toContain("[BotCord loop-risk check]");
+  });
+
+  it("also injects loopRiskBuilder in the sync (no roomContextBuilder) branch", () => {
+    const builder = createDaemonSystemContextBuilder({
+      agentId: "ag_me",
+      loopRiskBuilder: () => "[BotCord loop-risk check]\nObserved signals:\n- y",
+    });
+    const out = builder(makeMessage()) as string | undefined;
+    expect(typeof out).toBe("string");
+    expect(out).toContain("[BotCord loop-risk check]");
+  });
+
+  it("skips loopRiskBuilder gracefully when it throws", async () => {
+    const builder = createDaemonSystemContextBuilder({
+      agentId: "ag_me",
+      roomContextBuilder: async () => null,
+      loopRiskBuilder: () => {
+        throw new Error("oops");
+      },
+    });
+    const out = await builder(makeMessage());
+    expect(out).toBeUndefined();
+  });
+
   it("translates GatewayInboundMessage.conversation.id → old `room_id` for the digest exclude key", () => {
     const tracker = new ActivityTracker({
       filePath: path.join(tmpDir, "activity.json"),
