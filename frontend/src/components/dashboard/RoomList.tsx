@@ -97,6 +97,7 @@ export default function RoomList({ rooms: propsRooms, loading = false, searchQue
     setMessagesPane: state.setMessagesPane,
   })));
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
+  const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
@@ -117,7 +118,7 @@ export default function RoomList({ rooms: propsRooms, loading = false, searchQue
       .map(humanRoomToDashboardRoom);
     return [...agentRooms, ...extras];
   })();
-  const showUserChatEntry = Boolean(activeAgentId) && (
+  const showUserChatEntry = Boolean(activeAgentId) && viewMode === "agent" && (
     !normalizedSearchQuery ||
     [t.userChatTitle, t.userChatPreview, t.userChatTooltip, activeAgentId]
       .join("\n")
