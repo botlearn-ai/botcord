@@ -20,6 +20,8 @@ import { log as daemonLog } from "./log.js";
 import { collectRuntimeSnapshot, createProvisioner } from "./provision.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
+import { createRoomStaticContextBuilder } from "./room-context.js";
+import { createRoomContextFetcher } from "./room-context-fetcher.js";
 import { composeBotCordUserTurn } from "./turn-text.js";
 import { UserAuthManager } from "./user-auth.js";
 
@@ -220,18 +222,42 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   // mirroring the pre-P0.5 dispatcher's "record-before-adapter-run" ordering.
   const activityTracker = new ActivityTracker();
 
+  // Shared room-context fetcher — one BotCordClient per accountId, created
+  // lazily and reused across turns so JWT refreshes amortize. The builder
+  // wrapping it adds a TTL cache on top so group rooms don't hit Hub every
+  // turn.
+  const roomContextFetcher = createRoomContextFetcher({
+    credentialPathByAgentId,
+    ...(opts.credentialsPath ? { defaultCredentialsPath: opts.credentialsPath } : {}),
+    ...(opts.hubBaseUrl ? { hubBaseUrl: opts.hubBaseUrl } : {}),
+    log: logger,
+  });
+  const roomContextBuilder = createRoomStaticContextBuilder({
+    fetchRoomInfo: roomContextFetcher,
+    log: logger,
+  });
+
   // Cache one system-context builder per configured agentId. The gateway
   // calls this with each inbound message and we pick the right builder by
   // `message.accountId` — so per-agent working memory + activity digests
   // stay scoped when a single daemon hosts multiple agents.
-  const scBuilders = new Map<string, (msg: GatewayInboundMessage) => string | undefined>();
+  type PerAgentBuilder = (
+    msg: GatewayInboundMessage,
+  ) => Promise<string | undefined> | string | undefined;
+  const scBuilders = new Map<string, PerAgentBuilder>();
   for (const aid of agentIds) {
     scBuilders.set(
       aid,
-      createDaemonSystemContextBuilder({ agentId: aid, activityTracker }),
+      createDaemonSystemContextBuilder({
+        agentId: aid,
+        activityTracker,
+        roomContextBuilder,
+      }),
     );
   }
-  const buildSystemContext = (message: GatewayInboundMessage): string | undefined => {
+  const buildSystemContext = (
+    message: GatewayInboundMessage,
+  ): Promise<string | undefined> | string | undefined => {
     const b = scBuilders.get(message.accountId);
     if (b) return b(message);
     // Unknown accountId (shouldn't happen in practice): fall back to the

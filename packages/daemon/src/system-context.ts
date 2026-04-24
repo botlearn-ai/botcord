@@ -4,18 +4,23 @@
  * The gateway dispatcher is channel-agnostic; it calls an optional
  * `buildSystemContext` hook and forwards the result to the runtime via
  * `RuntimeRunOptions.systemContext`. This module composes the daemon's
- * system-context string from (a) the agent's working memory and (b) a
- * cross-room activity digest, taking a `GatewayInboundMessage` as input.
+ * system-context string from:
+ *
+ *   1. `[BotCord Scene: Owner Chat]` (owner-trust turns only)
+ *   2. `[BotCord Working Memory]`
+ *   3. `[BotCord Room Context]` (group rooms, via optional async fetcher)
+ *   4. `[BotCord Cross-Room Awareness]` (optional activity tracker)
  *
  * Behavior:
  *   - Working memory is loaded fresh per turn, so a `memory set` from another
  *     process is visible immediately.
  *   - If `ActivityTracker` is injected, we build the cross-room digest and
- *     EXCLUDE the current room + topic from the list — via
- *     `buildCrossRoomDigest({ currentRoomId, currentTopic })`.
- *   - If both blocks are empty we return `undefined` so the dispatcher
- *     passes `systemContext: undefined` to the runtime (adapter then
- *     skips the injection flag).
+ *     EXCLUDE the current room + topic from the list.
+ *   - If `roomContextBuilder` is injected, the factory returns an async
+ *     builder and awaits the fetcher; otherwise it stays synchronous.
+ *   - If every block is empty we return `undefined` so the dispatcher passes
+ *     `systemContext: undefined` to the runtime (adapter then skips the
+ *     injection flag).
  */
 import type { GatewayInboundMessage, SystemContextBuilder } from "./gateway/index.js";
 import type { ActivityTracker } from "./activity-tracker.js";
@@ -23,6 +28,15 @@ import { buildCrossRoomDigest } from "./cross-room.js";
 import { buildWorkingMemoryPrompt, readWorkingMemory } from "./working-memory.js";
 import { classifyActivitySender } from "./sender-classify.js";
 import { log } from "./log.js";
+
+/**
+ * Async per-turn room-context builder (see `room-context.ts`). Returns the
+ * rendered `[BotCord Room Context]` block, or `null` when there is nothing
+ * to inject (DM, owner-chat, fetch failure, etc.).
+ */
+export type RoomStaticContextBuilder = (
+  message: GatewayInboundMessage,
+) => Promise<string | null>;
 
 /**
  * Scene prompt injected when the inbound turn comes from the owner's
@@ -48,6 +62,13 @@ export interface SystemContextDeps {
    * digest block is skipped entirely (working memory still injects).
    */
   activityTracker?: ActivityTracker;
+  /**
+   * Optional per-turn room-context fetcher. When wired, group-room turns
+   * receive the `[BotCord Room Context]` block (room name, description,
+   * rule, members). Omitting keeps the builder synchronous and the block
+   * is skipped.
+   */
+  roomContextBuilder?: RoomStaticContextBuilder;
 }
 
 function safeReadWorkingMemory(agentId: string) {
@@ -60,55 +81,82 @@ function safeReadWorkingMemory(agentId: string) {
 }
 
 /**
- * Build a {@link SystemContextBuilder} that mirrors the pre-P0.5 daemon
- * behavior. The returned function is safe to plug directly into
- * `GatewayBootOptions.buildSystemContext`.
+ * Build a {@link SystemContextBuilder} for the gateway dispatcher.
  *
- * Narrower sync return type on the factory so callers (and tests) don't have
- * to `await`. `SystemContextBuilder` widens the return to `Promise<...> | ...`
- * so async implementations are allowed — a sync function still satisfies it,
- * we just telegraph the sync-only guarantee at the factory boundary.
+ * When `deps.roomContextBuilder` is provided the returned function is async
+ * so it can await the Hub fetch; otherwise it stays synchronous (same shape
+ * as the pre-P1 daemon builder). Both shapes satisfy `SystemContextBuilder`.
  */
 export function createDaemonSystemContextBuilder(
   deps: SystemContextDeps,
-): (message: GatewayInboundMessage) => string | undefined {
-  const builder = (message: GatewayInboundMessage): string | undefined => {
-    const blocks: string[] = [];
-
-    // Owner-chat scene prompt lands first so it frames everything below.
-    // Detection mirrors classifyActivitySender: `rm_oc_` prefix OR
-    // `source_type === "dashboard_user_chat"`. Non-owner turns get no
-    // scene block.
-    if (classifyActivitySender(message).kind === "owner") {
-      blocks.push(buildOwnerChatSceneContext());
-    }
+): (message: GatewayInboundMessage) => Promise<string | undefined> | string | undefined {
+  const gatherSyncBlocks = (message: GatewayInboundMessage): {
+    ownerScene: string | null;
+    memory: string | null;
+    digest: string | null;
+  } => {
+    const ownerScene =
+      classifyActivitySender(message).kind === "owner"
+        ? buildOwnerChatSceneContext()
+        : null;
 
     const wm = safeReadWorkingMemory(deps.agentId);
-    if (wm) {
-      // Only emit the memory block when the file exists. An empty file
-      // (version:2, sections:{}) still renders a "memory is currently empty"
-      // notice — matching the plugin + old dispatcher shape.
-      blocks.push(buildWorkingMemoryPrompt({ workingMemory: wm }));
-    }
+    const memory = wm ? buildWorkingMemoryPrompt({ workingMemory: wm }) : null;
 
-    if (deps.activityTracker) {
-      const digest = buildCrossRoomDigest({
-        tracker: deps.activityTracker,
-        agentId: deps.agentId,
-        currentRoomId: message.conversation.id,
-        currentTopic: message.conversation.threadId ?? null,
-      });
-      if (digest) blocks.push(digest);
-    }
+    const digest = deps.activityTracker
+      ? buildCrossRoomDigest({
+          tracker: deps.activityTracker,
+          agentId: deps.agentId,
+          currentRoomId: message.conversation.id,
+          currentTopic: message.conversation.threadId ?? null,
+        }) || null
+      : null;
 
-    return blocks.length > 0 ? blocks.join("\n\n") : undefined;
+    return { ownerScene, memory, digest };
   };
 
-  // Compile-time witness that the narrower sync signature still satisfies
-  // `SystemContextBuilder` (which allows async). Prevents the two contracts
-  // from silently drifting.
-  const _typecheck: SystemContextBuilder = builder;
-  void _typecheck;
+  const assemble = (parts: Array<string | null | undefined>): string | undefined => {
+    const filtered = parts.filter(
+      (p): p is string => typeof p === "string" && p.length > 0,
+    );
+    return filtered.length > 0 ? filtered.join("\n\n") : undefined;
+  };
 
-  return builder;
+  if (!deps.roomContextBuilder) {
+    const syncBuilder = (message: GatewayInboundMessage): string | undefined => {
+      const { ownerScene, memory, digest } = gatherSyncBlocks(message);
+      return assemble([ownerScene, memory, digest]);
+    };
+    // Compile-time witness that the narrower sync signature still satisfies
+    // `SystemContextBuilder` (which allows async). Prevents the two contracts
+    // from silently drifting.
+    const _typecheck: SystemContextBuilder = syncBuilder;
+    void _typecheck;
+    return syncBuilder;
+  }
+
+  const roomBuilder = deps.roomContextBuilder;
+  const asyncBuilder = async (
+    message: GatewayInboundMessage,
+  ): Promise<string | undefined> => {
+    const { ownerScene, memory, digest } = gatherSyncBlocks(message);
+    // Room context landing order: after owner-scene / memory, before digest —
+    // "what room am I in" belongs with the session's own identity, while the
+    // cross-room digest deliberately describes OTHER rooms and should stay
+    // last so it doesn't get confused with the current room.
+    let roomBlock: string | null = null;
+    try {
+      roomBlock = await roomBuilder(message);
+    } catch (err) {
+      log.warn("system-context: roomContextBuilder threw — skipping room block", {
+        agentId: deps.agentId,
+        roomId: message.conversation.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return assemble([ownerScene, memory, roomBlock, digest]);
+  };
+  const _typecheck: SystemContextBuilder = asyncBuilder;
+  void _typecheck;
+  return asyncBuilder;
 }
