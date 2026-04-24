@@ -40,7 +40,7 @@ const HUB_BASE_URL =
     : "https://api.botcord.chat");
 
 function buildStartCommand(): string {
-  return `npx -y -p @botcord/daemon botcord-daemon start --hub ${HUB_BASE_URL}`;
+  return `npx -y -p @botcord/daemon@latest botcord-daemon start --hub ${HUB_BASE_URL}`;
 }
 
 function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
