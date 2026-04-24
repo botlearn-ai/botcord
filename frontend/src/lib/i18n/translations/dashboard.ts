@@ -109,6 +109,8 @@ export const roomZeroState: TranslationMap<{
   openExplore: string
   loginToCreate: string
   promptLabel: string
+  humanTitle: string
+  humanDescription: string
 }> = {
   en: {
     title: 'No groups yet',
@@ -117,6 +119,8 @@ export const roomZeroState: TranslationMap<{
     openExplore: 'Browse groups',
     loginToCreate: 'Log in to create a room',
     promptLabel: 'Prompt for your Bot',
+    humanTitle: 'Welcome — start your first room',
+    humanDescription: 'You are signed in as a Human. Create a room to host a conversation, or browse public groups to join the network. An Agent is optional.',
   },
   zh: {
     title: '还没有可切换的群',
@@ -125,6 +129,8 @@ export const roomZeroState: TranslationMap<{
     openExplore: '去发现页选群',
     loginToCreate: '登录后创建房间',
     promptLabel: '给 Bot 的 Prompt',
+    humanTitle: '欢迎 — 先建一个群试试',
+    humanDescription: '你已以人类身份登录。你可以直接创建房间当房主，或去发现页加入一个现有的公开群。创建 Agent 是可选项，随时再说。',
   },
 }
 
@@ -403,6 +409,35 @@ export const agentBrowser: TranslationMap<{
   loadMembersFailed: string
   leaveRoomFailed: string
   cancelSubscriptionFailed: string
+  participantHuman: string
+  participantAgent: string
+  removeMember: string
+  removeMemberConfirm: string
+  removeMemberFailed: string
+  memberActions: string
+  promoteToAdmin: string
+  demoteToMember: string
+  promoteFailed: string
+  editPermissions: string
+  permissionsTitle: string
+  permCanSend: string
+  permCanInvite: string
+  permUseDefault: string
+  permAllow: string
+  permDeny: string
+  permSave: string
+  permCancel: string
+  permSaveFailed: string
+  muteRoom: string
+  unmuteRoom: string
+  muteFailed: string
+  transferOwnership: string
+  transferPromptPrefix: string
+  transferPromptNoCandidate: string
+  transferFailed: string
+  transferSelectLabel: string
+  transferConfirmLabel: string
+  transferWarning: string
 }> = {
   en: {
     agents: 'Bots',
@@ -425,6 +460,35 @@ export const agentBrowser: TranslationMap<{
     loadMembersFailed: 'Failed to load members',
     leaveRoomFailed: 'Failed to leave group',
     cancelSubscriptionFailed: 'Failed to cancel subscription',
+    participantHuman: 'Human member',
+    participantAgent: 'Agent member',
+    removeMember: 'Remove from group',
+    removeMemberConfirm: 'Remove this member from the group?',
+    removeMemberFailed: 'Failed to remove member',
+    memberActions: 'More actions',
+    promoteToAdmin: 'Promote to admin',
+    demoteToMember: 'Demote to member',
+    promoteFailed: 'Failed to change role',
+    editPermissions: 'Permissions…',
+    permissionsTitle: 'Member permissions',
+    permCanSend: 'Can send messages',
+    permCanInvite: 'Can invite members',
+    permUseDefault: 'Default',
+    permAllow: 'Allow',
+    permDeny: 'Deny',
+    permSave: 'Save',
+    permCancel: 'Cancel',
+    permSaveFailed: 'Failed to save permissions',
+    muteRoom: 'Mute',
+    unmuteRoom: 'Unmute',
+    muteFailed: 'Failed to update mute',
+    transferOwnership: 'Transfer ownership',
+    transferPromptPrefix: 'Transfer ownership to (enter a member id, ag_ or hu_):',
+    transferPromptNoCandidate: 'No other member to transfer to.',
+    transferFailed: 'Transfer failed',
+    transferSelectLabel: 'New owner',
+    transferConfirmLabel: 'Type the room name "{room}" to confirm',
+    transferWarning: 'This is irreversible. You will become a regular member and lose owner rights.',
   },
   zh: {
     agents: 'Bot',
@@ -447,6 +511,35 @@ export const agentBrowser: TranslationMap<{
     loadMembersFailed: '加载成员失败',
     leaveRoomFailed: '退出群失败',
     cancelSubscriptionFailed: '取消订阅失败',
+    participantHuman: '人类成员',
+    participantAgent: 'Agent 成员',
+    removeMember: '将此成员移出群',
+    removeMemberConfirm: '确认将此成员移出群？',
+    removeMemberFailed: '移出成员失败',
+    memberActions: '更多操作',
+    promoteToAdmin: '提升为管理员',
+    demoteToMember: '降为普通成员',
+    promoteFailed: '修改角色失败',
+    editPermissions: '权限设置…',
+    permissionsTitle: '成员权限',
+    permCanSend: '可发送消息',
+    permCanInvite: '可邀请成员',
+    permUseDefault: '默认',
+    permAllow: '允许',
+    permDeny: '禁止',
+    permSave: '保存',
+    permCancel: '取消',
+    permSaveFailed: '保存权限失败',
+    muteRoom: '静音',
+    unmuteRoom: '取消静音',
+    muteFailed: '修改静音状态失败',
+    transferOwnership: '转让群主',
+    transferPromptPrefix: '转让给哪位成员（输入成员 id，ag_ 或 hu_）：',
+    transferPromptNoCandidate: '当前群里没有其他成员可转让。',
+    transferFailed: '转让失败',
+    transferSelectLabel: '新群主',
+    transferConfirmLabel: '输入群名 "{room}" 以确认',
+    transferWarning: '此操作不可撤销。转让后你会变成普通成员，不再拥有群主权限。',
   },
 }
 

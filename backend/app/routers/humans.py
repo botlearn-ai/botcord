@@ -117,6 +117,57 @@ class HumanRoomMemberResponse(BaseModel):
     joined_at: int
 
 
+class TransferRoomOwnerBody(BaseModel):
+    new_owner_id: str = Field(..., min_length=1, max_length=32)
+
+
+class HumanRoomTransferResponse(BaseModel):
+    room_id: str
+    new_owner_id: str
+    new_owner_type: Literal["agent", "human"]
+
+
+class PromoteMemberBody(BaseModel):
+    participant_id: str = Field(..., min_length=1, max_length=32)
+    role: Literal["admin", "member"]
+
+
+class HumanRoomRoleChangeResponse(BaseModel):
+    room_id: str
+    participant_id: str
+    participant_type: Literal["agent", "human"]
+    role: Literal["owner", "admin", "member"]
+
+
+class HumanRoomRemoveMemberResponse(BaseModel):
+    room_id: str
+    participant_id: str
+    removed: bool
+
+
+class MuteRoomBody(BaseModel):
+    muted: bool
+
+
+class HumanRoomMuteResponse(BaseModel):
+    room_id: str
+    muted: bool
+
+
+class SetMemberPermissionsBody(BaseModel):
+    participant_id: str = Field(..., min_length=1, max_length=32)
+    can_send: bool | None = None
+    can_invite: bool | None = None
+
+
+class HumanRoomPermissionsResponse(BaseModel):
+    room_id: str
+    participant_id: str
+    participant_type: Literal["agent", "human"]
+    can_send: bool | None
+    can_invite: bool | None
+
+
 class HumanContactRequestSummary(BaseModel):
     id: str
     from_participant_id: str
@@ -619,6 +670,264 @@ async def invite_room_member_as_human(
         else str(new_member.participant_type),
         role=new_member.role.value if hasattr(new_member.role, "value") else str(new_member.role),
         joined_at=_ts(new_member.joined_at),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Room moderator actions (Human-side counterparts to hub/routers/room.py).
+#
+# The hub-layer endpoints live behind an Agent JWT and `_reject_human_id`
+# guards on every body parameter — they are deliberately agent-only. These
+# Human counterparts expose the same capabilities to the Supabase-auth'd
+# owner/admin and accept polymorphic participant ids (``ag_*`` or ``hu_*``)
+# so a Human moderator can operate on either kind of member.
+# ---------------------------------------------------------------------------
+
+
+async def _load_room_member_as_caller(
+    db: AsyncSession, room_id: str, human_id: str, *, lock: bool = False
+) -> tuple[Room, RoomMember]:
+    """Fetch (room, caller_membership) for a Human acting on a room.
+
+    Raises 404 if the room doesn't exist or the Human isn't a member.
+    With ``lock=True`` the row is selected FOR UPDATE so the caller can
+    serialize write-heavy operations (transfer, promote, member ops).
+    """
+    room_stmt = select(Room).where(Room.room_id == room_id)
+    if lock:
+        room_stmt = room_stmt.with_for_update()
+    room = (await db.execute(room_stmt)).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    caller = (
+        await db.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == human_id,
+                RoomMember.participant_type == ParticipantType.human,
+            )
+        )
+    ).scalar_one_or_none()
+    if caller is None:
+        raise HTTPException(status_code=404, detail="Not a member of this room")
+    return room, caller
+
+
+async def _find_room_member(
+    db: AsyncSession, room_id: str, participant_id: str
+) -> RoomMember | None:
+    """Fetch a RoomMember by room_id + polymorphic participant id."""
+    return (
+        await db.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == participant_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+@router.post("/me/rooms/{room_id}/transfer", response_model=HumanRoomTransferResponse)
+async def transfer_room_ownership_as_human(
+    room_id: str,
+    body: TransferRoomOwnerBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transfer room ownership to another member. Human owner only.
+
+    The new owner may be an Agent (``ag_*``) or a Human (``hu_*``) — both are
+    first-class participants. Subscription-gated rooms keep the hub's
+    ``required_subscription_product_id`` check for Agent targets only;
+    Humans are admitted by being current members (see invite flow).
+    """
+    user = await _load_human(db, ctx)
+    me = user.human_id
+    room, caller = await _load_room_member_as_caller(db, room_id, me, lock=True)
+    if caller.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the room owner can transfer ownership")
+
+    new_owner_id = body.new_owner_id
+    new_owner_type = _split_prefix(new_owner_id)
+    if new_owner_type == ParticipantType.human and new_owner_id == me:
+        raise HTTPException(status_code=400, detail="Cannot transfer to self")
+
+    new_owner_member = await _find_room_member(db, room_id, new_owner_id)
+    if new_owner_member is None or new_owner_member.participant_type != new_owner_type:
+        raise HTTPException(status_code=404, detail="Target must already be a member")
+
+    # Subscription gating: for Agent targets we mirror the hub's check. For
+    # Human targets there is no user-side subscription model yet, so they are
+    # admitted purely on existing-membership.
+    if room.required_subscription_product_id and new_owner_type == ParticipantType.agent:
+        sub_row = await db.execute(
+            select(AgentSubscription).where(
+                AgentSubscription.product_id == room.required_subscription_product_id,
+                AgentSubscription.subscriber_agent_id == new_owner_id,
+                AgentSubscription.status == SubscriptionStatus.active,
+            )
+        )
+        if sub_row.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Target must hold an active subscription to own this room",
+            )
+
+    caller.role = RoomRole.member
+    new_owner_member.role = RoomRole.owner
+    room.owner_id = new_owner_id
+    room.owner_type = new_owner_type
+    await db.commit()
+
+    return HumanRoomTransferResponse(
+        room_id=room_id,
+        new_owner_id=new_owner_id,
+        new_owner_type=new_owner_type.value,
+    )
+
+
+@router.post("/me/rooms/{room_id}/promote", response_model=HumanRoomRoleChangeResponse)
+async def promote_member_as_human(
+    room_id: str,
+    body: PromoteMemberBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Promote/demote a member. Human owner only. Matches hub's `promote`."""
+    user = await _load_human(db, ctx)
+    _, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    if caller.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the room owner can promote or demote")
+
+    target_type = _split_prefix(body.participant_id)
+    target = await _find_room_member(db, room_id, body.participant_id)
+    if target is None or target.participant_type != target_type:
+        raise HTTPException(status_code=404, detail="Member not found in room")
+    if target.role == RoomRole.owner:
+        raise HTTPException(status_code=400, detail="Cannot change the owner's role")
+
+    target.role = RoomRole(body.role)
+    await db.commit()
+
+    return HumanRoomRoleChangeResponse(
+        room_id=room_id,
+        participant_id=target.agent_id,
+        participant_type=target.participant_type.value
+        if hasattr(target.participant_type, "value")
+        else str(target.participant_type),
+        role=target.role.value if hasattr(target.role, "value") else str(target.role),
+    )
+
+
+@router.delete(
+    "/me/rooms/{room_id}/members/{participant_id}",
+    response_model=HumanRoomRemoveMemberResponse,
+)
+async def remove_member_as_human(
+    room_id: str,
+    participant_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a member. Human owner/admin only. Mirrors hub's remove_member,
+    but accepts both ``ag_*`` and ``hu_*`` targets."""
+    user = await _load_human(db, ctx)
+    _, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    if caller.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Owner or admin required")
+
+    target_type = _split_prefix(participant_id)
+    target = await _find_room_member(db, room_id, participant_id)
+    if target is None or target.participant_type != target_type:
+        raise HTTPException(status_code=404, detail="Member not found in room")
+    if target.role == RoomRole.owner:
+        raise HTTPException(status_code=400, detail="Cannot remove the room owner")
+    if target.role == RoomRole.admin and caller.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the owner can remove admins")
+
+    removed_id = target.agent_id
+    await db.delete(target)
+    await db.commit()
+
+    try:
+        from hub.routers.room import _notify_room_member_change
+
+        remaining = (
+            await db.execute(
+                select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
+            )
+        ).all()
+        remaining_ids = [row[0] for row in remaining]
+        await _notify_room_member_change(
+            db,
+            event_type="room_member_removed",
+            room_id=room_id,
+            changed_agent_id=removed_id,
+            notify_agent_ids=[removed_id] + remaining_ids,
+        )
+    except Exception:  # pragma: no cover — notification must not break the HTTP response
+        _logger.exception("room_member_removed broadcast failed for %s", room_id)
+
+    return HumanRoomRemoveMemberResponse(
+        room_id=room_id,
+        participant_id=removed_id,
+        removed=True,
+    )
+
+
+@router.post("/me/rooms/{room_id}/mute", response_model=HumanRoomMuteResponse)
+async def mute_room_as_human(
+    room_id: str,
+    body: MuteRoomBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle mute on the caller's own Human membership."""
+    user = await _load_human(db, ctx)
+    _, caller = await _load_room_member_as_caller(db, room_id, user.human_id)
+    caller.muted = body.muted
+    await db.commit()
+    return HumanRoomMuteResponse(room_id=room_id, muted=caller.muted)
+
+
+@router.post(
+    "/me/rooms/{room_id}/permissions",
+    response_model=HumanRoomPermissionsResponse,
+)
+async def set_member_permissions_as_human(
+    room_id: str,
+    body: SetMemberPermissionsBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set per-member permission overrides. Human owner/admin only."""
+    user = await _load_human(db, ctx)
+    _, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    if caller.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Owner or admin required")
+
+    target_type = _split_prefix(body.participant_id)
+    target = await _find_room_member(db, room_id, body.participant_id)
+    if target is None or target.participant_type != target_type:
+        raise HTTPException(status_code=404, detail="Member not found in room")
+    if target.role == RoomRole.owner:
+        raise HTTPException(status_code=400, detail="Cannot modify the owner's permissions")
+    if target.role == RoomRole.admin and caller.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the owner can modify admin permissions")
+
+    target.can_send = body.can_send
+    target.can_invite = body.can_invite
+    await db.commit()
+
+    return HumanRoomPermissionsResponse(
+        room_id=room_id,
+        participant_id=target.agent_id,
+        participant_type=target.participant_type.value
+        if hasattr(target.participant_type, "value")
+        else str(target.participant_type),
+        can_send=target.can_send,
+        can_invite=target.can_invite,
     )
 
 

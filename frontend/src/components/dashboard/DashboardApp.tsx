@@ -311,6 +311,25 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
+    // Human-first: when the user is authenticated but has no active Agent
+    // (Human viewer mode), skip the agent-specific binding/reset cycle and
+    // let refreshOverview() run on the Human anchor. Only drop back into the
+    // full reset branch for truly pre-auth states.
+    if (sessionStore.sessionMode === "authed-no-agent") {
+      walletBoundAgentRef.current = null;
+      contactBoundAgentRef.current = null;
+      subscriptionBoundAgentRef.current = null;
+      if (
+        !chatStore.overview
+        && !chatStore.overviewRefreshing
+        && !chatStore.overviewErrored
+        && uiStore.sidebarTab !== "wallet"
+      ) {
+        void chatStore.refreshOverview();
+      }
+      return;
+    }
+
     if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
       walletBoundAgentRef.current = null;
       contactBoundAgentRef.current = null;
@@ -369,7 +388,15 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
-    if (!sessionStore.authResolved || sessionStore.sessionMode !== "authed-ready") return;
+    if (!sessionStore.authResolved) return;
+    // Human-first: fire for both Agent viewer (authed-ready) and Human
+    // viewer (authed-no-agent). Only stay idle for guest sessions.
+    if (
+      sessionStore.sessionMode !== "authed-ready"
+      && sessionStore.sessionMode !== "authed-no-agent"
+    ) {
+      return;
+    }
     if (uiStore.sidebarTab === "wallet" || uiStore.sidebarTab === "activity") return;
     if (chatStore.overview || chatStore.overviewRefreshing || chatStore.overviewErrored) return;
     void chatStore.refreshOverview();
@@ -396,16 +423,27 @@ export default function DashboardApp() {
   }, [sessionStore.sessionMode, sessionStore.activeAgentId, uiStore.setUserChatRoomId]);
 
   useEffect(() => {
-    if (
-      !sessionStore.authResolved
-      || sessionStore.sessionMode !== "authed-ready"
-      || !sessionStore.activeAgentId
-    ) {
+    // Phase 6 Human-first: pick the realtime anchor from activeIdentity.
+    // Agent viewer → ``agent:<ag_*>``; Human viewer → ``human:<hu_*>``.
+    // Guest / unresolved → idle.
+    const anchor = (() => {
+      if (!sessionStore.authResolved) return null;
+      if (sessionStore.activeIdentity?.type === "agent") {
+        return { kind: "agent" as const, id: sessionStore.activeIdentity.id };
+      }
+      if (sessionStore.activeIdentity?.type === "human" && sessionStore.human?.human_id) {
+        return { kind: "human" as const, id: sessionStore.human.human_id };
+      }
+      return null;
+    })();
+
+    if (!anchor) {
       realtimeStore.setRealtimeStatus("idle");
       return;
     }
 
-    const topic = `agent:${sessionStore.activeAgentId}`;
+    const topic = `${anchor.kind}:${anchor.id}`;
+    const anchorId = anchor.id;
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
@@ -428,7 +466,8 @@ export default function DashboardApp() {
       realtimeStore.setRealtimeStatus("connecting");
       console.info("[BotCord][Realtime] subscribing", {
         topic,
-        activeAgentId: sessionStore.activeAgentId,
+        anchorKind: anchor.kind,
+        anchorId,
         sessionMode: sessionStore.sessionMode,
       });
 
@@ -436,7 +475,11 @@ export default function DashboardApp() {
         .channel(topic, { config: { private: true } })
         .on("broadcast", { event: "*" }, ({ payload }) => {
           const realtimeEvent = payload as RealtimeMetaEvent;
-          if (!realtimeEvent?.type || realtimeEvent.agent_id !== sessionStore.activeAgentId) {
+          // Backend populates ``agent_id`` with the recipient participant id
+          // (``ag_*`` OR ``hu_*``) — topic dispatch in the backend already
+          // narrows delivery per subscriber, so this check is a belt-and-
+          // suspenders filter.
+          if (!realtimeEvent?.type || realtimeEvent.agent_id !== anchorId) {
             return;
           }
           const currentUIState = useDashboardUIStore.getState();
@@ -501,6 +544,8 @@ export default function DashboardApp() {
     sessionStore.authResolved,
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
+    sessionStore.activeIdentity,
+    sessionStore.human?.human_id,
     chatStore.applyRealtimeEventHint,
     unreadStore.applyRealtimeEvent,
     realtimeStore.setRealtimeStatus,

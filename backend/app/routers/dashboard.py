@@ -344,33 +344,54 @@ async def _build_rooms_from_membership(
 
 @router.get("/overview")
 async def get_overview(
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return dashboard overview for the active agent."""
-    agent_id = ctx.active_agent_id
+    """Return dashboard overview for the current viewer.
 
-    result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id)
-    )
-    agent = result.scalar_one_or_none()
-    if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    Viewer is either the active Agent (when ``X-Active-Agent`` is supplied)
+    or the Human (``hu_*``) derived from the Supabase JWT. In Human mode
+    the ``agent`` field is ``None`` and a ``viewer`` descriptor identifies
+    the Human viewer.
+    """
+    agent_data: dict | None = None
+    viewer_id: str
+    viewer_type: ParticipantType
+    viewer_display_name: str | None
 
-    agent_data = {
-        "agent_id": agent.agent_id,
-        "display_name": agent.display_name,
-        "bio": agent.bio,
-        "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
-        "created_at": agent.created_at.isoformat() if agent.created_at else None,
-    }
+    if ctx.active_agent_id is not None:
+        result = await db.execute(
+            select(Agent).where(Agent.agent_id == ctx.active_agent_id)
+        )
+        agent = result.scalar_one_or_none()
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        agent_data = {
+            "agent_id": agent.agent_id,
+            "display_name": agent.display_name,
+            "bio": agent.bio,
+            "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
+            "created_at": agent.created_at.isoformat() if agent.created_at else None,
+        }
+        viewer_id = agent.agent_id
+        viewer_type = ParticipantType.agent
+        viewer_display_name = agent.display_name
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
+        viewer_display_name = ctx.user_display_name
 
-    rooms = await _build_rooms_from_sql(agent_id, db)
+    rooms = await _build_rooms_from_sql(viewer_id, db)
 
     contact_result = await db.execute(
         select(Contact, Agent.display_name)
         .outerjoin(Agent, Agent.agent_id == Contact.contact_agent_id)
-        .where(Contact.owner_id == agent_id)
+        .where(
+            Contact.owner_id == viewer_id,
+            Contact.owner_type == viewer_type,
+        )
     )
     contacts = [
         {
@@ -386,7 +407,8 @@ async def get_overview(
         select(func.count())
         .select_from(ContactRequest)
         .where(
-            ContactRequest.to_agent_id == agent_id,
+            ContactRequest.to_agent_id == viewer_id,
+            ContactRequest.to_type == viewer_type,
             ContactRequest.state == ContactRequestState.pending,
         )
     )
@@ -394,6 +416,11 @@ async def get_overview(
 
     return {
         "agent": agent_data,
+        "viewer": {
+            "type": viewer_type.value,
+            "id": viewer_id,
+            "display_name": viewer_display_name,
+        },
         "rooms": rooms,
         "contacts": contacts,
         "pending_requests": pending_count,
@@ -594,20 +621,26 @@ async def _resolve_display_names(
 @router.get("/contact-requests/received")
 async def list_received_requests(
     state: str | None = Query(default=None),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List contact requests received by the active agent.
+    """List contact requests received by the current viewer.
 
-    The active agent only ever appears as an ``agent`` counterparty, so
-    ``to_type`` is always ``agent`` for rows returned here. The ``from``
-    side may be either an agent (legacy A→A) or a human (H→A).
+    Viewer is either the active Agent or the Human derived from the
+    Supabase JWT. The ``from`` side may independently be Agent or Human.
     """
-    agent_id = ctx.active_agent_id
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     stmt = select(ContactRequest).where(
-        ContactRequest.to_agent_id == agent_id,
-        ContactRequest.to_type == ParticipantType.agent,
+        ContactRequest.to_agent_id == viewer_id,
+        ContactRequest.to_type == viewer_type,
     )
     if state:
         stmt = stmt.where(ContactRequest.state == state)
@@ -638,18 +671,26 @@ async def list_received_requests(
 @router.get("/contact-requests/sent")
 async def list_sent_requests(
     state: str | None = Query(default=None),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List contact requests sent by the active agent.
+    """List contact requests sent by the current viewer.
 
-    ``from_type`` is always ``agent``. ``to_type`` may be agent or human.
+    Viewer is either the active Agent or the Human derived from the
+    Supabase JWT. ``to_type`` may independently be Agent or Human.
     """
-    agent_id = ctx.active_agent_id
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     stmt = select(ContactRequest).where(
-        ContactRequest.from_agent_id == agent_id,
-        ContactRequest.from_type == ParticipantType.agent,
+        ContactRequest.from_agent_id == viewer_id,
+        ContactRequest.from_type == viewer_type,
     )
     if state:
         stmt = stmt.where(ContactRequest.state == state)
@@ -958,11 +999,20 @@ async def discover_rooms(
 @router.post("/rooms/{room_id}/join", status_code=201)
 async def join_room(
     room_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Join a public room with open join policy."""
-    agent_id = ctx.active_agent_id
+    """Join a public room with open join policy. Viewer is the active Agent
+    or the Human derived from the Supabase JWT — Humans occupy member slots
+    identically to Agents."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     result = await db.execute(
         select(Room).where(Room.room_id == room_id)
@@ -975,7 +1025,7 @@ async def join_room(
     if room.join_policy != RoomJoinPolicy.open:
         raise HTTPException(status_code=403, detail="Room does not allow open joining")
 
-    # Check max_members
+    # Check max_members — Humans occupy slots identically to Agents.
     if room.max_members is not None:
         count_result = await db.execute(
             select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)
@@ -984,11 +1034,11 @@ async def join_room(
         if current_count >= room.max_members:
             raise HTTPException(status_code=409, detail="Room is full")
 
-    # Check not already member
     existing = await db.execute(
         select(RoomMember).where(
             RoomMember.room_id == room_id,
-            RoomMember.agent_id == agent_id,
+            RoomMember.agent_id == viewer_id,
+            RoomMember.participant_type == viewer_type,
         )
     )
     if existing.scalar_one_or_none() is not None:
@@ -996,7 +1046,8 @@ async def join_room(
 
     member = RoomMember(
         room_id=room_id,
-        agent_id=agent_id,
+        agent_id=viewer_id,
+        participant_type=viewer_type,
         role=RoomRole.member,
     )
     db.add(member)
@@ -1129,16 +1180,25 @@ async def update_room_settings(
 @router.post("/rooms/{room_id}/leave")
 async def leave_room(
     room_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Leave a room. Owner cannot leave."""
-    agent_id = ctx.active_agent_id
+    """Leave a room. Owner cannot leave. Works for both Agent and Human
+    viewers — membership is keyed on (agent_id, participant_type)."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     result = await db.execute(
         select(RoomMember).where(
             RoomMember.room_id == room_id,
-            RoomMember.agent_id == agent_id,
+            RoomMember.agent_id == viewer_id,
+            RoomMember.participant_type == viewer_type,
         )
     )
     member = result.scalar_one_or_none()
@@ -1166,11 +1226,20 @@ class _JoinRequestBody(BaseModel):
 async def create_join_request(
     room_id: str,
     body: _JoinRequestBody | None = None,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit a join request for an invite-only public room."""
-    agent_id = ctx.active_agent_id
+    """Submit a join request for an invite-only public room. Works for
+    Agent or Human viewers — the request is keyed on
+    (room_id, requester_id, participant_type)."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     room_result = await db.execute(select(Room).where(Room.room_id == room_id))
     room = room_result.scalar_one_or_none()
@@ -1182,7 +1251,11 @@ async def create_join_request(
         raise HTTPException(status_code=400, detail="Room is open — use the join endpoint instead")
 
     existing_member = await db.execute(
-        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == viewer_id,
+            RoomMember.participant_type == viewer_type,
+        )
     )
     if existing_member.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Already a member")
@@ -1190,7 +1263,8 @@ async def create_join_request(
     existing_pending = await db.execute(
         select(RoomJoinRequest).where(
             RoomJoinRequest.room_id == room_id,
-            RoomJoinRequest.agent_id == agent_id,
+            RoomJoinRequest.agent_id == viewer_id,
+            RoomJoinRequest.participant_type == viewer_type,
             RoomJoinRequest.status == RoomJoinRequestStatus.pending,
         )
     )
@@ -1200,7 +1274,8 @@ async def create_join_request(
     req = RoomJoinRequest(
         request_id=generate_join_request_id(),
         room_id=room_id,
-        agent_id=agent_id,
+        agent_id=viewer_id,
+        participant_type=viewer_type,
         message=body.message if body else None,
         status=RoomJoinRequestStatus.pending,
     )
@@ -1210,7 +1285,8 @@ async def create_join_request(
     return {
         "request_id": req.request_id,
         "room_id": room_id,
-        "agent_id": agent_id,
+        "agent_id": viewer_id,
+        "participant_type": viewer_type.value,
         "status": "pending",
         "message": req.message,
         "created_at": req.created_at.isoformat() if req.created_at else None,
@@ -1221,22 +1297,39 @@ async def create_join_request(
 async def list_join_requests(
     room_id: str,
     status: str | None = Query(default=None),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List join requests for a room. Owner/admin only."""
-    agent_id = ctx.active_agent_id
+    """List join requests for a room. Owner/admin only. Viewer can be Agent
+    or Human — both roles are first-class moderators."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     member_result = await db.execute(
-        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == viewer_id,
+            RoomMember.participant_type == viewer_type,
+        )
     )
     member = member_result.scalar_one_or_none()
     if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Owner or admin required")
 
+    # Resolve requester display name against both agents and users (by human_id).
     stmt = (
-        select(RoomJoinRequest, Agent.display_name)
+        select(
+            RoomJoinRequest,
+            func.coalesce(Agent.display_name, User.display_name).label("display_name"),
+        )
         .outerjoin(Agent, Agent.agent_id == RoomJoinRequest.agent_id)
+        .outerjoin(User, User.human_id == RoomJoinRequest.agent_id)
         .where(RoomJoinRequest.room_id == room_id)
     )
     if status:
@@ -1254,6 +1347,11 @@ async def list_join_requests(
                 "request_id": jr.request_id,
                 "room_id": jr.room_id,
                 "agent_id": jr.agent_id,
+                "participant_type": (
+                    jr.participant_type.value
+                    if hasattr(jr.participant_type, "value")
+                    else str(jr.participant_type)
+                ),
                 "agent_display_name": display_name,
                 "message": jr.message,
                 "status": jr.status.value if hasattr(jr.status, "value") else str(jr.status),
@@ -1268,14 +1366,25 @@ async def list_join_requests(
 async def accept_join_request(
     room_id: str,
     request_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Accept a join request. Owner/admin only."""
-    agent_id = ctx.active_agent_id
+    """Accept a join request. Owner/admin only (Agent or Human)."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     member_result = await db.execute(
-        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == viewer_id,
+            RoomMember.participant_type == viewer_type,
+        )
     )
     member = member_result.scalar_one_or_none()
     if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
@@ -1303,12 +1412,13 @@ async def accept_join_request(
             raise HTTPException(status_code=409, detail="Room is full")
 
     jr.status = RoomJoinRequestStatus.accepted
-    jr.responded_by = agent_id
+    jr.responded_by = viewer_id
     jr.resolved_at = func.now()
 
     new_member = RoomMember(
         room_id=room_id,
         agent_id=jr.agent_id,
+        participant_type=jr.participant_type,
         role=RoomRole.member,
     )
     db.add(new_member)
@@ -1318,6 +1428,11 @@ async def accept_join_request(
         "request_id": request_id,
         "room_id": room_id,
         "agent_id": jr.agent_id,
+        "participant_type": (
+            jr.participant_type.value
+            if hasattr(jr.participant_type, "value")
+            else str(jr.participant_type)
+        ),
         "status": "accepted",
     }
 
@@ -1326,14 +1441,25 @@ async def accept_join_request(
 async def reject_join_request(
     room_id: str,
     request_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reject a join request. Owner/admin only."""
-    agent_id = ctx.active_agent_id
+    """Reject a join request. Owner/admin only (Agent or Human)."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     member_result = await db.execute(
-        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.agent_id == agent_id)
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == viewer_id,
+            RoomMember.participant_type == viewer_type,
+        )
     )
     member = member_result.scalar_one_or_none()
     if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
@@ -1352,7 +1478,7 @@ async def reject_join_request(
         raise HTTPException(status_code=409, detail="Request already resolved")
 
     jr.status = RoomJoinRequestStatus.rejected
-    jr.responded_by = agent_id
+    jr.responded_by = viewer_id
     jr.resolved_at = func.now()
     await db.commit()
 
@@ -1360,6 +1486,11 @@ async def reject_join_request(
         "request_id": request_id,
         "room_id": room_id,
         "agent_id": jr.agent_id,
+        "participant_type": (
+            jr.participant_type.value
+            if hasattr(jr.participant_type, "value")
+            else str(jr.participant_type)
+        ),
         "status": "rejected",
     }
 
@@ -1367,15 +1498,24 @@ async def reject_join_request(
 @router.get("/rooms/{room_id}/my-join-request")
 async def get_my_join_request(
     room_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Check if the current agent has a pending join request for this room."""
-    agent_id = ctx.active_agent_id
+    """Check if the current viewer (Agent or Human) has a recent join request."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
+
     result = await db.execute(
         select(RoomJoinRequest).where(
             RoomJoinRequest.room_id == room_id,
-            RoomJoinRequest.agent_id == agent_id,
+            RoomJoinRequest.agent_id == viewer_id,
+            RoomJoinRequest.participant_type == viewer_type,
         ).order_by(RoomJoinRequest.created_at.desc()).limit(1)
     )
     jr = result.scalar_one_or_none()
@@ -1399,16 +1539,24 @@ async def get_my_join_request(
 @router.post("/rooms/{room_id}/read")
 async def mark_room_read(
     room_id: str,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update last_viewed_at for the active agent in this room."""
-    agent_id = ctx.active_agent_id
+    """Update last_viewed_at for the current viewer (Agent or Human)."""
+    if ctx.active_agent_id is not None:
+        viewer_id = ctx.active_agent_id
+        viewer_type = ParticipantType.agent
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        viewer_id = ctx.human_id
+        viewer_type = ParticipantType.human
 
     result = await db.execute(
         select(RoomMember).where(
             RoomMember.room_id == room_id,
-            RoomMember.agent_id == agent_id,
+            RoomMember.agent_id == viewer_id,
+            RoomMember.participant_type == viewer_type,
         )
     )
     member = result.scalar_one_or_none()
@@ -1454,33 +1602,49 @@ async def get_room_messages(
     is_member = False
     viewer_agent_id = None
     viewer_user_id: str | None = None
+    viewer_human_id: str | None = None
 
-    # Try to resolve authenticated user and verify agent ownership
-    if authorization and authorization.startswith("Bearer ") and x_active_agent:
+    # Try to resolve authenticated user. With X-Active-Agent the viewer is
+    # the active Agent; without it the Human (``user.human_id``) is the
+    # viewer and room membership is checked against that id.
+    if authorization and authorization.startswith("Bearer "):
         token = authorization[len("Bearer "):]
         try:
             jwt_payload = _decode_supabase_token(token)
             supabase_uid = jwt_payload["sub"]
             user, _roles = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
             viewer_user_id = str(user.id)
-            # Verify agent belongs to authenticated user
-            agent_check = await db.execute(
-                select(Agent).where(
-                    Agent.agent_id == x_active_agent,
-                    Agent.user_id == user.id,
+            viewer_human_id = user.human_id
+
+            if x_active_agent:
+                # Agent viewer: require agent ownership + membership.
+                agent_check = await db.execute(
+                    select(Agent).where(
+                        Agent.agent_id == x_active_agent,
+                        Agent.user_id == user.id,
+                    )
                 )
-            )
-            if agent_check.scalar_one_or_none() is not None:
-                # Now check room membership
+                if agent_check.scalar_one_or_none() is not None:
+                    member_result = await db.execute(
+                        select(RoomMember).where(
+                            RoomMember.room_id == room_id,
+                            RoomMember.agent_id == x_active_agent,
+                        )
+                    )
+                    if member_result.scalar_one_or_none() is not None:
+                        is_member = True
+                        viewer_agent_id = x_active_agent
+            else:
+                # Human viewer: membership row stores ``hu_*`` in agent_id.
                 member_result = await db.execute(
                     select(RoomMember).where(
                         RoomMember.room_id == room_id,
-                        RoomMember.agent_id == x_active_agent,
+                        RoomMember.agent_id == user.human_id,
+                        RoomMember.participant_type == ParticipantType.human,
                     )
                 )
                 if member_result.scalar_one_or_none() is not None:
                     is_member = True
-                    viewer_agent_id = x_active_agent
         except HTTPException:
             pass  # Invalid token — fall through to public view
 
@@ -1853,21 +2017,35 @@ async def get_room_members(
         raise HTTPException(status_code=404, detail="Room not found")
 
     is_member = False
-    if authorization and authorization.startswith("Bearer ") and x_active_agent:
+    if authorization and authorization.startswith("Bearer "):
         token = authorization[len("Bearer "):]
         try:
             jwt_payload = _decode_supabase_token(token)
             supabase_uid = jwt_payload["sub"]
             user, _ = await _load_user_and_roles(supabase_uid, db, jwt_payload=jwt_payload)
-            agent_result = await db.execute(
-                select(Agent).where(Agent.agent_id == x_active_agent)
-            )
-            agent = agent_result.scalar_one_or_none()
-            if agent and str(agent.user_id) == str(user.id):
+
+            if x_active_agent:
+                agent_result = await db.execute(
+                    select(Agent).where(Agent.agent_id == x_active_agent)
+                )
+                agent = agent_result.scalar_one_or_none()
+                if agent and str(agent.user_id) == str(user.id):
+                    mem = await db.execute(
+                        select(RoomMember).where(
+                            RoomMember.room_id == room_id,
+                            RoomMember.agent_id == x_active_agent,
+                            RoomMember.participant_type == ParticipantType.agent,
+                        )
+                    )
+                    if mem.scalar_one_or_none() is not None:
+                        is_member = True
+            else:
+                # Human viewer: membership row stores ``hu_*``.
                 mem = await db.execute(
                     select(RoomMember).where(
                         RoomMember.room_id == room_id,
-                        RoomMember.agent_id == x_active_agent,
+                        RoomMember.agent_id == user.human_id,
+                        RoomMember.participant_type == ParticipantType.human,
                     )
                 )
                 if mem.scalar_one_or_none() is not None:
@@ -1878,25 +2056,45 @@ async def get_room_members(
     if not is_member and room.visibility != RoomVisibility.public:
         raise HTTPException(status_code=404, detail="Room not found")
 
+    # Left-join against both ``agents`` and ``users`` so Human members expose a
+    # resolvable display_name. ``Agent``/``User`` are joined on the polymorphic
+    # ``RoomMember.agent_id`` column (ag_* or hu_*) — exactly one side matches
+    # per row, so coalesce picks whichever is non-null.
     result = await db.execute(
-        select(RoomMember, Agent)
+        select(RoomMember, Agent, User)
         .outerjoin(Agent, Agent.agent_id == RoomMember.agent_id)
+        .outerjoin(User, User.human_id == RoomMember.agent_id)
         .where(RoomMember.room_id == room_id)
     )
     rows = result.all()
 
-    members = [
-        {
+    members = []
+    for m, a, u in rows:
+        ptype = (
+            m.participant_type.value
+            if hasattr(m.participant_type, "value")
+            else str(m.participant_type)
+        )
+        display_name = (a.display_name if a else None) or (u.display_name if u else None) or m.agent_id
+        members.append({
             "agent_id": m.agent_id,
-            "display_name": a.display_name if a else m.agent_id,
+            "participant_type": ptype,
+            "display_name": display_name,
             "bio": a.bio if a else None,
-            "message_policy": (a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy)) if a else None,
-            "created_at": a.created_at.isoformat() if a and a.created_at else None,
+            "message_policy": (
+                (a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy))
+                if a else None
+            ),
+            "created_at": (a.created_at.isoformat() if a and a.created_at else None),
             "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+            "muted": bool(m.muted),
+            # ``None`` == use room default; explicit bool == per-member override.
+            # The frontend permissions dialog prefills from these, so "Save"
+            # with no edits keeps the existing state instead of wiping it.
+            "can_send": m.can_send,
+            "can_invite": m.can_invite,
             "joined_at": m.joined_at.isoformat() if m.joined_at else None,
-        }
-        for m, a in rows
-    ]
+        })
     return {"room_id": room_id, "members": members, "total": len(members)}
 
 
@@ -2044,10 +2242,10 @@ async def get_inbox(
     timeout: int = Query(default=0, ge=0, le=30),
     ack: bool = Query(default=True),
     room_id: str | None = Query(default=None),
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Poll for queued messages for the active agent.
+    """Poll for queued messages for the current viewer (Agent or Human).
 
     Supports long-polling: when *timeout* > 0 and no messages are available,
     blocks until a message arrives or the timeout elapses — reusing the hub's
@@ -2057,24 +2255,29 @@ async def get_inbox(
     from hub.models import MessageState
     from hub.routers.hub import _inbox_conditions
 
-    agent_id = ctx.active_agent_id
+    if ctx.active_agent_id is not None:
+        receiver_id = ctx.active_agent_id
+    else:
+        if not ctx.human_id:
+            raise HTTPException(status_code=500, detail="Missing human_id for viewer")
+        receiver_id = ctx.human_id
 
-    records = await _fetch_inbox(db, agent_id, limit + 1, room_id)
+    records = await _fetch_inbox(db, receiver_id, limit + 1, room_id)
 
     # Long-poll: if nothing found and timeout > 0, wait for notification
     if not records and timeout > 0:
-        cond = _inbox_conditions.get(agent_id)
+        cond = _inbox_conditions.get(receiver_id)
         if cond is None:
             cond = asyncio.Condition()
-            _inbox_conditions[agent_id] = cond
+            _inbox_conditions[receiver_id] = cond
         try:
             async with cond:
                 await asyncio.wait_for(cond.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             pass
-        _inbox_conditions.pop(agent_id, None)
+        _inbox_conditions.pop(receiver_id, None)
         # Re-query after wakeup / timeout
-        records = await _fetch_inbox(db, agent_id, limit + 1, room_id)
+        records = await _fetch_inbox(db, receiver_id, limit + 1, room_id)
 
     has_more = len(records) > limit
     records = records[:limit]

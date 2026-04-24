@@ -206,6 +206,70 @@ async def test_join_private_room_fails(client: AsyncClient, seed: dict):
 
 
 @pytest.mark.asyncio
+async def test_join_and_leave_as_human(client: AsyncClient, seed: dict, db_session: AsyncSession):
+    """Human viewer (no X-Active-Agent) can self-join and leave a public+open
+    room. Membership row uses the Human's ``hu_*`` id with participant_type=human."""
+    from sqlalchemy import select
+    from hub.models import ParticipantType, User
+
+    # Resolve seed Joiner's human_id (auto-assigned default).
+    joiner = (
+        await db_session.execute(
+            select(User).where(User.email == "j@x.com")
+        )
+    ).scalar_one()
+    human_id = joiner.human_id
+    assert human_id and human_id.startswith("hu_")
+
+    # Join — no X-Active-Agent header.
+    join_resp = await client.post(
+        "/api/dashboard/rooms/rm_pubopen01/join",
+        headers={"Authorization": f"Bearer {seed['token2']}"},
+    )
+    assert join_resp.status_code == 201, join_resp.text
+    assert join_resp.json()["my_role"] == "member"
+
+    # Membership row stores hu_* + participant_type=human.
+    from hub.models import RoomMember
+    mrow = (
+        await db_session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == "rm_pubopen01",
+                RoomMember.agent_id == human_id,
+            )
+        )
+    ).scalar_one()
+    assert mrow.participant_type == ParticipantType.human
+    assert mrow.role == RoomRole.member
+
+    # Re-join must 409.
+    dup = await client.post(
+        "/api/dashboard/rooms/rm_pubopen01/join",
+        headers={"Authorization": f"Bearer {seed['token2']}"},
+    )
+    assert dup.status_code == 409
+
+    # Leave.
+    leave_resp = await client.post(
+        "/api/dashboard/rooms/rm_pubopen01/leave",
+        headers={"Authorization": f"Bearer {seed['token2']}"},
+    )
+    assert leave_resp.status_code == 200
+    assert leave_resp.json() == {"room_id": "rm_pubopen01", "left": True}
+
+    # Membership gone.
+    gone = (
+        await db_session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == "rm_pubopen01",
+                RoomMember.agent_id == human_id,
+            )
+        )
+    ).scalar_one_or_none()
+    assert gone is None
+
+
+@pytest.mark.asyncio
 async def test_room_messages_as_member(client: AsyncClient, seed: dict):
     resp = await client.get(
         "/api/dashboard/rooms/rm_pubopen01/messages",

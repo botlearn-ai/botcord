@@ -16,7 +16,7 @@ interface TransferDialogProps {
 export default function TransferDialog({ onClose, onSuccess }: TransferDialogProps) {
   const locale = useLanguage();
   const t = transferDialog[locale];
-  const myAgentId = useDashboardChatStore((state) => state.overview?.agent.agent_id ?? "");
+  const myAgentId = useDashboardChatStore((state) => state.overview?.agent?.agent_id ?? "");
   const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
   const [recipientId, setRecipientId] = useState("");
   const [amount, setAmount] = useState("");

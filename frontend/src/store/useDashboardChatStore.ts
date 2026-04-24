@@ -19,7 +19,6 @@ import type {
 import { api } from "@/lib/api";
 import {
   buildVisibleMessageRooms,
-  hasReadyActiveAgent,
   roomMessagesInFlight,
   roomPollInFlight,
   toRoomSummary,
@@ -453,7 +452,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       refreshOverview: async (opts) => {
-        const { token, activeAgentId } = useDashboardSessionStore.getState();
+        const { token } = useDashboardSessionStore.getState();
         const openedRoomId = opts?.reloadOpenedRoom
           ? useDashboardUIStore.getState().openedRoomId
           : null;
@@ -462,10 +461,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           await Promise.all([get().loadPublicRooms(), get().loadPublicAgents()]);
           return;
         }
-        if (!hasReadyActiveAgent(token, activeAgentId)) {
-          set({ overview: null, overviewRefreshing: false, overviewErrored: false });
-          return;
-        }
+        // Human-first: /overview works for both Agent viewer (X-Active-Agent
+        // header) and Human viewer (derived from Supabase JWT). The backend
+        // decides; we just need a valid token.
 
         set({ overviewRefreshing: true, overviewErrored: false });
         try {

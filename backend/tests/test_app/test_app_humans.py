@@ -649,6 +649,185 @@ async def test_invite_members_endpoint_409_on_duplicate(
 
 
 # ---------------------------------------------------------------------------
+# Phase 4 moderator endpoints: transfer / promote / remove / mute / permissions
+# ---------------------------------------------------------------------------
+
+
+async def _seat_human_as(
+    db_session: AsyncSession, room_id: str, human_id: str, role: RoomRole
+) -> None:
+    db_session.add(
+        RoomMember(
+            room_id=room_id,
+            agent_id=human_id,
+            participant_type=ParticipantType.human,
+            role=role,
+        )
+    )
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_moderator_transfer_ownership_to_human(
+    client, seed, db_session: AsyncSession
+):
+    """Owner can transfer to another Human member; roles swap atomically."""
+    _, bob_human_id, _ = await _seed_second_human(db_session, "Bob")
+    room_id = await _create_room_as(client, seed["token"], "Transferable")
+    await _seat_human_as(db_session, room_id, bob_human_id, RoomRole.member)
+
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/transfer",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"new_owner_id": bob_human_id},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["new_owner_id"] == bob_human_id
+    assert body["new_owner_type"] == "human"
+
+    room = (await db_session.execute(select(Room).where(Room.room_id == room_id))).scalar_one()
+    assert room.owner_id == bob_human_id
+    assert room.owner_type == ParticipantType.human
+
+    members = (
+        await db_session.execute(
+            select(RoomMember).where(RoomMember.room_id == room_id)
+        )
+    ).scalars().all()
+    roles = {m.agent_id: m.role for m in members}
+    assert roles[seed["human_id"]] == RoomRole.member
+    assert roles[bob_human_id] == RoomRole.owner
+
+
+@pytest.mark.asyncio
+async def test_moderator_promote_demote(client, seed, db_session: AsyncSession):
+    """Owner can promote a Human member to admin, then demote back."""
+    _, bob_human_id, _ = await _seed_second_human(db_session, "Bob")
+    room_id = await _create_room_as(client, seed["token"])
+    await _seat_human_as(db_session, room_id, bob_human_id, RoomRole.member)
+
+    promote = await client.post(
+        f"/api/humans/me/rooms/{room_id}/promote",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": bob_human_id, "role": "admin"},
+    )
+    assert promote.status_code == 200, promote.text
+    assert promote.json()["role"] == "admin"
+
+    demote = await client.post(
+        f"/api/humans/me/rooms/{room_id}/promote",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": bob_human_id, "role": "member"},
+    )
+    assert demote.status_code == 200
+    assert demote.json()["role"] == "member"
+
+
+@pytest.mark.asyncio
+async def test_moderator_remove_member(client, seed, db_session: AsyncSession):
+    """Owner can remove a member; owner cannot be removed."""
+    _, bob_human_id, _ = await _seed_second_human(db_session, "Bob")
+    room_id = await _create_room_as(client, seed["token"])
+    await _seat_human_as(db_session, room_id, bob_human_id, RoomRole.member)
+
+    # Remove bob
+    resp = await client.delete(
+        f"/api/humans/me/rooms/{room_id}/members/{bob_human_id}",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["removed"] is True
+
+    gone = (
+        await db_session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == bob_human_id,
+            )
+        )
+    ).scalar_one_or_none()
+    assert gone is None
+
+    # Owner (seed user) cannot be removed.
+    owner_del = await client.delete(
+        f"/api/humans/me/rooms/{room_id}/members/{seed['human_id']}",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert owner_del.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_moderator_mute(client, seed, db_session: AsyncSession):
+    """Caller toggles mute on their own Human membership."""
+    room_id = await _create_room_as(client, seed["token"])
+
+    on = await client.post(
+        f"/api/humans/me/rooms/{room_id}/mute",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"muted": True},
+    )
+    assert on.status_code == 200
+    assert on.json() == {"room_id": room_id, "muted": True}
+
+    row = (
+        await db_session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == seed["human_id"],
+            )
+        )
+    ).scalar_one()
+    assert row.muted is True
+
+
+@pytest.mark.asyncio
+async def test_moderator_permissions(client, seed, db_session: AsyncSession):
+    """Owner can set can_send/can_invite overrides on a member."""
+    _, bob_human_id, _ = await _seed_second_human(db_session, "Bob")
+    room_id = await _create_room_as(client, seed["token"])
+    await _seat_human_as(db_session, room_id, bob_human_id, RoomRole.member)
+
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/permissions",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": bob_human_id, "can_send": False, "can_invite": True},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["can_send"] is False
+    assert body["can_invite"] is True
+
+    row = (
+        await db_session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == bob_human_id,
+            )
+        )
+    ).scalar_one()
+    assert row.can_send is False
+    assert row.can_invite is True
+
+
+@pytest.mark.asyncio
+async def test_moderator_non_owner_cannot_transfer(
+    client, seed, db_session: AsyncSession
+):
+    """A Human admin is not owner, so they cannot transfer ownership."""
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+    room_id = await _create_room_as(client, seed["token"])
+    await _seat_human_as(db_session, room_id, bob_human_id, RoomRole.admin)
+
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/transfer",
+        headers={"Authorization": f"Bearer {bob_token}"},
+        json={"new_owner_id": bob_human_id},
+    )
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # Contact requests (Human-side accept/reject + listings)
 # ---------------------------------------------------------------------------
 

@@ -1,5 +1,5 @@
 /*
- * [INPUT]: 依赖 rooms/room_members/message_records/agents 表，按已加入房间聚合成员数与最近消息摘要
+ * [INPUT]: 依赖 rooms/room_members/message_records/agents/users 表，按已加入房间聚合成员数与最近消息摘要；支持以 hu_* 作为 viewer（room_members.agent_id 可能是 ag_* 或 hu_*），通过 left join users.human_id 解析 Human 发送者 display_name
  * [OUTPUT]: 对外提供 public.get_agent_room_previews(agent_id) SQL 函数，返回最近消息预览与 room 级未读状态
  * [POS]: frontend 登录态房间预览聚合层，为 /api/dashboard/overview 的会话列表提供单一数据源
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -78,7 +78,7 @@ as $$
       mr.room_id,
       mr.id,
       mr.sender_id as last_sender_id,
-      a.display_name as last_sender_name,
+      coalesce(a.display_name, u.display_name) as last_sender_name,
       mr.created_at as last_message_at,
       left(
         coalesce(
@@ -95,6 +95,7 @@ as $$
       ) as rn
     from message_records mr
     left join agents a on a.agent_id = mr.sender_id
+    left join users u on u.human_id = mr.sender_id
     where mr.room_id in (select room_id from member_rooms)
       and coalesce(mr.envelope_json::jsonb ->> 'type', 'message') not in ('ack', 'result', 'error')
   ),
