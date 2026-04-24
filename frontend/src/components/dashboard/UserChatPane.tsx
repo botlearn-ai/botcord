@@ -117,30 +117,35 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     animatedRef.current.clear();
     useOwnerChatStore.getState().reset();
 
-    api.getUserChatRoom(chatAgentId)
-      .then((room) => {
+    (async () => {
+      try {
+        const room = await api.getUserChatRoom(chatAgentId);
         if (cancelled) return;
         setChatRoomName(room.name);
         setUserChatRoomId(room.room_id);
         useOwnerChatStore.getState().setRoom(room.room_id, room.name || chatAgentId);
-        return useOwnerChatStore.getState().loadInitial(room.room_id);
-      })
-      .catch((err) => {
+        await useOwnerChatStore.getState().loadInitial(room.room_id);
+        if (cancelled) return;
+        // Historical messages must not replay the typewriter animation. Populate
+        // animatedRef synchronously here so the first render that sees them
+        // already considers them animated.
+        for (const msg of useOwnerChatStore.getState().messages) {
+          animatedRef.current.add(msg.clientId);
+        }
+        initialLoadRef.current = false;
+      } catch (err: any) {
         if (cancelled) return;
         setInitError(err?.message || "Failed to initialize chat");
-      });
+      }
+    })();
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatAgentId]);
 
-  // ------ Mark initial load messages as already animated ------
+  // ------ Scroll to bottom once initial messages render ------
   useEffect(() => {
-    if (!loading && initialLoadRef.current && messages.length > 0) {
-      for (const msg of messages) {
-        animatedRef.current.add(msg.clientId);
-      }
-      initialLoadRef.current = false;
+    if (!loading && messages.length > 0 && prevLengthRef.current === 0) {
       requestAnimationFrame(() => {
         const el = scrollContainerRef.current;
         if (el) el.scrollTop = el.scrollHeight;
@@ -441,7 +446,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                       animatedRef.current.add(msg.clientId);
                       streamedTraceIds.current.delete(msg.traceId!);
                     }
-                    const skipTypewriter = isUser || animatedRef.current.has(msg.clientId);
+                    const skipTypewriter = isUser || initialLoadRef.current || animatedRef.current.has(msg.clientId);
                     if (skipTypewriter) {
                       return <MarkdownContent content={msg.text || ""} />;
                     }
