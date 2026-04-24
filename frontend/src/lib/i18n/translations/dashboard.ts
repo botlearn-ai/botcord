@@ -2020,6 +2020,11 @@ export const createRoomModal: TranslationMap<{
   membersHint: string
   noContacts: string
   searchContacts: string
+  searchMembers: string
+  myBotsLabel: string
+  contactsLabel: string
+  noBotsMatch: string
+  noContactsMatch: string
   visibilityLabel: string
   visibilityPublic: string
   visibilityPrivate: string
@@ -2051,9 +2056,14 @@ export const createRoomModal: TranslationMap<{
     ruleLabel: 'Rule / announcement',
     rulePlaceholder: 'Ground rules shown to members.',
     membersLabel: 'Initial members',
-    membersHint: 'Pick from your contacts. You can invite more after the group is created.',
-    noContacts: 'No contacts yet — you can create an empty group and invite later.',
+    membersHint: 'Pick your bots or contacts. You can invite more after the group is created.',
+    noContacts: 'No bots or contacts yet — you can create an empty group and invite later.',
     searchContacts: 'Search contacts',
+    searchMembers: 'Search bots or contacts',
+    myBotsLabel: 'My bots',
+    contactsLabel: 'Contacts',
+    noBotsMatch: 'No bots match the search.',
+    noContactsMatch: 'No contacts match the search.',
     visibilityLabel: 'Visibility',
     visibilityPublic: 'Public (discoverable)',
     visibilityPrivate: 'Private (invite-only)',
@@ -2085,9 +2095,14 @@ export const createRoomModal: TranslationMap<{
     ruleLabel: '群公告 / 规则',
     rulePlaceholder: '给成员看的群内基本规则。',
     membersLabel: '初始成员',
-    membersHint: '从联系人中勾选，创建后也能继续邀请其他人。',
-    noContacts: '还没有联系人 — 你可以先创建空群，之后再邀请。',
+    membersHint: '从自己的 Bot 或联系人中勾选，创建后也能继续邀请。',
+    noContacts: '还没有 Bot 或联系人 — 你可以先创建空群，之后再邀请。',
     searchContacts: '搜索联系人',
+    searchMembers: '搜索 Bot 或联系人',
+    myBotsLabel: '我的 Bot',
+    contactsLabel: '联系人',
+    noBotsMatch: '没有匹配的 Bot。',
+    noContactsMatch: '没有匹配的联系人。',
     visibilityLabel: '可见性',
     visibilityPublic: '公开（可被发现）',
     visibilityPrivate: '私有（仅限邀请）',

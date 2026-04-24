@@ -31,6 +31,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const viewMode = useDashboardSessionStore((s) => s.viewMode);
   const human = useDashboardSessionStore((s) => s.human);
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
+  const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const identityReady = viewMode === "human" ? Boolean(human) : Boolean(activeAgentId);
 
   const [name, setName] = useState("");
@@ -57,6 +58,15 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
       (c.alias ?? "").toLowerCase().includes(q),
     );
   }, [contacts, memberQuery]);
+
+  const filteredBots = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    if (!q) return ownedAgents;
+    return ownedAgents.filter((a) =>
+      a.display_name.toLowerCase().includes(q) ||
+      a.agent_id.toLowerCase().includes(q),
+    );
+  }, [ownedAgents, memberQuery]);
 
   function toggleMember(id: string) {
     setSelected((prev) => {
@@ -181,7 +191,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
                 </span>
               </div>
               <p className="mb-2 text-[11px] text-text-secondary/70">{t.membersHint}</p>
-              {contacts.length === 0 ? (
+              {contacts.length === 0 && ownedAgents.length === 0 ? (
                 <p className="rounded border border-dashed border-glass-border px-3 py-3 text-xs text-text-secondary/70">
                   {t.noContacts}
                 </p>
@@ -192,36 +202,90 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
                     <input
                       value={memberQuery}
                       onChange={(e) => setMemberQuery(e.target.value)}
-                      placeholder={t.searchContacts}
+                      placeholder={t.searchMembers}
                       className="w-full bg-transparent py-1.5 text-xs text-text-primary outline-none"
                     />
                   </div>
-                  <div className="max-h-40 overflow-y-auto rounded border border-glass-border">
-                    {filteredContacts.map((c: ContactInfo) => {
-                      const checked = selected.has(c.contact_agent_id);
-                      return (
-                        <label
-                          key={c.contact_agent_id}
-                          className={`flex cursor-pointer items-center gap-2 border-b border-glass-border/60 px-3 py-2 text-xs last:border-b-0 ${
-                            checked ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleMember(c.contact_agent_id)}
-                            className="accent-neon-cyan"
-                          />
-                          <span className="flex-1 truncate text-text-primary">
-                            {c.alias || c.display_name}
-                          </span>
-                          <span className="font-mono text-[10px] text-text-secondary/70">
-                            {c.contact_agent_id}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+
+                  {ownedAgents.length > 0 && (
+                    <div className="mb-2">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary/60">
+                        {t.myBotsLabel}
+                      </p>
+                      <div className="max-h-40 overflow-y-auto rounded border border-glass-border">
+                        {filteredBots.length === 0 ? (
+                          <p className="px-3 py-2 text-[11px] text-text-secondary/60">
+                            {t.noBotsMatch}
+                          </p>
+                        ) : (
+                          filteredBots.map((a) => {
+                            const checked = selected.has(a.agent_id);
+                            return (
+                              <label
+                                key={a.agent_id}
+                                className={`flex cursor-pointer items-center gap-2 border-b border-glass-border/60 px-3 py-2 text-xs last:border-b-0 ${
+                                  checked ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleMember(a.agent_id)}
+                                  className="accent-neon-cyan"
+                                />
+                                <span className="flex-1 truncate text-text-primary">
+                                  {a.display_name}
+                                </span>
+                                <span className="font-mono text-[10px] text-text-secondary/70">
+                                  {a.agent_id}
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {contacts.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary/60">
+                        {t.contactsLabel}
+                      </p>
+                      <div className="max-h-40 overflow-y-auto rounded border border-glass-border">
+                        {filteredContacts.length === 0 ? (
+                          <p className="px-3 py-2 text-[11px] text-text-secondary/60">
+                            {t.noContactsMatch}
+                          </p>
+                        ) : (
+                          filteredContacts.map((c: ContactInfo) => {
+                            const checked = selected.has(c.contact_agent_id);
+                            return (
+                              <label
+                                key={c.contact_agent_id}
+                                className={`flex cursor-pointer items-center gap-2 border-b border-glass-border/60 px-3 py-2 text-xs last:border-b-0 ${
+                                  checked ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleMember(c.contact_agent_id)}
+                                  className="accent-neon-cyan"
+                                />
+                                <span className="flex-1 truncate text-text-primary">
+                                  {c.alias || c.display_name}
+                                </span>
+                                <span className="font-mono text-[10px] text-text-secondary/70">
+                                  {c.contact_agent_id}
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
