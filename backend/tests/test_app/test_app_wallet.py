@@ -138,7 +138,7 @@ async def seed_data(db_session: AsyncSession):
 
     # Give agent1 some balance
     wallet = WalletAccount(
-        agent_id="ag_wallet001",
+        owner_id="ag_wallet001",
         asset_code="COIN",
         available_balance_minor=10000,
         locked_balance_minor=0,

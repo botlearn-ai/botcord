@@ -191,7 +191,7 @@ async def _maybe_grant_claim_gift(
 
     await wallet_svc.create_grant(
         db,
-        agent_id=agent.agent_id,
+        owner_id=agent.agent_id,
         amount_minor=hub_config.CLAIM_GIFT_AMOUNT_MINOR,
         asset_code=hub_config.CLAIM_GIFT_ASSET_CODE,
         idempotency_key="claim-cold-start-gift-v1",

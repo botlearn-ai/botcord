@@ -680,15 +680,15 @@ class FileRecord(Base):
 class WalletAccount(Base):
     __tablename__ = "wallet_accounts"
     __table_args__ = (
-        UniqueConstraint("agent_id", "asset_code", name="uq_wallet_agent_asset"),
+        UniqueConstraint("owner_id", "asset_code", name="uq_wallet_owner_asset"),
         CheckConstraint("available_balance_minor >= 0", name="ck_wallet_available_nonneg"),
         CheckConstraint("locked_balance_minor >= 0", name="ck_wallet_locked_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
-    )
+    # Owner may be an agent (`ag_*`) or a human user (`hu_*`). No FK — the
+    # target table depends on prefix; validated in the service layer.
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
     available_balance_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     locked_balance_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
@@ -704,10 +704,9 @@ class WalletAccount(Base):
 class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
     __table_args__ = (
-        # Idempotency: scoped to (type, initiator_agent_id, idempotency_key).
-        # initiator_agent_id is from_agent_id for transfer/withdrawal, to_agent_id for topup.
-        # We use a computed-style approach: store the initiator in a dedicated column.
-        UniqueConstraint("type", "initiator_agent_id", "idempotency_key", name="uq_tx_idem"),
+        # Idempotency: scoped to (type, initiator_owner_id, idempotency_key).
+        # initiator_owner_id is from_owner_id for transfer/withdrawal, to_owner_id for topup.
+        UniqueConstraint("type", "initiator_owner_id", "idempotency_key", name="uq_tx_idem"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -717,11 +716,11 @@ class WalletTransaction(Base):
     asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     fee_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    from_agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
-    to_agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
-    initiator_agent_id: Mapped[str | None] = mapped_column(
+    from_owner_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    to_owner_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    initiator_owner_id: Mapped[str | None] = mapped_column(
         String(32), nullable=True, index=True,
-        doc="The agent who initiated the tx: from_agent_id for transfer/withdrawal, to_agent_id for topup"
+        doc="The owner who initiated the tx: from_owner_id for transfer/withdrawal, to_owner_id for topup"
     )
     reference_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     reference_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -746,9 +745,7 @@ class WalletEntry(Base):
     tx_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("wallet_transactions.tx_id"), nullable=False, index=True
     )
-    agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
-    )
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
     direction: Mapped[EntryDirection] = mapped_column(Enum(EntryDirection), nullable=False)
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -763,9 +760,7 @@ class TopupRequest(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     topup_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
-    )
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[TopupStatus] = mapped_column(
@@ -790,9 +785,7 @@ class WithdrawalRequest(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     withdrawal_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
-    )
+    owner_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     fee_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)

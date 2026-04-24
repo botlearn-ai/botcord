@@ -9,7 +9,7 @@ import datetime
 import json
 import logging
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,19 +44,19 @@ logger = logging.getLogger(__name__)
 
 
 async def get_or_create_wallet(
-    session: AsyncSession, agent_id: str, asset_code: str = "COIN"
+    session: AsyncSession, owner_id: str, asset_code: str = "COIN"
 ) -> WalletAccount:
     """Return existing wallet or create a zero-balance wallet."""
     result = await session.execute(
         select(WalletAccount).where(
-            WalletAccount.agent_id == agent_id,
+            WalletAccount.owner_id == owner_id,
             WalletAccount.asset_code == asset_code,
         )
     )
     wallet = result.scalar_one_or_none()
     if wallet is not None:
         return wallet
-    wallet = WalletAccount(agent_id=agent_id, asset_code=asset_code)
+    wallet = WalletAccount(owner_id=owner_id, asset_code=asset_code)
     session.add(wallet)
     await session.flush()
     return wallet
@@ -67,7 +67,7 @@ def _is_sqlite(session: AsyncSession) -> bool:
 
 
 async def _lock_wallet(
-    session: AsyncSession, agent_id: str, asset_code: str = "COIN"
+    session: AsyncSession, owner_id: str, asset_code: str = "COIN"
 ) -> WalletAccount:
     """SELECT ... FOR UPDATE on the wallet row. Creates wallet if missing.
 
@@ -77,7 +77,7 @@ async def _lock_wallet(
     sqlite = _is_sqlite(session)
 
     stmt = select(WalletAccount).where(
-        WalletAccount.agent_id == agent_id,
+        WalletAccount.owner_id == owner_id,
         WalletAccount.asset_code == asset_code,
     )
     if not sqlite:
@@ -86,7 +86,7 @@ async def _lock_wallet(
     result = await session.execute(stmt)
     wallet = result.scalar_one_or_none()
     if wallet is None:
-        wallet = WalletAccount(agent_id=agent_id, asset_code=asset_code)
+        wallet = WalletAccount(owner_id=owner_id, asset_code=asset_code)
         session.add(wallet)
         await session.flush()
         # Re-lock after creation (for PG)
@@ -94,7 +94,7 @@ async def _lock_wallet(
             result = await session.execute(
                 select(WalletAccount)
                 .where(
-                    WalletAccount.agent_id == agent_id,
+                    WalletAccount.owner_id == owner_id,
                     WalletAccount.asset_code == asset_code,
                 )
                 .with_for_update()
@@ -106,7 +106,7 @@ async def _lock_wallet(
 def _write_entry(
     session: AsyncSession,
     tx_id: str,
-    agent_id: str,
+    owner_id: str,
     asset_code: str,
     direction: EntryDirection,
     amount_minor: int,
@@ -115,7 +115,7 @@ def _write_entry(
     entry = WalletEntry(
         entry_id=generate_wallet_entry_id(),
         tx_id=tx_id,
-        agent_id=agent_id,
+        owner_id=owner_id,
         asset_code=asset_code,
         direction=direction,
         amount_minor=amount_minor,
@@ -131,22 +131,22 @@ def _write_entry(
 
 
 async def get_wallet_summary(
-    session: AsyncSession, agent_id: str, asset_code: str = "COIN"
+    session: AsyncSession, owner_id: str, asset_code: str = "COIN"
 ) -> WalletAccount:
     """Return wallet summary (creates a zero-balance wallet if none exists)."""
-    return await get_or_create_wallet(session, agent_id, asset_code)
+    return await get_or_create_wallet(session, owner_id, asset_code)
 
 
 async def list_wallet_ledger(
     session: AsyncSession,
-    agent_id: str,
+    owner_id: str,
     *,
     asset_code: str = "COIN",
     tx_type: str | None = None,
     cursor: str | None = None,
     limit: int = 50,
 ) -> tuple[list[tuple[WalletEntry, WalletTransaction | None]], str | None, bool]:
-    """Return paginated ledger entries for an agent.
+    """Return paginated ledger entries for an owner.
 
     Returns (entries, next_cursor, has_more).
     """
@@ -156,7 +156,7 @@ async def list_wallet_ledger(
         select(WalletEntry, WalletTransaction)
         .outerjoin(WalletTransaction, WalletEntry.tx_id == WalletTransaction.tx_id)
         .where(
-            WalletEntry.agent_id == agent_id,
+            WalletEntry.owner_id == owner_id,
             WalletEntry.asset_code == asset_code,
         )
         .order_by(WalletEntry.id.desc())
@@ -203,7 +203,7 @@ async def get_transaction(
 
 async def create_grant(
     session: AsyncSession,
-    agent_id: str,
+    owner_id: str,
     amount_minor: int,
     *,
     idempotency_key: str | None = None,
@@ -213,14 +213,14 @@ async def create_grant(
     metadata: dict | None = None,
     asset_code: str = "COIN",
 ) -> WalletTransaction:
-    """Credit an agent directly from the system treasury."""
+    """Credit an owner directly from the system treasury."""
 
     if idempotency_key:
         existing = await session.execute(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.grant,
-                WalletTransaction.initiator_agent_id == agent_id,
+                WalletTransaction.initiator_owner_id == owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -230,11 +230,11 @@ async def create_grant(
     if amount_minor <= 0:
         raise ValueError("Amount must be positive")
 
-    recipient = await session.execute(select(Agent).where(Agent.agent_id == agent_id))
+    recipient = await session.execute(select(Agent).where(Agent.agent_id == owner_id))
     if recipient.scalar_one_or_none() is None:
         raise ValueError("Recipient agent not found")
 
-    wallet = await _lock_wallet(session, agent_id, asset_code)
+    wallet = await _lock_wallet(session, owner_id, asset_code)
     now = datetime.datetime.now(datetime.timezone.utc)
     tx_id = generate_tx_id()
     metadata_obj = dict(metadata or {})
@@ -252,9 +252,9 @@ async def create_grant(
         asset_code=asset_code,
         amount_minor=amount_minor,
         fee_minor=0,
-        from_agent_id=None,
-        to_agent_id=agent_id,
-        initiator_agent_id=agent_id,
+        from_owner_id=None,
+        to_owner_id=owner_id,
+        initiator_owner_id=owner_id,
         idempotency_key=idempotency_key,
         reference_type=reference_type,
         reference_id=reference_id,
@@ -270,7 +270,7 @@ async def create_grant(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.grant,
-                WalletTransaction.initiator_agent_id == agent_id,
+                WalletTransaction.initiator_owner_id == owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -283,7 +283,7 @@ async def create_grant(
     _write_entry(
         session,
         tx_id,
-        agent_id,
+        owner_id,
         asset_code,
         EntryDirection.credit,
         amount_minor,
@@ -299,8 +299,8 @@ async def create_grant(
 
 async def create_transfer(
     session: AsyncSession,
-    from_agent_id: str,
-    to_agent_id: str,
+    from_owner_id: str,
+    to_owner_id: str,
     amount_minor: int,
     *,
     idempotency_key: str | None = None,
@@ -318,7 +318,7 @@ async def create_transfer(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.transfer,
-                WalletTransaction.initiator_agent_id == from_agent_id,
+                WalletTransaction.initiator_owner_id == from_owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -326,26 +326,26 @@ async def create_transfer(
             return tx
 
     # Validations
-    if from_agent_id == to_agent_id:
+    if from_owner_id == to_owner_id:
         raise ValueError("Cannot transfer to yourself")
     if amount_minor <= 0:
         raise ValueError("Amount must be positive")
 
     # Verify recipient exists
     recipient = await session.execute(
-        select(Agent).where(Agent.agent_id == to_agent_id)
+        select(Agent).where(Agent.agent_id == to_owner_id)
     )
     if recipient.scalar_one_or_none() is None:
         raise ValueError("Recipient agent not found")
 
     # Lock wallets (consistent ordering to avoid deadlock)
-    ids_sorted = sorted([from_agent_id, to_agent_id])
+    ids_sorted = sorted([from_owner_id, to_owner_id])
     wallets = {}
-    for aid in ids_sorted:
-        wallets[aid] = await _lock_wallet(session, aid, asset_code)
+    for oid in ids_sorted:
+        wallets[oid] = await _lock_wallet(session, oid, asset_code)
 
-    sender_wallet = wallets[from_agent_id]
-    receiver_wallet = wallets[to_agent_id]
+    sender_wallet = wallets[from_owner_id]
+    receiver_wallet = wallets[to_owner_id]
 
     if sender_wallet.available_balance_minor < amount_minor:
         raise ValueError("Insufficient balance")
@@ -368,9 +368,9 @@ async def create_transfer(
         asset_code=asset_code,
         amount_minor=amount_minor,
         fee_minor=0,
-        from_agent_id=from_agent_id,
-        to_agent_id=to_agent_id,
-        initiator_agent_id=from_agent_id,
+        from_owner_id=from_owner_id,
+        to_owner_id=to_owner_id,
+        initiator_owner_id=from_owner_id,
         idempotency_key=idempotency_key,
         reference_type=reference_type,
         reference_id=reference_id,
@@ -387,7 +387,7 @@ async def create_transfer(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.transfer,
-                WalletTransaction.initiator_agent_id == from_agent_id,
+                WalletTransaction.initiator_owner_id == from_owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -399,7 +399,7 @@ async def create_transfer(
     sender_wallet.available_balance_minor -= amount_minor
     sender_wallet.version += 1
     _write_entry(
-        session, tx_id, from_agent_id, asset_code,
+        session, tx_id, from_owner_id, asset_code,
         EntryDirection.debit, amount_minor,
         sender_wallet.available_balance_minor + sender_wallet.locked_balance_minor,
     )
@@ -408,7 +408,7 @@ async def create_transfer(
     receiver_wallet.available_balance_minor += amount_minor
     receiver_wallet.version += 1
     _write_entry(
-        session, tx_id, to_agent_id, asset_code,
+        session, tx_id, to_owner_id, asset_code,
         EntryDirection.credit, amount_minor,
         receiver_wallet.available_balance_minor + receiver_wallet.locked_balance_minor,
     )
@@ -424,7 +424,7 @@ async def create_transfer(
 
 async def create_topup_request(
     session: AsyncSession,
-    agent_id: str,
+    owner_id: str,
     amount_minor: int,
     *,
     channel: str = "mock",
@@ -442,7 +442,7 @@ async def create_topup_request(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.topup,
-                WalletTransaction.initiator_agent_id == agent_id,
+                WalletTransaction.initiator_owner_id == owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -464,8 +464,8 @@ async def create_topup_request(
         asset_code=asset_code,
         amount_minor=amount_minor,
         fee_minor=0,
-        to_agent_id=agent_id,
-        initiator_agent_id=agent_id,
+        to_owner_id=owner_id,
+        initiator_owner_id=owner_id,
         idempotency_key=idempotency_key,
         metadata_json=json.dumps(metadata) if metadata else None,
     )
@@ -478,7 +478,7 @@ async def create_topup_request(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.topup,
-                WalletTransaction.initiator_agent_id == agent_id,
+                WalletTransaction.initiator_owner_id == owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -493,7 +493,7 @@ async def create_topup_request(
 
     topup = TopupRequest(
         topup_id=topup_id,
-        agent_id=agent_id,
+        owner_id=owner_id,
         asset_code=asset_code,
         amount_minor=amount_minor,
         status=TopupStatus.pending,
@@ -523,7 +523,7 @@ async def complete_topup_request(
         raise ValueError(f"Topup is not pending (current: {topup.status.value})")
 
     # Lock wallet and credit
-    wallet = await _lock_wallet(session, topup.agent_id, topup.asset_code)
+    wallet = await _lock_wallet(session, topup.owner_id, topup.asset_code)
     wallet.available_balance_minor += topup.amount_minor
     wallet.version += 1
 
@@ -541,7 +541,7 @@ async def complete_topup_request(
 
     # Write ledger entry
     _write_entry(
-        session, tx.tx_id, topup.agent_id, topup.asset_code,
+        session, tx.tx_id, topup.owner_id, topup.asset_code,
         EntryDirection.credit, topup.amount_minor,
         wallet.available_balance_minor + wallet.locked_balance_minor,
     )
@@ -585,7 +585,7 @@ async def fail_topup_request(
 
 async def create_withdrawal_request(
     session: AsyncSession,
-    agent_id: str,
+    owner_id: str,
     amount_minor: int,
     *,
     fee_minor: int = 0,
@@ -608,7 +608,7 @@ async def create_withdrawal_request(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.withdrawal,
-                WalletTransaction.initiator_agent_id == agent_id,
+                WalletTransaction.initiator_owner_id == owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -623,7 +623,7 @@ async def create_withdrawal_request(
                 return wd, tx
 
     # Lock wallet
-    wallet = await _lock_wallet(session, agent_id, asset_code)
+    wallet = await _lock_wallet(session, owner_id, asset_code)
     if wallet.available_balance_minor < total:
         raise ValueError("Insufficient balance")
 
@@ -642,8 +642,8 @@ async def create_withdrawal_request(
         asset_code=asset_code,
         amount_minor=amount_minor,
         fee_minor=fee_minor,
-        from_agent_id=agent_id,
-        initiator_agent_id=agent_id,
+        from_owner_id=owner_id,
+        initiator_owner_id=owner_id,
         idempotency_key=idempotency_key,
     )
     session.add(tx)
@@ -655,7 +655,7 @@ async def create_withdrawal_request(
             select(WalletTransaction).where(
                 WalletTransaction.idempotency_key == idempotency_key,
                 WalletTransaction.type == TxType.withdrawal,
-                WalletTransaction.initiator_agent_id == agent_id,
+                WalletTransaction.initiator_owner_id == owner_id,
             )
         )
         tx = existing.scalar_one_or_none()
@@ -672,7 +672,7 @@ async def create_withdrawal_request(
 
     wd = WithdrawalRequest(
         withdrawal_id=withdrawal_id,
-        agent_id=agent_id,
+        owner_id=owner_id,
         asset_code=asset_code,
         amount_minor=amount_minor,
         fee_minor=fee_minor,
@@ -739,7 +739,7 @@ async def reject_withdrawal_request(
     total = wd.amount_minor + wd.fee_minor
 
     # Unlock balance
-    wallet = await _lock_wallet(session, wd.agent_id, wd.asset_code)
+    wallet = await _lock_wallet(session, wd.owner_id, wd.asset_code)
     wallet.locked_balance_minor -= total
     wallet.available_balance_minor += total
     wallet.version += 1
@@ -780,7 +780,7 @@ async def complete_withdrawal_request(
     total = wd.amount_minor + wd.fee_minor
 
     # Deduct locked balance
-    wallet = await _lock_wallet(session, wd.agent_id, wd.asset_code)
+    wallet = await _lock_wallet(session, wd.owner_id, wd.asset_code)
     wallet.locked_balance_minor -= total
     wallet.version += 1
 
@@ -798,7 +798,7 @@ async def complete_withdrawal_request(
 
     # Write ledger entry
     _write_entry(
-        session, tx.tx_id, wd.agent_id, wd.asset_code,
+        session, tx.tx_id, wd.owner_id, wd.asset_code,
         EntryDirection.debit, total,
         wallet.available_balance_minor + wallet.locked_balance_minor,
     )
@@ -808,9 +808,9 @@ async def complete_withdrawal_request(
 
 
 async def cancel_withdrawal_request(
-    session: AsyncSession, withdrawal_id: str, agent_id: str
+    session: AsyncSession, withdrawal_id: str, owner_id: str
 ) -> WithdrawalRequest:
-    """Cancel a pending withdrawal — unlock balance. Only the requesting agent can cancel."""
+    """Cancel a pending withdrawal — unlock balance. Only the requesting owner can cancel."""
     sqlite = _is_sqlite(session)
     stmt = select(WithdrawalRequest).where(
         WithdrawalRequest.withdrawal_id == withdrawal_id
@@ -821,7 +821,7 @@ async def cancel_withdrawal_request(
     wd = result.scalar_one_or_none()
     if wd is None:
         raise ValueError("Withdrawal request not found")
-    if wd.agent_id != agent_id:
+    if wd.owner_id != owner_id:
         raise ValueError("Not authorized to cancel this withdrawal")
     if wd.status != WithdrawalStatus.pending:
         raise ValueError(f"Withdrawal is not pending (current: {wd.status.value})")
@@ -829,7 +829,7 @@ async def cancel_withdrawal_request(
     total = wd.amount_minor + wd.fee_minor
 
     # Unlock balance
-    wallet = await _lock_wallet(session, wd.agent_id, wd.asset_code)
+    wallet = await _lock_wallet(session, wd.owner_id, wd.asset_code)
     wallet.locked_balance_minor -= total
     wallet.available_balance_minor += total
     wallet.version += 1

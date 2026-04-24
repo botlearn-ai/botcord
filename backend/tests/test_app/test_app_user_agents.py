@@ -367,7 +367,7 @@ async def test_claim_resolve_success(client: AsyncClient, seed_user: dict, db_se
 
     grant_result = await db_session.execute(
         select(WalletTransaction).where(
-            WalletTransaction.to_agent_id == "ag_unclaimed01",
+            WalletTransaction.to_owner_id == "ag_unclaimed01",
             WalletTransaction.type == TxType.grant,
         )
     )
@@ -586,7 +586,7 @@ async def test_claim_gift_skips_after_window(
     assert resp.status_code == 201
     tx_count = await db_session.execute(
         select(func.count()).select_from(WalletTransaction).where(
-            WalletTransaction.to_agent_id == "ag_windowclosed1",
+            WalletTransaction.to_owner_id == "ag_windowclosed1",
             WalletTransaction.type == TxType.grant,
         )
     )

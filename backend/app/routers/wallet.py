@@ -47,7 +47,7 @@ router = APIRouter(prefix="/api/wallet", tags=["app-wallet"])
 def _wallet_summary(wallet) -> dict:
     total = wallet.available_balance_minor + wallet.locked_balance_minor
     return {
-        "agent_id": wallet.agent_id,
+        "agent_id": wallet.owner_id,
         "asset_code": wallet.asset_code,
         "available_balance_minor": str(wallet.available_balance_minor),
         "locked_balance_minor": str(wallet.locked_balance_minor),
@@ -64,8 +64,8 @@ def _tx_response(tx) -> dict:
         "asset_code": tx.asset_code,
         "amount_minor": str(tx.amount_minor),
         "fee_minor": str(tx.fee_minor),
-        "from_agent_id": tx.from_agent_id,
-        "to_agent_id": tx.to_agent_id,
+        "from_agent_id": tx.from_owner_id,
+        "to_agent_id": tx.to_owner_id,
         "reference_type": tx.reference_type,
         "reference_id": tx.reference_id,
         "idempotency_key": tx.idempotency_key,
@@ -80,7 +80,7 @@ def _topup_response(topup, tx) -> dict:
     return {
         "topup_id": topup.topup_id,
         "tx_id": tx.tx_id if tx else topup.tx_id,
-        "agent_id": topup.agent_id,
+        "agent_id": topup.owner_id,
         "asset_code": topup.asset_code,
         "amount_minor": str(topup.amount_minor),
         "status": topup.status.value if hasattr(topup.status, "value") else str(topup.status),
@@ -94,7 +94,7 @@ def _withdrawal_response(wd) -> dict:
     return {
         "withdrawal_id": wd.withdrawal_id,
         "tx_id": wd.tx_id,
-        "agent_id": wd.agent_id,
+        "agent_id": wd.owner_id,
         "asset_code": wd.asset_code,
         "amount_minor": str(wd.amount_minor),
         "fee_minor": str(wd.fee_minor),
@@ -176,8 +176,8 @@ async def create_transfer(
     try:
         tx = await wallet_svc.create_transfer(
             db,
-            from_agent_id=ctx.active_agent_id,
-            to_agent_id=body.to_agent_id,
+            from_owner_id=ctx.active_agent_id,
+            to_owner_id=body.to_agent_id,
             amount_minor=amount,
             memo=body.memo,
             reference_type=body.reference_type,
@@ -236,7 +236,7 @@ async def list_withdrawals(
 ):
     result = await db.execute(
         select(WithdrawalRequest)
-        .where(WithdrawalRequest.agent_id == ctx.active_agent_id)
+        .where(WithdrawalRequest.owner_id == ctx.active_agent_id)
         .order_by(WithdrawalRequest.created_at.desc())
         .limit(20)
     )
@@ -308,7 +308,7 @@ async def get_transaction(
         raise HTTPException(status_code=404, detail="Transaction not found")
 
     # Authorization: agent must be sender or receiver
-    if ctx.active_agent_id not in (tx.from_agent_id, tx.to_agent_id):
+    if ctx.active_agent_id not in (tx.from_owner_id, tx.to_owner_id):
         raise HTTPException(status_code=403, detail="Not authorized to view this transaction")
 
     return _tx_response(tx)
