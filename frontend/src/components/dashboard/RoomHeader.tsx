@@ -457,6 +457,7 @@ export default function RoomHeader() {
           initialVisibility={room.visibility}
           initialJoinPolicy={room.join_policy}
           initialSubscriptionProductId={room.required_subscription_product_id ?? null}
+          initialAllowHumanSend={authRoom?.allow_human_send !== false}
           isOwner={authRoom?.my_role === "owner"}
           onClose={() => setShowSettingsModal(false)}
         />
