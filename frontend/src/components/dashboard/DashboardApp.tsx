@@ -424,7 +424,11 @@ export default function DashboardApp() {
 
   // Eagerly register userChatRoomId so realtime events are always routed to the user-chat pane
   useEffect(() => {
-    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) return;
+    if (
+      sessionStore.sessionMode !== "authed-ready"
+      || !sessionStore.activeAgentId
+      || sessionStore.activeIdentity?.type !== "agent"
+    ) return;
 
     let cancelled = false;
     api.getUserChatRoom().then((room) => {
@@ -432,7 +436,12 @@ export default function DashboardApp() {
     }).catch(() => { /* ignore — UserChatPane will retry on mount */ });
 
     return () => { cancelled = true; };
-  }, [sessionStore.sessionMode, sessionStore.activeAgentId, uiStore.setUserChatRoomId]);
+  }, [
+    sessionStore.sessionMode,
+    sessionStore.activeAgentId,
+    sessionStore.activeIdentity?.type,
+    uiStore.setUserChatRoomId,
+  ]);
 
   useEffect(() => {
     // Phase 6 Human-first: pick the realtime anchor from activeIdentity.

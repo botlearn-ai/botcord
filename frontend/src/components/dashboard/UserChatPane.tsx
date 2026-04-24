@@ -64,7 +64,8 @@ function TypewriterText({
 // ---------------------------------------------------------------------------
 
 export default function UserChatPane() {
-  const { activeAgentId } = useDashboardSessionStore();
+  const { activeAgentId, activeIdentity } = useDashboardSessionStore();
+  const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
   const { setUserChatRoomId } = useDashboardUIStore();
 
   // Owner-chat store
@@ -88,16 +89,16 @@ export default function UserChatPane() {
   const wasNearBottomRef = useRef(true);
   const [, forceRender] = useState(0);
 
-  // WS hook
+  // WS hook — only when acting as an agent; human-mode keeps the hook idle.
   const { wsClientRef, streamedTraceIds } = useOwnerChatWs({
-    activeAgentId,
+    activeAgentId: isAgentMode ? activeAgentId : null,
     roomId,
     agentName: chatRoomName || activeAgentId || "",
   });
 
   // ------ Initialize chat room and load messages ------
   useEffect(() => {
-    if (!activeAgentId) return;
+    if (!isAgentMode) return;
     let cancelled = false;
 
     // Reset store for fresh agent
@@ -118,7 +119,7 @@ export default function UserChatPane() {
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAgentId]);
+  }, [activeAgentId, isAgentMode]);
 
   // ------ Mark initial load messages as already animated ------
   useEffect(() => {
@@ -268,10 +269,10 @@ export default function UserChatPane() {
 
   // ------ Render guards ------
 
-  if (!activeAgentId) {
+  if (!isAgentMode) {
     return (
       <div className="flex items-center justify-center h-full text-zinc-500">
-        <p>Select an agent to start chatting</p>
+        <p>Switch to an agent identity to start chatting</p>
       </div>
     );
   }
