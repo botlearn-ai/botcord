@@ -13,11 +13,12 @@ import type {
   DashboardOverview,
   DashboardRoom,
   DiscoverRoom,
+  HumanAgentRoomSummary,
   PublicHumanProfile,
   PublicRoom,
   RealtimeMetaEvent,
 } from "@/lib/types";
-import { api } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
 import {
   buildVisibleMessageRooms,
   roomMessagesInFlight,
@@ -59,6 +60,33 @@ function applyRealtimeRoomHint<T extends {
   };
 }
 
+function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
+  return {
+    room_id: room.room_id,
+    name: room.name,
+    description: room.description ?? "",
+    owner_id: room.owner_id,
+    visibility: room.visibility,
+    join_policy: room.join_policy ?? undefined,
+    can_invite: undefined,
+    member_count: room.member_count,
+    my_role: room.bots[0]?.role ?? "member",
+    created_at: room.created_at ?? null,
+    rule: room.rule,
+    required_subscription_product_id: room.required_subscription_product_id ?? null,
+    last_viewed_at: null,
+    has_unread: false,
+    last_message_preview: room.last_message_preview,
+    last_message_at: room.last_message_at,
+    last_sender_name: room.last_sender_name,
+    allow_human_send: room.allow_human_send ?? undefined,
+  };
+}
+
+export function mapOwnedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
+  return ownedAgentRoomToDashboardRoom(room);
+}
+
 interface DashboardChatState {
   boundAgentId: string | null;
   overviewRefreshing: boolean;
@@ -89,6 +117,9 @@ interface DashboardChatState {
   publicHumansLoading: boolean;
   publicHumansLoaded: boolean;
   recentVisitedRooms: PublicRoom[];
+  ownedAgentRooms: HumanAgentRoomSummary[];
+  ownedAgentRoomsLoading: boolean;
+  ownedAgentRoomsLoaded: boolean;
 
   setError: (error: string | null) => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
@@ -117,6 +148,7 @@ interface DashboardChatState {
   loadPublicRoomDetail: (roomId: string) => Promise<PublicRoom | null>;
   loadPublicAgents: (q?: string) => Promise<void>;
   loadPublicHumans: (q?: string) => Promise<void>;
+  loadOwnedAgentRooms: () => Promise<void>;
   switchActiveAgent: (agentId: string) => Promise<void>;
 }
 
@@ -150,6 +182,9 @@ const initialChatState = {
   publicHumansLoading: false,
   publicHumansLoaded: false,
   recentVisitedRooms: [],
+  ownedAgentRooms: [],
+  ownedAgentRoomsLoading: false,
+  ownedAgentRoomsLoaded: false,
 };
 
 function hasTransientChatState(state: DashboardChatState): boolean {
@@ -173,6 +208,7 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || state.leavingRoomId !== null
     || state.publicRoomsLoading
     || state.publicAgentsLoading
+    || state.ownedAgentRoomsLoading
   );
 }
 
@@ -257,7 +293,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         const publicRoom = state.publicRooms.find((room) => room.room_id === roomId) || state.publicRoomDetails[roomId];
         if (publicRoom) return toRoomSummary(publicRoom);
         const recentRoom = state.recentVisitedRooms.find((room) => room.room_id === roomId);
-        return recentRoom ? toRoomSummary(recentRoom) : null;
+        if (recentRoom) return toRoomSummary(recentRoom);
+        const ownedAgentRoom = state.ownedAgentRooms.find((room) => room.room_id === roomId);
+        return ownedAgentRoom ? ownedAgentRoomToDashboardRoom(ownedAgentRoom) : null;
       },
 
       getVisibleMessageRooms: () =>
@@ -298,6 +336,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           recentVisitedRooms: event.room_id
             ? state.recentVisitedRooms.map((room) => applyRealtimeRoomHint(room, event))
             : state.recentVisitedRooms,
+          ownedAgentRooms: event.room_id
+            ? state.ownedAgentRooms.map((room) => applyRealtimeRoomHint(room, event))
+            : state.ownedAgentRooms,
         })),
 
       replaceOverview: (overview) => {
@@ -588,6 +629,29 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         } catch {
           if (requestId !== publicHumansRequestSeq) return;
           set({ publicHumansLoading: false, publicHumansLoaded: true });
+        }
+      },
+
+      loadOwnedAgentRooms: async () => {
+        const { token, activeIdentity } = useDashboardSessionStore.getState();
+        if (!token || activeIdentity?.type !== "human") {
+          set({ ownedAgentRooms: [], ownedAgentRoomsLoading: false, ownedAgentRoomsLoaded: true });
+          return;
+        }
+        set({ ownedAgentRoomsLoading: true });
+        try {
+          const result = await humansApi.listAgentRooms();
+          set({
+            ownedAgentRooms: result.rooms,
+            ownedAgentRoomsLoading: false,
+            ownedAgentRoomsLoaded: true,
+          });
+        } catch (error) {
+          set({
+            ownedAgentRoomsLoading: false,
+            ownedAgentRoomsLoaded: true,
+          });
+          get().setError(error instanceof Error ? error.message : "Failed to load bot rooms");
         }
       },
 

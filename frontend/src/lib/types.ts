@@ -845,6 +845,34 @@ export interface HumanRoomListResponse {
   rooms: HumanRoomSummary[];
 }
 
+export interface HumanAgentRoomBot {
+  agent_id: string;
+  display_name: string;
+  role: string;
+}
+
+export interface HumanAgentRoomSummary {
+  room_id: string;
+  name: string;
+  description: string | null;
+  rule: string | null;
+  owner_id: string;
+  visibility: string;
+  join_policy?: string | null;
+  member_count: number;
+  created_at?: string | null;
+  required_subscription_product_id?: string | null;
+  last_message_preview: string | null;
+  last_message_at: string | null;
+  last_sender_name: string | null;
+  allow_human_send?: boolean | null;
+  bots: HumanAgentRoomBot[];
+}
+
+export interface HumanAgentRoomListResponse {
+  rooms: HumanAgentRoomSummary[];
+}
+
 export interface HumanContactSummary {
   peer_id: string;
   peer_type: ParticipantType;

@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
+from app.routers.dashboard import _build_rooms_from_sql
 from hub.database import get_db
 from hub.enums import (
     ApprovalKind,
@@ -83,6 +84,34 @@ class HumanRoomSummary(BaseModel):
 
 class HumanRoomListResponse(BaseModel):
     rooms: list[HumanRoomSummary]
+
+
+class HumanAgentRoomBot(BaseModel):
+    agent_id: str
+    display_name: str
+    role: str
+
+
+class HumanAgentRoomSummary(BaseModel):
+    room_id: str
+    name: str
+    description: str | None
+    rule: str | None = None
+    owner_id: str
+    visibility: str
+    join_policy: str | None = None
+    member_count: int
+    created_at: str | None = None
+    required_subscription_product_id: str | None = None
+    last_message_preview: str | None = None
+    last_message_at: str | None = None
+    last_sender_name: str | None = None
+    allow_human_send: bool | None = None
+    bots: list[HumanAgentRoomBot]
+
+
+class HumanAgentRoomListResponse(BaseModel):
+    rooms: list[HumanAgentRoomSummary]
 
 
 class CreateHumanRoomBody(BaseModel):
@@ -416,6 +445,88 @@ async def list_human_rooms(
             )
         )
     return HumanRoomListResponse(rooms=rooms)
+
+
+@router.get("/me/agent-rooms", response_model=HumanAgentRoomListResponse)
+async def list_owned_agent_only_rooms(
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rooms joined by the user's Agents, excluding rooms joined/owned by the Human."""
+    user = await _load_human(db, ctx)
+    human_id = user.human_id
+
+    agent_result = await db.execute(
+        select(Agent.agent_id, Agent.display_name)
+        .where(Agent.user_id == ctx.user_id)
+        .order_by(Agent.created_at)
+    )
+    owned_agents = agent_result.all()
+    if not owned_agents:
+        return HumanAgentRoomListResponse(rooms=[])
+
+    agent_names = {agent_id: display_name for agent_id, display_name in owned_agents}
+    rooms_by_id: dict[str, dict] = {}
+    bots_by_room: dict[str, dict[str, HumanAgentRoomBot]] = {}
+
+    for agent_id, display_name in owned_agents:
+        previews = await _build_rooms_from_sql(agent_id, db)
+        for preview in previews:
+            room_id = preview.get("room_id")
+            if not isinstance(room_id, str) or not room_id:
+                continue
+            rooms_by_id.setdefault(room_id, preview)
+            role = preview.get("my_role") or "member"
+            bots_by_room.setdefault(room_id, {})[agent_id] = HumanAgentRoomBot(
+                agent_id=agent_id,
+                display_name=display_name or agent_id,
+                role=str(role),
+            )
+
+    if not rooms_by_id:
+        return HumanAgentRoomListResponse(rooms=[])
+
+    room_ids = list(rooms_by_id.keys())
+    human_membership_result = await db.execute(
+        select(RoomMember.room_id)
+        .where(
+            RoomMember.room_id.in_(room_ids),
+            RoomMember.agent_id == human_id,
+            RoomMember.participant_type == ParticipantType.human,
+        )
+    )
+    human_member_room_ids = {row[0] for row in human_membership_result.all()}
+
+    response_rooms: list[HumanAgentRoomSummary] = []
+    for room_id, preview in rooms_by_id.items():
+        owner_id = str(preview.get("owner_id") or "")
+        if room_id in human_member_room_ids or owner_id == human_id:
+            continue
+        bots = list(bots_by_room.get(room_id, {}).values())
+        if not bots:
+            continue
+        response_rooms.append(
+            HumanAgentRoomSummary(
+                room_id=room_id,
+                name=str(preview.get("name") or room_id),
+                description=preview.get("description"),
+                rule=preview.get("rule"),
+                owner_id=owner_id,
+                visibility=str(preview.get("visibility") or ""),
+                join_policy=preview.get("join_policy"),
+                member_count=int(preview.get("member_count") or 0),
+                created_at=preview.get("created_at"),
+                required_subscription_product_id=preview.get("required_subscription_product_id"),
+                last_message_preview=preview.get("last_message_preview"),
+                last_message_at=preview.get("last_message_at"),
+                last_sender_name=preview.get("last_sender_name"),
+                allow_human_send=preview.get("allow_human_send"),
+                bots=sorted(bots, key=lambda bot: agent_names.get(bot.agent_id) or bot.agent_id),
+            )
+        )
+
+    response_rooms.sort(key=lambda room: room.last_message_at or room.created_at or "", reverse=True)
+    return HumanAgentRoomListResponse(rooms=response_rooms)
 
 
 @router.post("/me/rooms", response_model=HumanRoomSummary, status_code=201)
