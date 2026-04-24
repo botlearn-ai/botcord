@@ -5,6 +5,7 @@
 成员清单
 __init__.py: 路由包标记文件，保持 `app.routers` 可导入。  
 dashboard.py: `/api/dashboard` BFF，聚合 overview、联系人、房间、分享与消息读取。  
+humans.py: `/api/humans` Human BFF，管理 `hu_*` 身份、房间、联系人、邀请与待审批队列。  
 invites.py: `/api/invites` 邀请链路，负责好友邀请、群邀请、公开预览、兑换与撤销。  
 public.py: `/api/public` 公共发现页数据入口，面向未登录访问。  
 share.py: `/api/share` 共享快照读取接口，服务公开分享页。  
