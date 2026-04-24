@@ -253,6 +253,12 @@ export interface RuntimeRunOptions {
   /** Runtime-native session id for resume; null/empty for a new session. */
   sessionId: string | null;
   cwd: string;
+  /**
+   * Owning agent id (the daemon's `accountId` for this route). Lets adapters
+   * resolve per-agent state — e.g. the codex adapter uses it to locate the
+   * per-agent `CODEX_HOME` carrying the AGENTS.md that injects systemContext.
+   */
+  accountId: string;
   signal: AbortSignal;
   extraArgs?: string[];
   trustLevel: TrustLevel;

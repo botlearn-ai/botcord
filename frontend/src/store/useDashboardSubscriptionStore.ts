@@ -31,8 +31,9 @@ const initialSubscriptionState = {
 };
 
 function getReadyAgentId(): string | null {
-  const { token, activeAgentId } = useDashboardSessionStore.getState();
-  return token && activeAgentId ? activeAgentId : null;
+  const { token, activeAgentId, activeIdentity } = useDashboardSessionStore.getState();
+  if (!token || !activeAgentId || activeIdentity?.type !== "agent") return null;
+  return activeAgentId;
 }
 
 export const useDashboardSubscriptionStore = create<DashboardSubscriptionState>()((set, get) => ({

@@ -20,12 +20,13 @@ afterAll(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-function runAdapter(script: string) {
+function runAdapter(script: string, sessionId: string | null = null) {
   const adapter = new ClaudeCodeAdapter({ binary: script });
   const ctrl = new AbortController();
   return adapter.run({
     text: "hi",
-    sessionId: null,
+    sessionId,
+    accountId: "ag_test",
     cwd: tmpRoot,
     signal: ctrl.signal,
     trustLevel: "owner",
@@ -72,6 +73,7 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     const res = await adapter.run({
       text: "x",
       sessionId: null,
+      accountId: "ag_test",
       cwd: tmpRoot,
       signal: ctrl.signal,
       trustLevel: "owner",
@@ -151,6 +153,51 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
     expect(res.newSessionId).toBe("sid-4");
   });
 
+  it("returns a deletion signal for session ids that could be parsed as flags", async () => {
+    const script = makeScript(
+      "should-not-spawn.js",
+      `
+process.stdout.write(JSON.stringify({type:"result", subtype:"success", result:"spawned"}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "--bad");
+    expect(res.newSessionId).toBe("");
+    expect(res.error).toMatch(/invalid sessionId/);
+    expect(res.text).toBe("");
+  });
+
+  it("passes a valid session id through --resume", async () => {
+    const script = makeScript(
+      "resume-argv.js",
+      `
+const argv = process.argv.slice(2);
+process.stdout.write(JSON.stringify({type:"system", subtype:"init", session_id:"sid-next"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_id:"sid-next", result: JSON.stringify(argv)}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "00000000-0000-4000-8000-000000000000");
+    const argv = JSON.parse(res.text) as string[];
+    const idx = argv.indexOf("--resume");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(argv[idx + 1]).toBe("00000000-0000-4000-8000-000000000000");
+  });
+
+  it("allows non-ASCII historical session titles through --resume", async () => {
+    const script = makeScript(
+      "resume-title-argv.js",
+      `
+const argv = process.argv.slice(2);
+process.stdout.write(JSON.stringify({type:"system", subtype:"init", session_id:"sid-next"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_id:"sid-next", result: JSON.stringify(argv)}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "会话标题");
+    const argv = JSON.parse(res.text) as string[];
+    const idx = argv.indexOf("--resume");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(argv[idx + 1]).toBe("会话标题");
+  });
+
   describe("trustLevel → --permission-mode", () => {
     // The adapter's argv is not directly inspectable, so we have the spawned
     // script echo its own argv back through a JSON event and assert on it.
@@ -170,6 +217,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
@@ -186,6 +234,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "public",
@@ -202,6 +251,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "trusted",
@@ -218,6 +268,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
@@ -235,6 +286,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
@@ -249,6 +301,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "public",

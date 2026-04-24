@@ -63,8 +63,10 @@ function TypewriterText({
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function UserChatPane() {
-  const { activeAgentId } = useDashboardSessionStore();
+export default function UserChatPane({ agentId }: { agentId?: string | null }) {
+  const { activeAgentId, activeIdentity } = useDashboardSessionStore();
+  const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
+  const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
   const { setUserChatRoomId } = useDashboardUIStore();
 
   // Owner-chat store
@@ -88,27 +90,33 @@ export default function UserChatPane() {
   const wasNearBottomRef = useRef(true);
   const [, forceRender] = useState(0);
 
-  // WS hook
+  // WS hook authenticates the selected owner-chat target explicitly. The plain
+  // user-chat route still stays idle unless the user is acting as an agent.
   const { wsClientRef, streamedTraceIds } = useOwnerChatWs({
-    activeAgentId,
+    activeAgentId: chatAgentId,
     roomId,
-    agentName: chatRoomName || activeAgentId || "",
+    agentName: chatRoomName || chatAgentId || "",
   });
 
   // ------ Initialize chat room and load messages ------
   useEffect(() => {
-    if (!activeAgentId) return;
+    if (!chatAgentId) return;
     let cancelled = false;
 
     // Reset store for fresh agent
+    setInitError(null);
+    setChatRoomName("");
+    initialLoadRef.current = true;
+    prevLengthRef.current = 0;
+    animatedRef.current.clear();
     useOwnerChatStore.getState().reset();
 
-    api.getUserChatRoom()
+    api.getUserChatRoom(chatAgentId)
       .then((room) => {
         if (cancelled) return;
         setChatRoomName(room.name);
         setUserChatRoomId(room.room_id);
-        useOwnerChatStore.getState().setRoom(room.room_id, room.name || activeAgentId);
+        useOwnerChatStore.getState().setRoom(room.room_id, room.name || chatAgentId);
         return useOwnerChatStore.getState().loadInitial(room.room_id);
       })
       .catch((err) => {
@@ -118,7 +126,7 @@ export default function UserChatPane() {
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAgentId]);
+  }, [chatAgentId]);
 
   // ------ Mark initial load messages as already animated ------
   useEffect(() => {
@@ -171,7 +179,7 @@ export default function UserChatPane() {
   const uploadFiles = useCallback(async (rawFiles: File[]): Promise<Attachment[]> => {
     const results: Attachment[] = [];
     for (const file of rawFiles) {
-      const res = await api.uploadFile(file);
+      const res = await api.uploadFile(file, chatAgentId);
       results.push({
         filename: res.original_filename,
         url: res.url,
@@ -180,7 +188,7 @@ export default function UserChatPane() {
       });
     }
     return results;
-  }, []);
+  }, [chatAgentId]);
 
   // ------ Send message ------
 
@@ -197,12 +205,12 @@ export default function UserChatPane() {
 
     // HTTP fallback
     try {
-      const result = await api.sendUserChatMessage(text, attachments);
+      const result = await api.sendUserChatMessage(text, attachments, chatAgentId || undefined);
       useOwnerChatStore.getState().confirmOptimistic(clientId, result.hub_msg_id, new Date().toISOString(), attachments);
     } catch (err: any) {
       useOwnerChatStore.getState().failOptimistic(clientId, err?.message || "Failed to send");
     }
-  }, [wsClientRef, wsConnected]);
+  }, [wsClientRef, wsConnected, chatAgentId]);
 
   const handleSend = useCallback(async (text: string, rawFiles: File[]) => {
     if ((!text && rawFiles.length === 0) || !roomId) return;
@@ -268,10 +276,10 @@ export default function UserChatPane() {
 
   // ------ Render guards ------
 
-  if (!activeAgentId) {
+  if (!chatAgentId) {
     return (
       <div className="flex items-center justify-center h-full text-zinc-500">
-        <p>Select an agent to start chatting</p>
+        <p>Switch to an agent identity to start chatting</p>
       </div>
     );
   }
@@ -471,8 +479,8 @@ export default function UserChatPane() {
                       <span className="text-xs font-medium text-zinc-300">
                         {msg.senderName}
                       </span>
-                      {activeAgentId && (
-                        <CopyableId value={activeAgentId} className="text-zinc-500 hover:text-zinc-300" />
+                      {chatAgentId && (
+                        <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
                       )}
                     </div>
                   )}

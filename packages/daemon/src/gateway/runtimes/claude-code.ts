@@ -18,6 +18,19 @@ const CLAUDE_DESKTOP_CLI_RELATIVE_PATH = path.join(
 );
 const CLAUDE_DESKTOP_CLI_SYSTEM_PATH =
   "/Applications/Claude Code URL Handler.app/Contents/MacOS/claude";
+function isValidClaudeSessionId(sessionId: string): boolean {
+  if (sessionId.length === 0 || sessionId.length > 512) return false;
+  if (sessionId.startsWith("-")) return false;
+  for (const ch of sessionId) {
+    const code = ch.codePointAt(0);
+    if (code === undefined || code < 0x20 || code === 0x7f) return false;
+  }
+  return true;
+}
+
+function invalidClaudeSessionIdError(): string {
+  return "claude-code: invalid sessionId (expected non-control text not starting with '-')";
+}
 
 /** Resolve the Claude Code CLI path on PATH or the macOS desktop bundle fallback. */
 export function resolveClaudeCommand(deps: ProbeDeps = {}): string | null {
@@ -66,6 +79,13 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
     return probeClaude();
   }
 
+  override async run(opts: RuntimeRunOptions) {
+    if (opts.sessionId && !isValidClaudeSessionId(opts.sessionId)) {
+      return { text: "", newSessionId: "", error: invalidClaudeSessionIdError() };
+    }
+    return super.run(opts);
+  }
+
   protected resolveBinary(): string {
     if (this.explicitBinary) return this.explicitBinary;
     if (this.resolvedBinary) return this.resolvedBinary;
@@ -77,6 +97,7 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
   protected buildArgs(opts: RuntimeRunOptions): string[] {
     const args = ["-p", opts.text, "--output-format", "stream-json", "--verbose"];
     if (opts.sessionId) {
+      if (!isValidClaudeSessionId(opts.sessionId)) throw new Error(invalidClaudeSessionIdError());
       args.push("--resume", opts.sessionId);
     }
     // Permission-mode policy:

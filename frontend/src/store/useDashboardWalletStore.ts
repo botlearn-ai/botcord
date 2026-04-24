@@ -47,10 +47,10 @@ const initialWalletState = {
 };
 
 function getAuthContext() {
-  const { token, activeAgentId } = useDashboardSessionStore.getState();
+  const { token, activeAgentId, activeIdentity } = useDashboardSessionStore.getState();
   return {
     token,
-    hasReadyAgent: Boolean(token && activeAgentId),
+    hasReadyAgent: Boolean(token && activeAgentId && activeIdentity?.type === "agent"),
   };
 }
 

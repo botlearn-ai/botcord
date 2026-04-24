@@ -1694,6 +1694,20 @@ async def get_room_messages(
                 )
                 if human_member_result.scalar_one_or_none() is not None:
                     is_member = True
+
+            # Owner-chat rooms intentionally only store the agent as a member.
+            # Let the owning user read history even when they are not currently
+            # acting as that agent.
+            if not is_member and room_id.startswith("rm_oc_") and room.owner_id:
+                owner_agent_result = await db.execute(
+                    select(Agent).where(
+                        Agent.agent_id == room.owner_id,
+                        Agent.user_id == user.id,
+                    )
+                )
+                if owner_agent_result.scalar_one_or_none() is not None:
+                    is_member = True
+                    viewer_agent_id = room.owner_id
         except HTTPException:
             pass  # Invalid token — fall through to public view
 
@@ -2381,29 +2395,43 @@ class ChatAttachment(BaseModel):
 
 class ChatSendBody(BaseModel):
     text: str = ""
+    agent_id: str | None = Field(default=None, max_length=64)
     attachments: list[ChatAttachment] | None = Field(default=None, max_length=10)
+
+
+async def _resolve_owner_chat_agent(
+    db: AsyncSession,
+    ctx: RequestContext,
+    requested_agent_id: str | None,
+) -> tuple[str, str]:
+    agent_id = (requested_agent_id or ctx.active_agent_id or "").strip()
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agent_id is required")
+
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None or agent.claimed_at is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if str(agent.user_id) != str(ctx.user_id):
+        raise HTTPException(status_code=403, detail="Agent not owned by user")
+    return agent_id, (agent.display_name or agent_id)
 
 
 @router.get("/chat/room")
 async def get_chat_room(
-    ctx: RequestContext = Depends(require_active_agent),
+    agent_id: str | None = Query(default=None),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Return (or create) the owner-agent chat room for the authenticated user."""
     from hub.routers.dashboard_chat import _ensure_owner_chat_room
 
-    agent_id = ctx.active_agent_id
+    chat_agent_id, display_name = await _resolve_owner_chat_agent(db, ctx, agent_id)
 
-    # Fetch agent display name
-    result = await db.execute(
-        select(Agent.display_name).where(Agent.agent_id == agent_id)
-    )
-    display_name = result.scalar_one_or_none() or agent_id
-
-    room_id = await _ensure_owner_chat_room(db, str(ctx.user_id), agent_id, display_name)
+    room_id = await _ensure_owner_chat_room(db, str(ctx.user_id), chat_agent_id, display_name)
     await db.commit()
 
-    return {"room_id": room_id, "name": f"Chat with {display_name}", "agent_id": agent_id}
+    return {"room_id": room_id, "name": f"Chat with {display_name}", "agent_id": chat_agent_id}
 
 
 # Allowed MIME type prefixes (mirrors hub/routers/files.py)
@@ -2417,7 +2445,8 @@ _ALLOWED_MIME_PREFIXES = (
 @router.post("/upload")
 async def dashboard_upload_file(
     file: UploadFile,
-    ctx: RequestContext = Depends(require_active_agent),
+    agent_id: str | None = Query(default=None),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a file via dashboard auth. Reuses hub file storage."""
@@ -2442,6 +2471,8 @@ async def dashboard_upload_file(
     if len(buf) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    uploader_agent_id, _display_name = await _resolve_owner_chat_agent(db, ctx, agent_id)
+
     raw_name = file.filename or "upload"
     original_filename = os.path.basename(raw_name).strip()[:200] or "upload"
     data = bytes(buf)
@@ -2456,7 +2487,7 @@ async def dashboard_upload_file(
     )
     record = FileRecord(
         file_id=file_id,
-        uploader_id=ctx.active_agent_id,
+        uploader_id=uploader_agent_id,
         original_filename=original_filename,
         content_type=content_type,
         size_bytes=len(data),
@@ -2483,7 +2514,7 @@ async def dashboard_upload_file(
 async def send_chat_message(
     body: ChatSendBody,
     request: Request,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Send a message from the dashboard user to their own agent.
@@ -2503,8 +2534,8 @@ async def send_chat_message(
         notify_inbox,
     )
 
-    agent_id = ctx.active_agent_id
     user_id = str(ctx.user_id)
+    agent_id, agent_display_name = await _resolve_owner_chat_agent(db, ctx, body.agent_id)
 
     text = (body.text or "").strip()
     has_attachments = bool(body.attachments)
@@ -2523,12 +2554,6 @@ async def send_chat_message(
             dumped = att.model_dump(exclude_none=True)
             dumped["url"] = normalized
             normalized_attachments.append(dumped)
-
-    # Fetch agent display name
-    agent_result = await db.execute(
-        select(Agent.display_name).where(Agent.agent_id == agent_id)
-    )
-    agent_display_name = agent_result.scalar_one_or_none() or agent_id
 
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)

@@ -424,7 +424,11 @@ export default function DashboardApp() {
 
   // Eagerly register userChatRoomId so realtime events are always routed to the user-chat pane
   useEffect(() => {
-    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) return;
+    if (
+      sessionStore.sessionMode !== "authed-ready"
+      || !sessionStore.activeAgentId
+      || sessionStore.activeIdentity?.type !== "agent"
+    ) return;
 
     let cancelled = false;
     api.getUserChatRoom().then((room) => {
@@ -432,7 +436,12 @@ export default function DashboardApp() {
     }).catch(() => { /* ignore — UserChatPane will retry on mount */ });
 
     return () => { cancelled = true; };
-  }, [sessionStore.sessionMode, sessionStore.activeAgentId, uiStore.setUserChatRoomId]);
+  }, [
+    sessionStore.sessionMode,
+    sessionStore.activeAgentId,
+    sessionStore.activeIdentity?.type,
+    uiStore.setUserChatRoomId,
+  ]);
 
   useEffect(() => {
     // Phase 6 Human-first: pick the realtime anchor from activeIdentity.
@@ -591,7 +600,11 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
-    if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) return;
+    if (
+      sessionStore.sessionMode !== "authed-ready"
+      || !sessionStore.activeAgentId
+      || sessionStore.activeIdentity?.type !== "agent"
+    ) return;
 
     if (!walletStore.wallet && !walletStore.walletLoading && !walletStore.walletError) {
       void walletStore.loadWallet();
@@ -606,6 +619,7 @@ export default function DashboardApp() {
   }, [
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
+    sessionStore.activeIdentity?.type,
     walletStore.wallet,
     walletStore.walletLoading,
     walletStore.walletError,
@@ -668,7 +682,7 @@ export default function DashboardApp() {
       ) : uiStore.sidebarTab === "bots" ? (
         <div className="flex-1 min-w-0">
           {uiStore.selectedBotAgentId ? (
-            <UserChatPane />
+            <UserChatPane agentId={uiStore.selectedBotAgentId} />
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-secondary/70">
               {/* Prompt rendered by DashboardApp to keep sidebar lean */}

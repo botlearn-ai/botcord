@@ -678,7 +678,6 @@ export default function Sidebar() {
                         <button
                           onClick={() => {
                             uiStore.setSelectedBotAgentId(bot.agent_id);
-                            void chatStore.switchActiveAgent(bot.agent_id);
                             startTransition(() => {
                               router.push(`/chats/bots/${encodeURIComponent(bot.agent_id)}`);
                             });

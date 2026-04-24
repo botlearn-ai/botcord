@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { agentCodexHomeDir, ensureAgentCodexHome } from "../../agent-workspace.js";
 import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
 import {
   firstExistingPath,
@@ -58,7 +59,8 @@ export function probeCodex(deps: ProbeDeps = {}): RuntimeProbeResult {
 }
 
 /**
- * Codex adapter — spawns `codex exec --json ...` and parses the JSONL event stream.
+ * Codex adapter — spawns `codex exec [resume <sid>] --json ...` and parses the
+ * JSONL event stream.
  *
  * Event shape (abridged):
  *   {"type":"thread.started","thread_id":"<uuid>"}
@@ -67,28 +69,37 @@ export function probeCodex(deps: ProbeDeps = {}): RuntimeProbeResult {
  *   {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
  *   {"type":"turn.completed","usage":{...}}
  *
- * Codex exec does not report USD cost — only token usage — so costUsd is not
- * populated from this adapter.
+ * `codex exec` does not report USD cost — only token usage — so `costUsd` is
+ * not populated from this adapter.
  *
- * ## Session-resume policy (方案 A): every turn is a fresh session.
+ * ## systemContext injection: per-agent CODEX_HOME + AGENTS.md
  *
- * Codex has no `--append-system-prompt` equivalent: anything we put in the
- * positional prompt becomes part of the stored transcript. If we called
- * `exec resume <sid> "<systemContext>\n<text>"` each turn, the prior turn's
- * systemContext would already be in the transcript AND we'd prepend a new
- * copy — memory/digest would duplicate every turn, and stale cross-room
- * state would pile up indefinitely.
+ * Codex has no `--append-system-prompt` equivalent. Its documented way to
+ * inject instructions that do NOT land in the stored transcript is the
+ * `AGENTS.md` loaded from `<CODEX_HOME>/AGENTS.md` (alongside the user-global
+ * `~/.codex/AGENTS.md` and the cwd's `<cwd>/AGENTS.md`).
  *
- * Workaround: always spawn a fresh session. `opts.sessionId` is read to
- * validate (reject malformed UUIDs early, as a defense-in-depth holdover)
- * but not used as argv; `thread.started` events no longer populate
- * `state.newSessionId`, so the dispatcher's SessionStore stays empty for
- * Codex routes and no resume is attempted next turn.
+ * This adapter therefore:
+ *   1. Points `CODEX_HOME` at a per-agent directory:
+ *      `~/.botcord/agents/<accountId>/codex-home/`
+ *   2. Writes `opts.systemContext` to `<CODEX_HOME>/AGENTS.md` atomically
+ *      (tmp + rename) before spawning the child.
+ *   3. Leaves the positional prompt as just `opts.text` — no more prepending
+ *      systemContext to the transcript.
  *
- * Continuity across turns therefore comes from the injected systemContext
- * (working memory + cross-room digest) rather than from Codex's own
- * transcript. A future adapter could opt back into resume by re-enabling
- * the thread_id propagation, but must first solve the accumulation problem.
+ * With the transcript no longer accumulating systemContext, resume is safe to
+ * turn back on: `thread.started.thread_id` is persisted as `newSessionId`, and
+ * when the next turn arrives with a sessionId the adapter runs `exec resume
+ * <sid>` instead of `exec`. The per-agent CODEX_HOME also isolates codex's
+ * `sessions/` directory from `~/.codex/sessions/`, so daemon-owned sessions
+ * don't pollute the user's interactive session picker.
+ *
+ * ## `exec resume` flag quirk
+ *
+ * `codex exec resume` accepts a smaller flag set than `codex exec` — notably
+ * `-s / --sandbox` is NOT accepted on `resume`. We therefore express sandbox
+ * policy as `-c sandbox_mode="..."` (a `-c` override works on both
+ * subcommands) and the same tail of flags applies to both paths.
  */
 export class CodexAdapter extends NdjsonStreamAdapter {
   readonly id = "codex" as const;
@@ -106,20 +117,30 @@ export class CodexAdapter extends NdjsonStreamAdapter {
   }
 
   /**
-   * Strip `sessionId` on the way into the base adapter's run loop so the
-   * initial `state.newSessionId` seed is empty. Combined with the no-op
-   * `thread.started` handler, this guarantees the dispatcher receives an
-   * empty `newSessionId` and never writes Codex entries to SessionStore.
-   *
-   * The UUID validation still runs as defense-in-depth: even though the
-   * id is never forwarded to argv, rejecting malformed input early catches
-   * callers who accidentally shove non-UUID state through this field.
+   * Validate the sessionId shape and materialize the per-agent CODEX_HOME +
+   * AGENTS.md before handing off to the base adapter's spawn loop. Both steps
+   * must run BEFORE `super.run()` because `spawnEnv()` and `buildArgs()` are
+   * called synchronously from inside it and read the filesystem state we set
+   * up here.
    */
   override async run(opts: RuntimeRunOptions) {
     if (opts.sessionId && !CODEX_SESSION_ID_RE.test(opts.sessionId)) {
       throw new Error(`codex: invalid sessionId "${opts.sessionId}" (expected UUID)`);
     }
-    return super.run({ ...opts, sessionId: null });
+    if (opts.accountId) {
+      try {
+        ensureAgentCodexHome(opts.accountId);
+        writeCodexAgentsMd(opts.accountId, opts.systemContext);
+      } catch (err) {
+        // Writing AGENTS.md should never abort the turn — log and fall
+        // through. The child will spawn without the dynamic systemContext,
+        // which degrades to "codex replies without this turn's memory
+        // snapshot" rather than silence.
+        // eslint-disable-next-line no-console
+        console.warn("codex: failed to prepare CODEX_HOME/AGENTS.md", err);
+      }
+    }
+    return super.run(opts);
   }
 
   protected resolveBinary(): string {
@@ -134,44 +155,75 @@ export class CodexAdapter extends NdjsonStreamAdapter {
   /**
    * `extraArgs` are passed as Codex CLI flags (inserted before `--`), not
    * prompt text. Use the route config's `extraArgs` for flags like
-   * `-s workspace-write`, not for extra prompt content.
+   * `-c model="..."`, not for extra prompt content.
+   *
+   * Layout for fresh session:  `exec   <tail> -- <prompt>`
+   * Layout for resume:         `exec resume <sid> <tail> -- <prompt>`
+   *
+   * Both paths share the same `<tail>`: sandbox/approval policy (as `-c`
+   * overrides so `resume` accepts them), `--skip-git-repo-check`, `--json`,
+   * and operator `extraArgs`.
    */
   protected buildArgs(opts: RuntimeRunOptions): string[] {
     const tail: string[] = [];
-    // Sandbox / approval policy:
-    //  - owner turn: bypass approvals + sandbox (preserves the old default; owner trusts their agent).
-    //  - non-owner turn: no bypass, default to `-s workspace-write` so edits are at least scoped.
-    // Operators can override either via extraArgs (`-s read-only`, `--full-auto`, etc.).
-    const hasSandbox =
+
+    // Sandbox / approval policy. Expressed as `-c` overrides because
+    // `codex exec resume` rejects `-s` / `--full-auto`. `-c` works on both
+    // the fresh `exec` and `exec resume` paths.
+    //  - owner turn: bypass approvals + sandbox (owner trusts their agent)
+    //  - non-owner turn: `workspace-write` sandbox + on-request approvals
+    const hasSandboxOverride =
       opts.extraArgs?.some(
-        (a) => a === "-s" || a.startsWith("--sandbox") || a === "--full-auto",
+        (a) =>
+          a === "-s" ||
+          a.startsWith("--sandbox") ||
+          a === "--full-auto" ||
+          a === "--dangerously-bypass-approvals-and-sandbox" ||
+          a.startsWith("-c sandbox_mode=") ||
+          a.startsWith("-csandbox_mode="),
       ) ?? false;
-    const hasBypass =
-      opts.extraArgs?.includes("--dangerously-bypass-approvals-and-sandbox") ?? false;
-    if (!hasSandbox && !hasBypass) {
+    if (!hasSandboxOverride) {
       if (opts.trustLevel === "owner") {
-        tail.push("--dangerously-bypass-approvals-and-sandbox");
+        tail.push(
+          "-c",
+          'sandbox_mode="danger-full-access"',
+          "-c",
+          'approval_policy="never"',
+        );
       } else {
-        tail.push("-s", "workspace-write");
+        tail.push(
+          "-c",
+          'sandbox_mode="workspace-write"',
+          "-c",
+          'approval_policy="on-request"',
+        );
       }
     }
     tail.push("--skip-git-repo-check", "--json");
     if (opts.extraArgs?.length) tail.push(...opts.extraArgs);
 
     // `--` separates flags from positionals so a prompt starting with `-`
-    // can never be parsed as an option. Operator-supplied `extraArgs` appear
-    // before `--` and are interpreted as CLI flags. `opts.sessionId` has
-    // already been validated + stripped in `run()`, so `exec resume` is
-    // never emitted.
-    const prompt = opts.systemContext
-      ? `${opts.systemContext}\n\n---\n\n${opts.text}`
-      : opts.text;
+    // can never be parsed as an option. `systemContext` is NOT prepended to
+    // the prompt any more — it lives in `<CODEX_HOME>/AGENTS.md` written by
+    // `run()` — so the transcript stays clean across resumes.
+    const prompt = opts.text;
+    if (opts.sessionId) {
+      return ["exec", "resume", opts.sessionId, ...tail, "--", prompt];
+    }
     return ["exec", ...tail, "--", prompt];
   }
 
-  protected spawnEnv(_opts: RuntimeRunOptions): NodeJS.ProcessEnv {
-    // Keep JSONL free of ANSI codes regardless of user terminal settings.
-    return { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" };
+  protected spawnEnv(opts: RuntimeRunOptions): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      // Keep JSONL free of ANSI codes regardless of user terminal settings.
+      FORCE_COLOR: "0",
+      NO_COLOR: "1",
+    };
+    if (opts.accountId) {
+      env.CODEX_HOME = agentCodexHomeDir(opts.accountId);
+    }
+    return env;
   }
 
   protected handleEvent(raw: unknown, ctx: NdjsonEventCtx): void {
@@ -185,11 +237,13 @@ export class CodexAdapter extends NdjsonStreamAdapter {
 
     ctx.emitBlock(normalizeBlock(obj, ctx.seq));
 
-    // `thread.started` is emitted but intentionally not stored: resume is
-    // disabled (see class doc). The dispatcher reads `state.newSessionId` to
-    // decide whether to persist into SessionStore; leaving it empty keeps
-    // Codex routes stateless across turns.
+    // Persist the thread_id so the next turn on this session key resumes
+    // instead of spawning fresh. Safe now that systemContext lives in
+    // AGENTS.md rather than the transcript.
     if (obj.type === "thread.started") {
+      if (typeof obj.thread_id === "string") {
+        ctx.state.newSessionId = obj.thread_id;
+      }
       return;
     }
 
@@ -215,6 +269,24 @@ export class CodexAdapter extends NdjsonStreamAdapter {
           : obj.error?.message ?? "codex error";
     }
   }
+}
+
+/**
+ * Atomically overwrite `<CODEX_HOME>/AGENTS.md` with `systemContext`. codex
+ * reads this file at process start, so the write must complete before spawn.
+ * An empty or missing systemContext writes an empty file — deleting would
+ * race with a prior turn's file still being readable; empty is simpler and
+ * codex treats it as "no user-global AGENTS.md".
+ */
+function writeCodexAgentsMd(accountId: string, systemContext: string | undefined): void {
+  const dir = agentCodexHomeDir(accountId);
+  // ensureAgentCodexHome already mkdir's dir; defensive mkdir here too for
+  // code paths that invoke this helper directly (tests, future callers).
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const target = path.join(dir, "AGENTS.md");
+  const tmp = path.join(dir, `.AGENTS.md.${process.pid}.tmp`);
+  writeFileSync(tmp, systemContext ?? "", { mode: 0o600 });
+  renameSync(tmp, target);
 }
 
 function normalizeBlock(obj: any, seq: number): StreamBlock {
