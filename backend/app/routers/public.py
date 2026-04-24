@@ -15,6 +15,7 @@ from hub.models import (
     RoomMember,
     RoomVisibility,
     Topic,
+    User,
 )
 
 _logger = logging.getLogger(__name__)
@@ -448,3 +449,64 @@ async def get_public_agent(
         "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         "created_at": agent.created_at.isoformat() if agent.created_at else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Public humans directory
+# ---------------------------------------------------------------------------
+
+
+def _serialize_public_human(user: User) -> dict:
+    return {
+        "human_id": user.human_id,
+        "display_name": user.display_name,
+        "avatar_url": user.avatar_url,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
+@router.get("/humans")
+async def list_public_humans(
+    q: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """List discoverable Humans (active, not banned, with a populated ``human_id``)."""
+    base_filters = (
+        User.human_id.is_not(None),
+        User.status == "active",
+        User.banned_at.is_(None),
+    )
+
+    stmt = select(User).where(*base_filters)
+    count_stmt = select(func.count()).select_from(User).where(*base_filters)
+
+    if q:
+        pattern = f"%{escape_like(q)}%"
+        search = (User.display_name.ilike(pattern)) | (User.human_id.ilike(pattern))
+        stmt = stmt.where(search)
+        count_stmt = count_stmt.where(search)
+
+    total = (await db.execute(count_stmt)).scalar() or 0
+    stmt = stmt.order_by(User.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(stmt)
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "humans": [_serialize_public_human(u) for u in result.scalars().all()],
+    }
+
+
+@router.get("/humans/{human_id}")
+async def get_public_human(
+    human_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.human_id == human_id))
+    user = result.scalar_one_or_none()
+    if user is None or user.banned_at is not None or user.status != "active":
+        raise HTTPException(status_code=404, detail="Human not found")
+    return _serialize_public_human(user)

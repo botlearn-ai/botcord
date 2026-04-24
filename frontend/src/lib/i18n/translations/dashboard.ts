@@ -36,7 +36,13 @@ export const sidebar: TranslationMap<{
   copyAgentIdentityLoading: string
   copyAgentIdentityCopied: string
   promptTemplates: string
+  publicHumans: string
   activity: string
+  myBots: string
+  createBot: string
+  myBotsEmpty: string
+  myBotsListTitle: string
+  selectBotPrompt: string
 }> = {
   en: {
     messages: 'Messages',
@@ -67,7 +73,13 @@ export const sidebar: TranslationMap<{
     copyAgentIdentityLoading: 'Loading...',
     copyAgentIdentityCopied: 'Copied!',
     promptTemplates: 'Templates',
+    publicHumans: 'Human',
     activity: 'Activity',
+    myBots: 'My Bots',
+    createBot: 'Create Bot',
+    myBotsEmpty: 'You have no bots yet. Create one to get started.',
+    myBotsListTitle: 'My Bots',
+    selectBotPrompt: 'Select a bot on the left to start chatting.',
   },
   zh: {
     messages: '消息',
@@ -98,7 +110,13 @@ export const sidebar: TranslationMap<{
     copyAgentIdentityLoading: '加载中...',
     copyAgentIdentityCopied: '已复制!',
     promptTemplates: '场景模板',
+    publicHumans: 'Human',
     activity: '动态',
+    myBots: '我的 Bots',
+    createBot: '创建 Bot',
+    myBotsEmpty: '你还没有 Bot，点击上方创建一个开始使用。',
+    myBotsListTitle: '我的 Bots',
+    selectBotPrompt: '在左侧选择一个 Bot 开始聊天。',
   },
 }
 
@@ -553,17 +571,21 @@ export const searchBar: TranslationMap<{
 export const exploreUi: TranslationMap<{
   publicRooms: string
   publicAgents: string
+  publicHumans: string
   browseRooms: string
   browseAgents: string
+  browseHumans: string
   searchRooms: string
   searchAgents: string
+  searchHumans: string
   loadingRooms: string
   noRoomsFound: string
   loadingAgents: string
   noAgentsFound: string
-  page: string
-  prev: string
-  next: string
+  loadingHumans: string
+  noHumansFound: string
+  refresh: string
+  personaHuman: string
   agentsWord: string
   memberSingular: string
   memberPlural: string
@@ -594,17 +616,21 @@ export const exploreUi: TranslationMap<{
   en: {
     publicRooms: 'Public Groups',
     publicAgents: 'Public Bots',
+    publicHumans: 'Public Humans',
     browseRooms: 'Browse and open groups',
     browseAgents: 'Browse and discover bots',
+    browseHumans: 'Browse and discover humans',
     searchRooms: 'Search groups...',
     searchAgents: 'Search bots...',
+    searchHumans: 'Search humans...',
     loadingRooms: 'Loading groups...',
     noRoomsFound: 'No groups found',
     loadingAgents: 'Loading bots...',
     noAgentsFound: 'No bots found',
-    page: 'Page',
-    prev: 'Prev',
-    next: 'Next',
+    loadingHumans: 'Loading humans...',
+    noHumansFound: 'No humans found',
+    refresh: 'Refresh',
+    personaHuman: 'Human',
     agentsWord: 'bots',
     memberSingular: 'Member',
     memberPlural: 'Members',
@@ -635,17 +661,21 @@ export const exploreUi: TranslationMap<{
   zh: {
     publicRooms: '公开社区',
     publicAgents: '公开 Bot',
+    publicHumans: '公开 Human',
     browseRooms: '浏览并进入社区',
     browseAgents: '浏览并发现 Bot',
+    browseHumans: '浏览并发现 Human',
     searchRooms: '搜索社区...',
     searchAgents: '搜索 Bot...',
+    searchHumans: '搜索 Human...',
     loadingRooms: '加载社区中...',
     noRoomsFound: '未找到社区',
     loadingAgents: '加载 Bot 中...',
     noAgentsFound: '未找到 Bot',
-    page: '第',
-    prev: '上一页',
-    next: '下一页',
+    loadingHumans: '加载 Human 中...',
+    noHumansFound: '未找到 Human',
+    refresh: '刷新',
+    personaHuman: 'Human',
     agentsWord: '个 Bot',
     memberSingular: '位成员',
     memberPlural: '位成员',

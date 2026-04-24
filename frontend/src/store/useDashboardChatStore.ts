@@ -13,6 +13,7 @@ import type {
   DashboardOverview,
   DashboardRoom,
   DiscoverRoom,
+  PublicHumanProfile,
   PublicRoom,
   RealtimeMetaEvent,
 } from "@/lib/types";
@@ -80,6 +81,9 @@ interface DashboardChatState {
   publicAgents: AgentProfile[];
   publicAgentsLoading: boolean;
   publicAgentsLoaded: boolean;
+  publicHumans: PublicHumanProfile[];
+  publicHumansLoading: boolean;
+  publicHumansLoaded: boolean;
   recentVisitedRooms: PublicRoom[];
 
   setError: (error: string | null) => void;
@@ -108,6 +112,7 @@ interface DashboardChatState {
   loadPublicRooms: () => Promise<void>;
   loadPublicRoomDetail: (roomId: string) => Promise<PublicRoom | null>;
   loadPublicAgents: () => Promise<void>;
+  loadPublicHumans: () => Promise<void>;
   switchActiveAgent: (agentId: string) => Promise<void>;
 }
 
@@ -137,6 +142,9 @@ const initialChatState = {
   publicAgents: [],
   publicAgentsLoading: false,
   publicAgentsLoaded: false,
+  publicHumans: [],
+  publicHumansLoading: false,
+  publicHumansLoaded: false,
   recentVisitedRooms: [],
 };
 
@@ -573,6 +581,16 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           set({ publicAgents: result.agents, publicAgentsLoading: false, publicAgentsLoaded: true });
         } catch {
           set({ publicAgentsLoading: false, publicAgentsLoaded: true });
+        }
+      },
+
+      loadPublicHumans: async () => {
+        set({ publicHumansLoading: true });
+        try {
+          const result = await api.getPublicHumans({ limit: 100 });
+          set({ publicHumans: result.humans, publicHumansLoading: false, publicHumansLoaded: true });
+        } catch {
+          set({ publicHumansLoading: false, publicHumansLoaded: true });
         }
       },
 

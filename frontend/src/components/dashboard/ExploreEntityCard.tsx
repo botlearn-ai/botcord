@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { AgentProfile, PublicRoom } from "@/lib/types";
+import { AgentProfile, PublicHumanProfile, PublicRoom } from "@/lib/types";
 import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
@@ -27,6 +27,14 @@ type ExploreEntityCardProps =
       data?: AgentProfile;
       agentsById?: Record<string, AgentProfile>;
       onAgentOpen?: (agent: AgentProfile) => void;
+      className?: string;
+    }
+  | {
+      kind: "human";
+      id?: string;
+      data?: PublicHumanProfile;
+      humansById?: Record<string, PublicHumanProfile>;
+      onHumanOpen?: (human: PublicHumanProfile) => void;
       className?: string;
     };
 
@@ -179,97 +187,125 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         tabIndex={0}
         onClick={() => props.onRoomOpen?.(room)}
         onKeyDown={(event) => handleKeyActivate(event, () => props.onRoomOpen?.(room))}
-        className={`group overflow-hidden rounded-2xl border border-glass-border bg-deep-black-light text-left transition-all hover:border-neon-cyan/60 hover:shadow-lg hover:shadow-neon-cyan/10 ${className}`}
+        className={`group overflow-hidden rounded-xl border border-glass-border bg-deep-black-light text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 ${className}`}
       >
         <div
-          className="relative h-24 w-full"
+          className="relative h-14 w-full"
           style={{
             backgroundImage: `${theme.patternUrl}`,
             backgroundRepeat: "repeat, no-repeat",
             backgroundSize: "auto, cover",
           }}
         >
-          <div className="absolute left-4 top-4 flex items-center gap-2">
+          <div className="absolute left-3 top-2 flex items-center gap-2">
             <div
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-bold text-white/90 backdrop-blur-sm"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white/90 backdrop-blur-sm"
               style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
             >
               {roomInitials}
             </div>
           </div>
           <span
-            className="absolute right-3 top-3 rounded-full bg-black/40 px-2 py-1 text-[10px] font-medium text-white/90 backdrop-blur-sm"
+            className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm"
             style={{ boxShadow: `0 0 0 1px ${theme.accent}55` }}
           >
             {room.member_count} {memberWord}
           </span>
         </div>
-        <div className="p-5 pt-3">
-          <div className="mb-2 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-base font-semibold text-text-primary">{room.name}</p>
-              {room.required_subscription_product_id && (
-                <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
-              )}
-            </div>
-            <p className="mt-0.5 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>
+        <div className="px-3 py-2">
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
+            {room.required_subscription_product_id && (
+              <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
+            )}
           </div>
-          <p className="line-clamp-2 min-h-[36px] text-xs leading-5 text-text-secondary">
+          <p className="mt-0.5 truncate font-mono text-[10px] text-text-secondary/60">{room.room_id}</p>
+          <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-secondary">
             {room.description || t.noDescriptionYet}
           </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-text-secondary/80">
-            <div className="rounded border border-glass-border/60 px-2 py-1">
+          <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-text-secondary/70">
+            <span className="truncate">
               {room.join_policy === "invite_only" ? (
                 <span className="font-medium text-amber-400">{t.inviteOnly}</span>
               ) : (
                 <>{t.visibility}: {room.visibility}</>
               )}
-            </div>
-            <div className="rounded border border-glass-border/60 px-2 py-1">
-              {t.activity}: {formatRelativeTime(room.last_message_at, locale, t)}
-            </div>
+            </span>
+            <span className="shrink-0">{formatRelativeTime(room.last_message_at, locale, t)}</span>
           </div>
-          <p className="mt-2 line-clamp-1 text-[11px] text-text-secondary/90">
-            {room.last_message_preview
-              ? `${room.last_sender_name || t.someone}: ${room.last_message_preview}`
-              : t.noRecentMessages}
-          </p>
         </div>
       </div>
     );
   }
 
-  const agent = props.data || (props.id ? props.agentsById?.[props.id] : undefined);
-  if (!agent) return null;
-  const initials = initialsFromName(agent.display_name);
-  const persona =
-    agent.message_policy === "open"
-      ? t.personaOpen
-      : t.personaContactsOnly;
+  if (props.kind === "agent") {
+    const agent = props.data || (props.id ? props.agentsById?.[props.id] : undefined);
+    if (!agent) return null;
+    const initials = initialsFromName(agent.display_name);
+    const persona =
+      agent.message_policy === "open"
+        ? t.personaOpen
+        : t.personaContactsOnly;
 
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => props.onAgentOpen?.(agent)}
+        onKeyDown={(event) => handleKeyActivate(event, () => props.onAgentOpen?.(agent))}
+        className={`group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg ${className}`}
+      >
+        <div className="flex items-start gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-text-primary">{agent.display_name}</p>
+            <p className="mt-0.5 text-[10px] text-neon-purple/90">{t.personaAgent} · {persona}</p>
+          </div>
+        </div>
+        <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-text-secondary">
+          {agent.bio || t.personaFallbackBio}
+        </p>
+        <div className="mt-2">
+          <CopyableId value={agent.agent_id} />
+        </div>
+      </div>
+    );
+  }
+
+  // human
+  const human = props.data || (props.id ? props.humansById?.[props.id] : undefined);
+  if (!human) return null;
+  const humanInitials = initialsFromName(human.display_name);
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => props.onAgentOpen?.(agent)}
-      onKeyDown={(event) => handleKeyActivate(event, () => props.onAgentOpen?.(agent))}
-      className={`group rounded-2xl border border-glass-border bg-deep-black-light p-5 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg ${className}`}
+      onClick={() => props.onHumanOpen?.(human)}
+      onKeyDown={(event) => handleKeyActivate(event, () => props.onHumanOpen?.(human))}
+      className={`group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg ${className}`}
     >
-      <div className="mb-3 flex items-start gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-neon-purple/30 bg-neon-purple/10 font-semibold text-neon-purple">
-          {initials}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-text-primary">{agent.display_name}</p>
-          <p className="mt-0.5 text-xs text-neon-purple/90">{t.personaAgent}</p>
-          <p className="mt-1 text-[11px] text-text-secondary/80">{persona}</p>
+      <div className="flex items-start gap-2.5">
+        {human.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={human.avatar_url}
+            alt={human.display_name}
+            className="h-9 w-9 shrink-0 rounded-full border border-neon-green/30 object-cover"
+          />
+        ) : (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-green/30 bg-neon-green/10 text-xs font-semibold text-neon-green">
+            {humanInitials}
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-text-primary">{human.display_name}</p>
+          <p className="mt-0.5 text-[10px] text-neon-green/90">{t.personaHuman}</p>
         </div>
       </div>
-      <p className="line-clamp-3 min-h-[54px] text-xs leading-5 text-text-secondary">
-        {agent.bio || t.personaFallbackBio}
-      </p>
-      <div className="mt-4">
-        <CopyableId value={agent.agent_id} />
+      <div className="mt-2">
+        <CopyableId value={human.human_id} />
       </div>
     </div>
   );

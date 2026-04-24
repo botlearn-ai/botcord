@@ -1241,6 +1241,47 @@ async def list_sent_contact_requests(
     return HumanContactRequestListResponse(requests=requests)
 
 
+async def _accept_human_contact_request(
+    db: AsyncSession, req: ContactRequest
+) -> None:
+    """Flip a pending ContactRequest to accepted and materialise mutual Contacts.
+
+    Shared by the dedicated /contact-requests/{id}/accept endpoint and the
+    unified /pending-approvals/{id}/resolve dispatcher so the state transition
+    stays in a single place. Each direction is inserted in its own savepoint
+    so a collision on one side does not erase the other (C3).
+    """
+    req.state = ContactRequestState.accepted
+    req.resolved_at = _now()
+    await db.flush()
+    for owner_id, owner_type, contact_id, peer_type in (
+        (req.to_agent_id, req.to_type, req.from_agent_id, req.from_type),
+        (req.from_agent_id, req.from_type, req.to_agent_id, req.to_type),
+    ):
+        try:
+            async with db.begin_nested():
+                db.add(
+                    Contact(
+                        owner_id=owner_id,
+                        owner_type=owner_type,
+                        contact_agent_id=contact_id,
+                        peer_type=peer_type,
+                    )
+                )
+                await db.flush()
+        except IntegrityError:
+            pass
+    await db.commit()
+
+
+async def _reject_human_contact_request(
+    db: AsyncSession, req: ContactRequest
+) -> None:
+    req.state = ContactRequestState.rejected
+    req.resolved_at = _now()
+    await db.commit()
+
+
 @router.post(
     "/me/contact-requests/{request_id}/accept",
     response_model=HumanContactRequestResolveResponse,
@@ -1273,33 +1314,7 @@ async def accept_contact_request_as_human(
     if req.state != ContactRequestState.pending:
         raise HTTPException(status_code=409, detail="Request already resolved")
 
-    req.state = ContactRequestState.accepted
-    req.resolved_at = _now()
-    await db.flush()
-
-    # Insert each direction in its own savepoint so a collision on one side
-    # does not erase the other (C3). Pattern mirrored from
-    # hub/routers/contact_requests.py::accept flow.
-    for owner_id, owner_type, contact_id, peer_type in (
-        (req.to_agent_id, req.to_type, req.from_agent_id, req.from_type),
-        (req.from_agent_id, req.from_type, req.to_agent_id, req.to_type),
-    ):
-        try:
-            async with db.begin_nested():
-                db.add(
-                    Contact(
-                        owner_id=owner_id,
-                        owner_type=owner_type,
-                        contact_agent_id=contact_id,
-                        peer_type=peer_type,
-                    )
-                )
-                await db.flush()
-        except IntegrityError:
-            # Row already exists — keep the other direction intact.
-            pass
-
-    await db.commit()
+    await _accept_human_contact_request(db, req)
 
     return HumanContactRequestResolveResponse(id=str(req.id), state="accepted")
 
@@ -1331,9 +1346,7 @@ async def reject_contact_request_as_human(
     if req.state != ContactRequestState.pending:
         raise HTTPException(status_code=409, detail="Request already resolved")
 
-    req.state = ContactRequestState.rejected
-    req.resolved_at = _now()
-    await db.commit()
+    await _reject_human_contact_request(db, req)
 
     return HumanContactRequestResolveResponse(id=str(req.id), state="rejected")
 
@@ -1348,8 +1361,17 @@ async def list_pending_approvals(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Pending approval-queue entries across all agents owned by this user."""
-    result = await db.execute(
+    """Pending approvals addressed to this user.
+
+    Merges two sources:
+      * ``AgentApprovalQueue`` — requests queued for an Agent owned by the
+        user (Human → claimed-Agent flow; ``id`` is the queue row UUID).
+      * ``ContactRequest`` — requests addressed directly to the user as a
+        Human (Human → Human and unclaimed-Agent → Human flows). These ids
+        are prefixed ``cr_<int>`` to distinguish them from queue UUIDs so
+        the resolve endpoint can dispatch without ambiguity.
+    """
+    queue_result = await db.execute(
         select(AgentApprovalQueue)
         .where(
             AgentApprovalQueue.owner_user_id == ctx.user_id,
@@ -1358,7 +1380,7 @@ async def list_pending_approvals(
         .order_by(AgentApprovalQueue.created_at.asc())
     )
     approvals: list[PendingApprovalSummary] = []
-    for entry in result.scalars().all():
+    for entry in queue_result.scalars().all():
         try:
             payload = json.loads(entry.payload_json or "{}")
         except json.JSONDecodeError:
@@ -1372,6 +1394,57 @@ async def list_pending_approvals(
                 created_at=_ts(entry.created_at),
             )
         )
+
+    # Human-addressed ContactRequest rows — only materialise if the user has
+    # a Human identity (human_id is nullable on legacy accounts).
+    user = await _load_human(db, ctx)
+    me = user.human_id
+    cr_result = await db.execute(
+        select(ContactRequest)
+        .where(
+            ContactRequest.to_type == ParticipantType.human,
+            ContactRequest.to_agent_id == me,
+            ContactRequest.state == ContactRequestState.pending,
+        )
+        .order_by(ContactRequest.created_at.asc())
+    )
+    cr_rows = list(cr_result.scalars().all())
+    if cr_rows:
+        # Resolve display names once per request for the panel header.
+        name_lookup: dict[tuple[ParticipantType, str], str | None] = {}
+        agent_ids = {r.from_agent_id for r in cr_rows if r.from_type == ParticipantType.agent}
+        human_ids = {r.from_agent_id for r in cr_rows if r.from_type == ParticipantType.human}
+        if agent_ids:
+            rows = await db.execute(
+                select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
+            )
+            for aid, name in rows.all():
+                name_lookup[(ParticipantType.agent, aid)] = name
+        if human_ids:
+            rows = await db.execute(
+                select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
+            )
+            for hid, name in rows.all():
+                name_lookup[(ParticipantType.human, hid)] = name
+        for req in cr_rows:
+            approvals.append(
+                PendingApprovalSummary(
+                    id=f"cr_{req.id}",
+                    agent_id=req.to_agent_id,
+                    kind=ApprovalKind.contact_request.value,
+                    payload={
+                        "from_participant_id": req.from_agent_id,
+                        "from_type": req.from_type.value,
+                        "from_display_name": name_lookup.get(
+                            (req.from_type, req.from_agent_id)
+                        ),
+                        "message": req.message,
+                    },
+                    created_at=_ts(req.created_at),
+                )
+            )
+
+    approvals.sort(key=lambda a: a.created_at)
     return PendingApprovalListResponse(approvals=approvals)
 
 
@@ -1380,18 +1453,52 @@ async def list_pending_approvals(
     response_model=ResolveApprovalResponse,
 )
 async def resolve_pending_approval(
-    approval_id: UUID,
+    approval_id: str,
     body: ResolveApprovalBody,
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Approve or reject a queued request on behalf of one of the user's Agents.
+    """Approve or reject a pending approval addressed to this user.
 
-    For ``kind=contact_request`` approvals we also materialise the mutual
-    Contact rows so the downstream send flow works without further plumbing.
+    Dispatches on the id format populated by ``list_pending_approvals``:
+      * ``cr_<int>`` → Human-addressed ContactRequest; accept materialises
+        mutual Contacts, reject just flips the state.
+      * UUID → AgentApprovalQueue row owned by this user; approve materialises
+        Contacts (for contact_request) or RoomMember rows (for room_invite).
     """
+    # Human-addressed ContactRequest branch — id is ``cr_<int>``.
+    if approval_id.startswith("cr_"):
+        try:
+            cr_id = int(approval_id[len("cr_"):])
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Approval not found")
+        user = await _load_human(db, ctx)
+        me = user.human_id
+        cr_result = await db.execute(
+            select(ContactRequest).where(ContactRequest.id == cr_id)
+        )
+        req = cr_result.scalar_one_or_none()
+        if req is None:
+            raise HTTPException(status_code=404, detail="Approval not found")
+        if req.to_type != ParticipantType.human or req.to_agent_id != me:
+            raise HTTPException(
+                status_code=403, detail="Approval is not yours to resolve"
+            )
+        if req.state != ContactRequestState.pending:
+            raise HTTPException(status_code=409, detail="Approval already resolved")
+        if body.decision == "approve":
+            await _accept_human_contact_request(db, req)
+            return ResolveApprovalResponse(id=approval_id, state="approved")
+        await _reject_human_contact_request(db, req)
+        return ResolveApprovalResponse(id=approval_id, state="rejected")
+
+    try:
+        approval_uuid = UUID(approval_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Approval not found")
+
     result = await db.execute(
-        select(AgentApprovalQueue).where(AgentApprovalQueue.id == approval_id)
+        select(AgentApprovalQueue).where(AgentApprovalQueue.id == approval_uuid)
     )
     entry = result.scalar_one_or_none()
     if entry is None:
@@ -1466,7 +1573,7 @@ async def resolve_pending_approval(
             # Duplicate contact / member row → still mark approved
             await db.rollback()
             result2 = await db.execute(
-                select(AgentApprovalQueue).where(AgentApprovalQueue.id == approval_id)
+                select(AgentApprovalQueue).where(AgentApprovalQueue.id == approval_uuid)
             )
             entry = result2.scalar_one()
             entry.state = ApprovalState.approved

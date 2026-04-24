@@ -22,28 +22,26 @@ import JoinGuidePrompt from "./JoinGuidePrompt";
 import FriendInviteModal from "./FriendInviteModal";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
-import { PublicRoom } from "@/lib/types";
+import { PublicHumanProfile, PublicRoom } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import RoomZeroState from "./RoomZeroState";
-import PromptTemplates from "./PromptTemplates";
 import PendingApprovalsPanel from "./PendingApprovalsPanel";
 import SubscriptionBadge from "./SubscriptionBadge";
 
-const EXPLORE_PAGE_SIZE = 12;
+const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
-function GridSkeletonCards({ count = 6 }: { count?: number }) {
+function GridSkeletonCards({ count = 10 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className={EXPLORE_GRID_CLASS}>
       {Array.from({ length: count }).map((_, idx) => (
-        <div key={idx} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
-          <div className="h-4 w-2/3 animate-pulse rounded bg-glass-border/60" />
-          <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-glass-border/50" />
-          <div className="mt-4 h-3 w-full animate-pulse rounded bg-glass-border/50" />
-          <div className="mt-2 h-3 w-5/6 animate-pulse rounded bg-glass-border/40" />
-          <div className="mt-2 h-3 w-2/3 animate-pulse rounded bg-glass-border/40" />
+        <div key={idx} className="rounded-xl border border-glass-border bg-deep-black-light p-3">
+          <div className="h-3 w-2/3 animate-pulse rounded bg-glass-border/60" />
+          <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-glass-border/50" />
+          <div className="mt-2.5 h-2.5 w-full animate-pulse rounded bg-glass-border/50" />
+          <div className="mt-1.5 h-2.5 w-5/6 animate-pulse rounded bg-glass-border/40" />
         </div>
       ))}
     </div>
@@ -85,7 +83,6 @@ function ContactsMainPane() {
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
   const [showFriendInvite, setShowFriendInvite] = useState(false);
   const isRequestsView = contactsView === "requests";
   const isRoomsView = contactsView === "rooms";
@@ -125,10 +122,6 @@ function ContactsMainPane() {
     }
   }, [sessionMode, contactsView, refreshOverview]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [query, contactsView, contacts.length, pendingReceived.length, joinedRooms.length, createdRooms.length]);
-
   const normalized = query.trim().toLowerCase();
   const filteredContacts = contacts.filter((item) => {
     if (!normalized) return true;
@@ -157,17 +150,13 @@ function ContactsMainPane() {
   const filteredJoinedRooms = joinedRooms.filter(roomMatcher);
   const filteredCreatedRooms = createdRooms.filter(roomMatcher);
 
-  const list = isRequestsView
+  const pageItems = isRequestsView
     ? filteredRequests
     : isRoomsView
       ? filteredJoinedRooms
       : isCreatedView
         ? filteredCreatedRooms
         : filteredContacts;
-  const totalPages = Math.max(1, Math.ceil(list.length / EXPLORE_PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const start = (currentPage - 1) * EXPLORE_PAGE_SIZE;
-  const pageItems = list.slice(start, start + EXPLORE_PAGE_SIZE);
 
   const openJoinedRoom = (roomId: string) => {
     setFocusedRoomId(roomId);
@@ -365,25 +354,6 @@ function ContactsMainPane() {
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-glass-border px-5 py-3">
-        <p className="text-xs text-text-secondary">{exploreUi[locale].page} {currentPage} / {totalPages}</p>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage <= 1}
-            className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary disabled:opacity-40"
-          >
-            {exploreUi[locale].prev}
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage >= totalPages}
-            className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary disabled:opacity-40"
-          >
-            {exploreUi[locale].next}
-          </button>
-        </div>
-      </div>
       {showFriendInvite ? <FriendInviteModal onClose={() => setShowFriendInvite(false)} /> : null}
     </div>
   );
@@ -407,9 +377,12 @@ function ExploreMainPane() {
     publicRoomsLoading,
     publicAgents,
     publicAgentsLoading,
+    publicHumans,
+    publicHumansLoading,
     messages,
     loadPublicRooms,
     loadPublicAgents,
+    loadPublicHumans,
     loadRoomMessages,
     selectAgent,
     addRecentPublicRoom,
@@ -418,33 +391,32 @@ function ExploreMainPane() {
     publicRoomsLoading: state.publicRoomsLoading,
     publicAgents: state.publicAgents,
     publicAgentsLoading: state.publicAgentsLoading,
+    publicHumans: state.publicHumans,
+    publicHumansLoading: state.publicHumansLoading,
     messages: state.messages,
     loadPublicRooms: state.loadPublicRooms,
     loadPublicAgents: state.loadPublicAgents,
+    loadPublicHumans: state.loadPublicHumans,
     loadRoomMessages: state.loadRoomMessages,
     selectAgent: state.selectAgent,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
   const isRoomsView = exploreView === "rooms";
+  const isAgentsView = exploreView === "agents";
+  const isHumansView = exploreView === "humans";
 
   useEffect(() => {
-    if (!authResolved) {
-      return;
-    }
+    if (!authResolved) return;
     if (isRoomsView && !publicRoomsLoading) {
       void loadPublicRooms();
-    }
-    if (!isRoomsView && !publicAgentsLoading) {
+    } else if (isAgentsView && !publicAgentsLoading) {
       void loadPublicAgents();
+    } else if (isHumansView && !publicHumansLoading) {
+      void loadPublicHumans();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally refresh on view switch, not on data length
-  }, [isRoomsView, authResolved]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query, exploreView]);
+  }, [exploreView, authResolved]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredRooms = useMemo(
@@ -471,6 +443,17 @@ function ExploreMainPane() {
       }),
     [publicAgents, normalizedQuery],
   );
+  const filteredHumans = useMemo(
+    () =>
+      publicHumans.filter((human) => {
+        if (!normalizedQuery) return true;
+        return (
+          human.display_name.toLowerCase().includes(normalizedQuery) ||
+          human.human_id.toLowerCase().includes(normalizedQuery)
+        );
+      }),
+    [publicHumans, normalizedQuery],
+  );
   const publicRoomsById = useMemo(
     () => Object.fromEntries(publicRooms.map((room) => [room.room_id, room])),
     [publicRooms],
@@ -478,6 +461,10 @@ function ExploreMainPane() {
   const publicAgentsById = useMemo(
     () => Object.fromEntries(publicAgents.map((agent) => [agent.agent_id, agent])),
     [publicAgents],
+  );
+  const publicHumansById = useMemo(
+    () => Object.fromEntries(publicHumans.map((human) => [human.human_id, human])),
+    [publicHumans],
   );
 
   const openRoomFromExplore = (room: PublicRoom) => {
@@ -491,97 +478,97 @@ function ExploreMainPane() {
     }
   };
 
-  const totalCount = isRoomsView ? filteredRooms.length : filteredAgents.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / EXPLORE_PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const start = (currentPage - 1) * EXPLORE_PAGE_SIZE;
-  const end = start + EXPLORE_PAGE_SIZE;
-  const pagedRooms = filteredRooms.slice(start, end);
-  const pagedAgents = filteredAgents.slice(start, end);
+  const openHumanFromExplore = (_human: PublicHumanProfile) => {
+    // Human profile modal/contact-request flow is not wired yet — clicking
+    // the card is a no-op placeholder, symmetric with selectAgent() for Agents.
+    // Hook into a Human contact-request modal here once it lands.
+  };
 
-  if (exploreView === "templates") {
-    return <PromptTemplates />;
-  }
+  const title = isRoomsView ? t.publicRooms : isAgentsView ? t.publicAgents : t.publicHumans;
+  const subtitle = isRoomsView ? t.browseRooms : isAgentsView ? t.browseAgents : t.browseHumans;
+  const searchPlaceholder = isRoomsView ? t.searchRooms : isAgentsView ? t.searchAgents : t.searchHumans;
+  const loading = isRoomsView ? publicRoomsLoading : isAgentsView ? publicAgentsLoading : publicHumansLoading;
+  const emptyText = isRoomsView ? t.noRoomsFound : isAgentsView ? t.noAgentsFound : t.noHumansFound;
+
+  const handleRefresh = () => {
+    if (isRoomsView) void loadPublicRooms();
+    else if (isAgentsView) void loadPublicAgents();
+    else if (isHumansView) void loadPublicHumans();
+  };
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-deep-black">
       <div className="border-b border-glass-border px-5 py-4">
-        <h2 className="text-base font-semibold text-text-primary">
-          {isRoomsView ? t.publicRooms : t.publicAgents}
-        </h2>
-        <p className="mt-1 text-xs text-text-secondary">
-          {isRoomsView ? t.browseRooms : t.browseAgents}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-text-primary">{title}</h2>
+            <p className="mt-1 text-xs text-text-secondary">{subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={loading}
+            className="shrink-0 rounded border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-neon-cyan/50 hover:text-neon-cyan disabled:opacity-40"
+          >
+            {loading ? "…" : t.refresh}
+          </button>
+        </div>
         <div className="mt-3 max-w-xl">
-          <SearchBar
-            onSearch={setQuery}
-            placeholder={isRoomsView ? t.searchRooms : t.searchAgents}
-          />
+          <SearchBar onSearch={setQuery} placeholder={searchPlaceholder} />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        {isRoomsView ? (
-          publicRoomsLoading ? (
-            <GridSkeletonCards />
-          ) : pagedRooms.length === 0 ? (
-            <p className="text-xs text-text-secondary">{t.noRoomsFound}</p>
+        {loading ? (
+          <GridSkeletonCards />
+        ) : isRoomsView ? (
+          filteredRooms.length === 0 ? (
+            <p className="text-xs text-text-secondary">{emptyText}</p>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {pagedRooms.map((roomIdBased) => (
+            <div className={EXPLORE_GRID_CLASS}>
+              {filteredRooms.map((room) => (
                 <ExploreEntityCard
-                  key={roomIdBased.room_id}
+                  key={room.room_id}
                   kind="room"
-                  id={roomIdBased.room_id}
+                  id={room.room_id}
                   roomsById={publicRoomsById}
                   onRoomOpen={openRoomFromExplore}
-                  className="min-h-[210px]"
                 />
               ))}
             </div>
           )
-        ) : publicAgentsLoading ? (
-          <GridSkeletonCards />
-        ) : pagedAgents.length === 0 ? (
-          <p className="text-xs text-text-secondary">{t.noAgentsFound}</p>
+        ) : isAgentsView ? (
+          filteredAgents.length === 0 ? (
+            <p className="text-xs text-text-secondary">{emptyText}</p>
+          ) : (
+            <div className={EXPLORE_GRID_CLASS}>
+              {filteredAgents.map((agent) => (
+                <ExploreEntityCard
+                  key={agent.agent_id}
+                  kind="agent"
+                  data={publicAgentsById[agent.agent_id]}
+                  agentsById={publicAgentsById}
+                  onAgentOpen={(a) => selectAgent(a.agent_id)}
+                />
+              ))}
+            </div>
+          )
+        ) : filteredHumans.length === 0 ? (
+          <p className="text-xs text-text-secondary">{emptyText}</p>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {pagedAgents.map((agentDataBased) => (
+          <div className={EXPLORE_GRID_CLASS}>
+            {filteredHumans.map((human) => (
               <ExploreEntityCard
-                key={agentDataBased.agent_id}
-                kind="agent"
-                data={publicAgentsById[agentDataBased.agent_id]}
-                agentsById={publicAgentsById}
-                onAgentOpen={(agent) => selectAgent(agent.agent_id)}
-                className="min-h-[210px]"
+                key={human.human_id}
+                kind="human"
+                data={publicHumansById[human.human_id]}
+                humansById={publicHumansById}
+                onHumanOpen={openHumanFromExplore}
               />
             ))}
           </div>
         )}
       </div>
-
-      <div className="flex items-center justify-between border-t border-glass-border px-5 py-3">
-        <p className="text-xs text-text-secondary">
-          {t.page} {currentPage} / {totalPages}
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage <= 1}
-            className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-40"
-          >
-            {t.prev}
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage >= totalPages}
-            className="rounded border border-glass-border px-3 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-40"
-          >
-            {t.next}
-          </button>
-        </div>
-      </div>
-
     </div>
   );
 }

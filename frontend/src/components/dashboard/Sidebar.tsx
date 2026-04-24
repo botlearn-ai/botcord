@@ -21,7 +21,7 @@ import AccountMenu from "./AccountMenu";
 import AddFriendModal from "./AddFriendModal";
 import CreateRoomModal from "./CreateRoomModal";
 import RoomZeroState from "./RoomZeroState";
-import { UserPlus, MessageSquarePlus, Users, LogIn } from "lucide-react";
+import { UserPlus, MessageSquarePlus, Users, LogIn, Bot, Plus } from "lucide-react";
 import { messagesHeader } from "@/lib/i18n/translations/dashboard";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -41,6 +41,13 @@ function formatCoinAmount(minorStr: string): string {
 }
 
 const authNavItems = [
+  {
+    key: "bots" as const,
+    label: "My Bots",
+    icon: (
+      <Bot className="h-5 w-5" strokeWidth={1.5} />
+    ),
+  },
   {
     key: "messages" as const,
     label: "Messages",
@@ -188,6 +195,7 @@ export default function Sidebar() {
     ownedAgents: state.ownedAgents,
     activeAgentId: state.activeAgentId,
     sessionMode: state.sessionMode,
+    viewMode: state.viewMode,
     token: state.token,
     humanRooms: state.humanRooms,
     refreshUserProfile: state.refreshUserProfile,
@@ -207,6 +215,8 @@ export default function Sidebar() {
     setContactsView: state.setContactsView,
     setSidebarWidth: state.setSidebarWidth,
     setOpenedRoomId: state.setOpenedRoomId,
+    selectedBotAgentId: state.selectedBotAgentId,
+    setSelectedBotAgentId: state.setSelectedBotAgentId,
   })));
   const chatStore = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -275,9 +285,12 @@ export default function Sidebar() {
     explore: t.discover,
     wallet: t.wallet,
     activity: t.activity,
+    bots: t.myBots,
   };
 
-  const navItems = authNavItems;
+  const navItems = sessionStore.viewMode === "human"
+    ? authNavItems.filter((item) => item.key !== "activity")
+    : authNavItems.filter((item) => item.key !== "bots");
 
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({
@@ -308,8 +321,8 @@ export default function Sidebar() {
     prefetch("/chats/activity");
   }, [router, uiStore.contactsView, uiStore.exploreView]);
 
-  const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet" | "activity") => {
-    if (isGuest && (tab === "contacts" || tab === "activity")) {
+  const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots") => {
+    if (isGuest && (tab === "contacts" || tab === "activity" || tab === "bots")) {
       showLoginModal();
       return;
     }
@@ -324,6 +337,7 @@ export default function Sidebar() {
       explore: `/chats/explore/${uiStore.exploreView}`,
       wallet: "/chats/wallet",
       activity: "/chats/activity",
+      bots: "/chats/bots",
     };
     uiStore.setSidebarTab(tab);
     if (tab === "messages" && !uiStore.openedRoomId && uiStore.messagesPane !== "user-chat") {
@@ -467,6 +481,15 @@ export default function Sidebar() {
               </button>
             </div>
           )}
+          {uiStore.sidebarTab === "bots" && !isGuest && (
+            <button
+              title={t.createBot}
+              aria-label={t.createBot}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Secondary navigation */}
@@ -499,16 +522,16 @@ export default function Sidebar() {
             </SecondaryNavButton>
             <SecondaryNavButton
               onClick={() => {
-                uiStore.setExploreView("templates");
+                uiStore.setExploreView("humans");
                 startTransition(() => {
-                  router.push("/chats/explore/templates");
+                  router.push("/chats/explore/humans");
                 });
               }}
-              active={uiStore.exploreView === "templates"}
+              active={uiStore.exploreView === "humans"}
               className="mt-2"
               tone="purple"
             >
-              {t.promptTemplates}
+              {t.publicHumans}
             </SecondaryNavButton>
           </div>
         )}
@@ -582,6 +605,55 @@ export default function Sidebar() {
                 <RoomZeroState compact />
               ) : (
                 <RoomList rooms={visibleMessageRooms} loading={showOverviewSkeleton} />
+              )}
+            </div>
+          )}
+
+          {uiStore.sidebarTab === "bots" && (
+            <div className="p-2">
+              {sessionStore.ownedAgents.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-glass-border px-3 py-6 text-center text-xs text-text-secondary/70">
+                  {t.myBotsEmpty}
+                </div>
+              ) : (
+                <ul className="space-y-1">
+                  {sessionStore.ownedAgents.map((bot) => {
+                    const isSelected = uiStore.selectedBotAgentId === bot.agent_id;
+                    return (
+                      <li key={bot.agent_id}>
+                        <button
+                          onClick={() => {
+                            uiStore.setSelectedBotAgentId(bot.agent_id);
+                            void chatStore.switchActiveAgent(bot.agent_id);
+                            startTransition(() => {
+                              router.push(`/chats/bots/${encodeURIComponent(bot.agent_id)}`);
+                            });
+                          }}
+                          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                            isSelected
+                              ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
+                              : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
+                          }`}
+                        >
+                          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-glass-bg">
+                            <Bot className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-medium">
+                              {bot.display_name || bot.agent_id}
+                            </span>
+                            <span className="block truncate font-mono text-[10px] text-text-secondary/60">
+                              {bot.agent_id}
+                            </span>
+                          </span>
+                          {bot.ws_online && (
+                            <span className="h-2 w-2 flex-shrink-0 rounded-full bg-neon-green" />
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
           )}

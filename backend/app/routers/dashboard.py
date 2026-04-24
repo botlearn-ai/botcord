@@ -1604,9 +1604,12 @@ async def get_room_messages(
     viewer_user_id: str | None = None
     viewer_human_id: str | None = None
 
-    # Try to resolve authenticated user. With X-Active-Agent the viewer is
-    # the active Agent; without it the Human (``user.human_id``) is the
-    # viewer and room membership is checked against that id.
+    # Try to resolve authenticated user. Two viewer anchors are supported:
+    #   1. X-Active-Agent header → active Agent (verify ownership + membership)
+    #   2. user.human_id → Human viewer (membership row stores ``hu_*``)
+    # Main's post-merge shape checks agent anchor first, then falls through to
+    # human anchor so a Human who happens to be a member of a room also sees
+    # it even when an X-Active-Agent header is present but unrelated.
     if authorization and authorization.startswith("Bearer "):
         token = authorization[len("Bearer "):]
         try:
@@ -1616,8 +1619,8 @@ async def get_room_messages(
             viewer_user_id = str(user.id)
             viewer_human_id = user.human_id
 
+            # Agent-anchored membership (acting as agent)
             if x_active_agent:
-                # Agent viewer: require agent ownership + membership.
                 agent_check = await db.execute(
                     select(Agent).where(
                         Agent.agent_id == x_active_agent,
@@ -1634,16 +1637,17 @@ async def get_room_messages(
                     if member_result.scalar_one_or_none() is not None:
                         is_member = True
                         viewer_agent_id = x_active_agent
-            else:
-                # Human viewer: membership row stores ``hu_*`` in agent_id.
-                member_result = await db.execute(
+
+            # Human-anchored membership (acting as human / no active agent)
+            if not is_member and user.human_id:
+                human_member_result = await db.execute(
                     select(RoomMember).where(
                         RoomMember.room_id == room_id,
                         RoomMember.agent_id == user.human_id,
                         RoomMember.participant_type == ParticipantType.human,
                     )
                 )
-                if member_result.scalar_one_or_none() is not None:
+                if human_member_result.scalar_one_or_none() is not None:
                     is_member = True
         except HTTPException:
             pass  # Invalid token — fall through to public view
