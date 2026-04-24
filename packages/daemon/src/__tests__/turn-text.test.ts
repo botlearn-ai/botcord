@@ -99,6 +99,38 @@ describe("composeBotCordUserTurn", () => {
     expect(out).toBe("");
   });
 
+  it("appends the contact-request notify-owner hint when envelope.type is contact_request", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "Hi, please add me",
+        sender: { id: "ag_stranger", kind: "agent" },
+        conversation: { id: "rm_dm_x", kind: "direct" },
+        raw: { envelope: { type: "contact_request" } },
+      }),
+    );
+    expect(out).toContain("contact request from ag_stranger");
+    expect(out).toContain("botcord_notify tool");
+    // Base direct-chat hint should still appear above the contact-request hint.
+    expect(out).toContain("naturally concluded");
+    const baseIdx = out.indexOf("naturally concluded");
+    const crIdx = out.indexOf("contact request from");
+    expect(crIdx).toBeGreaterThan(baseIdx);
+  });
+
+  it("does NOT append the contact-request hint for a plain message envelope", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        raw: { envelope: { type: "message" } },
+      }),
+    );
+    expect(out).not.toContain("contact request from");
+  });
+
+  it("does NOT append the contact-request hint when msg.raw has no envelope", () => {
+    const out = composeBotCordUserTurn(makeMessage({ raw: {} }));
+    expect(out).not.toContain("contact request from");
+  });
+
   it("sanitizes room names so newline-based injection can't reshape the header", () => {
     const out = composeBotCordUserTurn(
       makeMessage({

@@ -35,6 +35,19 @@ const DIRECT_HINT =
   'reply with exactly "NO_REPLY" and nothing else.]';
 
 /**
+ * Read the BotCord envelope type from a raw inbound message. Returns
+ * `undefined` when the message didn't come from the BotCord channel or the
+ * raw shape is unexpected — callers treat that the same as "message".
+ */
+function readEnvelopeType(raw: unknown): string | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const env = (raw as { envelope?: unknown }).envelope;
+  if (!env || typeof env !== "object") return undefined;
+  const t = (env as { type?: unknown }).type;
+  return typeof t === "string" ? t : undefined;
+}
+
+/**
  * Compose the user-turn text for a BotCord inbound message.
  *
  * Contract (from `UserTurnBuilder`):
@@ -82,12 +95,29 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
 
   const hint = isGroup ? GROUP_HINT : DIRECT_HINT;
 
-  return [
+  // Contact-request envelopes travel through the same "inbound message"
+  // path as regular messages, but carry an additional expectation: the
+  // agent should surface the request to its owner rather than auto-accept
+  // or auto-reject. Mirrors `plugin/src/inbound.ts` §handleA2ASingle.
+  const isContactRequest = readEnvelopeType(msg.raw) === "contact_request";
+  const contactRequestHint = isContactRequest
+    ? "[You received a contact request from " +
+      sanitizedSenderLabel +
+      ". Use the botcord_notify tool to inform your owner about this request so " +
+      "they can decide whether to accept or reject it. Include the sender's " +
+      "agent ID and any message they attached.]"
+    : null;
+
+  const lines: string[] = [
     headerFields.join(" | "),
     `<${tag} sender="${sanitizedSenderLabel}" sender_kind="${senderKindAttr}">`,
     trimmed,
     `</${tag}>`,
     "",
     hint,
-  ].join("\n");
+  ];
+  if (contactRequestHint) {
+    lines.push("", contactRequestHint);
+  }
+  return lines.join("\n");
 }

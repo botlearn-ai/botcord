@@ -147,7 +147,13 @@ function normalizeInbox(
 ): GatewayInboundMessage | null {
   const env = msg.envelope;
   if (!env) return null;
-  if (env.type !== "message") return null;
+  // `message` is the normal conversational envelope; `contact_request` is
+  // a lightweight inbound asking the agent to notify its owner (the
+  // composer appends the notify-owner hint). All other envelope types
+  // (notification, system, contact_added/removed, …) are still filtered
+  // out here — they belong in a separate push-notification path that
+  // daemon does not yet implement.
+  if (env.type !== "message" && env.type !== "contact_request") return null;
   if (!msg.room_id) return null;
 
   const rawText =
