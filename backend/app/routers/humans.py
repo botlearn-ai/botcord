@@ -19,7 +19,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,10 +43,15 @@ from hub.models import (
     AgentSubscription,
     Contact,
     ContactRequest,
+    Invite,
+    MessageRecord,
     Room,
     RoomMember,
+    Share,
+    ShareMessage,
     User,
 )
+from hub.share_payloads import frontend_url, room_continue_url, room_entry_type, share_create_payload
 
 _logger = logging.getLogger(__name__)
 
@@ -107,6 +112,15 @@ class HumanContactListResponse(BaseModel):
 class AddRoomMemberBody(BaseModel):
     participant_id: str = Field(..., min_length=1, max_length=32)
     role: Literal["member", "admin"] = "member"
+
+
+class CreateHumanShareBody(BaseModel):
+    expires_in_hours: int | None = 168
+
+
+class CreateHumanInviteBody(BaseModel):
+    expires_in_hours: int | None = 168
+    max_uses: int = 1
 
 
 class HumanRoomMemberResponse(BaseModel):
@@ -262,6 +276,64 @@ def _split_prefix(participant_id: str) -> ParticipantType:
     if participant_id.startswith("ag_"):
         return ParticipantType.agent
     raise HTTPException(status_code=400, detail="peer_id must be prefixed with ag_ or hu_")
+
+
+def _invite_url(code: str) -> str:
+    return frontend_url(f"/i/{code}")
+
+
+def _serialize_human_room_invite_preview(
+    invite: Invite,
+    creator: User,
+    room: Room,
+    member_count: int = 0,
+) -> dict:
+    return {
+        "code": invite.code,
+        "kind": invite.kind,
+        "entry_type": room_entry_type(room).replace("private_room", "private_invite"),
+        "target_type": "room",
+        "target_id": invite.room_id,
+        "invite_url": _invite_url(invite.code),
+        "continue_url": room_continue_url(invite.room_id or room.room_id),
+        "expires_at": invite.expires_at.isoformat() if invite.expires_at else None,
+        "max_uses": invite.max_uses,
+        "use_count": invite.use_count,
+        "creator": {
+            "agent_id": creator.human_id,
+            "display_name": creator.display_name,
+        },
+        "room": {
+            "room_id": room.room_id,
+            "name": room.name,
+            "description": room.description,
+            "visibility": room.visibility.value,
+            "join_mode": room.join_policy.value,
+            "requires_payment": bool(room.required_subscription_product_id),
+            "required_subscription_product_id": room.required_subscription_product_id,
+            "member_count": member_count,
+        },
+    }
+
+
+def _extract_text_from_envelope(envelope_json: str | None) -> dict[str, object]:
+    if not envelope_json:
+        return {"type": "message", "text": "", "payload": {}}
+    try:
+        envelope = json.loads(envelope_json)
+    except Exception:
+        return {"type": "message", "text": "", "payload": {}}
+    payload = envelope.get("payload", {})
+    if not isinstance(payload, dict):
+        payload = {}
+    text = payload.get("text") or payload.get("body") or payload.get("message") or ""
+    if text is not None and not isinstance(text, str):
+        text = str(text)
+    return {
+        "type": envelope.get("type", "message") or "message",
+        "text": text or "",
+        "payload": payload,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +520,156 @@ async def create_human_room(
         join_policy=room.join_policy.value,
         my_role=RoomRole.owner.value,
     )
+
+
+@router.post(
+    "/me/rooms/{room_id}/share",
+    status_code=201,
+)
+async def create_room_share_as_human(
+    room_id: str,
+    body: CreateHumanShareBody | None = None,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _load_human(db, ctx)
+    me = user.human_id
+
+    room_result = await db.execute(select(Room).where(Room.room_id == room_id))
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    membership_result = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.participant_type == ParticipantType.human,
+            RoomMember.agent_id == me,
+        )
+    )
+    if membership_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    expires_at = None
+    if body and body.expires_in_hours:
+      expires_at = _now() + datetime.timedelta(hours=body.expires_in_hours)
+
+    dedup_sub = (
+        select(
+            MessageRecord.msg_id,
+            func.min(MessageRecord.id).label("min_id"),
+        )
+        .where(MessageRecord.room_id == room_id)
+        .group_by(MessageRecord.msg_id)
+        .subquery()
+    )
+    msg_result = await db.execute(
+        select(MessageRecord)
+        .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
+        .order_by(MessageRecord.id.desc())
+        .limit(200)
+    )
+    records = list(reversed(msg_result.scalars().all()))
+
+    share = Share(
+        share_id=f"sh_{UUID(int=UUID(bytes=b'0' * 16).int).hex[:0]}",
+        room_id=room_id,
+        shared_by_agent_id=me,
+        shared_by_name=user.display_name or me,
+        expires_at=expires_at,
+    )
+    share.share_id = f"sh_{__import__('uuid').uuid4().hex[:24]}"
+    db.add(share)
+    await db.flush()
+
+    agent_name_cache: dict[str, str] = {}
+    human_name_cache: dict[str, str] = {me: user.display_name or me}
+
+    for rec in records:
+        parsed = _extract_text_from_envelope(rec.envelope_json)
+        sender_name = rec.sender_id
+        if (rec.source_type or "") == "dashboard_human_room" and rec.source_user_id:
+            if rec.sender_id not in human_name_cache:
+                human_row = await db.execute(
+                    select(User.display_name).where(User.id == rec.source_user_id)
+                )
+                human_name_cache[rec.sender_id] = human_row.scalar() or "User"
+            sender_name = human_name_cache[rec.sender_id]
+        else:
+            if rec.sender_id not in agent_name_cache:
+                agent_row = await db.execute(
+                    select(Agent.display_name).where(Agent.agent_id == rec.sender_id)
+                )
+                agent_name_cache[rec.sender_id] = agent_row.scalar() or rec.sender_id
+            sender_name = agent_name_cache[rec.sender_id]
+
+        db.add(
+            ShareMessage(
+                share_id=share.share_id,
+                hub_msg_id=rec.hub_msg_id,
+                msg_id=rec.msg_id,
+                sender_id=rec.sender_id,
+                sender_name=sender_name,
+                type=str(parsed["type"]),
+                text=str(parsed["text"]),
+                payload_json=json.dumps(parsed["payload"]),
+                created_at=rec.created_at or _now(),
+            )
+        )
+
+    await db.commit()
+
+    return share_create_payload(
+        share_id=share.share_id,
+        room=room,
+        created_at=share.created_at.isoformat() if share.created_at else _now().isoformat(),
+        expires_at=expires_at.isoformat() if expires_at else None,
+    )
+
+
+@router.post(
+    "/me/rooms/{room_id}/invite",
+    status_code=201,
+)
+async def create_room_invite_as_human(
+    room_id: str,
+    body: CreateHumanInviteBody | None = None,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _load_human(db, ctx)
+    me = user.human_id
+    payload = body or CreateHumanInviteBody()
+
+    room = await db.scalar(select(Room).where(Room.room_id == room_id))
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    inviter = await db.scalar(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.participant_type == ParticipantType.human,
+            RoomMember.agent_id == me,
+        )
+    )
+    if inviter is None:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+    if inviter.role not in (RoomRole.owner, RoomRole.admin) and not bool(inviter.can_invite or room.default_invite):
+        raise HTTPException(status_code=403, detail="You do not have invite permission")
+
+    invite = Invite(
+        code=f"iv_{__import__('uuid').uuid4().hex[:20]}",
+        kind="room",
+        creator_agent_id=me,
+        room_id=room_id,
+        expires_at=_now() + datetime.timedelta(hours=payload.expires_in_hours) if payload.expires_in_hours else None,
+        max_uses=max(1, payload.max_uses),
+    )
+    db.add(invite)
+    await db.commit()
+
+    member_count = await db.scalar(select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)) or 0
+    return _serialize_human_room_invite_preview(invite, creator=user, room=room, member_count=member_count)
 
 
 @router.post(

@@ -1164,40 +1164,124 @@ export const shareModal: TranslationMap<{
   createShareAssets: string
   failedToCreateLink: string
   failedToCopy: string
+  failedToShare: string
   createShareLink: string
   creating: string
+  sharing: string
+  shareNow: string
   anyoneCanView: string
   shareLink: string
   sharePrompt: string
   copyPrompt: string
+  sharePreview: string
+  shareSetupDescription: string
+  shareReadyDescription: string
+  shareChannels: string
+  deliveryNotes: string
+  metaShareType: string
+  metaAccess: string
+  metaDescription: string
+  metaPrompt: string
+  promptAvailableAfterCreate: string
+  noSharePermissionMeta: string
+  copyLinkChannelTitle: string
+  copyLinkChannelDescription: string
+  copyPromptChannelTitle: string
+  copyPromptChannelDescription: string
+  nativeShareTitle: string
+  nativeShareDescription: string
+  channelLink: string
+  channelInvite: string
+  visibilityPublic: string
+  visibilityPrivate: string
+  accessPublicSnapshot: string
+  accessPrivateSnapshot: string
+  accessPaidEntry: string
+  accessInviteOnly: string
   privateRoomNote: string
   privateInviteNote: string
 }> = {
   en: {
     shareRoom: 'Share Group',
-    createShareAssets: 'Create a share link and invite prompt for',
+    createShareAssets: 'Choose how you want to share this group.',
     failedToCreateLink: 'Failed to create share link',
     failedToCopy: 'Failed to copy to clipboard',
+    failedToShare: 'Failed to open system share',
     createShareLink: 'Create Share Link',
     creating: 'Creating...',
+    sharing: 'Sharing...',
+    shareNow: 'Share now',
     anyoneCanView: 'Anyone with this link can view the conversation snapshot.',
     shareLink: 'Share link',
     sharePrompt: 'Invite prompt',
     copyPrompt: 'Copy prompt',
+    sharePreview: 'Production preview card',
+    shareSetupDescription: 'Create a share link first, then copy the link or the prompt you need.',
+    shareReadyDescription: 'Your share asset is ready. Use the channel actions on the right for fast distribution.',
+    shareChannels: 'Share channels',
+    deliveryNotes: 'Delivery notes',
+    metaShareType: 'Share type',
+    metaAccess: 'Access',
+    metaDescription: 'Description',
+    metaPrompt: 'Prompt',
+    promptAvailableAfterCreate: 'The invite prompt will appear here after you create the share asset.',
+    noSharePermissionMeta: 'This room can be viewed here, but share actions are not available for your current role.',
+    copyLinkChannelTitle: 'Copy link',
+    copyLinkChannelDescription: 'Send this directly to people in chat, docs, or announcements.',
+    copyPromptChannelTitle: 'Copy Bot prompt',
+    copyPromptChannelDescription: 'Send this to another Agent when you want it to handle joining by itself.',
+    nativeShareTitle: 'System share',
+    nativeShareDescription: 'Open the native share sheet and hand off to installed apps.',
+    channelLink: 'Link delivery',
+    channelInvite: 'Invite delivery',
+    visibilityPublic: 'Public group',
+    visibilityPrivate: 'Private group',
+    accessPublicSnapshot: 'Public snapshot',
+    accessPrivateSnapshot: 'Private snapshot',
+    accessPaidEntry: 'Paid entry',
+    accessInviteOnly: 'Invite only',
     privateRoomNote: 'This is a private group snapshot. Open it in the BotCord chat app to continue.',
     privateInviteNote: 'This is a private invite. Open it in the BotCord chat app to join directly.',
   },
   zh: {
     shareRoom: '分享群',
-    createShareAssets: '为以下群生成分享链接和邀请 Prompt',
+    createShareAssets: '选择你要怎么分享这个群。',
     failedToCreateLink: '创建分享链接失败',
     failedToCopy: '复制到剪贴板失败',
+    failedToShare: '打开系统分享失败',
     createShareLink: '创建分享链接',
     creating: '创建中...',
+    sharing: '分享中...',
+    shareNow: '立即分享',
     anyoneCanView: '任何拥有此链接的人都可以查看对话快照。',
     shareLink: '分享链接',
     sharePrompt: '邀请 Prompt',
     copyPrompt: '复制 Prompt',
+    sharePreview: '分享预览卡片',
+    shareSetupDescription: '先生成分享链接，然后复制链接或 Prompt 发出去。',
+    shareReadyDescription: '分享资产已经准备好。右侧渠道区可以直接完成分发。',
+    shareChannels: '分享渠道',
+    deliveryNotes: '分发说明',
+    metaShareType: '分享类型',
+    metaAccess: '访问方式',
+    metaDescription: '说明',
+    metaPrompt: 'Prompt',
+    promptAvailableAfterCreate: '生成分享资产后，对应的邀请 Prompt 会显示在这里。',
+    noSharePermissionMeta: '你当前可以查看这个群的信息，但没有分享分发权限。',
+    copyLinkChannelTitle: '复制链接',
+    copyLinkChannelDescription: '适合直接发给人，放到聊天窗口、文档或公告里。',
+    copyPromptChannelTitle: '复制 Agent Prompt',
+    copyPromptChannelDescription: '适合发给另一个 Agent，让它自己理解并执行加入流程。',
+    nativeShareTitle: '系统分享',
+    nativeShareDescription: '调用系统分享面板，直接交给已安装的应用继续分发。',
+    channelLink: '链接分发',
+    channelInvite: '邀请分发',
+    visibilityPublic: '公开群',
+    visibilityPrivate: '私有群',
+    accessPublicSnapshot: '公开快照',
+    accessPrivateSnapshot: '私有快照',
+    accessPaidEntry: '付费进入',
+    accessInviteOnly: '仅限邀请',
     privateRoomNote: '这是一个私有群快照。请在 BotCord 聊天应用中继续。',
     privateInviteNote: '这是一个私有邀请链接。请在 BotCord 聊天应用中直接加入。',
   },

@@ -11,6 +11,7 @@ import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import SubscriptionBadge from "./SubscriptionBadge";
+import { initialsFromName, themeFromRoomName } from "./roomVisualTheme";
 
 type ExploreEntityCardProps =
   | {
@@ -38,99 +39,6 @@ type ExploreEntityCardProps =
       onHumanOpen?: (human: PublicHumanProfile) => void;
       className?: string;
     };
-
-function initialsFromName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "AI";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
-}
-
-// FNV-1a 32-bit — stable, short, good spread for short strings.
-function hashString(input: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
-type RoomTheme = {
-  patternUrl: string;
-  accent: string;
-  accentDim: string;
-};
-
-const PATTERN_KINDS = ["dots", "grid", "diagonal", "triangles", "waves", "hex"] as const;
-
-function buildPattern(kind: (typeof PATTERN_KINDS)[number], seed: number, color: string): string {
-  // Quantize seed-driven params so tiles stay readable.
-  const size = 24 + (seed % 20);
-  const stroke = (((seed >> 5) % 100) / 100) * 0.6 + 0.4; // 0.4 – 1.0
-  const rotate = (seed >> 11) % 360;
-  const enc = (s: string) => encodeURIComponent(s).replace(/'/g, "%27").replace(/"/g, "%22");
-
-  let inner = "";
-  switch (kind) {
-    case "dots": {
-      const r = 1 + (seed % 3);
-      inner = `<circle cx='${size / 2}' cy='${size / 2}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`;
-      break;
-    }
-    case "grid": {
-      inner = `<path d='M ${size} 0 L 0 0 0 ${size}' stroke='${color}' stroke-width='1' stroke-opacity='${stroke}' fill='none'/>`;
-      break;
-    }
-    case "diagonal": {
-      inner = `<path d='M-2,2 l4,-4 M0,${size} l${size},-${size} M${size - 2},${size + 2} l4,-4' stroke='${color}' stroke-width='1.2' stroke-opacity='${stroke}'/>`;
-      break;
-    }
-    case "triangles": {
-      const h = size * 0.866;
-      inner = `<path d='M0 ${h} L${size / 2} 0 L${size} ${h} Z' fill='none' stroke='${color}' stroke-opacity='${stroke}'/>`;
-      break;
-    }
-    case "waves": {
-      const a = 3 + (seed % 4);
-      inner = `<path d='M0 ${size / 2} Q ${size / 4} ${size / 2 - a}, ${size / 2} ${size / 2} T ${size} ${size / 2}' stroke='${color}' stroke-opacity='${stroke}' fill='none'/>`;
-      break;
-    }
-    case "hex": {
-      const r = size / 3;
-      const cx = size / 2;
-      const cy = size / 2;
-      const pts = Array.from({ length: 6 }, (_, i) => {
-        const a = (Math.PI / 3) * i;
-        return `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`;
-      }).join(" ");
-      inner = `<polygon points='${pts}' fill='none' stroke='${color}' stroke-opacity='${stroke}'/>`;
-      break;
-    }
-  }
-
-  const svg =
-    `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}' viewBox='0 0 ${size} ${size}'>` +
-    `<g transform='rotate(${rotate} ${size / 2} ${size / 2})'>${inner}</g>` +
-    `</svg>`;
-  return `url("data:image/svg+xml;utf8,${enc(svg)}")`;
-}
-
-function themeFromName(name: string): RoomTheme {
-  const seed = hashString(name || "room");
-  const hue1 = seed % 360;
-  const hue2 = (hue1 + 40 + ((seed >> 8) % 80)) % 360;
-  const kind = PATTERN_KINDS[(seed >> 3) % PATTERN_KINDS.length];
-  const angle = (seed >> 17) % 360;
-
-  void angle;
-  const patternUrl = buildPattern(kind, seed, `hsl(${hue1} 90% 80%)`);
-  return {
-    patternUrl,
-    accent: `hsl(${hue1} 85% 70%)`,
-    accentDim: `hsl(${hue1} 70% 60% / 0.35)`,
-  };
-}
 
 function formatRelativeTime(
   ts: string | null,
@@ -179,7 +87,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
   if (props.kind === "room") {
     const room = props.data || (props.id ? props.roomsById?.[props.id] : undefined);
     if (!room) return null;
-    const theme = themeFromName(room.name || room.room_id);
+    const theme = themeFromRoomName(room.name || room.room_id);
     const memberWord = room.member_count === 1 ? t.memberSingular : t.memberPlural;
     const roomInitials = initialsFromName(room.name || "Room");
     return (

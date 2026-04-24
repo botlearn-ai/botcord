@@ -1,14 +1,20 @@
+/**
+ * [INPUT]: 依赖 share/invite API 生成群分享资产，依赖 onboarding prompt builder 生成可转发给 Agent 的引导文本
+ * [OUTPUT]: 对外提供 ShareModal 组件，统一承载群分享预览、群 Meta 信息与最小化复制动作
+ * [POS]: dashboard 群分享入口，将底层 share/invite 能力包装成更克制的生产级分享弹窗
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
 "use client";
 
-import { useState } from "react";
-import { useLanguage } from '@/lib/i18n';
-import { shareModal } from '@/lib/i18n/translations/dashboard';
-import { common } from '@/lib/i18n/translations/common';
-import { joinGuide } from '@/lib/i18n/translations/dashboard';
+import { useEffect, useMemo, useState } from "react";
+import { useLanguage } from "@/lib/i18n";
+import { shareModal } from "@/lib/i18n/translations/dashboard";
+import { common } from "@/lib/i18n/translations/common";
 import { api } from "@/lib/api";
-import type { CreateShareResponse, InvitePreviewResponse } from "@/lib/types";
+import type { CreateShareResponse, InvitePreviewResponse, PublicRoomMember } from "@/lib/types";
 import { buildSharePrompt } from "@/lib/onboarding";
-import { Loader2 } from "lucide-react";
+import { Copy, Globe2, Link2, Loader2, Lock, Sparkles, X } from "lucide-react";
+import { initialsFromName, themeFromRoomName } from "./roomVisualTheme";
 
 interface ShareModalProps {
   roomId: string;
@@ -22,11 +28,31 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   const locale = useLanguage();
   const t = shareModal[locale];
   const tc = common[locale];
-  const tj = joinGuide[locale];
   const [shareData, setShareData] = useState<(CreateShareResponse | InvitePreviewResponse) | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<"link" | "prompt" | null>(null);
+  const [members, setMembers] = useState<PublicRoomMember[]>([]);
+  const [memberTotal, setMemberTotal] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getRoomMembers(roomId)
+      .catch(() => api.getPublicRoomMembers(roomId))
+      .then((result) => {
+        if (cancelled) return;
+        setMembers(result.members.slice(0, 8));
+        setMemberTotal(result.total || result.members.length);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMembers([]);
+        setMemberTotal(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
 
   const handleCreate = async () => {
     setLoading(true);
@@ -43,17 +69,6 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
     }
   };
 
-  const handleCopyLink = async () => {
-    if (!shareData) return;
-    try {
-      await navigator.clipboard.writeText("link_url" in shareData ? shareData.link_url : shareData.invite_url);
-      setCopiedField("link");
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch {
-      setError(t.failedToCopy);
-    }
-  };
-
   const resolveProductId = (sd: typeof shareData): string | undefined => {
     if (!sd) return undefined;
     if ("required_subscription_product_id" in sd && sd.required_subscription_product_id) {
@@ -65,24 +80,59 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
     return undefined;
   };
 
+  const shareUrl = shareData ? ("link_url" in shareData ? shareData.link_url : shareData.invite_url) : "";
+  const entryType = shareData?.entry_type;
+  const promptText = useMemo(() => buildSharePrompt({
+    shareId: shareData && "share_id" in shareData ? shareData.share_id : undefined,
+    inviteCode: shareData && "code" in shareData ? shareData.code : undefined,
+    roomId,
+    roomName,
+    requiresPayment: entryType === "paid_room",
+    productId: resolveProductId(shareData),
+    isReadOnly: entryType === "private_room",
+    locale,
+  }), [entryType, locale, roomId, roomName, shareData]);
+  const roomVisualTheme = useMemo(() => themeFromRoomName(roomName || roomId), [roomId, roomName]);
+  const roomInitials = useMemo(() => initialsFromName(roomName || "Room"), [roomName]);
+  const accessLabel = entryType === "private_invite"
+    ? t.accessInviteOnly
+    : entryType === "private_room"
+      ? t.accessPrivateSnapshot
+      : entryType === "paid_room"
+        ? t.accessPaidEntry
+        : t.accessPublicSnapshot;
+  const visibilityLabel = roomVisibility === "private" ? t.visibilityPrivate : t.visibilityPublic;
+  const distributionLabel = entryType === "private_invite" ? t.channelInvite : t.channelLink;
+  const statusNote = entryType === "private_invite"
+    ? t.privateInviteNote
+    : entryType === "private_room"
+      ? t.privateRoomNote
+      : t.anyoneCanView;
+  const visibleMembers = members.slice(0, 6);
+  const remainingMembers = Math.max(memberTotal - visibleMembers.length, 0);
+  const memberAvatarTones = [
+    "from-[#5eead4]/80 to-[#0891b2]/80",
+    "from-[#fda4af]/80 to-[#be185d]/80",
+    "from-[#c4b5fd]/80 to-[#7c3aed]/80",
+    "from-[#fde68a]/80 to-[#d97706]/80",
+    "from-[#93c5fd]/80 to-[#2563eb]/80",
+  ] as const;
+
+  const handleCopyLink = async () => {
+    if (!shareData) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedField("link");
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      setError(t.failedToCopy);
+    }
+  };
+
   const handleCopyPrompt = async () => {
     if (!shareData) return;
     try {
-      const shareId = "share_id" in shareData ? shareData.share_id : undefined;
-      const inviteCode = "code" in shareData ? shareData.code : undefined;
-      const entryType = shareData.entry_type;
-      await navigator.clipboard.writeText(
-        buildSharePrompt({
-          shareId,
-          inviteCode,
-          roomId,
-          roomName,
-          requiresPayment: shareData.entry_type === "paid_room",
-          productId: resolveProductId(shareData),
-          isReadOnly: entryType === "private_room",
-          locale,
-        }),
-      );
+      await navigator.clipboard.writeText(promptText);
       setCopiedField("prompt");
       setTimeout(() => setCopiedField(null), 2000);
     } catch {
@@ -90,122 +140,146 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
     }
   };
 
-  const shareUrl = shareData ? ("link_url" in shareData ? shareData.link_url : shareData.invite_url) : "";
-  const entryType = shareData?.entry_type;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="mx-4 w-full max-w-md rounded-xl border border-glass-border bg-deep-black p-6"
+        className="relative w-full max-w-2xl overflow-hidden rounded-[28px] shadow-[0_32px_120px_rgba(0,0,0,0.45)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-1 text-lg font-semibold text-text-primary">{t.shareRoom}</h2>
-        <p className="mb-4 text-sm text-text-secondary">
-          {t.createShareAssets} <span className="text-neon-cyan">{roomName}</span>
-        </p>
+        <div className="relative flex max-h-[90vh] flex-col overflow-hidden">
+          <button
+            onClick={onClose}
+            className="absolute right-3 top-3 z-10 rounded-full bg-black/25 p-2 text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+            aria-label={common[locale].close}
+            title={common[locale].close}
+          >
+            <X className="h-4 w-4" />
+          </button>
 
-        {error && (
-          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+            {error ? (
+              <div className="mb-5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {error}
+              </div>
+            ) : null}
 
-        {!canInvite ? (
-          <div>
-            <div className="mb-4 flex items-start gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-              <span>🔒</span>
-              <p className="leading-relaxed">{tj.noInvitePermission}</p>
-            </div>
-            <div className="flex justify-end">
-              <button
-                onClick={onClose}
-                className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+            <section className="w-full">
+              <div
+                className="relative h-56 overflow-hidden rounded-[28px] border border-white/10"
+                style={{ backgroundImage: roomVisualTheme.patternUrl, backgroundRepeat: "repeat" }}
               >
-                {tc.done}
-              </button>
-            </div>
-          </div>
-        ) : !shareData ? (
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={onClose}
-              className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
-            >
-              {tc.cancel}
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {loading ? t.creating : t.createShareLink}
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div className="space-y-4">
-              <div>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {t.shareLink}
-                </p>
-                <div className="flex items-center gap-2 rounded border border-glass-border bg-glass-bg px-3 py-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={shareUrl}
-                    className="flex-1 bg-transparent font-mono text-sm text-text-primary outline-none"
-                  />
-                  <button
-                    onClick={handleCopyLink}
-                    className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
-                  >
-                    {copiedField === "link" ? tc.copied : tc.copy}
-                  </button>
+                <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(7,10,22,0.18),rgba(7,10,22,0.82))]" />
+                <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-neon-cyan/80">{t.shareRoom}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <span className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-medium text-white/85 backdrop-blur-sm">{visibilityLabel}</span>
+                    <span className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-medium text-white/85 backdrop-blur-sm">{accessLabel}</span>
+                  </div>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 p-5">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="flex h-16 w-16 items-center justify-center rounded-[20px] text-lg font-bold text-white/90 backdrop-blur-sm"
+                        style={{ background: roomVisualTheme.accentDim, boxShadow: `0 0 0 1px ${roomVisualTheme.accent}55` }}
+                      >
+                        {roomInitials}
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="truncate text-[34px] font-semibold leading-none text-white">{roomName}</h2>
+                        <p className="mt-3 text-sm leading-6 text-white/72">{t.createShareAssets}</p>
+                      </div>
+                    </div>
+                    {visibleMembers.length > 0 ? (
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        {visibleMembers.map((member, index) => (
+                          <div
+                            key={member.agent_id}
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${memberAvatarTones[index % memberAvatarTones.length]} text-xs font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.28)]`}
+                            title={member.display_name}
+                          >
+                            {initialsFromName(member.display_name || member.agent_id)}
+                          </div>
+                        ))}
+                        {remainingMembers > 0 ? (
+                          <div className="flex h-10 shrink-0 items-center justify-center rounded-full bg-white/[0.08] px-3 text-xs font-semibold text-white/80">
+                            +{remainingMembers}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                    {t.sharePrompt}
-                  </p>
-                  <button
-                    onClick={handleCopyPrompt}
-                    className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
-                  >
-                    {copiedField === "prompt" ? tc.copied : t.copyPrompt}
-                  </button>
+
+              <div className="space-y-4 px-1 pt-5">
+                {canInvite ? (
+                  !shareData ? (
+                    <div className="space-y-3">
+                      <p className="text-sm leading-6 text-text-secondary">{t.shareSetupDescription}</p>
+                      <button
+                        onClick={handleCreate}
+                        disabled={loading}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-neon-cyan/15 px-4 py-3 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        {loading ? t.creating : t.createShareLink}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        onClick={() => void handleCopyLink()}
+                        className="flex items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 rounded-xl bg-neon-cyan/12 p-2 text-neon-cyan">
+                            <Link2 className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-text-primary">{t.copyLinkChannelTitle}</p>
+                            <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyLinkChannelDescription}</p>
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                          {copiedField === "link" ? tc.copied : tc.copy}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => void handleCopyPrompt()}
+                        className="flex items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 rounded-xl bg-fuchsia-400/12 p-2 text-fuchsia-300">
+                            <Copy className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-text-primary">{t.copyPromptChannelTitle}</p>
+                            <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyPromptChannelDescription}</p>
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                          {copiedField === "prompt" ? tc.copied : t.copyPrompt}
+                        </span>
+                      </button>
+                    </div>
+                  )
+                ) : null}
+
+                <div className="rounded-2xl bg-black/20 px-4 py-4">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                    {entryType === "private_invite" || roomVisibility === "private" ? <Lock className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
+                    {distributionLabel}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{statusNote}</p>
                 </div>
-                <textarea
-                  readOnly
-                  value={buildSharePrompt({
-                    shareId: shareData && "share_id" in shareData ? shareData.share_id : undefined,
-                    inviteCode: shareData && "code" in shareData ? shareData.code : undefined,
-                    roomId,
-                    roomName,
-                    requiresPayment: entryType === "paid_room",
-                    productId: resolveProductId(shareData),
-                    isReadOnly: entryType === "private_room",
-                    locale,
-                  })}
-                  rows={6}
-                  className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
-                />
               </div>
-            </div>
-            <p className="mt-3 mb-4 text-xs text-text-secondary">
-              {entryType === "private_invite" ? t.privateInviteNote : t.anyoneCanView}
-            </p>
-            <div className="flex justify-end">
-              <button
-                onClick={onClose}
-                className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
-              >
-                {tc.done}
-              </button>
-            </div>
+            </section>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

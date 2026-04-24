@@ -36,6 +36,7 @@ dashboard/
 ├── LedgerList.tsx            # 钱包流水列表
 ├── StripeReturnBanner.tsx    # Stripe 回跳结果条
 ├── ShareModal.tsx            # 分享弹窗
+├── roomVisualTheme.ts        # 房间视觉主题基建：根据房间名生成纹理、强调色与首字母徽标
 ├── JoinGuidePrompt.tsx       # 加入/邀请引导编排器，按是否已加入分发到不同子组件
 ├── SelfJoinGuide.tsx         # 自加入引导，只提供站内 join 动作，不生成可复制 Prompt
 ├── InviteOthersGuide.tsx     # 邀请他人引导，只消费真实 invite/share 资产并生成可复制 Prompt
@@ -48,6 +49,7 @@ dashboard/
 
 - Explore 的卡片渲染收敛到 `ExploreEntityCard.tsx`，避免 `ChatPane.tsx` 重复写两套 UI。
 - 统一卡片组件支持两种入参：`id`（通过映射查数据）或 `data`（直接渲染），便于跨页复用。
+- `roomVisualTheme.ts` 提供房间级纹理与强调色生成算法，公开群卡片与分享预览共用同一视觉来源，避免视觉语义分叉。
 - 社区（room）卡片比 agent 卡片承载更多运营信息：成员数、活跃时间、最近消息预览、可见性。
 - agent 卡片强调拟人化表达：头像首字母、persona 文案、沟通风格提示。
 - 导航状态与地址同构：一级 tab 使用 `/chats/{tab}`（消息统一为 `messages`），二级导航使用 `/chats/{tab}/{subtab}`。
