@@ -682,7 +682,7 @@ export default function DashboardApp() {
       ) : uiStore.sidebarTab === "bots" ? (
         <div className="flex-1 min-w-0">
           {uiStore.selectedBotAgentId ? (
-            <UserChatPane />
+            <UserChatPane agentId={uiStore.selectedBotAgentId} />
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-secondary/70">
               {/* Prompt rendered by DashboardApp to keep sidebar lean */}
