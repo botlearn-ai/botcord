@@ -10,6 +10,7 @@ import type {
   GatewayRoute,
   GatewayRuntimeSnapshot,
   InboundObserver,
+  OutboundObserver,
   SystemContextBuilder,
   UserTurnBuilder,
 } from "./types.js";
@@ -42,6 +43,11 @@ export interface GatewayBootOptions {
    * to the runtime. Forwarded to the dispatcher; see {@link UserTurnBuilder}.
    */
   composeUserTurn?: UserTurnBuilder;
+  /**
+   * Optional observer fired after each reply is sent. Intended for outbound
+   * bookkeeping like loop-risk tracking.
+   */
+  onOutbound?: OutboundObserver;
 }
 
 /** Default runtime factory: delegates to the built-in registry; ignores extraArgs at construction. */
@@ -110,6 +116,7 @@ export class Gateway {
       buildSystemContext: opts.buildSystemContext,
       onInbound: opts.onInbound,
       composeUserTurn: opts.composeUserTurn,
+      onOutbound: opts.onOutbound,
       managedRoutes: this.managedRoutes,
     });
 

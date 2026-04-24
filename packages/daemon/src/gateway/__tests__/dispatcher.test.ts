@@ -350,6 +350,46 @@ describe("Dispatcher", () => {
     expect(runtime.calls[0].text).toBe("hello");
   });
 
+  it("fires onOutbound after a reply is dispatched", async () => {
+    const runtime = new FakeRuntime({ reply: "hello back", newSessionId: "sid-1" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const outbound: string[] = [];
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      onOutbound: (msg) => {
+        outbound.push(msg.text);
+      },
+    });
+    await dispatcher.handle(makeEnvelope({ id: "msg_1", text: "hi" }));
+    expect(outbound).toEqual(["hello back"]);
+  });
+
+  it("does not crash when onOutbound throws", async () => {
+    const runtime = new FakeRuntime({ reply: "hello back", newSessionId: "sid-1" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      onOutbound: () => {
+        throw new Error("boom");
+      },
+    });
+    await dispatcher.handle(makeEnvelope({ id: "msg_1", text: "hi" }));
+    // Reply still went out; no assertion needed beyond the absence of a throw.
+    expect(channel.sends.length).toBe(1);
+  });
+
   it("does not crash when an errored turn has no prior session entry", async () => {
     const runtime = new FakeRuntime({ newSessionId: "", errorText: "boom" });
     const { dispatcher, store } = await scaffold({ runtimeFactory: () => runtime });

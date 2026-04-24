@@ -69,6 +69,12 @@ export interface SystemContextDeps {
    * is skipped.
    */
   roomContextBuilder?: RoomStaticContextBuilder;
+  /**
+   * Optional per-turn loop-risk check. Returns a warning block when the
+   * session shows signs of agent-to-agent echo or courtesy loops. Sync
+   * + cheap — consulted every turn even when roomContextBuilder is absent.
+   */
+  loopRiskBuilder?: (message: GatewayInboundMessage) => string | null;
 }
 
 function safeReadWorkingMemory(agentId: string) {
@@ -122,10 +128,27 @@ export function createDaemonSystemContextBuilder(
     return filtered.length > 0 ? filtered.join("\n\n") : undefined;
   };
 
+  const runLoopRisk = (message: GatewayInboundMessage): string | null => {
+    if (!deps.loopRiskBuilder) return null;
+    try {
+      return deps.loopRiskBuilder(message);
+    } catch (err) {
+      log.warn("system-context: loopRiskBuilder threw — skipping loop-risk block", {
+        agentId: deps.agentId,
+        roomId: message.conversation.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  };
+
   if (!deps.roomContextBuilder) {
     const syncBuilder = (message: GatewayInboundMessage): string | undefined => {
       const { ownerScene, memory, digest } = gatherSyncBlocks(message);
-      return assemble([ownerScene, memory, digest]);
+      // Loop-risk sits at the end so its "reply NO_REPLY unless…" guidance
+      // is the last thing the model sees before the user turn body.
+      const loopRisk = runLoopRisk(message);
+      return assemble([ownerScene, memory, digest, loopRisk]);
     };
     // Compile-time witness that the narrower sync signature still satisfies
     // `SystemContextBuilder` (which allows async). Prevents the two contracts
@@ -154,7 +177,8 @@ export function createDaemonSystemContextBuilder(
         err: err instanceof Error ? err.message : String(err),
       });
     }
-    return assemble([ownerScene, memory, roomBlock, digest]);
+    const loopRisk = runLoopRisk(message);
+    return assemble([ownerScene, memory, roomBlock, digest, loopRisk]);
   };
   const _typecheck: SystemContextBuilder = asyncBuilder;
   void _typecheck;

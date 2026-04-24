@@ -6,6 +6,7 @@ import {
   type ChannelAdapter,
   type GatewayChannelConfig,
   type GatewayInboundMessage,
+  type GatewayOutboundMessage,
   type GatewayLogger,
   type GatewayRuntimeSnapshot,
 } from "./gateway/index.js";
@@ -22,6 +23,12 @@ import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
 import { createRoomStaticContextBuilder } from "./room-context.js";
 import { createRoomContextFetcher } from "./room-context-fetcher.js";
+import {
+  buildLoopRiskPrompt,
+  loopRiskSessionKey,
+  recordInboundText as recordLoopRiskInbound,
+  recordOutboundText as recordLoopRiskOutbound,
+} from "./loop-risk.js";
 import { composeBotCordUserTurn } from "./turn-text.js";
 import { UserAuthManager } from "./user-auth.js";
 
@@ -245,6 +252,14 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     msg: GatewayInboundMessage,
   ) => Promise<string | undefined> | string | undefined;
   const scBuilders = new Map<string, PerAgentBuilder>();
+  const loopRiskBuilder = (msg: GatewayInboundMessage): string | null =>
+    buildLoopRiskPrompt({
+      sessionKey: loopRiskSessionKey({
+        accountId: msg.accountId,
+        conversationId: msg.conversation.id,
+        threadId: msg.conversation.threadId ?? null,
+      }),
+    });
   for (const aid of agentIds) {
     scBuilders.set(
       aid,
@@ -252,6 +267,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
         agentId: aid,
         activityTracker,
         roomContextBuilder,
+        loopRiskBuilder,
       }),
     );
   }
@@ -274,10 +290,34 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   // outside the system-context builder (option A) means the builder stays
   // pure — a cleaner contract the gateway can also expose to non-daemon
   // callers in the future.
-  const onInbound = createActivityRecorder({
+  const recordActivity = createActivityRecorder({
     activityTracker,
     ...(agentIds[0] ? { fallbackAgentId: agentIds[0] } : {}),
   });
+  const onInbound = (msg: GatewayInboundMessage): void => {
+    recordActivity(msg);
+    // Feed the loop-risk tracker with the sanitized inbound text so
+    // detectShortAckTail + detectHighTurnRate have a timeline.
+    recordLoopRiskInbound({
+      sessionKey: loopRiskSessionKey({
+        accountId: msg.accountId,
+        conversationId: msg.conversation.id,
+        threadId: msg.conversation.threadId ?? null,
+      }),
+      text: msg.text,
+      timestamp: msg.receivedAt,
+    });
+  };
+  const onOutbound = (out: GatewayOutboundMessage): void => {
+    recordLoopRiskOutbound({
+      sessionKey: loopRiskSessionKey({
+        accountId: out.accountId,
+        conversationId: out.conversationId,
+        threadId: out.threadId ?? null,
+      }),
+      text: out.text,
+    });
+  };
 
   const gateway = new Gateway({
     config: gwConfig,
@@ -298,6 +338,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
     buildSystemContext,
     onInbound,
+    onOutbound,
     composeUserTurn: composeBotCordUserTurn,
   });
 
