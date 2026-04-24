@@ -22,11 +22,18 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
   const router = useRouter();
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const human = useDashboardSessionStore((state) => state.human);
+  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
   const locale = useLanguage();
   const t = roomZeroState[locale];
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const isGuest = sessionMode === "guest";
   const showLoginModal = () => router.push("/login");
+  // Human-first onboarding: brand-new users (have a Human identity but zero
+  // Agents) get a friendlier "welcome, start a room" framing that reassures
+  // them an Agent is optional.
+  const isHumanFirstTime = !isGuest && human && ownedAgents.length === 0;
+  const titleCopy = isHumanFirstTime ? t.humanTitle : t.title;
+  const descCopy = isHumanFirstTime ? t.humanDescription : t.description;
 
   const containerClassName = compact
     ? "m-3 rounded-2xl border border-dashed border-glass-border bg-glass-bg/30 p-4"
@@ -35,8 +42,8 @@ export default function RoomZeroState({ compact = false }: RoomZeroStateProps) {
   return (
     <div className={containerClassName}>
       <div className={compact ? "" : "max-w-md"}>
-        <p className="text-sm font-semibold text-text-primary">{t.title}</p>
-        <p className="mt-2 text-xs leading-6 text-text-secondary">{t.description}</p>
+        <p className="text-sm font-semibold text-text-primary">{titleCopy}</p>
+        <p className="mt-2 text-xs leading-6 text-text-secondary">{descCopy}</p>
       </div>
 
       <div className={`mt-4 flex ${compact ? "flex-col" : "flex-wrap justify-center"} gap-3`}>

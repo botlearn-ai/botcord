@@ -15,7 +15,7 @@ import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { api } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -24,6 +24,8 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { PresenceDot } from "./PresenceDot";
 import JoinRequestsPanel from "./JoinRequestsPanel";
+import MemberActionsMenu from "./MemberActionsMenu";
+import TransferOwnershipDialog from "./TransferOwnershipDialog";
 import { roomList as roomListI18n } from "@/lib/i18n/translations/dashboard";
 
 export default function AgentBrowser() {
@@ -31,6 +33,8 @@ export default function AgentBrowser() {
   const locale = useLanguage();
   const t = agentBrowser[locale];
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
+  const activeIdentity = useDashboardSessionStore((state) => state.activeIdentity);
+  const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
   const {
     focusedRoomId,
     toggleRightPanel,
@@ -78,6 +82,10 @@ export default function AgentBrowser() {
   })));
   const [roomMembers, setRoomMembers] = useState<PublicRoomMember[]>([]);
   const [roomMembersLoading, setRoomMembersLoading] = useState(false);
+  const [memberRefetchTick, setMemberRefetchTick] = useState(0);
+  const [mutingRoom, setMutingRoom] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const refetchMembers = () => setMemberRefetchTick((t) => t + 1);
   const [roomMembersError, setRoomMembersError] = useState<string | null>(null);
   const [roomActionError, setRoomActionError] = useState<string | null>(null);
   const [cancellingSubscriptionId, setCancellingSubscriptionId] = useState<string | null>(null);
@@ -121,7 +129,7 @@ export default function AgentBrowser() {
     return () => {
       cancelled = true;
     };
-  }, [focusedRoomId]);
+  }, [focusedRoomId, memberRefetchTick]);
 
   useEffect(() => {
     if (!isAuthedReady || !currentRoom?.required_subscription_product_id) {
@@ -203,32 +211,58 @@ export default function AgentBrowser() {
               <p className="text-xs text-text-secondary/60">{t.noMembers}</p>
             ) : (
               <div className="space-y-1">
-                {roomMembers.map((member) => (
-                  <div
-                    key={member.agent_id}
-                    className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
-                  >
-                    <button
-                      onClick={() => selectAgent(member.agent_id)}
-                      className="min-w-0 flex-1 text-left"
+                {roomMembers.map((member) => {
+                  const ptype: "human" | "agent" = member.participant_type
+                    ?? (member.agent_id.startsWith("hu_") ? "human" : "agent");
+                  const isHumanViewer = activeIdentity?.type === "human";
+                  const viewerIsModerator = joinedRoom?.my_role === "owner" || joinedRoom?.my_role === "admin";
+                  const isSelf = isHumanViewer ? member.agent_id === humanId : false;
+                  return (
+                    <div
+                      key={member.agent_id}
+                      className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
                     >
-                      <div className="flex items-center gap-1.5 truncate text-xs font-medium text-text-primary">
-                        <PresenceDot agentId={member.agent_id} fallback={member.online} size="xs" />
-                        <span className="truncate">{member.display_name}</span>
-                      </div>
-                    </button>
-                    <CopyableId value={member.agent_id} className="mt-0.5" />
-                    <span className={`ml-2 shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
-                      member.role === "owner"
-                        ? "border-neon-cyan/30 text-neon-cyan"
-                        : member.role === "admin"
-                          ? "border-neon-purple/30 text-neon-purple"
-                          : "border-glass-border text-text-secondary"
-                    }`}>
-                      {member.role}
-                    </span>
-                  </div>
-                ))}
+                      <button
+                        onClick={() => selectAgent(member.agent_id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <div className="flex items-center gap-1.5 truncate text-xs font-medium text-text-primary">
+                          <PresenceDot agentId={member.agent_id} fallback={member.online} size="xs" />
+                          <span className="truncate">{member.display_name}</span>
+                          <span
+                            title={ptype === "human" ? t.participantHuman : t.participantAgent}
+                            className={`shrink-0 rounded px-1 py-px text-[9px] font-medium leading-3 ${
+                              ptype === "human"
+                                ? "bg-neon-green/10 text-neon-green"
+                                : "bg-neon-cyan/10 text-neon-cyan"
+                            }`}
+                          >
+                            {ptype === "human" ? "H" : "A"}
+                          </span>
+                        </div>
+                      </button>
+                      <CopyableId value={member.agent_id} className="mt-0.5" />
+                      <span className={`ml-2 shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
+                        member.role === "owner"
+                          ? "border-neon-cyan/30 text-neon-cyan"
+                          : member.role === "admin"
+                            ? "border-neon-purple/30 text-neon-purple"
+                            : "border-glass-border text-text-secondary"
+                      }`}>
+                        {member.role}
+                      </span>
+                      {isHumanViewer && viewerIsModerator && !isSelf && currentRoom?.room_id && (
+                        <MemberActionsMenu
+                          roomId={currentRoom.room_id}
+                          member={member}
+                          viewerRole={joinedRoom?.my_role ?? "member"}
+                          onMutated={refetchMembers}
+                          onError={(msg) => setRoomActionError(msg)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             {joinedRoom && (joinedRoom.my_role === "owner" || joinedRoom.my_role === "admin") && currentRoom?.join_policy === "invite_only" && (
@@ -266,6 +300,42 @@ export default function AgentBrowser() {
                         : t.cancelSubscription}
                     </button>
                   ) : null}
+                  {activeIdentity?.type === "human" && currentRoom?.room_id && (() => {
+                    const selfRow = roomMembers.find((m) => m.agent_id === humanId);
+                    const isMuted = Boolean((selfRow as any)?.muted);
+                    return (
+                      <button
+                        onClick={async () => {
+                          if (mutingRoom || !currentRoom.room_id) return;
+                          setMutingRoom(true);
+                          setRoomActionError(null);
+                          try {
+                            await humansApi.setRoomMute(currentRoom.room_id, !isMuted);
+                            refetchMembers();
+                          } catch (err: any) {
+                            setRoomActionError(err?.message || t.muteFailed);
+                          } finally {
+                            setMutingRoom(false);
+                          }
+                        }}
+                        disabled={mutingRoom}
+                        className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                      >
+                        {isMuted ? t.unmuteRoom : t.muteRoom}
+                      </button>
+                    );
+                  })()}
+                  {activeIdentity?.type === "human" && joinedRoom.my_role === "owner" && currentRoom?.room_id && (
+                    <button
+                      onClick={() => {
+                        setRoomActionError(null);
+                        setTransferDialogOpen(true);
+                      }}
+                      className="w-full rounded border border-neon-purple/35 bg-neon-purple/10 px-3 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/15"
+                    >
+                      {t.transferOwnership}
+                    </button>
+                  )}
                 </div>
                 {joinedRoom.my_role === "owner" ? (
                   <p className="mt-2 text-[11px] leading-5 text-text-secondary/70">
@@ -273,6 +343,17 @@ export default function AgentBrowser() {
                   </p>
                 ) : null}
               </div>
+            )}
+            {transferDialogOpen && currentRoom?.room_id && humanId && (
+              <TransferOwnershipDialog
+                roomId={currentRoom.room_id}
+                roomName={currentRoom.name}
+                viewerHumanId={humanId}
+                members={roomMembers}
+                onClose={() => setTransferDialogOpen(false)}
+                onSuccess={refetchMembers}
+                onError={(msg) => setRoomActionError(msg)}
+              />
             )}
           </div>
         )}

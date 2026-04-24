@@ -37,6 +37,12 @@ class RequestContext:
     supabase_user_id: str
     roles: list[str] = field(default_factory=list)
     active_agent_id: str | None = None
+    # The social identity id of the User (``hu_*``). Available whenever the
+    # request carries a valid Supabase JWT, regardless of whether an active
+    # Agent is selected — Human-first routes use this as the viewer anchor.
+    human_id: str | None = None
+    # The User's display name, convenience for building viewer descriptors.
+    user_display_name: str | None = None
 
 
 def _get_jwks_client(issuer: str) -> PyJWKClient:
@@ -243,6 +249,8 @@ async def require_active_agent(
         supabase_user_id=supabase_user_id,
         roles=roles,
         active_agent_id=x_active_agent,
+        human_id=user.human_id,
+        user_display_name=user.display_name,
     )
 
 
@@ -285,4 +293,6 @@ async def require_user_with_optional_agent(
         supabase_user_id=supabase_user_id,
         roles=roles,
         active_agent_id=active_agent_id,
+        human_id=user.human_id,
+        user_display_name=user.display_name,
     )
