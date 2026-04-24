@@ -198,6 +198,42 @@ describe("createDaemonSystemContextBuilder", () => {
     expect(out.slice(memoryIdx, digestIdx)).toMatch(/\n\n/);
   });
 
+  it("injects the owner-chat scene block for rm_oc_ rooms", () => {
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const out = builder(
+      makeMessage({
+        conversation: { id: "rm_oc_abc", kind: "direct" },
+        sender: { id: "usr_1", name: "Susan", kind: "user" },
+      }),
+    );
+    expect(typeof out).toBe("string");
+    expect(out).toContain("[BotCord Scene: Owner Chat]");
+    expect(out).toContain("full administrative authority");
+  });
+
+  it("injects the owner-chat scene for dashboard_user_chat regardless of room prefix", () => {
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const out = builder(
+      makeMessage({
+        conversation: { id: "rm_plain", kind: "direct" },
+        sender: { id: "usr_1", name: "Susan", kind: "user" },
+        raw: { source_type: "dashboard_user_chat" },
+      }),
+    );
+    expect(out).toContain("[BotCord Scene: Owner Chat]");
+  });
+
+  it("does NOT inject the owner scene for regular agent-to-agent rooms", () => {
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const out = builder(
+      makeMessage({
+        conversation: { id: "rm_group", kind: "group" },
+        sender: { id: "ag_peer", kind: "agent" },
+      }),
+    );
+    expect(out).toBeUndefined();
+  });
+
   it("translates GatewayInboundMessage.conversation.id → old `room_id` for the digest exclude key", () => {
     const tracker = new ActivityTracker({
       filePath: path.join(tmpDir, "activity.json"),

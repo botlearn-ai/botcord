@@ -11,6 +11,7 @@ import type {
   GatewayRuntimeSnapshot,
   InboundObserver,
   SystemContextBuilder,
+  UserTurnBuilder,
 } from "./types.js";
 
 /** Constructor options for `Gateway`. */
@@ -33,6 +34,12 @@ export interface GatewayBootOptions {
    * for activity tracking or metrics. Errors are logged and swallowed.
    */
   onInbound?: InboundObserver;
+  /**
+   * Optional composer that wraps the user-turn text with channel-specific
+   * metadata (sender label, room header, NO_REPLY hint…) before it is handed
+   * to the runtime. Forwarded to the dispatcher; see {@link UserTurnBuilder}.
+   */
+  composeUserTurn?: UserTurnBuilder;
 }
 
 /** Default runtime factory: delegates to the built-in registry; ignores extraArgs at construction. */
@@ -99,6 +106,7 @@ export class Gateway {
       turnTimeoutMs: opts.turnTimeoutMs,
       buildSystemContext: opts.buildSystemContext,
       onInbound: opts.onInbound,
+      composeUserTurn: opts.composeUserTurn,
       managedRoutes: this.managedRoutes,
     });
 

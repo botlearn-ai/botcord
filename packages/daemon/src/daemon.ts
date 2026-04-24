@@ -20,6 +20,7 @@ import { log as daemonLog } from "./log.js";
 import { collectRuntimeSnapshot, createProvisioner } from "./provision.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
+import { composeBotCordUserTurn } from "./turn-text.js";
 import { UserAuthManager } from "./user-auth.js";
 
 /**
@@ -42,46 +43,10 @@ function resolveSnapshotIntervalMs(): number {
   return n;
 }
 
-/**
- * BotCord owner-chat room prefix. Rooms with this prefix are direct-message
- * rooms between an operator and their own agent; turns here are treated as
- * owner-trust by the daemon's trust classifier. Re-declared here (also lives
- * in the legacy daemon dispatcher) so we can label activity entries the same
- * way without cross-importing the deprecated module.
- */
-const OWNER_CHAT_PREFIX = "rm_oc_";
-
-/** Map a gateway inbound message to the activity tracker's sender labels.
- *
- * The gateway BotCord channel collapses two distinct owner-trust cases
- * (`rm_oc_` rooms AND `source_type === "dashboard_user_chat"`) into a single
- * `sender.kind === "user"` marker — which also covers `dashboard_human_room`
- * humans. We need them separated for the cross-room digest wording
- * ("owner" vs "human Alice"), so we peek at the upstream `raw.source_type`
- * and replicate the channel's `isOwnerTrust` logic. Falling back to just the
- * `rm_oc_` prefix when `raw` is an unexpected shape keeps the classifier
- * working even if a non-BotCord channel is later plugged in.
- *
- * Exported for unit tests — the function has no side effects.
- */
-export function classifyActivitySender(
-  msg: GatewayInboundMessage,
-): { kind: "agent" | "human" | "owner"; label: string } {
-  const sourceType =
-    msg.raw && typeof msg.raw === "object" && "source_type" in msg.raw
-      ? (msg.raw as { source_type?: unknown }).source_type
-      : undefined;
-  const isOwner =
-    msg.conversation.id.startsWith(OWNER_CHAT_PREFIX) ||
-    sourceType === "dashboard_user_chat";
-  if (isOwner) {
-    return { kind: "owner", label: msg.sender.name || msg.sender.id || "owner" };
-  }
-  if (msg.sender.kind === "user") {
-    return { kind: "human", label: msg.sender.name || msg.sender.id || "user" };
-  }
-  return { kind: "agent", label: msg.sender.id || "unknown" };
-}
+// Sender classification lives in `./sender-classify.ts` so it can be shared
+// with the user-turn composer without a daemon.ts ↔ turn-text.ts cycle.
+import { classifyActivitySender } from "./sender-classify.js";
+export { classifyActivitySender };
 
 /** Minimal activity-tracker surface the inbound observer uses. */
 interface ActivityRecorderTarget {
@@ -307,6 +272,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
     buildSystemContext,
     onInbound,
+    composeUserTurn: composeBotCordUserTurn,
   });
 
   logger.info("daemon starting", {
