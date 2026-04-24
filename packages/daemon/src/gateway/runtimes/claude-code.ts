@@ -125,11 +125,19 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
       return;
     }
     if (obj.type === "result") {
-      if (typeof obj.session_id === "string") ctx.state.newSessionId = obj.session_id;
       if (typeof obj.total_cost_usd === "number") ctx.state.costUsd = obj.total_cost_usd;
-      if (typeof obj.result === "string") ctx.state.finalText = obj.result;
-      if (obj.subtype && obj.subtype !== "success" && typeof obj.result === "string") {
-        ctx.state.errorText = obj.result;
+      if (obj.subtype === "success") {
+        if (typeof obj.session_id === "string") ctx.state.newSessionId = obj.session_id;
+        if (typeof obj.result === "string") ctx.state.finalText = obj.result;
+      } else {
+        // Non-success result (e.g. resume targeted a missing UUID). Claude Code
+        // still emits a fresh `session_id` for the just-spawned empty session —
+        // persisting it would trap us into resuming a useless UUID forever.
+        // Wipe newSessionId so the dispatcher deletes the stale entry instead.
+        // The CLI also exits non-zero, so the base adapter synthesizes errorText
+        // from stderr if `obj.result` is missing.
+        ctx.state.newSessionId = "";
+        if (typeof obj.result === "string") ctx.state.errorText = obj.result;
       }
     }
   }
