@@ -41,30 +41,134 @@ function summarizeResult(result: string): string {
   return result.length > 120 ? result.slice(0, 120) + "..." : result;
 }
 
-function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
-  const { kind, payload } = block.block;
-  const [resultExpanded, setResultExpanded] = useState(false);
-  const resultStr = kind === "tool_result" ? String(payload?.result ?? "") : "";
+/** Normalize a stream block into a displayable view-model, handling both the
+ *  legacy plugin shape (`payload`) and the daemon-gateway shape (`raw`). */
+interface BlockView {
+  kind: "tool_call" | "tool_result" | "reasoning" | "system" | "unknown";
+  toolName?: string;
+  paramHint?: string | null;
+  resultStr?: string;
+  reasoningText?: string;
+  rawKind: string;
+}
 
+function normalizeBlock(block: StreamBlockEntry["block"]): BlockView {
+  const { kind, payload, raw } = block;
+  const rawAny = raw as any;
+
+  // Legacy shape ------------------------------------------------------------
   if (kind === "tool_call") {
-    const name = (payload?.name as string) || "tool";
-    const params = payload?.params as Record<string, unknown> | undefined;
-    const paramHint = summarizeParams(params);
+    return {
+      kind: "tool_call",
+      toolName: (payload?.name as string) || "tool",
+      paramHint: summarizeParams(payload?.params as Record<string, unknown> | undefined),
+      rawKind: kind,
+    };
+  }
+  if (kind === "tool_result" && payload) {
+    return {
+      kind: "tool_result",
+      toolName: (payload.name as string) || "tool",
+      resultStr: String(payload.result ?? ""),
+      rawKind: kind,
+    };
+  }
+  if (kind === "reasoning") {
+    return {
+      kind: "reasoning",
+      reasoningText: (payload?.text as string) || "",
+      rawKind: kind,
+    };
+  }
+
+  // Daemon-gateway shape (Codex / Claude-code) ------------------------------
+  if (kind === "tool_use") {
+    // Claude-code: raw.message.content[*] where type === "tool_use"
+    const contents = rawAny?.message?.content;
+    if (Array.isArray(contents)) {
+      const tu = contents.find((c: any) => c?.type === "tool_use");
+      if (tu) {
+        return {
+          kind: "tool_call",
+          toolName: (tu.name as string) || "tool",
+          paramHint: summarizeParams((tu.input || tu.arguments) as Record<string, unknown> | undefined),
+          rawKind: kind,
+        };
+      }
+    }
+    // Codex: raw.item.type is the concrete tool kind
+    const item = rawAny?.item;
+    if (item) {
+      const name = (item.type as string) || "tool";
+      const hint =
+        typeof item.command === "string" ? item.command
+        : typeof item.path === "string" ? item.path
+        : typeof item.query === "string" ? item.query
+        : summarizeParams(item as Record<string, unknown>);
+      return {
+        kind: "tool_call",
+        toolName: name,
+        paramHint: typeof hint === "string" && hint.length > 60 ? hint.slice(0, 60) + "..." : hint ?? null,
+        rawKind: kind,
+      };
+    }
+    return { kind: "tool_call", toolName: "tool", rawKind: kind };
+  }
+
+  if (kind === "tool_result") {
+    // Claude-code: raw.message.content[*] where type === "tool_result"
+    const contents = rawAny?.message?.content;
+    if (Array.isArray(contents)) {
+      const tr = contents.find((c: any) => c?.type === "tool_result");
+      if (tr) {
+        const content = tr.content;
+        let resultStr = "";
+        if (typeof content === "string") resultStr = content;
+        else if (Array.isArray(content)) {
+          resultStr = content.map((c: any) => c?.text ?? "").filter(Boolean).join("\n");
+        }
+        return {
+          kind: "tool_result",
+          toolName: "tool",
+          resultStr,
+          rawKind: kind,
+        };
+      }
+    }
+    return { kind: "tool_result", toolName: "tool", resultStr: "", rawKind: kind };
+  }
+
+  if (kind === "system") {
+    // Codex thread.started / turn.started etc — usually noise; keep a terse label.
+    const type = rawAny?.type as string | undefined;
+    return { kind: "system", rawKind: type || "system" };
+  }
+
+  return { kind: "unknown", rawKind: kind };
+}
+
+function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
+  const view = normalizeBlock(block.block);
+  const [resultExpanded, setResultExpanded] = useState(false);
+
+  if (view.kind === "tool_call") {
+    const name = view.toolName || "tool";
     return (
       <div className="flex items-start gap-2 py-1">
         <ToolCallIcon name={name} />
         <div className="min-w-0">
           <span className="text-xs font-mono text-cyan-400">{name}</span>
-          {paramHint && (
-            <p className="text-[10px] text-zinc-500 truncate mt-0.5">{paramHint}</p>
+          {view.paramHint && (
+            <p className="text-[10px] text-zinc-500 truncate mt-0.5">{view.paramHint}</p>
           )}
         </div>
       </div>
     );
   }
 
-  if (kind === "tool_result") {
-    const name = (payload?.name as string) || "tool";
+  if (view.kind === "tool_result") {
+    const name = view.toolName || "tool";
+    const resultStr = view.resultStr || "";
     return (
       <div className="py-1">
         <button
@@ -92,13 +196,12 @@ function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
     );
   }
 
-  if (kind === "reasoning") {
-    const text = (payload?.text as string) || "";
+  if (view.kind === "reasoning") {
     return (
       <div className="flex items-start gap-2 py-1">
         <Brain className="w-3 h-3 text-purple-400 shrink-0 mt-0.5" />
         <p className="text-xs text-purple-300/70 italic leading-relaxed line-clamp-3">
-          {text}
+          {view.reasoningText || ""}
         </p>
       </div>
     );
@@ -107,7 +210,7 @@ function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
   return (
     <div className="flex items-center gap-2 py-1">
       <HelpCircle className="w-3 h-3 text-zinc-500 shrink-0" />
-      <span className="text-xs text-zinc-500 font-mono">{kind}</span>
+      <span className="text-xs text-zinc-500 font-mono">{view.rawKind}</span>
     </div>
   );
 }
@@ -123,10 +226,13 @@ export default function StreamBlocksView({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
 
-  const executionBlocks = blocks.filter((b) => b.block.kind !== "assistant");
-  const assistantBlocks = blocks.filter((b) => b.block.kind === "assistant");
+  const isAssistant = (k: string) => k === "assistant" || k === "assistant_text";
+  const executionBlocks = blocks.filter((b) => !isAssistant(b.block.kind));
+  const assistantBlocks = blocks.filter((b) => isAssistant(b.block.kind));
 
-  const toolCallCount = executionBlocks.filter((b) => b.block.kind === "tool_call").length;
+  const toolCallCount = executionBlocks.filter(
+    (b) => b.block.kind === "tool_call" || b.block.kind === "tool_use",
+  ).length;
   const reasoningCount = executionBlocks.filter((b) => b.block.kind === "reasoning").length;
 
   useEffect(() => {
@@ -176,7 +282,22 @@ export default function StreamBlocksView({
             <MarkdownContent
               content={
                 assistantBlocks
-                  .map((b) => (b.block.payload?.text as string) || "")
+                  .map((b) => {
+                    if (b.block.kind === "assistant") {
+                      return (b.block.payload?.text as string) || "";
+                    }
+                    // assistant_text (daemon gateway)
+                    const raw = b.block.raw as any;
+                    if (typeof raw?.item?.text === "string") return raw.item.text;
+                    const contents = raw?.message?.content;
+                    if (Array.isArray(contents)) {
+                      return contents
+                        .filter((c: any) => c?.type === "text" && typeof c.text === "string")
+                        .map((c: any) => c.text as string)
+                        .join("");
+                    }
+                    return "";
+                  })
                   .join("")
               }
             />
