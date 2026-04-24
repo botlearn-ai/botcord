@@ -664,6 +664,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       try {
         const token = await client.ensureToken();
         const block = ctx.block as { raw?: unknown; kind?: string; seq?: number } | undefined;
+        const seq = typeof block?.seq === "number" ? block.seq : 0;
         const resp = await fetch(`${hubUrl}/hub/stream-block`, {
           method: "POST",
           headers: {
@@ -672,8 +673,8 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           },
           body: JSON.stringify({
             trace_id: ctx.traceId,
-            seq: typeof block?.seq === "number" ? block.seq : 0,
-            block: ctx.block,
+            seq,
+            block: normalizeBlockForHub(block, seq),
           }),
           signal: AbortSignal.timeout(10_000),
         });
@@ -697,5 +698,90 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
   return adapter;
 }
 
-// Re-export the normalizer for tests that want to exercise it directly.
+// Re-export the normalizers for tests that want to exercise them directly.
 export { normalizeInbox as __normalizeInboxForTests };
+export { normalizeBlockForHub as __normalizeBlockForHubForTests };
+
+/**
+ * Reshape a runtime StreamBlock `{ raw, kind, seq }` into the
+ * `{ kind, payload, seq }` form the owner-chat frontend renders.
+ *
+ * Daemon-internal kinds are Claude Code / Codex specific; the dashboard's
+ * StreamBlocksView expects a smaller vocabulary (`assistant`, `tool_call`,
+ * `tool_result`, `reasoning`) with structured `payload` fields. Without this
+ * remap the UI falls back to printing the bare kind string per step, which
+ * is what users see as "system / assistant_text / other / other".
+ *
+ * Extraction is best-effort — unknown shapes pass through as `other` with
+ * an empty payload rather than throwing.
+ */
+function normalizeBlockForHub(
+  block: { raw?: unknown; kind?: string; seq?: number } | undefined,
+  seq: number,
+): { kind: string; seq: number; payload: Record<string, unknown> } {
+  const raw = (block?.raw ?? {}) as any;
+  const kind = block?.kind ?? "other";
+  const payload: Record<string, unknown> = {};
+
+  if (kind === "assistant_text") {
+    // Claude Code: {type:"assistant", message:{content:[{type:"text",text}]}}
+    // Codex:       {type:"item.completed", item:{type:"agent_message", text}}
+    let text = "";
+    const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
+    for (const c of contents) {
+      if (c?.type === "text" && typeof c.text === "string") text += c.text;
+    }
+    if (!text && typeof raw?.item?.text === "string") text = raw.item.text;
+    return { kind: "assistant", seq, payload: { text } };
+  }
+
+  if (kind === "tool_use") {
+    // Claude Code: assistant message w/ content[].type === "tool_use" → {id,name,input}
+    // Codex:       item.started / item.completed for command_execution, file_change, mcp_tool_call, web_search
+    const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
+    const tu = contents.find((c: any) => c?.type === "tool_use");
+    if (tu) {
+      payload.name = typeof tu.name === "string" ? tu.name : "tool";
+      if (tu.input && typeof tu.input === "object") payload.params = tu.input;
+      if (typeof tu.id === "string") payload.id = tu.id;
+    } else if (raw?.item && typeof raw.item === "object") {
+      payload.name = typeof raw.item.type === "string" ? raw.item.type : "tool";
+      payload.params = raw.item;
+    }
+    return { kind: "tool_call", seq, payload };
+  }
+
+  if (kind === "tool_result") {
+    // Claude Code: {type:"user", message:{content:[{type:"tool_result",tool_use_id,content}]}}
+    const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
+    const tr = contents.find((c: any) => c?.type === "tool_result");
+    if (tr) {
+      let resultStr = "";
+      if (typeof tr.content === "string") {
+        resultStr = tr.content;
+      } else if (Array.isArray(tr.content)) {
+        resultStr = tr.content
+          .map((c: any) => (typeof c?.text === "string" ? c.text : JSON.stringify(c)))
+          .join("\n");
+      }
+      payload.result = resultStr;
+      if (typeof tr.tool_use_id === "string") payload.tool_use_id = tr.tool_use_id;
+    }
+    return { kind: "tool_result", seq, payload };
+  }
+
+  if (kind === "system") {
+    if (typeof raw?.subtype === "string") payload.subtype = raw.subtype;
+    if (typeof raw?.session_id === "string") payload.session_id = raw.session_id;
+    if (typeof raw?.model === "string") payload.model = raw.model;
+    return { kind: "system", seq, payload };
+  }
+
+  // "other" — e.g. Claude Code `type:"result"` end-of-turn summary.
+  if (raw?.type === "result") {
+    if (typeof raw.result === "string") payload.text = raw.result;
+    if (typeof raw.subtype === "string") payload.subtype = raw.subtype;
+    if (typeof raw.total_cost_usd === "number") payload.total_cost_usd = raw.total_cost_usd;
+  }
+  return { kind: "other", seq, payload };
+}

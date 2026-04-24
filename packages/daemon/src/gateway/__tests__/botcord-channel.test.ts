@@ -484,7 +484,11 @@ describe("createBotCordChannel — streamBlock()", () => {
         traceId: "m_trace",
         accountId: "ag_self",
         conversationId: "rm_oc_1",
-        block: { kind: "assistant_text", seq: 3, raw: { text: "partial" } },
+        block: {
+          kind: "assistant_text",
+          seq: 3,
+          raw: { type: "assistant", message: { content: [{ type: "text", text: "partial" }] } },
+        },
         log: silentLog,
       });
       expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -493,10 +497,13 @@ describe("createBotCordChannel — streamBlock()", () => {
       expect(init.method).toBe("POST");
       const body = JSON.parse(init.body as string);
       expect(body.trace_id).toBe("m_trace");
+      expect(body.seq).toBe(3);
+      // The channel remaps daemon-internal kinds into the shape the dashboard
+      // renders: `{ kind, payload, seq }` with `assistant_text` → `assistant`.
       expect(body.block).toEqual({
-        kind: "assistant_text",
+        kind: "assistant",
         seq: 3,
-        raw: { text: "partial" },
+        payload: { text: "partial" },
       });
       expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
     } finally {
