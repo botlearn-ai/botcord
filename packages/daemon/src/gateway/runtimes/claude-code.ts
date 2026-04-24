@@ -96,6 +96,12 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
 
   protected buildArgs(opts: RuntimeRunOptions): string[] {
     const args = ["-p", opts.text, "--output-format", "stream-json", "--verbose"];
+    // Headless `-p` mode does not load project `.claude/` by default, so
+    // per-agent skills seeded at `<workspace>/.claude/skills/` are invisible
+    // unless we opt in. `extraArgs` wins so operators can still override.
+    if (!opts.extraArgs?.some((a) => a.startsWith("--setting-sources"))) {
+      args.push("--setting-sources", "project");
+    }
     if (opts.sessionId) {
       if (!isValidClaudeSessionId(opts.sessionId)) throw new Error(invalidClaudeSessionIdError());
       args.push("--resume", opts.sessionId);
