@@ -576,12 +576,18 @@ export const api = {
 
   // --- User Chat (owner-agent direct messaging) ---
 
-  getUserChatRoom() {
-    return apiGet<UserChatRoom>("/api/dashboard/chat/room");
+  getUserChatRoom(agentId?: string | null) {
+    return apiGet<UserChatRoom>(
+      "/api/dashboard/chat/room",
+      agentId ? { agent_id: agentId } : undefined,
+    );
   },
 
-  sendUserChatMessage(text: string, attachments?: Attachment[]) {
+  sendUserChatMessage(text: string, attachments?: Attachment[], agentId?: string | null) {
     const body: Record<string, unknown> = { text };
+    if (agentId) {
+      body.agent_id = agentId;
+    }
     if (attachments && attachments.length > 0) {
       body.attachments = attachments;
     }
@@ -594,11 +600,14 @@ export const api = {
     return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, body);
   },
 
-  async uploadFile(file: File): Promise<FileUploadResult> {
+  async uploadFile(file: File, agentId?: string | null): Promise<FileUploadResult> {
     const headers = await buildAuthHeaders();
     const formData = new FormData();
     formData.append("file", file);
     const url = new URL("/api/dashboard/upload", API_BASE);
+    if (agentId) {
+      url.searchParams.set("agent_id", agentId);
+    }
     const res = await fetch(url.toString(), {
       method: "POST",
       headers,

@@ -322,6 +322,56 @@ async def test_chat_room_idempotent(
     assert room_id_1 == room_id_2
 
 
+@pytest.mark.asyncio
+async def test_chat_room_for_explicit_owned_agent_without_active_agent(
+    client: AsyncClient, seed_data: dict, db_session: AsyncSession, monkeypatch
+):
+    """Owner-chat can target an owned bot without switching X-Active-Agent."""
+    token = seed_data["token"]
+    user_id = seed_data["user_id"]
+    db_session.add(
+        Agent(
+            agent_id="ag_secondbot01",
+            display_name="Second Bot",
+            message_policy=MessagePolicy.contacts_only,
+            user_id=user_id,
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.get(
+        "/api/dashboard/chat/room",
+        params={"agent_id": "ag_secondbot01"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent_id"] == "ag_secondbot01"
+    assert data["name"] == "Chat with Second Bot"
+
+    from hub.routers import hub as hub_router
+
+    monkeypatch.setattr(hub_router, "notify_inbox", AsyncMock())
+    monkeypatch.setattr(hub_router, "_publish_agent_realtime_event", AsyncMock())
+
+    send_resp = await client.post(
+        "/api/dashboard/chat/send",
+        json={"agent_id": "ag_secondbot01", "text": "hello second bot"},
+        headers=headers,
+    )
+    assert send_resp.status_code == 202
+    assert send_resp.json()["room_id"] == data["room_id"]
+
+    messages_resp = await client.get(
+        f"/api/dashboard/rooms/{data['room_id']}/messages",
+        headers=headers,
+    )
+    assert messages_resp.status_code == 200
+    assert len(messages_resp.json()["messages"]) == 1
+
+
 # ---------------------------------------------------------------------------
 # POST /api/dashboard/chat/send
 # ---------------------------------------------------------------------------
