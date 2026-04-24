@@ -1,6 +1,6 @@
 {
   "name": "@botcord/daemon",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "BotCord local daemon — bridges Hub inbox push to local Claude Code / Codex / Gemini CLIs",
   "type": "module",
   "bin": {
@@ -27,7 +27,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@botcord/protocol-core": "^0.1.1",
+    "@botcord/protocol-core": "^0.2.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
