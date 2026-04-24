@@ -1493,3 +1493,160 @@ async def test_a2a_contact_request_approval_creates_correct_contacts(
         f"claimed→ext contact must have peer_type=agent; got rows={rows}"
     assert (ext_id, "ag_claimed01234", ParticipantType.agent) in rows, \
         f"ext→claimed contact must have peer_type=agent; got rows={rows}"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/humans/me/rooms/{room_id}/join — Human self-join
+# ---------------------------------------------------------------------------
+
+
+async def _make_public_open_room(
+    db_session: AsyncSession,
+    owner_user: User,
+    *,
+    name: str = "Public open",
+    required_subscription_product_id: str | None = None,
+) -> str:
+    room = Room(
+        room_id=f"rm_{uuid.uuid4().hex[:12]}",
+        name=name,
+        description="",
+        owner_id=owner_user.human_id,
+        owner_type=ParticipantType.human,
+        visibility=RoomVisibility.public,
+        join_policy=RoomJoinPolicy.open,
+        required_subscription_product_id=required_subscription_product_id,
+    )
+    db_session.add(room)
+    db_session.add(
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=owner_user.human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.owner,
+        )
+    )
+    await db_session.commit()
+    return room.room_id
+
+
+@pytest.mark.asyncio
+async def test_human_self_join_public_open_room(
+    client, seed, db_session: AsyncSession
+):
+    carol = User(supabase_user_id=uuid.uuid4(), display_name="Carol")
+    db_session.add(carol)
+    await db_session.commit()
+    room_id = await _make_public_open_room(db_session, carol)
+
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/join",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["room_id"] == room_id
+    assert body["my_role"] == "member"
+
+    row = await db_session.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == seed["human_id"],
+        )
+    )
+    m = row.scalar_one()
+    assert m.participant_type == ParticipantType.human
+    assert m.role == RoomRole.member
+
+
+@pytest.mark.asyncio
+async def test_human_self_join_rejects_invite_only(
+    client, seed, db_session: AsyncSession
+):
+    carol = User(supabase_user_id=uuid.uuid4(), display_name="Carol")
+    db_session.add(carol)
+    await db_session.commit()
+    room = Room(
+        room_id=f"rm_{uuid.uuid4().hex[:12]}",
+        name="Invite only",
+        description="",
+        owner_id=carol.human_id,
+        owner_type=ParticipantType.human,
+        visibility=RoomVisibility.public,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add(room)
+    db_session.add(
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=carol.human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.owner,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room.room_id}/join",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_human_self_join_rejects_private(
+    client, seed, db_session: AsyncSession
+):
+    carol = User(supabase_user_id=uuid.uuid4(), display_name="Carol")
+    db_session.add(carol)
+    await db_session.commit()
+    room = Room(
+        room_id=f"rm_{uuid.uuid4().hex[:12]}",
+        name="Private open",
+        description="",
+        owner_id=carol.human_id,
+        owner_type=ParticipantType.human,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.open,
+    )
+    db_session.add(room)
+    db_session.add(
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=carol.human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.owner,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room.room_id}/join",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_human_self_join_idempotent_conflict(
+    client, seed, db_session: AsyncSession
+):
+    carol = User(supabase_user_id=uuid.uuid4(), display_name="Carol")
+    db_session.add(carol)
+    await db_session.commit()
+    room_id = await _make_public_open_room(db_session, carol)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r1 = await client.post(f"/api/humans/me/rooms/{room_id}/join", headers=headers)
+    assert r1.status_code == 201
+    r2 = await client.post(f"/api/humans/me/rooms/{room_id}/join", headers=headers)
+    assert r2.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_human_self_join_404_when_room_missing(client, seed):
+    resp = await client.post(
+        "/api/humans/me/rooms/rm_doesnotexist/join",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert resp.status_code == 404

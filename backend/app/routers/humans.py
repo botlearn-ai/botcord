@@ -451,6 +451,116 @@ async def create_human_room(
 
 
 @router.post(
+    "/me/rooms/{room_id}/join",
+    response_model=HumanRoomSummary,
+    status_code=201,
+)
+async def join_room_as_human(
+    room_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Human self-joins a public + open room.
+
+    Mirrors the self-join branch of ``hub/routers/room.py::add_member``:
+    only public + open rooms accept a self-join. Invite-only rooms require
+    an owner/admin to invite via ``POST /me/rooms/{room_id}/members``, or
+    the caller must go through the join-request flow. Subscription-gated
+    rooms are not yet reachable by Humans (no human-side subscription
+    concept), except when the caller is already the owner.
+    """
+    user = await _load_human(db, ctx)
+    me = user.human_id
+
+    room_row = await db.execute(
+        select(Room).where(Room.room_id == room_id).with_for_update()
+    )
+    room = room_row.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    existing = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == me,
+            RoomMember.participant_type == ParticipantType.human,
+        )
+    )
+    existing_member = existing.scalar_one_or_none()
+    if existing_member is not None:
+        raise HTTPException(status_code=409, detail="Already a member")
+
+    if (
+        room.visibility != RoomVisibility.public
+        or room.join_policy != RoomJoinPolicy.open
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="self_join_public_open_only",
+        )
+
+    if room.required_subscription_product_id:
+        is_owner_self_seat = (
+            room.owner_type == ParticipantType.human and room.owner_id == me
+        )
+        if not is_owner_self_seat:
+            raise HTTPException(
+                status_code=403,
+                detail="subscription-gated rooms do not yet support human members",
+            )
+
+    if room.max_members is not None:
+        current_count_row = await db.execute(
+            select(RoomMember).where(RoomMember.room_id == room_id)
+        )
+        current_count = len(list(current_count_row.scalars().all()))
+        if current_count >= room.max_members:
+            raise HTTPException(status_code=400, detail="room_is_full")
+
+    new_member = RoomMember(
+        room_id=room_id,
+        agent_id=me,
+        participant_type=ParticipantType.human,
+        role=RoomRole.member,
+    )
+    try:
+        db.add(new_member)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Already a member")
+    await db.refresh(new_member)
+
+    try:
+        from hub.routers.room import _notify_room_member_change
+
+        members_row = await db.execute(
+            select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
+        )
+        all_member_ids = [row[0] for row in members_row.all()]
+        await _notify_room_member_change(
+            db,
+            event_type="room_member_added",
+            room_id=room_id,
+            changed_agent_id=me,
+            notify_agent_ids=all_member_ids,
+        )
+    except Exception:  # pragma: no cover — notification must not break the HTTP response
+        _logger.exception("room_member_added broadcast failed for %s", room_id)
+
+    return HumanRoomSummary(
+        room_id=room.room_id,
+        name=room.name,
+        description=room.description or "",
+        owner_id=room.owner_id,
+        owner_type=room.owner_type.value,
+        visibility=room.visibility.value,
+        join_policy=room.join_policy.value,
+        my_role=RoomRole.member.value,
+    )
+
+
+@router.post(
     "/me/rooms/{room_id}/members",
     response_model=HumanRoomMemberResponse,
     status_code=201,
