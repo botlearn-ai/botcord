@@ -133,6 +133,7 @@ async def _build_rooms_from_sql(
         "room_created_at": "created_at",
     }
     _DROP_COLS = {"last_sender_id"}
+    _DATETIME_KEYS = {"created_at", "last_message_at"}
 
     sql_room_ids: set[str] = set()
 
@@ -149,6 +150,10 @@ async def _build_rooms_from_sql(
                 if k in _DROP_COLS:
                     continue
                 key = _SQL_TO_API.get(k, k)
+                if key in _DATETIME_KEYS and isinstance(v, datetime.datetime):
+                    if v.tzinfo is None:
+                        v = v.replace(tzinfo=datetime.timezone.utc)
+                    v = v.isoformat()
                 item[key] = v
             if "member_count" in item:
                 item["member_count"] = int(item["member_count"] or 0)
