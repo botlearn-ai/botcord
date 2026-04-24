@@ -833,6 +833,11 @@ const humansApi = {
     return apiGet<HumanRoomListResponse>("/api/humans/me/rooms");
   },
 
+  /** Human self-joins a public+open room. */
+  async joinRoom(roomId: string): Promise<HumanRoomSummary> {
+    return apiPost<HumanRoomSummary>(`/api/humans/me/rooms/${roomId}/join`);
+  },
+
   async createRoom(body: {
     name: string;
     description?: string;
