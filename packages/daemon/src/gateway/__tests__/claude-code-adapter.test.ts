@@ -26,6 +26,7 @@ function runAdapter(script: string, sessionId: string | null = null) {
   return adapter.run({
     text: "hi",
     sessionId,
+    accountId: "ag_test",
     cwd: tmpRoot,
     signal: ctrl.signal,
     trustLevel: "owner",
@@ -72,6 +73,7 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     const res = await adapter.run({
       text: "x",
       sessionId: null,
+      accountId: "ag_test",
       cwd: tmpRoot,
       signal: ctrl.signal,
       trustLevel: "owner",
@@ -215,6 +217,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
@@ -231,6 +234,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "public",
@@ -247,6 +251,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "trusted",
@@ -263,6 +268,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
@@ -280,6 +286,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "owner",
@@ -294,6 +301,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const res = await adapter.run({
         text: "x",
         sessionId: null,
+        accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
         trustLevel: "public",
