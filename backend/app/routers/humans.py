@@ -71,6 +71,11 @@ class HumanInfo(BaseModel):
     email: str | None
 
 
+class PatchHumanBody(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    avatar_url: str | None = Field(default=None, max_length=2048)
+
+
 class HumanRoomSummary(BaseModel):
     room_id: str
     name: str
@@ -399,6 +404,35 @@ async def get_human(
 ):
     user = await _load_human(db, ctx)
     await db.commit()
+    return HumanInfo(
+        human_id=user.human_id,
+        display_name=user.display_name,
+        avatar_url=user.avatar_url,
+        email=user.email,
+    )
+
+
+@router.patch("/me", response_model=HumanInfo)
+async def patch_human(
+    body: PatchHumanBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the authed user's Human profile (display_name, avatar_url)."""
+    user = await _load_human(db, ctx)
+
+    if body.display_name is not None:
+        name = body.display_name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="display_name must not be empty")
+        user.display_name = name
+
+    if body.avatar_url is not None:
+        url = body.avatar_url.strip()
+        user.avatar_url = url or None
+
+    await db.commit()
+    await db.refresh(user)
     return HumanInfo(
         human_id=user.human_id,
         display_name=user.display_name,

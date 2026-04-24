@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText } from "lucide-react";
+import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
@@ -23,6 +23,7 @@ import MarkdownContent from "@/components/ui/MarkdownContent";
 import StreamBlocksView from "./StreamBlocksView";
 import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
+import AgentProfileEditModal from "./AgentProfileEditModal";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -65,9 +66,14 @@ function TypewriterText({
 
 export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const { activeAgentId, activeIdentity } = useDashboardSessionStore();
+  const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
   const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
   const { setUserChatRoomId } = useDashboardUIStore();
+  const [editOpen, setEditOpen] = useState(false);
+  const ownedAgent = chatAgentId
+    ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
+    : null;
 
   // Owner-chat store
   const messages = useOwnerChatStore((s) => s.messages);
@@ -296,10 +302,31 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
         <h2 className="text-sm font-medium text-zinc-200">
           {chatRoomName || "Chat with Agent"}
         </h2>
-        {wsConnected && (
-          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400" title="Live" />
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {wsConnected && (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Live" />
+          )}
+          {ownedAgent && (
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              title="Edit bot profile"
+              className="rounded-md border border-transparent p-1 text-text-secondary transition-colors hover:border-glass-border hover:text-neon-cyan"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
+
+      {editOpen && ownedAgent && (
+        <AgentProfileEditModal
+          agentId={ownedAgent.agent_id}
+          initialDisplayName={ownedAgent.display_name}
+          initialBio={ownedAgent.bio ?? null}
+          onClose={() => setEditOpen(false)}
+        />
+      )}
 
       {/* Messages */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

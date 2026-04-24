@@ -776,6 +776,7 @@ export interface UserProfile {
 export interface UserAgent {
   agent_id: string;
   display_name: string;
+  bio?: string | null;
   is_default: boolean;
   claimed_at: string;
   ws_online: boolean;
