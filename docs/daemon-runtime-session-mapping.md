@@ -125,7 +125,7 @@ dispatcher 上收 result → sessionStore.set({ key, runtimeSessionId: newSessio
 ## 安全性
 
 - `spawn(binary, args, ...)` 用 argv 数组，不经 shell——sessionId 里的奇异字符不会触发注入。
-- 已知可做的加固：对齐 codex 做法，对 runtime sessionId 在 spawn 前做白名单正则校验（例如 UUID）。当前 Claude Code 适配器**没有**该校验（见 `packages/daemon/src/gateway/runtimes/claude-code.ts` 的 `buildArgs`）；如果未来 runtime 的 session id 以 `-` 开头，可能被 CLI 误解析为 flag。
+- 已有加固：Codex 对 session id 做 UUID 校验；Claude Code 在 spawn 前要求 session id 不以 `-` 开头、且不含控制字符，避免被 CLI 误解析为 flag，同时保留历史 title 形态的兼容性。
 - SessionStore 文件以 `mode: 0o600` 写入，磁盘层只允许 daemon 用户读。
 
 ## 失效与清理
@@ -150,21 +150,21 @@ Codex 现在也走这套契约（过去是"永远不写"；现在 `thread.starte
 | 场景 | 现状 | 建议 |
 |------|------|------|
 | Claude Code resume 目标 UUID 已不存在 | adapter 清空 `newSessionId`，dispatcher 删除旧 entry | 已实现；后续可把错误分类做得更精细 |
-| Runtime 切换（route 的 runtime 变了） | key 包含 runtime，旧 entry 自然不会命中，但磁盘留着 | 可选：后台 GC，清理超过 N 天未访问的 entry |
+| Runtime 切换（route 的 runtime 变了） | key 包含 runtime，旧 entry 自然不会命中；Gateway 启动时按 TTL 清理长期未访问 entry | 已实现 30 天默认 TTL；可按部署需要暴露配置 |
 | 二进制升级导致格式不兼容 | adapter 负责兼容；否则失败回落到第 1 条 | 同上 |
-| Hub 侧 thread 关闭 / room 删除 | entry 不再被访问 | 依赖 GC |
+| Hub 侧 thread 关闭 / room 删除 | entry 不再被访问 | 依赖 SessionStore TTL 清理 |
 
 ### 仍可补强
 
-1. 对 runtime session id 做白名单校验，避免以 `-` 开头的 id 被 CLI 误解析成 flag。
-2. 增加后台 GC，清理长期未访问的 entry。
-3. 可选增加"resume 失败计数"，连续 N 次失败后主动丢弃并重建。
+1. 把 30 天 SessionStore TTL 暴露到 daemon 配置，而不是只在 GatewayBootOptions 里可调。
+2. 可选增加"resume 失败计数"，连续 N 次失败后主动丢弃并重建。
+3. 对错误做更细粒度分类，区分 resume stale、认证失败、CLI 崩溃等。
 
 ## 可观测性
 
 - `SessionStore.all()` 返回全量 entry，可暴露到 daemon 的 status/debug 接口。
 - dispatcher 日志包含 `sessionId` / `queueKey`，便于按 Hub 会话定位 runtime session。
-- stale session 删除日志包含 `prevRuntimeSessionId`；建议在 upsert 日志里也补充 `nextRuntimeSessionId`，让 "何时换了 UUID" 一目了然。
+- stale session 删除日志包含 `prevRuntimeSessionId`；upsert 日志包含 `prevRuntimeSessionId` / `nextRuntimeSessionId`，让 "何时换了 UUID" 一目了然。
 
 ## 总结
 
@@ -174,4 +174,4 @@ Daemon 通过 **"Hub 身份组合 → 稳定 key → 存 runtime 自己后来报
 - Runtime 侧只管自己原生 UUID / title
 - Daemon 不在两者之间做格式转换，只做"按 Hub 身份查/存 runtime 原样 id"的 KV
 
-这套设计的代价是每个 runtime 的失效语义要各自处理。Claude Code 的 stale resume 已有删除保护；后续主要补强点是 runtime session id 校验、长期 entry GC，以及更细粒度的错误分类。
+这套设计的代价是每个 runtime 的失效语义要各自处理。Claude Code 的 stale resume 已有删除保护，Claude/Codex 都有 session id argv 安全保护，SessionStore 也会清理长期未访问 entry；后续主要补强点是把 TTL 暴露到配置、增加 resume 失败计数，以及更细粒度的错误分类。

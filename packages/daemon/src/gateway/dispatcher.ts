@@ -461,7 +461,13 @@ export class Dispatcher {
           updatedAt: Date.now(),
         };
         try {
+          const prevRuntimeSessionId = sessionId;
           await this.sessionStore.set(session);
+          this.log.debug("dispatcher: persisted runtime session", {
+            key,
+            prevRuntimeSessionId,
+            nextRuntimeSessionId: result.newSessionId,
+          });
         } catch (err) {
           this.log.warn("dispatcher: session-store.set failed", {
             key,

@@ -61,21 +61,23 @@ export default function AccountMenu({
       <DropdownMenu.Root open={open} onOpenChange={setOpen}>
         <DropdownMenu.Trigger asChild>
           <button
-            className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl border border-glass-border/80 bg-deep-black-light text-sm font-bold text-neon-cyan shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-neon-cyan/35 hover:shadow-[0_14px_34px_rgba(34,211,238,0.18)] focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+            className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-glass-border/80 bg-deep-black-light text-sm font-bold text-neon-cyan shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-neon-cyan/35 hover:shadow-[0_14px_34px_rgba(34,211,238,0.18)] focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
             title={t.account}
           >
-            {user?.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={user.avatar_url}
-                alt={user.display_name || user.email || t.user}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),rgba(34,211,238,0.04)_58%,transparent_100%)]">
-                {getAvatarSeed(user)}
-              </span>
-            )}
+            <span className="absolute inset-0 overflow-hidden rounded-[inherit]">
+              {user?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.avatar_url}
+                  alt={user.display_name || user.email || t.user}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),rgba(34,211,238,0.04)_58%,transparent_100%)]">
+                  {getAvatarSeed(user)}
+                </span>
+              )}
+            </span>
             {/* Mode indicator dot */}
             <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-deep-black-light ${viewMode === "human" ? "bg-neon-purple" : "bg-neon-cyan"}`} />
             {pendingRequests > 0 && (

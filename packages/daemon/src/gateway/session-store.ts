@@ -3,6 +3,8 @@ import path from "node:path";
 import type { GatewayLogger } from "./log.js";
 import type { GatewaySessionEntry, SessionKeyInput } from "./types.js";
 
+export const DEFAULT_SESSION_STORE_MAX_ENTRY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 /** Derive the canonical session-store key for a runtime + channel + conversation. */
 export function sessionKey(input: SessionKeyInput): string {
   const base = `${input.runtime}:${input.channel}:${input.accountId}:${input.conversationKind}:${input.conversationId}`;
@@ -17,6 +19,8 @@ export function sessionKey(input: SessionKeyInput): string {
 export interface SessionStoreOptions {
   path: string;
   log?: GatewayLogger;
+  /** Optional TTL for persisted entries. Omit to disable automatic pruning. */
+  maxEntryAgeMs?: number;
 }
 
 interface StoreFile {
@@ -38,6 +42,7 @@ function isValidShape(x: unknown): x is StoreFile {
 export class SessionStore {
   private readonly filePath: string;
   private readonly log?: GatewayLogger;
+  private readonly maxEntryAgeMs?: number;
   private data: StoreFile = emptyFile();
   private loaded = false;
   private writeQueue: Promise<void> = Promise.resolve();
@@ -45,6 +50,9 @@ export class SessionStore {
   constructor(opts: SessionStoreOptions) {
     this.filePath = opts.path;
     this.log = opts.log;
+    if (Number.isFinite(opts.maxEntryAgeMs) && opts.maxEntryAgeMs! > 0) {
+      this.maxEntryAgeMs = opts.maxEntryAgeMs;
+    }
   }
 
   /** Load entries from disk. Tolerates missing or corrupt files. */
@@ -77,6 +85,9 @@ export class SessionStore {
       this.data = emptyFile();
     }
     this.loaded = true;
+    if (this.maxEntryAgeMs !== undefined) {
+      await this.pruneExpired({ maxAgeMs: this.maxEntryAgeMs });
+    }
   }
 
   /** Look up an entry by its full session key. */
@@ -103,6 +114,30 @@ export class SessionStore {
   /** Snapshot of all entries (for status/debugging). */
   all(): GatewaySessionEntry[] {
     return Object.values(this.data.entries);
+  }
+
+  /** Remove entries whose `updatedAt` is older than `maxAgeMs`; returns count removed. */
+  async pruneExpired(opts: { maxAgeMs: number; now?: number }): Promise<number> {
+    const maxAgeMs = opts.maxAgeMs;
+    if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0) return 0;
+    const now = Number.isFinite(opts.now) ? opts.now! : Date.now();
+    const cutoff = now - maxAgeMs;
+    let removed = 0;
+    for (const [key, entry] of Object.entries(this.data.entries)) {
+      if (!Number.isFinite(entry.updatedAt) || entry.updatedAt < cutoff) {
+        delete this.data.entries[key];
+        removed += 1;
+      }
+    }
+    if (removed > 0) {
+      this.log?.info("gateway.session-store.pruned-expired", {
+        path: this.filePath,
+        removed,
+        maxAgeMs,
+      });
+      await this.persist();
+    }
+    return removed;
   }
 
   private persist(): Promise<void> {
