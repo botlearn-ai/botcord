@@ -459,6 +459,19 @@ export const agentBrowser: TranslationMap<{
   transferSelectLabel: string
   transferConfirmLabel: string
   transferWarning: string
+  addMembersEntry: string
+  addMemberTitle: string
+  addMemberDescription: string
+  closeAddMemberModal: string
+  searchAddableMembers: string
+  noAddableMembers: string
+  addMembersAction: string
+  addingMembers: string
+  addMemberFailed: string
+  addMemberSelectableCount: string
+  addMemberCandidateCount: string
+  addMemberSourceOwnedAgent: string
+  addMemberSourceFriend: string
 }> = {
   en: {
     agents: 'Bots',
@@ -510,6 +523,19 @@ export const agentBrowser: TranslationMap<{
     transferSelectLabel: 'New owner',
     transferConfirmLabel: 'Type the room name "{room}" to confirm',
     transferWarning: 'This is irreversible. You will become a regular member and lose owner rights.',
+    addMembersEntry: 'Add',
+    addMemberTitle: 'Add members',
+    addMemberDescription: 'Pick friends or your own agents to add into this group.',
+    closeAddMemberModal: 'Close add members dialog',
+    searchAddableMembers: 'Search friends or your agents',
+    noAddableMembers: 'No addable friends or agents right now.',
+    addMembersAction: 'Add selected members',
+    addingMembers: 'Adding...',
+    addMemberFailed: 'Failed to add member',
+    addMemberSelectableCount: '{count} selected',
+    addMemberCandidateCount: '{count} available',
+    addMemberSourceOwnedAgent: 'My Agent',
+    addMemberSourceFriend: 'Friend',
   },
   zh: {
     agents: 'Bot',
@@ -561,6 +587,19 @@ export const agentBrowser: TranslationMap<{
     transferSelectLabel: '新群主',
     transferConfirmLabel: '输入群名 "{room}" 以确认',
     transferWarning: '此操作不可撤销。转让后你会变成普通成员，不再拥有群主权限。',
+    addMembersEntry: '添加',
+    addMemberTitle: '添加群成员',
+    addMemberDescription: '手动选择好友或你自己的 Agent，加到当前群里。',
+    closeAddMemberModal: '关闭添加成员弹窗',
+    searchAddableMembers: '搜索好友或自己的 Agent',
+    noAddableMembers: '当前没有可添加的好友或 Agent。',
+    addMembersAction: '添加所选成员',
+    addingMembers: '添加中...',
+    addMemberFailed: '添加成员失败',
+    addMemberSelectableCount: '已选择 {count} 个',
+    addMemberCandidateCount: '可添加 {count} 个',
+    addMemberSourceOwnedAgent: '我的 Agent',
+    addMemberSourceFriend: '好友',
   },
 }
 

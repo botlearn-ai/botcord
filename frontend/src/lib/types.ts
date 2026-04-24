@@ -11,6 +11,8 @@ export interface AgentProfile {
   bio: string | null;
   message_policy: string;
   created_at: string;
+  owner_human_id?: string | null;
+  owner_display_name?: string | null;
   online?: boolean;
 }
 

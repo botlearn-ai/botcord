@@ -25,6 +25,7 @@ import { usePresenceStore } from "@/store/usePresenceStore";
 import { PresenceDot } from "./PresenceDot";
 import JoinRequestsPanel from "./JoinRequestsPanel";
 import MemberActionsMenu from "./MemberActionsMenu";
+import AddRoomMemberModal from "./AddRoomMemberModal";
 import TransferOwnershipDialog from "./TransferOwnershipDialog";
 import { roomList as roomListI18n } from "@/lib/i18n/translations/dashboard";
 
@@ -58,6 +59,7 @@ export default function AgentBrowser() {
     loadRoomMessages,
     leaveRoom,
     leavingRoomId,
+    refreshOverview,
   } = useDashboardChatStore(useShallow((state) => ({
     messages: state.messages,
     overview: state.overview,
@@ -70,6 +72,7 @@ export default function AgentBrowser() {
     loadRoomMessages: state.loadRoomMessages,
     leaveRoom: state.leaveRoom,
     leavingRoomId: state.leavingRoomId,
+    refreshOverview: state.refreshOverview,
   })));
   const {
     getActiveSubscription,
@@ -89,6 +92,7 @@ export default function AgentBrowser() {
   const [roomMembersError, setRoomMembersError] = useState<string | null>(null);
   const [roomActionError, setRoomActionError] = useState<string | null>(null);
   const [cancellingSubscriptionId, setCancellingSubscriptionId] = useState<string | null>(null);
+  const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
   const isAuthedReady = sessionMode === "authed-ready";
 
   const currentRoom = focusedRoomId ? getRoomSummary(focusedRoomId) : null;
@@ -194,9 +198,19 @@ export default function AgentBrowser() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {currentRoom && (
           <div className="border-b border-glass-border p-3">
-            <h4 className="mb-2 text-xs font-medium text-text-secondary">
-              {t.roomMembers} ({roomMembers.length || currentRoom.member_count})
-            </h4>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h4 className="text-xs font-medium text-text-secondary">
+                {t.roomMembers} ({roomMembers.length || currentRoom.member_count})
+              </h4>
+              {activeIdentity?.type === "human" && joinedRoom && (joinedRoom.my_role === "owner" || joinedRoom.my_role === "admin") ? (
+                <button
+                  onClick={() => setAddMemberModalOpen(true)}
+                  className="rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-[11px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
+                >
+                  {t.addMembersEntry}
+                </button>
+              ) : null}
+            </div>
             <div className="mb-2 flex items-center gap-1.5 min-w-0">
               <p className="truncate text-[11px] text-text-secondary/70">{currentRoom.name}</p>
               {currentRoom.required_subscription_product_id && (
@@ -355,6 +369,17 @@ export default function AgentBrowser() {
                 onError={(msg) => setRoomActionError(msg)}
               />
             )}
+            {addMemberModalOpen && currentRoom?.room_id ? (
+              <AddRoomMemberModal
+                roomId={currentRoom.room_id}
+                existingMemberIds={roomMembers.map((member) => member.agent_id)}
+                onClose={() => setAddMemberModalOpen(false)}
+                onAdded={async () => {
+                  await refreshOverview().catch(() => {});
+                  refetchMembers();
+                }}
+              />
+            ) : null}
           </div>
         )}
 

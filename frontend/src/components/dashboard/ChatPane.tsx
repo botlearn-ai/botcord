@@ -459,6 +459,20 @@ function ExploreMainPane() {
     setHumanModal({ human, isSelf: human.human_id === myHumanId, sending: false, status: "idle", error: null });
   };
 
+  const openHumanOwnerFromAgent = async (humanId: string) => {
+    const existing = publicHumansById[humanId];
+    if (existing) {
+      openHumanFromExplore(existing);
+      return;
+    }
+    try {
+      const human = await api.getPublicHuman(humanId);
+      openHumanFromExplore(human);
+    } catch {
+      // Swallow lookup failure; the owner link should not break agent-card navigation.
+    }
+  };
+
   const sendHumanContactRequest = async () => {
     if (!humanModal) return;
     setHumanModal((prev) => prev && { ...prev, sending: true, error: null });
@@ -550,6 +564,7 @@ function ExploreMainPane() {
                   data={publicAgentsById[agent.agent_id]}
                   agentsById={publicAgentsById}
                   onAgentOpen={(a) => selectAgent(a.agent_id)}
+                  onAgentOwnerOpen={(humanId) => void openHumanOwnerFromAgent(humanId)}
                 />
               ))}
             </div>

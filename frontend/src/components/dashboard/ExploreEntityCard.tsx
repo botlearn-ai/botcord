@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 "@/lib/types" 的 PublicRoom/AgentProfile 类型，依赖 dashboard 视图传入的 roomsById/agentsById 与点击回调
- * [OUTPUT]: 对外提供 ExploreEntityCard 组件，统一渲染 room/agent 的 grid card（支持 id 或 data 入参）
+ * [INPUT]: 依赖 "@/lib/types" 的 PublicRoom/AgentProfile/PublicHumanProfile 类型，依赖 dashboard 视图传入的 roomsById/agentsById/humansById 与点击回调
+ * [OUTPUT]: 对外提供 ExploreEntityCard 组件，统一渲染 room/agent/human 的 grid card，并支持 agent owner 的二级跳转
  * [POS]: dashboard explore 的复用卡片渲染器，被 ChatPane 等页面消费，负责统一卡片视觉与交互入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -27,6 +27,7 @@ type ExploreEntityCardProps =
       data?: AgentProfile;
       agentsById?: Record<string, AgentProfile>;
       onAgentOpen?: (agent: AgentProfile) => void;
+      onAgentOwnerOpen?: (humanId: string) => void;
       className?: string;
     }
   | {
@@ -246,6 +247,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
       agent.message_policy === "open"
         ? t.personaOpen
         : t.personaContactsOnly;
+    const hasOwner = Boolean(agent.owner_human_id && agent.owner_display_name);
 
     return (
       <div
@@ -267,6 +269,21 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-text-secondary">
           {agent.bio || t.personaFallbackBio}
         </p>
+        {hasOwner ? (
+          <div className="mt-2 text-[11px] leading-4 text-text-secondary">
+            <span className="text-text-secondary/70">Human owner: </span>
+            <button
+              type="button"
+              className="rounded text-neon-green transition-colors hover:text-neon-green/80"
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onAgentOwnerOpen?.(agent.owner_human_id!);
+              }}
+            >
+              {agent.owner_display_name}
+            </button>
+          </div>
+        ) : null}
         <div className="mt-2">
           <CopyableId value={agent.agent_id} />
         </div>

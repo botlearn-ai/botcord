@@ -21,6 +21,7 @@ dashboard/
 ├── AgentBrowser.tsx          # 右侧 agent/成员浏览器，含成员面板底部的退出房间与退订动作
 ├── AgentCardModal.tsx        # 统一 agent 信息模态卡片（Explore/成员列表复用）
 ├── AgentGateModal.tsx        # 登录但无 agent 时的不可关闭门禁模态，轮询到身份后自动放行
+├── AddRoomMemberModal.tsx    # 群成员手动添加弹窗：从好友与自有 Agent 中选人，调用人类侧 members API 入群
 ├── ContactList.tsx           # 联系人列表
 ├── RoomHeader.tsx            # 房间头部信息与未加入时的 join 入口
 ├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 新消息提示）
@@ -61,6 +62,7 @@ dashboard/
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
 - Bot 创建入口只允许留在 `My Bots` 面板；左下角账户菜单只保留“当前身份”列表与基础动作，无 agent 时也只能复用同一个创建模态，避免身份入口和 Bot 生命周期入口混在一起。
+- 群成员邀请入口必须挂在右侧成员面板，由 owner/admin 以 Human 身份发起；候选集合只来自“好友 + 自有 Agent”两类真数据源，先过滤已在群里的成员，再调用单一 `members` API，避免 UI 自己分叉出第三套邀请模型。
 - dashboard realtime 只维护“当前 active agent 的单 Supabase private channel 订阅”；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
 - 未读状态以后端 `room_members.last_viewed_at` 为真相源：room 列表蓝点由 overview SQL 直接返回，组件只在实时消息和“已看到底”之间维护短暂乐观覆盖。
 - `/chats` 顶层现在只做编排：`DashboardApp.tsx` 聚合 `session/ui/chat/realtime/unread/contact/wallet` 多个 store；组件层直接按职责从对应 store 取值，不再保留 dashboard 聚合 hook。
@@ -74,6 +76,7 @@ dashboard/
 
 - 2026-04-24: `Sidebar.tsx` 与 `ChatPane.tsx` 的房间排序统一收敛到 `dashboard-shared.ts`，空房间改按 `created_at` 回退排序，新创建群不会再掉进列表中段。
 - 2026-04-24: `ChatPane.tsx` 的公开社区搜索改为直接调用 `/api/public/*?q=` 远端查询，停止只在首屏 50/100 条缓存上本地 `filter()` 的假搜索。
+- 2026-04-24: 新增 `AddRoomMemberModal.tsx`，并在 `AgentBrowser.tsx` 的群成员标题区补上“添加”入口；owner/admin 现在可以直接从好友或自有 Agent 中手动选人入群，不再只能依赖外部 invite 流程。
 - 2026-04-08: `ClaimAgentPage.tsx` 的 continue 改为先写入新 `active-agent` 再用浏览器级刷新进入目标 `/chats/*` 地址；`DashboardApp.tsx` 同步校验 chat store 的 `boundAgentId`，身份不一致时立即清空旧会话缓存，结束 claim 后继续页仍显示旧身份和旧会话列表的坏味道。
 - 2026-04-24: `Sidebar.tsx` 开始独占 `My Bots` 的创建入口；`AccountMenu.tsx` 收缩为纯账户菜单，并删除“还没有连接 Bot”等状态提示，结束左下角同时承担账户、身份和 Bot 生命周期管理的坏味道。
 - 2026-04-07: dashboard 内所有留在原位等待异步结果的关键操作按钮统一补上旋转 loading icon，包括好友请求、联系人审批、Join/Request Join、订阅、转账、提现、充值与邀请/分享创建，结束“按钮变灰但无明确工作中信号”的坏味道。

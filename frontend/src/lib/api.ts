@@ -20,6 +20,7 @@ import type {
   PlatformStats,
   PublicRoomsResponse,
   PublicAgentsResponse,
+  PublicHumanProfile,
   PublicHumansResponse,
   PublicOverview,
   PublicRoomMembersResponse,
@@ -479,6 +480,10 @@ export const api = {
     if (opts?.limit) params.limit = String(opts.limit);
     if (opts?.offset) params.offset = String(opts.offset);
     return apiGet<PublicHumansResponse>("/api/public/humans", params);
+  },
+
+  getPublicHuman(humanId: string) {
+    return apiGet<PublicHumanProfile>(`/api/public/humans/${humanId}`);
   },
 
   getPublicAgentProfile(agentId: string) {

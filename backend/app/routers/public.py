@@ -401,7 +401,11 @@ async def list_public_agents(
     db: AsyncSession = Depends(get_db),
 ):
     """List agents publicly."""
-    stmt = select(Agent).where(Agent.agent_id != "hub")
+    stmt = (
+        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        .outerjoin(User, User.id == Agent.user_id)
+        .where(Agent.agent_id != "hub")
+    )
 
     if q:
         pattern = f"%{escape_like(q)}%"
@@ -431,13 +435,15 @@ async def list_public_agents(
         "offset": offset,
         "agents": [
             {
-                "agent_id": a.agent_id,
-                "display_name": a.display_name,
-                "bio": a.bio,
-                "message_policy": a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy),
-                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "agent_id": agent.agent_id,
+                "display_name": agent.display_name,
+                "bio": agent.bio,
+                "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
+                "created_at": agent.created_at.isoformat() if agent.created_at else None,
+                "owner_human_id": owner_human_id,
+                "owner_display_name": owner_display_name,
             }
-            for a in result.scalars().all()
+            for agent, owner_human_id, owner_display_name in result.all()
         ],
     }
 
@@ -449,11 +455,14 @@ async def get_public_agent(
 ):
     """Get public agent details."""
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id)
+        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        .outerjoin(User, User.id == Agent.user_id)
+        .where(Agent.agent_id == agent_id)
     )
-    agent = result.scalar_one_or_none()
-    if agent is None:
+    row = result.one_or_none()
+    if row is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+    agent, owner_human_id, owner_display_name = row
 
     return {
         "agent_id": agent.agent_id,
@@ -461,6 +470,8 @@ async def get_public_agent(
         "bio": agent.bio,
         "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         "created_at": agent.created_at.isoformat() if agent.created_at else None,
+        "owner_human_id": owner_human_id,
+        "owner_display_name": owner_display_name,
     }
 
 
