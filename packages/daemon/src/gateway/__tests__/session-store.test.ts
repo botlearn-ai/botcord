@@ -198,4 +198,38 @@ describe("SessionStore", () => {
     }
     expect(reloaded.all()).toHaveLength(5);
   });
+
+  it("pruneExpired() removes old entries and persists the compacted file", async () => {
+    const store = new SessionStore({ path: storePath });
+    await store.load();
+    await store.set(baseEntry({ key: "old", updatedAt: 1_000 }));
+    await store.set(baseEntry({ key: "fresh", updatedAt: 10_000 }));
+
+    const removed = await store.pruneExpired({ maxAgeMs: 5_000, now: 10_001 });
+
+    expect(removed).toBe(1);
+    expect(store.get("old")).toBeUndefined();
+    expect(store.get("fresh")?.runtimeSessionId).toBe("rt-session-1");
+
+    const reloaded = new SessionStore({ path: storePath });
+    await reloaded.load();
+    expect(reloaded.get("old")).toBeUndefined();
+    expect(reloaded.get("fresh")).toBeDefined();
+  });
+
+  it("load() prunes expired entries when maxEntryAgeMs is configured", async () => {
+    const seed = new SessionStore({ path: storePath });
+    await seed.load();
+    await seed.set(baseEntry({ key: "old", updatedAt: 1_000 }));
+    await seed.set(baseEntry({ key: "fresh", updatedAt: Date.now() }));
+
+    const store = new SessionStore({ path: storePath, maxEntryAgeMs: 5_000 });
+    await store.load();
+
+    expect(store.get("old")).toBeUndefined();
+    expect(store.get("fresh")).toBeDefined();
+    const parsed = JSON.parse(readFileSync(storePath, "utf8"));
+    expect(parsed.entries.old).toBeUndefined();
+    expect(parsed.entries.fresh).toBeDefined();
+  });
 });

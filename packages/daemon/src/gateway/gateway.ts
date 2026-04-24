@@ -2,7 +2,7 @@ import { ChannelManager, type ChannelBackoffOptions } from "./channel-manager.js
 import { Dispatcher, type RuntimeFactory } from "./dispatcher.js";
 import { consoleLogger, type GatewayLogger } from "./log.js";
 import { createRuntime } from "./runtimes/registry.js";
-import { SessionStore } from "./session-store.js";
+import { DEFAULT_SESSION_STORE_MAX_ENTRY_AGE_MS, SessionStore } from "./session-store.js";
 import type {
   ChannelAdapter,
   GatewayChannelConfig,
@@ -17,6 +17,8 @@ import type {
 export interface GatewayBootOptions {
   config: GatewayConfig;
   sessionStorePath: string;
+  /** Max age for persisted runtime session entries. Defaults to 30 days. */
+  sessionStoreMaxEntryAgeMs?: number;
   createChannel: (cfg: GatewayChannelConfig) => ChannelAdapter;
   createRuntime?: RuntimeFactory;
   log?: GatewayLogger;
@@ -86,6 +88,7 @@ export class Gateway {
     this.sessionStore = new SessionStore({
       path: opts.sessionStorePath,
       log: this.log,
+      maxEntryAgeMs: opts.sessionStoreMaxEntryAgeMs ?? DEFAULT_SESSION_STORE_MAX_ENTRY_AGE_MS,
     });
 
     const runtimeFactory = opts.createRuntime ?? defaultRuntimeFactory;
