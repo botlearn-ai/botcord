@@ -14,6 +14,7 @@ import type {
   StreamBlock,
   SystemContextBuilder,
   TurnStatusSnapshot,
+  UserTurnBuilder,
 } from "./types.js";
 
 const DEFAULT_TURN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -50,6 +51,13 @@ export interface DispatcherOptions {
    * and suppressed so the turn is never cancelled by observer failure.
    */
   onInbound?: InboundObserver;
+  /**
+   * Optional composer that wraps `message.text` with channel-specific
+   * metadata (sender label, room header, reply hints…) before it is handed
+   * to the runtime. Skipped if it throws — the raw trimmed text is used as
+   * a fallback so a buggy composer cannot drop turns.
+   */
+  composeUserTurn?: UserTurnBuilder;
 }
 
 interface TurnSlot {
@@ -94,6 +102,7 @@ export class Dispatcher {
   private readonly turnTimeoutMs: number;
   private readonly buildSystemContext?: SystemContextBuilder;
   private readonly onInbound?: InboundObserver;
+  private readonly composeUserTurn?: UserTurnBuilder;
   private readonly managedRoutes?: Map<string, GatewayRoute>;
   private readonly queues: Map<string, QueueState> = new Map();
 
@@ -106,6 +115,7 @@ export class Dispatcher {
     this.turnTimeoutMs = opts.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     this.buildSystemContext = opts.buildSystemContext;
     this.onInbound = opts.onInbound;
+    this.composeUserTurn = opts.composeUserTurn;
     this.managedRoutes = opts.managedRoutes;
   }
 
@@ -114,8 +124,8 @@ export class Dispatcher {
     const msg = envelope.message;
 
     // Skip rule: empty/whitespace text.
-    const text = typeof msg.text === "string" ? msg.text.trim() : "";
-    if (!text) {
+    const rawText = typeof msg.text === "string" ? msg.text.trim() : "";
+    if (!rawText) {
       this.log.debug("dispatcher skip: empty text", { messageId: msg.id });
       await this.safeAck(envelope);
       return;
@@ -128,6 +138,25 @@ export class Dispatcher {
       this.log.debug("dispatcher skip: own message", { messageId: msg.id });
       await this.safeAck(envelope);
       return;
+    }
+
+    // Compose the final user-turn text. The composer can enrich the raw
+    // message with sender label, room header, NO_REPLY hint, etc. — anything
+    // that should land in the runtime transcript. Failures fall back to the
+    // raw trimmed text so a buggy composer cannot drop turns.
+    let text = rawText;
+    if (this.composeUserTurn) {
+      try {
+        const composed = this.composeUserTurn(msg);
+        if (typeof composed === "string" && composed.length > 0) {
+          text = composed;
+        }
+      } catch (err) {
+        this.log.warn("dispatcher: composeUserTurn threw — using raw text", {
+          messageId: msg.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;

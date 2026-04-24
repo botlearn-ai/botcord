@@ -126,6 +126,18 @@ export type InboundObserver = (
   message: GatewayInboundMessage,
 ) => Promise<void> | void;
 
+/**
+ * Channel-agnostic hook that composes the user-turn text passed to the
+ * runtime. When omitted, the dispatcher passes `message.text.trim()` through
+ * as-is. Builders can wrap the content with sender metadata, room headers,
+ * reply hints, etc. — anything that should land in the session transcript.
+ *
+ * Must be synchronous + cheap (runs on the turn's critical path). Throws are
+ * caught by the dispatcher and the raw trimmed text is used as a fallback so
+ * a buggy composer never drops turns.
+ */
+export type UserTurnBuilder = (message: GatewayInboundMessage) => string;
+
 /** Outbound reply payload passed to `ChannelAdapter.send()`. */
 export interface GatewayOutboundMessage {
   channel: string;
