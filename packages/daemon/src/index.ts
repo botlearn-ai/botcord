@@ -74,15 +74,18 @@ Commands:
                                           Without --agent, the daemon discovers
                                           identities from ~/.botcord/credentials
                                           at startup (repeat --agent to pin).
-  start [--foreground] [--relogin] [--hub <url>] [--label <name>]
-                                          Start the daemon. Without credentials
-                                          and on a TTY, runs the interactive
-                                          device-code login first. --hub defaults
-                                          to ${DEFAULT_HUB} (or the URL stored in
-                                          a previous login). --relogin forces
-                                          re-login. --label is sent to the Hub
-                                          on connect for the dashboard device
-                                          list (defaults to hostname). Non-TTY
+  start [--background|-d] [--relogin] [--hub <url>] [--label <name>]
+                                          Start the daemon in the foreground by
+                                          default. Pass --background (alias -d)
+                                          to detach and return to the shell.
+                                          Without credentials and on a TTY, runs
+                                          the interactive device-code login
+                                          first. --hub defaults to ${DEFAULT_HUB}
+                                          (or the URL stored in a previous
+                                          login). --relogin forces re-login.
+                                          --label is sent to the Hub on connect
+                                          for the dashboard device list
+                                          (defaults to hostname). Non-TTY
                                           environments must mount a pre-existing
                                           user-auth.json (plan §6.4).
   stop                                    Stop the running daemon (SIGTERM)
@@ -128,6 +131,8 @@ interface ParsedArgs {
 /** Known boolean flags — never consume the following token as a value. */
 const BOOLEAN_FLAGS = new Set([
   "foreground",
+  "background",
+  "d",
   "f",
   "follow",
   "json",
@@ -363,9 +368,13 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
 
 async function cmdStart(args: ParsedArgs): Promise<void> {
   const cfg = loadConfig();
-  const foreground = args.flags.foreground === true;
+  // Foreground is now the default. --background (alias -d) detaches.
+  // --foreground is still accepted (no-op) for backwards compatibility and
+  // is also what the detached child re-execs itself with.
+  const background =
+    args.flags.background === true || args.flags.d === true;
   log.info("cmd start", {
-    foreground,
+    background,
     relogin: args.flags.relogin === true,
     child: process.env.BOTCORD_DAEMON_CHILD === "1",
   });
@@ -385,7 +394,7 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
     await ensureUserAuthForStart(args);
   }
 
-  if (!foreground) {
+  if (background) {
     // Detached child re-exec in foreground mode. The child writes the PID
     // file once it's up; the parent only polls to confirm startup so the
     // two never race on the same file.
