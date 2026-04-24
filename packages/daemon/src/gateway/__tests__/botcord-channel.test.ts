@@ -255,6 +255,32 @@ describe("createBotCordChannel — inbox normalization", () => {
     }
   });
 
+  it("lets contact_request envelopes through so the composer can add the notify-owner hint", async () => {
+    const { emits, server } = await startWithInbox([
+      makeInbox({
+        hub_msg_id: "m_cr",
+        room_id: "rm_dm_peer",
+        text: "Hi, please add me",
+        envelope: {
+          type: "contact_request",
+          from: "ag_stranger",
+          payload: { text: "Hi, please add me" },
+        } as unknown as InboxMessage["envelope"],
+      }),
+    ]);
+    try {
+      expect(emits).toHaveLength(1);
+      const env = emits[0].message;
+      expect(env.sender.id).toBe("ag_stranger");
+      expect(env.text).toBe("Hi, please add me");
+      // Raw preserves envelope so turn-text can detect the type.
+      const raw = env.raw as { envelope?: { type?: string } };
+      expect(raw?.envelope?.type).toBe("contact_request");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("sanitizes prompt-injection markers in untrusted text but not in owner-chat", async () => {
     const { emits, server } = await startWithInbox([
       makeInbox({

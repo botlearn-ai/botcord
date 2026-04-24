@@ -42,7 +42,7 @@ jobs:
       PKG_DIR: ${{ (github.event.inputs.package == 'protocol-core' || github.event.inputs.package == 'daemon') && format('packages/{0}', github.event.inputs.package) || github.event.inputs.package }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve npm package name
         id: meta
@@ -58,7 +58,7 @@ jobs:
           echo "display_name=$DISPLAY_NAME" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -77,6 +77,20 @@ jobs:
           else
             npm install
           fi
+
+      - name: Override @botcord/protocol-core with local build
+        if: env.PKG == 'daemon' || env.PKG == 'plugin' || env.PKG == 'cli'
+        run: |
+          rm -rf node_modules/@botcord/protocol-core
+          mkdir -p node_modules/@botcord
+          # daemon lives in packages/daemon → ../protocol-core
+          # plugin/cli live at repo root → ../packages/protocol-core
+          if [ -d ../protocol-core/dist ]; then
+            cp -R ../protocol-core node_modules/@botcord/protocol-core
+          else
+            cp -R ../packages/protocol-core node_modules/@botcord/protocol-core
+          fi
+          ls node_modules/@botcord/protocol-core/dist | head -5
 
       - name: Build
         if: env.PKG == 'cli' || env.PKG == 'protocol-core' || env.PKG == 'daemon'
