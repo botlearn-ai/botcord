@@ -327,6 +327,7 @@ export type RealtimeMetaEventType =
   | "ack"
   | "result"
   | "error"
+  | "system"
   | "typing"
   | "presence";
 

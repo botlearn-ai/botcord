@@ -8,6 +8,7 @@ import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { PresenceDot } from "./PresenceDot";
@@ -105,6 +106,10 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const isOwn = typeof message.is_mine === "boolean" ? message.is_mine : isOwnProp;
   const isHuman = message.sender_kind === "human";
   const senderDisplayName = message.display_sender_name || message.sender_name || message.sender_id;
+
+  if (message.type === "system") {
+    return <SystemMessageNotice text={displayText || "System update"} timestamp={timestampLabel} />;
+  }
 
   const transferInfo = displayText
     ? parseTransferText(displayText) ?? parseTransferNotice(displayText, message.payload)
