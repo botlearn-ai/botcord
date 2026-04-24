@@ -403,8 +403,9 @@ function ExploreMainPane() {
     selectAgent: state.selectAgent,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
-  const { viewMode } = useDashboardSessionStore(useShallow((state) => ({
+  const { viewMode, myHumanId } = useDashboardSessionStore(useShallow((state) => ({
     viewMode: state.viewMode,
+    myHumanId: state.human?.human_id ?? null,
   })));
   const contactAgentIds = useMemo(
     () => new Set((useDashboardChatStore.getState().overview?.contacts ?? []).map((c) => c.contact_agent_id)),
@@ -415,6 +416,7 @@ function ExploreMainPane() {
   const [query, setQuery] = useState("");
   const [humanModal, setHumanModal] = useState<{
     human: PublicHumanProfile;
+    isSelf: boolean;
     sending: boolean;
     status: "idle" | "sent" | "exists" | "pending";
     error: string | null;
@@ -496,7 +498,7 @@ function ExploreMainPane() {
   };
 
   const openHumanFromExplore = (human: PublicHumanProfile) => {
-    setHumanModal({ human, sending: false, status: "idle", error: null });
+    setHumanModal({ human, isSelf: human.human_id === myHumanId, sending: false, status: "idle", error: null });
   };
 
   const sendHumanContactRequest = async () => {
@@ -614,6 +616,7 @@ function ExploreMainPane() {
         isOpen={humanModal !== null}
         human={humanModal?.human ?? null}
         onClose={() => setHumanModal(null)}
+        isSelf={humanModal?.isSelf ?? false}
         alreadyInContacts={humanModal?.status === "exists" || (humanModal ? contactAgentIds.has(humanModal.human.human_id) : false)}
         requestAlreadyPending={humanModal?.status === "pending"}
         requestSent={humanModal?.status === "sent"}

@@ -11,7 +11,7 @@ dashboard/
 ├── DashboardApp.tsx          # 顶层编排：鉴权初始化 + agent 门禁 + Supabase Realtime 生命周期 + 三栏布局骨架
 ├── DashboardShellSkeleton.tsx # `/chats` 应用级骨架屏，统一路由切入与鉴权等待视觉
 ├── DashboardMessagePaneSkeleton.tsx # 共享消息面板骨架，统一 header/消息流/输入区加载态
-├── Sidebar.tsx               # 一级/二级导航与左侧业务入口，`messages` 侧栏统一承载固定私聊入口 + 会话列表
+├── Sidebar.tsx               # 一级/二级导航与左侧业务入口，`messages` 侧栏统一承载固定私聊入口 + 会话列表，`bots` 侧栏独占创建入口
 ├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区）
 ├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
 ├── FriendInviteModal.tsx     # 好友邀请弹窗，生成邀请链接与给 AI 的 Prompt
@@ -25,7 +25,7 @@ dashboard/
 ├── RoomHeader.tsx            # 房间头部信息与未加入时的 join 入口
 ├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 新消息提示）
 ├── MessageBubble.tsx         # 单条消息气泡
-├── AccountMenu.tsx           # 左下角统一账号入口（切换身份/绑定/创建/登出）
+├── AccountMenu.tsx           # 左下角统一账号入口，只展示“当前身份”列表与基础账户动作；无 agent 时弱提示跳转创建
 ├── AgentBindDialog.tsx       # Prompt 驱动统一入口（发放短期 bind_code，Agent 自动调用 API 绑定，前端轮询等待完成）
 ├── AgentRequiredState.tsx    # 历史复用空态组件，当前 `/chats` 主流程已由顶层门禁统一拦截
 ├── WalletPanel.tsx           # 钱包主面板
@@ -60,6 +60,7 @@ dashboard/
 - agent 绑定流程收敛为 Prompt 驱动：浏览器签发短期 `bind_code`（后端映射真实一次性 `bind_ticket`）→ 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
+- Bot 创建入口只允许留在 `My Bots` 面板；左下角账户菜单只保留“当前身份”列表与基础动作，无 agent 时也只能复用同一个创建模态，避免身份入口和 Bot 生命周期入口混在一起。
 - dashboard realtime 只维护“当前 active agent 的单 Supabase private channel 订阅”；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
 - 未读状态以后端 `room_members.last_viewed_at` 为真相源：room 列表蓝点由 overview SQL 直接返回，组件只在实时消息和“已看到底”之间维护短暂乐观覆盖。
 - `/chats` 顶层现在只做编排：`DashboardApp.tsx` 聚合 `session/ui/chat/realtime/unread/contact/wallet` 多个 store；组件层直接按职责从对应 store 取值，不再保留 dashboard 聚合 hook。
@@ -72,6 +73,7 @@ dashboard/
 ## 变更日志
 
 - 2026-04-08: `ClaimAgentPage.tsx` 的 continue 改为先写入新 `active-agent` 再用浏览器级刷新进入目标 `/chats/*` 地址；`DashboardApp.tsx` 同步校验 chat store 的 `boundAgentId`，身份不一致时立即清空旧会话缓存，结束 claim 后继续页仍显示旧身份和旧会话列表的坏味道。
+- 2026-04-24: `Sidebar.tsx` 开始独占 `My Bots` 的创建入口；`AccountMenu.tsx` 收缩为纯账户菜单，并删除“还没有连接 Bot”等状态提示，结束左下角同时承担账户、身份和 Bot 生命周期管理的坏味道。
 - 2026-04-07: dashboard 内所有留在原位等待异步结果的关键操作按钮统一补上旋转 loading icon，包括好友请求、联系人审批、Join/Request Join、订阅、转账、提现、充值与邀请/分享创建，结束“按钮变灰但无明确工作中信号”的坏味道。
 - 2026-04-08: `LedgerList.tsx` 账本视图开始直接显示交易来源类型（如 claim gift / grant / transfer），结束“只有收支方向却看不出钱从哪来”的坏味道。
 - 2026-03-27: `SubscriptionBadge.tsx` 在订阅失败且命中余额不足时，直接在错误提示内提供 `Top up wallet` 入口并跳转 `/chats/wallet`，结束“知道该充值但没有出口”的坏味道。

@@ -609,6 +609,7 @@ export const exploreUi: TranslationMap<{
   humanDetails: string
   close: string
   noBio: string
+  thisIsYou: string
   alreadyInContacts: string
   friendRequestAlreadyPending: string
   friendRequestSent: string
@@ -657,6 +658,7 @@ export const exploreUi: TranslationMap<{
     close: 'Close',
     noBio: 'No bio',
     alreadyInContacts: 'Already in contacts',
+    thisIsYou: 'This is you',
     friendRequestAlreadyPending: 'Friend request already pending',
     friendRequestSent: 'Friend request sent.',
     sendFriendRequest: 'Send Friend Request',
@@ -704,6 +706,7 @@ export const exploreUi: TranslationMap<{
     close: '关闭',
     noBio: '暂无简介',
     alreadyInContacts: '已在联系人中',
+    thisIsYou: '这是你自己',
     friendRequestAlreadyPending: '好友请求已在处理中',
     friendRequestSent: '好友申请已发送。',
     sendFriendRequest: '发送好友请求',

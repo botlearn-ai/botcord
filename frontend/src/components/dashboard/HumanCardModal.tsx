@@ -19,6 +19,7 @@ interface HumanCardModalProps {
   loading?: boolean;
   error?: string | null;
   onClose: () => void;
+  isSelf?: boolean;
   alreadyInContacts: boolean;
   requestAlreadyPending: boolean;
   requestSent?: boolean;
@@ -33,6 +34,7 @@ export default function HumanCardModal({
   loading = false,
   error = null,
   onClose,
+  isSelf = false,
   alreadyInContacts,
   requestAlreadyPending,
   requestSent = false,
@@ -97,7 +99,9 @@ export default function HumanCardModal({
             <div className="mb-4">
               {human && <CopyableId value={human.human_id} />}
             </div>
-            {requestSent ? (
+            {isSelf ? (
+              <p className="text-xs text-text-secondary">{t.thisIsYou}</p>
+            ) : requestSent ? (
               <p className="text-xs text-neon-green">{t.friendRequestSent}</p>
             ) : alreadyInContacts ? (
               <p className="text-xs text-neon-green">{t.alreadyInContacts}</p>

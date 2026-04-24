@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 react 的 startTransition/useEffect 解耦导航切换与路由提交，依赖 session/ui/chat/unread/wallet store 提供导航状态、会话未读与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 承载账号与 agent 入口
- * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表、未读提示与左下角账户菜单
- * [POS]: dashboard 左侧导航骨架，负责频道切换、未读入口提示与全局入口编排；无 agent 准入由 DashboardApp 顶层统一处理
+ * [INPUT]: 依赖 react 的 startTransition/useEffect 解耦导航切换与路由提交，依赖 session/ui/chat/unread/wallet store 提供导航状态、会话未读与业务动作，依赖 nextjs-toploader/app 的 useRouter 承载全局切换反馈，依赖 AccountMenu 与 CreateAgentDialog 提供账户出口和 Bot 创建入口
+ * [OUTPUT]: 对外提供 Sidebar 组件，渲染统一的一级/二级导航、会话列表、未读提示、Bot 创建入口与左下角账户菜单
+ * [POS]: dashboard 左侧导航骨架，负责频道切换、未读入口提示与 My Bots 面板编排；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -20,6 +20,7 @@ import RoomList from "./RoomList";
 import AccountMenu from "./AccountMenu";
 import AddFriendModal from "./AddFriendModal";
 import CreateRoomModal from "./CreateRoomModal";
+import CreateAgentDialog from "./CreateAgentDialog";
 import RoomZeroState from "./RoomZeroState";
 import { UserPlus, MessageSquarePlus, Users, LogIn, Bot, Plus } from "lucide-react";
 import { messagesHeader } from "@/lib/i18n/translations/dashboard";
@@ -231,6 +232,7 @@ export default function Sidebar() {
   const isGuest = sessionStore.sessionMode === "guest";
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [showCreateBot, setShowCreateBot] = useState(false);
   const tMsgHeader = messagesHeader[locale];
   const showLoginModal = () => router.push("/login");
 
@@ -414,16 +416,8 @@ export default function Sidebar() {
                 activeAgentId={sessionStore.activeAgentId}
                 pendingRequests={chatStore.overview?.pending_requests || 0}
                 onSwitchAgent={chatStore.switchActiveAgent}
+                onOpenCreateBot={() => setShowCreateBot(true)}
                 onLogout={handleLogout}
-                onAgentBound={async (agentId) => {
-                  await sessionStore.refreshUserProfile();
-                  await chatStore.switchActiveAgent(agentId);
-                }}
-                onAgentUnbound={async (agentId) => {
-                  sessionStore.removeAgent(agentId);
-                  await sessionStore.refreshUserProfile();
-                }}
-                onRefreshStatus={() => sessionStore.refreshUserProfile()}
               />
             </>
           )}
@@ -438,6 +432,21 @@ export default function Sidebar() {
             setShowCreateRoom(false);
             uiStore.setOpenedRoomId(room.room_id);
             router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+          }}
+        />
+      )}
+      {showCreateBot && (
+        <CreateAgentDialog
+          onClose={() => setShowCreateBot(false)}
+          onSuccess={async (agentId) => {
+            setShowCreateBot(false);
+            await sessionStore.refreshUserProfile();
+            uiStore.setSidebarTab("bots");
+            uiStore.setSelectedBotAgentId(agentId);
+            await chatStore.switchActiveAgent(agentId);
+            startTransition(() => {
+              router.push(`/chats/bots/${encodeURIComponent(agentId)}`);
+            });
           }}
         />
       )}
@@ -483,6 +492,7 @@ export default function Sidebar() {
           )}
           {uiStore.sidebarTab === "bots" && !isGuest && (
             <button
+              onClick={() => setShowCreateBot(true)}
               title={t.createBot}
               aria-label={t.createBot}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
@@ -612,8 +622,16 @@ export default function Sidebar() {
           {uiStore.sidebarTab === "bots" && (
             <div className="p-2">
               {sessionStore.ownedAgents.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-glass-border px-3 py-6 text-center text-xs text-text-secondary/70">
-                  {t.myBotsEmpty}
+                <div className="rounded-lg border border-dashed border-glass-border px-3 py-6 text-center">
+                  <p className="text-xs text-text-secondary/70">{t.myBotsEmpty}</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateBot(true)}
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>{t.createBot}</span>
+                  </button>
                 </div>
               ) : (
                 <ul className="space-y-1">

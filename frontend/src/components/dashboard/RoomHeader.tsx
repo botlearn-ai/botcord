@@ -388,7 +388,7 @@ export default function RoomHeader() {
       {showSettingsModal && isDMRoom && (
         <DMSettingsModal
           contact={dmContact}
-          ownAgentName={overview?.agent.display_name}
+          ownAgentName={overview?.agent?.display_name}
           ownAgentId={activeAgentId ?? undefined}
           onClose={() => setShowSettingsModal(false)}
           onContactRemoved={() => void refreshOverview()}
