@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, ChevronDown } from "lucide-react";
+import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
@@ -255,25 +255,6 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     }
   }, [sendMessage, uploadFiles]);
 
-  const sendSuggestion = useCallback((text: string) => {
-    const clientId = crypto.randomUUID();
-    const optimisticMsg: OwnerChatMessage = {
-      clientId,
-      hubMsgId: null,
-      sender: "user",
-      text,
-      streamBlocks: [],
-      status: "optimistic",
-      createdAt: new Date().toISOString(),
-      senderName: "You",
-      type: "message",
-      sendText: text,
-    };
-    useOwnerChatStore.getState().addOptimistic(optimisticMsg);
-    scrollToBottom();
-    void sendMessage(text, clientId);
-  }, [scrollToBottom, sendMessage]);
-
   // ------ Render guards ------
 
   if (!chatAgentId) {
@@ -306,68 +287,9 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   }
 
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
-  const showOnboarding = messages.length === 0;
 
   return (
     <div className="relative flex flex-col h-full">
-      {/* ===== Spotlight onboarding overlay ===== */}
-      {showOnboarding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center animate-[fade-in_0.3s_ease-out]">
-          {/* Dark backdrop */}
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-
-          {/* Centered card */}
-          <div className="relative z-10 flex flex-col items-center gap-6 rounded-3xl border border-cyan-500/30 bg-zinc-900/95 px-8 py-10 shadow-[0_0_60px_rgba(0,240,255,0.12)] max-w-lg mx-4 animate-[scale-in_0.3s_ease-out]">
-            {/* Glowing icon */}
-            <div className="relative">
-              <div className="absolute inset-0 rounded-2xl bg-cyan-500/25 blur-2xl animate-pulse" />
-              <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl border border-cyan-500/40 bg-cyan-500/10">
-                <MessageSquare className="h-10 w-10 text-cyan-400" />
-              </div>
-            </div>
-
-            {/* Welcome text */}
-            <div className="text-center">
-              <h2 className="text-xl font-bold text-white">
-                {chatRoomName ? `${chatRoomName} is ready!` : "Your Bot is ready!"}
-              </h2>
-              <p className="mt-2 text-sm text-zinc-400 max-w-sm leading-relaxed">
-                Choose a conversation starter, or type your own message below.
-              </p>
-            </div>
-
-            {/* Suggestion chips */}
-            <div className="flex flex-col gap-2.5 w-full">
-              {[
-                { emoji: "👋", text: "Hey! What can you do?" },
-                { emoji: "💡", text: "Tell me about yourself" },
-                { emoji: "🚀", text: "Let's get started!" },
-              ].map((suggestion) => (
-                <button
-                  key={suggestion.text}
-                  onClick={() => sendSuggestion(suggestion.text)}
-                  className="group flex items-center gap-3 rounded-xl border border-zinc-700/80 bg-zinc-800/60 px-4 py-3 text-left text-sm text-zinc-200 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/10 hover:text-cyan-200 hover:shadow-[0_0_16px_rgba(0,240,255,0.12)]"
-                >
-                  <span className="text-lg">{suggestion.emoji}</span>
-                  <span className="flex-1">{suggestion.text}</span>
-                  <Send className="h-3.5 w-3.5 text-zinc-600 transition-colors group-hover:text-cyan-400" />
-                </button>
-              ))}
-            </div>
-
-            {/* Divider + hint */}
-            <div className="flex items-center gap-3 w-full">
-              <div className="flex-1 h-px bg-zinc-700" />
-              <span className="text-xs text-zinc-500 shrink-0">or type below</span>
-              <div className="flex-1 h-px bg-zinc-700" />
-            </div>
-
-            {/* Bouncing arrow */}
-            <ChevronDown className="h-6 w-6 text-cyan-400 animate-bounce" />
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
         <MessageSquare className="w-4 h-4 text-cyan-400" />
@@ -564,18 +486,12 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
         <div />
       </div>
 
-      {/* Input — elevated above spotlight overlay so user can type */}
-      <div
-        className={`border-t px-4 py-3 transition-colors ${
-          showOnboarding ? "relative z-50 border-cyan-500/30 bg-zinc-900" : "border-zinc-800"
-        }`}
-      >
+      {/* Input */}
+      <div className="border-t border-zinc-800 px-4 py-3">
         <MessageComposer
           onSend={handleSend}
           allowAttachments
-          autoFocus={showOnboarding}
-          emptyState={showOnboarding}
-          placeholder={showOnboarding ? "Say something to your Bot..." : "Type a message..."}
+          placeholder="Type a message..."
         />
       </div>
     </div>
