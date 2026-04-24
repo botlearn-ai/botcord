@@ -177,7 +177,10 @@ export interface StreamBlockEntry {
   seq: number;
   block: {
     kind: string;
-    payload: Record<string, unknown>;
+    /** Legacy shape (plugin-driven): structured payload. */
+    payload?: Record<string, unknown>;
+    /** Current shape (daemon gateway): raw runtime event object. */
+    raw?: unknown;
   };
   created_at: string;
 }

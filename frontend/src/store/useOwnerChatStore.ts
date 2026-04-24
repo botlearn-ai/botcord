@@ -27,12 +27,37 @@ const MAX_BLOCKS_PER_TRACE = 200;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract streamed assistant text from stream blocks. */
+/** Extract streamed assistant text from stream blocks.
+ *  Supports two shapes:
+ *   - legacy plugin: `{ kind: "assistant", payload: { text } }`
+ *   - daemon gateway: `{ kind: "assistant_text", raw: <runtime event> }` where
+ *     raw is either Codex's `item.completed` (`raw.item.text`) or Claude-code's
+ *     `assistant` event (`raw.message.content[*].text`). */
 function extractAssistantText(blocks: StreamBlockEntry[]): string {
-  return blocks
-    .filter((b) => b.block.kind === "assistant")
-    .map((b) => (b.block.payload?.text as string) || "")
-    .join("");
+  const parts: string[] = [];
+  for (const b of blocks) {
+    const kind = b.block.kind;
+    if (kind === "assistant") {
+      parts.push((b.block.payload?.text as string) || "");
+      continue;
+    }
+    if (kind === "assistant_text") {
+      const raw = b.block.raw as any;
+      // Codex: raw.item.text
+      if (typeof raw?.item?.text === "string") {
+        parts.push(raw.item.text);
+        continue;
+      }
+      // Claude-code: raw.message.content[*].text where type === "text"
+      const contents = raw?.message?.content;
+      if (Array.isArray(contents)) {
+        for (const c of contents) {
+          if (c?.type === "text" && typeof c.text === "string") parts.push(c.text);
+        }
+      }
+    }
+  }
+  return parts.join("");
 }
 
 /** In-flight guard + request token to prevent stale loadInitial responses. */
@@ -460,7 +485,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         attachments: finalData.attachments,
         status: "delivered",
         // Keep only execution blocks (assistant text now lives in `text`)
-        streamBlocks: existing.streamBlocks.filter((b) => b.block.kind !== "assistant"),
+        streamBlocks: existing.streamBlocks.filter((b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text"),
       };
 
       const newMessages = [...state.messages];
@@ -500,7 +525,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
             text: partialText,
             status: "delivered" as const,
             // Keep streamBlocks for display (execution blocks, etc.)
-            streamBlocks: m.streamBlocks.filter((b) => b.block.kind !== "assistant"),
+            streamBlocks: m.streamBlocks.filter((b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text"),
           };
         }
         return m;
