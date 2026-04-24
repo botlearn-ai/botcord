@@ -110,8 +110,19 @@ def is_agent_ws_online(agent_id: str) -> bool:
     return bool(ws_set)
 
 
-def build_agent_realtime_topic(agent_id: str) -> str:
-    return f"agent:{agent_id}"
+def build_agent_realtime_topic(participant_id: str) -> str:
+    """Return the Supabase realtime topic for a polymorphic participant id.
+
+    - ``ag_*`` → ``agent:<ag_*>``  (legacy, gated by can_access_agent_realtime)
+    - ``hu_*`` → ``human:<hu_*>``  (gated by can_access_human_realtime)
+
+    Every existing publisher already passes the recipient's id to this helper,
+    so routing to Human subscribers is automatic once the id stored in
+    membership/contact/message tables is ``hu_*``.
+    """
+    if participant_id.startswith("hu_"):
+        return f"human:{participant_id}"
+    return f"agent:{participant_id}"
 
 
 def build_agent_realtime_event(
@@ -249,10 +260,16 @@ async def _publish_agent_realtime_event(
 async def _collect_presence_observers(
     db: AsyncSession, agent_id: str
 ) -> set[str]:
-    """Return agent_ids who should be notified when `agent_id` goes on/offline.
+    """Return participant ids who should be notified when ``agent_id`` goes
+    on/offline.
 
-    Observers = contacts (owners who have this agent as contact) + co-members
-    of any shared room. The agent itself is excluded.
+    Polymorphic: ``agent_id`` may be ``ag_*`` or ``hu_*``. Observer queries run
+    against the polymorphic ``Contact.contact_agent_id`` /
+    ``Contact.owner_id`` / ``RoomMember.agent_id`` columns, so Human
+    participants are included as both subjects and observers.
+
+    Observers = contacts (owners who have this participant as contact) +
+    co-members of any shared room. The subject itself is excluded.
     """
     observers: set[str] = set()
 
@@ -272,7 +289,12 @@ async def _collect_presence_observers(
 
 
 async def broadcast_presence(agent_id: str, online: bool) -> None:
-    """Fan out a presence event to the agent + all observers (contacts, co-members)."""
+    """Fan out a presence event to the subject + all observers.
+
+    ``agent_id`` is polymorphic (``ag_*`` or ``hu_*``). Each target receives the
+    event on their own realtime topic — routing (``agent:`` vs ``human:``) is
+    handled by ``build_agent_realtime_topic`` which dispatches by id prefix.
+    """
     from hub.database import async_session
 
     event_time = datetime.datetime.now(datetime.timezone.utc)

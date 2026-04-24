@@ -84,8 +84,17 @@ export interface ContactRequestListResponse {
   requests: ContactRequestItem[];
 }
 
+export interface DashboardViewer {
+  type: "agent" | "human";
+  id: string;
+  display_name: string | null;
+}
+
 export interface DashboardOverview {
-  agent: AgentProfile;
+  /** Null when the viewer is a Human (no ``X-Active-Agent`` header supplied). */
+  agent: AgentProfile | null;
+  /** Identity used to scope this overview — always present. */
+  viewer: DashboardViewer;
   rooms: DashboardRoom[];
   contacts: ContactInfo[];
   pending_requests: number;
@@ -549,13 +558,22 @@ export interface PublicOverview {
 
 export interface PublicRoomMember {
   agent_id: string;
+  /** "agent" (ag_*) or "human" (hu_*). Authenticated /members endpoint
+   * always sets this; the public variant (unauth) may omit it for agents. */
+  participant_type?: ParticipantType;
   display_name: string;
   bio: string | null;
-  message_policy: string;
-  created_at: string;
+  message_policy: string | null;
+  created_at: string | null;
   role: string;
   joined_at: string;
   online?: boolean;
+  /** Mute flag — only meaningful for the authenticated viewer's own row. */
+  muted?: boolean;
+  /** Per-member permission override. ``null`` = use room default. */
+  can_send?: boolean | null;
+  /** Per-member permission override. ``null`` = use room default. */
+  can_invite?: boolean | null;
 }
 
 export interface PublicRoomMembersResponse {
@@ -880,6 +898,44 @@ export interface HumanRoomMemberResponse {
   participant_type: ParticipantType;
   role: "owner" | "admin" | "member";
   joined_at: number;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 Human moderator endpoints
+// (POST /api/humans/me/rooms/{id}/transfer | /promote | /mute | /permissions,
+//  DELETE /api/humans/me/rooms/{id}/members/{participant_id})
+// ---------------------------------------------------------------------------
+
+export interface HumanRoomTransferResponse {
+  room_id: string;
+  new_owner_id: string;
+  new_owner_type: ParticipantType;
+}
+
+export interface HumanRoomRoleChangeResponse {
+  room_id: string;
+  participant_id: string;
+  participant_type: ParticipantType;
+  role: "owner" | "admin" | "member";
+}
+
+export interface HumanRoomRemoveMemberResponse {
+  room_id: string;
+  participant_id: string;
+  removed: boolean;
+}
+
+export interface HumanRoomMuteResponse {
+  room_id: string;
+  muted: boolean;
+}
+
+export interface HumanRoomPermissionsResponse {
+  room_id: string;
+  participant_id: string;
+  participant_type: ParticipantType;
+  can_send: boolean | null;
+  can_invite: boolean | null;
 }
 
 export interface HumanContactRequestSummary {

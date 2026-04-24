@@ -333,7 +333,10 @@ class RoomMember(Base):
 class RoomJoinRequest(Base):
     __tablename__ = "room_join_requests"
     __table_args__ = (
-        UniqueConstraint("room_id", "agent_id", "status", name="uq_room_join_request_pending"),
+        UniqueConstraint(
+            "room_id", "agent_id", "participant_type", "status",
+            name="uq_room_join_request_pending",
+        ),
         Index("ix_room_join_requests_room_status", "room_id", "status"),
     )
 
@@ -342,8 +345,17 @@ class RoomJoinRequest(Base):
     room_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("rooms.room_id"), nullable=False, index=True
     )
+    # Polymorphic requester id (ag_* or hu_*). Column name kept for
+    # compatibility; ``participant_type`` is the discriminator. FK to agents
+    # was dropped so Human requesters are legal.
     agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
+    )
+    participant_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
     )
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[RoomJoinRequestStatus] = mapped_column(

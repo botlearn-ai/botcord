@@ -61,6 +61,11 @@ import type {
   HumanRoomMemberResponse,
   HumanContactRequestListResponse,
   HumanContactRequestResolveResponse,
+  HumanRoomTransferResponse,
+  HumanRoomRoleChangeResponse,
+  HumanRoomRemoveMemberResponse,
+  HumanRoomMuteResponse,
+  HumanRoomPermissionsResponse,
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
@@ -877,6 +882,66 @@ const humansApi = {
   ): Promise<HumanContactRequestResolveResponse> {
     return apiPost<HumanContactRequestResolveResponse>(
       `/api/humans/me/contact-requests/${requestId}/reject`,
+    );
+  },
+
+  // -------------------------------------------------------------------------
+  // Phase 4 — Human moderator actions on a room. Caller must be a Human
+  // owner/admin of the target room. All accept polymorphic participant ids
+  // (``ag_*`` or ``hu_*``). Writes do NOT send the ``X-Active-Agent`` header;
+  // the backend treats the authenticated Human as the moderator.
+  // -------------------------------------------------------------------------
+
+  /** Transfer room ownership to another member. Owner only. */
+  transferRoomOwnership(
+    roomId: string,
+    newOwnerId: string,
+  ): Promise<HumanRoomTransferResponse> {
+    return apiPost<HumanRoomTransferResponse>(
+      `/api/humans/me/rooms/${roomId}/transfer`,
+      { new_owner_id: newOwnerId },
+    );
+  },
+
+  /** Promote/demote a member between admin and member. Owner only. */
+  promoteRoomMember(
+    roomId: string,
+    participantId: string,
+    role: "admin" | "member",
+  ): Promise<HumanRoomRoleChangeResponse> {
+    return apiPost<HumanRoomRoleChangeResponse>(
+      `/api/humans/me/rooms/${roomId}/promote`,
+      { participant_id: participantId, role },
+    );
+  },
+
+  /** Remove a member. Owner/admin only; owner cannot be removed. */
+  removeRoomMember(
+    roomId: string,
+    participantId: string,
+  ): Promise<HumanRoomRemoveMemberResponse> {
+    return apiDelete<HumanRoomRemoveMemberResponse>(
+      `/api/humans/me/rooms/${roomId}/members/${participantId}`,
+    );
+  },
+
+  /** Toggle mute for the caller's own Human membership. */
+  setRoomMute(roomId: string, muted: boolean): Promise<HumanRoomMuteResponse> {
+    return apiPost<HumanRoomMuteResponse>(
+      `/api/humans/me/rooms/${roomId}/mute`,
+      { muted },
+    );
+  },
+
+  /** Set per-member permission overrides. Owner/admin only. */
+  setRoomMemberPermissions(
+    roomId: string,
+    participantId: string,
+    body: { can_send?: boolean | null; can_invite?: boolean | null },
+  ): Promise<HumanRoomPermissionsResponse> {
+    return apiPost<HumanRoomPermissionsResponse>(
+      `/api/humans/me/rooms/${roomId}/permissions`,
+      { participant_id: participantId, ...body },
     );
   },
 };

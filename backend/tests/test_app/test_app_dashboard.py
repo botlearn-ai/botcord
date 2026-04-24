@@ -194,6 +194,11 @@ async def test_dashboard_overview(client: AsyncClient, seed_data: dict):
     assert data["agent"]["agent_id"] == "ag_dashtest001"
     assert data["agent"]["display_name"] == "Dashboard Agent"
 
+    # Viewer descriptor (Agent mode)
+    assert data["viewer"]["type"] == "agent"
+    assert data["viewer"]["id"] == "ag_dashtest001"
+    assert data["viewer"]["display_name"] == "Dashboard Agent"
+
     # Rooms
     assert len(data["rooms"]) == 1
     assert data["rooms"][0]["room_id"] == "rm_testroom001"
@@ -210,16 +215,31 @@ async def test_dashboard_overview(client: AsyncClient, seed_data: dict):
 
 
 @pytest.mark.asyncio
-async def test_dashboard_overview_missing_agent_header(
+async def test_dashboard_overview_human_mode(
     client: AsyncClient, seed_data: dict
 ):
-    """Should return 400 when X-Active-Agent header is missing."""
+    """Without X-Active-Agent the overview returns the Human viewer."""
     token = seed_data["token"]
     resp = await client.get(
         "/api/dashboard/overview",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # In Human mode, ``agent`` is None and a ``viewer`` descriptor identifies
+    # the Human viewer via ``human_id``.
+    assert data["agent"] is None
+    assert data["viewer"]["type"] == "human"
+    assert data["viewer"]["id"].startswith("hu_")
+    assert data["viewer"]["display_name"] == "Dashboard User"
+
+    # Seed data puts the Agent (not the Human) in room/contact/request rows,
+    # so Human mode sees empty lists for now — Phase 2 will migrate those
+    # call sites once Humans can be full participants everywhere.
+    assert data["rooms"] == []
+    assert data["contacts"] == []
+    assert data["pending_requests"] == 0
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,6 @@
 import { create } from "zustand";
 import type { RealtimeMetaEvent } from "@/lib/types";
 import { api } from "@/lib/api";
-import { hasReadyActiveAgent } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -63,8 +62,10 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
     )),
 
   syncRealtimeEvent: async (event) => {
-    const { token, activeAgentId } = useDashboardSessionStore.getState();
-    if (!hasReadyActiveAgent(token, activeAgentId)) return;
+    const { token, activeIdentity } = useDashboardSessionStore.getState();
+    // Human-first: accept both Agent and Human viewer; only bail when we
+    // have no token or no resolved identity to anchor on.
+    if (!token || !activeIdentity) return;
 
     if (realtimeSyncInFlight) {
       queuedRealtimeEvent = event || queuedRealtimeEvent;

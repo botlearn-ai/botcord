@@ -94,8 +94,17 @@ CONTACT_REQUEST_ITEM = {
     "to_display_name?": "str",
 }
 
+VIEWER_DESCRIPTOR = {
+    "type": "str",
+    "id": "str",
+    "display_name?": "str",
+}
+
 DASHBOARD_OVERVIEW = {
-    "agent": AGENT_PROFILE,
+    # ``agent`` is null in Human-viewer mode; the nested schema applies
+    # only when present and non-null (validator treats None as OK).
+    "agent?": AGENT_PROFILE,
+    "viewer": VIEWER_DESCRIPTOR,
     "rooms": [DASHBOARD_ROOM],
     "contacts": [CONTACT_INFO],
     "pending_requests": "int",
