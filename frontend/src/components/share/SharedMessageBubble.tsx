@@ -3,6 +3,7 @@
 import type { SharedMessage, Attachment } from "@/lib/types";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 
 interface SharedMessageBubbleProps {
@@ -12,6 +13,11 @@ interface SharedMessageBubbleProps {
 export default function SharedMessageBubble({ message }: SharedMessageBubbleProps) {
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
+  const timestampLabel = new Date(message.created_at).toLocaleTimeString();
+
+  if (message.type === "system") {
+    return <SystemMessageNotice text={displayText || "System update"} timestamp={timestampLabel} />;
+  }
 
   const transferInfo = displayText
     ? parseTransferText(displayText) ?? parseTransferNotice(displayText, message.payload)

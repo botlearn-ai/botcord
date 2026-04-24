@@ -25,7 +25,7 @@ function isContactRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
 }
 
 function isMessageRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
-  return type === "message" || type === "ack" || type === "result" || type === "error";
+  return type === "message" || type === "ack" || type === "result" || type === "error" || type === "system";
 }
 
 function isTypingRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
