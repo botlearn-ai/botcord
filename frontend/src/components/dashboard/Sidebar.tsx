@@ -23,7 +23,7 @@ import CreateRoomModal from "./CreateRoomModal";
 import CreateAgentDialog from "./CreateAgentDialog";
 import RoomZeroState from "./RoomZeroState";
 import SearchBar from "./SearchBar";
-import { UserPlus, MessageSquarePlus, Users, LogIn, Bot, Plus } from "lucide-react";
+import { UserPlus, MessageSquarePlus, Users, LogIn, Bot, Plus, RefreshCw } from "lucide-react";
 import { messagesHeader } from "@/lib/i18n/translations/dashboard";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -236,6 +236,7 @@ export default function Sidebar() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showCreateBot, setShowCreateBot] = useState(false);
   const [messageQuery, setMessageQuery] = useState("");
+  const [refreshingBots, setRefreshingBots] = useState(false);
   const tMsgHeader = messagesHeader[locale];
   const showLoginModal = () => router.push("/login");
 
@@ -656,6 +657,28 @@ export default function Sidebar() {
 
           {uiStore.sidebarTab === "bots" && (
             <div className="p-2">
+              {sessionStore.ownedAgents.length > 0 && (
+                <div className="mb-2 flex items-center justify-end px-1">
+                  <button
+                    type="button"
+                    disabled={refreshingBots}
+                    onClick={async () => {
+                      if (refreshingBots) return;
+                      setRefreshingBots(true);
+                      try {
+                        await sessionStore.refreshUserProfile();
+                      } finally {
+                        setRefreshingBots(false);
+                      }
+                    }}
+                    title="Refresh status"
+                    className="inline-flex items-center gap-1 rounded-md border border-glass-border px-2 py-1 text-[10px] text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${refreshingBots ? "animate-spin" : ""}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              )}
               {sessionStore.ownedAgents.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-glass-border px-3 py-6 text-center">
                   <p className="text-xs text-text-secondary/70">{t.myBotsEmpty}</p>
