@@ -734,6 +734,27 @@ const userApi = {
     return apiGet<{ agent_id: string; agent_token: string | null }>(`/api/users/me/agents/${agentId}/identity`);
   },
 
+  async updateAgent(
+    agentId: string,
+    patch: { display_name?: string; bio?: string | null; is_default?: boolean },
+  ): Promise<{
+    agent_id: string;
+    display_name: string;
+    bio: string | null;
+    is_default: boolean;
+    claimed_at: string | null;
+  }> {
+    const result = await apiPatch<{
+      agent_id: string;
+      display_name: string;
+      bio: string | null;
+      is_default: boolean;
+      claimed_at: string | null;
+    }>(`/api/users/me/agents/${agentId}`, patch);
+    invalidateMeCache();
+    return result;
+  },
+
   async unbindAgent(agentId: string): Promise<{ ok: boolean }> {
     const result = await apiDelete<{ ok: boolean }>(`/api/users/me/agents/${agentId}`);
     invalidateMeCache();
@@ -829,6 +850,12 @@ const humansApi = {
 
   getMe(): Promise<HumanInfo> {
     return apiGet<HumanInfo>("/api/humans/me");
+  },
+
+  async updateProfile(
+    patch: { display_name?: string; avatar_url?: string | null },
+  ): Promise<HumanInfo> {
+    return apiPatch<HumanInfo>("/api/humans/me", patch);
   },
 
   listRooms(): Promise<HumanRoomListResponse> {

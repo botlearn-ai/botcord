@@ -47,6 +47,7 @@ interface DashboardSessionState {
    */
   activeIdentity: ActiveIdentity | null;
 
+  setHuman: (human: HumanInfo) => void;
   setAuthResolved: (resolved: boolean) => void;
   setToken: (token: string | null) => void;
   setUser: (user: UserProfile) => void;
@@ -134,6 +135,12 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       user,
       ownedAgents: user.agents,
       sessionMode: resolveSessionMode(state.token, state.activeAgentId),
+    })),
+
+  setHuman: (human) =>
+    set((state) => ({
+      human,
+      user: state.user ? { ...state.user, display_name: human.display_name, avatar_url: human.avatar_url } : state.user,
     })),
 
   setActiveAgentId: (agentId) =>

@@ -1,0 +1,146 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Loader2, Settings, X } from "lucide-react";
+import { userApi } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+
+interface AgentProfileEditModalProps {
+  agentId: string;
+  initialDisplayName: string;
+  initialBio?: string | null;
+  onClose: () => void;
+  onSaved?: () => void;
+}
+
+export default function AgentProfileEditModal({
+  agentId,
+  initialDisplayName,
+  initialBio,
+  onClose,
+  onSaved,
+}: AgentProfileEditModalProps) {
+  const locale = useLanguage();
+  const refreshUserProfile = useDashboardSessionStore((s) => s.refreshUserProfile);
+
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [bio, setBio] = useState(initialBio ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDisplayName(initialDisplayName);
+    setBio(initialBio ?? "");
+  }, [initialDisplayName, initialBio]);
+
+  const trimmedName = displayName.trim();
+  const nameChanged = trimmedName !== initialDisplayName.trim();
+  const bioChanged = (bio ?? "").trim() !== (initialBio ?? "").trim();
+  const canSave = !saving && trimmedName.length > 0 && (nameChanged || bioChanged);
+
+  async function handleSave() {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const patch: { display_name?: string; bio?: string | null } = {};
+      if (nameChanged) patch.display_name = trimmedName;
+      if (bioChanged) patch.bio = bio.trim() || null;
+      await userApi.updateAgent(agentId, patch);
+      await refreshUserProfile();
+      onSaved?.();
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || (locale === "zh" ? "保存失败" : "Failed to save"));
+      setSaving(false);
+    }
+  }
+
+  const tTitle = locale === "zh" ? "编辑 Bot 资料" : "Edit Bot Profile";
+  const tDesc = locale === "zh" ? "更新该 Bot 的显示名称与简介。" : "Update this bot's display name and bio.";
+  const tNameLabel = locale === "zh" ? "显示名称" : "Display name";
+  const tBioLabel = locale === "zh" ? "简介" : "Bio";
+  const tBioPlaceholder = locale === "zh" ? "介绍这个 Bot（可选）" : "Introduce this bot (optional)";
+  const tCancel = locale === "zh" ? "取消" : "Cancel";
+  const tSave = locale === "zh" ? "保存" : "Save";
+  const tSaving = locale === "zh" ? "保存中..." : "Saving...";
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+        <button
+          onClick={onClose}
+          disabled={saving}
+          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="mb-5 pr-8">
+          <h3 className="flex items-center gap-2 text-xl font-bold text-text-primary">
+            <Settings className="h-5 w-5 text-neon-cyan" />
+            {tTitle}
+          </h3>
+          <p className="mt-2 text-sm text-text-secondary">{tDesc}</p>
+          <p className="mt-1 font-mono text-[10px] text-text-secondary/60">{agentId}</p>
+        </div>
+
+        <label className="mb-3 block">
+          <span className="mb-1 block text-xs font-medium text-text-secondary">{tNameLabel}</span>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            disabled={saving}
+            maxLength={128}
+            className="w-full rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-text-secondary">{tBioLabel}</span>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            disabled={saving}
+            rows={4}
+            maxLength={4000}
+            placeholder={tBioPlaceholder}
+            className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+          />
+        </label>
+
+        {error && (
+          <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          >
+            {tCancel}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!canSave}
+            className="flex items-center gap-2 rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {tSaving}
+              </>
+            ) : (
+              tSave
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

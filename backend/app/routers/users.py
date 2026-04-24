@@ -14,7 +14,7 @@ import logging
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func as sa_func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +55,8 @@ router = APIRouter(prefix="/api/users", tags=["app-users"])
 
 class PatchAgentBody(BaseModel):
     is_default: bool | None = None
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    bio: str | None = Field(default=None, max_length=4000)
 
 
 class ClaimResolveBody(BaseModel):
@@ -100,6 +102,7 @@ def _agent_meta(agent: Agent) -> dict:
     return {
         "agent_id": agent.agent_id,
         "display_name": agent.display_name,
+        "bio": agent.bio,
         "is_default": agent.is_default,
         "claimed_at": agent.claimed_at.isoformat() if agent.claimed_at else None,
     }
@@ -552,6 +555,7 @@ async def get_me(
             {
                 "agent_id": a.agent_id,
                 "display_name": a.display_name,
+                "bio": a.bio,
                 "is_default": a.is_default,
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
                 "ws_online": is_agent_ws_online(a.agent_id),
@@ -669,7 +673,7 @@ async def patch_agent(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update agent attributes (currently only is_default)."""
+    """Update agent attributes (is_default, display_name, bio)."""
     result = await db.execute(
         select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
     )
@@ -685,6 +689,17 @@ async def patch_agent(
             .values(is_default=False)
         )
         agent.is_default = True
+
+    if body.display_name is not None:
+        name = body.display_name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="display_name must not be empty")
+        agent.display_name = name
+
+    if body.bio is not None:
+        # Normalise empty string to NULL so it reads as "no bio" downstream.
+        bio = body.bio.strip()
+        agent.bio = bio or None
 
     await db.commit()
     await db.refresh(agent)

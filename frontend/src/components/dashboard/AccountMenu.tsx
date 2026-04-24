@@ -10,7 +10,8 @@
 import { useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Bot, Check, LogOut, Plus, Settings } from "lucide-react";
+import { Bot, Check, LogOut, Pencil, Plus, Settings } from "lucide-react";
+import HumanProfileEditModal from "./HumanProfileEditModal";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
@@ -47,6 +48,7 @@ export default function AccountMenu({
   onLogout,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
   const locale = useLanguage();
   const t = accountMenu[locale];
   const tc = common[locale];
@@ -205,6 +207,19 @@ export default function AccountMenu({
               </DropdownMenu.Group>
             ) : null}
 
+            {human && (
+              <>
+                <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
+                <DropdownMenu.Item
+                  onClick={() => setEditProfileOpen(true)}
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-text-primary focus:bg-neon-purple/10"
+                >
+                  <Pencil className="mr-2 h-4 w-4 text-neon-purple" />
+                  <span>{locale === "zh" ? "编辑个人资料" : "Edit profile"}</span>
+                </DropdownMenu.Item>
+              </>
+            )}
+
             {user?.beta_admin && (
               <>
                 <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
@@ -230,6 +245,10 @@ export default function AccountMenu({
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+
+      {editProfileOpen && (
+        <HumanProfileEditModal onClose={() => setEditProfileOpen(false)} />
+      )}
     </>
   );
 }
