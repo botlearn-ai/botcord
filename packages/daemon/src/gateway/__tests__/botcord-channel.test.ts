@@ -281,6 +281,69 @@ describe("createBotCordChannel — inbox normalization", () => {
     }
   });
 
+  it("groups two messages in the same room/topic into one batched envelope", async () => {
+    const server = await startAuthOkServer();
+    try {
+      const polled = [
+        makeInbox({
+          hub_msg_id: "m_b1",
+          room_id: "rm_team",
+          room_name: "Team",
+          text: "hi all",
+          envelope: { from: "ag_alice" } as InboxMessage["envelope"],
+        }),
+        makeInbox({
+          hub_msg_id: "m_b2",
+          room_id: "rm_team",
+          room_name: "Team",
+          text: "yeah",
+          envelope: { from: "ag_bob" } as InboxMessage["envelope"],
+          mentioned: true,
+        }),
+      ];
+      const client = makeClient({
+        pollInbox: vi.fn().mockResolvedValue({ messages: polled, count: 2, has_more: false }),
+        getHubUrl: vi.fn().mockReturnValue(server.url),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: server.url,
+      });
+      const abort = new AbortController();
+      const emits: GatewayInboundEnvelope[] = [];
+      const startP = channel.start({
+        config: stubConfig,
+        accountId: "ag_self",
+        abortSignal: abort.signal,
+        log: silentLog,
+        emit: async (env) => {
+          emits.push(env);
+        },
+        setStatus: () => {},
+      });
+      await vi.waitFor(() => expect(emits).toHaveLength(1));
+      const env = emits[0]!.message;
+      // Last sender wins for representative metadata; mentioned is sticky.
+      expect(env.sender.id).toBe("ag_bob");
+      expect(env.mentioned).toBe(true);
+      const raw = env.raw as { batch?: Array<{ hub_msg_id: string }> };
+      expect(Array.isArray(raw.batch)).toBe(true);
+      expect(raw.batch!.map((m) => m.hub_msg_id)).toEqual(["m_b1", "m_b2"]);
+
+      // One accept() call acks BOTH hub ids together.
+      await emits[0]!.ack!.accept();
+      expect(client.ackMessages).toHaveBeenCalledWith(["m_b1", "m_b2"]);
+
+      abort.abort();
+      await startP;
+    } finally {
+      await server.close();
+    }
+  });
+
   it("sanitizes prompt-injection markers in untrusted text but not in owner-chat", async () => {
     const { emits, server } = await startWithInbox([
       makeInbox({
