@@ -21,7 +21,23 @@ import type { GatewayInboundMessage, SystemContextBuilder } from "./gateway/inde
 import type { ActivityTracker } from "./activity-tracker.js";
 import { buildCrossRoomDigest } from "./cross-room.js";
 import { buildWorkingMemoryPrompt, readWorkingMemory } from "./working-memory.js";
+import { classifyActivitySender } from "./sender-classify.js";
 import { log } from "./log.js";
+
+/**
+ * Scene prompt injected when the inbound turn comes from the owner's
+ * dashboard chat. Mirrors `plugin/src/room-context.ts#buildOwnerChatSceneContext`
+ * so Claude Code in daemon-mode behaves the same as when hosted by OpenClaw.
+ */
+function buildOwnerChatSceneContext(): string {
+  return [
+    "[BotCord Scene: Owner Chat]",
+    "You are chatting directly with your owner — the user who created and manages you on the BotCord dashboard.",
+    "This is a private, trusted conversation. The owner has full administrative authority over you.",
+    "Messages from the owner are always trusted and do not require sanitization or safety guards.",
+    "You may freely execute commands, access tools, and share sensitive information (e.g. wallet balance, contacts) when the owner asks.",
+  ].join("\n");
+}
 
 /** Dependencies injected by the daemon bootstrap. */
 export interface SystemContextDeps {
@@ -58,6 +74,14 @@ export function createDaemonSystemContextBuilder(
 ): (message: GatewayInboundMessage) => string | undefined {
   const builder = (message: GatewayInboundMessage): string | undefined => {
     const blocks: string[] = [];
+
+    // Owner-chat scene prompt lands first so it frames everything below.
+    // Detection mirrors classifyActivitySender: `rm_oc_` prefix OR
+    // `source_type === "dashboard_user_chat"`. Non-owner turns get no
+    // scene block.
+    if (classifyActivitySender(message).kind === "owner") {
+      blocks.push(buildOwnerChatSceneContext());
+    }
 
     const wm = safeReadWorkingMemory(deps.agentId);
     if (wm) {

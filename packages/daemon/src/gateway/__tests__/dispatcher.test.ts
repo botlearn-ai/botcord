@@ -312,6 +312,44 @@ describe("Dispatcher", () => {
     expect(store.all().length).toBe(0);
   });
 
+  it("applies composeUserTurn before handing text to the runtime", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      composeUserTurn: (msg) => `WRAPPED:${msg.text}`,
+    });
+    await dispatcher.handle(makeEnvelope({ id: "msg_1", text: "hello" }));
+    expect(runtime.calls.length).toBe(1);
+    expect(runtime.calls[0].text).toBe("WRAPPED:hello");
+  });
+
+  it("falls back to raw text when composeUserTurn throws", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      composeUserTurn: () => {
+        throw new Error("boom");
+      },
+    });
+    await dispatcher.handle(makeEnvelope({ id: "msg_1", text: "hello" }));
+    expect(runtime.calls.length).toBe(1);
+    expect(runtime.calls[0].text).toBe("hello");
+  });
+
   it("does not crash when an errored turn has no prior session entry", async () => {
     const runtime = new FakeRuntime({ newSessionId: "", errorText: "boom" });
     const { dispatcher, store } = await scaffold({ runtimeFactory: () => runtime });
