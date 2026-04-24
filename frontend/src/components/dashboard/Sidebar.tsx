@@ -472,7 +472,6 @@ export default function Sidebar() {
             await sessionStore.refreshUserProfile();
             uiStore.setSidebarTab("bots");
             uiStore.setSelectedBotAgentId(agentId);
-            await chatStore.switchActiveAgent(agentId);
             startTransition(() => {
               router.push(`/chats/bots/${encodeURIComponent(agentId)}`);
             });
