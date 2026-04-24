@@ -9,6 +9,8 @@ class DashboardAgentProfile(BaseModel):
     bio: str | None = None
     message_policy: str
     created_at: datetime.datetime
+    owner_human_id: str | None = None
+    owner_display_name: str | None = None
     online: bool = False
 
 

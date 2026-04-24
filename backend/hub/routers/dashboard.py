@@ -52,6 +52,7 @@ from hub.models import (
     RoomVisibility,
     Share,
     ShareMessage,
+    User,
 )
 from hub.share_payloads import frontend_url, room_entry_type, share_create_payload, share_public_payload
 
@@ -223,11 +224,14 @@ async def get_overview(
     """Return the current agent's dashboard overview."""
     # Agent profile
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == current_agent)
+        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        .outerjoin(User, User.id == Agent.user_id)
+        .where(Agent.agent_id == current_agent)
     )
-    agent = result.scalar_one_or_none()
-    if agent is None:
+    row = result.one_or_none()
+    if row is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    agent, owner_human_id, owner_display_name = row
 
     agent_profile = DashboardAgentProfile(
         agent_id=agent.agent_id,
@@ -235,6 +239,8 @@ async def get_overview(
         bio=agent.bio,
         message_policy=agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         created_at=agent.created_at,
+        owner_human_id=owner_human_id,
+        owner_display_name=owner_display_name,
         online=is_agent_ws_online(agent.agent_id),
     )
 
@@ -491,11 +497,14 @@ async def get_agent(
 ):
     """Look up a single agent by agent_id."""
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id)
+        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        .outerjoin(User, User.id == Agent.user_id)
+        .where(Agent.agent_id == agent_id)
     )
-    agent = result.scalar_one_or_none()
-    if agent is None:
+    row = result.one_or_none()
+    if row is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    agent, owner_human_id, owner_display_name = row
 
     return DashboardAgentProfile(
         agent_id=agent.agent_id,
@@ -503,6 +512,8 @@ async def get_agent(
         bio=agent.bio,
         message_policy=agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         created_at=agent.created_at,
+        owner_human_id=owner_human_id,
+        owner_display_name=owner_display_name,
         online=is_agent_ws_online(agent.agent_id),
     )
 

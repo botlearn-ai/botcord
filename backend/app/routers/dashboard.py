@@ -915,11 +915,14 @@ async def get_agent_detail(
 ):
     """Get agent details."""
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id)
+        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        .outerjoin(User, User.id == Agent.user_id)
+        .where(Agent.agent_id == agent_id)
     )
-    agent = result.scalar_one_or_none()
-    if agent is None:
+    row = result.one_or_none()
+    if row is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+    agent, owner_human_id, owner_display_name = row
 
     return {
         "agent_id": agent.agent_id,
@@ -927,6 +930,8 @@ async def get_agent_detail(
         "bio": agent.bio,
         "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         "created_at": agent.created_at.isoformat() if agent.created_at else None,
+        "owner_human_id": owner_human_id,
+        "owner_display_name": owner_display_name,
     }
 
 
