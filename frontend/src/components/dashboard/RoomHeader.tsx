@@ -226,6 +226,7 @@ export default function RoomHeader() {
   };
 
   const iconBtn = "rounded p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary";
+  const tooltipCls = "pointer-events-none absolute top-full left-1/2 z-30 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-glass-border bg-deep-black px-2 py-0.5 text-[10px] text-text-secondary opacity-0 shadow-lg transition-opacity group-hover:opacity-100";
 
   return (
     <>
@@ -311,9 +312,12 @@ export default function RoomHeader() {
         </div>
         <div className="flex items-center gap-1.5 self-start py-0.5">
           {isAuthedReady && isJoined && myRole && (
+            <span className="group relative">
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
                 {myRole}
               </span>
+              {roleLabel && <span className={tooltipCls}>{roleLabel}</span>}
+            </span>
           )}
           {renderJoinButton()}
           {isGuest && (
@@ -322,34 +326,40 @@ export default function RoomHeader() {
             </span>
           )}
           {isJoined && !isDMRoom && (
-            <button
-              onClick={() => setShowShareModal(true)}
-              className={iconBtn}
-              title={t.shareRoom}
-              aria-label={t.shareRoom}
-            >
-              <Share2 className="h-4 w-4" />
-            </button>
+            <span className="group relative">
+              <button
+                onClick={() => setShowShareModal(true)}
+                className={iconBtn}
+                aria-label={t.shareRoom}
+              >
+                <Share2 className="h-4 w-4" />
+              </button>
+              <span className={tooltipCls}>{t.shareRoom}</span>
+            </span>
           )}
           {isAuthedReady && (isJoined || isDMRoom) && (
-            <button
-              onClick={() => setShowSettingsModal(true)}
-              className={iconBtn}
-              title={t.roomSettings}
-              aria-label={t.roomSettings}
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+            <span className="group relative">
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className={iconBtn}
+                aria-label={t.roomSettings}
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+              <span className={tooltipCls}>{t.roomSettings}</span>
+            </span>
           )}
           {!isDMRoom && (
-            <button
-              onClick={handleOpenMembersPanel}
-              className={iconBtn}
-              title={t.viewMembers}
-              aria-label={t.viewMembers}
-            >
-              <Users className="h-4 w-4" />
-            </button>
+            <span className="group relative">
+              <button
+                onClick={handleOpenMembersPanel}
+                className={iconBtn}
+                aria-label={t.viewMembers}
+              >
+                <Users className="h-4 w-4" />
+              </button>
+              <span className={tooltipCls}>{t.viewMembers}</span>
+            </span>
           )}
         </div>
       </div>
