@@ -28,11 +28,13 @@ const MAX_BLOCKS_PER_TRACE = 200;
 // ---------------------------------------------------------------------------
 
 /** Extract streamed assistant text from stream blocks.
- *  Supports two shapes:
+ *  Supports three shapes:
  *   - legacy plugin: `{ kind: "assistant", payload: { text } }`
- *   - daemon gateway: `{ kind: "assistant_text", raw: <runtime event> }` where
- *     raw is either Codex's `item.completed` (`raw.item.text`) or Claude-code's
- *     `assistant` event (`raw.message.content[*].text`). */
+ *   - daemon gateway pure text: `{ kind: "assistant_text", raw: <event> }`
+ *   - daemon gateway mixed: `{ kind: "tool_use", raw: <Claude assistant event> }`
+ *     where Claude-code labelled the block as tool_use because the content
+ *     array contained both `text` and `tool_use` items. We still want the
+ *     prose so the chat bubble doesn't lose it. */
 function extractAssistantText(blocks: StreamBlockEntry[]): string {
   const parts: string[] = [];
   for (const b of blocks) {
@@ -41,10 +43,10 @@ function extractAssistantText(blocks: StreamBlockEntry[]): string {
       parts.push((b.block.payload?.text as string) || "");
       continue;
     }
-    if (kind === "assistant_text") {
+    if (kind === "assistant_text" || kind === "tool_use") {
       const raw = b.block.raw as any;
-      // Codex: raw.item.text
-      if (typeof raw?.item?.text === "string") {
+      // Codex assistant_text: raw.item.text
+      if (kind === "assistant_text" && typeof raw?.item?.text === "string") {
         parts.push(raw.item.text);
         continue;
       }

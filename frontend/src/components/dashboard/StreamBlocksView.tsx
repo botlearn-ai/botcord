@@ -55,7 +55,27 @@ interface BlockView {
   rawKind: string;
 }
 
-function normalizeBlock(block: StreamBlockEntry["block"]): BlockView {
+/** Build a `tool_use_id → name` map by walking all blocks. Claude-code's
+ *  tool_result entries reference the originating tool only by `tool_use_id`,
+ *  so we need the matching tool_use block to recover the human name. */
+function buildToolNameById(blocks: StreamBlockEntry[]): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const b of blocks) {
+    const contents = (b.block.raw as any)?.message?.content;
+    if (!Array.isArray(contents)) continue;
+    for (const c of contents) {
+      if (c?.type === "tool_use" && typeof c.id === "string" && typeof c.name === "string") {
+        m[c.id] = c.name;
+      }
+    }
+  }
+  return m;
+}
+
+function normalizeBlock(
+  block: StreamBlockEntry["block"],
+  ctx?: { toolNameById?: Record<string, string> },
+): BlockView {
   const { kind, payload, raw } = block;
   const rawAny = raw as any;
 
@@ -119,7 +139,8 @@ function normalizeBlock(block: StreamBlockEntry["block"]): BlockView {
   }
 
   if (kind === "tool_result") {
-    // Claude-code: raw.message.content[*] where type === "tool_result"
+    // Claude-code: raw.message.content[*] where type === "tool_result".
+    // The tool name is not on the result itself — look it up via tool_use_id.
     const contents = rawAny?.message?.content;
     if (Array.isArray(contents)) {
       const tr = contents.find((c: any) => c?.type === "tool_result");
@@ -130,9 +151,11 @@ function normalizeBlock(block: StreamBlockEntry["block"]): BlockView {
         else if (Array.isArray(content)) {
           resultStr = content.map((c: any) => c?.text ?? "").filter(Boolean).join("\n");
         }
+        const id = typeof tr.tool_use_id === "string" ? tr.tool_use_id : undefined;
+        const name = (id && ctx?.toolNameById?.[id]) || "tool";
         return {
           kind: "tool_result",
-          toolName: "tool",
+          toolName: name,
           resultStr,
           rawKind: kind,
         };
@@ -207,8 +230,14 @@ function normalizeBlock(block: StreamBlockEntry["block"]): BlockView {
   return { kind: "unknown", rawKind: kind };
 }
 
-function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
-  const view = normalizeBlock(block.block);
+function StreamBlockItem({
+  block,
+  toolNameById,
+}: {
+  block: StreamBlockEntry;
+  toolNameById?: Record<string, string>;
+}) {
+  const view = normalizeBlock(block.block, { toolNameById });
   const [resultExpanded, setResultExpanded] = useState(false);
 
   if (view.kind === "tool_call") {
@@ -338,11 +367,42 @@ export default function StreamBlocksView({
 
   const isAssistant = (k: string) => k === "assistant" || k === "assistant_text";
   const executionBlocks = blocks.filter((b) => !isAssistant(b.block.kind));
-  const assistantBlocks = blocks.filter((b) => isAssistant(b.block.kind));
 
-  const normalized = executionBlocks.map((b) => normalizeBlock(b.block).kind);
+  // Build tool_use_id → name map so tool_result rows can show the real tool name.
+  const toolNameById = buildToolNameById(blocks);
+
+  const normalized = executionBlocks.map((b) => normalizeBlock(b.block, { toolNameById }).kind);
   const toolCallCount = normalized.filter((k) => k === "tool_call").length;
   const reasoningCount = normalized.filter((k) => k === "reasoning").length;
+
+  /** Compose the streamed prose by walking every block — covers mixed
+   *  Claude-code blocks where the daemon labelled the block as `tool_use`
+   *  because content[] held both `text` and `tool_use` items. */
+  function buildComposingText(): string {
+    const parts: string[] = [];
+    for (const b of blocks) {
+      const k = b.block.kind;
+      if (k === "assistant") {
+        parts.push((b.block.payload?.text as string) || "");
+        continue;
+      }
+      if (k === "assistant_text" || k === "tool_use") {
+        const raw = b.block.raw as any;
+        if (k === "assistant_text" && typeof raw?.item?.text === "string") {
+          parts.push(raw.item.text);
+          continue;
+        }
+        const contents = raw?.message?.content;
+        if (Array.isArray(contents)) {
+          for (const c of contents) {
+            if (c?.type === "text" && typeof c.text === "string") parts.push(c.text);
+          }
+        }
+      }
+    }
+    return parts.join("");
+  }
+  const composingText = buildComposingText();
 
   useEffect(() => {
     onScrollRequest?.();
@@ -375,41 +435,24 @@ export default function StreamBlocksView({
             {expanded && (
               <div className="border-t border-zinc-800/60 px-3 py-1 divide-y divide-zinc-800/40">
                 {executionBlocks.map((block) => (
-                  <StreamBlockItem key={`${block.trace_id}-${block.seq}`} block={block} />
+                  <StreamBlockItem
+                    key={`${block.trace_id}-${block.seq}`}
+                    block={block}
+                    toolNameById={toolNameById}
+                  />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {assistantBlocks.length > 0 && (
+        {composingText && (
           <div className="rounded-lg px-3 py-2 bg-zinc-800 border border-zinc-700 text-sm text-zinc-200">
             <div className="mb-1 flex items-center gap-1.5">
               <Bot className="w-3 h-3 text-zinc-400" />
               <span className="text-xs text-zinc-400">Composing...</span>
             </div>
-            <MarkdownContent
-              content={
-                assistantBlocks
-                  .map((b) => {
-                    if (b.block.kind === "assistant") {
-                      return (b.block.payload?.text as string) || "";
-                    }
-                    // assistant_text (daemon gateway)
-                    const raw = b.block.raw as any;
-                    if (typeof raw?.item?.text === "string") return raw.item.text;
-                    const contents = raw?.message?.content;
-                    if (Array.isArray(contents)) {
-                      return contents
-                        .filter((c: any) => c?.type === "text" && typeof c.text === "string")
-                        .map((c: any) => c.text as string)
-                        .join("");
-                    }
-                    return "";
-                  })
-                  .join("")
-              }
-            />
+            <MarkdownContent content={composingText} />
           </div>
         )}
       </div>
