@@ -211,7 +211,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
 `,
       );
 
-    it("owner → --permission-mode acceptEdits", async () => {
+    it("owner → --permission-mode bypassPermissions", async () => {
       const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -225,7 +225,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const argv = JSON.parse(res.text) as string[];
       const modeIdx = argv.indexOf("--permission-mode");
       expect(modeIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[modeIdx + 1]).toBe("acceptEdits");
+      expect(argv[modeIdx + 1]).toBe("bypassPermissions");
     });
 
     it("public → --permission-mode default", async () => {
