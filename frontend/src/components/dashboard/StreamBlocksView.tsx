@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, FileText, CheckCircle2, Code2, Brain, HelpCircle, Wrench, ChevronDown, ChevronRight, Bot } from "lucide-react";
+import { Search, FileText, CheckCircle2, Code2, Brain, HelpCircle, Wrench, ChevronDown, ChevronRight, Bot, AlertTriangle, ListTodo, Info } from "lucide-react";
 import type { StreamBlockEntry } from "@/lib/types";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ToolResultContent from "./ToolResultContent";
@@ -44,11 +44,14 @@ function summarizeResult(result: string): string {
 /** Normalize a stream block into a displayable view-model, handling both the
  *  legacy plugin shape (`payload`) and the daemon-gateway shape (`raw`). */
 interface BlockView {
-  kind: "tool_call" | "tool_result" | "reasoning" | "system" | "unknown";
+  kind: "tool_call" | "tool_result" | "reasoning" | "system" | "error" | "todo" | "unknown";
   toolName?: string;
   paramHint?: string | null;
   resultStr?: string;
   reasoningText?: string;
+  systemLabel?: string;
+  errorText?: string;
+  todoItems?: Array<{ text: string; status?: string }>;
   rawKind: string;
 }
 
@@ -139,9 +142,66 @@ function normalizeBlock(block: StreamBlockEntry["block"]): BlockView {
   }
 
   if (kind === "system") {
-    // Codex thread.started / turn.started etc — usually noise; keep a terse label.
+    // Codex thread.started / turn.started / turn.completed; Claude-code system init.
     const type = rawAny?.type as string | undefined;
-    return { kind: "system", rawKind: type || "system" };
+    const subtype = rawAny?.subtype as string | undefined;
+    const turnStatus = rawAny?.turn?.status as string | undefined;
+    let label = type || "system";
+    if (type === "system" && subtype) label = `system: ${subtype}`;
+    else if (type === "turn.completed" && turnStatus) label = `turn ${turnStatus}`;
+    return { kind: "system", systemLabel: label, rawKind: label };
+  }
+
+  // `other` — try to extract something useful from the raw event so users
+  // see more than the literal "other" label.
+  if (kind === "other") {
+    const type: string | undefined = rawAny?.type;
+    const item = rawAny?.item;
+    const itemType: string | undefined = item?.type;
+
+    // Codex reasoning summary
+    if (itemType === "reasoning") {
+      const text =
+        (typeof item.text === "string" && item.text) ||
+        (typeof item.summary === "string" && item.summary) ||
+        (Array.isArray(item.summary)
+          ? item.summary.map((s: any) => s?.text ?? "").filter(Boolean).join("\n")
+          : "");
+      if (text) {
+        return { kind: "reasoning", reasoningText: text, rawKind: "reasoning" };
+      }
+    }
+
+    // Codex todo list updates
+    if (itemType === "todo_list") {
+      const items = Array.isArray(item.items)
+        ? item.items.map((t: any) => ({
+            text: typeof t?.text === "string" ? t.text : String(t),
+            status: typeof t?.status === "string" ? t.status : undefined,
+          }))
+        : [];
+      return { kind: "todo", todoItems: items, rawKind: "todo_list" };
+    }
+
+    // Codex error / Claude-code error events
+    if (type === "error") {
+      const err = rawAny?.error;
+      const msg = typeof err === "string" ? err : err?.message;
+      return { kind: "error", errorText: msg || "error", rawKind: "error" };
+    }
+
+    // Claude-code final result event
+    if (type === "result") {
+      const subtype = rawAny?.subtype as string | undefined;
+      const label = subtype ? `result: ${subtype}` : "result";
+      return { kind: "system", systemLabel: label, rawKind: label };
+    }
+
+    // Generic: surface a readable label instead of literal "other".
+    const label =
+      itemType ? `${type ?? "item"}.${itemType}`
+      : type ?? "other";
+    return { kind: "unknown", rawKind: label };
   }
 
   return { kind: "unknown", rawKind: kind };
@@ -207,6 +267,56 @@ function StreamBlockItem({ block }: { block: StreamBlockEntry }) {
     );
   }
 
+  if (view.kind === "error") {
+    return (
+      <div className="flex items-start gap-2 py-1">
+        <AlertTriangle className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-red-300/80 leading-relaxed line-clamp-3">
+          {view.errorText || "error"}
+        </p>
+      </div>
+    );
+  }
+
+  if (view.kind === "todo") {
+    const items = view.todoItems ?? [];
+    return (
+      <div className="py-1">
+        <div className="flex items-center gap-2">
+          <ListTodo className="w-3 h-3 text-amber-400 shrink-0" />
+          <span className="text-xs font-mono text-amber-400">todo_list</span>
+          {items.length > 0 && (
+            <span className="text-[10px] text-zinc-500">{items.length} item{items.length !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+        {items.length > 0 && (
+          <ul className="mt-0.5 ml-5 space-y-0.5">
+            {items.slice(0, 6).map((it, idx) => (
+              <li key={idx} className="text-[10px] text-zinc-400 truncate">
+                <span className="text-zinc-600 mr-1">
+                  {it.status === "completed" ? "✓" : it.status === "in_progress" ? "→" : "○"}
+                </span>
+                {it.text}
+              </li>
+            ))}
+            {items.length > 6 && (
+              <li className="text-[10px] text-zinc-600">… {items.length - 6} more</li>
+            )}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  if (view.kind === "system") {
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <Info className="w-3 h-3 text-zinc-500 shrink-0" />
+        <span className="text-xs text-zinc-500 font-mono">{view.systemLabel || view.rawKind}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 py-1">
       <HelpCircle className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -230,10 +340,9 @@ export default function StreamBlocksView({
   const executionBlocks = blocks.filter((b) => !isAssistant(b.block.kind));
   const assistantBlocks = blocks.filter((b) => isAssistant(b.block.kind));
 
-  const toolCallCount = executionBlocks.filter(
-    (b) => b.block.kind === "tool_call" || b.block.kind === "tool_use",
-  ).length;
-  const reasoningCount = executionBlocks.filter((b) => b.block.kind === "reasoning").length;
+  const normalized = executionBlocks.map((b) => normalizeBlock(b.block).kind);
+  const toolCallCount = normalized.filter((k) => k === "tool_call").length;
+  const reasoningCount = normalized.filter((k) => k === "reasoning").length;
 
   useEffect(() => {
     onScrollRequest?.();
