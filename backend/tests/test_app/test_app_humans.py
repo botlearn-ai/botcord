@@ -475,6 +475,33 @@ async def test_self_contact_rejected(client, seed):
 
 
 @pytest.mark.asyncio
+async def test_contact_request_to_own_agent_rejected(
+    client, seed, db_session: AsyncSession
+):
+    db_session.add(
+        Agent(
+            agent_id="ag_alice0000001",
+            display_name="Alice's Agent",
+            message_policy=MessagePolicy.contacts_only,
+            user_id=seed["user_id"],
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": "ag_alice0000001"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "own agent" in resp.json()["detail"].lower()
+
+    queue_rows = await db_session.execute(select(AgentApprovalQueue))
+    assert list(queue_rows.scalars().all()) == []
+
+
+@pytest.mark.asyncio
 async def test_bad_peer_prefix_rejected(client, seed):
     resp = await client.post(
         "/api/humans/me/contacts/request",
