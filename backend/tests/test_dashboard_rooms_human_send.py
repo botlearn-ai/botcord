@@ -1,7 +1,4 @@
-"""Tests for POST /api/dashboard/rooms/{room_id}/send — human-in-chat MVP.
-
-Covers PRD docs/human-room-chat-prd.md §9.1.
-"""
+"""Tests for POST /api/dashboard/rooms/{room_id}/send — human-in-chat MVP."""
 
 import datetime
 import json

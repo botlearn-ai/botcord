@@ -31,9 +31,9 @@ export interface DiscoveredAgentCredential {
   hubUrl: string;
   displayName?: string;
   /**
-   * Runtime cached in the credentials file (docs/agent-runtime-property-plan.md).
-   * Null for legacy bind-code credentials without the field; the daemon
-   * falls back to `defaultRoute` in that case.
+   * Runtime cached in the credentials file. Null for legacy bind-code
+   * credentials without the field; the daemon falls back to `defaultRoute`
+   * in that case.
    */
   runtime?: string;
   /** Working directory cached alongside `runtime`. */
@@ -221,7 +221,7 @@ export function resolveBootAgents(
     // Best-effort enrich with runtime/cwd cached in credentials. A missing
     // or unreadable file is not fatal — the gateway channel will surface the
     // real error at start. The fields we're after are purely for router
-    // fallback (docs/agent-runtime-property-plan.md §4.3).
+    // fallback.
     const agents: DiscoveredAgentCredential[] = explicit.map((agentId) => {
       const credentialsFile = defaultCredentialsFile(agentId);
       const entry: DiscoveredAgentCredential = {

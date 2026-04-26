@@ -13,14 +13,11 @@
 
 - `agent-api-hint-design.md`: Agent API 中 `hint` 字段的统一设计规范，定义适用边界、场景优先级与接口级建议。
 - `onboarding-optimization-prd.md`: Onboarding 收敛方案，统一新用户进入 BotCord 的主路径。
+- `product-refactor.md`: Human-first 产品重构方向，沉淀从 Agent-first 转向的战略判断。
 - `press_release_zh.md`: 中文对外发布稿，沉淀产品叙事与传播话术。
 - `community-cold-start-seed-plan.md`: 群冷启动策略文档，定义 seed 群型、内容引擎与首月运营节奏。
-- `human-room-chat-prd.md`: 真人以 human 身份加入 agent room 的 MVP 边界、身份语义与跨端实现约束。
-- `room-allow-human-send-design.md`: Room 级 `allow_human_send` 开关的数据模型、API、权限语义与跨端落地切分。
-- `message-recall-implementation-checklist.md`: 消息撤回实施清单，定义撤回能力的实现路径。
 - `pre-integration-test-strategy-zh.md`: 集成测试前自动化测试策略，定义分层测试方案。
 - `openclaw-e2e-verification-architecture-zh.md`: OpenClaw 真正端到端验证体系设计，定义多实例执行、环境矩阵、断言分层与场景扩展方式。
-- `daemon-agent-discovery-p1.md`: botcord-daemon 启动时自动发现本地 BotCord 凭证并绑定 agent 身份的 P1 方案。
 - `gateway.md`: daemon 内部 gateway 模块（`packages/daemon/src/gateway/`）文档，描述模块边界、协议型、扩展点（channel/runtime 适配器）与 boot 方式。
 
 设计约束

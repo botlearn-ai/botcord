@@ -3,8 +3,6 @@
  * to this module with the parsed {@link ControlFrame}; we execute the
  * side effects (register agent, write credentials, load route, add/remove
  * gateway channel) and return an ack payload.
- *
- * See `docs/daemon-control-plane-plan.md` §4.3, §5.3, §8.
  */
 import { existsSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
@@ -297,9 +295,9 @@ async function materializeCredentials(
   ctx: ProvisionCtx,
   explicitCwd: string | undefined,
 ): Promise<StoredBotCordCredentials> {
-  // Runtime is an agent property (docs/agent-runtime-property-plan.md §4.1).
-  // Hub is authoritative; top-level `runtime` wins, `adapter` is a one-release
-  // alias, and `credentials.runtime` is the per-agent cached copy.
+  // Runtime is an agent property. Hub is authoritative; top-level `runtime`
+  // wins, `adapter` is a one-release alias, and `credentials.runtime` is the
+  // per-agent cached copy.
   const runtime = pickRuntime(params);
   if (runtime) assertKnownRuntime(runtime);
 
@@ -662,8 +660,7 @@ function readAgentRuntimesFromCredentials(
 }
 
 /**
- * Per-agent entry returned by `list_agents`. Shape follows
- * `docs/daemon-control-plane-api-contract.md` §3.2 — `{id, name, online}`.
+ * Per-agent entry returned by `list_agents`. Wire shape: `{id, name, online}`.
  * `status` and `lastMessageAt` are extra daemon-only fields the dashboard
  * may ignore; kept so future contract revisions can promote them without
  * breaking the wire.
@@ -725,10 +722,10 @@ interface SetRouteResult {
 interface SetRouteParams {
   agentId?: string;
   /**
-   * Contract shape (`docs/daemon-control-plane-api-contract.md` §3.2):
-   * `{pattern, agentId}`. `pattern` is treated as a conversation-id prefix
-   * (`rm_oc_*` etc.). When `route` is omitted, we synthesize a sensible
-   * default route record using the daemon's existing default adapter+cwd.
+   * Contract shape `{pattern, agentId}`. `pattern` is treated as a
+   * conversation-id prefix (`rm_oc_*` etc.). When `route` is omitted, we
+   * synthesize a sensible default route record using the daemon's existing
+   * default adapter+cwd.
    */
   pattern?: string;
   /**

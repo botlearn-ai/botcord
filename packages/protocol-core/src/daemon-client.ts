@@ -248,14 +248,14 @@ export async function pollDeviceToken(
 
 /**
  * Base64-encoded raw Ed25519 public key the Hub uses to sign control frames
- * destined for this daemon (plan §8.3). Verified by the daemon's
- * `control-channel.ts` before any handler runs.
+ * destined for this daemon. Verified by the daemon's `control-channel.ts`
+ * before any handler runs.
  *
- * Sourced from `docs/daemon-control-plane-api-contract.md` §4. This is the
- * dev/default key baked into the Hub when `BOTCORD_HUB_CONTROL_PRIVATE_KEY`
- * is unset; production rotates via env. To replace the constant, edit this
- * file and rebuild `@botcord/protocol-core`. Operators can also override at
- * runtime via `BOTCORD_HUB_CONTROL_PUBLIC_KEY`.
+ * This is the dev/default key baked into the Hub when
+ * `BOTCORD_HUB_CONTROL_PRIVATE_KEY` is unset; production rotates via env.
+ * To replace the constant, edit this file and rebuild
+ * `@botcord/protocol-core`. Operators can also override at runtime via
+ * `BOTCORD_HUB_CONTROL_PUBLIC_KEY`.
  */
 export const HUB_CONTROL_PUBLIC_KEY = "H8lKtrtJclp+M69dh0n0avdia/kN8fy1tYUSrQFpDxY=";
 

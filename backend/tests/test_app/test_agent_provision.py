@@ -1,10 +1,9 @@
 """Tests for POST /api/users/me/agents/provision.
 
-Covers the Hub BFF entrypoint for daemon-routed agent creation. See
-``docs/agent-runtime-property-plan.md`` §7.2. Reuses device-code setup from
-``test_daemon_control`` to stand up a ``DaemonInstance`` row, then injects
-a fake WS connection into the daemon registry so control-plane dispatch is
-synchronous and deterministic.
+Covers the Hub BFF entrypoint for daemon-routed agent creation. Reuses
+device-code setup from ``test_daemon_control`` to stand up a
+``DaemonInstance`` row, then injects a fake WS connection into the daemon
+registry so control-plane dispatch is synchronous and deterministic.
 """
 
 from __future__ import annotations

@@ -91,7 +91,7 @@ export interface ProvisionAgentParams {
   /**
    * Runtime to bind to this agent (claude-code / codex / gemini / …).
    * Selected by the user at creation time; persists as an agent property
-   * on both sides. See `docs/agent-runtime-property-plan.md`.
+   * on both sides.
    */
   runtime?: string;
   /**

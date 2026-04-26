@@ -1,5 +1,5 @@
 <!--
-- [INPUT]: 依赖 packages/daemon/src/gateway/ 的实现与 docs/gateway-module-plan.md 的设计共识。
+- [INPUT]: 依赖 packages/daemon/src/gateway/ 的实现。
 - [OUTPUT]: 对外提供 daemon 内部 gateway 模块的边界、可注入扩展点与消费方式。
 - [POS]: gateway 模块的使用说明与接入指南，daemon 及未来 channel/runtime 适配器的集成入口。
 - [PROTOCOL]: 变更时更新此头部，然后检查 docs/README.md
@@ -27,7 +27,7 @@ gateway 目前是 `@botcord/daemon` 的内部模块（`packages/daemon/src/gatew
 
 源码路径：`packages/daemon/src/gateway/`，入口 `src/gateway/index.ts`，随 daemon 一起构建到 `dist/gateway/`。依赖 `@botcord/protocol-core` 与 `ws`。
 
-> 历史注记：初版计划（`docs/gateway-module-plan.md`）拆成独立 `packages/gateway`，但只有 daemon 一个 consumer，`file:../gateway` 的本地依赖在撤掉 workspaces 后成本高于收益，遂合并为 daemon 内部模块。若未来出现第二个 consumer（plugin 内嵌、独立 SDK、或跨进程 channel 宿主），再重新抽出。
+> 历史注记：初版计划拆成独立 `packages/gateway`，但只有 daemon 一个 consumer，`file:../gateway` 的本地依赖在撤掉 workspaces 后成本高于收益，遂合并为 daemon 内部模块。若未来出现第二个 consumer（plugin 内嵌、独立 SDK、或跨进程 channel 宿主），再重新抽出。
 
 ## 2. 模块组成
 

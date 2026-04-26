@@ -5,8 +5,6 @@
  * Independent from the agent data-plane WS: different auth (user access
  * token vs agent JWT), different endpoint (`/daemon/ws`), different
  * lifecycle (alive even when zero agents are bound).
- *
- * See `docs/daemon-control-plane-plan.md` §4.1, §4.3, §8.
  */
 import WebSocket from "ws";
 import {
@@ -31,8 +29,7 @@ const REPLAY_DEDUPE_CAP = 256;
 
 /**
  * Build the canonical signing input for a control frame: RFC 8785 (JCS)
- * canonicalization of `{id, type, params, ts}`. Per
- * `docs/daemon-control-plane-api-contract.md` §3.3 — the Hub uses Python
+ * canonicalization of `{id, type, params, ts}`. The Hub uses Python
  * `jcs.canonicalize` over the same object before signing.
  *
  * Excludes `sig` by definition. `params` defaults to `{}` (empty object)

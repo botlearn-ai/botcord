@@ -13,7 +13,7 @@
 - room 列表未读判断下沉到 SQL：基于 `room_members.last_viewed_at` 与按 `(room_id, msg_id)` 去重后的逻辑消息时间线做 `exists` 判定，避免前端因未打开房间而丢失蓝点。
 
 变更日志
-- 2026-04-21: `get_agent_room_previews` 新增 `allow_human_send` 输出，配合 Room 级 human 发送开关（见 docs/room-allow-human-send-design.md）。
+- 2026-04-21: `get_agent_room_previews` 新增 `allow_human_send` 输出，配合 Room 级 human 发送开关。
 - 2026-03-22: 删除 `003_setup_agent_realtime_broadcast_auth.sql` 旧策略文件，Realtime 授权只保留 `004_setup_agent_realtime_auth_function.sql` 这一条稳定路径，避免后续误部署回脆弱的跨表 policy。
 - 2026-03-22: 新增 `004_setup_agent_realtime_auth_function.sql`，把 Realtime 授权从 `realtime.messages` 上的直接跨表查询改为 `security definer` 函数，修复 private channel 在 Realtime RLS 上下文中无法稳定读取业务表的问题。
 - 2026-03-22: `get_agent_room_previews` 新增 `last_viewed_at/has_unread` 输出，把 room 级阅读语义从前端本地态下沉到数据库。

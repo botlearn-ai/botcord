@@ -7,8 +7,6 @@
  *   codex-home/  — per-agent CODEX_HOME used by the codex adapter so codex
  *                  reads a daemon-written AGENTS.md (systemContext carrier)
  *                  and stores its sessions/ without touching ~/.codex.
- *
- * See docs/daemon-agent-workspace-plan.md §4 for the full layout rationale.
  */
 import {
   chmodSync,

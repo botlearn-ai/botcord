@@ -1,7 +1,6 @@
 """Shared helpers for shaping MessageRecord rows into dashboard DTOs.
 
 Derives sender_kind / display_sender_name / is_mine for human-aware display.
-See docs/human-room-chat-prd.md §5.3 and §6.4.
 """
 
 from __future__ import annotations

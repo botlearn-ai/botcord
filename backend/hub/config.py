@@ -153,13 +153,12 @@ SENTRY_DSN: str | None = os.getenv("SENTRY_DSN")
 SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
 
 # ---------------------------------------------------------------------------
-# Daemon control plane (see docs/daemon-control-plane-plan.md)
+# Daemon control plane
 # ---------------------------------------------------------------------------
 
 # Default development keypair — DO NOT use in production. Override
 # BOTCORD_HUB_CONTROL_PRIVATE_KEY with a freshly generated 32-byte Ed25519
-# seed (base64). Matching public key is committed in
-# docs/daemon-control-plane-api-contract.md so the daemon can verify.
+# seed (base64). The matching public key is shipped to the daemon for verification.
 _DAEMON_DEFAULT_PRIVATE_KEY_B64 = "R9yHQWAP+oLdwuXW67TGSi/RWbkYPGf1a31by04W1zA="
 
 DAEMON_HUB_CONTROL_PRIVATE_KEY_B64: str = os.getenv(

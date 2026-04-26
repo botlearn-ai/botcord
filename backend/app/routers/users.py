@@ -1118,9 +1118,9 @@ async def reset_agent_credential(
 # ---------------------------------------------------------------------------
 #
 # Create a fresh agent bound to one of the user's daemons. Hub is the
-# source-of-truth for runtime (see docs/agent-runtime-property-plan.md):
-# the `runtime` column is written here, and the daemon receives the cached
-# copy via the `provision_agent` control frame's `credentials` envelope.
+# source-of-truth for runtime: the `runtime` column is written here, and
+# the daemon receives the cached copy via the `provision_agent` control
+# frame's `credentials` envelope.
 
 
 class ProvisionAgentBody(BaseModel):

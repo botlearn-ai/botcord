@@ -18,7 +18,7 @@ import { getWsStatus } from "../ws-client.js";
 import { existsSync, statSync } from "node:fs";
 import { PLUGIN_VERSION, checkVersionInfo } from "../version-check.js";
 // isOnboarded/markOnboarded removed — onboarding state is now managed via
-// working memory (onboarding section presence). See docs/onboarding-refactor-plan.md.
+// working memory (onboarding section presence).
 
 export function createHealthcheckCommand() {
   return {

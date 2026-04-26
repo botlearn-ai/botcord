@@ -87,7 +87,7 @@ class Agent(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Runtime selected at creation (claude-code / codex / gemini / ...).
-    # Null for agents created via bind_code; see docs/agent-runtime-property-plan.md.
+    # Null for agents created via bind_code.
     runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
@@ -1099,7 +1099,7 @@ class BetaWaitlistEntry(Base):
 
 
 # ---------------------------------------------------------------------------
-# Daemon control plane (see docs/daemon-control-plane-plan.md)
+# Daemon control plane
 # ---------------------------------------------------------------------------
 
 

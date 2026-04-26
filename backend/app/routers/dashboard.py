@@ -1828,7 +1828,6 @@ async def get_room_messages(
 
 # ---------------------------------------------------------------------------
 # Human-in-chat: POST /api/dashboard/rooms/{room_id}/send
-# MVP — see docs/human-room-chat-prd.md §5, §6.
 # text is required; mentions/topic are accepted but deferred (persisted text only).
 # ---------------------------------------------------------------------------
 

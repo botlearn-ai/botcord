@@ -2,7 +2,7 @@
  * Working memory — persistent, account-scoped notes injected into every turn.
  *
  * Stored at `~/.botcord/agents/{agentId}/state/working-memory.json` (the
- * per-agent state dir owned by the daemon; see docs/daemon-agent-workspace-plan.md §8).
+ * per-agent state dir owned by the daemon).
  *
  * Ported from plugin/src/memory.ts (dropping workspace + OpenClaw runtime
  * branches) and plugin/src/memory-protocol.ts (prompt builder).

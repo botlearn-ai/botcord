@@ -19,9 +19,8 @@ export interface ToGatewayConfigOptions {
    */
   agentIds?: string[];
   /**
-   * Per-agent runtime/cwd cached from credentials (see
-   * `docs/agent-runtime-property-plan.md`). When present for an agent id,
-   * `toGatewayConfig` synthesizes a terminal route pinning that agent's
+   * Per-agent runtime/cwd cached from credentials. When present for an agent
+   * id, `toGatewayConfig` synthesizes a terminal route pinning that agent's
    * turns to its runtime. Explicit `cfg.routes` entries still win because
    * synthesized routes are appended after them.
    */

@@ -1,7 +1,6 @@
 """Daemon control-plane HTTP + WebSocket endpoints.
 
-Implements the `/daemon/*` surface defined in
-``docs/daemon-control-plane-api-contract.md``:
+Implements the `/daemon/*` surface:
 
 - Auth: device-code flow + paste-token fallback + refresh
 - Instance management: list / revoke / dispatch

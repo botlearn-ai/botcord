@@ -5,8 +5,6 @@
  * `~/.botcord/credentials/*.json`), the user-auth record is singular —
  * the daemon only logs in as *one* user at a time. Stored at
  * `~/.botcord/daemon/user-auth.json` with `0600` permissions.
- *
- * See `docs/daemon-control-plane-plan.md` §6–§7.
  */
 import {
   chmodSync,
