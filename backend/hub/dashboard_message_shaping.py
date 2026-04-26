@@ -18,10 +18,12 @@ from hub.models import Agent, MessageRecord, User
 _logger = logging.getLogger(__name__)
 
 HUMAN_ROOM_SOURCE_TYPE = "dashboard_human_room"
+USER_CHAT_SOURCE_TYPE = "dashboard_user_chat"
+HUMAN_SOURCE_TYPES = frozenset({HUMAN_ROOM_SOURCE_TYPE, USER_CHAT_SOURCE_TYPE})
 
 
 def sender_kind_for(source_type: str | None) -> str:
-    return "human" if source_type == HUMAN_ROOM_SOURCE_TYPE else "agent"
+    return "human" if source_type in HUMAN_SOURCE_TYPES else "agent"
 
 
 async def load_user_display_names(
