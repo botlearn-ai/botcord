@@ -301,6 +301,103 @@ async def test_list_instances(client: AsyncClient, seed_user):
 
 
 # ---------------------------------------------------------------------------
+# Rename (label update)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rename_instance_updates_label(client: AsyncClient, seed_user):
+    bundle = await _provision_instance_via_device_code(
+        client, seed_user, label="old"
+    )
+    instance_id = bundle["daemon_instance_id"]
+
+    r = await client.patch(
+        f"/daemon/instances/{instance_id}",
+        json={"label": "  My MacBook  "},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["label"] == "My MacBook"
+
+    r = await client.get(
+        "/daemon/instances",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.json()["instances"][0]["label"] == "My MacBook"
+
+
+@pytest.mark.asyncio
+async def test_rename_instance_clears_label(client: AsyncClient, seed_user):
+    bundle = await _provision_instance_via_device_code(
+        client, seed_user, label="old"
+    )
+    instance_id = bundle["daemon_instance_id"]
+
+    # Empty string normalizes to null.
+    r = await client.patch(
+        f"/daemon/instances/{instance_id}",
+        json={"label": "   "},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["label"] is None
+
+    # Explicit null also clears.
+    r = await client.patch(
+        f"/daemon/instances/{instance_id}",
+        json={"label": None},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200
+    assert r.json()["label"] is None
+
+
+@pytest.mark.asyncio
+async def test_rename_instance_rejects_oversized_label(
+    client: AsyncClient, seed_user
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    r = await client.patch(
+        f"/daemon/instances/{instance_id}",
+        json={"label": "x" * 65},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_rename_instance_owned_by_other_user_returns_404(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    # Create a second, unrelated user and use their token.
+    other_supabase_uuid = uuid.uuid4()
+    other_user = User(
+        id=uuid.uuid4(),
+        display_name="Other",
+        email="other@example.com",
+        status="active",
+        supabase_user_id=other_supabase_uuid,
+        max_agents=10,
+    )
+    db_session.add(other_user)
+    await db_session.commit()
+    other_token = _make_supabase_token(str(other_supabase_uuid))
+
+    r = await client.patch(
+        f"/daemon/instances/{instance_id}",
+        json={"label": "stolen"},
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Dispatch (frame send) against a fake daemon connection
 # ---------------------------------------------------------------------------
 

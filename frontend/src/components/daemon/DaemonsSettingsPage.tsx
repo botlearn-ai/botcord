@@ -11,9 +11,12 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Check,
   Loader2,
+  Pencil,
   RefreshCcw,
   Server,
+  X,
   XCircle,
 } from "lucide-react";
 import {
@@ -192,21 +195,119 @@ function RuntimesBlock({
   );
 }
 
+function LabelCell({
+  daemon,
+  editing,
+  pending,
+  errorMsg,
+  onStartEdit,
+  onSubmit,
+  onCancel,
+}: {
+  daemon: DaemonInstance;
+  editing: boolean;
+  pending: boolean;
+  errorMsg: string | undefined;
+  onStartEdit: () => void;
+  onSubmit: (next: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(daemon.label ?? "");
+
+  useEffect(() => {
+    if (editing) setDraft(daemon.label ?? "");
+  }, [editing, daemon.label]);
+
+  if (!editing) {
+    const canEdit = daemon.status !== "revoked";
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-text-primary">
+          {daemon.label || (
+            <span className="text-text-tertiary">unnamed</span>
+          )}
+        </span>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onStartEdit}
+            className="rounded p-1 text-text-tertiary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            title="Rename"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
+        {errorMsg ? (
+          <span className="text-[11px] text-red-300">{errorMsg}</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        type="text"
+        value={draft}
+        autoFocus
+        maxLength={64}
+        disabled={pending}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit(draft);
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder="Label (optional)"
+        className="w-40 rounded-md border border-glass-border bg-deep-black-light px-2 py-1 text-sm text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-50"
+      />
+      <button
+        type="button"
+        onClick={() => onSubmit(draft)}
+        disabled={pending}
+        className="rounded p-1 text-neon-green transition-colors hover:bg-glass-bg disabled:opacity-50"
+        title="Save"
+      >
+        {pending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Check className="h-3.5 w-3.5" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={pending}
+        className="rounded p-1 text-text-tertiary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+        title="Cancel"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      {errorMsg ? (
+        <span className="text-[11px] text-red-300">{errorMsg}</span>
+      ) : null}
+    </div>
+  );
+}
+
 export default function DaemonsSettingsPage() {
   const daemons = useDaemonStore((s) => s.daemons);
   const loading = useDaemonStore((s) => s.loading);
   const loaded = useDaemonStore((s) => s.loaded);
   const error = useDaemonStore((s) => s.error);
   const revokingId = useDaemonStore((s) => s.revokingId);
+  const renamingId = useDaemonStore((s) => s.renamingId);
+  const renameErrors = useDaemonStore((s) => s.renameErrors);
   const refreshingRuntimesId = useDaemonStore((s) => s.refreshingRuntimesId);
   const runtimeErrors = useDaemonStore((s) => s.runtimeErrors);
   const refresh = useDaemonStore((s) => s.refresh);
   const revoke = useDaemonStore((s) => s.revoke);
+  const rename = useDaemonStore((s) => s.rename);
   const refreshRuntimes = useDaemonStore((s) => s.refreshRuntimes);
 
   const [confirmTarget, setConfirmTarget] = useState<DaemonInstance | null>(
     null,
   );
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     void refresh();
@@ -300,10 +401,19 @@ export default function DaemonsSettingsPage() {
                 sorted.map((d) => (
                   <Fragment key={d.id}>
                     <tr className="border-b border-glass-border/30">
-                      <td className="px-4 pt-3 text-text-primary">
-                        {d.label || (
-                          <span className="text-text-tertiary">unnamed</span>
-                        )}
+                      <td className="px-4 pt-3">
+                        <LabelCell
+                          daemon={d}
+                          editing={editingId === d.id}
+                          pending={renamingId === d.id}
+                          errorMsg={renameErrors[d.id]}
+                          onStartEdit={() => setEditingId(d.id)}
+                          onSubmit={async (next) => {
+                            const ok = await rename(d.id, next);
+                            if (ok) setEditingId(null);
+                          }}
+                          onCancel={() => setEditingId(null)}
+                        />
                       </td>
                       <td className="px-4 pt-3 font-mono text-xs text-text-secondary" title={d.id}>
                         {truncateId(d.id)}

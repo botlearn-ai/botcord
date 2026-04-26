@@ -24,7 +24,7 @@ export async function getSupabaseAccessToken(): Promise<string | null> {
 
 export async function proxyDaemon(
   path: string,
-  init: { method: "GET" | "POST" | "DELETE"; body?: unknown },
+  init: { method: "GET" | "POST" | "DELETE" | "PATCH"; body?: unknown },
 ): Promise<NextResponse> {
   const token = await getSupabaseAccessToken();
   if (!token) {
