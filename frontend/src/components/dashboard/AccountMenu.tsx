@@ -220,6 +220,15 @@ export default function AccountMenu({
               </>
             )}
 
+            <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
+            <DropdownMenu.Item
+              onClick={() => { window.location.href = "/settings/daemons"; }}
+              className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-text-primary focus:bg-neon-cyan/10 focus:text-neon-cyan"
+            >
+              <Settings className="mr-2 h-4 w-4 text-neon-cyan" />
+              <span>{locale === "zh" ? "设置" : "Settings"}</span>
+            </DropdownMenu.Item>
+
             {user?.beta_admin && (
               <>
                 <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
