@@ -459,16 +459,19 @@ describe("Dispatcher", () => {
     });
     const { dispatcher, channel } = await scaffold({ config, runtimeFactory });
 
+    // Use an `rm_oc_` room so the dispatcher's reply gating does not drop
+    // the runtime text — non-owner-chat rooms intentionally suppress
+    // result.text since the agent is expected to use `botcord_send`.
     const p1 = dispatcher.handle(
       makeEnvelope({
         id: "m1",
-        conversation: { id: "rm_g1", kind: "group" },
+        conversation: { id: "rm_oc_g1", kind: "group" },
       }),
     );
     const p2 = dispatcher.handle(
       makeEnvelope({
         id: "m2",
-        conversation: { id: "rm_g1", kind: "group" },
+        conversation: { id: "rm_oc_g1", kind: "group" },
       }),
     );
     await Promise.all([p1, p2]);
@@ -1195,5 +1198,375 @@ describe("Dispatcher", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Owner-chat reply gating
+  // ─────────────────────────────────────────────────────────────────────
+
+  it("non-owner-chat room: discards result.text, agent must use botcord_send", async () => {
+    const runtime = new FakeRuntime({ reply: "would-be-reply", newSessionId: "sid-1" });
+    const { dispatcher, channel, store } = await scaffold({
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "msg_1",
+        conversation: { id: "rm_g_other", kind: "group" },
+      }),
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    // Session is still persisted — only the channel send is gated.
+    expect(store.all().length).toBe(1);
+    expect(channel.sends.length).toBe(0);
+  });
+
+  it("non-owner-chat room: timeout reply is suppressed (logged only)", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new FakeRuntime({ hang: true });
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => runtime,
+        turnTimeoutMs: 500,
+      });
+      const p = dispatcher.handle(
+        makeEnvelope({
+          id: "m_to",
+          conversation: { id: "rm_g_other", kind: "group" },
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(501);
+      await p;
+      expect(runtime.calls[0].signal.aborted).toBe(true);
+      expect(channel.sends.length).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("non-owner-chat room: runtime error reply is suppressed", async () => {
+    const runtime = new FakeRuntime({ throwError: "boom" });
+    const { dispatcher, channel } = await scaffold({
+      runtimeFactory: () => runtime,
+    });
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m_err",
+        conversation: { id: "rm_g_other", kind: "group" },
+      }),
+    );
+    expect(channel.sends.length).toBe(0);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Serial coalesce-on-drain
+  // ─────────────────────────────────────────────────────────────────────
+
+  it("serial coalesce: messages arriving during a slow turn fold into ONE next turn", async () => {
+    let callNo = 0;
+    const runtimeFactory: RuntimeFactory = () => {
+      callNo += 1;
+      const tag = `r${callNo}`;
+      return new FakeRuntime({
+        id: "claude-code",
+        reply: tag,
+        delayMs: 30,
+        newSessionId: `sid-${callNo}`,
+      });
+    };
+    // Capture composer input so we can inspect what each turn was asked to render.
+    const composeCalls: Array<{ id: string; batchSize: number }> = [];
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig({
+        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+      }),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: runtimeFactory,
+      sessionStore: store,
+      log: silentLogger(),
+      composeUserTurn: (msg) => {
+        const raw = msg.raw as { batch?: unknown[] } | null | undefined;
+        const batch = Array.isArray(raw?.batch) ? raw!.batch : null;
+        composeCalls.push({ id: msg.id, batchSize: batch ? batch.length : 1 });
+        return msg.text ?? "";
+      },
+    });
+
+    // m1 arrives → triggers immediate turn.
+    const p1 = dispatcher.handle(
+      makeEnvelope({
+        id: "m1",
+        text: "hello",
+        raw: { hub_msg_id: "m1", text: "hello" },
+        conversation: { id: "rm_grp_x", kind: "group" },
+      }),
+    );
+    // Let the worker start runtime.run for m1.
+    await Promise.resolve();
+    await Promise.resolve();
+    // m2 + m3 arrive while m1 is in flight → buffered, must coalesce.
+    const p2 = dispatcher.handle(
+      makeEnvelope({
+        id: "m2",
+        text: "second",
+        raw: { hub_msg_id: "m2", text: "second" },
+        conversation: { id: "rm_grp_x", kind: "group" },
+      }),
+    );
+    const p3 = dispatcher.handle(
+      makeEnvelope({
+        id: "m3",
+        text: "third",
+        raw: { hub_msg_id: "m3", text: "third" },
+        conversation: { id: "rm_grp_x", kind: "group" },
+      }),
+    );
+    await Promise.all([p1, p2, p3]);
+
+    // Exactly two runtime turns: m1 alone, then a single coalesced turn merging m2+m3.
+    expect(callNo).toBe(2);
+    expect(composeCalls.length).toBe(2);
+    expect(composeCalls[0]).toEqual({ id: "m1", batchSize: 1 });
+    // Anchor of merged turn is the latest entry (m3); raw.batch holds both.
+    expect(composeCalls[1].id).toBe("m3");
+    expect(composeCalls[1].batchSize).toBe(2);
+    // Sends gated for non-owner-chat room.
+    expect(channel.sends.length).toBe(0);
+  });
+
+  it("serial coalesce: mentioned is OR'd across the merged batch", async () => {
+    let captured: { mentioned?: boolean } = {};
+    const runtimeFactory: RuntimeFactory = () =>
+      new FakeRuntime({ reply: "ok", delayMs: 20, newSessionId: "sid" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig({
+        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+      }),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: runtimeFactory,
+      sessionStore: store,
+      log: silentLogger(),
+      composeUserTurn: (msg) => {
+        if (msg.id === "m_b") captured = { mentioned: msg.mentioned };
+        return msg.text ?? "";
+      },
+    });
+
+    const p1 = dispatcher.handle(
+      makeEnvelope({
+        id: "m_a",
+        text: "a",
+        mentioned: false,
+        conversation: { id: "rm_grp_y", kind: "group" },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    // Two new entries arrive during turn 1; one of them is mentioned.
+    const p2 = dispatcher.handle(
+      makeEnvelope({
+        id: "m_a2",
+        text: "a2",
+        mentioned: true,
+        conversation: { id: "rm_grp_y", kind: "group" },
+      }),
+    );
+    const p3 = dispatcher.handle(
+      makeEnvelope({
+        id: "m_b",
+        text: "b",
+        mentioned: false,
+        conversation: { id: "rm_grp_y", kind: "group" },
+      }),
+    );
+    await Promise.all([p1, p2, p3]);
+    expect(captured.mentioned).toBe(true);
+  });
+
+  it("serial coalesce: buffer overflow drops oldest entries (>40 backlog)", async () => {
+    let firstTurnDone!: () => void;
+    const firstTurnGate = new Promise<void>((resolve) => {
+      firstTurnDone = resolve;
+    });
+    let callNo = 0;
+    const runtimeFactory: RuntimeFactory = () => {
+      callNo += 1;
+      const tag = `r${callNo}`;
+      // Turn 1 hangs until firstTurnGate is resolved, so we can pile up the
+      // overflowing backlog while it's in flight. Turns 2+ just complete.
+      if (callNo === 1) {
+        return new FakeRuntime({
+          reply: tag,
+          newSessionId: `sid-${callNo}`,
+          observeRun: () => {
+            void firstTurnGate.then(() => undefined);
+          },
+        });
+      }
+      return new FakeRuntime({
+        reply: tag,
+        newSessionId: `sid-${callNo}`,
+        delayMs: 0,
+      });
+    };
+    const composedIds: string[][] = [];
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig({
+        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+      }),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: runtimeFactory,
+      sessionStore: store,
+      log: silentLogger(),
+      composeUserTurn: (msg) => {
+        const raw = msg.raw as { batch?: Array<{ hub_msg_id?: string }> } | null;
+        const ids = Array.isArray(raw?.batch)
+          ? raw!.batch!.map((b) => b.hub_msg_id ?? "?")
+          : [msg.id];
+        composedIds.push(ids);
+        return msg.text ?? "";
+      },
+    });
+    // Use a slow-runtime trigger that only resolves once we've enqueued
+    // enough overflow. Easier path: switch to delayMs and use timers.
+    // Simplification: just push 50 messages serially via Promise.all so that
+    // arrivals 2-50 buffer while arrival 1 is mid-run.
+    const arrivals: Array<Promise<void>> = [];
+    arrivals.push(
+      dispatcher.handle(
+        makeEnvelope({
+          id: "m_first",
+          text: "first",
+          raw: { hub_msg_id: "m_first", text: "first" },
+          conversation: { id: "rm_grp_overflow", kind: "group" },
+        }),
+      ),
+    );
+    // Yield twice so the worker observes the first entry and starts runtime.
+    await Promise.resolve();
+    await Promise.resolve();
+    // Push 50 more — backlog cap is 40, so the oldest 10 must be dropped.
+    for (let i = 0; i < 50; i++) {
+      arrivals.push(
+        dispatcher.handle(
+          makeEnvelope({
+            id: `m_${i}`,
+            text: `msg-${i}`,
+            raw: { hub_msg_id: `m_${i}`, text: `msg-${i}` },
+            conversation: { id: "rm_grp_overflow", kind: "group" },
+          }),
+        ),
+      );
+    }
+    // Release turn 1 so the worker drains the (capped) backlog.
+    firstTurnDone();
+    await Promise.all(arrivals);
+
+    // Two compose calls: first turn (m_first), second turn (40 surviving
+    // backlog entries — m_10 through m_49 if drop-oldest was applied).
+    expect(composedIds.length).toBe(2);
+    expect(composedIds[0]).toEqual(["m_first"]);
+    expect(composedIds[1].length).toBe(40);
+    expect(composedIds[1][0]).toBe("m_10");
+    expect(composedIds[1][39]).toBe("m_49");
+  });
+
+  it("serial coalesce: char-cap drops oldest individual messages from merged batch", async () => {
+    let callNo = 0;
+    const runtimeFactory: RuntimeFactory = () => {
+      callNo += 1;
+      const tag = `r${callNo}`;
+      return new FakeRuntime({
+        reply: tag,
+        newSessionId: `sid-${callNo}`,
+        // Turn 1 holds until released so turns 2-N pile up.
+        delayMs: callNo === 1 ? 50 : 0,
+      });
+    };
+    const composedItemCounts: number[] = [];
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig({
+        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+      }),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: runtimeFactory,
+      sessionStore: store,
+      log: silentLogger(),
+      composeUserTurn: (msg) => {
+        const raw = msg.raw as { batch?: unknown[] } | null;
+        const items = Array.isArray(raw?.batch) ? raw!.batch!.length : 1;
+        composedItemCounts.push(items);
+        return msg.text ?? "";
+      },
+    });
+    // Each pile-up message carries ~2000 chars; 20 messages = ~40000 chars,
+    // well over the 16000 cap. The merger must drop oldest until ≤16000.
+    const big = "x".repeat(2000);
+    const p0 = dispatcher.handle(
+      makeEnvelope({
+        id: "m_lead",
+        text: "lead",
+        raw: { hub_msg_id: "m_lead", text: "lead" },
+        conversation: { id: "rm_grp_chars", kind: "group" },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    const arrivals: Array<Promise<void>> = [p0];
+    for (let i = 0; i < 20; i++) {
+      arrivals.push(
+        dispatcher.handle(
+          makeEnvelope({
+            id: `mb_${i}`,
+            text: big,
+            raw: { hub_msg_id: `mb_${i}`, text: big },
+            conversation: { id: "rm_grp_chars", kind: "group" },
+          }),
+        ),
+      );
+    }
+    await Promise.all(arrivals);
+
+    // Two composer calls. The second is the merged drain — it must contain
+    // strictly fewer than 20 items because oldest were dropped to fit cap.
+    expect(composedItemCounts.length).toBe(2);
+    expect(composedItemCounts[0]).toBe(1);
+    expect(composedItemCounts[1]).toBeGreaterThan(0);
+    expect(composedItemCounts[1]).toBeLessThan(20);
+    // Cap is 16000 chars; each item is 2000 → at most 8 items survive.
+    expect(composedItemCounts[1]).toBeLessThanOrEqual(8);
+  });
+
+  it("owner-chat detection: dashboard_user_chat in non-rm_oc room still sends reply", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { dispatcher, channel } = await scaffold({
+      runtimeFactory: () => runtime,
+    });
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m_dash",
+        // Note: room id does NOT start with rm_oc_ but raw.source_type marks
+        // this as a dashboard user chat — must be treated as owner-chat by
+        // the gating predicate.
+        conversation: { id: "rm_dashroom", kind: "direct" },
+        raw: { source_type: "dashboard_user_chat" },
+      }),
+    );
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.text).toBe("ok");
   });
 });

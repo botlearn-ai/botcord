@@ -35,6 +35,18 @@ const DIRECT_HINT =
   'reply with exactly "NO_REPLY" and nothing else.]';
 
 /**
+ * Reminder appended to every wrapped (non-owner-chat) inbound message. The
+ * dispatcher discards `result.text` for any room that is not `rm_oc_*`, so
+ * the agent must call the `botcord_send` tool (or the `botcord send` CLI
+ * via Bash) to actually deliver a reply. Plain assistant text in those
+ * rooms is logged and dropped.
+ */
+const NON_OWNER_REPLY_HINT =
+  "[This room is NOT owner-chat. Plain text output WILL NOT be sent. " +
+  "To reply, call the `botcord_send` tool, or run " +
+  '`botcord send --room <room_id> --text "..."` via Bash.]';
+
+/**
  * Read the BotCord envelope type from a raw inbound message. Returns
  * `undefined` when the message didn't come from the BotCord channel or the
  * raw shape is unexpected — callers treat that the same as "message".
@@ -169,6 +181,8 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
     `</${tag}>`,
     "",
     hint,
+    "",
+    NON_OWNER_REPLY_HINT,
   ];
   if (contactRequestHint) {
     lines.push("", contactRequestHint);
@@ -223,7 +237,14 @@ function composeBatchedTurn(
   }
 
   const hint = isGroup ? GROUP_HINT : DIRECT_HINT;
-  const lines: string[] = [header.join(" | "), blocks.join("\n"), "", hint];
+  const lines: string[] = [
+    header.join(" | "),
+    blocks.join("\n"),
+    "",
+    hint,
+    "",
+    NON_OWNER_REPLY_HINT,
+  ];
 
   if (contactRequestSenders.length > 0) {
     // Dedup + list — multiple distinct senders show as "A, B".

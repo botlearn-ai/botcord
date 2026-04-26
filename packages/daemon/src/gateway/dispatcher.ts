@@ -20,6 +20,24 @@ import type {
 
 const DEFAULT_TURN_TIMEOUT_MS = 10 * 60 * 1000;
 
+/**
+ * Owner-chat room prefix. Reply-text gating: only rooms with this prefix get
+ * `result.text` forwarded to the channel; in every other room the runtime's
+ * plain text output is discarded — agents must use the `botcord_send` tool
+ * (or `botcord send` CLI via Bash) to actually deliver replies.
+ */
+const OWNER_CHAT_ROOM_PREFIX = "rm_oc_";
+
+/** Maximum number of buffered serial entries per queue. Excess entries drop oldest. */
+const MAX_BATCH_BUFFER_ENTRIES = 40;
+
+/**
+ * Soft cap on the total characters across raw.batch members in a merged
+ * turn. When exceeded, oldest entries are dropped (with a warn log) so the
+ * runtime prompt stays bounded even if the channel-side batch was huge.
+ */
+const MAX_BATCH_BUFFER_CHARS = 16000;
+
 /** Factory signature for building a runtime adapter at turn dispatch time. */
 export type RuntimeFactory = (
   runtimeId: string,
@@ -74,11 +92,20 @@ interface TurnSlot {
   done: Promise<void>;
 }
 
+/**
+ * One entry buffered for serial-mode coalescing. Each successful `runSerial`
+ * call pushes one entry; the worker drains the entire buffer on the next
+ * turn boundary and merges them into a single dispatch.
+ */
+interface BufferedSerialEntry {
+  route: GatewayRoute;
+  msg: GatewayInboundEnvelope["message"];
+  channel: ChannelAdapter;
+}
+
 interface QueueState {
   /** The currently executing turn on this queue key, if any. */
   current: TurnSlot | null;
-  /** Tail of the serial-mode queue — chained via promises; replaced each append. */
-  tail: Promise<void>;
   /**
    * Generation counter bumped every time a cancel-previous turn arrives.
    * Any in-flight cancel-previous arrival captures the value at entry; if a
@@ -88,6 +115,15 @@ interface QueueState {
    * `current === null` after an abort and run concurrently.
    */
   cancelGen: number;
+  /**
+   * Serial-mode coalescing buffer. Messages pushed here while a turn is in
+   * flight are drained — and merged into a single user turn — on the next
+   * iteration of the worker loop. First message in an idle queue triggers a
+   * turn immediately; subsequent arrivals fold into the next batch.
+   */
+  serialBuffer: BufferedSerialEntry[];
+  /** True when the serial-drain worker is actively running (or about to). */
+  serialWorkerActive: boolean;
 }
 
 /**
@@ -149,12 +185,18 @@ export class Dispatcher {
       return;
     }
 
-    // Compose the final user-turn text. The composer can enrich the raw
-    // message with sender label, room header, NO_REPLY hint, etc. — anything
-    // that should land in the runtime transcript. Failures fall back to the
-    // raw trimmed text so a buggy composer cannot drop turns.
+    const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;
+    const route = resolveRoute(msg, this.config, managed);
+    const mode = resolveQueueMode(route, msg.conversation.kind);
+    const queueKey = buildQueueKey(msg);
+
+    // Compose the final user-turn text only for cancel-previous mode, where
+    // the dispatcher consumes the pre-composed text directly. Serial mode
+    // re-runs the composer at drain time on the merged message (so it sees
+    // the full coalesced batch instead of any single arrival), so calling
+    // the composer here would just be redundant work.
     let text = rawText;
-    if (this.composeUserTurn) {
+    if (mode === "cancel-previous" && this.composeUserTurn) {
       try {
         const composed = this.composeUserTurn(msg);
         if (typeof composed === "string" && composed.length > 0) {
@@ -167,11 +209,6 @@ export class Dispatcher {
         });
       }
     }
-
-    const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;
-    const route = resolveRoute(msg, this.config, managed);
-    const mode = resolveQueueMode(route, msg.conversation.kind);
-    const queueKey = buildQueueKey(msg);
 
     // Ack immediately: once the dispatcher has a route + queue key, ownership is decided.
     await this.safeAck(envelope);
@@ -236,8 +273,9 @@ export class Dispatcher {
     if (!q) {
       q = {
         current: null,
-        tail: Promise.resolve(),
         cancelGen: 0,
+        serialBuffer: [],
+        serialWorkerActive: false,
       };
       this.queues.set(key, q);
     }
@@ -274,18 +312,164 @@ export class Dispatcher {
     await this.runTurn(queueKey, route, text, msg, channel);
   }
 
+  /**
+   * Serial mode with coalesce-on-drain semantics:
+   *
+   *   1. First arrival on an idle queue boots the worker, which dispatches a
+   *      single-message turn immediately (no batching delay).
+   *   2. Arrivals during an in-flight turn append to `serialBuffer`; when the
+   *      worker finishes the current turn it drains the entire buffer and
+   *      merges all pending entries into ONE next turn (folded into a single
+   *      `raw.batch` so the composer renders them as multi-block input).
+   *   3. Buffer caps: at most `MAX_BATCH_BUFFER_ENTRIES` entries are retained
+   *      (drop oldest) and merged turns are further trimmed to fit
+   *      `MAX_BATCH_BUFFER_CHARS` of total raw text.
+   *
+   * Note: the pre-composed `text` from `handle()` is intentionally discarded
+   * here — at drain time the worker re-invokes `composeUserTurn` on the
+   * merged message so the runtime sees a single coherent prompt covering all
+   * coalesced messages.
+   */
   private async runSerial(
     queueKey: string,
     route: GatewayRoute,
-    text: string,
+    _text: string,
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
   ): Promise<void> {
     const q = this.getQueue(queueKey);
-    const prev = q.tail;
-    const next = prev.then(() => this.runTurn(queueKey, route, text, msg, channel));
-    q.tail = next.catch(() => undefined);
-    return next;
+    q.serialBuffer.push({ route, msg, channel });
+    while (q.serialBuffer.length > MAX_BATCH_BUFFER_ENTRIES) {
+      const dropped = q.serialBuffer.shift()!;
+      this.log.warn("dispatcher: serial buffer overflow — dropped oldest entry", {
+        queueKey,
+        droppedMessageId: dropped.msg.id,
+        bufferCap: MAX_BATCH_BUFFER_ENTRIES,
+      });
+    }
+    if (q.serialWorkerActive) return;
+    q.serialWorkerActive = true;
+    try {
+      while (q.serialBuffer.length > 0) {
+        const drained = q.serialBuffer.splice(0, q.serialBuffer.length);
+        const merged = this.mergeSerialBuffer(drained, queueKey);
+        if (!merged) continue;
+        await this.runTurn(
+          queueKey,
+          merged.route,
+          merged.text,
+          merged.msg,
+          merged.channel,
+        );
+      }
+    } finally {
+      q.serialWorkerActive = false;
+    }
+  }
+
+  /**
+   * Merge buffered serial entries into a single dispatchable unit. With one
+   * entry the call is a near no-op (just recompose). With ≥2 entries this
+   * flattens any per-entry `raw.batch` (the BotCord channel already groups
+   * one inbox-poll's worth of same-room/topic messages into a `raw.batch`),
+   * applies the `MAX_BATCH_BUFFER_CHARS` cap by dropping oldest individual
+   * messages, and then synthesizes a merged inbound message anchored on the
+   * latest entry's metadata (mentioned = OR across all entries).
+   */
+  private mergeSerialBuffer(
+    entries: BufferedSerialEntry[],
+    queueKey: string,
+  ): {
+    route: GatewayRoute;
+    text: string;
+    msg: GatewayInboundEnvelope["message"];
+    channel: ChannelAdapter;
+  } | null {
+    if (entries.length === 0) return null;
+    if (entries.length === 1) {
+      const only = entries[0]!;
+      return {
+        route: only.route,
+        text: this.recomposeUserTurn(only.msg),
+        msg: only.msg,
+        channel: only.channel,
+      };
+    }
+
+    // Flatten: each entry's raw may already be a BatchedInboxRaw with
+    // `.batch`; otherwise it's a single InboxMessage we treat as a 1-element
+    // batch. Insertion order preserves chronology.
+    const items: Array<Record<string, unknown>> = [];
+    for (const e of entries) {
+      const raw = e.msg.raw as Record<string, unknown> | null | undefined;
+      const batch = raw && Array.isArray((raw as { batch?: unknown }).batch)
+        ? ((raw as { batch: Array<Record<string, unknown>> }).batch)
+        : null;
+      if (batch) {
+        for (const m of batch) items.push(m);
+      } else if (raw) {
+        items.push(raw);
+      }
+    }
+
+    // Char-cap: drop oldest until we fit. Reserve at least one item so we
+    // never produce an empty merged batch.
+    let totalChars = items.reduce(
+      (acc, m) => acc + (typeof m?.text === "string" ? (m.text as string).length : 0),
+      0,
+    );
+    let droppedCount = 0;
+    while (totalChars > MAX_BATCH_BUFFER_CHARS && items.length > 1) {
+      const removed = items.shift()!;
+      totalChars -= typeof removed?.text === "string" ? (removed.text as string).length : 0;
+      droppedCount += 1;
+    }
+    if (droppedCount > 0) {
+      this.log.warn("dispatcher: merged batch exceeded char cap — dropped oldest", {
+        queueKey,
+        droppedCount,
+        remaining: items.length,
+        totalChars,
+        charCap: MAX_BATCH_BUFFER_CHARS,
+      });
+    }
+
+    const latest = entries[entries.length - 1]!;
+    const latestRaw = (latest.msg.raw as Record<string, unknown> | null | undefined) ?? {};
+    const mergedRaw = { ...latestRaw, batch: items };
+    const anyMentioned = entries.some((e) => e.msg.mentioned === true);
+    const mergedMsg: GatewayInboundEnvelope["message"] = {
+      ...latest.msg,
+      mentioned: anyMentioned,
+      raw: mergedRaw,
+    };
+    return {
+      route: latest.route,
+      text: this.recomposeUserTurn(mergedMsg),
+      msg: mergedMsg,
+      channel: latest.channel,
+    };
+  }
+
+  /**
+   * Re-run the user-turn composer at drain time. Mirrors the logic in
+   * `handle()` but operates on the (possibly merged) message. Falls back to
+   * raw trimmed text on composer failure so a buggy composer never drops a
+   * turn.
+   */
+  private recomposeUserTurn(msg: GatewayInboundEnvelope["message"]): string {
+    const rawText = typeof msg.text === "string" ? msg.text.trim() : "";
+    if (!this.composeUserTurn) return rawText;
+    try {
+      const composed = this.composeUserTurn(msg);
+      if (typeof composed === "string" && composed.length > 0) return composed;
+    } catch (err) {
+      this.log.warn("dispatcher: composeUserTurn (drain) threw — using raw text", {
+        messageId: msg.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return rawText;
   }
 
   private async runTurn(
@@ -413,16 +597,42 @@ export class Dispatcher {
         return;
       }
 
+      // Reply gating: only owner-chat rooms accept the runtime's plain text
+      // output as a delivered message. Every other room expects the agent to
+      // call the `botcord_send` tool (or `botcord send` CLI via Bash)
+      // explicitly; runtime text in those rooms is logged and dropped,
+      // including timeout / error notifications.
+      //
+      // Owner-chat is identified by either the `rm_oc_` room prefix OR
+      // `source_type === "dashboard_user_chat"` on the raw envelope — the
+      // same dual check used by `sender-classify.ts:classifyActivitySender`,
+      // so the dispatcher's reply gating stays in lock-step with the
+      // composer's owner-bypass.
+      //
+      // Side effect: `onOutbound` (loop-risk tracking) only fires when a
+      // reply actually leaves the dispatcher. In non-owner-chat rooms the
+      // expectation is that the agent's `botcord_send` tool calls do their
+      // own loop-risk accounting downstream.
+      const isOwnerChat = isOwnerChatRoom(msg);
+
       if (slot.timedOut) {
-        await this.sendReply(channel, {
-          channel: msg.channel,
-          accountId: msg.accountId,
-          conversationId: msg.conversation.id,
-          threadId: msg.conversation.threadId ?? null,
-          text: `⚠️ Runtime timeout after ${Math.round(this.turnTimeoutMs / 60000)} minute(s); aborted`,
-          replyTo: msg.id,
-          traceId: msg.trace?.id ?? null,
-        });
+        if (isOwnerChat) {
+          await this.sendReply(channel, {
+            channel: msg.channel,
+            accountId: msg.accountId,
+            conversationId: msg.conversation.id,
+            threadId: msg.conversation.threadId ?? null,
+            text: `⚠️ Runtime timeout after ${Math.round(this.turnTimeoutMs / 60000)} minute(s); aborted`,
+            replyTo: msg.id,
+            traceId: msg.trace?.id ?? null,
+          });
+        } else {
+          this.log.warn("dispatcher: timeout in non-owner-chat room — error reply suppressed", {
+            queueKey,
+            conversationId: msg.conversation.id,
+            timeoutMs: this.turnTimeoutMs,
+          });
+        }
         return;
       }
 
@@ -432,16 +642,23 @@ export class Dispatcher {
           runtime: route.runtime,
           error: threw instanceof Error ? threw.message : String(threw),
         });
-        const shortMsg = threw instanceof Error ? threw.message : String(threw);
-        await this.sendReply(channel, {
-          channel: msg.channel,
-          accountId: msg.accountId,
-          conversationId: msg.conversation.id,
-          threadId: msg.conversation.threadId ?? null,
-          text: `⚠️ Runtime error: ${truncate(shortMsg, 500)}`,
-          replyTo: msg.id,
-          traceId: msg.trace?.id ?? null,
-        });
+        if (isOwnerChat) {
+          const shortMsg = threw instanceof Error ? threw.message : String(threw);
+          await this.sendReply(channel, {
+            channel: msg.channel,
+            accountId: msg.accountId,
+            conversationId: msg.conversation.id,
+            threadId: msg.conversation.threadId ?? null,
+            text: `⚠️ Runtime error: ${truncate(shortMsg, 500)}`,
+            replyTo: msg.id,
+            traceId: msg.trace?.id ?? null,
+          });
+        } else {
+          this.log.warn("dispatcher: runtime error in non-owner-chat room — error reply suppressed", {
+            queueKey,
+            conversationId: msg.conversation.id,
+          });
+        }
         return;
       }
 
@@ -502,6 +719,22 @@ export class Dispatcher {
       const replyText = (result.text || "").trim();
       if (!replyText) return;
 
+      if (!isOwnerChat) {
+        // Non-owner-chat rooms: result.text never goes out. The agent is
+        // expected to have used the `botcord_send` tool / `botcord send` CLI
+        // already; whatever it left in the runtime's final assistant text is
+        // discarded so it doesn't leak into the room.
+        this.log.debug(
+          "dispatcher: non-owner-chat — discarding result.text (agent must use botcord_send)",
+          {
+            queueKey,
+            conversationId: msg.conversation.id,
+            replyTextLen: replyText.length,
+          },
+        );
+        return;
+      }
+
       // One last abort check immediately before the send. Narrows the window
       // in which a cancel-previous arriving during session-store.set could
       // still slip a stale reply past us.
@@ -559,6 +792,28 @@ export class Dispatcher {
 function buildQueueKey(msg: GatewayInboundEnvelope["message"]): string {
   const thread = msg.conversation.threadId ?? "";
   return `${msg.channel}:${msg.accountId}:${msg.conversation.id}:${thread}`;
+}
+
+/**
+ * Owner-chat predicate used by the dispatcher's reply gating. Matches the
+ * dual check in `sender-classify.ts:classifyActivitySender` so the
+ * dispatcher's gate stays consistent with the composer's owner-bypass:
+ *
+ *   1. `rm_oc_*` room id, OR
+ *   2. `source_type === "dashboard_user_chat"` on the raw envelope.
+ *
+ * The latter exists because the dashboard's user-chat surface can route
+ * messages through non-`rm_oc_` rooms in some flows; treating them as
+ * owner-trust here keeps the agent's plain reply text reachable.
+ */
+function isOwnerChatRoom(msg: GatewayInboundEnvelope["message"]): boolean {
+  if (msg.conversation.id.startsWith(OWNER_CHAT_ROOM_PREFIX)) return true;
+  const raw = msg.raw;
+  if (raw && typeof raw === "object") {
+    const sourceType = (raw as { source_type?: unknown }).source_type;
+    if (sourceType === "dashboard_user_chat") return true;
+  }
+  return false;
 }
 
 function resolveQueueMode(
