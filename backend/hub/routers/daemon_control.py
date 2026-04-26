@@ -478,6 +478,34 @@ async def _load_owned_instance(
     return instance
 
 
+class _RenameInstanceRequest(BaseModel):
+    label: str | None = Field(default=None, max_length=64)
+
+
+@router.patch("/daemon/instances/{daemon_instance_id}", response_model=_InstanceView)
+async def rename_instance(
+    daemon_instance_id: str,
+    body: _RenameInstanceRequest,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> _InstanceView:
+    instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
+    new_label = body.label.strip() if isinstance(body.label, str) else None
+    instance.label = new_label or None
+    await db.commit()
+    await db.refresh(instance)
+    return _InstanceView(
+        id=instance.id,
+        label=instance.label,
+        created_at=instance.created_at,
+        last_seen_at=instance.last_seen_at,
+        revoked_at=instance.revoked_at,
+        online=_REGISTRY.is_online(instance.id),
+        runtimes=instance.runtimes_json if instance.runtimes_json else None,
+        runtimes_probed_at=instance.runtimes_probed_at,
+    )
+
+
 @router.post("/daemon/instances/{daemon_instance_id}/revoke")
 async def revoke_instance(
     daemon_instance_id: str,

@@ -71,11 +71,14 @@ interface DaemonState {
   loaded: boolean;
   error: string | null;
   revokingId: string | null;
+  renamingId: string | null;
   refreshingRuntimesId: string | null;
   runtimeErrors: Record<string, string>;
+  renameErrors: Record<string, string>;
 
   refresh: () => Promise<void>;
   revoke: (id: string) => Promise<void>;
+  rename: (id: string, label: string | null) => Promise<boolean>;
   refreshRuntimes: (id: string) => Promise<void>;
   provisionAgent: (
     daemonId: string,
@@ -90,8 +93,10 @@ const initialState = {
   loaded: false,
   error: null as string | null,
   revokingId: null as string | null,
+  renamingId: null as string | null,
   refreshingRuntimesId: null as string | null,
   runtimeErrors: {} as Record<string, string>,
+  renameErrors: {} as Record<string, string>,
 };
 
 /**
@@ -233,6 +238,57 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         revokingId: null,
         error: err instanceof Error ? err.message : "Failed to revoke",
       });
+    }
+  },
+
+  rename: async (id: string, label: string | null) => {
+    const trimmed = label?.trim() || null;
+    if (trimmed && trimmed.length > 64) {
+      set((state) => ({
+        renameErrors: { ...state.renameErrors, [id]: "Label must be 64 chars or fewer" },
+      }));
+      return false;
+    }
+    set((state) => {
+      const next = { ...state.renameErrors };
+      delete next[id];
+      return { renamingId: id, renameErrors: next };
+    });
+    try {
+      const res = await fetch(`/api/daemon/instances/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: trimmed }),
+      });
+      if (!res.ok) {
+        const msg = await parseError(res);
+        set((state) => ({
+          renamingId: null,
+          renameErrors: { ...state.renameErrors, [id]: msg },
+        }));
+        return false;
+      }
+      const data = (await res.json().catch(() => null)) as
+        | Record<string, unknown>
+        | null;
+      const newLabel =
+        data && typeof data.label === "string"
+          ? (data.label as string)
+          : trimmed;
+      set({
+        daemons: get().daemons.map((d) =>
+          d.id === id ? { ...d, label: newLabel } : d,
+        ),
+        renamingId: null,
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to rename";
+      set((state) => ({
+        renamingId: null,
+        renameErrors: { ...state.renameErrors, [id]: msg },
+      }));
+      return false;
     }
   },
 
