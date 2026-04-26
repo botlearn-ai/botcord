@@ -178,13 +178,21 @@ if [ "$SKIP_PLUGIN_INSTALL" != "true" ]; then
   require_cmd npm "Install npm (ships with Node.js)"
 fi
 
-# ── Step 1: Stage + install plugin ────────────────────────────────────────
+# ── Step 1: Stage + npm install (no live swap yet) ───────────────────────
+#
+# We deliberately do *not* touch $TARGET_DIR before the claim step. That
+# way a claim failure (expired bind code, server-side reject, network
+# blip) leaves the user's existing plugin install untouched. The atomic
+# swap into TARGET_DIR happens further down once we have credentials in
+# hand.
 
+WANT_PLUGIN_SWAP="false"
 if [ "$SKIP_PLUGIN_INSTALL" = "true" ]; then
   log "skipping plugin install (--skip-plugin-install)"
 elif [ -d "$TARGET_DIR" ] && [ "$FORCE_REINSTALL" != "true" ]; then
   log "plugin already installed at $TARGET_DIR (use --force-reinstall to replace)"
 else
+  WANT_PLUGIN_SWAP="true"
   STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/botcord-stage.XXXXXX")"
   log "staging plugin to $STAGING_DIR"
 
@@ -224,16 +232,6 @@ else
     log_error "npm install failed; see $RUN_LOG for details"
     exit 1
   }
-
-  mkdir -p -- "$(dirname "$TARGET_DIR")"
-  if [ -d "$TARGET_DIR" ]; then
-    BACKUP_DIR="${TARGET_DIR}.bak.${TS}"
-    log "moving existing $TARGET_DIR → $BACKUP_DIR"
-    mv -- "$TARGET_DIR" "$BACKUP_DIR"
-  fi
-  mv -- "$STAGING_DIR" "$TARGET_DIR"
-  STAGING_DIR=""  # ownership transferred; on_exit shouldn't rm the live install
-  log "plugin installed at $TARGET_DIR"
 fi
 
 # ── Step 2: Generate keypair, sign, claim ────────────────────────────────
@@ -353,7 +351,25 @@ log "  Display:     $DISPLAY_NAME"
 log "  Key ID:      $KEY_ID"
 log "  Credentials: $CRED_FILE"
 
-# ── Step 3: Configure openclaw.json ──────────────────────────────────────
+# ── Step 3: Atomic swap staged plugin into TARGET_DIR ─────────────────────
+#
+# Now (and only now) that the claim succeeded do we touch the live plugin
+# install. If we'd swapped earlier and the claim then failed, the user's
+# previous plugin would have been displaced for nothing.
+
+if [ "$WANT_PLUGIN_SWAP" = "true" ] && [ -n "$STAGING_DIR" ] && [ -d "$STAGING_DIR" ]; then
+  mkdir -p -- "$(dirname "$TARGET_DIR")"
+  if [ -d "$TARGET_DIR" ]; then
+    BACKUP_DIR="${TARGET_DIR}.bak.${TS}"
+    log "moving existing $TARGET_DIR → $BACKUP_DIR"
+    mv -- "$TARGET_DIR" "$BACKUP_DIR"
+  fi
+  mv -- "$STAGING_DIR" "$TARGET_DIR"
+  STAGING_DIR=""  # ownership transferred; on_exit shouldn't rm the live install
+  log "plugin installed at $TARGET_DIR"
+fi
+
+# ── Step 4: Configure openclaw.json ──────────────────────────────────────
 
 # Account-namespaced keys when --account is supplied; otherwise global keys.
 if [ -n "$ACCOUNT" ]; then
@@ -435,7 +451,7 @@ if [ "$CONFIG_OK" != "true" ]; then
   log_warn "  channels.botcord.deliveryMode = websocket"
 fi
 
-# ── Step 4: Restart gateway ───────────────────────────────────────────────
+# ── Step 5: Restart gateway ───────────────────────────────────────────────
 
 if [ "$SKIP_RESTART" = "true" ]; then
   log "skipping gateway restart (--skip-restart); restart it manually for the plugin to load"

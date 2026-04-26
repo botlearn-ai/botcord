@@ -285,6 +285,82 @@ def test_install_sh_server_rejects_bind_code(stub_server, tmp_path: Path):
     assert not config_path.exists()
 
 
+def test_install_sh_claim_failure_preserves_existing_plugin(
+    stub_server, tmp_path: Path
+):
+    """A 400 from install-claim must not displace the user's existing plugin.
+
+    Reproduces the scenario flagged in code review: previously the script
+    swapped staging into TARGET_DIR before calling claim, so an expired
+    bind code would leave the live install pointing at a fresh checkout
+    with no credentials. Now the swap only happens after claim succeeds.
+    """
+    state = stub_server["state"]
+    state.response_status = 400
+    state.response_body = {"detail": "INVALID_BIND_CODE", "error": "INVALID_BIND_CODE"}
+
+    home = tmp_path / "home"
+    home.mkdir()
+    config_path = tmp_path / "openclaw.json"
+
+    target_dir = home / ".openclaw" / "extensions" / "botcord"
+    target_dir.mkdir(parents=True)
+    sentinel = target_dir / "package.json"
+    sentinel.write_text('{"name": "@botcord/botcord", "version": "previous"}\n')
+
+    # Need to actually exercise the npm-install/swap path, which means we
+    # must NOT pass --skip-plugin-install. But we don't want to hit the
+    # real npm registry, so feed it an empty tarball via --tgz-path.
+    fake_pkg = tmp_path / "fake-pkg"
+    (fake_pkg / "package").mkdir(parents=True)
+    (fake_pkg / "package" / "package.json").write_text(
+        '{"name": "@botcord/botcord", "version": "0.0.0-test"}\n'
+    )
+    fake_tgz = tmp_path / "fake.tgz"
+    subprocess.run(
+        ["tar", "-czf", str(fake_tgz), "-C", str(fake_pkg), "package"], check=True
+    )
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "TMPDIR": str(home / "tmp"),
+        "OPENCLAW_BIN": "/bin/false",
+        "OPENCLAW_CONFIG_PATH": str(config_path),
+    }
+    (home / "tmp").mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [
+            "bash",
+            str(INSTALL_SH),
+            "--bind-code", "bd_expired00001",
+            "--bind-nonce", base64.b64encode(os.urandom(32)).decode(),
+            "--server-url", stub_server["url"],
+            "--tgz-path", str(fake_tgz),
+            "--force-reinstall",
+            "--target-dir", str(target_dir),
+            "--skip-restart",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode != 0, "expected non-zero exit on rejected bind code"
+
+    # Live plugin must still be the one we started with.
+    assert sentinel.is_file(), "previous plugin install was destroyed"
+    assert "previous" in sentinel.read_text()
+
+    # No backup should have been created since we never swapped.
+    backups = list(target_dir.parent.glob("botcord.bak.*"))
+    assert backups == [], f"unexpected backup created: {backups}"
+
+    # And nothing should have been written to credentials/config either.
+    creds_dir = home / ".botcord" / "credentials"
+    assert not creds_dir.exists() or not any(creds_dir.iterdir())
+    assert not config_path.exists()
+
+
 def test_install_sh_passes_intended_name_override(stub_server, tmp_path: Path):
     state = stub_server["state"]
     state.response_status = 201

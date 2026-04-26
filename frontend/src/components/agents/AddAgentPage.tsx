@@ -76,7 +76,25 @@ export default function AddAgentPage() {
     setIssuing(true);
     setStatus("issued");
     setClaimedAgentId(null);
+    // Stop any in-flight polling/countdown for the previous ticket so we
+    // don't race the revoke we're about to issue.
+    clearPollTimer();
+    clearTickTimer();
     try {
+      // Revoke the previously issued code first so each retry doesn't
+      // accumulate against the per-user active-code cap (5). 404 means
+      // somebody already burned it (revoked from another tab, or
+      // claimed) — that's fine.
+      const previous = ticket;
+      if (previous) {
+        try {
+          await userApi.revokeBindTicket(previous.bind_code);
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 404)) {
+            throw err;
+          }
+        }
+      }
       const data = await userApi.issueBindTicket({
         intendedName: intendedName.trim() || null,
       });
@@ -89,7 +107,7 @@ export default function AddAgentPage() {
     } finally {
       setIssuing(false);
     }
-  }, [intendedName]);
+  }, [intendedName, ticket, clearPollTimer, clearTickTimer]);
 
   const revoke = useCallback(async () => {
     if (!ticket) return;
@@ -139,7 +157,9 @@ export default function AddAgentPage() {
           setClaimedAgentId(res.agent_id);
           clearPollTimer();
           clearTickTimer();
-        } else if (res.status === "expired") {
+        } else if (res.status === "expired" || res.status === "revoked") {
+          // "revoked" comes from a delete in another tab (or a botched
+          // post-claim metadata write); either way it is terminal.
           setStatus("expired");
           clearPollTimer();
           clearTickTimer();
@@ -282,15 +302,12 @@ export default function AddAgentPage() {
 
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => {
-                  setTicket(null);
-                  setStatus("issued");
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-2 text-sm font-medium text-text-primary hover:bg-glass-border/30"
+                onClick={issue}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-2 text-sm font-medium text-text-primary hover:bg-glass-border/30 disabled:opacity-60"
                 disabled={issuing || revoking}
               >
                 <RefreshCw className="h-4 w-4" />
-                Generate another
+                {issuing ? "Generating…" : "Generate another"}
               </button>
               {!showExpired && (
                 <button

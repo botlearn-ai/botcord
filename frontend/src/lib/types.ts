@@ -422,7 +422,7 @@ export interface BindTicketResponse {
   intended_name?: string | null;
 }
 
-export type BindTicketStatusValue = "pending" | "claimed" | "expired";
+export type BindTicketStatusValue = "pending" | "claimed" | "expired" | "revoked";
 
 export interface BindTicketStatusResponse {
   bind_code: string;

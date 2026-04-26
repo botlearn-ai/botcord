@@ -855,10 +855,16 @@ async def get_bind_ticket_status(
         payload = {}
 
     if row.consumed_at is not None:
+        claimed_agent_id = payload.get("claimed_agent_id")
+        # A consumed row without a recorded claimed_agent_id was revoked
+        # (or the post-claim metadata write failed). Either way it is
+        # terminal — surface it as "revoked" so polling stops without
+        # claiming there is an agent we can navigate to.
+        status = "claimed" if claimed_agent_id else "revoked"
         return {
             "bind_code": code,
-            "status": "claimed",
-            "agent_id": payload.get("claimed_agent_id"),
+            "status": status,
+            "agent_id": claimed_agent_id,
             "claimed_at": row.consumed_at.isoformat(),
             "expires_at": expires_at_iso,
             "expires_at_ts": expires_at_ts,

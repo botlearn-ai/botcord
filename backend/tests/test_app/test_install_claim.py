@@ -271,6 +271,18 @@ async def test_bind_ticket_revoke_then_status_404(client: AsyncClient, fresh_use
     )
     assert resp.status_code == 404
 
+    # Status of a revoked code reports "revoked" (not "claimed") so the
+    # frontend stops polling and never tries to navigate to an agent_id
+    # that does not exist.
+    status_resp = await client.get(
+        f"/api/users/me/agents/bind-ticket/{data['bind_code']}",
+        headers={"Authorization": f"Bearer {fresh_user['token']}"},
+    )
+    assert status_resp.status_code == 200
+    body = status_resp.json()
+    assert body["status"] == "revoked"
+    assert body["agent_id"] is None
+
 
 # ---------------------------------------------------------------------------
 # install-claim: happy path + error paths
