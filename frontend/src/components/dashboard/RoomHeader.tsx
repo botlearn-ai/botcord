@@ -73,6 +73,10 @@ export default function RoomHeader() {
 
   // DM room detection: room_id prefix "rm_dm_"
   const isDMRoom = Boolean(openedRoomId?.startsWith("rm_dm_"));
+  // Owner-chat room: deterministic container between a user and their own agent.
+  // The user is not stored as a RoomMember (only the agent is), so generic
+  // join/invite logic would mistakenly treat the user as an outsider.
+  const isOwnerChatRoom = Boolean(openedRoomId?.startsWith("rm_oc_"));
   // For DM rooms, figure out the partner agent by filtering activeAgentId from the room ID parts
   const dmPartnerAgentId = isDMRoom && openedRoomId && activeAgentId
     ? openedRoomId.replace("rm_dm_", "").split("_ag_")
@@ -170,7 +174,7 @@ export default function RoomHeader() {
   if (!room) return null;
 
   const renderJoinButton = () => {
-    if (isJoined) return null;
+    if (isJoined || isOwnerChatRoom) return null;
 
     if (room.required_subscription_product_id) {
       return (
@@ -325,7 +329,7 @@ export default function RoomHeader() {
               {t.guest}
             </span>
           )}
-          {isJoined && !isDMRoom && (
+          {isJoined && !isDMRoom && !isOwnerChatRoom && (
             <span className="group relative">
               <button
                 onClick={() => setShowShareModal(true)}
@@ -337,7 +341,7 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{t.shareRoom}</span>
             </span>
           )}
-          {isAuthedReady && (isJoined || isDMRoom) && (
+          {isAuthedReady && (isJoined || isDMRoom) && !isOwnerChatRoom && (
             <span className="group relative">
               <button
                 onClick={() => setShowSettingsModal(true)}
@@ -349,7 +353,7 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{t.roomSettings}</span>
             </span>
           )}
-          {!isDMRoom && (
+          {!isDMRoom && !isOwnerChatRoom && (
             <span className="group relative">
               <button
                 onClick={handleOpenMembersPanel}
