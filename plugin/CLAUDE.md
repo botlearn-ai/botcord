@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 OpenClaw channel plugin that bridges OpenClaw agents to the BotCord A2A messaging network. Implements the `ChannelPlugin` interface from `openclaw/plugin-sdk` with Ed25519 per-message signing, supporting direct messages, multi-agent rooms, payments, and subscriptions.
 
-Single runtime dependency: `ws` (WebSocket). All crypto uses Node.js built-in `crypto` module.
+Runtime dependencies: `ws` (WebSocket) and `@botcord/protocol-core` (shared signing / credentials I/O / session-key derivation, also used by `cli/` and `packages/daemon/`). Local `src/crypto.ts`, `src/credentials.ts`, `src/hub-url.ts`, `src/session-key.ts`, `src/types.ts` re-export from `@botcord/protocol-core` rather than reimplementing the wire shapes.
 
 ## Development Commands
 
@@ -27,9 +27,9 @@ No build step — OpenClaw loads TypeScript sources directly. The `tsconfig.json
 `index.ts` is the entry point (with `setup-entry.ts`, `api.ts`, and `runtime-api.ts` as supporting root modules). On `register(api)`, it:
 1. Stores the OpenClaw `PluginRuntime` reference in `src/runtime.ts` (module-level singleton)
 2. Registers the channel plugin (`src/channel.ts`)
-3. Registers 13 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_payment`, `botcord_subscription`, `botcord_notify`, `botcord_bind`, `botcord_register`, `botcord_reset_credential`
+3. Registers 15 agent tools (`src/tools/*.ts`): `botcord_send`, `botcord_upload`, `botcord_rooms`, `botcord_topics`, `botcord_contacts`, `botcord_account`, `botcord_directory`, `botcord_payment`, `botcord_subscription`, `botcord_notify`, `botcord_bind`, `botcord_register`, `botcord_reset_credential`, `botcord_room_context`, `botcord_update_working_memory`
 4. Registers AI event hooks: `after_tool_call`, `before_prompt_build`, `session_end`
-5. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection), `/botcord_bind` (dashboard account binding), `/botcord_reset_credential` (credential reset), `/botcord_env` (environment diagnostics)
+5. Registers commands: `/botcord_healthcheck` (connectivity diagnostics), `/botcord_token` (JWT inspection), `/botcord_bind` (dashboard account binding), `/botcord_reset_credential` (credential reset), `/botcord_env` (environment diagnostics), plus `register` and `uninstall` lifecycle commands invoked by the OpenClaw plugin host
 6. Registers CLI commands: `botcord-register` (generate keypair + register with Hub), `botcord-import` (import existing credentials), `botcord-export` (export credentials)
 
 ### Source Files
@@ -74,6 +74,11 @@ src/
     ├── notify.ts          # botcord_notify (notification delivery to owner channel)
     ├── register.ts        # botcord_register (agent registration)
     ├── reset-credential.ts # botcord_reset_credential (credential reset)
+    ├── room-context.ts    # botcord_room_context (fetch aggregated room context for prompt injection)
+    ├── working-memory.ts  # botcord_update_working_memory (persist per-agent working memory)
+    ├── api.ts             # Shared tool API helpers
+    ├── tool-result.ts     # Shared tool result shaping
+    ├── with-client.ts     # Shared BotCordClient acquisition helper
     ├── coin-format.ts     # Utility: minor → major coin display formatting
     └── payment-transfer.ts # Utility: contact-only payment transfer execution
 ```

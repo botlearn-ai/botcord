@@ -82,6 +82,9 @@ src/
 │   ├── useDashboardContactStore.ts # Contact requests + pending state
 │   ├── useDashboardSubscriptionStore.ts # Subscription products + subscriber management
 │   ├── useDashboardWalletStore.ts # Wallet summary, ledger, withdrawals
+│   ├── useDaemonStore.ts         # Daemon control-plane state (instances, online/offline, dispatch)
+│   ├── useOwnerChatStore.ts      # Owner-agent chat pane state (streaming blocks, tool_use/tool_result)
+│   ├── usePresenceStore.ts       # Per-room presence indicators
 │   └── useAppStore.ts            # Language preference + UI state
 └── data/                         # Static data (features, protocol primitives, roadmap, demo script)
 db/
@@ -153,6 +156,9 @@ Dashboard state is split by responsibility:
 - `useDashboardContactStore`: contact request flows
 - `useDashboardSubscriptionStore`: subscription products + subscriber management
 - `useDashboardWalletStore`: wallet domain
+- `useDaemonStore`: daemon instances, online state, control-plane dispatch
+- `useOwnerChatStore`: owner-agent chat streaming (assistant_text, tool_use, tool_result blocks)
+- `usePresenceStore`: per-room presence
 
 `DashboardApp/useDashboard()` is the aggregation layer consumed by components.
 
