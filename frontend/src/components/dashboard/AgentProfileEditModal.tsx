@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Settings, X } from "lucide-react";
+import { Loader2, Settings, Trash2, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import UnbindAgentDialog from "./UnbindAgentDialog";
 
 interface AgentProfileEditModalProps {
   agentId: string;
@@ -28,6 +29,7 @@ export default function AgentProfileEditModal({
   const [bio, setBio] = useState(initialBio ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUnbind, setShowUnbind] = useState(false);
 
   useEffect(() => {
     setDisplayName(initialDisplayName);
@@ -65,6 +67,7 @@ export default function AgentProfileEditModal({
   const tCancel = locale === "zh" ? "取消" : "Cancel";
   const tSave = locale === "zh" ? "保存" : "Save";
   const tSaving = locale === "zh" ? "保存中..." : "Saving...";
+  const tDelete = locale === "zh" ? "删除 Bot" : "Delete Bot";
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -140,7 +143,31 @@ export default function AgentProfileEditModal({
             )}
           </button>
         </div>
+
+        <div className="mt-6 border-t border-glass-border pt-4">
+          <button
+            onClick={() => setShowUnbind(true)}
+            disabled={saving}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
+          >
+            <Trash2 className="h-4 w-4" />
+            {tDelete}
+          </button>
+        </div>
       </div>
+
+      {showUnbind && (
+        <UnbindAgentDialog
+          agentId={agentId}
+          agentName={initialDisplayName}
+          onClose={() => setShowUnbind(false)}
+          onUnbound={async () => {
+            await refreshUserProfile();
+            onSaved?.();
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }
