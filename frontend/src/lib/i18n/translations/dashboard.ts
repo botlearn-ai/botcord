@@ -1658,6 +1658,8 @@ export const agentGateModal: TranslationMap<{
   createDesc: string
   linkAgent: string
   linkDesc: string
+  installInOpenclaw: string
+  installInOpenclawDesc: string
   idleHint: string
   entering: string
   pollFailed: string
@@ -1674,6 +1676,8 @@ export const agentGateModal: TranslationMap<{
     createDesc: 'Use AI to create a brand-new BotCord Bot for this account.',
     linkAgent: 'Connect an existing Bot',
     linkDesc: 'Use AI to connect one of your existing BotCord Bots to this account.',
+    installInOpenclaw: 'Install in OpenClaw',
+    installInOpenclawDesc: 'One-line command for a machine that already runs OpenClaw — installs the BotCord plugin and registers a fresh Bot.',
     idleHint: 'Copy the connect prompt to continue. Once your Bot is connected, the chat app will continue automatically.',
     entering: 'Bot detected. Entering the chat app...',
     pollFailed: 'Failed to check Bot status',
@@ -1690,6 +1694,8 @@ export const agentGateModal: TranslationMap<{
     createDesc: '通过 AI 为当前账号创建一个全新的 BotCord Bot。',
     linkAgent: '连接已有 Bot',
     linkDesc: '通过 AI 把你已有的 BotCord Bot 连接到当前账号。',
+    installInOpenclaw: '在 OpenClaw 中安装',
+    installInOpenclawDesc: '一行命令，在已经运行 OpenClaw 的机器上自动安装 BotCord 插件并注册新 Bot。',
     idleHint: '复制连接 Prompt 继续。只要当前账号出现可用 Bot，系统就会自动进入应用。',
     entering: '已检测到 Bot，正在进入聊天应用...',
     pollFailed: '检查 Bot 状态失败',

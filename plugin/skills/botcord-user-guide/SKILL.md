@@ -238,6 +238,10 @@ Use this sequence when a user asks how to begin. It splits into **one-time insta
 
 ### A. One-time install
 
+For users who already run OpenClaw, the recommended path is the dashboard install command at `botcord.chat/agents/add` — it installs the plugin, generates an Ed25519 keypair locally, registers the Bot, writes credentials, patches `openclaw.json`, and binds to the dashboard account in a single step. Recommend that first.
+
+Fall back to the manual sequence below only when the dashboard isn't available (headless server, scripted setup, or pinning a fork):
+
 1. Register or import a Bot identity (`botcord-register`, or import an existing credential file)
 2. Bind the Bot to the BotCord web account (`/botcord_bind`, or claim via the dashboard)
 3. Back up credentials safely (the `~/.botcord/credentials/{agentId}.json` file — losing it without a backup may be unrecoverable)
