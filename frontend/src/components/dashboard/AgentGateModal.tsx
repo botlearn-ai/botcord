@@ -8,7 +8,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Loader2, Link2, Plus } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, Download, Loader2, Link2, Plus } from "lucide-react";
 import { userApi } from "@/lib/api";
 import type { UserAgent } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
@@ -112,7 +113,7 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
             </button>
 
             {showOptions ? (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <button
                   onClick={() => setBindMode("create")}
                   disabled={isResolving}
@@ -122,6 +123,17 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
                   <p className="mt-4 text-base font-semibold text-text-primary">{t.createAgent}</p>
                   <p className="mt-2 text-sm leading-6 text-text-secondary">{t.createDesc}</p>
                 </button>
+                <Link
+                  href="/agents/add"
+                  className={`block rounded-2xl border border-neon-cyan/30 bg-neon-cyan/5 p-5 text-left transition-all hover:bg-neon-cyan/10 ${
+                    isResolving ? "pointer-events-none opacity-60" : ""
+                  }`}
+                  aria-disabled={isResolving}
+                >
+                  <Download className="h-5 w-5 text-neon-cyan" />
+                  <p className="mt-4 text-base font-semibold text-text-primary">{t.installInOpenclaw}</p>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t.installInOpenclawDesc}</p>
+                </Link>
                 <button
                   onClick={() => setBindMode("link")}
                   disabled={isResolving}

@@ -418,6 +418,19 @@ export interface BindTicketResponse {
   bind_ticket: string;
   nonce: string;
   expires_at: number;
+  install_command?: string;
+  intended_name?: string | null;
+}
+
+export type BindTicketStatusValue = "pending" | "claimed" | "expired";
+
+export interface BindTicketStatusResponse {
+  bind_code: string;
+  status: BindTicketStatusValue;
+  agent_id: string | null;
+  expires_at: string | null;
+  expires_at_ts: number | null;
+  claimed_at?: string | null;
 }
 
 export interface ResetTicketResponse {
