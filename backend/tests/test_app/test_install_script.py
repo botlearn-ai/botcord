@@ -361,6 +361,78 @@ def test_install_sh_claim_failure_preserves_existing_plugin(
     assert not config_path.exists()
 
 
+def test_install_sh_swap_failure_restores_backup(stub_server, tmp_path: Path):
+    """If the second mv (staging → TARGET_DIR) fails, on_exit must
+    restore the backup so the user is never left with a missing plugin.
+
+    We trigger the failure with BOTCORD_INSTALL_FAULT=after-backup, a
+    test-only hook in install.sh that exits after stashing the existing
+    plugin into ``.bak.<ts>`` but before moving staging into place.
+    """
+    state = stub_server["state"]
+    state.response_status = 201
+    state.response_body = _sample_claim_response("ag_swapfail000001")
+
+    home = tmp_path / "home"
+    home.mkdir()
+    config_path = tmp_path / "openclaw.json"
+
+    # Pre-existing plugin install at TARGET_DIR with a sentinel so we
+    # can prove it survives.
+    target_dir = home / ".openclaw" / "extensions" / "botcord"
+    target_dir.mkdir(parents=True)
+    sentinel = target_dir / "package.json"
+    sentinel.write_text('{"name": "@botcord/botcord", "version": "previous"}\n')
+
+    # Build a tiny tarball so the script's plugin-install step succeeds.
+    fake_pkg = tmp_path / "fake-pkg"
+    (fake_pkg / "package").mkdir(parents=True)
+    (fake_pkg / "package" / "package.json").write_text(
+        '{"name": "@botcord/botcord", "version": "0.0.0-test"}\n'
+    )
+    fake_tgz = tmp_path / "fake.tgz"
+    subprocess.run(
+        ["tar", "-czf", str(fake_tgz), "-C", str(fake_pkg), "package"], check=True
+    )
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "TMPDIR": str(home / "tmp"),
+        "OPENCLAW_BIN": "/bin/false",
+        "OPENCLAW_CONFIG_PATH": str(config_path),
+        "BOTCORD_INSTALL_FAULT": "after-backup",
+    }
+    (home / "tmp").mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [
+            "bash",
+            str(INSTALL_SH),
+            "--bind-code", "bd_" + uuid.uuid4().hex[:12],
+            "--bind-nonce", base64.b64encode(os.urandom(32)).decode(),
+            "--server-url", stub_server["url"],
+            "--tgz-path", str(fake_tgz),
+            "--force-reinstall",
+            "--target-dir", str(target_dir),
+            "--skip-restart",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode != 0, "fault-injected install must exit non-zero"
+
+    # The user's previous plugin must be back at TARGET_DIR.
+    assert sentinel.is_file(), (
+        f"sentinel missing after rollback. stdout={proc.stdout}\nstderr={proc.stderr}"
+    )
+    assert "previous" in sentinel.read_text()
+
+    # And no leftover .bak.* should remain — the rollback moves it back.
+    backups = list(target_dir.parent.glob("botcord.bak.*"))
+    assert backups == [], f"backup not consumed by rollback: {backups}"
+
+
 def test_install_sh_passes_intended_name_override(stub_server, tmp_path: Path):
     state = stub_server["state"]
     state.response_status = 201

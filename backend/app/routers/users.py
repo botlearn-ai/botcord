@@ -273,6 +273,73 @@ async def _consume_bind_code(code: str) -> bool:
     return await _consume_short_code(code, "bind")
 
 
+async def _consume_bind_code_with_claim(code: str, agent_id: str) -> bool:
+    """Atomically consume a bind code AND stamp the resulting agent_id.
+
+    install-claim derives ``agent_id`` deterministically from the public
+    key before it ever touches the short_code row, so we can write
+    ``payload_json.claimed_agent_id`` in the same transaction that flips
+    ``consumed_at`` to non-null. Doing it as two separate writes left a
+    race window where ``GET /bind-ticket/{code}`` between the consume and
+    the metadata write saw a consumed row with no claimed_agent_id and
+    reported it as ``revoked`` — terminal-looking — even though the
+    agent was about to appear.
+
+    Returns True on first-use, False if the code was already consumed,
+    expired, or unknown (semantics identical to ``_consume_bind_code``).
+    """
+    async with _short_code_session_factory() as code_session:
+        now = _utc_now()
+        # Read the row first to merge the existing payload (so we keep
+        # bind_ticket / intended_name) with the new claim metadata. The
+        # WHERE clause on the UPDATE below still guarantees only one
+        # caller wins the consume, so the read is harmless to the
+        # uniqueness invariant.
+        select_result = await code_session.execute(
+            select(ShortCode.payload_json).where(
+                ShortCode.code == code,
+                ShortCode.kind == "bind",
+                ShortCode.consumed_at.is_(None),
+                ShortCode.use_count < ShortCode.max_uses,
+                ShortCode.expires_at > now,
+            )
+        )
+        existing_payload_json = select_result.scalar_one_or_none()
+        if existing_payload_json is None:
+            return False
+        try:
+            payload = json.loads(existing_payload_json)
+        except json.JSONDecodeError:
+            payload = {}
+        payload["claimed_agent_id"] = agent_id
+        payload["claimed_at"] = now.isoformat()
+        new_payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+        update_result = await code_session.execute(
+            update(ShortCode)
+            .where(
+                ShortCode.code == code,
+                ShortCode.kind == "bind",
+                ShortCode.consumed_at.is_(None),
+                ShortCode.use_count < ShortCode.max_uses,
+                ShortCode.expires_at > now,
+            )
+            .values(
+                use_count=ShortCode.use_count + 1,
+                consumed_at=case(
+                    (ShortCode.use_count + 1 >= ShortCode.max_uses, now),
+                    else_=ShortCode.consumed_at,
+                ),
+                payload_json=new_payload_json,
+            )
+        )
+        if update_result.rowcount == 0:
+            await code_session.rollback()
+            return False
+        await code_session.commit()
+        return True
+
+
 async def _peek_reset_code(code: str) -> str | None:
     return await _peek_short_code(code, "credential_reset", "reset_ticket")
 
@@ -1214,26 +1281,6 @@ def _generic_invalid_bind_code() -> HTTPException:
     return HTTPException(status_code=400, detail="INVALID_BIND_CODE")
 
 
-async def _record_claim_outcome(code: str, agent_id: str) -> None:
-    """Record claim metadata on the short_code so the dashboard owner can poll."""
-    now = _utc_now()
-    async with _short_code_session_factory() as code_session:
-        result = await code_session.execute(
-            select(ShortCode).where(ShortCode.code == code, ShortCode.kind == "bind")
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return
-        try:
-            payload = json.loads(row.payload_json) if row.payload_json else {}
-        except json.JSONDecodeError:
-            payload = {}
-        payload["claimed_agent_id"] = agent_id
-        payload["claimed_at"] = now.isoformat()
-        row.payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-        await code_session.commit()
-
-
 @router.post("/me/agents/install-claim", status_code=201)
 async def install_claim(
     body: InstallClaimBody,
@@ -1326,9 +1373,11 @@ async def install_claim(
         )
     is_first = current_count == 0
 
-    # 10. Atomically consume the short_code (one-shot). If we lose the race,
+    # 10. Atomically consume the short_code AND stamp it with the
+    #     deterministic agent_id so polling never sees a "consumed but
+    #     no agent" intermediate state. If we lose the consume race,
     #     surface as INVALID_BIND_CODE.
-    if not await _consume_bind_code(body.bind_code):
+    if not await _consume_bind_code_with_claim(body.bind_code, agent_id):
         raise _generic_invalid_bind_code()
 
     # 11. Burn the JTI (separate connection, commits independently).
@@ -1379,8 +1428,9 @@ async def install_claim(
     await db.commit()
     await db.refresh(agent)
 
-    # 13. Record claim metadata on the short_code for owner polling.
-    await _record_claim_outcome(body.bind_code, agent_id)
+    # claimed_agent_id was already written into short_code.payload_json
+    # by _consume_bind_code_with_claim above, so dashboard polling sees
+    # a fully consistent state without a "revoked" intermediate read.
 
     return {
         "agent_id": agent_id,

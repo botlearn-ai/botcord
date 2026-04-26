@@ -345,6 +345,53 @@ async def test_install_claim_happy_path(
 
 
 @pytest.mark.asyncio
+async def test_install_claim_consume_atomically_records_agent_id(
+    client: AsyncClient, fresh_user: dict, db_session: AsyncSession
+):
+    """Regression: short_code.payload_json must contain claimed_agent_id
+    by the time the consume row flips to consumed_at, so polling never
+    observes a "consumed but no agent" state and reports it as revoked.
+    """
+    data = await _issue_bind_code(client, fresh_user["token"])
+    pubkey_b64, pubkey_formatted, sk = _gen_keypair()
+    sig = _sign_nonce(sk, data["nonce"])
+
+    resp = await client.post(
+        "/api/users/me/agents/install-claim",
+        json={
+            "bind_code": data["bind_code"],
+            "pubkey": pubkey_formatted,
+            "proof": {"nonce": data["nonce"], "sig": sig},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    expected_agent_id = generate_agent_id(pubkey_b64)
+
+    # Inspect the row directly: consumed_at must be non-null AND
+    # payload_json must already include claimed_agent_id. There must
+    # never be a window where the first is true but the second isn't.
+    sc_row = (
+        await db_session.execute(
+            select(ShortCode).where(ShortCode.code == data["bind_code"])
+        )
+    ).scalar_one()
+    assert sc_row.consumed_at is not None
+    payload = json.loads(sc_row.payload_json)
+    assert payload["claimed_agent_id"] == expected_agent_id
+    assert "claimed_at" in payload
+
+    # And the polling endpoint reports "claimed" (not "revoked").
+    poll = await client.get(
+        f"/api/users/me/agents/bind-ticket/{data['bind_code']}",
+        headers={"Authorization": f"Bearer {fresh_user['token']}"},
+    )
+    assert poll.status_code == 200
+    body = poll.json()
+    assert body["status"] == "claimed"
+    assert body["agent_id"] == expected_agent_id
+
+
+@pytest.mark.asyncio
 async def test_install_claim_replay_rejected(client: AsyncClient, fresh_user: dict):
     data = await _issue_bind_code(client, fresh_user["token"])
     pubkey_b64, pubkey_formatted, sk = _gen_keypair()

@@ -52,6 +52,13 @@ LOG_DIR="$HOME/.botcord/log"
 TS="$(date +%Y%m%d_%H%M%S)"
 RUN_LOG="${TMPDIR:-/tmp}/botcord-install-${TS}-$$.log"
 STAGING_DIR=""
+# Swap state for the post-claim plugin replacement. ``BACKUP_DIR`` names
+# the directory that holds the user's previous plugin while we move the
+# staged one into place. ``SWAP_DONE`` flips to ``true`` only after both
+# moves succeed; if the script dies between them, on_exit restores the
+# backup so the user is never left with a missing plugin.
+BACKUP_DIR=""
+SWAP_DONE="false"
 
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 : > "$RUN_LOG" 2>/dev/null || RUN_LOG="/dev/null"
@@ -64,6 +71,18 @@ log_quiet() { printf "[botcord] %s\n" "$*" >> "$RUN_LOG"; }  # log only to file 
 on_exit() {
   local code=$?
   if [ "$code" -ne 0 ]; then
+    # Plugin-swap rollback: if we stashed the previous install but did
+    # not finish moving the staged one into place, restore the backup
+    # so the live target never ends up missing.
+    if [ "$SWAP_DONE" != "true" ] && [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+      log_error "rolling back plugin swap; restoring $BACKUP_DIR → $TARGET_DIR"
+      rm -rf -- "$TARGET_DIR" 2>/dev/null || true
+      if mv -- "$BACKUP_DIR" "$TARGET_DIR" 2>>"$RUN_LOG"; then
+        log_error "previous plugin restored at $TARGET_DIR"
+      else
+        log_error "rollback failed; previous plugin is at $BACKUP_DIR"
+      fi
+    fi
     if [ -d "${STAGING_DIR:-/nonexistent}" ]; then
       rm -rf -- "$STAGING_DIR" 2>/dev/null || true
     fi
@@ -363,9 +382,20 @@ if [ "$WANT_PLUGIN_SWAP" = "true" ] && [ -n "$STAGING_DIR" ] && [ -d "$STAGING_D
     BACKUP_DIR="${TARGET_DIR}.bak.${TS}"
     log "moving existing $TARGET_DIR → $BACKUP_DIR"
     mv -- "$TARGET_DIR" "$BACKUP_DIR"
+    # From here on, on_exit will restore BACKUP_DIR if the script dies
+    # before SWAP_DONE flips below.
+  fi
+  # Fault-injection hook for tests: if BOTCORD_INSTALL_FAULT=after-backup,
+  # exit between the two moves so the on_exit rollback path is exercised
+  # against a real filesystem state. Never fires in production unless the
+  # caller explicitly opts in with this env var.
+  if [ "${BOTCORD_INSTALL_FAULT:-}" = "after-backup" ]; then
+    log_error "BOTCORD_INSTALL_FAULT=after-backup; aborting before second mv"
+    exit 73
   fi
   mv -- "$STAGING_DIR" "$TARGET_DIR"
-  STAGING_DIR=""  # ownership transferred; on_exit shouldn't rm the live install
+  STAGING_DIR=""   # ownership transferred; on_exit shouldn't rm the live install
+  SWAP_DONE="true" # second move succeeded — disarm the rollback
   log "plugin installed at $TARGET_DIR"
 fi
 
