@@ -1787,12 +1787,19 @@ async def get_room_messages(
         for t in topic_result.scalars().all():
             topic_info[t.topic_id] = {"title": t.title}
 
-    # Resolve human sender user display names (only for human room rows)
+    # Resolve human sender user display names (human-room + owner-chat rows)
     human_user_ids = {
         r.source_user_id for r in records
-        if (r.source_type or "") == "dashboard_human_room" and r.source_user_id
+        if (r.source_type or "") in ("dashboard_human_room", "dashboard_user_chat")
+        and r.source_user_id
     }
     user_name_map = await load_user_display_names(db, human_user_ids)
+
+    # Owner-chat rooms (rm_oc_*) are always viewed as the human owner — both
+    # user-typed messages and the agent's replies share sender_id=agent_id, so
+    # anchoring the viewer to the agent would mark every message as "mine".
+    if room_id.startswith("rm_oc_"):
+        viewer_agent_id = None
 
     messages = []
     for rec in records:
