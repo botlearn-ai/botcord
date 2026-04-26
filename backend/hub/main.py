@@ -8,7 +8,7 @@ import sentry_sdk
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from hub.i18n import I18nHTTPException, detect_locale, get_hint, get_message
 
@@ -215,6 +215,25 @@ async def structured_http_exception_handler(request: Request, exc: HTTPException
 @app.get("/health", tags=["health"])
 async def health():
     return {"status": "ok"}
+
+
+_INSTALL_SH_PATH = _PROJECT_ROOT / "static" / "openclaw" / "install.sh"
+
+
+@app.get("/openclaw/install.sh", tags=["onboarding"])
+async def serve_install_script():
+    """Serve the BotCord plugin installer for the dashboard one-line command.
+
+    Cached briefly at the CDN; the dashboard always pairs it with a fresh
+    bind code in the bash arguments, so a stale script body remains safe.
+    """
+    if not _INSTALL_SH_PATH.is_file():
+        raise HTTPException(status_code=404, detail="install.sh not packaged")
+    return FileResponse(
+        _INSTALL_SH_PATH,
+        media_type="text/x-sh",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 app.include_router(registry_router)
