@@ -186,6 +186,17 @@ DAEMON_DISPATCH_MAX_TIMEOUT_MS: int = int(
     os.getenv("DAEMON_DISPATCH_MAX_TIMEOUT_MS", "60000")
 )
 
+# OpenClaw host (plugin) control plane — mirrors daemon's defaults.
+OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS: int = int(
+    os.getenv("OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS", "3600")
+)
+OPENCLAW_REFRESH_TOKEN_TTL_SECONDS: int = int(
+    os.getenv("OPENCLAW_REFRESH_TOKEN_TTL_SECONDS", str(60 * 60 * 24 * 30))
+)
+OPENCLAW_PROVISION_TICKET_TTL_SECONDS: int = int(
+    os.getenv("OPENCLAW_PROVISION_TICKET_TTL_SECONDS", "300")
+)
+
 # ---------------------------------------------------------------------------
 # Cold-start claim gift
 # 固定窗口: 2026-04-07 00:00:00 +08:00 <= now < 2026-07-08 00:00:00 +08:00

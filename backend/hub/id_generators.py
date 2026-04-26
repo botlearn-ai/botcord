@@ -103,6 +103,16 @@ def generate_daemon_instance_id() -> str:
     return "dm_" + secrets.token_hex(6)
 
 
+def generate_openclaw_host_id_from_pubkey(pubkey_b64: str) -> str:
+    """Derive openclaw host id deterministically from the host pubkey.
+
+    Same pattern as :func:`generate_agent_id` so a re-install with the same
+    keypair maps back to the same host row.
+    """
+    digest = hashlib.sha256(pubkey_b64.encode()).hexdigest()
+    return "oc_" + digest[:12]
+
+
 def generate_daemon_device_code() -> str:
     """Generate device-code secret: 'dc_' + 32 random hex chars."""
     return "dc_" + secrets.token_hex(16)
