@@ -1501,6 +1501,12 @@ async def send_contact_request(
         if agent is None:
             raise HTTPException(status_code=404, detail="Agent not found")
 
+        if agent.user_id == user.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot send contact request to your own agent",
+            )
+
         if agent.user_id is not None:
             # Claimed agent: queue for owner's approval.
             payload = {
