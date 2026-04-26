@@ -7,7 +7,6 @@ import re
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import HTTPException
 
 from hub.config import (
     ALLOW_PRIVATE_ENDPOINTS,
