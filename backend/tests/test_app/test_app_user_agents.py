@@ -17,8 +17,27 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock, patch
 
-from hub.enums import TxType
-from hub.models import Agent, Base, KeyState, MessagePolicy, Role, SigningKey, User, UserRole, WalletTransaction
+from hub.enums import (
+    BillingInterval,
+    SubscriptionProductStatus,
+    SubscriptionStatus,
+    TxStatus,
+    TxType,
+)
+from hub.models import (
+    Agent,
+    AgentSubscription,
+    Base,
+    KeyState,
+    MessagePolicy,
+    Role,
+    SigningKey,
+    SubscriptionProduct,
+    User,
+    UserRole,
+    WalletAccount,
+    WalletTransaction,
+)
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
@@ -134,6 +153,8 @@ async def seed_user(db_session: AsyncSession):
 
     user_role = UserRole(id=uuid.uuid4(), user_id=user_id, role_id=role.id)
     db_session.add(user_role)
+    owner_user_role = UserRole(id=uuid.uuid4(), user_id=user_id, role_id=agent_owner_role.id)
+    db_session.add(owner_user_role)
 
     now = datetime.datetime.now(datetime.timezone.utc)
 
@@ -173,21 +194,62 @@ async def seed_user(db_session: AsyncSession):
 
 
 # ---------------------------------------------------------------------------
-# DELETE /api/users/me/agents/{agent_id}
+# GET /api/users/me/agents
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_delete_agent(client: AsyncClient, seed_user: dict):
+async def test_get_my_agents_hides_deleted_by_default_and_can_include_them(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    deleted_at = datetime.datetime.now(datetime.timezone.utc)
+    seed_user["agent2"].status = "deleted"
+    seed_user["agent2"].deleted_at = deleted_at
+    await db_session.commit()
+
+    default_resp = await client.get(
+        "/api/users/me/agents",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert default_resp.status_code == 200
+    default_agents = default_resp.json()["agents"]
+    assert [agent["agent_id"] for agent in default_agents] == ["ag_agent001"]
+
+    include_resp = await client.get(
+        "/api/users/me/agents?include_deleted=true",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert include_resp.status_code == 200
+    agents_by_id = {
+        agent["agent_id"]: agent
+        for agent in include_resp.json()["agents"]
+    }
+    assert set(agents_by_id) == {"ag_agent001", "ag_agent002"}
+    assert agents_by_id["ag_agent002"]["status"] == "deleted"
+    assert agents_by_id["ag_agent002"]["deleted_at"] == deleted_at.isoformat()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/users/me/agents/{agent_id}/binding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_binding(client: AsyncClient, db_session: AsyncSession, seed_user: dict):
     """Unbinding the default agent promotes the next one."""
     token = seed_user["token"]
+    original_claim_code = seed_user["agent1"].claim_code
 
     resp = await client.delete(
-        "/api/users/me/agents/ag_agent001",
+        "/api/users/me/agents/ag_agent001/binding",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True}
+    body = resp.json()
+    assert body["agent_id"] == "ag_agent001"
+    assert body["unbound_at"]
 
     # Verify agent2 became default
     agents_resp = await client.get(
@@ -198,16 +260,271 @@ async def test_delete_agent(client: AsyncClient, seed_user: dict):
     assert len(agents) == 1
     assert agents[0]["agent_id"] == "ag_agent002"
     assert agents[0]["is_default"] is True
+    assert agents[0]["status"] == "active"
+
+    agent_result = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_agent001"))
+    agent = agent_result.scalar_one()
+    assert agent.user_id is None
+    assert agent.claimed_at is None
+    assert agent.is_default is False
+    assert agent.agent_token is None
+    assert agent.token_expires_at is None
+    assert agent.claim_code is not None
+    assert agent.claim_code != original_claim_code
+
+    role_result = await db_session.execute(
+        select(UserRole)
+        .where(
+            UserRole.user_id == seed_user["user_id"],
+            UserRole.role_id == seed_user["agent_owner_role"].id,
+        )
+    )
+    assert role_result.scalar_one_or_none() is not None
 
 
 @pytest.mark.asyncio
-async def test_delete_agent_not_found(client: AsyncClient, seed_user: dict):
+async def test_legacy_delete_route_is_deprecated_unbind(client: AsyncClient, seed_user: dict):
     token = seed_user["token"]
     resp = await client.delete(
-        "/api/users/me/agents/ag_nonexistent",
+        "/api/users/me/agents/ag_agent002",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers["deprecation"] == "true"
+    body = resp.json()
+    assert body["deprecated"] is True
+    assert body["ok"] is True
+    assert body["agent_id"] == "ag_agent002"
+    assert body["unbound_at"]
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_not_found(client: AsyncClient, seed_user: dict):
+    token = seed_user["token"]
+    resp = await client.delete(
+        "/api/users/me/agents/ag_nonexistent/binding",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_second_time_404(client: AsyncClient, seed_user: dict):
+    token = seed_user["token"]
+    first = await client.delete(
+        "/api/users/me/agents/ag_agent002/binding",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first.status_code == 200
+
+    second = await client.delete(
+        "/api/users/me/agents/ag_agent002/binding",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert second.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_cross_user_404(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    other_supabase_uuid = uuid.uuid4()
+    other_user_id = uuid.uuid4()
+    db_session.add(
+        User(
+            id=other_user_id,
+            display_name="Other User",
+            status="active",
+            supabase_user_id=other_supabase_uuid,
+            max_agents=10,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {_make_supabase_token(str(other_supabase_uuid))}"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unbind_last_agent_removes_agent_owner_role(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    seed_user["agent2"].user_id = None
+    seed_user["agent2"].claimed_at = None
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 200
+
+    role_result = await db_session.execute(
+        select(UserRole)
+        .where(
+            UserRole.user_id == seed_user["user_id"],
+            UserRole.role_id == seed_user["agent_owner_role"].id,
+        )
+    )
+    assert role_result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_rejects_non_empty_wallet(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    db_session.add(
+        WalletAccount(
+            owner_id="ag_agent001",
+            asset_code="COIN",
+            available_balance_minor=1,
+            locked_balance_minor=0,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "wallet_not_empty"
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_rejects_product_with_active_subscribers(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    db_session.add(
+        SubscriptionProduct(
+            product_id="sp_test001",
+            owner_agent_id="ag_agent001",
+            name="Paid Room",
+            amount_minor=100,
+            billing_interval=BillingInterval.month,
+            status=SubscriptionProductStatus.active,
+        )
+    )
+    db_session.add(
+        AgentSubscription(
+            subscription_id="sub_test001",
+            product_id="sp_test001",
+            subscriber_agent_id="ag_agent002",
+            provider_agent_id="ag_agent001",
+            amount_minor=100,
+            billing_interval=BillingInterval.month,
+            status=SubscriptionStatus.active,
+            current_period_start=now,
+            current_period_end=now + datetime.timedelta(days=30),
+            next_charge_at=now + datetime.timedelta(days=30),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "product_has_subscribers"
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_cancels_subscriber_subscriptions(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    db_session.add(
+        Agent(
+            agent_id="ag_provider",
+            display_name="Provider",
+            message_policy=MessagePolicy.contacts_only,
+            is_default=False,
+            claimed_at=now,
+        )
+    )
+    db_session.add(
+        SubscriptionProduct(
+            product_id="sp_provider",
+            owner_agent_id="ag_provider",
+            name="Provider Plan",
+            amount_minor=100,
+            billing_interval=BillingInterval.month,
+            status=SubscriptionProductStatus.active,
+        )
+    )
+    db_session.add(
+        AgentSubscription(
+            subscription_id="sub_agent001",
+            product_id="sp_provider",
+            subscriber_agent_id="ag_agent001",
+            provider_agent_id="ag_provider",
+            amount_minor=100,
+            billing_interval=BillingInterval.month,
+            status=SubscriptionStatus.active,
+            current_period_start=now,
+            current_period_end=now + datetime.timedelta(days=30),
+            next_charge_at=now + datetime.timedelta(days=30),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 200
+
+    sub_result = await db_session.execute(
+        select(AgentSubscription).where(AgentSubscription.subscription_id == "sub_agent001")
+    )
+    subscription = sub_result.scalar_one()
+    assert subscription.status == SubscriptionStatus.cancelled
+    assert subscription.cancelled_at is not None
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_rejects_pending_payment(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    db_session.add(
+        WalletTransaction(
+            tx_id="tx_pending001",
+            type=TxType.transfer,
+            status=TxStatus.pending,
+            asset_code="COIN",
+            amount_minor=10,
+            fee_minor=0,
+            from_owner_id="ag_agent001",
+            to_owner_id="ag_agent002",
+            initiator_owner_id="ag_agent001",
+            idempotency_key="pending-unbind-test",
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "pending_obligations"
 
 
 # ---------------------------------------------------------------------------

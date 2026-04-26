@@ -63,6 +63,12 @@ class Base(DeclarativeBase):
 
 class Agent(Base):
     __tablename__ = "agents"
+    __table_args__ = (
+        CheckConstraint(
+            "hosting_kind IS NULL OR hosting_kind IN ('daemon', 'plugin', 'cli')",
+            name="ck_agents_hosting_kind",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     agent_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
@@ -77,15 +83,21 @@ class Agent(Base):
     user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
     agent_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    claim_code: Mapped[str] = mapped_column(
+    claim_code: Mapped[str | None] = mapped_column(
         String(64),
-        nullable=False,
+        nullable=True,
         unique=True,
         index=True,
         default=lambda: f"clm_{_uuid.uuid4().hex}",
     )
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", server_default="active")
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    daemon_instance_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("daemon_instances.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    hosting_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Runtime selected at creation (claude-code / codex / gemini / ...).
     # Null for agents created via bind_code.
     runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -94,6 +106,14 @@ class Agent(Base):
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")
     used_nonces: Mapped[list["UsedNonce"]] = relationship(back_populates="agent")
     endpoints: Mapped[list["Endpoint"]] = relationship(back_populates="agent")
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == "active"
+
+    @property
+    def is_deletable(self) -> bool:
+        return self.status == "active" and self.user_id is not None
 
 
 class SigningKey(Base):

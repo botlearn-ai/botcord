@@ -13,9 +13,9 @@ import json
 import logging
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func as sa_func, select, update
+from sqlalchemy import delete, case, func as sa_func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,9 +27,32 @@ from hub.routers.hub import is_agent_ws_online
 from hub.routers.daemon_control import is_daemon_online, send_control_frame
 from hub.crypto import verify_challenge_sig
 from hub.database import async_session as _default_session_factory, get_db
-from hub.models import Agent, DaemonInstance, Role, ShortCode, SigningKey, User, UserRole
+from hub.models import (
+    Agent,
+    AgentSubscription,
+    DaemonInstance,
+    Role,
+    ShortCode,
+    SigningKey,
+    SubscriptionChargeAttempt,
+    SubscriptionProduct,
+    TopupRequest,
+    User,
+    UserRole,
+    WalletAccount,
+    WalletTransaction,
+    WithdrawalRequest,
+)
 from hub.id_generators import generate_agent_id, generate_key_id
-from hub.enums import KeyState
+from hub.enums import (
+    KeyState,
+    SubscriptionChargeAttemptStatus,
+    SubscriptionProductStatus,
+    SubscriptionStatus,
+    TopupStatus,
+    TxStatus,
+    WithdrawalStatus,
+)
 from hub.schemas import ResetCredentialResponse
 from hub.services import wallet as wallet_svc
 from hub.services.wallet import get_or_create_wallet
@@ -182,6 +205,178 @@ async def _ensure_agent_owner_role(
     )
     if existing_ur.scalar_one_or_none() is None:
         db.add(UserRole(user_id=user_id, role_id=agent_owner_role.id))
+
+
+async def _maybe_remove_agent_owner_role(db: AsyncSession, user_id: UUID) -> None:
+    """Remove global agent_owner role only after the user owns no active agents."""
+    remaining_result = await db.execute(
+        select(sa_func.count())
+        .select_from(Agent)
+        .where(
+            Agent.user_id == user_id,
+            Agent.status == "active",
+        )
+    )
+    if (remaining_result.scalar_one() or 0) > 0:
+        return
+
+    role_result = await db.execute(select(Role).where(Role.name == "agent_owner"))
+    agent_owner_role = role_result.scalar_one_or_none()
+    if agent_owner_role is None:
+        return
+
+    await db.execute(
+        delete(UserRole).where(
+            UserRole.user_id == user_id,
+            UserRole.role_id == agent_owner_role.id,
+        )
+    )
+
+
+async def _ensure_agent_unbind_allowed(db: AsyncSession, agent_id: str) -> None:
+    wallet_result = await db.execute(
+        select(WalletAccount.id)
+        .where(
+            WalletAccount.owner_id == agent_id,
+            (WalletAccount.available_balance_minor != 0)
+            | (WalletAccount.locked_balance_minor != 0),
+        )
+        .limit(1)
+    )
+    if wallet_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="wallet_not_empty")
+
+    active_owner_products = (
+        select(SubscriptionProduct.product_id)
+        .where(
+            SubscriptionProduct.owner_agent_id == agent_id,
+            SubscriptionProduct.status == SubscriptionProductStatus.active,
+        )
+        .subquery()
+    )
+    subscriber_result = await db.execute(
+        select(AgentSubscription.id)
+        .where(
+            AgentSubscription.product_id.in_(select(active_owner_products.c.product_id)),
+            AgentSubscription.status == SubscriptionStatus.active,
+        )
+        .limit(1)
+    )
+    if subscriber_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="product_has_subscribers")
+
+    pending_tx_result = await db.execute(
+        select(WalletTransaction.id)
+        .where(
+            (
+                (WalletTransaction.from_owner_id == agent_id)
+                | (WalletTransaction.to_owner_id == agent_id)
+                | (WalletTransaction.initiator_owner_id == agent_id)
+            ),
+            WalletTransaction.status.in_([TxStatus.pending, TxStatus.processing]),
+        )
+        .limit(1)
+    )
+    if pending_tx_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="pending_obligations")
+
+    pending_topup_result = await db.execute(
+        select(TopupRequest.id)
+        .where(TopupRequest.owner_id == agent_id, TopupRequest.status == TopupStatus.pending)
+        .limit(1)
+    )
+    pending_withdrawal_result = await db.execute(
+        select(WithdrawalRequest.id)
+        .where(
+            WithdrawalRequest.owner_id == agent_id,
+            WithdrawalRequest.status.in_([WithdrawalStatus.pending, WithdrawalStatus.approved]),
+        )
+        .limit(1)
+    )
+    pending_charge_result = await db.execute(
+        select(SubscriptionChargeAttempt.id)
+        .join(
+            AgentSubscription,
+            AgentSubscription.subscription_id == SubscriptionChargeAttempt.subscription_id,
+        )
+        .where(
+            (
+                (AgentSubscription.subscriber_agent_id == agent_id)
+                | (AgentSubscription.provider_agent_id == agent_id)
+            ),
+            SubscriptionChargeAttempt.status == SubscriptionChargeAttemptStatus.pending,
+        )
+        .limit(1)
+    )
+    if (
+        pending_topup_result.scalar_one_or_none() is not None
+        or pending_withdrawal_result.scalar_one_or_none() is not None
+        or pending_charge_result.scalar_one_or_none() is not None
+    ):
+        raise HTTPException(status_code=409, detail="pending_obligations")
+
+
+async def _cancel_agent_subscriptions(db: AsyncSession, agent_id: str, now: datetime.datetime) -> None:
+    result = await db.execute(
+        select(AgentSubscription).where(
+            AgentSubscription.subscriber_agent_id == agent_id,
+            AgentSubscription.status == SubscriptionStatus.active,
+        )
+    )
+    for subscription in result.scalars().all():
+        subscription.status = SubscriptionStatus.cancelled
+        subscription.cancelled_at = now
+        subscription.cancel_at_period_end = False
+
+
+async def _promote_next_default_agent(db: AsyncSession, user_id: UUID, agent_id: str) -> None:
+    next_result = await db.execute(
+        select(Agent)
+        .where(
+            Agent.user_id == user_id,
+            Agent.agent_id != agent_id,
+            Agent.status == "active",
+        )
+        .order_by(Agent.created_at)
+        .limit(1)
+    )
+    next_agent = next_result.scalar_one_or_none()
+    if next_agent is not None:
+        next_agent.is_default = True
+
+
+async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID) -> dict:
+    result = await db.execute(
+        select(Agent).where(
+            Agent.agent_id == agent_id,
+            Agent.user_id == user_id,
+            Agent.status == "active",
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    await _ensure_agent_unbind_allowed(db, agent_id)
+
+    now = _utc_now()
+    was_default = agent.is_default
+
+    await _cancel_agent_subscriptions(db, agent_id, now)
+
+    agent.user_id = None
+    agent.claimed_at = None
+    agent.is_default = False
+    agent.agent_token = None
+    agent.token_expires_at = None
+    agent.claim_code = f"clm_{uuid4().hex}"
+
+    if was_default:
+        await _promote_next_default_agent(db, user_id, agent_id)
+
+    await _maybe_remove_agent_owner_role(db, user_id)
+    await db.flush()
+    return {"agent_id": agent_id, "unbound_at": now.isoformat()}
 
 
 async def _maybe_grant_claim_gift(
@@ -424,7 +619,9 @@ async def _bind_agent_to_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     count_result = await db.execute(
-        select(sa_func.count()).select_from(Agent).where(Agent.user_id == user_id)
+        select(sa_func.count())
+        .select_from(Agent)
+        .where(Agent.user_id == user_id, Agent.status == "active")
     )
     current_count = count_result.scalar_one()
 
@@ -440,6 +637,8 @@ async def _bind_agent_to_user(
     # Find existing agent
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
+    if agent is not None and agent.status != "active":
+        raise HTTPException(status_code=410, detail="agent_deleted")
 
     if agent is None:
         # Agent not in DB yet — try insert inside a savepoint; if a concurrent
@@ -467,7 +666,11 @@ async def _bind_agent_to_user(
             # Fall through to conditional update below
             upd_result = await db.execute(
                 update(Agent)
-                .where(Agent.agent_id == agent_id, Agent.user_id.is_(None))
+                .where(
+                    Agent.agent_id == agent_id,
+                    Agent.user_id.is_(None),
+                    Agent.status == "active",
+                )
                 .values(
                     user_id=user_id,
                     display_name=display_name,
@@ -486,7 +689,11 @@ async def _bind_agent_to_user(
         # Atomic conditional update: only bind if user_id is still NULL
         upd_result = await db.execute(
             update(Agent)
-            .where(Agent.agent_id == agent_id, Agent.user_id.is_(None))
+            .where(
+                Agent.agent_id == agent_id,
+                Agent.user_id.is_(None),
+                Agent.status == "active",
+            )
             .values(
                 user_id=user_id,
                 display_name=display_name,
@@ -537,7 +744,9 @@ async def get_me(
 
     # Load agents belonging to this user
     agent_result = await db.execute(
-        select(Agent).where(Agent.user_id == user.id).order_by(Agent.created_at)
+        select(Agent)
+        .where(Agent.user_id == user.id, Agent.status == "active")
+        .order_by(Agent.created_at)
     )
     agents = agent_result.scalars().all()
 
@@ -567,12 +776,16 @@ async def get_me(
 
 @router.get("/me/agents")
 async def get_my_agents(
+    include_deleted: bool = Query(default=False),
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Return list of agents belonging to the authenticated user."""
+    stmt = select(Agent).where(Agent.user_id == ctx.user_id)
+    if not include_deleted:
+        stmt = stmt.where(Agent.status == "active")
     agent_result = await db.execute(
-        select(Agent).where(Agent.user_id == ctx.user_id).order_by(Agent.created_at)
+        stmt.order_by(Agent.created_at)
     )
     agents = agent_result.scalars().all()
 
@@ -585,6 +798,8 @@ async def get_my_agents(
                 "message_policy": a.message_policy.value if a.message_policy else None,
                 "is_default": a.is_default,
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
+                "status": a.status,
+                "deleted_at": a.deleted_at.isoformat() if a.deleted_at else None,
                 "ws_online": is_agent_ws_online(a.agent_id),
             }
             for a in agents
@@ -605,7 +820,11 @@ async def get_agent_identity(
 ):
     """Return agent_id and agent_token for the specified agent owned by the user."""
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
+        select(Agent).where(
+            Agent.agent_id == agent_id,
+            Agent.user_id == ctx.user_id,
+            Agent.status == "active",
+        )
     )
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -618,47 +837,35 @@ async def get_agent_identity(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /api/users/me/agents/{agent_id}
+# DELETE /api/users/me/agents/{agent_id}/binding
 # ---------------------------------------------------------------------------
+
+
+@router.delete("/me/agents/{agent_id}/binding")
+async def unbind_agent_binding(
+    agent_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unbind an active agent from the current user."""
+    payload = await _unbind_agent_from_user(db, agent_id, ctx.user_id)
+    await db.commit()
+    return payload
 
 
 @router.delete("/me/agents/{agent_id}")
 async def delete_agent(
     agent_id: str,
+    response: Response,
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Unbind an agent from the current user."""
-    result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
-    )
-    agent = result.scalar_one_or_none()
-    if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    was_default = agent.is_default
-
-    # Unbind agent
-    agent.user_id = None
-    agent.claimed_at = None
-    agent.is_default = False
-    agent.agent_token = None
-    agent.token_expires_at = None
-
-    # If the deleted agent was default, promote the next agent by earliest created_at
-    if was_default:
-        next_result = await db.execute(
-            select(Agent)
-            .where(Agent.user_id == ctx.user_id, Agent.agent_id != agent_id)
-            .order_by(Agent.created_at)
-            .limit(1)
-        )
-        next_agent = next_result.scalar_one_or_none()
-        if next_agent is not None:
-            next_agent.is_default = True
-
+    """Deprecated alias for unbinding an agent from the current user."""
+    payload = await _unbind_agent_from_user(db, agent_id, ctx.user_id)
     await db.commit()
-    return {"ok": True}
+    response.headers["Deprecation"] = "true"
+    response.headers["Link"] = f'</api/users/me/agents/{agent_id}/binding>; rel="successor-version"'
+    return {"ok": True, "deprecated": True, **payload}
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +882,11 @@ async def patch_agent(
 ):
     """Update agent attributes (is_default, display_name, bio)."""
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
+        select(Agent).where(
+            Agent.agent_id == agent_id,
+            Agent.user_id == ctx.user_id,
+            Agent.status == "active",
+        )
     )
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -685,7 +896,11 @@ async def patch_agent(
         # Unset default on all other agents for this user
         await db.execute(
             update(Agent)
-            .where(Agent.user_id == ctx.user_id, Agent.agent_id != agent_id)
+            .where(
+                Agent.user_id == ctx.user_id,
+                Agent.agent_id != agent_id,
+                Agent.status == "active",
+            )
             .values(is_default=False)
         )
         agent.is_default = True
@@ -762,7 +977,11 @@ async def create_credential_reset_ticket(
 ):
     """Issue a one-time credential reset ticket for an owned agent."""
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id, Agent.user_id == ctx.user_id)
+        select(Agent).where(
+            Agent.agent_id == agent_id,
+            Agent.user_id == ctx.user_id,
+            Agent.status == "active",
+        )
     )
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -822,7 +1041,7 @@ async def claim_resolve(
 
     # Look up the agent
     result = await db.execute(
-        select(Agent).where(Agent.claim_code == claim_code)
+        select(Agent).where(Agent.claim_code == claim_code, Agent.status == "active")
     )
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -836,7 +1055,9 @@ async def claim_resolve(
     user = user_result.scalar_one()
 
     count_result = await db.execute(
-        select(sa_func.count()).select_from(Agent).where(Agent.user_id == ctx.user_id)
+        select(sa_func.count())
+        .select_from(Agent)
+        .where(Agent.user_id == ctx.user_id, Agent.status == "active")
     )
     current_count = count_result.scalar_one()
 
@@ -1051,7 +1272,11 @@ async def reset_agent_credential(
         raise HTTPException(status_code=401, detail="Reset ticket has invalid uid")
 
     result = await db.execute(
-        select(Agent).where(Agent.agent_id == body.agent_id, Agent.user_id == user_id)
+        select(Agent).where(
+            Agent.agent_id == body.agent_id,
+            Agent.user_id == user_id,
+            Agent.status == "active",
+        )
     )
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -1202,7 +1427,9 @@ async def provision_agent(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     count_result = await db.execute(
-        select(sa_func.count()).select_from(Agent).where(Agent.user_id == ctx.user_id)
+        select(sa_func.count())
+        .select_from(Agent)
+        .where(Agent.user_id == ctx.user_id, Agent.status == "active")
     )
     current_count = count_result.scalar_one()
     if current_count >= user.max_agents:
@@ -1238,6 +1465,8 @@ async def provision_agent(
         is_default=is_first,
         claimed_at=now,
         runtime=runtime,
+        daemon_instance_id=body.daemon_instance_id,
+        hosting_kind="daemon",
     )
     db.add(agent)
     db.add(
