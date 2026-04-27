@@ -74,7 +74,6 @@ export default function CreateAgentDialog({
     [daemons],
   );
 
-  const [hostKind, setHostKind] = useState<"daemon" | "openclaw">("daemon");
   const [selectedDaemonId, setSelectedDaemonId] = useState<string | null>(null);
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
   const [selectedGateway, setSelectedGateway] = useState<string | null>(null);
@@ -234,42 +233,7 @@ export default function CreateAgentDialog({
           <p className="mt-2 text-sm text-text-secondary">{t.description}</p>
         </div>
 
-        <div className="mb-4 inline-flex rounded-xl border border-glass-border bg-glass-bg/40 p-0.5 text-xs">
-          <button
-            type="button"
-            onClick={() => {
-              setHostKind("daemon");
-              setError(null);
-            }}
-            disabled={submitting}
-            className={`rounded-lg px-3 py-1.5 transition-colors ${
-              hostKind === "daemon"
-                ? "bg-neon-cyan/20 text-neon-cyan"
-                : "text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            Local daemon
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setHostKind("openclaw");
-              setError(null);
-            }}
-            disabled={submitting}
-            className={`rounded-lg px-3 py-1.5 transition-colors ${
-              hostKind === "openclaw"
-                ? "bg-neon-cyan/20 text-neon-cyan"
-                : "text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            OpenClaw host
-          </button>
-        </div>
-
-        {hostKind === "openclaw" ? (
-          <OpenclawBranch onSuccess={onSuccess} onClose={onClose} />
-        ) : !loaded && loading ? (
+        {!loaded && loading ? (
           <div className="flex items-center justify-center py-10 text-text-secondary">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
@@ -394,7 +358,7 @@ export default function CreateAgentDialog({
           </p>
         )}
 
-        {hostKind === "daemon" && !showEmptyState && loaded && (
+        {!showEmptyState && loaded && (
           <div className="mt-6 flex items-center justify-end gap-3">
             <button
               onClick={onClose}
