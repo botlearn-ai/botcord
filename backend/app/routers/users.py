@@ -2510,15 +2510,25 @@ async def openclaw_provision(
             },
         )
 
+    # Trust check: a buggy or compromised host could ack with someone
+    # else's agent_id. Only return success if the row was actually
+    # produced by *this* provision (correct owner + same host instance).
+    # Note we deliberately don't fall through to a different "wrong agent"
+    # error code — leaking that an unrelated agent_id exists is itself a
+    # disclosure.
     agent_q = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = agent_q.scalar_one_or_none()
-    if agent is None:
+    if (
+        agent is None
+        or str(agent.user_id) != str(ctx.user_id)
+        or agent.openclaw_host_id != instance.id
+    ):
         await _burn_provision_code()
         raise HTTPException(
             status_code=502,
             detail={
                 "code": "openclaw_provision_failed",
-                "host_message": "agent row not found post-claim",
+                "host_message": "agent row not found or not bound to this host",
             },
         )
 

@@ -359,6 +359,53 @@ async def test_openclaw_install_endpoint_rejects_anon(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_openclaw_provision_rejects_wrong_agent_in_ack(
+    client: AsyncClient, fresh_user: dict, db_session: AsyncSession, monkeypatch
+):
+    """A buggy/compromised host that acks with someone else's agent_id
+    must not be reported as success — the BFF has to verify ownership +
+    host binding before returning to the dashboard.
+    """
+    issued = await _issue_install(client, fresh_user["token"], name="A")
+    claim = (await _claim(client, issued["bind_code"], issued["nonce"])).json()
+    host_id = claim["host"]["host_instance_id"]
+
+    # Pretend an unrelated user owns a different agent on a different host.
+    stranger_id = uuid.uuid4()
+    other_agent = Agent(
+        agent_id="ag_stranger12",
+        display_name="stranger",
+        user_id=stranger_id,
+        is_default=False,
+        hosting_kind="plugin",
+        openclaw_host_id=None,
+        status="active",
+    )
+    db_session.add(other_agent)
+    await db_session.commit()
+
+    # Stub the registry + control frame send so the BFF thinks the host
+    # is online and the host's "ack" returns the stranger's agent_id.
+    from hub.routers import openclaw_control as oc_mod
+
+    monkeypatch.setattr(oc_mod, "is_openclaw_host_online", lambda _hid: True)
+
+    async def fake_send_control_frame(_hid, _type, _params, *_a, **_kw):
+        return {"ok": True, "result": {"agent_id": "ag_stranger12"}}
+
+    monkeypatch.setattr(oc_mod, "send_host_control_frame", fake_send_control_frame)
+
+    resp = await client.post(
+        "/api/users/me/agents/openclaw/provision",
+        json={"openclaw_host_id": host_id, "name": "should-fail"},
+        headers={"Authorization": f"Bearer {fresh_user['token']}"},
+    )
+    assert resp.status_code == 502
+    body = resp.json()
+    assert body["detail"]["code"] == "openclaw_provision_failed"
+
+
+@pytest.mark.asyncio
 async def test_openclaw_hosts_list_returns_owned_only(
     client: AsyncClient, fresh_user: dict
 ):

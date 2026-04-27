@@ -351,7 +351,7 @@ export default function CreateAgentDialog({
           </p>
         )}
 
-        {!showEmptyState && loaded && (
+        {hostKind === "daemon" && !showEmptyState && loaded && (
           <div className="mt-6 flex items-center justify-end gap-3">
             <button
               onClick={onClose}
@@ -607,6 +607,10 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ticket, setTicket] = useState<OpenclawInstallTicket | null>(null);
+  const [manualAttachNotice, setManualAttachNotice] = useState<{
+    agentId: string;
+    reason: string | null;
+  } | null>(null);
 
   useEffect(() => {
     void refresh();
@@ -642,14 +646,16 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
         });
         await onSuccess(res.agentId);
         if (!res.configPatched) {
-          // Hub created the agent + the host wrote credentials, but the
-          // host couldn't auto-attach (multi-account guard or IO error).
-          // Warn loudly via console so the dashboard at least surfaces a
-          // signal until the toast plumbing carries it. Closing the
-          // dialog still happens — the agent IS created.
-          console.warn(
-            `[botcord] agent ${res.agentId} created but openclaw config not auto-patched (${res.configSkipReason || "unknown"}). Manually edit ~/.openclaw/openclaw.json on the host.`,
-          );
+          // Agent IS created on Hub and credentials landed on disk,
+          // but the host couldn't auto-attach (multi-account guard or
+          // IO error). Don't auto-close — render a visible notice so
+          // the user knows a manual config edit is required before the
+          // agent will actually start sending/receiving.
+          setManualAttachNotice({
+            agentId: res.agentId,
+            reason: res.configSkipReason,
+          });
+          return;
         }
         onClose();
       } else {
@@ -664,6 +670,38 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (manualAttachNotice) {
+    const reasonText =
+      manualAttachNotice.reason === "multi_account_guard"
+        ? "BotCord currently supports only one configured agent per OpenClaw host. The new credentials are on disk but you'll need to swap them into ~/.openclaw/openclaw.json (or run the install command for the new agent on a separate host)."
+        : manualAttachNotice.reason === "io_error"
+          ? "The plugin couldn't write to ~/.openclaw/openclaw.json — check permissions on the host."
+          : "The plugin couldn't auto-register this agent in ~/.openclaw/openclaw.json.";
+    return (
+      <div className="space-y-4">
+        <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">
+          <p className="font-semibold">Agent created — manual attach required</p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+            <span className="font-mono">{manualAttachNotice.agentId}</span> was
+            registered on the Hub and its credentials were written on the host,
+            but it will not start sending or receiving messages until you update
+            the OpenClaw config and reload the plugin.
+          </p>
+          <p className="mt-2 text-xs text-amber-100/70">{reasonText}</p>
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-glass-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (ticket) {
