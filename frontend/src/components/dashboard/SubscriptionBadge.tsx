@@ -221,8 +221,8 @@ export default function SubscriptionBadge({
           ? t.subscriptionActive
           : t.startSubscription;
 
-  const formatAmount = (minor: number, assetCode: string) =>
-    `${(minor / 100).toFixed(2)} ${assetCode}`;
+  const formatAmount = (minor: number, _assetCode: string) =>
+    `${(minor / 100).toFixed(2)} USDC`;
 
   const trigger = variant === "button" ? (
     <button

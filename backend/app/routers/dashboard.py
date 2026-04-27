@@ -170,6 +170,7 @@ async def _build_rooms_from_sql(
             return mapped
         orm_room_by_id = {room["room_id"]: room for room in orm_rooms}
         fill_keys = (
+            "owner_type",
             "join_policy",
             "can_invite",
             "required_subscription_product_id",

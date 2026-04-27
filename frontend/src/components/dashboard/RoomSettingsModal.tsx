@@ -1147,7 +1147,7 @@ export default function RoomSettingsModal({
         <PlanChangeConfirmDialog
           fromLabel={
             subscriptionProduct
-              ? `${(Number(subscriptionProduct.amount_minor) / 100).toFixed(2)} ${subscriptionProduct.asset_code} / ${subscriptionProduct.billing_interval}`
+              ? `${(Number(subscriptionProduct.amount_minor) / 100).toFixed(2)} USDC / ${subscriptionProduct.billing_interval}`
               : "—"
           }
           toLabel={`${Number(priceInput).toFixed(2)} USDC / ${billingInterval}`}
