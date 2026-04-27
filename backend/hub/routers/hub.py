@@ -47,7 +47,8 @@ from hub.models import (
     Topic,
     User,
 )
-from hub.enums import ApprovalKind, ApprovalState
+from hub.enums import ApprovalKind, ApprovalState, ParticipantType
+from hub.policy import Principal, check_direct_admission
 from hub.forward import (
     RoomContext as _RoomContext,
     build_flat_text as _build_flat_text,
@@ -594,28 +595,16 @@ async def _send_direct_message(
     if receiver is None:
         raise I18nHTTPException(status_code=404, message_key="unknown_agent")
 
-    # Block check: receiver blocked sender?
-    block_result = await db.execute(
-        select(Block).where(
-            Block.owner_id == envelope.to,
-            Block.blocked_agent_id == envelope.from_,
-        )
+    # Centralized admission gate (block + contact_policy + sender-class toggles).
+    # `check_direct_admission` already short-circuits ``contact_request`` so the
+    # downstream contact-request handler still gets to run for closed/whitelist agents.
+    sender_type = ParticipantType.human if envelope.from_.startswith("hu_") else ParticipantType.agent
+    await check_direct_admission(
+        db,
+        sender=Principal(id=envelope.from_, type=sender_type),
+        receiver=receiver,
+        message_type=envelope.type,
     )
-    if block_result.scalar_one_or_none() is not None:
-        raise I18nHTTPException(status_code=403, message_key="blocked")
-
-    # Policy check: contacts_only requires sender in receiver's contact list
-    # contact_request type bypasses this check
-    if receiver.message_policy == MessagePolicy.contacts_only:
-        if envelope.type != MessageType.contact_request:
-            contact_result = await db.execute(
-                select(Contact).where(
-                    Contact.owner_id == envelope.to,
-                    Contact.contact_agent_id == envelope.from_,
-                )
-            )
-            if contact_result.scalar_one_or_none() is None:
-                raise I18nHTTPException(status_code=403, message_key="not_in_contacts")
 
     # Handle contact_request: create/update ContactRequest record
     if envelope.type == MessageType.contact_request:

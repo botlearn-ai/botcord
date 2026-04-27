@@ -1551,6 +1551,71 @@ describe("Dispatcher", () => {
     expect(composedItemCounts[1]).toBeLessThanOrEqual(8);
   });
 
+  it("attentionGate=false skips the runtime turn but still acks and runs onInbound (PR3)", async () => {
+    const runtime = new FakeRuntime();
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const channels = new Map<string, ChannelAdapter>([[channel.id, channel]]);
+    const accept = vi.fn(async () => {});
+    const onInbound = vi.fn();
+    const attentionGate = vi.fn(async () => false);
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels,
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      onInbound,
+      attentionGate,
+    });
+    await dispatcher.handle(makeEnvelope({ id: "m_gated", text: "hello" }, { accept }));
+    expect(accept).toHaveBeenCalledTimes(1);
+    expect(onInbound).toHaveBeenCalledTimes(1);
+    expect(attentionGate).toHaveBeenCalledTimes(1);
+    expect(runtime.calls.length).toBe(0);
+    expect(channel.sends.length).toBe(0);
+  });
+
+  it("attentionGate=true wakes the runtime as usual (PR3)", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const channels = new Map<string, ChannelAdapter>([[channel.id, channel]]);
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels,
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      attentionGate: () => true,
+    });
+    await dispatcher.handle(makeEnvelope({ id: "m_wake" }));
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.sends.length).toBe(1);
+  });
+
+  it("attentionGate throwing fails open and runs the turn (PR3)", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const channels = new Map<string, ChannelAdapter>([[channel.id, channel]]);
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels,
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      attentionGate: () => {
+        throw new Error("boom");
+      },
+    });
+    await dispatcher.handle(makeEnvelope({ id: "m_wake_throw" }));
+    expect(runtime.calls.length).toBe(1);
+  });
+
   it("owner-chat detection: dashboard_user_chat in non-rm_oc room still sends reply", async () => {
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
     const { dispatcher, channel } = await scaffold({

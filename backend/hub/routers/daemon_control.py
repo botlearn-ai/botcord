@@ -544,6 +544,10 @@ _ALLOWED_DISPATCH_TYPES = {
     "set_route",
     "ping",
     "list_runtimes",
+    # PR3: BFF fans this out from PATCH /api/agents/{id}/policy and the
+    # per-room override endpoints (the latter ship in PR2). Daemon handler
+    # invalidates `policyResolver` cache for the (agent, room?) pair.
+    "policy_updated",
 }
 
 

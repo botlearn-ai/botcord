@@ -1995,12 +1995,32 @@ async def human_room_send(
         )
         blocked_by = {row[0] for row in block_result.all()}
 
+    # When the sender is a Human (no active agent), filter out agent members
+    # whose `allow_human_sender=False` opted out of human-originated traffic.
+    human_blocked_agents: set[str] = set()
+    if active_agent_id is None and member_ids:
+        agent_member_ids = [
+            m.agent_id for m in all_members
+            if m.participant_type == ParticipantType.agent
+        ]
+        if agent_member_ids:
+            from hub.models import Agent as _AgentModel  # local to avoid cycles
+            opt_out_rows = await db.execute(
+                select(_AgentModel.agent_id).where(
+                    _AgentModel.agent_id.in_(agent_member_ids),
+                    _AgentModel.allow_human_sender.is_(False),
+                )
+            )
+            human_blocked_agents = {row[0] for row in opt_out_rows.all()}
+
     # Fan-out targets: all members minus muted minus blockers. Sender is
     # INCLUDED (PRD §6.3) — only skipped if they themselves are muted or
     # happen to block themselves (shouldn't happen).
     receivers = [
         m for m in all_members
-        if not m.muted and m.agent_id not in blocked_by
+        if not m.muted
+        and m.agent_id not in blocked_by
+        and m.agent_id not in human_blocked_agents
     ]
     receiver_ids = [m.agent_id for m in receivers]
 

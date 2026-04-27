@@ -32,9 +32,11 @@ from hub.id_generators import generate_human_id
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ApprovalKind,
     ApprovalState,
+    AttentionMode,
     BetaCodeStatus,
     BetaWaitlistStatus,
     BillingInterval,
+    ContactPolicy,
     ContactRequestState,
     EndpointState,
     EntryDirection,
@@ -42,6 +44,7 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     MessagePolicy,
     MessageState,
     ParticipantType,
+    RoomInvitePolicy,
     RoomJoinPolicy,
     RoomJoinRequestStatus,
     RoomRole,
@@ -76,6 +79,33 @@ class Agent(Base):
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     message_policy: Mapped[MessagePolicy] = mapped_column(
         Enum(MessagePolicy), nullable=False, server_default="contacts_only"
+    )
+    contact_policy: Mapped[ContactPolicy] = mapped_column(
+        Enum(ContactPolicy, name="contactpolicy", native_enum=False, length=32),
+        nullable=False,
+        default=ContactPolicy.contacts_only,
+        server_default=ContactPolicy.contacts_only.value,
+    )
+    allow_agent_sender: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa_text("TRUE")
+    )
+    allow_human_sender: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa_text("TRUE")
+    )
+    room_invite_policy: Mapped[RoomInvitePolicy] = mapped_column(
+        Enum(RoomInvitePolicy, name="roominvitepolicy", native_enum=False, length=32),
+        nullable=False,
+        default=RoomInvitePolicy.contacts_only,
+        server_default=RoomInvitePolicy.contacts_only.value,
+    )
+    default_attention: Mapped[AttentionMode] = mapped_column(
+        Enum(AttentionMode, name="attentionmode", native_enum=False, length=32),
+        nullable=False,
+        default=AttentionMode.always,
+        server_default=AttentionMode.always.value,
+    )
+    attention_keywords: Mapped[str] = mapped_column(
+        Text, nullable=False, default="[]", server_default="[]"
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -350,6 +380,51 @@ class RoomMember(Base):
         foreign_keys=[agent_id],
         viewonly=True,
         lazy="select",
+    )
+
+
+class AgentRoomPolicyOverride(Base):
+    """Per-room attention override for an agent (sparse).
+
+    NULL columns mean "inherit from agent default". ``muted_until`` is a
+    transient snooze timestamp; the resolver treats past values as no-op.
+
+    Admission policy is intentionally NOT scoped here — see design doc §3.2.
+    """
+
+    __tablename__ = "agent_room_policy_overrides"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "room_id", name="uq_arpo_agent_room"),
+        Index("ix_arpo_agent", "agent_id"),
+    )
+
+    # ``BigInteger`` for the Postgres BIGSERIAL; in SQLite tests this maps to
+    # plain INTEGER which still supports rowid autoincrement. Mirroring the
+    # dialect-neutral pattern used elsewhere in this module.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    room_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("rooms.room_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attention_mode: Mapped[AttentionMode | None] = mapped_column(
+        Enum(AttentionMode, name="attentionmode", native_enum=False, length=32),
+        nullable=True,
+    )
+    # JSON-encoded list[str]; NULL means inherit from the agent default.
+    keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
+    muted_until: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 

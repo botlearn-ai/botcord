@@ -52,6 +52,7 @@ from hub.models import (
     ShareMessage,
     User,
 )
+from hub.policy import Principal, check_room_invite_admission
 from hub.share_payloads import frontend_url, room_continue_url, room_entry_type, share_create_payload
 
 _logger = logging.getLogger(__name__)
@@ -1078,20 +1079,26 @@ async def invite_room_member_as_human(
     # divergence (e.g. a contacts_only target being 403'd on the sub-gate
     # before its owner had a chance to approve/reject via the queue).
 
-    # --- W2: admission policy (contacts_only, agent targets only) ---------
-    if target_agent is not None and target_agent.message_policy == MessagePolicy.contacts_only:
-        contact_row = await db.execute(
-            select(Contact).where(
-                Contact.owner_id == participant_id,
-                Contact.owner_type == ParticipantType.agent,
-                Contact.contact_agent_id == me,
+    # --- W2: admission policy via the central helper ----------------------
+    if target_agent is not None:
+        try:
+            await check_room_invite_admission(
+                db,
+                inviter=Principal(id=me, type=ParticipantType.human),
+                invitee=target_agent,
             )
-        )
-        if contact_row.scalar_one_or_none() is None:
-            raise HTTPException(
-                status_code=403,
-                detail="admission_denied_target_contacts_only",
-            )
+        except Exception as exc:
+            # Preserve the dashboard's plain HTTPException 403 contract while
+            # still surfacing the specific reason for newer keys.
+            from hub.i18n import I18nHTTPException as _I18nE
+            if isinstance(exc, _I18nE):
+                detail = (
+                    "admission_denied_target_contacts_only"
+                    if exc.message_key == "room_invite_requires_contact"
+                    else exc.message_key
+                )
+                raise HTTPException(status_code=403, detail=detail) from None
+            raise
 
     # --- C2: claimed-agent approval queue (agent targets only) ------------
     if (

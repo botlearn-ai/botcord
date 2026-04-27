@@ -5,6 +5,7 @@ import type {
   ChannelAdapter,
   GatewayConfig,
   GatewayInboundEnvelope,
+  GatewayInboundMessage,
   GatewayOutboundMessage,
   GatewayRoute,
   GatewaySessionEntry,
@@ -83,6 +84,18 @@ export interface DispatcherOptions {
    * and suppressed so observer failures never break the turn.
    */
   onOutbound?: OutboundObserver;
+  /**
+   * Optional attention gate (PR3, design §4.2). Resolved AFTER `onInbound`
+   * runs and BEFORE the runtime turn enqueues, so working memory / activity
+   * tracking still observe the message even when the gate skips the wake.
+   *
+   * Return `true` to wake the runtime, `false` to skip the turn. Errors are
+   * logged and treated as `true` (fail-open) so a buggy gate cannot silence
+   * the agent.
+   */
+  attentionGate?: (
+    message: GatewayInboundMessage,
+  ) => Promise<boolean> | boolean;
 }
 
 interface TurnSlot {
@@ -148,6 +161,9 @@ export class Dispatcher {
   private readonly onOutbound?: OutboundObserver;
   private readonly composeUserTurn?: UserTurnBuilder;
   private readonly managedRoutes?: Map<string, GatewayRoute>;
+  private readonly attentionGate?: (
+    message: GatewayInboundMessage,
+  ) => Promise<boolean> | boolean;
   private readonly queues: Map<string, QueueState> = new Map();
 
   constructor(opts: DispatcherOptions) {
@@ -162,6 +178,7 @@ export class Dispatcher {
     this.onOutbound = opts.onOutbound;
     this.composeUserTurn = opts.composeUserTurn;
     this.managedRoutes = opts.managedRoutes;
+    this.attentionGate = opts.attentionGate;
   }
 
   /** Consume one inbound envelope, ack it once ownership is decided, then run its turn. */
@@ -223,6 +240,32 @@ export class Dispatcher {
           messageId: msg.id,
           error: err instanceof Error ? err.message : String(err),
         });
+      }
+    }
+
+    // Attention gate (PR3, design §4.2). Inserted AFTER `onInbound` so the
+    // working-memory append + activity tracking still see the message — only
+    // the runtime turn is suppressed. Errors are treated as wake (fail-open)
+    // so a buggy gate cannot silence the agent.
+    if (this.attentionGate) {
+      let wake = true;
+      try {
+        const result = this.attentionGate(msg);
+        wake = result instanceof Promise ? await result : result;
+      } catch (err) {
+        this.log.warn("dispatcher: attentionGate threw — waking", {
+          messageId: msg.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        wake = true;
+      }
+      if (!wake) {
+        this.log.debug("dispatcher skip turn: attention policy", {
+          messageId: msg.id,
+          accountId: msg.accountId,
+          conversationId: msg.conversation.id,
+        });
+        return;
       }
     }
 

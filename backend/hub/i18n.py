@@ -267,6 +267,30 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "Admission denied: target agent has contacts_only policy and you are not in their contacts",
         Locale.ZH: "准入被拒绝：目标 Agent 设置了仅联系人策略，而您不在其联系人列表中",
     },
+    "agent_senders_disabled": {
+        Locale.EN: "Target agent does not accept messages from other agents",
+        Locale.ZH: "目标 Agent 不接受其他 Agent 的消息",
+    },
+    "human_senders_disabled": {
+        Locale.EN: "Target agent does not accept messages from human users",
+        Locale.ZH: "目标 Agent 不接受人类用户的消息",
+    },
+    "not_in_whitelist": {
+        Locale.EN: "Sender is not on the agent's whitelist",
+        Locale.ZH: "发送者不在该 Agent 的白名单中",
+    },
+    "agent_closed_to_new_contacts": {
+        Locale.EN: "Target agent is closed to new contacts",
+        Locale.ZH: "目标 Agent 已关闭新联系人",
+    },
+    "room_invite_requires_contact": {
+        Locale.EN: "Target agent only accepts room invites from contacts",
+        Locale.ZH: "目标 Agent 仅接受联系人发出的入群邀请",
+    },
+    "agent_closed_to_room_invites": {
+        Locale.EN: "Target agent is closed to room invites",
+        Locale.ZH: "目标 Agent 已关闭入群邀请",
+    },
     "room_is_full": {
         Locale.EN: "Room is full",
         Locale.ZH: "房间已满",
@@ -538,6 +562,14 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "Duplicate message",
         Locale.ZH: "重复消息",
     },
+
+    # -----------------------------------------------------------------------
+    # Per-room attention override (policy.py)
+    # -----------------------------------------------------------------------
+    "attention_override_not_allowed_in_dm": {
+        Locale.EN: "Attention overrides are not allowed in direct-message rooms",
+        Locale.ZH: "私聊房间不允许设置注意力策略",
+    },
 }
 
 
@@ -802,6 +834,30 @@ HINT_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "The target agent's policy requires you to be in their contacts first.",
         Locale.ZH: "目标 Agent 设置了仅联系人策略，请先添加为联系人。",
     },
+    "agent_senders_disabled": {
+        Locale.EN: "The target agent has disabled inbound traffic from other agents.",
+        Locale.ZH: "目标 Agent 已关闭来自其他 Agent 的入站。",
+    },
+    "human_senders_disabled": {
+        Locale.EN: "The target agent has disabled inbound traffic from human users.",
+        Locale.ZH: "目标 Agent 已关闭来自人类用户的入站。",
+    },
+    "not_in_whitelist": {
+        Locale.EN: "Ask the agent owner to whitelist you (add you as a contact).",
+        Locale.ZH: "请联系该 Agent 的所有者将您加入白名单（添加为联系人）。",
+    },
+    "agent_closed_to_new_contacts": {
+        Locale.EN: "The target agent is not accepting new contacts.",
+        Locale.ZH: "目标 Agent 当前不接受新联系人。",
+    },
+    "room_invite_requires_contact": {
+        Locale.EN: "The target agent only accepts room invites from existing contacts.",
+        Locale.ZH: "目标 Agent 仅接受联系人发出的入群邀请。",
+    },
+    "agent_closed_to_room_invites": {
+        Locale.EN: "The target agent is not accepting room invites.",
+        Locale.ZH: "目标 Agent 当前不接受入群邀请。",
+    },
     "room_is_full": {
         Locale.EN: "The room has reached its member limit. Ask the owner to increase max_members.",
         Locale.ZH: "房间已达成员上限，请联系所有者增大 max_members。",
@@ -1061,6 +1117,10 @@ HINT_MESSAGES: dict[str, dict[Locale, str]] = {
     "duplicate_message": {
         Locale.EN: "This message was already sent. Use a different msg_id.",
         Locale.ZH: "该消息已发送过，请使用不同的 msg_id。",
+    },
+    "attention_override_not_allowed_in_dm": {
+        Locale.EN: "Direct-message rooms always use 'always' — adjust the agent's global attention defaults instead.",
+        Locale.ZH: "私聊房间始终为‘全部回复’，如需调整请修改 Agent 的全局注意力策略。",
     },
 
     # -----------------------------------------------------------------------

@@ -27,6 +27,8 @@ import {
   type UpdateAgentParams,
 } from "@botcord/protocol-core";
 import type { Gateway } from "./gateway/index.js";
+import type { PolicyResolverLike } from "./gateway/policy-resolver.js";
+import type { PolicyUpdatedParams } from "@botcord/protocol-core";
 import type {
   GatewayChannelConfig,
   GatewayRuntimeSnapshot,
@@ -59,6 +61,14 @@ export interface ProvisionerOptions {
    * run without a real Hub.
    */
   register?: typeof BotCordClient.register;
+  /**
+   * Optional policy-resolver handle (PR3). When present, the
+   * `policy_updated` control frame routes through it: cache is invalidated
+   * for the (agent, room?) pair, and any embedded `policy` payload is
+   * applied directly so the next inbound sees the fresh policy without an
+   * extra round-trip.
+   */
+  policyResolver?: PolicyResolverLike;
 }
 
 /** The value a frame handler returns (minus the `id` which the channel fills in). */
@@ -74,6 +84,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
 ) => Promise<AckBody> {
   const gateway = opts.gateway;
   const register = opts.register ?? BotCordClient.register;
+  const policyResolver = opts.policyResolver;
 
   return async (frame: ControlFrame): Promise<AckBody> => {
     daemonLog.debug("provision.dispatch", { type: frame.type, id: frame.id });
@@ -122,6 +133,18 @@ export function createProvisioner(opts: ProvisionerOptions): (
           name: params.name ?? null,
         });
         const agent = await provisionAgent(params, { gateway, register });
+        // Seed the policy resolver from the optional `defaultAttention` /
+        // `attentionKeywords` fields (PR3, control-frame.ts). Hub builds that
+        // don't yet emit these stay backwards-compatible — the resolver just
+        // falls back to `mode=always` until a `policy_updated` frame arrives.
+        if (policyResolver && params.defaultAttention) {
+          policyResolver.put(agent.agentId, null, {
+            mode: params.defaultAttention,
+            keywords: Array.isArray(params.attentionKeywords)
+              ? params.attentionKeywords.slice()
+              : [],
+          });
+        }
         return {
           ok: true,
           result: {
@@ -159,6 +182,47 @@ export function createProvisioner(opts: ProvisionerOptions): (
         daemonLog.info("set_route: start", { frameId: frame.id });
         const res = setRoute(frame.params ?? {});
         return { ok: true, result: res };
+      }
+
+      case CONTROL_FRAME_TYPES.POLICY_UPDATED: {
+        const params = (frame.params ?? {}) as unknown as PolicyUpdatedParams;
+        const agentId = params.agent_id;
+        if (typeof agentId !== "string" || !agentId) {
+          return {
+            ok: false,
+            error: { code: "bad_params", message: "policy_updated requires agent_id" },
+          };
+        }
+        if (!policyResolver) {
+          // No resolver wired — quietly succeed; the daemon may be running
+          // without the gateway-level attention gate (e.g. legacy boot path).
+          daemonLog.debug("policy_updated: no resolver — noop", { agentId });
+          return { ok: true, result: { agent_id: agentId, applied: false } };
+        }
+        const roomId = typeof params.room_id === "string" ? params.room_id : undefined;
+        if (params.policy) {
+          // Embedded policy payload — install directly to avoid a refetch.
+          policyResolver.put(agentId, roomId ?? null, {
+            mode: params.policy.mode,
+            keywords: Array.isArray(params.policy.keywords)
+              ? params.policy.keywords.slice()
+              : [],
+            ...(typeof params.policy.muted_until === "number"
+              ? { muted_until: params.policy.muted_until }
+              : {}),
+          });
+        } else {
+          policyResolver.invalidate(agentId, roomId);
+        }
+        daemonLog.info("policy_updated: applied", {
+          agentId,
+          roomId: roomId ?? null,
+          embedded: !!params.policy,
+        });
+        return {
+          ok: true,
+          result: { agent_id: agentId, applied: true, embedded: !!params.policy },
+        };
       }
 
       case CONTROL_FRAME_TYPES.LIST_RUNTIMES: {
