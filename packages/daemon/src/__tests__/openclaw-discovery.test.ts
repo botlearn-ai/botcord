@@ -62,6 +62,33 @@ describe("discoverLocalOpenclawGateways", () => {
     );
   });
 
+  it("parses OpenClaw's native gateway.port + auth.token shape", async () => {
+    const dir = tempDir();
+    writeFileSync(
+      path.join(dir, "openclaw.json"),
+      JSON.stringify({
+        gateway: {
+          port: 18789,
+          bind: "loopback",
+          auth: { mode: "token", token: "native-token" },
+        },
+      }),
+    );
+
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [dir],
+      defaultPorts: [],
+    });
+
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:18789",
+        token: "native-token",
+        source: "config-file",
+      }),
+    ]);
+  });
+
   it("uses OPENCLAW_ACP_URL and token env vars", async () => {
     const found = await discoverLocalOpenclawGateways({
       searchPaths: [],
@@ -124,6 +151,27 @@ describe("discoverLocalOpenclawGateways", () => {
 });
 
 describe("mergeOpenclawGateways", () => {
+  it("backfills token onto an existing profile that lacks one", () => {
+    const cfg = baseConfig();
+    cfg.openclawGateways = [
+      { name: "openclaw-127-0-0-1-18789", url: "ws://127.0.0.1:18789" },
+    ];
+    const merged = mergeOpenclawGateways(cfg, [
+      {
+        name: "openclaw-127-0-0-1-18789",
+        url: "ws://127.0.0.1:18789",
+        token: "discovered",
+        source: "config-file",
+      },
+    ]);
+
+    expect(merged.changed).toBe(true);
+    expect(merged.added).toEqual([]);
+    expect(merged.cfg.openclawGateways).toEqual([
+      { name: "openclaw-127-0-0-1-18789", url: "ws://127.0.0.1:18789", token: "discovered" },
+    ]);
+  });
+
   it("appends new URLs and keeps existing profiles untouched", () => {
     const cfg = baseConfig();
     cfg.openclawGateways = [{ name: "local", url: "ws://127.0.0.1:18789/acp", token: "user-token" }];

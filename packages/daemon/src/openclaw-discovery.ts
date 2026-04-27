@@ -84,27 +84,46 @@ export function mergeOpenclawGateways(
   found: DiscoveredOpenclawGateway[],
 ): MergeOpenclawGatewayResult {
   const existing = cfg.openclawGateways ?? [];
-  const existingUrls = new Set(existing.map((g) => normalizeUrlKey(g.url)));
+  const byUrl = new Map<string, number>();
+  existing.forEach((g, i) => byUrl.set(normalizeUrlKey(g.url), i));
   const existingNames = new Set(existing.map((g) => g.name));
+  const merged = existing.map((g) => ({ ...g }));
   const added: OpenclawGatewayProfile[] = [];
+  let mutated = false;
 
   for (const item of found) {
     const key = normalizeUrlKey(item.url);
-    if (existingUrls.has(key)) continue;
+    const idx = byUrl.get(key);
+    if (idx !== undefined) {
+      // Same URL already configured — only fill in auth that the user is
+      // missing, never overwrite an existing token / tokenFile.
+      const cur = merged[idx];
+      if (!cur.token && !cur.tokenFile) {
+        if (item.token) {
+          cur.token = item.token;
+          mutated = true;
+        } else if (item.tokenFile) {
+          cur.tokenFile = item.tokenFile;
+          mutated = true;
+        }
+      }
+      continue;
+    }
     const profile: OpenclawGatewayProfile = {
       name: uniqueName(item.name, existingNames),
       url: item.url,
     };
     if (item.token) profile.token = item.token;
     else if (item.tokenFile) profile.tokenFile = item.tokenFile;
-    existingUrls.add(key);
+    byUrl.set(key, merged.length);
     existingNames.add(profile.name);
+    merged.push(profile);
     added.push(profile);
   }
 
-  if (added.length === 0) return { cfg, changed: false, added };
+  if (added.length === 0 && !mutated) return { cfg, changed: false, added };
   return {
-    cfg: { ...cfg, openclawGateways: [...existing, ...added] },
+    cfg: { ...cfg, openclawGateways: merged },
     changed: true,
     added,
   };
@@ -148,8 +167,32 @@ function discoverFromConfigDir(root: string): DiscoveredOpenclawGateway[] {
 
 function parseJsonConfig(raw: string): { url?: string; token?: string; tokenFile?: string } | null {
   const obj = JSON.parse(raw) as any;
+  // Prefer OpenClaw's native shape: `gateway.port` + `gateway.auth.token`.
+  // The legacy `acp.url` shape is also supported for explicit user-authored configs.
+  const native = pickOpenclawGatewayValues(obj?.gateway);
+  if (native) return native;
   const acp = obj?.acp ?? obj?.gateway?.acp ?? obj?.gateway ?? obj;
   return pickConfigValues(acp);
+}
+
+function pickOpenclawGatewayValues(
+  gw: any,
+): { url?: string; token?: string; tokenFile?: string } | null {
+  if (!gw || typeof gw !== "object") return null;
+  const port = typeof gw.port === "number" ? gw.port : undefined;
+  if (!port) return null;
+  // Local discovery always targets the loopback interface, regardless of how
+  // the gateway is bound — the daemon is on the same machine.
+  const url = `ws://127.0.0.1:${port}`;
+  const auth = gw.auth;
+  const out: { url: string; token?: string; tokenFile?: string } = { url };
+  if (auth && typeof auth === "object" && auth.mode === "token") {
+    if (typeof auth.token === "string" && auth.token.trim()) out.token = auth.token.trim();
+    else if (typeof auth.tokenFile === "string" && auth.tokenFile.trim()) {
+      out.tokenFile = auth.tokenFile.trim();
+    }
+  }
+  return out;
 }
 
 function parseTomlConfig(raw: string): { url?: string; token?: string; tokenFile?: string } | null {
