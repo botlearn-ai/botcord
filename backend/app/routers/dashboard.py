@@ -23,8 +23,10 @@ from hub.dashboard_message_shaping import (
     load_user_display_names,
 )
 from hub.id_generators import generate_hub_msg_id, generate_join_request_id
+from hub.enums import SubscriptionProductStatus, SubscriptionStatus
 from hub.models import (
     Agent,
+    AgentSubscription,
     Block,
     Contact,
     ContactRequest,
@@ -41,6 +43,7 @@ from hub.models import (
     RoomVisibility,
     Share,
     ShareMessage,
+    SubscriptionProduct,
     Topic,
     User,
 )
@@ -1105,6 +1108,27 @@ async def join_room(
     if room.join_policy != RoomJoinPolicy.open:
         raise HTTPException(status_code=403, detail="Room does not allow open joining")
 
+    if room.required_subscription_product_id is not None:
+        if viewer_type != ParticipantType.agent:
+            raise HTTPException(
+                status_code=403,
+                detail="Humans cannot join subscription-gated rooms directly",
+            )
+        sub_row = (
+            await db.execute(
+                select(AgentSubscription).where(
+                    AgentSubscription.subscriber_agent_id == viewer_id,
+                    AgentSubscription.product_id == room.required_subscription_product_id,
+                    AgentSubscription.status == SubscriptionStatus.active,
+                )
+            )
+        ).scalar_one_or_none()
+        if sub_row is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Active subscription required to join this room",
+            )
+
     # Check max_members — Humans occupy slots identically to Agents.
     if room.max_members is not None:
         count_result = await db.execute(
@@ -1231,7 +1255,27 @@ async def update_room_settings(
             raise HTTPException(status_code=400, detail="slow_mode_seconds must be >= 0")
         room.slow_mode_seconds = body.slow_mode_seconds
     if "required_subscription_product_id" in fields_set:
-        room.required_subscription_product_id = body.required_subscription_product_id or None
+        new_pid = body.required_subscription_product_id or None
+        if new_pid is not None:
+            product_row = (
+                await db.execute(
+                    select(SubscriptionProduct).where(
+                        SubscriptionProduct.product_id == new_pid
+                    )
+                )
+            ).scalar_one_or_none()
+            if product_row is None:
+                raise HTTPException(status_code=404, detail="Subscription product not found")
+            if product_row.owner_agent_id != room.owner_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Subscription product does not belong to room owner",
+                )
+            if product_row.status != SubscriptionProductStatus.active:
+                raise HTTPException(
+                    status_code=400, detail="Subscription product is not active"
+                )
+        room.required_subscription_product_id = new_pid
 
     await db.commit()
     await db.refresh(room)
@@ -1249,6 +1293,133 @@ async def update_room_settings(
         "max_members": room.max_members,
         "slow_mode_seconds": room.slow_mode_seconds,
         "required_subscription_product_id": room.required_subscription_product_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Migrate room subscription plan (atomic create + bind + archive)
+# ---------------------------------------------------------------------------
+
+
+class MigrateRoomPlanBody(BaseModel):
+    amount_minor: str = Field(..., min_length=1)
+    billing_interval: str = Field(..., description="week or month")
+    description: str = Field(default="")
+
+
+@router.post("/rooms/{room_id}/subscription/migrate-plan")
+async def migrate_room_subscription_plan(
+    room_id: str,
+    body: MigrateRoomPlanBody,
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Atomically swap a room's subscription plan.
+
+    Creates a new ``SubscriptionProduct``, points
+    ``room.required_subscription_product_id`` at it, archives the previous
+    product (if any and not referenced by other rooms). Existing subscribers
+    keep access until their next charge cycle, where ``_charge_subscription``
+    detects the mismatch and cancels them.
+    """
+    from hub.enums import BillingInterval
+    from hub.id_generators import generate_subscription_product_id
+    from hub.services import subscriptions as sub_svc
+
+    try:
+        amount = int(body.amount_minor)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid amount_minor")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="amount_minor must be positive")
+    try:
+        interval = BillingInterval(body.billing_interval)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="billing_interval must be 'week' or 'month'",
+        )
+    if interval not in {BillingInterval.week, BillingInterval.month}:
+        raise HTTPException(
+            status_code=400,
+            detail="billing_interval must be 'week' or 'month'",
+        )
+
+    room = (
+        await db.execute(select(Room).where(Room.room_id == room_id))
+    ).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.owner_id != ctx.active_agent_id:
+        raise HTTPException(
+            status_code=403, detail="Only the room owner can change the subscription plan"
+        )
+
+    old_product_id = room.required_subscription_product_id
+    if old_product_id is not None:
+        # Reuse-state guard: an old product shared across multiple rooms
+        # cannot be changed from a single room's modal.
+        ref_count = (
+            await db.execute(
+                select(func.count(Room.id)).where(
+                    Room.required_subscription_product_id == old_product_id
+                )
+            )
+        ).scalar() or 0
+        if ref_count > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Subscription product is shared across multiple rooms",
+            )
+
+    # Stable, randomised internal name avoids the (owner_agent_id, name)
+    # uniqueness collision on retries within the same second.
+    new_product = await sub_svc.create_subscription_product(
+        db,
+        room.owner_id,
+        name=f"room:{room.room_id}:plan:{generate_subscription_product_id()}",
+        description=body.description or "",
+        amount_minor=amount,
+        billing_interval=interval,
+    )
+    room.required_subscription_product_id = new_product.product_id
+
+    if old_product_id is not None:
+        try:
+            await sub_svc.archive_subscription_product(
+                db, old_product_id, ctx.active_agent_id
+            )
+        except ValueError:
+            # Owner mismatch on the old product — leave as-is rather than
+            # blocking the plan migration.
+            pass
+
+    affected_count = 0
+    if old_product_id is not None:
+        affected_count = (
+            await db.execute(
+                select(func.count(AgentSubscription.id)).where(
+                    AgentSubscription.product_id == old_product_id,
+                    AgentSubscription.status.in_(
+                        [SubscriptionStatus.active, SubscriptionStatus.past_due]
+                    ),
+                )
+            )
+        ).scalar() or 0
+
+    await db.commit()
+    await db.refresh(room)
+
+    return {
+        "product_id": new_product.product_id,
+        "room": {
+            "room_id": room.room_id,
+            "name": room.name,
+            "description": room.description,
+            "rule": room.rule,
+            "required_subscription_product_id": room.required_subscription_product_id,
+        },
+        "affected_count": affected_count,
     }
 
 

@@ -796,6 +796,29 @@ async def dissolve_room(
     if member.role != RoomRole.owner:
         raise I18nHTTPException(status_code=403, message_key="only_owner_can_dissolve")
 
+    # Pre-cancel any subscriptions bound to this room. The FK uses ON DELETE
+    # SET NULL, so without this step the active subscriptions become orphaned
+    # ("ghost" subs whose mismatch check can never trigger). No need to revoke
+    # room membership — the room itself is about to be deleted.
+    import datetime as _dt
+    bound_subs = (
+        await db.execute(
+            select(AgentSubscription).where(
+                AgentSubscription.room_id == room.room_id,
+                AgentSubscription.status.in_(
+                    [SubscriptionStatus.active, SubscriptionStatus.past_due]
+                ),
+            )
+        )
+    ).scalars().all()
+    if bound_subs:
+        now = _dt.datetime.now(_dt.timezone.utc)
+        for sub in bound_subs:
+            sub.status = SubscriptionStatus.cancelled
+            sub.cancelled_at = now
+            sub.cancel_at_period_end = False
+        await db.flush()
+
     await db.delete(room)
     await db.commit()
     return {"ok": True}

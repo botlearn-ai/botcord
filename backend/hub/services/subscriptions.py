@@ -175,9 +175,15 @@ async def list_my_subscriptions(
 
 
 async def list_product_subscribers(
-    session: AsyncSession, product_id: str
+    session: AsyncSession,
+    product_id: str,
+    *,
+    statuses: list[SubscriptionStatus] | None = None,
 ) -> list[AgentSubscription]:
-    result = await session.execute(_subscription_query(product_id=product_id))
+    stmt = _subscription_query(product_id=product_id)
+    if statuses:
+        stmt = stmt.where(AgentSubscription.status.in_(statuses))
+    result = await session.execute(stmt)
     return list(result.scalars().all())
 
 
@@ -202,6 +208,7 @@ async def create_subscription(
     product_id: str,
     subscriber_agent_id: str,
     idempotency_key: str | None = None,
+    room_id: str | None = None,
 ) -> AgentSubscription:
     result = await session.execute(
         select(SubscriptionProduct).where(SubscriptionProduct.product_id == product_id)
@@ -214,6 +221,16 @@ async def create_subscription(
     if product.owner_agent_id == subscriber_agent_id:
         raise ValueError("Cannot subscribe to your own product")
 
+    if room_id is not None:
+        room_lookup = await session.execute(
+            select(Room).where(Room.room_id == room_id)
+        )
+        room_row = room_lookup.scalar_one_or_none()
+        if room_row is None:
+            raise ValueError("Room not found")
+        if room_row.required_subscription_product_id != product_id:
+            raise ValueError("Product does not match room's required subscription")
+
     existing = await session.execute(
         select(AgentSubscription).where(
             AgentSubscription.product_id == product_id,
@@ -225,8 +242,11 @@ async def create_subscription(
         if current.status == SubscriptionStatus.cancelled:
             # Reactivate cancelled subscription: charge and reset billing period
             return await _reactivate_subscription(
-                session, current, product, idempotency_key,
+                session, current, product, idempotency_key, room_id=room_id,
             )
+        if room_id is not None and current.room_id != room_id:
+            current.room_id = room_id
+            await session.flush()
         return current
 
     now = _utcnow()
@@ -256,6 +276,7 @@ async def create_subscription(
         product_id=product.product_id,
         subscriber_agent_id=subscriber_agent_id,
         provider_agent_id=product.owner_agent_id,
+        room_id=room_id,
         asset_code=product.asset_code,
         amount_minor=product.amount_minor,
         billing_interval=product.billing_interval,
@@ -293,6 +314,8 @@ async def _reactivate_subscription(
     subscription: AgentSubscription,
     product: SubscriptionProduct,
     idempotency_key: str | None,
+    *,
+    room_id: str | None = None,
 ) -> AgentSubscription:
     """Reactivate a cancelled subscription by charging and resetting the billing period."""
     now = _utcnow()
@@ -325,6 +348,8 @@ async def _reactivate_subscription(
     subscription.last_charged_at = now
     subscription.last_charge_tx_id = tx.tx_id
     subscription.consecutive_failed_attempts = 0
+    if room_id is not None:
+        subscription.room_id = room_id
     await session.flush()
 
     await _auto_join_subscription_rooms(session, subscription)
@@ -335,12 +360,24 @@ async def _auto_join_subscription_rooms(
     session: AsyncSession,
     subscription: AgentSubscription,
 ) -> None:
-    result = await session.execute(
-        select(Room).where(
-            Room.required_subscription_product_id == subscription.product_id
+    if subscription.room_id is not None:
+        # Room-scoped subscription: only consider its bound room, and only
+        # if the room's current required product still matches.
+        room_lookup = await session.execute(
+            select(Room).where(Room.room_id == subscription.room_id)
         )
-    )
-    rooms = list(result.scalars().all())
+        room = room_lookup.scalar_one_or_none()
+        if room is None or room.required_subscription_product_id != subscription.product_id:
+            return
+        rooms = [room]
+    else:
+        # Cross-room pass (future "subscription pass"): use product reverse-lookup.
+        result = await session.execute(
+            select(Room).where(
+                Room.required_subscription_product_id == subscription.product_id
+            )
+        )
+        rooms = list(result.scalars().all())
 
     for room in rooms:
         existing_result = await session.execute(
@@ -381,11 +418,44 @@ async def _revoke_subscription_room_access(
     session: AsyncSession,
     subscription: AgentSubscription,
 ) -> None:
+    if subscription.room_id is not None:
+        # Room-scoped revoke: only the bound room's membership.
+        result = await session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == subscription.room_id,
+                RoomMember.agent_id == subscription.subscriber_agent_id,
+            )
+        )
+    else:
+        # Cross-room revoke: every room currently requiring this product.
+        result = await session.execute(
+            select(RoomMember)
+            .join(Room, Room.room_id == RoomMember.room_id)
+            .where(
+                Room.required_subscription_product_id == subscription.product_id,
+                RoomMember.agent_id == subscription.subscriber_agent_id,
+            )
+        )
+    for membership in result.scalars().all():
+        await session.delete(membership)
+    await session.flush()
+
+
+async def _revoke_subscription_room_access_for_subscription(
+    session: AsyncSession,
+    subscription: AgentSubscription,
+) -> None:
+    """Revoke membership only for the room bound to ``subscription.room_id``.
+
+    Used by mismatch / plan-change cancellation: at that point the room no
+    longer references the old product, so the generic product reverse-lookup
+    in :func:`_revoke_subscription_room_access` would be a no-op.
+    """
+    if subscription.room_id is None:
+        return
     result = await session.execute(
-        select(RoomMember)
-        .join(Room, Room.room_id == RoomMember.room_id)
-        .where(
-            Room.required_subscription_product_id == subscription.product_id,
+        select(RoomMember).where(
+            RoomMember.room_id == subscription.room_id,
             RoomMember.agent_id == subscription.subscriber_agent_id,
         )
     )
@@ -467,6 +537,23 @@ async def _charge_subscription(
     due_at = _ensure_tz(subscription.next_charge_at)
     if due_at > now:
         return "skipped"
+
+    # Plan-change check: if the subscription is bound to a room and that room
+    # no longer requires this exact product (owner changed plan / unbound /
+    # room deleted), cancel without charging.
+    if subscription.room_id is not None:
+        room_lookup = await session.execute(
+            select(Room).where(Room.room_id == subscription.room_id)
+        )
+        room = room_lookup.scalar_one_or_none()
+        room_pid = room.required_subscription_product_id if room is not None else None
+        if room_pid != subscription.product_id:
+            subscription.status = SubscriptionStatus.cancelled
+            subscription.cancelled_at = now
+            subscription.cancel_at_period_end = False
+            await _revoke_subscription_room_access_for_subscription(session, subscription)
+            await session.flush()
+            return "cancelled_due_to_plan_change"
 
     billing_cycle_key = _billing_cycle_key(subscription)
     attempt_result = await session.execute(

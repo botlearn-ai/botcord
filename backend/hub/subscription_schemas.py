@@ -14,6 +14,7 @@ class SubscriptionProductCreateRequest(BaseModel):
 
 class SubscriptionCreateRequest(BaseModel):
     idempotency_key: str | None = None
+    room_id: str | None = None
 
 
 class SubscriptionProductResponse(BaseModel):
