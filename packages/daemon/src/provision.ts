@@ -930,11 +930,21 @@ export function setRoute(params: unknown): SetRouteResult {
     match.conversationPrefix = p.pattern;
   }
 
+  // Fall back to defaultRoute.extraArgs (mirrors adapter/cwd inheritance
+  // above) so dashboard-driven `set_route` calls that only carry agentId +
+  // pattern still pick up operator-wide flags like `--permission-mode
+  // bypassPermissions`. Without this, every newly provisioned agent lost
+  // those flags and Bash/MCP tool calls would deadlock on permission prompts.
+  const extraArgs = Array.isArray(route?.extraArgs)
+    ? route!.extraArgs!.slice()
+    : Array.isArray(cfg.defaultRoute.extraArgs)
+      ? cfg.defaultRoute.extraArgs.slice()
+      : undefined;
   const newRule: RouteRule = {
     match,
     adapter,
     cwd,
-    ...(Array.isArray(route?.extraArgs) ? { extraArgs: route!.extraArgs!.slice() } : {}),
+    ...(extraArgs ? { extraArgs } : {}),
   };
 
   const routes = Array.isArray(cfg.routes) ? cfg.routes.slice() : [];
