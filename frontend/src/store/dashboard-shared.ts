@@ -71,6 +71,7 @@ export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
     name: r.name,
     description: r.description,
     owner_id: r.owner_id,
+    owner_type: r.owner_type,
     visibility: r.visibility,
     join_policy: r.join_policy,
     member_count: r.member_count,

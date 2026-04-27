@@ -2316,6 +2316,9 @@ export const roomAdvancedSettings: TranslationMap<{
   subscriptionCurrentSubscribers: string
   subscriptionGrandfatherHint: string
   subscriptionMultiRoomBlock: string
+  subscriptionProviderLabel: string
+  subscriptionProviderEmpty: string
+  subscriptionProviderRequired: string
   planChangeTitle: string
   planChangeFromTo: string
   planChangeWarning: string
@@ -2358,6 +2361,9 @@ export const roomAdvancedSettings: TranslationMap<{
     subscriptionCurrentSubscribers: 'Current subscribers',
     subscriptionGrandfatherHint: 'Existing members keep free access; new joiners must subscribe.',
     subscriptionMultiRoomBlock: 'This subscription plan is shared across multiple rooms and cannot be edited here.',
+    subscriptionProviderLabel: 'Receiving bot',
+    subscriptionProviderEmpty: 'No active bots found',
+    subscriptionProviderRequired: 'Select a receiving bot for this room.',
     planChangeTitle: 'Change subscription price',
     planChangeFromTo: 'Current: {from} → New: {to}',
     planChangeWarning: '{count} existing subscribers will lose access at the end of their current cycle and need to resubscribe at the new price.',
@@ -2400,6 +2406,9 @@ export const roomAdvancedSettings: TranslationMap<{
     subscriptionCurrentSubscribers: '当前订阅者',
     subscriptionGrandfatherHint: '现有成员可继续免费使用；新加入者必须订阅。',
     subscriptionMultiRoomBlock: '此订阅套餐被多个房间共用，无法在此修改。',
+    subscriptionProviderLabel: '收款机器人',
+    subscriptionProviderEmpty: '没有可用的活跃机器人',
+    subscriptionProviderRequired: '请为本房间选择一个收款机器人。',
     planChangeTitle: '修改订阅价格',
     planChangeFromTo: '当前：{from} → 新：{to}',
     planChangeWarning: '{count} 位现有订阅者将在本周期到期后失效，需要按新价重新订阅。',

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent
 from hub.database import get_db
-from hub.enums import BillingInterval, SubscriptionStatus
+from hub.enums import BillingInterval, ParticipantType, SubscriptionStatus
 from hub.models import AgentSubscription
 from hub.services import subscriptions as sub_svc
 from hub.subscription_schemas import (
@@ -33,7 +33,9 @@ router = APIRouter(prefix="/api/subscriptions", tags=["app-subscriptions"])
 def _product_response(p) -> dict:
     return {
         "product_id": p.product_id,
-        "owner_agent_id": p.owner_agent_id,
+        "owner_id": p.owner_id,
+        "owner_type": p.owner_type.value if hasattr(p.owner_type, "value") else str(p.owner_type),
+        "provider_agent_id": p.provider_agent_id,
         "name": p.name,
         "description": p.description,
         "asset_code": p.asset_code,
@@ -88,7 +90,10 @@ async def list_my_products(
     db: AsyncSession = Depends(get_db),
 ):
     products = await sub_svc.list_subscription_products(
-        db, owner_agent_id=ctx.active_agent_id, include_archived=True,
+        db,
+        owner_id=ctx.active_agent_id,
+        owner_type=ParticipantType.agent,
+        include_archived=True,
     )
     return {"products": [_product_response(p) for p in products]}
 
@@ -134,7 +139,9 @@ async def create_product(
     try:
         product = await sub_svc.create_subscription_product(
             db,
-            ctx.active_agent_id,
+            owner_id=ctx.active_agent_id,
+            owner_type=ParticipantType.agent,
+            provider_agent_id=ctx.active_agent_id,
             name=body.name,
             description=body.description,
             amount_minor=amount,
@@ -156,7 +163,10 @@ async def archive_product(
 ):
     try:
         product = await sub_svc.archive_subscription_product(
-            db, product_id, ctx.active_agent_id,
+            db,
+            product_id,
+            owner_id=ctx.active_agent_id,
+            owner_type=ParticipantType.agent,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -209,7 +219,10 @@ async def list_subscribers(
     product = await sub_svc.get_subscription_product(db, product_id)
     if product is None:
         raise HTTPException(status_code=404, detail="Subscription product not found")
-    if product.owner_agent_id != ctx.active_agent_id:
+    if not (
+        product.owner_type == ParticipantType.agent
+        and product.owner_id == ctx.active_agent_id
+    ):
         raise HTTPException(status_code=403, detail="Not authorized to view subscribers")
 
     statuses: list[SubscriptionStatus] | None = None

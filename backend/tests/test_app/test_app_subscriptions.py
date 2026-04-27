@@ -179,7 +179,9 @@ async def test_create_product(client, seed_data):
     assert data["amount_minor"] == "1000"
     assert data["billing_interval"] == "month"
     assert data["status"] == "active"
-    assert data["owner_agent_id"] == seed_data["owner_agent_id"]
+    assert data["owner_id"] == seed_data["owner_agent_id"]
+    assert data["owner_type"] == "agent"
+    assert data["provider_agent_id"] == seed_data["owner_agent_id"]
 
 
 @pytest.mark.asyncio

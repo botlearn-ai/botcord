@@ -35,6 +35,7 @@ from hub.enums import (
     RoomJoinPolicy,
     RoomRole,
     RoomVisibility,
+    SubscriptionProductStatus,
     SubscriptionStatus,
 )
 from hub.id_generators import generate_human_id, generate_room_id
@@ -50,6 +51,7 @@ from hub.models import (
     RoomMember,
     Share,
     ShareMessage,
+    SubscriptionProduct,
     User,
 )
 from hub.policy import Principal, check_room_invite_admission
@@ -1325,7 +1327,57 @@ async def update_room_settings_as_human(
     if "slow_mode_seconds" in fields_set:
         room.slow_mode_seconds = body.slow_mode_seconds
     if "required_subscription_product_id" in fields_set:
-        room.required_subscription_product_id = body.required_subscription_product_id or None
+        new_pid = body.required_subscription_product_id or None
+        if new_pid is not None:
+            product_row = (
+                await db.execute(
+                    select(SubscriptionProduct).where(
+                        SubscriptionProduct.product_id == new_pid
+                    )
+                )
+            ).scalar_one_or_none()
+            if product_row is None:
+                raise HTTPException(status_code=404, detail="Subscription product not found")
+            if (
+                product_row.owner_id != room.owner_id
+                or product_row.owner_type != room.owner_type
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Subscription product does not belong to room owner",
+                )
+            if product_row.status != SubscriptionProductStatus.active:
+                raise HTTPException(
+                    status_code=400, detail="Subscription product is not active"
+                )
+        # Mirrors dashboard PATCH (§3.6 of design): on clear-paid, backfill
+        # legacy NULL room_id on the old product's active subs so the next
+        # billing cycle's plan-mismatch check fires.
+        old_pid = room.required_subscription_product_id
+        if new_pid is None and old_pid is not None:
+            other_rooms = (
+                await db.execute(
+                    select(func.count(Room.id)).where(
+                        Room.required_subscription_product_id == old_pid,
+                        Room.room_id != room.room_id,
+                    )
+                )
+            ).scalar() or 0
+            if other_rooms == 0:
+                from sqlalchemy import update as _sa_update
+
+                await db.execute(
+                    _sa_update(AgentSubscription)
+                    .where(
+                        AgentSubscription.product_id == old_pid,
+                        AgentSubscription.room_id.is_(None),
+                        AgentSubscription.status.in_(
+                            [SubscriptionStatus.active, SubscriptionStatus.past_due]
+                        ),
+                    )
+                    .values(room_id=room.room_id)
+                )
+        room.required_subscription_product_id = new_pid
 
     await db.commit()
     await db.refresh(room)
@@ -1347,6 +1399,25 @@ async def dissolve_room_as_human(
     room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
     if caller.role != RoomRole.owner:
         raise HTTPException(status_code=403, detail="Only the room owner can dissolve this room")
+
+    # Pre-cancel subscriptions bound to this room — see hub dissolve route.
+    bound_subs = (
+        await db.execute(
+            select(AgentSubscription).where(
+                AgentSubscription.room_id == room.room_id,
+                AgentSubscription.status.in_(
+                    [SubscriptionStatus.active, SubscriptionStatus.past_due]
+                ),
+            )
+        )
+    ).scalars().all()
+    if bound_subs:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for sub in bound_subs:
+            sub.status = SubscriptionStatus.cancelled
+            sub.cancelled_at = now
+            sub.cancel_at_period_end = False
+        await db.flush()
 
     await db.delete(room)
     await db.commit()

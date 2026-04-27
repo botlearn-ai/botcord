@@ -253,10 +253,14 @@ async def _ensure_agent_unbind_allowed(db: AsyncSession, agent_id: str) -> None:
     if wallet_result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="wallet_not_empty")
 
+    # An agent being decommissioned could be either the owner of an
+    # agent-owned product OR the provider for a human-owned product. Block
+    # decommission while either kind has active subscribers.
     active_owner_products = (
         select(SubscriptionProduct.product_id)
         .where(
-            SubscriptionProduct.owner_agent_id == agent_id,
+            (SubscriptionProduct.owner_id == agent_id)
+            | (SubscriptionProduct.provider_agent_id == agent_id),
             SubscriptionProduct.status == SubscriptionProductStatus.active,
         )
         .subquery()

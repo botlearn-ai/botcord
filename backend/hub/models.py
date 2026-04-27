@@ -910,12 +910,25 @@ class WithdrawalRequest(Base):
 class SubscriptionProduct(Base):
     __tablename__ = "subscription_products"
     __table_args__ = (
-        UniqueConstraint("owner_agent_id", "name", name="uq_subscription_product_owner_name"),
+        UniqueConstraint("owner_id", "owner_type", "name", name="uq_subscription_product_owner_name"),
+        Index("ix_subscription_products_owner", "owner_id", "owner_type"),
+        Index("ix_subscription_products_provider", "provider_agent_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     product_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    owner_agent_id: Mapped[str] = mapped_column(
+    # Polymorphic owner — `owner_type` is the discriminator. Can be ag_* or hu_*.
+    owner_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    owner_type: Mapped[ParticipantType] = mapped_column(
+        Enum(ParticipantType, name="participanttype"),
+        nullable=False,
+        default=ParticipantType.agent,
+        server_default=ParticipantType.agent.value,
+    )
+    # Wallet receiver for charges — always an agent. Equals owner_id for
+    # agent-owned products; for human-owned products the human picks one of
+    # their bound bots.
+    provider_agent_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)

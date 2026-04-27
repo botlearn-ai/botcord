@@ -19,7 +19,9 @@ class SubscriptionCreateRequest(BaseModel):
 
 class SubscriptionProductResponse(BaseModel):
     product_id: str
-    owner_agent_id: str
+    owner_id: str
+    owner_type: str
+    provider_agent_id: str
     name: str
     description: str
     asset_code: str
