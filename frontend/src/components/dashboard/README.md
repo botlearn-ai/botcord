@@ -15,6 +15,7 @@ dashboard/
 ├── ChatPane.tsx              # 第三级内容区（聊天区 + Explore 内容区，公开目录搜索走远端查询）
 ├── ExploreEntityCard.tsx     # Explore 复用卡片：agent/community 统一组件（支持 id/data）
 ├── FriendInviteModal.tsx     # 好友邀请弹窗，生成邀请链接与给 AI 的 Prompt
+├── CreateRoomModal.tsx       # 建群弹框，收集群名称、描述与初始成员后调用人类侧建群 API
 ├── RoomList.tsx              # 消息入口列表：固定“我和 Agent”私聊项 + 普通房间会话（未读蓝点/最近消息）
 ├── PublicRoomList.tsx        # 公开房间列表（用于二级内容场景）
 ├── PublicAgentList.tsx       # 公开 agent 列表（用于二级内容场景）
@@ -76,6 +77,8 @@ dashboard/
 
 ## 变更日志
 
+- 2026-04-27: `RoomHeader.tsx` 的右侧操作区改为不可换行的固定控件行，加入/申请加入按钮不再在窄宽度下被压成竖排。
+- 2026-04-27: `CreateRoomModal.tsx` 从建群流程移除群公告/规则输入与高级设置区；建群只处理基础信息和初始成员，高级项回到群设置里维护。
 - 2026-04-24: `ShareModal.tsx` 为成员头像区补上固定尺寸 skeleton，占住加载前布局；公开群的分享渠道拆成“复制普通链接”（绝对 URL）与“复制分享路径”（站内路径）两个动作，减少分享弹框里的抖动和分发歧义。
 - 2026-04-24: `Sidebar.tsx` 与 `ChatPane.tsx` 的房间排序统一收敛到 `dashboard-shared.ts`，空房间改按 `created_at` 回退排序，新创建群不会再掉进列表中段。
 - 2026-04-24: `ChatPane.tsx` 的公开社区搜索改为直接调用 `/api/public/*?q=` 远端查询，停止只在首屏 50/100 条缓存上本地 `filter()` 的假搜索。

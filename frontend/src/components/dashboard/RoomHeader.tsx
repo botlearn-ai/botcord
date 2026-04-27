@@ -177,6 +177,7 @@ export default function RoomHeader() {
           variant="button"
           triggerLabel={t.join}
           loginHref={loginHref}
+          className="shrink-0 whitespace-nowrap"
         />
       );
     }
@@ -184,14 +185,14 @@ export default function RoomHeader() {
     if (isInviteOnly) {
       if (joinRequestStatus === "pending") {
         return (
-          <span className="rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400">
+          <span className="shrink-0 whitespace-nowrap rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400">
             {t.requestPending}
           </span>
         );
       }
       if (joinRequestStatus === "rejected") {
         return (
-          <span className="rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs font-medium text-red-400">
+          <span className="shrink-0 whitespace-nowrap rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs font-medium text-red-400">
             {t.requestRejected}
           </span>
         );
@@ -200,7 +201,7 @@ export default function RoomHeader() {
         <button
           onClick={() => void handleRequestJoin()}
           disabled={!isAuthedReady || joinRequestStatus === "sending"}
-          className="inline-flex items-center gap-1.5 rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
           title={t.requestToJoin}
         >
           {joinRequestStatus === "sending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -213,7 +214,7 @@ export default function RoomHeader() {
       <button
         onClick={handleJoinOpenRoom}
         disabled={!isGuest && (!isAuthedReady || isJoining)}
-        className="inline-flex items-center gap-1.5 rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
         title={t.join}
       >
         {isJoining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -222,7 +223,7 @@ export default function RoomHeader() {
     );
   };
 
-  const iconBtn = "rounded p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary";
+  const iconBtn = "inline-flex h-8 w-8 items-center justify-center rounded text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary";
   const tooltipCls = "pointer-events-none absolute top-full left-1/2 z-30 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-glass-border bg-deep-black px-2 py-0.5 text-[10px] text-text-secondary opacity-0 shadow-lg transition-opacity group-hover:opacity-100";
 
   return (
@@ -307,7 +308,7 @@ export default function RoomHeader() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1.5 self-start py-0.5">
+        <div className="flex shrink-0 flex-nowrap items-center gap-1.5 self-start py-0.5">
           {isAuthedReady && isJoined && myRole && (
             <span className="group relative">
               <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
@@ -318,7 +319,7 @@ export default function RoomHeader() {
           )}
           {renderJoinButton()}
           {isGuest && (
-            <span className="rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
+            <span className="shrink-0 whitespace-nowrap rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
               {t.guest}
             </span>
           )}

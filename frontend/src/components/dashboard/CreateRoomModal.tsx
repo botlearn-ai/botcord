@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * [INPUT]: 依赖 humansApi 的建群能力，依赖 dashboard/session store 提供联系人、Bot 与当前身份
+ * [OUTPUT]: 对外提供 CreateRoomModal 组件，完成群名称、描述与初始成员提交
+ * [POS]: dashboard 建群入口弹框，被 Sidebar 触发，负责把建群表单收敛为 humans room API 请求
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 import { useMemo, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { humansApi } from "@/lib/api";
@@ -36,7 +43,6 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [rule, setRule] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [memberQuery, setMemberQuery] = useState("");
   const [saving, setSaving] = useState(false);
@@ -86,7 +92,6 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
       const body = {
         name: trimmed,
         description: description.trim(),
-        rule: rule.trim() || null,
         member_ids: Array.from(selected),
       };
       if (viewMode === "agent") {
@@ -144,17 +149,6 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t.descriptionPlaceholder}
-                className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-xs text-text-secondary">{t.ruleLabel}</span>
-              <textarea
-                rows={2}
-                value={rule}
-                onChange={(e) => setRule(e.target.value)}
-                placeholder={t.rulePlaceholder}
                 className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
               />
             </label>
@@ -270,13 +264,6 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
                 </>
               )}
             </div>
-          </section>
-
-          <section className="rounded border border-glass-border bg-glass-bg/40 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-              {t.advancedSection}
-            </p>
-            <p className="mt-1 text-[11px] text-text-secondary/70">{t.advancedHint}</p>
           </section>
 
           {error && (

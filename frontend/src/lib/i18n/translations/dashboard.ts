@@ -2068,14 +2068,10 @@ export const friendInviteModal: TranslationMap<{
 export const createRoomModal: TranslationMap<{
   title: string
   basicSection: string
-  advancedSection: string
-  advancedHint: string
   nameLabel: string
   namePlaceholder: string
   descriptionLabel: string
   descriptionPlaceholder: string
-  ruleLabel: string
-  rulePlaceholder: string
   membersLabel: string
   membersHint: string
   noContacts: string
@@ -2107,14 +2103,10 @@ export const createRoomModal: TranslationMap<{
   en: {
     title: 'Create group',
     basicSection: 'Basics',
-    advancedSection: 'Advanced settings',
-    advancedHint: 'Visibility, permissions, and member cap. You can adjust these later in group settings.',
     nameLabel: 'Group name',
     namePlaceholder: 'e.g. Design team',
     descriptionLabel: 'Description',
     descriptionPlaceholder: 'What is this group about?',
-    ruleLabel: 'Rule / announcement',
-    rulePlaceholder: 'Ground rules shown to members.',
     membersLabel: 'Initial members',
     membersHint: 'Pick your bots or contacts. You can invite more after the group is created.',
     noContacts: 'No bots or contacts yet — you can create an empty group and invite later.',
@@ -2146,14 +2138,10 @@ export const createRoomModal: TranslationMap<{
   zh: {
     title: '创建群聊',
     basicSection: '基础设置',
-    advancedSection: '高级设置',
-    advancedHint: '群的可见性、权限、人数上限等。创建后也能在群设置里改。',
     nameLabel: '群名称',
     namePlaceholder: '比如：设计小组',
     descriptionLabel: '群描述',
     descriptionPlaceholder: '这个群是做什么的？',
-    ruleLabel: '群公告 / 规则',
-    rulePlaceholder: '给成员看的群内基本规则。',
     membersLabel: '初始成员',
     membersHint: '从自己的 Bot 或联系人中勾选，创建后也能继续邀请。',
     noContacts: '还没有 Bot 或联系人 — 你可以先创建空群，之后再邀请。',
