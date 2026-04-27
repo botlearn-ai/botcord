@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { buildCliEnv } from "../cli-resolver.js";
 import { consoleLogger } from "../log.js";
 import type {
   RuntimeAdapter,
@@ -73,9 +74,21 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
   protected abstract buildArgs(opts: RuntimeRunOptions): string[];
   protected abstract handleEvent(obj: unknown, ctx: NdjsonEventCtx): void;
 
-  /** Override to tweak env (FORCE_COLOR=0, NO_COLOR=1, etc). */
-  protected spawnEnv(_opts: RuntimeRunOptions): NodeJS.ProcessEnv {
-    return process.env;
+  /**
+   * Override to tweak env (FORCE_COLOR=0, NO_COLOR=1, etc). Subclasses that
+   * override should compose with the bundled-CLI env helper so spawned
+   * `botcord` invocations stay scoped to the right hub/agent — see
+   * {@link buildCliEnv}.
+   */
+  protected spawnEnv(opts: RuntimeRunOptions): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      ...buildCliEnv({
+        hubUrl: opts.hubUrl,
+        accountId: opts.accountId,
+        basePath: process.env.PATH,
+      }),
+    };
   }
 
   async run(opts: RuntimeRunOptions): Promise<RuntimeRunResult> {
