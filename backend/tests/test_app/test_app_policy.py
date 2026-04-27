@@ -11,8 +11,24 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock
 
-from hub.enums import AttentionMode, ContactPolicy, MessagePolicy, RoomInvitePolicy
-from hub.models import Agent, Base, Role, User, UserRole
+from hub.enums import (
+    AttentionMode,
+    ContactPolicy,
+    MessagePolicy,
+    ParticipantType,
+    RoomInvitePolicy,
+    RoomJoinPolicy,
+    RoomVisibility,
+)
+from hub.models import (
+    Agent,
+    AgentRoomPolicyOverride,
+    Base,
+    Role,
+    Room,
+    User,
+    UserRole,
+)
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
@@ -186,3 +202,197 @@ async def test_policy_404_for_other_users_agent(client, seed):
         json={"contact_policy": "open"},
     )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Per-room override (/rooms/{room_id}/policy + /snooze)
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def room_seed(db_session: AsyncSession, seed):
+    """Builds on ``seed`` — adds a public room and a DM room to the schema."""
+    room = Room(
+        room_id="rm_pub_1",
+        name="Public Room",
+        description="",
+        owner_id="ag_owned",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.public,
+        join_policy=RoomJoinPolicy.open,
+    )
+    dm = Room(
+        room_id="rm_dm_xyz",
+        name="DM",
+        description="",
+        owner_id="ag_owned",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([room, dm])
+    await db_session.commit()
+    return seed
+
+
+@pytest.mark.asyncio
+async def test_get_room_policy_inherits_when_no_override(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.get("/api/agents/ag_owned/rooms/rm_pub_1/policy", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["inherits_global"] is True
+    assert body["override"] is None
+    assert body["effective"]["mode"] == "always"
+    assert body["effective"]["source"] == "global"
+
+
+@pytest.mark.asyncio
+async def test_put_then_get_room_policy_mixed_inherit(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    # Set agent default to keyword + ['hi'] first so we can verify keyword inheritance.
+    r = await client.patch(
+        "/api/agents/ag_owned/policy",
+        headers=headers,
+        json={"default_attention": "keyword", "attention_keywords": ["hi"]},
+    )
+    assert r.status_code == 200, r.text
+
+    # Override only the mode; leave keywords as inherit.
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy",
+        headers=headers,
+        json={"attention_mode": "mention_only", "keywords": None},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["inherits_global"] is False
+    assert body["override"]["attention_mode"] == "mention_only"
+    assert body["override"]["keywords"] is None
+    assert body["effective"]["mode"] == "mention_only"
+    # Inherited keywords surface in `effective`.
+    assert body["effective"]["keywords"] == ["hi"]
+    assert body["effective"]["source"] == "override"
+
+    # GET reflects the same.
+    r = await client.get("/api/agents/ag_owned/rooms/rm_pub_1/policy", headers=headers)
+    assert r.status_code == 200
+    assert r.json()["override"]["attention_mode"] == "mention_only"
+
+
+@pytest.mark.asyncio
+async def test_delete_room_policy_restores_inherit(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy",
+        headers=headers,
+        json={"attention_mode": "muted", "keywords": None},
+    )
+    assert r.status_code == 200
+    r = await client.delete(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy", headers=headers
+    )
+    assert r.status_code == 204
+    # Idempotent re-delete.
+    r = await client.delete(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy", headers=headers
+    )
+    assert r.status_code == 204
+    r = await client.get("/api/agents/ag_owned/rooms/rm_pub_1/policy", headers=headers)
+    body = r.json()
+    assert body["inherits_global"] is True
+    assert body["override"] is None
+
+
+@pytest.mark.asyncio
+async def test_snooze_sets_muted_until_then_clears(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_owned/rooms/rm_pub_1/snooze",
+        headers=headers,
+        json={"minutes": 60},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["override"]["muted_until"] is not None
+    assert body["effective"]["muted_until"] is not None
+
+    # minutes=0 clears
+    r = await client.post(
+        "/api/agents/ag_owned/rooms/rm_pub_1/snooze",
+        headers=headers,
+        json={"minutes": 0},
+    )
+    assert r.status_code == 200
+    assert r.json()["override"]["muted_until"] is None
+
+
+@pytest.mark.asyncio
+async def test_snooze_validates_range(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_owned/rooms/rm_pub_1/snooze",
+        headers=headers,
+        json={"minutes": -1},
+    )
+    assert r.status_code == 422
+    r = await client.post(
+        "/api/agents/ag_owned/rooms/rm_pub_1/snooze",
+        headers=headers,
+        json={"minutes": 999_999},
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_dm_room_rejects_put_and_snooze(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_dm_xyz/policy",
+        headers=headers,
+        json={"attention_mode": "muted", "keywords": None},
+    )
+    assert r.status_code == 400
+    r = await client.post(
+        "/api/agents/ag_owned/rooms/rm_dm_xyz/snooze",
+        headers=headers,
+        json={"minutes": 30},
+    )
+    assert r.status_code == 400
+    # GET still works and reports dm_forced=always.
+    r = await client.get(
+        "/api/agents/ag_owned/rooms/rm_dm_xyz/policy", headers=headers
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["effective"]["mode"] == "always"
+    assert body["effective"]["source"] == "dm_forced"
+
+
+@pytest.mark.asyncio
+async def test_room_policy_404_for_other_users_agent(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.get(
+        "/api/agents/ag_other/rooms/rm_pub_1/policy", headers=headers
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_room_policy_404_for_unknown_room(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.get(
+        "/api/agents/ag_owned/rooms/rm_nope/policy", headers=headers
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_put_room_policy_rejects_bad_enum(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy",
+        headers=headers,
+        json={"attention_mode": "bogus", "keywords": None},
+    )
+    assert r.status_code == 422

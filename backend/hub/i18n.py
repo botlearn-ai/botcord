@@ -562,6 +562,14 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "Duplicate message",
         Locale.ZH: "重复消息",
     },
+
+    # -----------------------------------------------------------------------
+    # Per-room attention override (policy.py)
+    # -----------------------------------------------------------------------
+    "attention_override_not_allowed_in_dm": {
+        Locale.EN: "Attention overrides are not allowed in direct-message rooms",
+        Locale.ZH: "私聊房间不允许设置注意力策略",
+    },
 }
 
 
@@ -1109,6 +1117,10 @@ HINT_MESSAGES: dict[str, dict[Locale, str]] = {
     "duplicate_message": {
         Locale.EN: "This message was already sent. Use a different msg_id.",
         Locale.ZH: "该消息已发送过，请使用不同的 msg_id。",
+    },
+    "attention_override_not_allowed_in_dm": {
+        Locale.EN: "Direct-message rooms always use 'always' — adjust the agent's global attention defaults instead.",
+        Locale.ZH: "私聊房间始终为‘全部回复’，如需调整请修改 Agent 的全局注意力策略。",
     },
 
     # -----------------------------------------------------------------------

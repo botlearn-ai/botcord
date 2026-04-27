@@ -7,12 +7,16 @@
 [PROTOCOL]: Raise I18nHTTPException(403, ...) on deny, return None on allow.
 """
 
-from dataclasses import dataclass
+import datetime
+import json
+from dataclasses import dataclass, field
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.enums import (
+    AttentionMode,
     ContactPolicy,
     MessagePolicy,
     MessageType,
@@ -20,7 +24,7 @@ from hub.enums import (
     RoomInvitePolicy,
 )
 from hub.i18n import I18nHTTPException
-from hub.models import Agent, Block, Contact, RoomMember
+from hub.models import Agent, AgentRoomPolicyOverride, Block, Contact, RoomMember
 
 
 @dataclass(frozen=True)
@@ -199,3 +203,121 @@ async def check_room_invite_admission(
         )
     if policy == RoomInvitePolicy.closed:
         raise I18nHTTPException(status_code=403, message_key="agent_closed_to_room_invites")
+
+
+# ---------------------------------------------------------------------------
+# Effective attention resolver (consumed by daemon attention gate in PR3)
+# ---------------------------------------------------------------------------
+
+
+EffectiveSource = Literal["global", "override", "dm_forced"]
+
+
+@dataclass(frozen=True)
+class EffectiveAttention:
+    mode: AttentionMode
+    keywords: list[str] = field(default_factory=list)
+    muted_until: datetime.datetime | None = None
+    source: EffectiveSource = "global"
+
+
+def _is_dm_room(room_id: str | None) -> bool:
+    return bool(room_id and room_id.startswith("rm_dm_"))
+
+
+def _decode_keywords(raw: str | None) -> list[str]:
+    """Defensive JSON parse for stored keyword lists. Return ``[]`` on garbage
+    so a malformed row never breaks the daemon dispatch path."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(x) for x in parsed if isinstance(x, str)]
+
+
+def _agent_default_attention(agent: Agent) -> AttentionMode:
+    raw = getattr(agent, "default_attention", None)
+    if raw is None:
+        return AttentionMode.always
+    return raw if isinstance(raw, AttentionMode) else AttentionMode(raw)
+
+
+async def resolve_effective_attention(
+    db: AsyncSession,
+    *,
+    agent: Agent,
+    room_id: str | None,
+) -> EffectiveAttention:
+    """Resolve the effective attention policy for ``agent`` in ``room_id``.
+
+    Rules:
+      * DM rooms (``rm_dm_*``) force ``always`` regardless of any stored
+        override — see design §4.2 special case. UI must hide the controls.
+      * Otherwise: per-axis inheritance — a NULL column on the override row
+        falls back to the agent's global default.
+      * ``muted_until`` only applies if it's in the future. Past timestamps
+        are treated as expired and dropped from the result.
+    """
+    if _is_dm_room(room_id):
+        return EffectiveAttention(
+            mode=AttentionMode.always,
+            keywords=[],
+            muted_until=None,
+            source="dm_forced",
+        )
+
+    default_mode = _agent_default_attention(agent)
+    default_keywords = _decode_keywords(getattr(agent, "attention_keywords", None))
+
+    override: AgentRoomPolicyOverride | None = None
+    if room_id is not None:
+        result = await db.execute(
+            select(AgentRoomPolicyOverride).where(
+                AgentRoomPolicyOverride.agent_id == agent.agent_id,
+                AgentRoomPolicyOverride.room_id == room_id,
+            )
+        )
+        override = result.scalar_one_or_none()
+
+    if override is None:
+        return EffectiveAttention(
+            mode=default_mode,
+            keywords=list(default_keywords),
+            muted_until=None,
+            source="global",
+        )
+
+    # Per-axis inherit: NULL → fall back to agent default.
+    if override.attention_mode is None:
+        mode = default_mode
+    else:
+        mode = (
+            override.attention_mode
+            if isinstance(override.attention_mode, AttentionMode)
+            else AttentionMode(override.attention_mode)
+        )
+    keywords = (
+        _decode_keywords(override.keywords)
+        if override.keywords is not None
+        else list(default_keywords)
+    )
+
+    muted_until = override.muted_until
+    if muted_until is not None:
+        # Tolerate naive timestamps from SQLite — assume UTC.
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if muted_until.tzinfo is None:
+            muted_until = muted_until.replace(tzinfo=datetime.timezone.utc)
+        if muted_until <= now:
+            muted_until = None
+
+    return EffectiveAttention(
+        mode=mode,
+        keywords=keywords,
+        muted_until=muted_until,
+        source="override",
+    )

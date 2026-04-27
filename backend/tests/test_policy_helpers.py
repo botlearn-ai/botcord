@@ -16,6 +16,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import datetime
+
 from hub.enums import (
     AttentionMode,
     ContactPolicy,
@@ -25,11 +27,12 @@ from hub.enums import (
     RoomInvitePolicy,
 )
 from hub.i18n import I18nHTTPException
-from hub.models import Agent, Base, Block, Contact
+from hub.models import Agent, AgentRoomPolicyOverride, Base, Block, Contact
 from hub.policy import (
     Principal,
     check_direct_admission,
     check_room_invite_admission,
+    resolve_effective_attention,
 )
 
 
@@ -304,3 +307,104 @@ async def test_explicit_whitelist_wins_over_legacy_open(session):
     with pytest.raises(I18nHTTPException) as exc:
         await check_direct_admission(session, sender=_agent_principal(), receiver=receiver)
     assert exc.value.message_key == "not_in_whitelist"
+
+
+# ---------------------------------------------------------------------------
+# resolve_effective_attention
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolver_inherits_global_when_no_override(session):
+    receiver = _agent()
+    receiver.default_attention = AttentionMode.mention_only
+    receiver.attention_keywords = '["hello", "world"]'
+    await _add(session, receiver)
+    eff = await resolve_effective_attention(session, agent=receiver, room_id="rm_pub_1")
+    assert eff.mode == AttentionMode.mention_only
+    assert eff.keywords == ["hello", "world"]
+    assert eff.muted_until is None
+    assert eff.source == "global"
+
+
+@pytest.mark.asyncio
+async def test_resolver_override_partial_inherit(session):
+    receiver = _agent()
+    receiver.default_attention = AttentionMode.always
+    receiver.attention_keywords = '["alpha"]'
+    await _add(session, receiver)
+    # Only override the mode; keywords stay inherited.
+    session.add(
+        AgentRoomPolicyOverride(
+            agent_id="ag_receiver",
+            room_id="rm_pub_1",
+            attention_mode=AttentionMode.keyword,
+            keywords=None,
+        )
+    )
+    await session.commit()
+    eff = await resolve_effective_attention(session, agent=receiver, room_id="rm_pub_1")
+    assert eff.mode == AttentionMode.keyword
+    assert eff.keywords == ["alpha"]
+    assert eff.source == "override"
+
+
+@pytest.mark.asyncio
+async def test_resolver_dm_room_forces_always(session):
+    receiver = _agent()
+    receiver.default_attention = AttentionMode.muted
+    await _add(session, receiver)
+    # Even a stray override row must not affect DMs.
+    session.add(
+        AgentRoomPolicyOverride(
+            agent_id="ag_receiver",
+            room_id="rm_dm_xyz",
+            attention_mode=AttentionMode.muted,
+        )
+    )
+    await session.commit()
+    eff = await resolve_effective_attention(session, agent=receiver, room_id="rm_dm_xyz")
+    assert eff.mode == AttentionMode.always
+    assert eff.source == "dm_forced"
+
+
+@pytest.mark.asyncio
+async def test_resolver_muted_until_future_vs_past(session):
+    receiver = _agent()
+    await _add(session, receiver)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    future = now + datetime.timedelta(minutes=30)
+    session.add(
+        AgentRoomPolicyOverride(
+            agent_id="ag_receiver",
+            room_id="rm_pub_1",
+            muted_until=future,
+        )
+    )
+    await session.commit()
+    eff = await resolve_effective_attention(session, agent=receiver, room_id="rm_pub_1")
+    assert eff.muted_until is not None
+    assert eff.source == "override"
+
+    # Replace with a past timestamp — should be dropped.
+    row = (
+        await session.execute(
+            __import__("sqlalchemy").select(AgentRoomPolicyOverride).where(
+                AgentRoomPolicyOverride.agent_id == "ag_receiver",
+                AgentRoomPolicyOverride.room_id == "rm_pub_1",
+            )
+        )
+    ).scalar_one()
+    row.muted_until = now - datetime.timedelta(minutes=1)
+    await session.commit()
+    eff2 = await resolve_effective_attention(session, agent=receiver, room_id="rm_pub_1")
+    assert eff2.muted_until is None
+
+
+@pytest.mark.asyncio
+async def test_resolver_garbled_keywords_returns_empty(session):
+    receiver = _agent()
+    receiver.attention_keywords = "not-json-at-all"
+    await _add(session, receiver)
+    eff = await resolve_effective_attention(session, agent=receiver, room_id="rm_pub_1")
+    assert eff.keywords == []
