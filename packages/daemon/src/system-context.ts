@@ -6,10 +6,11 @@
  * `RuntimeRunOptions.systemContext`. This module composes the daemon's
  * system-context string from:
  *
- *   1. `[BotCord Scene: Owner Chat]` (owner-trust turns only)
- *   2. `[BotCord Working Memory]`
- *   3. `[BotCord Room Context]` (group rooms, via optional async fetcher)
- *   4. `[BotCord Cross-Room Awareness]` (optional activity tracker)
+ *   1. `[BotCord Identity]` (read fresh from workspace/identity.md each turn)
+ *   2. `[BotCord Scene: Owner Chat]` (owner-trust turns only)
+ *   3. `[BotCord Working Memory]`
+ *   4. `[BotCord Room Context]` (group rooms, via optional async fetcher)
+ *   5. `[BotCord Cross-Room Awareness]` (optional activity tracker)
  *
  * Behavior:
  *   - Working memory is loaded fresh per turn, so a `memory set` from another
@@ -26,6 +27,7 @@ import type { GatewayInboundMessage, SystemContextBuilder } from "./gateway/inde
 import type { ActivityTracker } from "./activity-tracker.js";
 import { buildCrossRoomDigest } from "./cross-room.js";
 import { buildWorkingMemoryPrompt, readWorkingMemory } from "./working-memory.js";
+import { readIdentity } from "./agent-workspace.js";
 import { classifyActivitySender } from "./sender-classify.js";
 import { log } from "./log.js";
 
@@ -87,6 +89,31 @@ function safeReadWorkingMemory(agentId: string) {
 }
 
 /**
+ * Read identity.md and wrap it as a system-context block. Placed before
+ * every other block so the agent answers "who are you" from this file
+ * rather than from the underlying CLI's default persona ("I am Claude
+ * Code"). Re-read every turn so dashboard reconcile (`applyAgentIdentity`)
+ * and self-edits take effect immediately, mirroring working-memory
+ * semantics.
+ */
+function buildIdentityPrompt(agentId: string): string | null {
+  let raw: string | null = null;
+  try {
+    raw = readIdentity(agentId);
+  } catch (err) {
+    log.warn("identity read failed", { agentId, err: String(err) });
+    return null;
+  }
+  if (!raw) return null;
+  return [
+    "[BotCord Identity]",
+    "Your persistent identity card. The fields below are the source of truth — when asked who you are, what you do, or what you will / will not do, answer from this block, not from the underlying CLI's default persona.",
+    "",
+    raw.trim(),
+  ].join("\n");
+}
+
+/**
  * Build a {@link SystemContextBuilder} for the gateway dispatcher.
  *
  * When `deps.roomContextBuilder` is provided the returned function is async
@@ -97,10 +124,13 @@ export function createDaemonSystemContextBuilder(
   deps: SystemContextDeps,
 ): (message: GatewayInboundMessage) => Promise<string | undefined> | string | undefined {
   const gatherSyncBlocks = (message: GatewayInboundMessage): {
+    identity: string | null;
     ownerScene: string | null;
     memory: string | null;
     digest: string | null;
   } => {
+    const identity = buildIdentityPrompt(deps.agentId);
+
     const ownerScene =
       classifyActivitySender(message).kind === "owner"
         ? buildOwnerChatSceneContext()
@@ -118,7 +148,7 @@ export function createDaemonSystemContextBuilder(
         }) || null
       : null;
 
-    return { ownerScene, memory, digest };
+    return { identity, ownerScene, memory, digest };
   };
 
   const assemble = (parts: Array<string | null | undefined>): string | undefined => {
@@ -144,11 +174,12 @@ export function createDaemonSystemContextBuilder(
 
   if (!deps.roomContextBuilder) {
     const syncBuilder = (message: GatewayInboundMessage): string | undefined => {
-      const { ownerScene, memory, digest } = gatherSyncBlocks(message);
+      const { identity, ownerScene, memory, digest } = gatherSyncBlocks(message);
       // Loop-risk sits at the end so its "reply NO_REPLY unless…" guidance
       // is the last thing the model sees before the user turn body.
+      // Identity sits at the very front so it frames every other block.
       const loopRisk = runLoopRisk(message);
-      return assemble([ownerScene, memory, digest, loopRisk]);
+      return assemble([identity, ownerScene, memory, digest, loopRisk]);
     };
     // Compile-time witness that the narrower sync signature still satisfies
     // `SystemContextBuilder` (which allows async). Prevents the two contracts
@@ -162,11 +193,12 @@ export function createDaemonSystemContextBuilder(
   const asyncBuilder = async (
     message: GatewayInboundMessage,
   ): Promise<string | undefined> => {
-    const { ownerScene, memory, digest } = gatherSyncBlocks(message);
+    const { identity, ownerScene, memory, digest } = gatherSyncBlocks(message);
     // Room context landing order: after owner-scene / memory, before digest —
     // "what room am I in" belongs with the session's own identity, while the
     // cross-room digest deliberately describes OTHER rooms and should stay
     // last so it doesn't get confused with the current room.
+    // Identity stays at the very front; see syncBuilder for rationale.
     let roomBlock: string | null = null;
     try {
       roomBlock = await roomBuilder(message);
@@ -178,7 +210,7 @@ export function createDaemonSystemContextBuilder(
       });
     }
     const loopRisk = runLoopRisk(message);
-    return assemble([ownerScene, memory, roomBlock, digest, loopRisk]);
+    return assemble([identity, ownerScene, memory, roomBlock, digest, loopRisk]);
   };
   const _typecheck: SystemContextBuilder = asyncBuilder;
   void _typecheck;
