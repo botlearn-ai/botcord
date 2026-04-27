@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Search, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
-import { api, humansApi } from "@/lib/api";
+import { api, humansApi, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import {
   agentBrowser,
@@ -282,7 +282,7 @@ export default function RoomSettingsModal({
   useEffect(() => {
     if (!isHumanOwnedRoom || !isOwner) return;
     let cancelled = false;
-    void api.getMyAgents().then(({ agents }) => {
+    void userApi.getMyAgents().then(({ agents }) => {
       if (cancelled) return;
       setOwnedAgents(agents);
       // Default to the current product's provider if known, else first agent.
