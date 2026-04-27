@@ -35,6 +35,7 @@ import {
   type UserAuthRecord,
 } from "./user-auth.js";
 import { renderStatus, type StatusRenderInput } from "./status-render.js";
+import { appendNextParam } from "./url-utils.js";
 import {
   channelsFromDaemonConfig,
   defaultHttpFetcher,
@@ -274,10 +275,15 @@ async function runDeviceCodeFlow(opts: {
     opts.hubUrl,
     opts.label ? { label: opts.label } : undefined,
   );
-  const display = dc.verificationUriComplete ?? dc.verificationUri;
+  const base = dc.verificationUriComplete ?? dc.verificationUri;
+  const display = appendNextParam(base, "/settings/daemons");
   console.log("");
-  console.log(`Visit ${display}`);
-  console.log(`Code: ${dc.userCode}`);
+  console.log("Open this URL in a browser where you're signed in to BotCord");
+  console.log("(typically your laptop, NOT this machine):");
+  console.log("");
+  console.log(`  ${display}`);
+  console.log("");
+  console.log(`Or enter this code at ${dc.verificationUri}: ${dc.userCode}`);
   console.log("Waiting for authorization (Ctrl-C to abort)...");
 
   const expiresAt = Date.now() + dc.expiresIn * 1000;

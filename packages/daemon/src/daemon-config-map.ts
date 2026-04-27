@@ -317,6 +317,10 @@ export function buildManagedRoutes(
       match: { accountId: agentId },
       runtime,
       cwd: meta.cwd || agentWorkspaceDir(agentId),
+      // Inherit defaultRoute's extraArgs so synthesized per-agent routes
+      // pick up operator-wide flags (e.g. `--permission-mode bypassPermissions`)
+      // that would otherwise apply only to agents listed in `cfg.routes[]`.
+      ...(defaultRoute.extraArgs ? { extraArgs: defaultRoute.extraArgs.slice() } : {}),
     };
     if (runtime === "openclaw-acp") {
       // Per RFC §3.4: prefer credentials, fall back to defaultRoute.gateway.

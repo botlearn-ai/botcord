@@ -20,6 +20,21 @@ function formatUserCode(raw: string): string {
   return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
 }
 
+export const ACTIVATE_DEFAULT_NEXT = "/settings/daemons";
+
+/**
+ * Sanitize the post-auth `?next=…` redirect target. Only same-origin
+ * relative paths are allowed — protocol-relative (`//evil.com`), absolute
+ * (`http://...`), and pseudo-URL (`javascript:`) values are rejected to
+ * prevent open-redirect abuse. Anything invalid falls back to the daemon
+ * settings page.
+ */
+export function sanitizeNextPath(raw: string | null | undefined): string {
+  if (!raw) return ACTIVATE_DEFAULT_NEXT;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return ACTIVATE_DEFAULT_NEXT;
+  return raw;
+}
+
 export default function ActivatePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -32,6 +47,12 @@ export default function ActivatePage() {
   // the user is unauthenticated. `formatUserCode` normalizes to the canonical
   // XXXX-XXXX shape before we drop it into the form.
   const urlCode = searchParams?.get("code") ?? null;
+
+  // Optional `?next=…` redirect target. Restricted to same-origin relative
+  // paths to prevent open-redirect abuse — anything else falls back to the
+  // daemon settings page, which is the natural destination after authorizing.
+  const rawNext = searchParams?.get("next") ?? null;
+  const safeNext = useMemo(() => sanitizeNextPath(rawNext), [rawNext]);
 
   const [userCode, setUserCode] = useState("");
   const [label, setLabel] = useState("");
@@ -46,11 +67,13 @@ export default function ActivatePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (cancelled) return;
       if (!session) {
-        // Preserve the original `?code=…` across the login round-trip so the
-        // user lands back on this page with the prefill intact (plan §6.1).
-        const nextPath = urlCode
-          ? `/activate?code=${encodeURIComponent(urlCode)}`
-          : "/activate";
+        // Preserve the original `?code=…` and `?next=…` across the login
+        // round-trip so the user lands back on this page with the prefill
+        // and post-auth redirect target intact (plan §6.1).
+        const qs = new URLSearchParams();
+        if (urlCode) qs.set("code", urlCode);
+        if (rawNext) qs.set("next", rawNext);
+        const nextPath = qs.toString() ? `/activate?${qs.toString()}` : "/activate";
         const next = encodeURIComponent(nextPath);
         router.replace(`/login?next=${next}`);
         return;
@@ -62,7 +85,7 @@ export default function ActivatePage() {
     return () => {
       cancelled = true;
     };
-  }, [router, supabase, urlCode]);
+  }, [router, supabase, urlCode, rawNext]);
 
   // Plan §6.1: URL-borne `code` prefill is *convenience only* — still gated
   // behind Supabase auth + explicit Authorize click. We only hydrate the
@@ -122,6 +145,9 @@ export default function ActivatePage() {
       setApproveOk(true);
       setUserCode("");
       setLabel("");
+      // Brief pause so the user sees the success banner, then send them to
+      // the page they actually need (daemon list by default).
+      setTimeout(() => router.replace(safeNext), 1200);
     } catch (err) {
       setApproveError(
         err instanceof Error ? err.message : "Network error",

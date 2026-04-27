@@ -400,6 +400,27 @@ describe("buildManagedRoutes", () => {
     });
   });
 
+  it("inherits defaultRoute.extraArgs (e.g. --permission-mode bypassPermissions)", () => {
+    const withExtraArgs: GatewayRoute = {
+      runtime: "claude-code",
+      cwd: "/home/default",
+      extraArgs: ["--permission-mode", "bypassPermissions"],
+    };
+    const map = buildManagedRoutes(["ag_one"], {}, withExtraArgs);
+    expect(map.get("ag_one")?.extraArgs).toEqual([
+      "--permission-mode",
+      "bypassPermissions",
+    ]);
+    // Ensure it's a copy, not the same reference — caller should not be able
+    // to mutate the defaultRoute by editing a managed route's extraArgs.
+    expect(map.get("ag_one")?.extraArgs).not.toBe(withExtraArgs.extraArgs);
+  });
+
+  it("omits extraArgs when defaultRoute has none", () => {
+    const map = buildManagedRoutes(["ag_one"], {}, defaultRoute);
+    expect(map.get("ag_one")).not.toHaveProperty("extraArgs");
+  });
+
   it("preserves agentIds insertion order in the returned map", () => {
     const map = buildManagedRoutes(
       ["ag_b", "ag_a", "ag_c"],
