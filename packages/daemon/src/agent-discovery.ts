@@ -38,6 +38,10 @@ export interface DiscoveredAgentCredential {
   runtime?: string;
   /** Working directory cached alongside `runtime`. */
   cwd?: string;
+  /** OpenClaw gateway profile name from credentials (only meaningful for openclaw-acp). */
+  openclawGateway?: string;
+  /** OpenClaw agent profile override from credentials. */
+  openclawAgent?: string;
   /** Key id from the credentials file — surfaced so boot-time workspace
    * seeding (see daemon-agent-workspace-plan.md §9) can render identity.md
    * without re-reading the file. */
@@ -164,6 +168,8 @@ export function discoverAgentCredentials(
     if (creds.displayName) entry.displayName = creds.displayName;
     if (creds.runtime) entry.runtime = creds.runtime;
     if (creds.cwd) entry.cwd = creds.cwd;
+    if (creds.openclawGateway) entry.openclawGateway = creds.openclawGateway;
+    if (creds.openclawAgent) entry.openclawAgent = creds.openclawAgent;
     if (creds.keyId) entry.keyId = creds.keyId;
     if (creds.savedAt) entry.savedAt = creds.savedAt;
     agents.push(entry);
@@ -236,6 +242,8 @@ export function resolveBootAgents(
         if (creds.displayName) entry.displayName = creds.displayName;
         if (creds.runtime) entry.runtime = creds.runtime;
         if (creds.cwd) entry.cwd = creds.cwd;
+        if (creds.openclawGateway) entry.openclawGateway = creds.openclawGateway;
+        if (creds.openclawAgent) entry.openclawAgent = creds.openclawAgent;
         if (creds.keyId) entry.keyId = creds.keyId;
         if (creds.savedAt) entry.savedAt = creds.savedAt;
       } catch (err) {

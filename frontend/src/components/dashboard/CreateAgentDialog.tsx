@@ -77,6 +77,8 @@ export default function CreateAgentDialog({
   const [hostKind, setHostKind] = useState<"daemon" | "openclaw">("daemon");
   const [selectedDaemonId, setSelectedDaemonId] = useState<string | null>(null);
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
+  const [selectedGateway, setSelectedGateway] = useState<string | null>(null);
+  const [selectedOpenclawAgent, setSelectedOpenclawAgent] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -127,6 +129,23 @@ export default function CreateAgentDialog({
     setSelectedRuntimeId(firstAvailable?.id ?? null);
   }, [selectedDaemon, selectedRuntimeId]);
 
+  // Reset OpenClaw selections when leaving the openclaw-acp runtime.
+  const selectedRuntime = useMemo(
+    () => selectedDaemon?.runtimes?.find((r) => r.id === selectedRuntimeId) ?? null,
+    [selectedDaemon, selectedRuntimeId],
+  );
+  useEffect(() => {
+    if (selectedRuntimeId !== "openclaw-acp") {
+      setSelectedGateway(null);
+      setSelectedOpenclawAgent(null);
+      return;
+    }
+    const reachable = (selectedRuntime?.endpoints ?? []).filter((e) => e.reachable);
+    if (selectedGateway && reachable.some((e) => e.name === selectedGateway)) return;
+    setSelectedGateway(reachable[0]?.name ?? null);
+    setSelectedOpenclawAgent(null);
+  }, [selectedRuntime, selectedRuntimeId, selectedGateway]);
+
   async function handleCopy(): Promise<void> {
     try {
       await navigator.clipboard.writeText(buildStartCommand());
@@ -172,6 +191,12 @@ export default function CreateAgentDialog({
         name: name.trim() || undefined,
         bio: bio.trim() || undefined,
         runtime: selectedRuntimeId,
+        ...(selectedRuntimeId === "openclaw-acp" && selectedGateway
+          ? {
+              openclawGateway: selectedGateway,
+              ...(selectedOpenclawAgent ? { openclawAgent: selectedOpenclawAgent } : {}),
+            }
+          : {}),
       });
       await onSuccess(res.agentId);
       onClose();
@@ -183,8 +208,12 @@ export default function CreateAgentDialog({
   }
 
   const showEmptyState = loaded && onlineDaemons.length === 0;
+  const needsOpenclawGateway = selectedRuntimeId === "openclaw-acp";
   const canSubmit =
-    !!selectedDaemonId && !!selectedRuntimeId && !submitting;
+    !!selectedDaemonId &&
+    !!selectedRuntimeId &&
+    (!needsOpenclawGateway || !!selectedGateway) &&
+    !submitting;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -312,6 +341,20 @@ export default function CreateAgentDialog({
               }}
               disabled={submitting}
             />
+
+            {needsOpenclawGateway && (
+              <OpenclawGatewayPicker
+                runtime={selectedRuntime}
+                selectedGateway={selectedGateway}
+                onSelectGateway={(g) => {
+                  setSelectedGateway(g);
+                  setSelectedOpenclawAgent(null);
+                }}
+                selectedAgent={selectedOpenclawAgent}
+                onSelectAgent={setSelectedOpenclawAgent}
+                disabled={submitting}
+              />
+            )}
 
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
@@ -582,6 +625,99 @@ function RuntimeCard({
         <Check className="h-4 w-4 flex-shrink-0 text-neon-cyan" />
       )}
     </button>
+  );
+}
+
+function OpenclawGatewayPicker({
+  runtime,
+  selectedGateway,
+  onSelectGateway,
+  selectedAgent,
+  onSelectAgent,
+  disabled,
+}: {
+  runtime: DaemonRuntime | null;
+  selectedGateway: string | null;
+  onSelectGateway: (name: string | null) => void;
+  selectedAgent: string | null;
+  onSelectAgent: (name: string | null) => void;
+  disabled: boolean;
+}) {
+  const endpoints = runtime?.endpoints ?? [];
+  const reachable = endpoints.filter((e) => e.reachable);
+  const current = endpoints.find((e) => e.name === selectedGateway) ?? null;
+  const agents = current?.agents ?? [];
+  if (endpoints.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-3 text-xs text-text-secondary">
+        No OpenClaw gateways configured on this daemon. Add an entry to
+        <code className="mx-1 font-mono">openclawGateways</code>
+        in the daemon config and refresh.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Gateway
+        </label>
+        <select
+          disabled={disabled}
+          value={selectedGateway ?? ""}
+          onChange={(e) => onSelectGateway(e.target.value || null)}
+          className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
+        >
+          <option value="" disabled>
+            Select a gateway
+          </option>
+          {endpoints.map((e) => (
+            <option key={e.name} value={e.name} disabled={!e.reachable}>
+              {e.name} — {e.url} {e.reachable ? `(${e.version ?? "ok"})` : `✗ ${e.error ?? "unreachable"}`}
+            </option>
+          ))}
+        </select>
+        {reachable.length === 0 && (
+          <p className="mt-1 text-[11px] text-orange-400">
+            No reachable gateways. Check tokens, daemon network access, or refresh runtimes.
+          </p>
+        )}
+      </div>
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Agent profile (optional)
+        </label>
+        {agents.length === 0 ? (
+          <input
+            disabled={disabled || !selectedGateway}
+            type="text"
+            value={selectedAgent ?? ""}
+            placeholder="leave blank to use the gateway's defaultAgent"
+            onChange={(e) => onSelectAgent(e.target.value.trim() || null)}
+            className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
+          />
+        ) : (
+          <select
+            disabled={disabled || !selectedGateway}
+            value={selectedAgent ?? ""}
+            onChange={(e) => onSelectAgent(e.target.value || null)}
+            className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
+          >
+            <option value="">(use gateway defaultAgent)</option>
+            {agents.map((a) => {
+              const label =
+                (a.name && a.name !== a.id ? `${a.name} (${a.id})` : a.id) +
+                (a.model?.name ? ` — ${a.model.name}` : "");
+              return (
+                <option key={a.id} value={a.id}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
+        )}
+      </div>
+    </div>
   );
 }
 

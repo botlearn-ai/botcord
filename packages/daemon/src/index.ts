@@ -913,15 +913,26 @@ const fsFileReader: DoctorFileReader = {
 };
 
 async function cmdDoctor(args: ParsedArgs): Promise<void> {
-  const entries = detectRuntimes();
+  const entries: import("./doctor.js").DoctorRuntimeEntry[] = detectRuntimes();
   // Doctor should not hard-fail when no config exists yet; channel probes
   // simply produce an empty list in that case.
   let channels: ReturnType<typeof channelsFromDaemonConfig> = [];
+  let cfgForEndpoints: import("./config.js").DaemonConfig | null = null;
   try {
     const cfg = loadConfig();
+    cfgForEndpoints = cfg;
     channels = channelsFromDaemonConfig(cfg);
   } catch {
     channels = [];
+  }
+  if (cfgForEndpoints?.openclawGateways && cfgForEndpoints.openclawGateways.length > 0) {
+    const { collectRuntimeSnapshotAsync } = await import("./provision.js");
+    const snap = await collectRuntimeSnapshotAsync({ cfg: cfgForEndpoints });
+    const byId = new Map(snap.runtimes.map((r) => [r.id, r]));
+    for (const e of entries) {
+      const r = byId.get(e.id);
+      if (r?.endpoints) e.endpoints = r.endpoints;
+    }
   }
 
   const credentialsPath = (accountId: string) =>
