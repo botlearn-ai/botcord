@@ -194,6 +194,10 @@ export function buildManagedRoutes(
       match: { accountId: agentId },
       runtime: meta.runtime ?? defaultRoute.runtime,
       cwd: meta.cwd || agentWorkspaceDir(agentId),
+      // Inherit defaultRoute's extraArgs so synthesized per-agent routes
+      // pick up operator-wide flags (e.g. `--permission-mode bypassPermissions`)
+      // that would otherwise apply only to agents listed in `cfg.routes[]`.
+      ...(defaultRoute.extraArgs ? { extraArgs: defaultRoute.extraArgs.slice() } : {}),
     });
   }
   return out;
