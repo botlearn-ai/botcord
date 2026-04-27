@@ -64,7 +64,7 @@ from hub.validators import parse_pubkey
 from nacl.signing import SigningKey as NaClSigningKey
 
 # Bind-code onboarding: short TTL + per-user active cap.
-BIND_TICKET_TTL_MINUTES = 10
+BIND_TICKET_TTL_MINUTES = 30
 MAX_ACTIVE_BIND_CODES_PER_USER = 5
 
 _logger = logging.getLogger(__name__)
