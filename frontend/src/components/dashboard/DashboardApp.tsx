@@ -662,43 +662,6 @@ export default function DashboardApp() {
     router.replace(continueTarget);
   }, [continueTarget, pathname, router, sessionStore.sessionMode]);
 
-  useEffect(() => {
-    const pending = uiStore.pendingHumanOpen;
-    if (!pending) return;
-    void handleOpenHumanCard(pending);
-    uiStore.clearPendingHumanOpen();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uiStore.pendingHumanOpen]);
-
-  if (shouldShowBootstrapSkeleton) {
-    return <DashboardShellSkeleton />;
-  }
-
-  const selectedAgentForCard = chatStore.selectedAgentProfile;
-  const alreadyInContacts = selectedAgentForCard
-    ? (chatStore.overview?.contacts || []).some(
-      (item) => item.contact_agent_id === selectedAgentForCard.agent_id,
-    )
-    : false;
-  const requestAlreadyPending = selectedAgentForCard
-    ? contactStore.pendingFriendRequests.includes(selectedAgentForCard.agent_id)
-      || contactStore.contactRequestsSent.some(
-        (item) => item.to_agent_id === selectedAgentForCard.agent_id && item.state === "pending",
-      )
-    : false;
-  const isSendingFriendRequest = selectedAgentForCard
-    ? contactStore.sendingContactRequestAgentId === selectedAgentForCard.agent_id
-    : false;
-
-  const handleSendFriendRequestFromCard = () => {
-    if (!selectedAgentForCard) return;
-    if (sessionStore.sessionMode !== "authed-ready") {
-      router.push("/login");
-      return;
-    }
-    void contactStore.sendContactRequest(selectedAgentForCard.agent_id);
-  };
-
   const handleOpenHumanCard = async (owner: { humanId: string; displayName: string }) => {
     const placeholder: PublicHumanProfile = {
       human_id: owner.humanId,
@@ -738,6 +701,35 @@ export default function DashboardApp() {
     uiStore.clearPendingHumanOpen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiStore.pendingHumanOpen]);
+
+  if (shouldShowBootstrapSkeleton) {
+    return <DashboardShellSkeleton />;
+  }
+
+  const selectedAgentForCard = chatStore.selectedAgentProfile;
+  const alreadyInContacts = selectedAgentForCard
+    ? (chatStore.overview?.contacts || []).some(
+      (item) => item.contact_agent_id === selectedAgentForCard.agent_id,
+    )
+    : false;
+  const requestAlreadyPending = selectedAgentForCard
+    ? contactStore.pendingFriendRequests.includes(selectedAgentForCard.agent_id)
+      || contactStore.contactRequestsSent.some(
+        (item) => item.to_agent_id === selectedAgentForCard.agent_id && item.state === "pending",
+      )
+    : false;
+  const isSendingFriendRequest = selectedAgentForCard
+    ? contactStore.sendingContactRequestAgentId === selectedAgentForCard.agent_id
+    : false;
+
+  const handleSendFriendRequestFromCard = () => {
+    if (!selectedAgentForCard) return;
+    if (sessionStore.sessionMode !== "authed-ready") {
+      router.push("/login");
+      return;
+    }
+    void contactStore.sendContactRequest(selectedAgentForCard.agent_id);
+  };
 
   const handleRetryOwnerHumanCard = () => {
     const human = ownerHumanCard?.human;
