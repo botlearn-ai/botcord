@@ -21,6 +21,7 @@ export interface DashboardRoom {
   name: string;
   description: string;
   owner_id: string;
+  owner_type?: ParticipantType;
   visibility: string;
   join_policy?: string;
   can_invite?: boolean;
@@ -619,7 +620,9 @@ export interface PublicRoomMembersResponse {
 
 export interface SubscriptionProduct {
   product_id: string;
-  owner_agent_id: string;
+  owner_id: string;
+  owner_type: ParticipantType;
+  provider_agent_id: string;
   name: string;
   description: string;
   asset_code: string;

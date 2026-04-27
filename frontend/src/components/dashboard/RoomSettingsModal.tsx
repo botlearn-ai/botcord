@@ -10,7 +10,7 @@ import {
   roomAdvancedSettings,
   roomSettingsModal,
 } from "@/lib/i18n/translations/dashboard";
-import type { PublicRoomMember, SubscriptionProduct } from "@/lib/types";
+import type { ParticipantType, PublicRoomMember, SubscriptionProduct, UserAgent } from "@/lib/types";
 import AddRoomMemberModal from "./AddRoomMemberModal";
 import MemberActionsMenu from "./MemberActionsMenu";
 import PlanChangeConfirmDialog from "./PlanChangeConfirmDialog";
@@ -22,6 +22,10 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 
 interface RoomSettingsModalProps {
   roomId: string;
+  // Polymorphic owner type — drives whether the subscription section
+  // shows a "receiving bot" dropdown (human-owned) or hard-binds the
+  // provider to the owner agent (agent-owned).
+  roomOwnerType: ParticipantType;
   viewerMode: "human" | "agent";
   viewerRole?: string | null;
   initialName: string;
@@ -140,6 +144,7 @@ function ActionConfirmDialog({
 
 export default function RoomSettingsModal({
   roomId,
+  roomOwnerType,
   viewerMode,
   viewerRole,
   initialName,
@@ -198,6 +203,12 @@ export default function RoomSettingsModal({
   );
   const [subscriptionEnabled, setSubscriptionEnabled] = useState(Boolean(initialSubscriptionProductId));
   const [ownedProducts, setOwnedProducts] = useState<SubscriptionProduct[]>([]);
+  // Provider agent for human-owned rooms. Required when (re)creating the
+  // room's subscription product because the room owner is a Human and the
+  // wallet receiver must be one of the user's active bots.
+  const isHumanOwnedRoom = roomOwnerType === "human";
+  const [providerAgentId, setProviderAgentId] = useState<string>("");
+  const [ownedAgents, setOwnedAgents] = useState<UserAgent[]>([]);
   const [subscriptionProduct, setSubscriptionProduct] = useState<SubscriptionProduct | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [priceInput, setPriceInput] = useState("");
@@ -265,6 +276,34 @@ export default function RoomSettingsModal({
     if (!initialSubscriptionProductId) return;
     void ensureSubscriptions().catch(() => {});
   }, [ensureSubscriptions, initialSubscriptionProductId]);
+
+  // Human-owned rooms need an explicit provider agent for migrate-plan.
+  // Load the user's bots once when the modal opens and seed the dropdown.
+  useEffect(() => {
+    if (!isHumanOwnedRoom || !isOwner) return;
+    let cancelled = false;
+    void api.getMyAgents().then(({ agents }) => {
+      if (cancelled) return;
+      setOwnedAgents(agents);
+      // Default to the current product's provider if known, else first agent.
+      setProviderAgentId((prev) => {
+        if (prev && agents.some((a) => a.agent_id === prev)) return prev;
+        return agents[0]?.agent_id ?? "";
+      });
+    }).catch(() => {
+      if (!cancelled) setOwnedAgents([]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isHumanOwnedRoom, isOwner]);
+
+  // When the subscription product loads, prefer its provider as the default.
+  useEffect(() => {
+    if (!isHumanOwnedRoom) return;
+    if (!subscriptionProduct?.provider_agent_id) return;
+    setProviderAgentId(subscriptionProduct.provider_agent_id);
+  }, [isHumanOwnedRoom, subscriptionProduct?.provider_agent_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -444,25 +483,39 @@ export default function RoomSettingsModal({
     }
     const amountMinor = String(Math.round(priceMajor * 100));
 
-    // First-time enable: no current product on the room → create + bind.
+    // Human-owned rooms must specify a provider bot; the dashboard human
+    // path doesn't send X-Active-Agent so the backend has no implicit fallback.
+    if (isHumanOwnedRoom && !providerAgentId) {
+      setError(ta.subscriptionProviderRequired ?? "Select a receiving bot");
+      return "blocked";
+    }
+
+    // Same product, identical price + interval (and provider, when human-owned)
+    // → noop. We only short-circuit when a current product exists.
+    if (initialSubscriptionProductId && subscriptionProduct) {
+      const currentMinor = Number(subscriptionProduct.amount_minor);
+      const sameAmount =
+        Number.isFinite(currentMinor) && Number(amountMinor) === currentMinor;
+      const sameInterval =
+        subscriptionProduct.billing_interval === billingInterval;
+      const sameProvider =
+        !isHumanOwnedRoom || providerAgentId === subscriptionProduct.provider_agent_id;
+      if (sameAmount && sameInterval && sameProvider) return "noop";
+    }
+
+    // First-time enable: drop the legacy two-step (createProduct + PATCH room)
+    // — a single migrate-plan call is atomic and works in both human and
+    // agent identity modes.
     if (!initialSubscriptionProductId) {
       await upsertRoomPlan(roomId, {
         amount_minor: amountMinor,
         billing_interval: billingInterval,
+        currentProductId: undefined,
+        providerAgentId: isHumanOwnedRoom ? providerAgentId : undefined,
       });
       await refreshOverview({ reloadOpenedRoom: true });
       return "applied";
     }
-
-    // Same product, identical price + interval → noop.
-    const currentMinor = subscriptionProduct
-      ? Number(subscriptionProduct.amount_minor)
-      : NaN;
-    const sameAmount =
-      Number.isFinite(currentMinor) && Number(amountMinor) === currentMinor;
-    const sameInterval =
-      subscriptionProduct?.billing_interval === billingInterval;
-    if (sameAmount && sameInterval) return "noop";
 
     // Plan change → defer to confirm dialog.
     setPlanChangeAffected(subscriberCount ?? 0);
@@ -480,6 +533,7 @@ export default function RoomSettingsModal({
         amount_minor: amountMinor,
         billing_interval: billingInterval,
         currentProductId: initialSubscriptionProductId ?? undefined,
+        providerAgentId: isHumanOwnedRoom ? providerAgentId : undefined,
       });
       await refreshOverview({ reloadOpenedRoom: true });
       setPlanChangeDialogOpen(false);
@@ -910,6 +964,30 @@ export default function RoomSettingsModal({
                           {ta.subscriptionMonthly}
                         </label>
                       </div>
+                      {isHumanOwnedRoom && (
+                        <div className="flex items-center gap-3">
+                          <label className="text-sm text-text-primary">
+                            {ta.subscriptionProviderLabel ?? "Receiving bot"}
+                          </label>
+                          <select
+                            value={providerAgentId}
+                            onChange={(e) => setProviderAgentId(e.target.value)}
+                            disabled={multiRoomBlocked || ownedAgents.length === 0}
+                            className="rounded-lg border border-glass-border bg-deep-black px-2 py-1 text-sm text-text-primary"
+                          >
+                            {ownedAgents.length === 0 && (
+                              <option value="">
+                                {ta.subscriptionProviderEmpty ?? "No bots available"}
+                              </option>
+                            )}
+                            {ownedAgents.map((agent) => (
+                              <option key={agent.agent_id} value={agent.agent_id}>
+                                {agent.display_name} ({agent.agent_id})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       {subscriberCount !== null && (
                         <p className="text-xs text-text-secondary/80">
                           {ta.subscriptionCurrentSubscribers}: {subscriberCount}

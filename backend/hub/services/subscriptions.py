@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.enums import (
     BillingInterval,
+    ParticipantType,
     SubscriptionChargeAttemptStatus,
     SubscriptionProductStatus,
     SubscriptionStatus,
@@ -65,10 +66,16 @@ def _billing_cycle_key(subscription: AgentSubscription) -> str:
     return _ensure_tz(subscription.current_period_end).isoformat()
 
 
-def _product_query(owner_agent_id: str | None = None, include_archived: bool = False):
+def _product_query(
+    owner_id: str | None = None,
+    owner_type: ParticipantType | None = None,
+    include_archived: bool = False,
+):
     stmt = select(SubscriptionProduct)
-    if owner_agent_id is not None:
-        stmt = stmt.where(SubscriptionProduct.owner_agent_id == owner_agent_id)
+    if owner_id is not None:
+        stmt = stmt.where(SubscriptionProduct.owner_id == owner_id)
+    if owner_type is not None:
+        stmt = stmt.where(SubscriptionProduct.owner_type == owner_type)
     if not include_archived:
         stmt = stmt.where(SubscriptionProduct.status == SubscriptionProductStatus.active)
     return stmt.order_by(SubscriptionProduct.created_at.desc())
@@ -85,8 +92,10 @@ def _subscription_query(agent_id: str | None = None, product_id: str | None = No
 
 async def create_subscription_product(
     session: AsyncSession,
-    owner_agent_id: str,
     *,
+    owner_id: str,
+    owner_type: ParticipantType,
+    provider_agent_id: str,
     name: str,
     description: str = "",
     amount_minor: int,
@@ -97,10 +106,17 @@ async def create_subscription_product(
         raise ValueError("Amount must be positive")
     if billing_interval not in {BillingInterval.week, BillingInterval.month, BillingInterval.once}:
         raise ValueError("billing_interval must be week, month, or once")
+    if not provider_agent_id:
+        raise ValueError("provider_agent_id is required")
+    if owner_type == ParticipantType.agent and provider_agent_id != owner_id:
+        # Invariant: an agent-owned product's wallet is the owner agent.
+        raise ValueError("Agent-owned product provider must be the owner agent")
 
     product = SubscriptionProduct(
         product_id=generate_subscription_product_id(),
-        owner_agent_id=owner_agent_id,
+        owner_id=owner_id,
+        owner_type=owner_type,
+        provider_agent_id=provider_agent_id,
         name=name,
         description=description or "",
         asset_code=asset_code,
@@ -120,17 +136,22 @@ async def create_subscription_product(
 async def list_subscription_products(
     session: AsyncSession,
     *,
-    owner_agent_id: str | None = None,
+    owner_id: str | None = None,
+    owner_type: ParticipantType | None = None,
     include_archived: bool = False,
 ) -> list[SubscriptionProduct]:
-    result = await session.execute(_product_query(owner_agent_id, include_archived))
+    result = await session.execute(
+        _product_query(owner_id=owner_id, owner_type=owner_type, include_archived=include_archived)
+    )
     return list(result.scalars().all())
 
 
 async def archive_subscription_product(
     session: AsyncSession,
     product_id: str,
-    current_agent: str,
+    *,
+    owner_id: str,
+    owner_type: ParticipantType,
 ) -> SubscriptionProduct:
     result = await session.execute(
         select(SubscriptionProduct).where(SubscriptionProduct.product_id == product_id)
@@ -138,7 +159,7 @@ async def archive_subscription_product(
     product = result.scalar_one_or_none()
     if product is None:
         raise ValueError("Subscription product not found")
-    if product.owner_agent_id != current_agent:
+    if product.owner_id != owner_id or product.owner_type != owner_type:
         raise ValueError("Not authorized to archive this product")
     if product.status == SubscriptionProductStatus.archived:
         return product
@@ -218,7 +239,11 @@ async def create_subscription(
         raise ValueError("Subscription product not found")
     if product.status != SubscriptionProductStatus.active:
         raise ValueError("Subscription product is archived")
-    if product.owner_agent_id == subscriber_agent_id:
+    # Self-subscription prevention: an agent can't subscribe to a product it
+    # owns (or that pays into its own wallet).
+    if product.owner_type == ParticipantType.agent and product.owner_id == subscriber_agent_id:
+        raise ValueError("Cannot subscribe to your own product")
+    if product.provider_agent_id == subscriber_agent_id:
         raise ValueError("Cannot subscribe to your own product")
 
     if room_id is not None:
@@ -262,7 +287,7 @@ async def create_subscription(
     tx = await create_transfer(
         session,
         from_owner_id=subscriber_agent_id,
-        to_owner_id=product.owner_agent_id,
+        to_owner_id=product.provider_agent_id,
         amount_minor=product.amount_minor,
         idempotency_key=idempotency_key or f"subscription:first:{subscription_id}",
         reference_type="subscription_charge",
@@ -275,7 +300,7 @@ async def create_subscription(
         subscription_id=subscription_id,
         product_id=product.product_id,
         subscriber_agent_id=subscriber_agent_id,
-        provider_agent_id=product.owner_agent_id,
+        provider_agent_id=product.provider_agent_id,
         room_id=room_id,
         asset_code=product.asset_code,
         amount_minor=product.amount_minor,
@@ -330,7 +355,7 @@ async def _reactivate_subscription(
     tx = await create_transfer(
         session,
         from_owner_id=subscription.subscriber_agent_id,
-        to_owner_id=product.owner_agent_id,
+        to_owner_id=product.provider_agent_id,
         amount_minor=product.amount_minor,
         idempotency_key=idempotency_key or f"subscription:reactivate:{subscription.subscription_id}:{now.isoformat()}",
         reference_type="subscription_charge",

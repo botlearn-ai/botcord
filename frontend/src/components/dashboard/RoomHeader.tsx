@@ -385,6 +385,10 @@ export default function RoomHeader() {
       {showSettingsModal && !isDMRoom && (
         <RoomSettingsModal
           roomId={room.room_id}
+          // Fall back to "agent" for legacy rooms whose overview row predates
+          // the polymorphic owner field. Subscription routes will only enable
+          // the receiving-bot dropdown when the explicit ``"human"`` is set.
+          roomOwnerType={room.owner_type ?? "agent"}
           viewerMode={viewMode}
           viewerRole={myRole}
           initialName={room.name}

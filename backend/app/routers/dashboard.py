@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent, require_user_with_optional_agent
+from app.auth_room import resolve_provider_agent_for_room, viewer_can_admin_room
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
 from hub.dashboard_message_shaping import (
@@ -351,6 +352,7 @@ async def _build_rooms_from_membership(
             "rule": room.rule,
             "required_subscription_product_id": room.required_subscription_product_id,
             "owner_id": room.owner_id,
+            "owner_type": room.owner_type.value if hasattr(room.owner_type, "value") else str(room.owner_type),
             "visibility": room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
             "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
             "member_count": member_counts.get(rid, 0),
@@ -1186,25 +1188,18 @@ async def join_room(
 async def update_room_settings(
     room_id: str,
     body: UpdateRoomSettingsBody,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update room name/description/rule. Owner/admin only."""
-    agent_id = ctx.active_agent_id
-
+    """Update room settings. Basic fields require admin; advanced fields
+    require owner. Works for human-as-owner viewers too — capability is
+    derived via ``viewer_can_admin_room``."""
     room = (await db.execute(select(Room).where(Room.room_id == room_id))).scalar_one_or_none()
     if room is None:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    member = (
-        await db.execute(
-            select(RoomMember).where(
-                RoomMember.room_id == room_id,
-                RoomMember.agent_id == agent_id,
-            )
-        )
-    ).scalar_one_or_none()
-    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+    cap = await viewer_can_admin_room(db, ctx, room)
+    if cap is None:
         raise HTTPException(status_code=403, detail="Only owner or admin can update room settings")
 
     fields_set = body.model_fields_set
@@ -1217,7 +1212,7 @@ async def update_room_settings(
         "slow_mode_seconds",
         "required_subscription_product_id",
     }
-    if fields_set & owner_only_fields and member.role != RoomRole.owner:
+    if fields_set & owner_only_fields and cap != "owner":
         raise HTTPException(status_code=403, detail="Only the owner can change advanced settings")
 
     if "name" in fields_set:
@@ -1266,7 +1261,10 @@ async def update_room_settings(
             ).scalar_one_or_none()
             if product_row is None:
                 raise HTTPException(status_code=404, detail="Subscription product not found")
-            if product_row.owner_agent_id != room.owner_id:
+            if (
+                product_row.owner_id != room.owner_id
+                or product_row.owner_type != room.owner_type
+            ):
                 raise HTTPException(
                     status_code=403,
                     detail="Subscription product does not belong to room owner",
@@ -1336,13 +1334,15 @@ class MigrateRoomPlanBody(BaseModel):
     amount_minor: str = Field(..., min_length=1)
     billing_interval: str = Field(..., description="week or month")
     description: str = Field(default="")
+    # Required when the room is human-owned. Ignored for agent-owned rooms.
+    provider_agent_id: str | None = None
 
 
 @router.post("/rooms/{room_id}/subscription/migrate-plan")
 async def migrate_room_subscription_plan(
     room_id: str,
     body: MigrateRoomPlanBody,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Atomically swap a room's subscription plan.
@@ -1381,10 +1381,15 @@ async def migrate_room_subscription_plan(
     ).scalar_one_or_none()
     if room is None:
         raise HTTPException(status_code=404, detail="Room not found")
-    if room.owner_id != ctx.active_agent_id:
+    cap = await viewer_can_admin_room(db, ctx, room)
+    if cap != "owner":
         raise HTTPException(
             status_code=403, detail="Only the room owner can change the subscription plan"
         )
+
+    provider_agent_id = await resolve_provider_agent_for_room(
+        db, ctx, room, requested_provider_agent_id=body.provider_agent_id,
+    )
 
     old_product_id = room.required_subscription_product_id
     if old_product_id is not None:
@@ -1403,11 +1408,13 @@ async def migrate_room_subscription_plan(
                 detail="Subscription product is shared across multiple rooms",
             )
 
-    # Stable, randomised internal name avoids the (owner_agent_id, name)
+    # Stable, randomised internal name avoids the (owner_id, owner_type, name)
     # uniqueness collision on retries within the same second.
     new_product = await sub_svc.create_subscription_product(
         db,
-        room.owner_id,
+        owner_id=room.owner_id,
+        owner_type=room.owner_type,
+        provider_agent_id=provider_agent_id,
         name=f"room:{room.room_id}:plan:{generate_subscription_product_id()}",
         description=body.description or "",
         amount_minor=amount,
@@ -1441,7 +1448,10 @@ async def migrate_room_subscription_plan(
     if old_product_id is not None:
         try:
             await sub_svc.archive_subscription_product(
-                db, old_product_id, ctx.active_agent_id
+                db,
+                old_product_id,
+                owner_id=room.owner_id,
+                owner_type=room.owner_type,
             )
         except ValueError:
             # Owner mismatch on the old product — leave as-is rather than
@@ -1475,6 +1485,54 @@ async def migrate_room_subscription_plan(
         },
         "affected_count": affected_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# Dissolve room (BFF — supports both human-owned and agent-owned rooms)
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/rooms/{room_id}")
+async def dissolve_room(
+    room_id: str,
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dissolve a room. Owner-capability required (per
+    ``viewer_can_admin_room``). Pre-cancels any subscriptions bound to the
+    room before deletion (mirrors the hub agent-JWT route in
+    ``hub/routers/room.py``)."""
+    room = (
+        await db.execute(select(Room).where(Room.room_id == room_id))
+    ).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    cap = await viewer_can_admin_room(db, ctx, room)
+    if cap != "owner":
+        raise HTTPException(status_code=403, detail="Only the room owner can dissolve the room")
+
+    bound_subs = (
+        await db.execute(
+            select(AgentSubscription).where(
+                AgentSubscription.room_id == room.room_id,
+                AgentSubscription.status.in_(
+                    [SubscriptionStatus.active, SubscriptionStatus.past_due]
+                ),
+            )
+        )
+    ).scalars().all()
+    if bound_subs:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for sub in bound_subs:
+            sub.status = SubscriptionStatus.cancelled
+            sub.cancelled_at = now
+            sub.cancel_at_period_end = False
+        await db.flush()
+
+    await db.delete(room)
+    await db.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

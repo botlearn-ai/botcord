@@ -331,7 +331,11 @@ async def _ensure_room_subscription_product(
     product = result.scalar_one_or_none()
     if product is None:
         raise HTTPException(status_code=400, detail="Subscription product not found")
-    if product.owner_agent_id != owner_id:
+    # Hub create-room path is agent-only — owner_id is always an agent here.
+    if not (
+        product.owner_type == ParticipantType.agent
+        and product.owner_id == owner_id
+    ):
         raise HTTPException(
             status_code=403,
             detail="Room owner must own the required subscription product",
