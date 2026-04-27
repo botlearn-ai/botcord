@@ -18,6 +18,7 @@ from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
 from hub.routers.hub import is_agent_ws_online
 from hub.database import get_db
 from hub.id_generators import generate_hub_msg_id
+from hub.enums import RoomInvitePolicy
 from hub.models import Agent, Block, Contact, MessagePolicy, MessageRecord, MessageState
 from hub.schemas import (
     AddBlockRequest,
@@ -348,6 +349,15 @@ async def update_policy(
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
     agent.message_policy = body.message_policy
+    # Dual-write the new fine-grained `contact_policy` so admission helpers
+    # see a consistent state during the legacy migration window.
+    from hub.enums import ContactPolicy as _ContactPolicy
+    if body.message_policy == MessagePolicy.open:
+        agent.contact_policy = _ContactPolicy.open
+        agent.room_invite_policy = RoomInvitePolicy.open
+    else:
+        agent.contact_policy = _ContactPolicy.contacts_only
+        agent.room_invite_policy = RoomInvitePolicy.contacts_only
     await db.commit()
     return PolicyResponse(message_policy=body.message_policy)
 

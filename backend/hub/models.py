@@ -32,9 +32,11 @@ from hub.id_generators import generate_human_id
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ApprovalKind,
     ApprovalState,
+    AttentionMode,
     BetaCodeStatus,
     BetaWaitlistStatus,
     BillingInterval,
+    ContactPolicy,
     ContactRequestState,
     EndpointState,
     EntryDirection,
@@ -42,6 +44,7 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     MessagePolicy,
     MessageState,
     ParticipantType,
+    RoomInvitePolicy,
     RoomJoinPolicy,
     RoomJoinRequestStatus,
     RoomRole,
@@ -76,6 +79,33 @@ class Agent(Base):
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     message_policy: Mapped[MessagePolicy] = mapped_column(
         Enum(MessagePolicy), nullable=False, server_default="contacts_only"
+    )
+    contact_policy: Mapped[ContactPolicy] = mapped_column(
+        Enum(ContactPolicy, name="contactpolicy", native_enum=False, length=32),
+        nullable=False,
+        default=ContactPolicy.contacts_only,
+        server_default=ContactPolicy.contacts_only.value,
+    )
+    allow_agent_sender: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa_text("TRUE")
+    )
+    allow_human_sender: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa_text("TRUE")
+    )
+    room_invite_policy: Mapped[RoomInvitePolicy] = mapped_column(
+        Enum(RoomInvitePolicy, name="roominvitepolicy", native_enum=False, length=32),
+        nullable=False,
+        default=RoomInvitePolicy.contacts_only,
+        server_default=RoomInvitePolicy.contacts_only.value,
+    )
+    default_attention: Mapped[AttentionMode] = mapped_column(
+        Enum(AttentionMode, name="attentionmode", native_enum=False, length=32),
+        nullable=False,
+        default=AttentionMode.always,
+        server_default=AttentionMode.always.value,
+    )
+    attention_keywords: Mapped[str] = mapped_column(
+        Text, nullable=False, default="[]", server_default="[]"
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

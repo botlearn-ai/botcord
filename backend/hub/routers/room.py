@@ -63,7 +63,8 @@ from hub.models import (
     SubscriptionRoomCreatorPolicy,
     SubscriptionProduct,
 )
-from hub.enums import ApprovalKind, ApprovalState
+from hub.enums import ApprovalKind, ApprovalState, ParticipantType
+from hub.policy import Principal, check_room_invite_admission
 from hub.schemas import (
     AddRoomMemberRequest,
     CreateRoomRequest,
@@ -494,25 +495,23 @@ async def create_room(
         if len(agents) != len(unique_member_ids):
             raise I18nHTTPException(status_code=400, message_key="member_ids_not_found")
 
-        # Admission policy: contacts_only agents require creator to be in their contacts
-        contacts_only_ids = [
-            a.agent_id for a in agents if a.message_policy == MessagePolicy.contacts_only
-        ]
-        if contacts_only_ids:
-            contact_result = await db.execute(
-                select(Contact.owner_id).where(
-                    Contact.owner_id.in_(contacts_only_ids),
-                    Contact.contact_agent_id == current_agent,
+        # Admission policy via the central helper — applied per-invitee so
+        # `room_invite_policy` / `allow_agent_sender` / blocks all gate consistently.
+        inviter_principal = Principal(id=current_agent, type=ParticipantType.agent)
+        denied: list[str] = []
+        for invitee in agents:
+            try:
+                await check_room_invite_admission(
+                    db, inviter=inviter_principal, invitee=invitee
                 )
+            except I18nHTTPException:
+                denied.append(invitee.agent_id)
+        if denied:
+            raise I18nHTTPException(
+                status_code=403,
+                message_key="admission_denied_contacts_only",
+                denied=str(sorted(denied)),
             )
-            has_contact = {row[0] for row in contact_result.all()}
-            denied = set(contacts_only_ids) - has_contact
-            if denied:
-                raise I18nHTTPException(
-                    status_code=403,
-                    message_key="admission_denied_contacts_only",
-                    denied=str(sorted(denied)),
-                )
 
     if body.max_members is not None and len(unique_member_ids) + 1 > body.max_members:
         raise I18nHTTPException(status_code=400, message_key="initial_members_exceed_max")
@@ -859,19 +858,22 @@ async def add_member(
         if target_agent is None:
             raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
-        # Admission policy: contacts_only agents require inviter to be in their contacts
-        if target_agent.message_policy == MessagePolicy.contacts_only:
-            contact_result = await db.execute(
-                select(Contact).where(
-                    Contact.owner_id == target_agent_id,
-                    Contact.contact_agent_id == current_agent,
-                )
+        # Admission policy via the central helper.
+        try:
+            await check_room_invite_admission(
+                db,
+                inviter=Principal(id=current_agent, type=ParticipantType.agent),
+                invitee=target_agent,
             )
-            if contact_result.scalar_one_or_none() is None:
+        except I18nHTTPException as exc:
+            # Preserve the legacy message key for the contacts_only path so
+            # existing clients keep their copy; pass through other reasons.
+            if exc.message_key == "room_invite_requires_contact":
                 raise I18nHTTPException(
                     status_code=403,
                     message_key="admission_denied_target_contacts_only",
-                )
+                ) from None
+            raise
 
         # Claimed agents: queue the invite for owner Human to approve
         if target_agent.user_id is not None:

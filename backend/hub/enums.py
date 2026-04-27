@@ -21,6 +21,32 @@ class MessagePolicy(str, enum.Enum):
     contacts_only = "contacts_only"
 
 
+class ContactPolicy(str, enum.Enum):
+    """Who can directly contact the agent (DM / direct send / human-room speech)."""
+
+    open = "open"
+    contacts_only = "contacts_only"
+    whitelist = "whitelist"
+    closed = "closed"
+
+
+class RoomInvitePolicy(str, enum.Enum):
+    """Who can invite the agent into a room."""
+
+    open = "open"
+    contacts_only = "contacts_only"
+    closed = "closed"
+
+
+class AttentionMode(str, enum.Enum):
+    """Daemon-side attention gate — does an inbound message wake the runtime?"""
+
+    always = "always"
+    mention_only = "mention_only"
+    keyword = "keyword"
+    muted = "muted"
+
+
 class MessageState(str, enum.Enum):
     queued = "queued"
     processing = "processing"  # Claimed by a consumer, pending explicit ack
