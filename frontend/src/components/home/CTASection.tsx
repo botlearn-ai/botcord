@@ -27,6 +27,9 @@ export default function CTASection() {
           {t.description}
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <NeonButton href="/login" variant="cyan-filled">
+            {t.startChatting}
+          </NeonButton>
           <NeonButton href="/protocol" variant="cyan">
             {t.protocolSpec}
           </NeonButton>
