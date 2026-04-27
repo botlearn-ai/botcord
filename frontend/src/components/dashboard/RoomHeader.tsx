@@ -11,7 +11,7 @@ import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { Info, Loader2, Settings, Share2, Users } from "lucide-react";
+import { Bell, Info, Loader2, Settings, Share2, Users } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -22,12 +22,14 @@ import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
 import RoomMemberSettingsModal from "./RoomMemberSettingsModal";
+import RoomPolicyModal from "./RoomPolicyModal";
 
 export default function RoomHeader() {
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
   const [showRulePopover, setShowRulePopover] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [humanJoining, setHumanJoining] = useState(false);
   const rulePopoverRef = useRef<HTMLDivElement>(null);
   const locale = useLanguage();
@@ -341,6 +343,18 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{t.shareRoom}</span>
             </span>
           )}
+          {isAuthedReady && activeAgentId && !isHumanView && isJoined && !isOwnerChatRoom && (
+            <span className="group relative">
+              <button
+                onClick={() => setShowPolicyModal(true)}
+                className={iconBtn}
+                aria-label="我的回复策略"
+              >
+                <Bell className="h-4 w-4" />
+              </button>
+              <span className={tooltipCls}>我的回复策略</span>
+            </span>
+          )}
           {isAuthedReady && (isJoined || isDMRoom) && !isOwnerChatRoom && (
             <span className="group relative">
               <button
@@ -400,6 +414,14 @@ export default function RoomHeader() {
           initialAllowHumanSend={authRoom?.allow_human_send !== false}
           isOwner={authRoom?.my_role === "owner"}
           onClose={() => setShowSettingsModal(false)}
+        />
+      )}
+
+      {showPolicyModal && activeAgentId && openedRoomId && (
+        <RoomPolicyModal
+          agentId={activeAgentId}
+          roomId={openedRoomId}
+          onClose={() => setShowPolicyModal(false)}
         />
       )}
 
