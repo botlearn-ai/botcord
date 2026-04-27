@@ -9,6 +9,31 @@ export { ChannelManager, type ChannelManagerOptions, type ChannelBackoffOptions 
 export { Dispatcher, type DispatcherOptions, type RuntimeFactory } from "./dispatcher.js";
 export { Gateway, type GatewayBootOptions } from "./gateway.js";
 export {
+  createTranscriptWriter,
+  resolveTranscriptEnabled,
+  defaultTranscriptRoot,
+  truncateTextField,
+  TRANSCRIPT_TEXT_LIMIT,
+  TRANSCRIPT_FILE_LIMIT,
+  type TranscriptWriter,
+  type TranscriptRecord,
+  type InboundTranscriptRecord,
+  type DispatchedTranscriptRecord,
+  type ComposeFailedTranscriptRecord,
+  type OutboundTranscriptRecord,
+  type TurnErrorTranscriptRecord,
+  type AttentionSkippedTranscriptRecord,
+  type DroppedTranscriptRecord,
+  type DeliveryStatus,
+  type DroppedReason,
+} from "./transcript.js";
+export {
+  safePathSegment,
+  transcriptFilePath,
+  transcriptRoomDir,
+  transcriptAgentRoot,
+} from "./transcript-paths.js";
+export {
   ClaudeCodeAdapter,
   probeClaude,
   resolveClaudeCommand,

@@ -118,6 +118,11 @@ export interface DaemonConfig {
   routes: RouteRule[];
   /** If true, stream blocks (only meaningful for rm_oc_* rooms). */
   streamBlocks: boolean;
+  /**
+   * Persistent transcript-logging settings (design §3 / §6). Defaults to
+   * disabled — see `BOTCORD_TRANSCRIPT` for env-driven temporary overrides.
+   */
+  transcript?: TranscriptConfig;
 
   /**
    * Optional registry of OpenClaw gateway endpoints. Routes / managed routes
@@ -126,6 +131,15 @@ export interface DaemonConfig {
    * so the dispatcher never re-queries this list.
    */
   openclawGateways?: OpenclawGatewayProfile[];
+}
+
+/**
+ * Persistent transcript settings (design §6). Default-off — `botcord-daemon
+ * transcript enable` flips `enabled` and `transcript disable` flips it back.
+ * The env var `BOTCORD_TRANSCRIPT` can override at boot.
+ */
+export interface TranscriptConfig {
+  enabled?: boolean;
 }
 
 /**
@@ -319,6 +333,11 @@ export function loadConfig(): DaemonConfig {
     routes: routesRaw,
     streamBlocks: parsed.streamBlocks ?? true,
   };
+  if (parsed.transcript && typeof parsed.transcript === "object") {
+    const t: TranscriptConfig = {};
+    if (typeof parsed.transcript.enabled === "boolean") t.enabled = parsed.transcript.enabled;
+    out.transcript = t;
+  }
   if (gatewaysRaw && Array.isArray(gatewaysRaw)) {
     out.openclawGateways = (gatewaysRaw as OpenclawGatewayProfile[]).map((g) => {
       const copy: OpenclawGatewayProfile = { name: g.name, url: g.url };

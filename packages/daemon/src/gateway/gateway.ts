@@ -3,6 +3,11 @@ import { Dispatcher, type RuntimeFactory } from "./dispatcher.js";
 import { consoleLogger, type GatewayLogger } from "./log.js";
 import { createRuntime } from "./runtimes/registry.js";
 import { DEFAULT_SESSION_STORE_MAX_ENTRY_AGE_MS, SessionStore } from "./session-store.js";
+import {
+  createTranscriptWriter,
+  resolveTranscriptEnabled,
+  type TranscriptWriter,
+} from "./transcript.js";
 import type {
   ChannelAdapter,
   GatewayChannelConfig,
@@ -63,6 +68,21 @@ export interface GatewayBootOptions {
    * (`BOTCORD_HUB`) target the correct hub for the owning agent.
    */
   resolveHubUrl?: (accountId: string) => string | undefined;
+  /**
+   * Persistent NDJSON transcript writer (design §3 / §6). Optional — when
+   * omitted the dispatcher uses a noop writer. Pass `transcriptEnabled` plus
+   * `transcriptRootDir` to let the gateway construct one for you.
+   */
+  transcript?: TranscriptWriter;
+  /**
+   * Tri-state convenience: if `transcript` is not provided, the gateway
+   * constructs a writer using this flag plus `transcriptRootDir`. Use
+   * {@link resolveTranscriptEnabled} to combine `BOTCORD_TRANSCRIPT` env with
+   * the persistent daemon-config flag.
+   */
+  transcriptEnabled?: boolean;
+  /** Root directory for transcript files. Defaults to `~/.botcord/agents`. */
+  transcriptRootDir?: string;
 }
 
 /** Default runtime factory: delegates to the built-in registry; ignores extraArgs at construction. */
@@ -121,6 +141,14 @@ export class Gateway {
 
     const runtimeFactory = opts.createRuntime ?? defaultRuntimeFactory;
 
+    const transcript =
+      opts.transcript
+      ?? createTranscriptWriter({
+        log: this.log,
+        enabled: opts.transcriptEnabled === true,
+        rootDir: opts.transcriptRootDir,
+      });
+
     this.dispatcher = new Dispatcher({
       config: this.config,
       channels: this.channelMap,
@@ -135,6 +163,7 @@ export class Gateway {
       managedRoutes: this.managedRoutes,
       attentionGate: opts.attentionGate,
       resolveHubUrl: opts.resolveHubUrl,
+      transcript,
     });
 
     this.channelManager = new ChannelManager({
