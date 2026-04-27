@@ -20,8 +20,17 @@ interface DashboardSubscriptionState {
   getActiveSubscription: (productId: string) => AgentSubscription | null;
   ensureSubscriptions: () => Promise<AgentSubscription[]>;
   refreshSubscriptions: () => Promise<AgentSubscription[]>;
-  subscribeToProduct: (productId: string) => Promise<AgentSubscription | null>;
+  subscribeToProduct: (productId: string, opts?: { roomId?: string }) => Promise<AgentSubscription | null>;
   cancelSubscription: (subscriptionId: string) => Promise<AgentSubscription[]>;
+  upsertRoomPlan: (
+    roomId: string,
+    body: {
+      amount_minor: string;
+      billing_interval: "week" | "month";
+      description?: string;
+      currentProductId?: string | null;
+    },
+  ) => Promise<{ productId: string; affectedCount: number }>;
 }
 
 const initialSubscriptionState = {
@@ -108,8 +117,8 @@ export const useDashboardSubscriptionStore = create<DashboardSubscriptionState>(
     }
   },
 
-  subscribeToProduct: async (productId) => {
-    await api.subscribeToProduct(productId);
+  subscribeToProduct: async (productId, opts) => {
+    await api.subscribeToProduct(productId, opts);
     const subscriptions = await get().refreshSubscriptions();
     return subscriptions.find(
       (item) => item.product_id === productId && item.status === "active",
@@ -119,5 +128,29 @@ export const useDashboardSubscriptionStore = create<DashboardSubscriptionState>(
   cancelSubscription: async (subscriptionId) => {
     await api.cancelSubscription(subscriptionId);
     return get().refreshSubscriptions();
+  },
+
+  upsertRoomPlan: async (roomId, body) => {
+    // First-time enable: room has no product yet → create product, then bind
+    // it via the existing PATCH /rooms/{id} route.
+    if (!body.currentProductId) {
+      const product = await api.createSubscriptionProduct({
+        name: `room:${roomId}:plan:${Date.now()}`,
+        amount_minor: body.amount_minor,
+        billing_interval: body.billing_interval,
+        description: body.description,
+      });
+      await api.updateRoomSettings(roomId, {
+        required_subscription_product_id: product.product_id,
+      });
+      return { productId: product.product_id, affectedCount: 0 };
+    }
+    // Plan change: backend handles create + bind + archive atomically.
+    const result = await api.migrateRoomSubscriptionPlan(roomId, {
+      amount_minor: body.amount_minor,
+      billing_interval: body.billing_interval,
+      description: body.description,
+    });
+    return { productId: result.product_id, affectedCount: result.affected_count };
   },
 }));

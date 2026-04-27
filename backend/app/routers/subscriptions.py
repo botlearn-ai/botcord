@@ -6,13 +6,13 @@ the existing hub service layer.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent
 from hub.database import get_db
-from hub.enums import BillingInterval
+from hub.enums import BillingInterval, SubscriptionStatus
 from hub.models import AgentSubscription
 from hub.services import subscriptions as sub_svc
 from hub.subscription_schemas import (
@@ -143,6 +143,7 @@ async def create_product(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     await db.refresh(product)
     return _product_response(product)
 
@@ -160,6 +161,7 @@ async def archive_product(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     await db.refresh(product)
     return _product_response(product)
 
@@ -182,10 +184,12 @@ async def subscribe(
             product_id=product_id,
             subscriber_agent_id=ctx.active_agent_id,
             idempotency_key=body.idempotency_key if body else None,
+            room_id=body.room_id if body else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     # Refresh to load server-generated defaults (updated_at, created_at)
     await db.refresh(subscription)
     return _subscription_response(subscription)
@@ -194,6 +198,10 @@ async def subscribe(
 @router.get("/products/{product_id}/subscribers")
 async def list_subscribers(
     product_id: str,
+    status: str | None = Query(
+        default=None,
+        description="Comma-separated subscription statuses to filter by (e.g. 'active,past_due')",
+    ),
     ctx: RequestContext = Depends(require_active_agent),
     db: AsyncSession = Depends(get_db),
 ):
@@ -204,7 +212,23 @@ async def list_subscribers(
     if product.owner_agent_id != ctx.active_agent_id:
         raise HTTPException(status_code=403, detail="Not authorized to view subscribers")
 
-    subscribers = await sub_svc.list_product_subscribers(db, product_id)
+    statuses: list[SubscriptionStatus] | None = None
+    if status:
+        statuses = []
+        for raw in status.split(","):
+            token = raw.strip()
+            if not token:
+                continue
+            try:
+                statuses.append(SubscriptionStatus(token))
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid subscription status: {token}"
+                )
+
+    subscribers = await sub_svc.list_product_subscribers(
+        db, product_id, statuses=statuses
+    )
     return {"subscribers": [_subscription_response(s) for s in subscribers]}
 
 
@@ -235,5 +259,6 @@ async def cancel_subscription(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     await db.refresh(subscription)
     return _subscription_response(subscription)

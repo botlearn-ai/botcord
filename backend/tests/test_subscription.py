@@ -833,3 +833,283 @@ async def test_subscription_gated_room_quota_enforced(client: AsyncClient):
     )
     assert resp.status_code == 403
     assert "quota exceeded" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Room-scoped subscriptions: room_id binding, plan-change cancellation,
+# and dissolve pre-cancel (added for room-subscription-redesign).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_subscribe_persists_room_id_and_validates_match(
+    client: AsyncClient, db_session: AsyncSession
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(
+        client, sk_provider, pub_provider, "Provider"
+    )
+    _, subscriber_token = await _register_and_verify(
+        client, sk_subscriber, pub_subscriber, "Subscriber"
+    )
+
+    product = await _create_product(
+        client, provider_token, name="P1", amount_minor=10000, billing_interval="week"
+    )
+    other_product = await _create_product(
+        client, provider_token, name="P2", amount_minor=10000, billing_interval="week"
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Gated",
+        required_subscription_product_id=product["product_id"],
+    )
+
+    await _fund_agent(client, subscriber_token, 30000)
+
+    # Mismatch: room requires P1 but caller passes P2.
+    resp = await client.post(
+        f"/subscriptions/products/{other_product['product_id']}/subscribe",
+        json={"room_id": room["room_id"]},
+        headers=_auth(subscriber_token),
+    )
+    assert resp.status_code == 400
+    assert "match" in resp.json()["detail"].lower()
+
+    # Happy path persists room_id on the subscription row.
+    resp = await client.post(
+        f"/subscriptions/products/{product['product_id']}/subscribe",
+        json={"room_id": room["room_id"]},
+        headers=_auth(subscriber_token),
+    )
+    assert resp.status_code == 201, resp.text
+    sid = resp.json()["subscription_id"]
+
+    sub = (
+        await db_session.execute(
+            select(AgentSubscription).where(AgentSubscription.subscription_id == sid)
+        )
+    ).scalar_one()
+    assert sub.room_id == room["room_id"]
+
+
+@pytest.mark.asyncio
+async def test_charge_subscription_cancels_on_plan_change(
+    client: AsyncClient, db_session: AsyncSession
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(
+        client, sk_provider, pub_provider, "Provider"
+    )
+    subscriber_id, subscriber_token = await _register_and_verify(
+        client, sk_subscriber, pub_subscriber, "Subscriber"
+    )
+
+    old_product = await _create_product(
+        client, provider_token, name="OldPlan", amount_minor=5000, billing_interval="week"
+    )
+    new_product = await _create_product(
+        client, provider_token, name="NewPlan", amount_minor=8000, billing_interval="week"
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Gated",
+        required_subscription_product_id=old_product["product_id"],
+    )
+
+    await _fund_agent(client, subscriber_token, 30000)
+
+    resp = await client.post(
+        f"/subscriptions/products/{old_product['product_id']}/subscribe",
+        json={"room_id": room["room_id"]},
+        headers=_auth(subscriber_token),
+    )
+    assert resp.status_code == 201, resp.text
+    sid = resp.json()["subscription_id"]
+
+    # Owner switches the room to a new product, simulating a plan change.
+    from hub.models import Room as _Room
+
+    db_room = (
+        await db_session.execute(select(_Room).where(_Room.room_id == room["room_id"]))
+    ).scalar_one()
+    db_room.required_subscription_product_id = new_product["product_id"]
+    await db_session.commit()
+
+    # Force the subscription to be due now.
+    due_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    await _set_subscription_due(db_session, sid, due_at, due_at)
+
+    resp = await client.post("/internal/subscriptions/run-billing")
+    assert resp.status_code == 200, resp.text
+
+    sub = (
+        await db_session.execute(
+            select(AgentSubscription).where(AgentSubscription.subscription_id == sid)
+        )
+    ).scalar_one()
+    assert sub.status == SubscriptionStatus.cancelled
+    assert sub.cancelled_at is not None
+    assert sub.cancel_at_period_end is False
+
+    # Membership in the bound room is revoked.
+    from hub.models import RoomMember as _RM
+
+    membership = (
+        await db_session.execute(
+            select(_RM).where(
+                _RM.room_id == room["room_id"],
+                _RM.agent_id == subscriber_id,
+            )
+        )
+    ).scalar_one_or_none()
+    assert membership is None
+
+
+@pytest.mark.asyncio
+async def test_dissolve_room_pre_cancels_bound_subscriptions(
+    client: AsyncClient, db_session: AsyncSession
+):
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(
+        client, sk_provider, pub_provider, "Provider"
+    )
+    _, subscriber_token = await _register_and_verify(
+        client, sk_subscriber, pub_subscriber, "Subscriber"
+    )
+
+    product = await _create_product(
+        client, provider_token, name="DissolvePlan", amount_minor=5000, billing_interval="week"
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Doomed",
+        required_subscription_product_id=product["product_id"],
+    )
+
+    await _fund_agent(client, subscriber_token, 20000)
+    resp = await client.post(
+        f"/subscriptions/products/{product['product_id']}/subscribe",
+        json={"room_id": room["room_id"]},
+        headers=_auth(subscriber_token),
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["subscription_id"]
+
+    resp = await client.delete(
+        f"/hub/rooms/{room['room_id']}", headers=_auth(provider_token)
+    )
+    assert resp.status_code == 200, resp.text
+
+    db_session.expire_all()
+    sub = (
+        await db_session.execute(
+            select(AgentSubscription).where(AgentSubscription.subscription_id == sid)
+        )
+    ).scalar_one()
+    assert sub.status == SubscriptionStatus.cancelled
+    assert sub.cancelled_at is not None
+
+
+@pytest.mark.asyncio
+async def test_legacy_null_room_id_backfilled_then_cancelled_on_plan_change(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Legacy product-scoped subs (room_id IS NULL, e.g. created before
+    migration 030) must still be cancellable when the room owner switches
+    plans — by backfilling room_id from the unique referencing room."""
+    from sqlalchemy import update as _sa_update
+
+    sk_provider, pub_provider = _make_keypair()
+    sk_subscriber, pub_subscriber = _make_keypair()
+    provider_id, provider_token = await _register_and_verify(
+        client, sk_provider, pub_provider, "Provider"
+    )
+    _, subscriber_token = await _register_and_verify(
+        client, sk_subscriber, pub_subscriber, "Subscriber"
+    )
+
+    old_product = await _create_product(
+        client, provider_token, name="LegacyOld", amount_minor=5000, billing_interval="week"
+    )
+    new_product = await _create_product(
+        client, provider_token, name="LegacyNew", amount_minor=8000, billing_interval="week"
+    )
+    await _set_subscription_room_policy(
+        client, provider_id, allowed_to_create=True, max_active_rooms=5
+    )
+    room = await _create_room(
+        client,
+        provider_token,
+        name="Gated",
+        required_subscription_product_id=old_product["product_id"],
+    )
+
+    await _fund_agent(client, subscriber_token, 30000)
+
+    # Subscribe WITHOUT room_id, mirroring a pre-PR record.
+    resp = await client.post(
+        f"/subscriptions/products/{old_product['product_id']}/subscribe",
+        json={},
+        headers=_auth(subscriber_token),
+    )
+    assert resp.status_code == 201, resp.text
+    sid = resp.json()["subscription_id"]
+
+    sub = (
+        await db_session.execute(
+            select(AgentSubscription).where(AgentSubscription.subscription_id == sid)
+        )
+    ).scalar_one()
+    assert sub.room_id is None  # legacy shape
+
+    # Apply the same backfill UPDATE that migrate-plan / clear-paid use.
+    await db_session.execute(
+        _sa_update(AgentSubscription)
+        .where(
+            AgentSubscription.product_id == old_product["product_id"],
+            AgentSubscription.room_id.is_(None),
+            AgentSubscription.status.in_(
+                [SubscriptionStatus.active, SubscriptionStatus.past_due]
+            ),
+        )
+        .values(room_id=room["room_id"])
+    )
+
+    # Owner swaps the room to the new plan.
+    from hub.models import Room as _Room
+
+    db_room = (
+        await db_session.execute(select(_Room).where(_Room.room_id == room["room_id"]))
+    ).scalar_one()
+    db_room.required_subscription_product_id = new_product["product_id"]
+    await db_session.commit()
+
+    # Force the subscription to be due now and run billing.
+    due_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    await _set_subscription_due(db_session, sid, due_at, due_at)
+    resp = await client.post("/internal/subscriptions/run-billing")
+    assert resp.status_code == 200, resp.text
+
+    sub = (
+        await db_session.execute(
+            select(AgentSubscription).where(AgentSubscription.subscription_id == sid)
+        )
+    ).scalar_one()
+    assert sub.status == SubscriptionStatus.cancelled
+    assert sub.cancelled_at is not None
