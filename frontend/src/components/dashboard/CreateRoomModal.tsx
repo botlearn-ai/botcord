@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, Loader2, Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
@@ -39,13 +39,6 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const [rule, setRule] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [memberQuery, setMemberQuery] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [visibility, setVisibility] = useState<"public" | "private">("public");
-  const [joinPolicy, setJoinPolicy] = useState<"open" | "invite_only">("open");
-  const [defaultSend, setDefaultSend] = useState(true);
-  const [defaultInvite, setDefaultInvite] = useState(true);
-  const [maxMembers, setMaxMembers] = useState("");
-  const [slowMode, setSlowMode] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,24 +83,12 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
     setSaving(true);
     setError(null);
     try {
-      // Shared body — `member_ids` accepts both `ag_*` and `hu_*` prefixes
-      // when dispatched via the Human BFF (backend handles polymorphism).
       const body = {
         name: trimmed,
         description: description.trim(),
         rule: rule.trim() || null,
-        visibility,
-        join_policy: joinPolicy,
-        default_send: defaultSend,
-        default_invite: defaultInvite,
-        max_members: maxMembers ? Number(maxMembers) : null,
-        slow_mode_seconds: slowMode ? Number(slowMode) : null,
         member_ids: Array.from(selected),
       };
-      // Human path is the only dashboard-facing create-room surface today.
-      // Agent path would hit POST /hub/rooms directly (signed request), which
-      // the dashboard does not own — we surface an explicit error instead of
-      // silently misrouting through the Human BFF.
       if (viewMode === "agent") {
         setError(t.createFailed);
         return;
@@ -291,96 +272,11 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
             </div>
           </section>
 
-          {/* Advanced */}
-          <section className="rounded border border-glass-border">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left"
-            >
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {t.advancedSection}
-                </p>
-                {!advancedOpen && (
-                  <p className="mt-1 text-[11px] text-text-secondary/60">{t.advancedHint}</p>
-                )}
-              </div>
-              <ChevronDown
-                className={`h-4 w-4 text-text-secondary transition-transform ${advancedOpen ? "rotate-180" : ""}`}
-              />
-            </button>
-            {advancedOpen && (
-              <div className="space-y-3 border-t border-glass-border px-4 py-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-text-secondary">{t.visibilityLabel}</span>
-                  <select
-                    value={visibility}
-                    onChange={(e) => setVisibility(e.target.value as "public" | "private")}
-                    className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
-                  >
-                    <option value="private">{t.visibilityPrivate}</option>
-                    <option value="public">{t.visibilityPublic}</option>
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-xs text-text-secondary">{t.joinPolicyLabel}</span>
-                  <select
-                    value={joinPolicy}
-                    onChange={(e) => setJoinPolicy(e.target.value as "open" | "invite_only")}
-                    className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
-                  >
-                    <option value="invite_only">{t.joinPolicyInviteOnly}</option>
-                    <option value="open">{t.joinPolicyOpen}</option>
-                  </select>
-                </label>
-
-                <label className="flex items-center gap-2 text-xs text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={defaultSend}
-                    onChange={(e) => setDefaultSend(e.target.checked)}
-                    className="accent-neon-cyan"
-                  />
-                  {t.defaultSendLabel}
-                </label>
-                <label className="flex items-center gap-2 text-xs text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={defaultInvite}
-                    onChange={(e) => setDefaultInvite(e.target.checked)}
-                    className="accent-neon-cyan"
-                  />
-                  {t.defaultInviteLabel}
-                </label>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-text-secondary">{t.maxMembersLabel}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={maxMembers}
-                      onChange={(e) => setMaxMembers(e.target.value)}
-                      placeholder={t.maxMembersPlaceholder}
-                      className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-text-secondary">{t.slowModeLabel}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={slowMode}
-                      onChange={(e) => setSlowMode(e.target.value)}
-                      placeholder={t.slowModePlaceholder}
-                      className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
-                    />
-                  </label>
-                </div>
-              </div>
-            )}
+          <section className="rounded border border-glass-border bg-glass-bg/40 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              {t.advancedSection}
+            </p>
+            <p className="mt-1 text-[11px] text-text-secondary/70">{t.advancedHint}</p>
           </section>
 
           {error && (

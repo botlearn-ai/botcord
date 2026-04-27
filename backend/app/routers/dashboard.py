@@ -164,6 +164,27 @@ async def _build_rooms_from_sql(
         orm_rooms = await _build_rooms_from_membership(agent_id, db)
         if not orm_rooms:
             return mapped
+        orm_room_by_id = {room["room_id"]: room for room in orm_rooms}
+        fill_keys = (
+            "join_policy",
+            "can_invite",
+            "required_subscription_product_id",
+            "allow_human_send",
+            "default_send",
+            "default_invite",
+            "max_members",
+            "slow_mode_seconds",
+        )
+        for item in mapped:
+            room_id = item.get("room_id")
+            if not isinstance(room_id, str):
+                continue
+            fallback = orm_room_by_id.get(room_id)
+            if fallback is None:
+                continue
+            for key in fill_keys:
+                if key not in item:
+                    item[key] = fallback.get(key)
         missing_rooms = [room for room in orm_rooms if room["room_id"] not in sql_room_ids]
         if not missing_rooms:
             return mapped
@@ -333,6 +354,10 @@ async def _build_rooms_from_membership(
             "my_role": my_role,
             "can_invite": computed_can_invite,
             "allow_human_send": room.allow_human_send,
+            "default_send": room.default_send,
+            "default_invite": room.default_invite,
+            "max_members": room.max_members,
+            "slow_mode_seconds": room.slow_mode_seconds,
             "last_message_preview": last_preview,
             "last_message_at": last_at.isoformat() if last_at else None,
             "last_sender_name": last_sender,

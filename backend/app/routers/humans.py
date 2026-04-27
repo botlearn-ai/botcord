@@ -80,11 +80,20 @@ class HumanRoomSummary(BaseModel):
     room_id: str
     name: str
     description: str
+    rule: str | None = None
     owner_id: str
     owner_type: Literal["agent", "human"]
     visibility: str
     join_policy: str
+    member_count: int = 0
     my_role: str
+    allow_human_send: bool = True
+    default_send: bool = True
+    default_invite: bool = False
+    max_members: int | None = None
+    slow_mode_seconds: int | None = None
+    required_subscription_product_id: str | None = None
+    created_at: str | None = None
 
 
 class HumanRoomListResponse(BaseModel):
@@ -130,6 +139,20 @@ class CreateHumanRoomBody(BaseModel):
     max_members: int | None = Field(default=None, ge=1)
     slow_mode_seconds: int | None = Field(default=None, ge=0)
     member_ids: list[str] = Field(default_factory=list)
+
+
+class UpdateHumanRoomSettingsBody(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    rule: str | None = None
+    visibility: Literal["public", "private"] | None = None
+    join_policy: Literal["open", "invite_only"] | None = None
+    default_send: bool | None = None
+    default_invite: bool | None = None
+    allow_human_send: bool | None = None
+    max_members: int | None = Field(default=None, ge=1)
+    slow_mode_seconds: int | None = Field(default=None, ge=0)
+    required_subscription_product_id: str | None = None
 
 
 class HumanContactSummary(BaseModel):
@@ -285,6 +308,37 @@ def _ts(dt: datetime.datetime | None) -> int:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=datetime.timezone.utc)
     return int(dt.timestamp())
+
+
+def _serialize_human_room_summary(
+    room: Room,
+    my_role: RoomRole | str,
+    *,
+    member_count: int = 0,
+) -> HumanRoomSummary:
+    role_value = my_role.value if hasattr(my_role, "value") else str(my_role)
+    created_at = room.created_at
+    if created_at is not None and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+    return HumanRoomSummary(
+        room_id=room.room_id,
+        name=room.name,
+        description=room.description or "",
+        rule=room.rule,
+        owner_id=room.owner_id,
+        owner_type=room.owner_type.value if hasattr(room.owner_type, "value") else str(room.owner_type),
+        visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
+        join_policy=room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
+        member_count=member_count,
+        my_role=role_value,
+        allow_human_send=room.allow_human_send,
+        default_send=room.default_send,
+        default_invite=room.default_invite,
+        max_members=room.max_members,
+        slow_mode_seconds=room.slow_mode_seconds,
+        required_subscription_product_id=room.required_subscription_product_id,
+        created_at=created_at.isoformat() if created_at else None,
+    )
 
 
 async def _load_human(db: AsyncSession, ctx: RequestContext) -> User:
@@ -464,20 +518,20 @@ async def list_human_rooms(
         )
         .order_by(Room.created_at.desc())
     )
-    rooms: list[HumanRoomSummary] = []
-    for room, role in membership.all():
-        rooms.append(
-            HumanRoomSummary(
-                room_id=room.room_id,
-                name=room.name,
-                description=room.description or "",
-                owner_id=room.owner_id,
-                owner_type=room.owner_type.value if hasattr(room.owner_type, "value") else str(room.owner_type),
-                visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
-                join_policy=room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
-                my_role=role.value if hasattr(role, "value") else str(role),
-            )
+    rows = membership.all()
+    room_ids = [room.room_id for room, _role in rows]
+    member_counts: dict[str, int] = {}
+    if room_ids:
+        count_result = await db.execute(
+            select(RoomMember.room_id, func.count(RoomMember.id))
+            .where(RoomMember.room_id.in_(room_ids))
+            .group_by(RoomMember.room_id)
         )
+        member_counts = {room_id: int(count or 0) for room_id, count in count_result.all()}
+    rooms = [
+        _serialize_human_room_summary(room, role, member_count=member_counts.get(room.room_id, 0))
+        for room, role in rows
+    ]
     return HumanRoomListResponse(rooms=rooms)
 
 
@@ -655,15 +709,10 @@ async def create_human_room(
     await db.commit()
     await db.refresh(room)
 
-    return HumanRoomSummary(
-        room_id=room.room_id,
-        name=room.name,
-        description=room.description or "",
-        owner_id=room.owner_id,
-        owner_type=room.owner_type.value,
-        visibility=room.visibility.value,
-        join_policy=room.join_policy.value,
-        my_role=RoomRole.owner.value,
+    return _serialize_human_room_summary(
+        room,
+        RoomRole.owner,
+        member_count=len(unique_member_ids) + 1,
     )
 
 
@@ -765,16 +814,11 @@ async def join_room_as_human(
     except Exception:  # pragma: no cover — notification must not break the HTTP response
         _logger.exception("room_member_added broadcast failed for %s", room_id)
 
-    return HumanRoomSummary(
-        room_id=room.room_id,
-        name=room.name,
-        description=room.description or "",
-        owner_id=room.owner_id,
-        owner_type=room.owner_type.value,
-        visibility=room.visibility.value,
-        join_policy=room.join_policy.value,
-        my_role=RoomRole.member.value,
+    member_count_result = await db.execute(
+        select(func.count(RoomMember.id)).where(RoomMember.room_id == room.room_id)
     )
+    member_count = int(member_count_result.scalar() or 0)
+    return _serialize_human_room_summary(room, RoomRole.member, member_count=member_count)
 
 
 @router.post(
@@ -1221,6 +1265,85 @@ async def _find_room_member(
             )
         )
     ).scalar_one_or_none()
+
+
+@router.patch("/me/rooms/{room_id}", response_model=HumanRoomSummary)
+async def update_room_settings_as_human(
+    room_id: str,
+    body: UpdateHumanRoomSettingsBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _load_human(db, ctx)
+    room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    if caller.role not in (RoomRole.owner, RoomRole.admin):
+        raise HTTPException(status_code=403, detail="Only owner or admin can update room settings")
+
+    fields_set = body.model_fields_set
+    owner_only_fields = {
+        "visibility",
+        "join_policy",
+        "default_send",
+        "default_invite",
+        "allow_human_send",
+        "max_members",
+        "slow_mode_seconds",
+        "required_subscription_product_id",
+    }
+    if fields_set & owner_only_fields and caller.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the owner can change advanced settings")
+
+    if "name" in fields_set:
+        name = (body.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        room.name = name
+    if "description" in fields_set:
+        room.description = (body.description or "").strip()
+    if "rule" in fields_set:
+        rule = (body.rule or "").strip()
+        room.rule = rule or None
+    if "visibility" in fields_set and body.visibility is not None:
+        room.visibility = RoomVisibility(body.visibility)
+    if "join_policy" in fields_set and body.join_policy is not None:
+        room.join_policy = RoomJoinPolicy(body.join_policy)
+    if "default_send" in fields_set and body.default_send is not None:
+        room.default_send = body.default_send
+    if "default_invite" in fields_set and body.default_invite is not None:
+        room.default_invite = body.default_invite
+    if "allow_human_send" in fields_set and body.allow_human_send is not None:
+        room.allow_human_send = body.allow_human_send
+    if "max_members" in fields_set:
+        room.max_members = body.max_members
+    if "slow_mode_seconds" in fields_set:
+        room.slow_mode_seconds = body.slow_mode_seconds
+    if "required_subscription_product_id" in fields_set:
+        room.required_subscription_product_id = body.required_subscription_product_id or None
+
+    await db.commit()
+    await db.refresh(room)
+
+    member_count_result = await db.execute(
+        select(func.count(RoomMember.id)).where(RoomMember.room_id == room.room_id)
+    )
+    member_count = int(member_count_result.scalar() or 0)
+    return _serialize_human_room_summary(room, caller.role, member_count=member_count)
+
+
+@router.delete("/me/rooms/{room_id}", response_model=dict)
+async def dissolve_room_as_human(
+    room_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _load_human(db, ctx)
+    room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    if caller.role != RoomRole.owner:
+        raise HTTPException(status_code=403, detail="Only the room owner can dissolve this room")
+
+    await db.delete(room)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/me/rooms/{room_id}/transfer", response_model=HumanRoomTransferResponse)

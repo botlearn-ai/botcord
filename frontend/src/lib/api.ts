@@ -43,6 +43,7 @@ import type {
   ContactRequestItem,
   ContactRequestListResponse,
   SubscriptionProductResponse,
+  SubscriptionProductListResponse,
   MySubscriptionsResponse,
   UserChatRoom,
   UserChatSendResponse,
@@ -363,6 +364,10 @@ export const api = {
     }>(`/api/dashboard/rooms/${roomId}`, patch);
   },
 
+  dissolveRoom(roomId: string) {
+    return apiDelete<{ ok: boolean }>(`/api/dashboard/rooms/${roomId}`);
+  },
+
   getSharedRoom(shareId: string) {
     return apiGet<SharedRoomResponse>(`/api/share/${shareId}`);
   },
@@ -606,6 +611,9 @@ export const api = {
   // --- Subscriptions ---
   getSubscriptionProduct(productId: string) {
     return apiGet<SubscriptionProductResponse>(`/api/subscriptions/products/${productId}`);
+  },
+  getMySubscriptionProducts() {
+    return apiGet<SubscriptionProductListResponse>("/api/subscriptions/products/me");
   },
   subscribeToProduct(productId: string) {
     return apiPost<any>(`/api/subscriptions/products/${productId}/subscribe`);
@@ -900,6 +908,29 @@ const humansApi = {
     member_ids?: string[];
   }): Promise<HumanRoomSummary> {
     return apiPost<HumanRoomSummary>("/api/humans/me/rooms", body);
+  },
+
+  async updateRoomSettings(
+    roomId: string,
+    patch: {
+      name?: string;
+      description?: string;
+      rule?: string | null;
+      visibility?: "public" | "private";
+      join_policy?: "open" | "invite_only";
+      default_send?: boolean;
+      default_invite?: boolean;
+      allow_human_send?: boolean;
+      max_members?: number | null;
+      slow_mode_seconds?: number | null;
+      required_subscription_product_id?: string | null;
+    },
+  ): Promise<HumanRoomSummary> {
+    return apiPatch<HumanRoomSummary>(`/api/humans/me/rooms/${roomId}`, patch);
+  },
+
+  dissolveRoom(roomId: string): Promise<{ ok: boolean }> {
+    return apiDelete<{ ok: boolean }>(`/api/humans/me/rooms/${roomId}`);
   },
 
   listContacts(): Promise<HumanContactListResponse> {

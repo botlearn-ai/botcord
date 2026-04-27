@@ -1864,6 +1864,13 @@ export const roomSettingsModal: TranslationMap<{
   descriptionLabel: string
   ruleLabel: string
   ruleHint: string
+  membersSection: string
+  actionsSection: string
+  readOnlyHint: string
+  dissolveRoom: string
+  dissolvingRoom: string
+  dissolveRoomConfirm: string
+  dissolveRoomFailed: string
   save: string
   saving: string
   cancel: string
@@ -1876,6 +1883,13 @@ export const roomSettingsModal: TranslationMap<{
     descriptionLabel: 'Description',
     ruleLabel: 'Rule / announcement',
     ruleHint: 'Shown to members via the info icon in the header.',
+    membersSection: 'Members',
+    actionsSection: 'Actions',
+    readOnlyHint: 'You can view these settings here. Editing depends on your role in the group.',
+    dissolveRoom: 'Dissolve group',
+    dissolvingRoom: 'Dissolving...',
+    dissolveRoomConfirm: 'Click again to confirm dissolving this group',
+    dissolveRoomFailed: 'Failed to dissolve group',
     save: 'Save',
     saving: 'Saving...',
     cancel: 'Cancel',
@@ -1888,6 +1902,13 @@ export const roomSettingsModal: TranslationMap<{
     descriptionLabel: '群描述',
     ruleLabel: '群公告 / 规则',
     ruleHint: '成员可在标题栏通过信息图标查看。',
+    membersSection: '群成员',
+    actionsSection: '群操作',
+    readOnlyHint: '你可以在这里查看群设置；是否可编辑取决于你在群里的角色。',
+    dissolveRoom: '解散群',
+    dissolvingRoom: '解散中...',
+    dissolveRoomConfirm: '再次点击以确认解散群',
+    dissolveRoomFailed: '解散群失败',
     save: '保存',
     saving: '保存中...',
     cancel: '取消',
@@ -2246,6 +2267,16 @@ export const roomAdvancedSettings: TranslationMap<{
   slowModeLabel: string
   subscriptionSection: string
   subscriptionHint: string
+  subscriptionToggleLabel: string
+  subscriptionToggleOff: string
+  subscriptionToggleOn: string
+  subscriptionEnabledHint: string
+  subscriptionDisabledHint: string
+  subscriptionCurrentPlan: string
+  subscriptionNoPlan: string
+  subscriptionAutoPick: string
+  subscriptionPriceLabel: string
+  subscriptionBillingLabel: string
   subscriptionProductLabel: string
   subscriptionNone: string
   ownerOnly: string
@@ -2266,6 +2297,16 @@ export const roomAdvancedSettings: TranslationMap<{
     slowModeLabel: 'Slow mode (seconds)',
     subscriptionSection: 'Payment & subscription',
     subscriptionHint: 'Require a subscription product to join this group.',
+    subscriptionToggleLabel: 'Paid access',
+    subscriptionToggleOff: 'Off',
+    subscriptionToggleOn: 'On',
+    subscriptionEnabledHint: 'Members must subscribe before joining this group.',
+    subscriptionDisabledHint: 'Anyone who passes the room rules can join without subscribing.',
+    subscriptionCurrentPlan: 'Current subscription plan',
+    subscriptionNoPlan: 'No available subscription plan was found for the current agent, so paid access cannot be enabled yet.',
+    subscriptionAutoPick: 'When enabled, the first available active plan will be used automatically.',
+    subscriptionPriceLabel: 'Price',
+    subscriptionBillingLabel: 'Billing cycle',
     subscriptionProductLabel: 'Required subscription product ID',
     subscriptionNone: 'None',
     ownerOnly: 'Only the owner can change these.',
@@ -2286,6 +2327,16 @@ export const roomAdvancedSettings: TranslationMap<{
     slowModeLabel: '慢速模式（秒）',
     subscriptionSection: '支付与订阅',
     subscriptionHint: '要求订阅指定产品后才能加入本群。',
+    subscriptionToggleLabel: '付费准入',
+    subscriptionToggleOff: '关闭',
+    subscriptionToggleOn: '开启',
+    subscriptionEnabledHint: '开启后，成员需要先订阅指定方案才能加入本群。',
+    subscriptionDisabledHint: '关闭后，成员无需订阅即可按房间规则加入。',
+    subscriptionCurrentPlan: '当前订阅方案',
+    subscriptionNoPlan: '当前 Agent 下没有可用的订阅方案，暂时无法开启付费准入。',
+    subscriptionAutoPick: '开启后会自动使用当前 Agent 下首个可用方案。',
+    subscriptionPriceLabel: '价格',
+    subscriptionBillingLabel: '计费周期',
     subscriptionProductLabel: '必需订阅产品 ID',
     subscriptionNone: '无',
     ownerOnly: '仅群主可修改。',
