@@ -11,6 +11,7 @@ import {
   PID_PATH,
   SNAPSHOT_PATH,
   CONFIG_FILE_PATH,
+  CONFIG_MISSING,
   type DaemonConfig,
   type RouteRule,
   type RouteRuleMatch,
@@ -69,12 +70,8 @@ const HELP = `botcord-daemon — BotCord local daemon
 Usage: botcord-daemon <command> [options]
 
 Commands:
-  init [--agent <ag_xxx> ...] [--cwd <path>]
-                                          Create ~/.botcord/daemon/config.json.
-                                          Without --agent, the daemon discovers
-                                          identities from ~/.botcord/credentials
-                                          at startup (repeat --agent to pin).
   start [--background|-d] [--relogin] [--hub <url>] [--label <name>]
+        [--agent <ag_xxx> ...] [--cwd <path>]
                                           Start the daemon in the foreground by
                                           default. Pass --background (alias -d)
                                           to detach and return to the shell.
@@ -88,6 +85,12 @@ Commands:
                                           (defaults to hostname). Non-TTY
                                           environments must mount a pre-existing
                                           user-auth.json (plan §6.4).
+                                          On first run, auto-creates
+                                          ~/.botcord/daemon/config.json with a
+                                          default route (claude-code, $HOME) and
+                                          credential auto-discovery. Pass
+                                          --agent/--cwd to seed the file
+                                          (ignored once config exists).
   stop                                    Stop the running daemon (SIGTERM)
   status                                  Print daemon status (pid, agent)
   logs [-f]                               Print log tail (use -f to follow)
@@ -203,22 +206,33 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-async function cmdInit(args: ParsedArgs): Promise<void> {
-  // `--agent` is optional as of P1: when omitted, the daemon discovers
-  // agent identities from `~/.botcord/credentials/*.json` at startup.
-  // Every repeated `--agent ag_xxx` still pins an explicit id (the
-  // canonical `agents: [...]` config shape).
-  const agents = args.lists.agent ?? [];
-  const cwd =
-    typeof args.flags.cwd === "string" ? path.resolve(args.flags.cwd) : homedir();
-  log.info("cmd init", { agents, cwd });
-  const cfg = initDefaultConfig(agents, cwd);
-  saveConfig(cfg);
-  console.log(`wrote ${CONFIG_FILE_PATH}`);
-  if (agents.length === 0) {
-    console.log(
-      "no --agent provided; daemon will auto-discover identities from ~/.botcord/credentials at start",
-    );
+/**
+ * Load the daemon config, auto-creating `~/.botcord/daemon/config.json`
+ * with sensible defaults on first run. `--agent` (repeated) pins explicit
+ * agent ids; `--cwd` overrides the defaultRoute working directory. Both
+ * are seed-only — they are ignored once a config already exists, since
+ * `route` and direct edits to `config.json` are the canonical way to
+ * change a configured daemon.
+ */
+function loadOrInitConfig(args: ParsedArgs): DaemonConfig {
+  try {
+    return loadConfig();
+  } catch (err) {
+    const missing = err instanceof Error && (err as { code?: string }).code === CONFIG_MISSING;
+    if (!missing) throw err;
+    const agents = args.lists.agent ?? [];
+    const cwd =
+      typeof args.flags.cwd === "string" ? path.resolve(args.flags.cwd) : homedir();
+    const cfg = initDefaultConfig(agents, cwd);
+    saveConfig(cfg);
+    log.info("auto-initialized daemon config", { agents, cwd, path: CONFIG_FILE_PATH });
+    console.log(`wrote default config to ${CONFIG_FILE_PATH}`);
+    if (agents.length === 0) {
+      console.log(
+        "no --agent provided; daemon will auto-discover identities from ~/.botcord/credentials",
+      );
+    }
+    return cfg;
   }
 }
 
@@ -367,7 +381,7 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
 }
 
 async function cmdStart(args: ParsedArgs): Promise<void> {
-  const cfg = loadConfig();
+  const cfg = loadOrInitConfig(args);
   // Foreground is now the default. --background (alias -d) detaches.
   // --foreground is still accepted (no-op) for backwards compatibility and
   // is also what the detached child re-execs itself with.
@@ -929,9 +943,6 @@ async function main(): Promise<void> {
   }
   try {
     switch (args.cmd) {
-      case "init":
-        await cmdInit(args);
-        break;
       case "start":
         await cmdStart(args);
         break;
