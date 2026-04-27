@@ -21,9 +21,16 @@ class DashboardRoom(BaseModel):
     rule: str | None = None
     owner_id: str
     visibility: str
+    join_policy: str | None = None
     member_count: int
     my_role: str
+    can_invite: bool | None = None
     allow_human_send: bool
+    default_send: bool | None = None
+    default_invite: bool | None = None
+    max_members: int | None = None
+    slow_mode_seconds: int | None = None
+    required_subscription_product_id: str | None = None
     created_at: datetime.datetime | None = None
     last_message_preview: str | None = None
     last_message_at: datetime.datetime | None = None

@@ -51,6 +51,14 @@ export const CONTROL_FRAME_TYPES = {
   AGENT_REVOKED: "agent_revoked",
   CONFIG_RELOADED: "config_reloaded",
   /**
+   * Hub→daemon: identity metadata (display name / bio) for an existing agent
+   * has changed on the dashboard. Daemon rewrites the on-disk
+   * `identity.md` for that agent. Sent best-effort while the daemon is
+   * connected; offline daemons catch up via the `agents` snapshot embedded
+   * on the next `hello` frame.
+   */
+  UPDATE_AGENT: "update_agent",
+  /**
    * Hub→daemon: ask the daemon to re-probe locally installed AI CLI
    * runtimes (claude-code, codex, gemini, …) and return the current
    * snapshot. Used by the dashboard "refresh runtimes" button. Plan §8.5
@@ -167,6 +175,43 @@ export interface PolicyUpdatedParams {
     muted_until?: number;
   };
 }
+
+/**
+ * Identity metadata snapshot for one agent bound to the daemon. Used both
+ * inside the `hello` frame `agents` array (full snapshot on connect) and as
+ * the basis for the single-agent `update_agent` frame.
+ *
+ * `bio` is `null` when the dashboard cleared it, distinct from `undefined`
+ * which means "no value sent" — daemon writes a placeholder for the former
+ * and skips the field for the latter.
+ */
+export interface AgentIdentitySnapshot {
+  agentId: string;
+  displayName?: string;
+  bio?: string | null;
+  runtime?: string | null;
+}
+
+/**
+ * Payload shape for the Hub-issued `hello` frame. The `server_time` field
+ * is snake_case to match the Hub's pre-existing wire shape (every other
+ * runtime/snapshot frame uses camelCase, but hello shipped first with
+ * snake_case and renaming would break older daemons). `agents` was added
+ * so the daemon can reconcile each provisioned agent's on-disk
+ * `identity.md` against the dashboard-edited truth on every (re)connect.
+ */
+export interface HelloParams {
+  server_time?: number;
+  agents?: AgentIdentitySnapshot[];
+}
+
+/**
+ * Payload shape for `update_agent`. Sent best-effort from the Hub right
+ * after a dashboard PATCH, when the target daemon is currently online.
+ * Offline daemons rely on the `hello.agents` snapshot for eventual
+ * consistency, so this frame is fire-and-forget.
+ */
+export type UpdateAgentParams = AgentIdentitySnapshot;
 
 /** Payload shape for `revoke_agent`. */
 export interface RevokeAgentParams {

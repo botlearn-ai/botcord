@@ -461,29 +461,12 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   const loading = isRoomsView ? publicRoomsLoading : isAgentsView ? publicAgentsLoading : publicHumansLoading;
   const emptyText = isRoomsView ? t.noRoomsFound : isAgentsView ? t.noAgentsFound : t.noHumansFound;
 
-  const handleRefresh = () => {
-    const normalizedQuery = query.trim();
-    if (isRoomsView) void loadPublicRooms(normalizedQuery);
-    else if (isAgentsView) void loadPublicAgents(normalizedQuery);
-    else if (isHumansView) void loadPublicHumans(normalizedQuery);
-  };
-
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-deep-black">
       <div className="border-b border-glass-border px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-text-primary">{title}</h2>
-            <p className="mt-1 text-xs text-text-secondary">{subtitle}</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="shrink-0 rounded border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-neon-cyan/50 hover:text-neon-cyan disabled:opacity-40"
-          >
-            {loading ? "…" : t.refresh}
-          </button>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text-primary">{title}</h2>
+          <p className="mt-1 text-xs text-text-secondary">{subtitle}</p>
         </div>
         <div className="mt-3 max-w-xl">
           <SearchBar onSearch={setQuery} placeholder={searchPlaceholder} />

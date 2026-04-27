@@ -18,7 +18,8 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hub.models import Base, DaemonDeviceCode, DaemonInstance, Role, User, UserRole
+from hub.enums import MessagePolicy
+from hub.models import Agent, Base, DaemonDeviceCode, DaemonInstance, Role, User, UserRole
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-daemon-control"
@@ -924,3 +925,69 @@ async def test_dispatch_policy_updated_is_allowed(
         assert r.json()["ack"]["ok"] is True
     finally:
         await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_load_agent_identity_snapshot_returns_active_bound_agents(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    """The hello frame's agents snapshot must list every active agent bound
+    to the daemon — that's what lets the daemon reconcile identity.md on
+    reconnect after the dashboard mutated it offline."""
+    from hub.routers.daemon_control import _load_agent_identity_snapshot
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    # Two active agents bound to this daemon, one bound but soft-deleted, one
+    # active but bound to a different daemon — only the first two should appear.
+    db_session.add_all(
+        [
+            Agent(
+                agent_id="ag_keep1",
+                display_name="Keep One",
+                bio="Bio one",
+                runtime="claude-code",
+                user_id=seed_user["user_id"],
+                daemon_instance_id=instance_id,
+                message_policy=MessagePolicy.contacts_only,
+                status="active",
+            ),
+            Agent(
+                agent_id="ag_keep2",
+                display_name="Keep Two",
+                bio=None,
+                runtime="codex",
+                user_id=seed_user["user_id"],
+                daemon_instance_id=instance_id,
+                message_policy=MessagePolicy.contacts_only,
+                status="active",
+            ),
+            Agent(
+                agent_id="ag_deleted",
+                display_name="Gone",
+                user_id=seed_user["user_id"],
+                daemon_instance_id=instance_id,
+                message_policy=MessagePolicy.contacts_only,
+                status="deleted",
+            ),
+            Agent(
+                agent_id="ag_other_daemon",
+                display_name="Elsewhere",
+                user_id=seed_user["user_id"],
+                daemon_instance_id="di_other",
+                message_policy=MessagePolicy.contacts_only,
+                status="active",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    snapshot = await _load_agent_identity_snapshot(instance_id)
+    by_id = {entry["agentId"]: entry for entry in snapshot}
+    assert set(by_id) == {"ag_keep1", "ag_keep2"}
+    assert by_id["ag_keep1"]["displayName"] == "Keep One"
+    assert by_id["ag_keep1"]["bio"] == "Bio one"
+    assert by_id["ag_keep2"]["bio"] is None
+    # runtime is intentionally not on the wire — it's cached locally on the daemon.
+    assert "runtime" not in by_id["ag_keep1"]

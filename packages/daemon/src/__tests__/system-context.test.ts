@@ -25,6 +25,10 @@ const { updateWorkingMemory, clearWorkingMemory } = await import(
 );
 const { ActivityTracker } = await import("../activity-tracker.js");
 const { createDaemonSystemContextBuilder } = await import("../system-context.js");
+const { ensureAgentWorkspace, agentWorkspaceDir } = await import(
+  "../agent-workspace.js"
+);
+const { writeFileSync } = await import("node:fs");
 
 function makeMessage(
   partial: Partial<GatewayInboundMessage> = {},
@@ -80,6 +84,54 @@ describe("createDaemonSystemContextBuilder", () => {
     expect(out).toContain("Goal: ship feature");
     expect(out).toContain("<section_notes>");
     expect(out).toContain("remember X");
+  });
+
+  it("injects the identity block from workspace/identity.md, placed before other blocks", () => {
+    ensureAgentWorkspace("ag_me", {
+      displayName: "Susan's Helper",
+      bio: "A friendly IM agent who tracks contacts.",
+      runtime: "claude-code",
+    });
+    updateWorkingMemory("ag_me", { goal: "ship feature" });
+
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const out = builder(makeMessage()) as string;
+    expect(out).toContain("[BotCord Identity]");
+    expect(out).toContain("Susan's Helper");
+    expect(out).toContain("A friendly IM agent who tracks contacts.");
+    // Identity must precede working memory so it frames every other block.
+    expect(out.indexOf("[BotCord Identity]")).toBeLessThan(
+      out.indexOf("[BotCord Working Memory]"),
+    );
+  });
+
+  it("re-reads identity.md every turn so dashboard / agent edits take effect immediately", () => {
+    ensureAgentWorkspace("ag_me", { displayName: "Old Name" });
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const first = builder(makeMessage()) as string;
+    expect(first).toContain("Old Name");
+
+    // Simulate an out-of-band edit (dashboard reconcile, user, control frame…).
+    writeFileSync(
+      path.join(agentWorkspaceDir("ag_me"), "identity.md"),
+      "# Identity\n\n- **Display name**: New Name\n",
+    );
+    const second = builder(makeMessage()) as string;
+    expect(second).toContain("New Name");
+    expect(second).not.toContain("Old Name");
+  });
+
+  it("skips the identity block cleanly when identity.md is missing", () => {
+    // No ensureAgentWorkspace — workspace never provisioned.
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    expect(builder(makeMessage())).toBeUndefined();
+  });
+
+  it("skips the identity block when identity.md is blank", () => {
+    ensureAgentWorkspace("ag_me", { displayName: "X" });
+    writeFileSync(path.join(agentWorkspaceDir("ag_me"), "identity.md"), "");
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    expect(builder(makeMessage())).toBeUndefined();
   });
 
   it("emits the 'memory is currently empty' notice when the memory file exists but is blank", () => {

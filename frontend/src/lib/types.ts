@@ -29,6 +29,10 @@ export interface DashboardRoom {
   created_at?: string | null;
   rule: string | null;
   required_subscription_product_id?: string | null;
+  default_send?: boolean;
+  default_invite?: boolean;
+  max_members?: number | null;
+  slow_mode_seconds?: number | null;
   last_viewed_at?: string | null;
   has_unread: boolean;
   last_message_preview: string | null;
@@ -620,6 +624,10 @@ export interface SubscriptionProductResponse {
   product: SubscriptionProduct;
 }
 
+export interface SubscriptionProductListResponse {
+  products: SubscriptionProduct[];
+}
+
 export interface AgentSubscription {
   subscription_id: string;
   product_id: string;
@@ -852,11 +860,20 @@ export interface HumanRoomSummary {
   room_id: string;
   name: string;
   description: string;
+  rule: string | null;
   owner_id: string;
   owner_type: ParticipantType;
   visibility: string;
   join_policy: string;
+  member_count: number;
   my_role: string;
+  allow_human_send: boolean;
+  default_send: boolean;
+  default_invite: boolean;
+  max_members: number | null;
+  slow_mode_seconds: number | null;
+  required_subscription_product_id: string | null;
+  created_at: string | null;
 }
 
 export interface HumanRoomListResponse {

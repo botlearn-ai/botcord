@@ -60,7 +60,7 @@ from hub.id_generators import (
     generate_daemon_instance_id,
     generate_daemon_user_code,
 )
-from hub.models import DaemonDeviceCode, DaemonInstance
+from hub.models import Agent, DaemonDeviceCode, DaemonInstance
 
 logger = logging.getLogger(__name__)
 
@@ -771,10 +771,16 @@ async def daemon_control_ws(ws: WebSocket) -> None:
         except Exception:
             pass
 
-    # Send the hello frame straight away.
+    # Send the hello frame straight away. The `agents` snapshot lets the
+    # daemon reconcile each provisioned agent's on-disk `identity.md` against
+    # the dashboard-edited truth — offline edits land here on next reconnect.
+    agents_snapshot = await _load_agent_identity_snapshot(daemon_instance_id)
     hello = _build_signed_frame(
         "hello",
-        {"server_time": int(_now().timestamp() * 1000)},
+        {
+            "server_time": int(_now().timestamp() * 1000),
+            "agents": agents_snapshot,
+        },
     )
     try:
         await ws.send_text(json.dumps(hello))
@@ -881,6 +887,45 @@ async def _persist_runtime_snapshot(
     instance.runtimes_json = runtimes
     instance.runtimes_probed_at = probed_dt
     return runtimes, probed_dt
+
+
+async def _load_agent_identity_snapshot(
+    daemon_instance_id: str,
+) -> list[dict[str, Any]]:
+    """Return the identity snapshot for every active agent bound to this daemon.
+
+    Embedded in the `hello` frame so the daemon can rewrite each agent's
+    on-disk `identity.md` whenever the dashboard mutated it while the daemon
+    was offline. Failures are logged and yield an empty list — losing the
+    snapshot is preferable to refusing the connection.
+    """
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(Agent).where(
+                    Agent.daemon_instance_id == daemon_instance_id,
+                    Agent.status == "active",
+                )
+            )
+            rows = result.scalars().all()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "hello agents snapshot load failed: instance=%s err=%s",
+            daemon_instance_id,
+            exc,
+        )
+        return []
+    # Only fields the daemon's `applyAgentIdentity` actually consumes ship
+    # on the wire — runtime is already cached locally in the credentials
+    # file and re-sending it here would just bloat the hello payload.
+    return [
+        {
+            "agentId": row.agent_id,
+            "displayName": row.display_name,
+            "bio": row.bio,
+        }
+        for row in rows
+    ]
 
 
 async def _handle_daemon_event(conn: _DaemonConn, msg: dict[str, Any]) -> None:

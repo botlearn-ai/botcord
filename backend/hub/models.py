@@ -127,6 +127,9 @@ class Agent(Base):
     daemon_instance_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("daemon_instances.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    openclaw_host_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("openclaw_host_instances.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     hosting_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Runtime selected at creation (claude-code / codex / gemini / ...).
     # Null for agents created via bind_code.
@@ -1227,6 +1230,38 @@ class DaemonInstance(Base):
     runtimes_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     runtimes_probed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class OpenclawHostInstance(Base):
+    """An OpenClaw VM/container hosting the BotCord plugin.
+
+    Mirrors :class:`DaemonInstance` semantics — long-lived control-plane
+    row with refresh-token rotation. ``host_pubkey`` is the Ed25519 public
+    key the plugin generated locally during install-claim; the matching
+    private key never leaves the host.
+    """
+
+    __tablename__ = "openclaw_host_instances"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # oc_<12 hex>
+    owner_user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    host_pubkey: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    refresh_token_hash: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    refresh_token_expires_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

@@ -36,6 +36,9 @@ import { BotCordClient } from "./src/client.js";
 import { getConfig } from "./src/runtime.js";
 import { resolveAccountConfig, isAccountConfigured } from "./src/config.js";
 import { attachTokenPersistence } from "./src/credentials.js";
+import { startOpenclawHostControl, type HostControlHandle } from "./src/host-control.js";
+
+let _openclawHostControl: HostControlHandle | null = null;
 
 // Inline replacement for defineChannelPluginEntry from openclaw/plugin-sdk/core.
 // Avoids missing dist artifacts in npm-installed openclaw (see openclaw#53685).
@@ -183,6 +186,16 @@ export default {
     const uninstallCli = createUninstallCli();
     api.registerCli(uninstallCli.setup, { commands: uninstallCli.commands });
 
+    // Start the OpenClaw host control loop once per process. Returns null
+    // (no-op) when the host hasn't been onboarded yet (no host.json on
+    // disk) — keeps the plugin runnable in pure per-agent setups.
+    if (!_openclawHostControl) {
+      try {
+        _openclawHostControl = startOpenclawHostControl();
+      } catch (err) {
+        console.warn("[botcord] failed to start openclaw host control:", err);
+      }
+    }
   },
 };
 

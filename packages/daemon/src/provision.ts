@@ -14,14 +14,17 @@ import {
   derivePublicKey,
   loadStoredCredentials,
   writeCredentialsFile,
+  type AgentIdentitySnapshot,
   type ControlAck,
   type ControlFrame,
+  type HelloParams,
   type ListRuntimesResult,
   type ProvisionAgentParams,
   type RevokeAgentParams,
   type RevokeAgentResult,
   type RuntimeProbeResult,
   type StoredBotCordCredentials,
+  type UpdateAgentParams,
 } from "@botcord/protocol-core";
 import type { Gateway } from "./gateway/index.js";
 import type { PolicyResolverLike } from "./gateway/policy-resolver.js";
@@ -43,6 +46,7 @@ import {
   agentHomeDir,
   agentStateDir,
   agentWorkspaceDir,
+  applyAgentIdentity,
   ensureAgentWorkspace,
 } from "./agent-workspace.js";
 import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
@@ -87,6 +91,38 @@ export function createProvisioner(opts: ProvisionerOptions): (
     switch (frame.type) {
       case CONTROL_FRAME_TYPES.PING:
         return { ok: true, result: { pong: true, ts: Date.now() } };
+
+      case CONTROL_FRAME_TYPES.HELLO: {
+        const params = (frame.params ?? {}) as unknown as HelloParams;
+        const result = applyHelloIdentitySnapshot(params.agents);
+        daemonLog.debug("hello: identity snapshot applied", {
+          frameId: frame.id,
+          received: params.agents?.length ?? 0,
+          updated: result.updated,
+          skipped: result.skipped,
+        });
+        return { ok: true, result };
+      }
+
+      case CONTROL_FRAME_TYPES.UPDATE_AGENT: {
+        const params = (frame.params ?? {}) as unknown as UpdateAgentParams;
+        if (!params.agentId) {
+          return {
+            ok: false,
+            error: { code: "bad_params", message: "update_agent requires params.agentId" },
+          };
+        }
+        const result = applyAgentIdentity(params.agentId, {
+          displayName: params.displayName,
+          bio: params.bio,
+        });
+        daemonLog.info("update_agent applied", {
+          agentId: params.agentId,
+          changed: result.changed,
+          skipped: result.skipped ?? null,
+        });
+        return { ok: true, result };
+      }
 
       case CONTROL_FRAME_TYPES.PROVISION_AGENT: {
         const params = (frame.params ?? {}) as unknown as ProvisionAgentParams;
@@ -617,6 +653,54 @@ export function collectRuntimeSnapshot(): ListRuntimesResult {
     return record;
   });
   return { runtimes, probedAt: Date.now() };
+}
+
+// ---------------------------------------------------------------------------
+// hello agents snapshot (lightweight identity sync)
+// ---------------------------------------------------------------------------
+
+interface HelloIdentityResult {
+  updated: number;
+  skipped: number;
+}
+
+/**
+ * Reconcile every agent identity carried by the `hello.agents` snapshot
+ * against the on-disk `identity.md`. Best-effort: a malformed entry or a
+ * file-system error for one agent never aborts the rest.
+ *
+ * Identity-snapshot semantics intentionally only touch the metadata
+ * line + Bio body — Role/Boundaries paragraphs the user authored locally
+ * are preserved (see `applyAgentIdentity`). Missing identity.md files
+ * (agent provisioned on a different daemon, or workspace cleared) are
+ * silently skipped.
+ */
+export function applyHelloIdentitySnapshot(
+  snapshot: AgentIdentitySnapshot[] | undefined,
+): HelloIdentityResult {
+  const out: HelloIdentityResult = { updated: 0, skipped: 0 };
+  if (!Array.isArray(snapshot)) return out;
+  for (const entry of snapshot) {
+    if (!entry || typeof entry.agentId !== "string") {
+      out.skipped += 1;
+      continue;
+    }
+    try {
+      const result = applyAgentIdentity(entry.agentId, {
+        displayName: entry.displayName,
+        bio: entry.bio,
+      });
+      if (result.changed) out.updated += 1;
+      else out.skipped += 1;
+    } catch (err) {
+      out.skipped += 1;
+      daemonLog.warn("hello.identity apply failed", {
+        agentId: entry.agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

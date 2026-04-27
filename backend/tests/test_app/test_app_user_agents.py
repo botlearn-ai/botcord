@@ -557,6 +557,103 @@ async def test_patch_agent_set_default(client: AsyncClient, seed_user: dict):
     assert agents["ag_agent002"]["is_default"] is True
 
 
+@pytest.mark.asyncio
+async def test_patch_agent_pushes_update_when_daemon_online(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict, monkeypatch
+):
+    """When the agent is bound to a connected daemon, PATCH dispatches an
+    `update_agent` control frame so identity.md is rewritten without waiting
+    for the next reconnect."""
+    # Wire the agent to a (fake) daemon instance and pretend it's online.
+    seed_user["agent1"].daemon_instance_id = "di_test"
+    await db_session.commit()
+
+    import app.routers.users as users_mod
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: True)
+    import asyncio as _asyncio
+
+    captured: dict = {}
+    sent = _asyncio.Event()
+
+    async def fake_send(daemon_id, type_, params, timeout_ms=None):
+        captured["daemon_id"] = daemon_id
+        captured["type"] = type_
+        captured["params"] = params
+        sent.set()
+        return {"id": "x", "ok": True}
+
+    monkeypatch.setattr(users_mod, "send_control_frame", fake_send)
+
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={"display_name": "Renamed", "bio": "Fresh bio"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    # Push is fire-and-forget — wait for the background task to land.
+    await _asyncio.wait_for(sent.wait(), timeout=2.0)
+    assert captured["daemon_id"] == "di_test"
+    assert captured["type"] == "update_agent"
+    assert captured["params"]["agentId"] == "ag_agent001"
+    assert captured["params"]["displayName"] == "Renamed"
+    assert captured["params"]["bio"] == "Fresh bio"
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_swallows_push_error_when_online(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict, monkeypatch
+):
+    """Even if the daemon is online but the dispatch raises (timeout, 502),
+    the PATCH must still succeed — eventual consistency via hello snapshot."""
+    seed_user["agent1"].daemon_instance_id = "di_flaky"
+    await db_session.commit()
+
+    import app.routers.users as users_mod
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: True)
+
+    async def boom(*_a, **_kw):
+        raise HTTPException(504, detail="daemon_ack_timeout")
+
+    monkeypatch.setattr(users_mod, "send_control_frame", boom)
+
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={"bio": "Anything"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_swallows_offline_daemon(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict, monkeypatch
+):
+    """Offline daemon must not break the PATCH — eventual consistency is via
+    the next hello snapshot."""
+    seed_user["agent1"].daemon_instance_id = "di_offline"
+    await db_session.commit()
+
+    import app.routers.users as users_mod
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: False)
+
+    async def boom(*_a, **_kw):  # pragma: no cover - should never run
+        raise HTTPException(409, detail="daemon_offline")
+
+    monkeypatch.setattr(users_mod, "send_control_frame", boom)
+
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={"display_name": "Whatever"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # POST /api/users/me/agents/bind-ticket
 # ---------------------------------------------------------------------------

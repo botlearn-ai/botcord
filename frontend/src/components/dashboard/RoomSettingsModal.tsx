@@ -1,14 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Loader2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Loader2, Search, X } from "lucide-react";
+import CopyableId from "@/components/ui/CopyableId";
+import { api, humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
-import { roomSettingsModal, roomAdvancedSettings } from "@/lib/i18n/translations/dashboard";
+import {
+  agentBrowser,
+  roomAdvancedSettings,
+  roomSettingsModal,
+} from "@/lib/i18n/translations/dashboard";
+import type { PublicRoomMember, SubscriptionProduct } from "@/lib/types";
+import AddRoomMemberModal from "./AddRoomMemberModal";
+import MemberActionsMenu from "./MemberActionsMenu";
+import TransferOwnershipDialog from "./TransferOwnershipDialog";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 
 interface RoomSettingsModalProps {
   roomId: string;
+  viewerMode: "human" | "agent";
+  viewerRole?: string | null;
   initialName: string;
   initialDescription: string;
   initialRule: string;
@@ -20,12 +34,113 @@ interface RoomSettingsModalProps {
   initialMaxMembers?: number | null;
   initialSlowModeSeconds?: number | null;
   initialSubscriptionProductId?: string | null;
-  isOwner?: boolean;
   onClose: () => void;
+}
+
+interface ActionConfirmDialogProps {
+  title: string;
+  description: string;
+  warning?: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  confirmTextLabel?: string;
+  confirmPlaceholder?: string;
+  confirmValue?: string;
+  onConfirmValueChange?: (value: string) => void;
+  confirmDisabled?: boolean;
+  loading?: boolean;
+  loadingLabel?: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+function ActionConfirmDialog({
+  title,
+  description,
+  warning,
+  confirmLabel,
+  cancelLabel,
+  confirmTextLabel,
+  confirmPlaceholder,
+  confirmValue = "",
+  onConfirmValueChange,
+  confirmDisabled = false,
+  loading = false,
+  loadingLabel,
+  onClose,
+  onConfirm,
+}: ActionConfirmDialogProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={loading}
+          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          aria-label={cancelLabel}
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="pr-8">
+          <h3 className="text-xl font-bold text-text-primary">{title}</h3>
+          <p className="mt-2 text-sm text-text-secondary">{description}</p>
+        </div>
+
+        {confirmTextLabel ? (
+          <label className="mt-5 block">
+            <span className="mb-1.5 block text-xs text-text-secondary">{confirmTextLabel}</span>
+            <input
+              type="text"
+              value={confirmValue}
+              onChange={(e) => onConfirmValueChange?.(e.target.value)}
+              placeholder={confirmPlaceholder}
+              className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2.5 text-sm text-text-primary outline-none focus:border-red-400/50 placeholder:text-text-secondary/40"
+            />
+          </label>
+        ) : null}
+
+        {warning ? (
+          <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
+            <p className="text-xs leading-5 text-amber-300">{warning}</p>
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={confirmDisabled || loading}
+            className="inline-flex items-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-300 transition-all hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {loading ? loadingLabel ?? confirmLabel : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function RoomSettingsModal({
   roomId,
+  viewerMode,
+  viewerRole,
   initialName,
   initialDescription,
   initialRule,
@@ -37,13 +152,30 @@ export default function RoomSettingsModal({
   initialMaxMembers = null,
   initialSlowModeSeconds = null,
   initialSubscriptionProductId = null,
-  isOwner = false,
   onClose,
 }: RoomSettingsModalProps) {
   const locale = useLanguage();
   const t = roomSettingsModal[locale];
   const ta = roomAdvancedSettings[locale];
+  const tm = agentBrowser[locale];
   const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
+  const leaveRoom = useDashboardChatStore((s) => s.leaveRoom);
+  const leavingRoomId = useDashboardChatStore((s) => s.leavingRoomId);
+  const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
+  const humanId = useDashboardSessionStore((s) => s.human?.human_id ?? null);
+  const getActiveSubscription = useDashboardSubscriptionStore((s) => s.getActiveSubscription);
+  const ensureSubscriptions = useDashboardSubscriptionStore((s) => s.ensureSubscriptions);
+  const cancelSubscription = useDashboardSubscriptionStore((s) => s.cancelSubscription);
+  const setFocusedRoomId = useDashboardUIStore((s) => s.setFocusedRoomId);
+  const setOpenedRoomId = useDashboardUIStore((s) => s.setOpenedRoomId);
+
+  const canEditBasics = viewerRole === "owner" || viewerRole === "admin";
+  const isOwner = viewerRole === "owner";
+  const canManageMembers = viewerMode === "human" && (isOwner || viewerRole === "admin");
+  const isLeaving = leavingRoomId === roomId;
+  const activeSubscription = initialSubscriptionProductId
+    ? getActiveSubscription(initialSubscriptionProductId)
+    : null;
 
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
@@ -62,12 +194,124 @@ export default function RoomSettingsModal({
   const [subscriptionProductId, setSubscriptionProductId] = useState(
     initialSubscriptionProductId ?? "",
   );
+  const [subscriptionEnabled, setSubscriptionEnabled] = useState(Boolean(initialSubscriptionProductId));
+  const [ownedProducts, setOwnedProducts] = useState<SubscriptionProduct[]>([]);
+  const [subscriptionProduct, setSubscriptionProduct] = useState<SubscriptionProduct | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [members, setMembers] = useState<PublicRoomMember[]>([]);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dissolving, setDissolving] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [dissolveDialogOpen, setDissolveDialogOpen] = useState(false);
+  const [dissolveConfirmText, setDissolveConfirmText] = useState("");
+  const [cancellingSubscription, setCancellingSubscription] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ownerMember = members.find((member) => member.role === "owner") ?? null;
+  const groupInitial = name.trim().charAt(0).toUpperCase() || "G";
+  const persistedRoomName = initialName.trim();
+  const dissolveConfirmArmed = dissolveConfirmText.trim() === persistedRoomName;
+  const filteredMembers = useMemo(() => {
+    const query = memberQuery.trim().toLowerCase();
+    if (!query) return members;
+    return members.filter((member) =>
+      member.display_name.toLowerCase().includes(query)
+      || member.agent_id.toLowerCase().includes(query)
+      || member.role.toLowerCase().includes(query),
+    );
+  }, [memberQuery, members]);
+  const visibleMembers = filteredMembers.slice(0, 8);
+  const availableProduct = ownedProducts.find((product) => product.status === "active") ?? ownedProducts[0] ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMembers() {
+      setMembersLoading(true);
+      setMembersError(null);
+      try {
+        const result = await api.getRoomMembers(roomId).catch(() => api.getPublicRoomMembers(roomId));
+        if (cancelled) return;
+        setMembers(result.members);
+      } catch {
+        if (cancelled) return;
+        setMembers([]);
+        setMembersError(tm.loadMembersFailed);
+      } finally {
+        if (!cancelled) setMembersLoading(false);
+      }
+    }
+    void loadMembers();
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, tm.loadMembersFailed]);
+
+  useEffect(() => {
+    if (!initialSubscriptionProductId) return;
+    void ensureSubscriptions().catch(() => {});
+  }, [ensureSubscriptions, initialSubscriptionProductId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSubscriptionContext() {
+      setSubscriptionLoading(true);
+      try {
+        const tasks: Array<Promise<unknown>> = [];
+        if (isOwner) {
+          tasks.push(api.getMySubscriptionProducts());
+        } else {
+          tasks.push(Promise.resolve({ products: [] }));
+        }
+        if (subscriptionProductId) {
+          tasks.push(api.getSubscriptionProduct(subscriptionProductId));
+        } else {
+          tasks.push(Promise.resolve(null));
+        }
+        const [productsResult, productResult] = await Promise.all(tasks);
+        if (cancelled) return;
+        const myProducts = "products" in (productsResult as { products: SubscriptionProduct[] })
+          ? (productsResult as { products: SubscriptionProduct[] }).products
+          : [];
+        setOwnedProducts(myProducts);
+        if (productResult && "product" in (productResult as { product: SubscriptionProduct })) {
+          setSubscriptionProduct((productResult as { product: SubscriptionProduct }).product);
+        } else {
+          setSubscriptionProduct(null);
+        }
+      } catch {
+        if (cancelled) return;
+        setOwnedProducts([]);
+        setSubscriptionProduct(null);
+      } finally {
+        if (!cancelled) setSubscriptionLoading(false);
+      }
+    }
+    void loadSubscriptionContext();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, subscriptionProductId]);
+
+  async function refreshRoomDetails() {
+    const result = await api.getRoomMembers(roomId).catch(() => api.getPublicRoomMembers(roomId));
+    setMembers(result.members);
+    await Promise.all([
+      refreshOverview({ reloadOpenedRoom: true }),
+      refreshHumanRooms(),
+    ]);
+  }
 
   const handleSave = async () => {
+    if (!canEditBasics) {
+      onClose();
+      return;
+    }
     const trimmedName = name.trim();
     if (!trimmedName) {
       setError(t.nameRequired);
@@ -90,14 +334,25 @@ export default function RoomSettingsModal({
         if (nextMax !== initialMaxMembers) patch.max_members = nextMax;
         const nextSlow = slowMode ? Number(slowMode) : null;
         if (nextSlow !== initialSlowModeSeconds) patch.slow_mode_seconds = nextSlow;
-        const nextSub = subscriptionProductId.trim() || null;
+        const nextSub = subscriptionEnabled
+          ? (subscriptionProductId.trim() || availableProduct?.product_id || null)
+          : null;
+        if (subscriptionEnabled && !nextSub) {
+          setError(ta.subscriptionNoPlan);
+          setSaving(false);
+          return;
+        }
         if (nextSub !== initialSubscriptionProductId) {
           patch.required_subscription_product_id = nextSub;
         }
       }
       if (Object.keys(patch).length > 0) {
-        await api.updateRoomSettings(roomId, patch);
-        await refreshOverview({ reloadOpenedRoom: true });
+        const updater = viewerMode === "human" ? humansApi.updateRoomSettings : api.updateRoomSettings;
+        await updater(roomId, patch);
+        await Promise.all([
+          refreshOverview({ reloadOpenedRoom: true }),
+          refreshHumanRooms(),
+        ]);
       }
       onClose();
     } catch (err) {
@@ -107,227 +362,581 @@ export default function RoomSettingsModal({
     }
   };
 
+  const handleLeave = async () => {
+    if (isOwner) return;
+    setError(null);
+    try {
+      await Promise.all([leaveRoom(roomId), refreshHumanRooms()]);
+      setLeaveDialogOpen(false);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tm.leaveRoomFailed);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!activeSubscription?.subscription_id) return;
+    setError(null);
+    setCancellingSubscription(true);
+    try {
+      await cancelSubscription(activeSubscription.subscription_id);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tm.cancelSubscriptionFailed);
+    } finally {
+      setCancellingSubscription(false);
+    }
+  };
+
+  const handleDissolve = async () => {
+    if (!isOwner || dissolving || !dissolveConfirmArmed) return;
+    setError(null);
+    setDissolving(true);
+    try {
+      const dissolve = viewerMode === "human" ? humansApi.dissolveRoom : api.dissolveRoom;
+      await dissolve(roomId);
+      setDissolveDialogOpen(false);
+      setDissolveConfirmText("");
+      setFocusedRoomId(null);
+      setOpenedRoomId(null);
+      await Promise.all([refreshOverview(), refreshHumanRooms()]);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.dissolveRoomFailed);
+    } finally {
+      setDissolving(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose}>
       <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
+        className="ml-auto flex h-full w-full max-w-[520px] flex-col overflow-hidden border-l border-glass-border bg-deep-black shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-glass-border px-6 py-4">
-          <h2 className="text-lg font-semibold text-text-primary">{t.title}</h2>
+        <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
+          <h2 className="text-xl font-semibold text-text-primary">{t.title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            aria-label={t.cancel}
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {error && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
               {error}
             </div>
           )}
 
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-              {t.nameLabel}
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={120}
-              className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-              {t.descriptionLabel}
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={500}
-              className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-              {t.ruleLabel}
-            </label>
-            <textarea
-              value={rule}
-              onChange={(e) => setRule(e.target.value)}
-              rows={4}
-              maxLength={4000}
-              className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm leading-relaxed text-text-primary outline-none focus:border-neon-cyan/50"
-            />
-            <p className="mt-1 text-[10px] text-text-secondary/60">{t.ruleHint}</p>
-          </div>
+          {!canEditBasics && (
+            <div className="mb-4 rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-3 text-xs text-text-secondary/80">
+              {t.readOnlyHint}
+            </div>
+          )}
 
-          {/* Advanced */}
-          <section className="rounded border border-glass-border">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left"
-            >
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {ta.sectionTitle}
-                </p>
-                {!advancedOpen && (
-                  <p className="mt-1 text-[11px] text-text-secondary/60">{ta.sectionHint}</p>
-                )}
-              </div>
-              <ChevronDown
-                className={`h-4 w-4 text-text-secondary transition-transform ${advancedOpen ? "rotate-180" : ""}`}
-              />
-            </button>
-            {advancedOpen && (
-              <div className="space-y-3 border-t border-glass-border px-4 py-3">
-                {!isOwner && (
-                  <p className="text-[11px] text-text-secondary/70">{ta.ownerOnly}</p>
-                )}
-                <label className="block">
-                  <span className="mb-1 block text-xs text-text-secondary">{ta.visibilityLabel}</span>
-                  <select
-                    disabled={!isOwner}
-                    value={visibility}
-                    onChange={(e) => setVisibility(e.target.value)}
-                    className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
-                  >
-                    <option value="private">{ta.visibilityPrivate}</option>
-                    <option value="public">{ta.visibilityPublic}</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-text-secondary">{ta.joinPolicyLabel}</span>
-                  <select
-                    disabled={!isOwner}
-                    value={joinPolicy}
-                    onChange={(e) => setJoinPolicy(e.target.value)}
-                    className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
-                  >
-                    <option value="invite_only">{ta.joinPolicyInviteOnly}</option>
-                    <option value="open">{ta.joinPolicyOpen}</option>
-                  </select>
-                </label>
-                <label className="flex items-center gap-2 text-xs text-text-secondary">
-                  <input
-                    type="checkbox"
-                    disabled={!isOwner}
-                    checked={defaultSend}
-                    onChange={(e) => setDefaultSend(e.target.checked)}
-                    className="accent-neon-cyan"
-                  />
-                  {ta.defaultSendLabel}
-                </label>
-                <label className="flex items-center gap-2 text-xs text-text-secondary">
-                  <input
-                    type="checkbox"
-                    disabled={!isOwner}
-                    checked={defaultInvite}
-                    onChange={(e) => setDefaultInvite(e.target.checked)}
-                    className="accent-neon-cyan"
-                  />
-                  {ta.defaultInviteLabel}
-                </label>
-                <label className="flex items-center gap-2 text-xs text-text-secondary">
-                  <input
-                    type="checkbox"
-                    disabled={!isOwner}
-                    checked={allowHumanSend}
-                    onChange={(e) => setAllowHumanSend(e.target.checked)}
-                    className="accent-neon-cyan"
-                  />
-                  {ta.allowHumanSendLabel}
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-text-secondary">{ta.maxMembersLabel}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      disabled={!isOwner}
-                      value={maxMembers}
-                      onChange={(e) => setMaxMembers(e.target.value)}
-                      className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-text-secondary">{ta.slowModeLabel}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      disabled={!isOwner}
-                      value={slowMode}
-                      onChange={(e) => setSlowMode(e.target.value)}
-                      className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
-                    />
-                  </label>
+          <div className="divide-y divide-glass-border/80">
+            <section className="py-5">
+              <div className="flex items-start gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-neon-cyan/30 bg-neon-cyan/10 text-2xl font-semibold text-neon-cyan">
+                  {groupInitial}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xl font-semibold text-text-primary">{name || initialName}</p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {canEditBasics ? t.ruleHint : t.readOnlyHint}
+                  </p>
+                  <div className="mt-3 text-xs text-text-secondary/70">
+                    <CopyableId value={roomId} />
+                  </div>
                 </div>
               </div>
-            )}
-          </section>
 
-          {/* Subscription */}
-          <section className="rounded border border-glass-border">
-            <button
-              type="button"
-              onClick={() => setSubscriptionOpen((v) => !v)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left"
-            >
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {ta.subscriptionSection}
-                </p>
-                {!subscriptionOpen && (
-                  <p className="mt-1 text-[11px] text-text-secondary/60">{ta.subscriptionHint}</p>
-                )}
-              </div>
-              <ChevronDown
-                className={`h-4 w-4 text-text-secondary transition-transform ${subscriptionOpen ? "rotate-180" : ""}`}
-              />
-            </button>
-            {subscriptionOpen && (
-              <div className="space-y-2 border-t border-glass-border px-4 py-3">
-                {!isOwner && (
-                  <p className="text-[11px] text-text-secondary/70">{ta.ownerOnly}</p>
-                )}
-                <label className="block">
-                  <span className="mb-1 block text-xs text-text-secondary">
-                    {ta.subscriptionProductLabel}
-                  </span>
+              <div className="mt-5 space-y-4 border-t border-glass-border pt-4">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                    {t.nameLabel}
+                  </label>
                   <input
                     type="text"
-                    disabled={!isOwner}
-                    value={subscriptionProductId}
-                    onChange={(e) => setSubscriptionProductId(e.target.value)}
-                    placeholder={ta.subscriptionNone}
-                    className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
+                    disabled={!canEditBasics}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={120}
+                    className="w-full rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-60"
                   />
-                </label>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                    {t.descriptionLabel}
+                  </label>
+                  <textarea
+                    rows={3}
+                    disabled={!canEditBasics}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    maxLength={500}
+                    className="w-full resize-none rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-60"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                    {t.ruleLabel}
+                  </label>
+                  <textarea
+                    disabled={!canEditBasics}
+                    value={rule}
+                    onChange={(e) => setRule(e.target.value)}
+                    rows={4}
+                    maxLength={4000}
+                    className="w-full resize-none rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-60"
+                  />
+                </div>
               </div>
-            )}
-          </section>
+            </section>
+
+            <section className="py-5">
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-lg font-semibold text-text-primary">{t.membersSection}</p>
+                  <p className="mt-1 text-xs text-text-secondary/70">
+                    {filteredMembers.length} {tm.members}
+                  </p>
+                </div>
+                {canManageMembers && (
+                  <button
+                    type="button"
+                    onClick={() => setAddMemberModalOpen(true)}
+                    className="rounded-xl border border-neon-cyan/30 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
+                  >
+                    {tm.addMembersEntry}
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg px-3">
+                  <Search className="h-4 w-4 text-text-secondary/70" />
+                  <input
+                    value={memberQuery}
+                    onChange={(e) => setMemberQuery(e.target.value)}
+                    placeholder={tm.searchAddableMembers}
+                    className="w-full bg-transparent py-2.5 text-sm text-text-primary outline-none"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  {visibleMembers.map((member) => (
+                    <div key={member.agent_id} className="flex items-center gap-2 rounded-full border border-glass-border bg-glass-bg px-2.5 py-1.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neon-cyan/12 text-xs font-semibold text-neon-cyan">
+                        {(member.display_name || "M").trim().charAt(0).toUpperCase() || "M"}
+                      </div>
+                      <span className="max-w-28 truncate text-xs text-text-primary">{member.display_name}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-glass-border bg-deep-black/40">
+                  {membersLoading ? (
+                    <p className="px-4 py-4 text-xs text-text-secondary animate-pulse">{tm.loadingMembers}</p>
+                  ) : membersError ? (
+                    <p className="px-4 py-4 text-xs text-red-400">{membersError}</p>
+                  ) : filteredMembers.length === 0 ? (
+                    <p className="px-4 py-4 text-xs text-text-secondary/60">{tm.noMembers}</p>
+                  ) : (
+                    <div className="divide-y divide-glass-border/70">
+                      {filteredMembers.map((member) => {
+                        const participantType = member.participant_type
+                          ?? (member.agent_id.startsWith("hu_") ? "human" : "agent");
+                        const isSelf = viewerMode === "human" && member.agent_id === humanId;
+                        return (
+                          <div
+                            key={member.agent_id}
+                            className="flex items-center justify-between gap-3 px-4 py-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate text-sm font-medium text-text-primary">
+                                  {member.display_name}
+                                </span>
+                                <span
+                                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                    participantType === "human"
+                                      ? "bg-neon-green/10 text-neon-green"
+                                      : "bg-neon-cyan/10 text-neon-cyan"
+                                  }`}
+                                >
+                                  {participantType === "human" ? "H" : "A"}
+                                </span>
+                                <span className={`shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
+                                  member.role === "owner"
+                                    ? "border-neon-cyan/30 text-neon-cyan"
+                                    : member.role === "admin"
+                                      ? "border-neon-purple/30 text-neon-purple"
+                                      : "border-glass-border text-text-secondary"
+                                }`}>
+                                  {member.role}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-[11px] text-text-secondary/70">
+                                <CopyableId value={member.agent_id} />
+                              </div>
+                            </div>
+                            {canManageMembers && !isSelf && (
+                              <MemberActionsMenu
+                                roomId={roomId}
+                                member={member}
+                                viewerRole={viewerRole ?? "member"}
+                                onMutated={() => {
+                                  void refreshRoomDetails();
+                                }}
+                                onError={(msg) => setError(msg)}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="py-5">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="flex w-full items-center justify-between py-1 text-left"
+              >
+                <div>
+                  <p className="text-lg font-semibold text-text-primary">{ta.sectionTitle}</p>
+                  {!advancedOpen && (
+                    <p className="mt-1 text-xs text-text-secondary/70">{ta.sectionHint}</p>
+                  )}
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 text-text-secondary transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+              {advancedOpen && (
+                <div className="mt-4 space-y-4 border-t border-glass-border pt-4">
+                  {!isOwner && (
+                    <p className="text-[11px] text-text-secondary/70">{ta.ownerOnly}</p>
+                  )}
+                  <div className="grid gap-4">
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs text-text-secondary">{ta.visibilityLabel}</span>
+                      <select
+                        disabled={!isOwner}
+                        value={visibility}
+                        onChange={(e) => setVisibility(e.target.value)}
+                        className="w-full rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
+                      >
+                        <option value="private">{ta.visibilityPrivate}</option>
+                        <option value="public">{ta.visibilityPublic}</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs text-text-secondary">{ta.joinPolicyLabel}</span>
+                      <select
+                        disabled={!isOwner}
+                        value={joinPolicy}
+                        onChange={(e) => setJoinPolicy(e.target.value)}
+                        className="w-full rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
+                      >
+                        <option value="invite_only">{ta.joinPolicyInviteOnly}</option>
+                        <option value="open">{ta.joinPolicyOpen}</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid gap-3">
+                    <label className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg px-3 py-3 text-xs text-text-secondary">
+                      <input
+                        type="checkbox"
+                        disabled={!isOwner}
+                        checked={defaultSend}
+                        onChange={(e) => setDefaultSend(e.target.checked)}
+                        className="accent-neon-cyan"
+                      />
+                      {ta.defaultSendLabel}
+                    </label>
+                    <label className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg px-3 py-3 text-xs text-text-secondary">
+                      <input
+                        type="checkbox"
+                        disabled={!isOwner}
+                        checked={defaultInvite}
+                        onChange={(e) => setDefaultInvite(e.target.checked)}
+                        className="accent-neon-cyan"
+                      />
+                      {ta.defaultInviteLabel}
+                    </label>
+                    <label className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg px-3 py-3 text-xs text-text-secondary">
+                      <input
+                        type="checkbox"
+                        disabled={!isOwner}
+                        checked={allowHumanSend}
+                        onChange={(e) => setAllowHumanSend(e.target.checked)}
+                        className="accent-neon-cyan"
+                      />
+                      {ta.allowHumanSendLabel}
+                    </label>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="py-5">
+              <button
+                type="button"
+                onClick={() => setSubscriptionOpen((v) => !v)}
+                className="flex w-full items-center justify-between py-1 text-left"
+              >
+                <div>
+                  <p className="text-lg font-semibold text-text-primary">{ta.subscriptionSection}</p>
+                  {!subscriptionOpen && (
+                    <p className="mt-1 text-xs text-text-secondary/70">{ta.subscriptionHint}</p>
+                  )}
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 text-text-secondary transition-transform ${subscriptionOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+              {subscriptionOpen && (
+                <div className="mt-4 space-y-3 border-t border-glass-border pt-4">
+                  {!isOwner && (
+                    <p className="text-[11px] text-text-secondary/70">{ta.ownerOnly}</p>
+                  )}
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-glass-border bg-glass-bg px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary">{ta.subscriptionToggleLabel}</p>
+                      <p className="mt-1 text-xs text-text-secondary/70">
+                        {subscriptionEnabled ? ta.subscriptionEnabledHint : ta.subscriptionDisabledHint}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!isOwner || (!subscriptionEnabled && !subscriptionProductId && !availableProduct)}
+                      onClick={() => {
+                        if (!subscriptionEnabled) {
+                          const nextProductId = subscriptionProductId || availableProduct?.product_id || "";
+                          if (!nextProductId) return;
+                          setSubscriptionProductId(nextProductId);
+                          if (!subscriptionProduct && availableProduct) {
+                            setSubscriptionProduct(availableProduct);
+                          }
+                          setSubscriptionEnabled(true);
+                          return;
+                        }
+                        setSubscriptionEnabled(false);
+                      }}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${subscriptionEnabled ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan" : "border-glass-border text-text-secondary hover:bg-glass-bg"}`}
+                    >
+                      {subscriptionEnabled ? ta.subscriptionToggleOn : ta.subscriptionToggleOff}
+                    </button>
+                  </div>
+
+                  {!subscriptionEnabled && isOwner && !subscriptionProductId && !availableProduct && (
+                    <p className="text-xs text-text-secondary/70">{ta.subscriptionNoPlan}</p>
+                  )}
+
+                  {!subscriptionEnabled && isOwner && availableProduct && (
+                    <p className="text-xs text-text-secondary/70">{ta.subscriptionAutoPick}</p>
+                  )}
+
+                  {subscriptionEnabled && (
+                    <div className="rounded-xl border border-glass-border bg-deep-black/40 px-4 py-3">
+                      <p className="text-sm font-medium text-text-primary">{ta.subscriptionCurrentPlan}</p>
+                      {subscriptionLoading ? (
+                        <p className="mt-2 text-xs text-text-secondary/70">{t.saving}</p>
+                      ) : subscriptionProduct || availableProduct ? (
+                        (() => {
+                          const product = subscriptionProduct ?? availableProduct;
+                          if (!product) return null;
+                          return (
+                            <div className="mt-2 space-y-1 text-xs text-text-secondary/80">
+                              <p className="text-sm font-medium text-text-primary">{product.name}</p>
+                              {product.description ? <p>{product.description}</p> : null}
+                              <p>{ta.subscriptionPriceLabel}: {typeof product.amount_minor === "number" ? (product.amount_minor / 100).toFixed(2) : String(Number(product.amount_minor) / 100)} {product.asset_code}</p>
+                              <p>{ta.subscriptionBillingLabel}: {product.billing_interval}</p>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <p className="mt-2 text-xs text-text-secondary/70">{ta.subscriptionNone}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="py-5">
+              <div>
+                <p className="text-lg font-semibold text-text-primary">{t.actionsSection}</p>
+                <p className="mt-1 text-xs text-text-secondary/70">
+                  {ownerMember ? `${tm.ownerCannotLeave} ${ownerMember.display_name}` : tm.ownerCannotLeave}
+                </p>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {!isOwner && (
+                  <div className="flex items-center justify-between gap-4 border-t border-glass-border/80 py-3 first:border-t-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary">{tm.leaveRoom}</p>
+                      <p className="mt-1 text-xs text-text-secondary/70">
+                        {t.leaveRoomDescription}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setLeaveDialogOpen(true)}
+                      disabled={isLeaving}
+                      className="shrink-0 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {isLeaving ? tm.leavingRoom : tm.leaveRoom}
+                    </button>
+                  </div>
+                )}
+                {activeSubscription ? (
+                  <div className="flex items-center justify-between gap-4 border-t border-glass-border/80 py-3 first:border-t-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary">{tm.cancelSubscription}</p>
+                      <p className="mt-1 text-xs text-text-secondary/70">{ta.subscriptionHint}</p>
+                    </div>
+                    <button
+                      onClick={() => void handleCancelSubscription()}
+                      disabled={cancellingSubscription}
+                      className="shrink-0 rounded-lg border border-yellow-500/30 px-3 py-1.5 text-xs font-medium text-yellow-300 transition-colors hover:bg-yellow-500/10 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {cancellingSubscription ? tm.cancellingSubscription : tm.cancelSubscription}
+                    </button>
+                  </div>
+                ) : null}
+                {canManageMembers && isOwner && humanId && (
+                  <div className="flex items-center justify-between gap-4 border-t border-glass-border/80 py-3 first:border-t-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary">{tm.transferOwnership}</p>
+                      <p className="mt-1 text-xs text-text-secondary/70">{tm.ownerCannotLeave}</p>
+                    </div>
+                    <button
+                      onClick={() => setTransferDialogOpen(true)}
+                      className="shrink-0 rounded-lg border border-neon-purple/30 px-3 py-1.5 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/10"
+                    >
+                      {tm.transferOwnership}
+                    </button>
+                  </div>
+                )}
+                {isOwner && (
+                  <div className="flex items-center justify-between gap-4 border-t border-red-500/20 py-3 first:border-t-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-red-200">{t.dissolveRoom}</p>
+                      <p className="mt-1 text-xs text-red-200/70">{t.dissolveRoomDescription}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setDissolveConfirmText("");
+                        setDissolveDialogOpen(true);
+                      }}
+                      disabled={dissolving}
+                      className="shrink-0 rounded-lg border border-red-500/35 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {dissolving ? t.dissolvingRoom : t.dissolveRoom}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-3">
+        <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-4">
           <button
             onClick={onClose}
             disabled={saving}
-            className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
+            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
           >
             {t.cancel}
           </button>
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {saving ? t.saving : t.save}
-          </button>
+          {canEditBasics && (
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {saving ? t.saving : t.save}
+            </button>
+          )}
         </div>
       </div>
+
+      {addMemberModalOpen && canManageMembers && (
+        <AddRoomMemberModal
+          roomId={roomId}
+          existingMemberIds={members.map((member) => member.agent_id)}
+          onClose={() => setAddMemberModalOpen(false)}
+          onAdded={refreshRoomDetails}
+        />
+      )}
+
+      {transferDialogOpen && canManageMembers && isOwner && humanId && (
+        <TransferOwnershipDialog
+          roomId={roomId}
+          roomName={initialName}
+          viewerHumanId={humanId}
+          members={members}
+          onClose={() => setTransferDialogOpen(false)}
+          onSuccess={() => {
+            void refreshRoomDetails();
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {leaveDialogOpen && !isOwner && (
+        <ActionConfirmDialog
+          title={t.leaveRoomConfirmTitle}
+          description={t.leaveRoomConfirmDescription}
+          warning={t.leaveRoomWarning}
+          confirmLabel={tm.leaveRoom}
+          cancelLabel={t.cancel}
+          confirmDisabled={isLeaving}
+          loading={isLeaving}
+          loadingLabel={tm.leavingRoom}
+          onClose={() => setLeaveDialogOpen(false)}
+          onConfirm={() => {
+            void handleLeave();
+          }}
+        />
+      )}
+
+      {dissolveDialogOpen && isOwner && (
+        <ActionConfirmDialog
+          title={t.dissolveRoomConfirmTitle}
+          description={t.dissolveRoomConfirmDescription}
+          warning={t.dissolveRoomWarning}
+          confirmLabel={t.dissolveRoom}
+          cancelLabel={t.cancel}
+          confirmTextLabel={t.confirmRoomNameLabel.replace("{room}", persistedRoomName)}
+          confirmPlaceholder={persistedRoomName}
+          confirmValue={dissolveConfirmText}
+          onConfirmValueChange={setDissolveConfirmText}
+          confirmDisabled={!dissolveConfirmArmed || dissolving}
+          loading={dissolving}
+          loadingLabel={t.dissolvingRoom}
+          onClose={() => {
+            if (dissolving) return;
+            setDissolveDialogOpen(false);
+            setDissolveConfirmText("");
+          }}
+          onConfirm={() => {
+            void handleDissolve();
+          }}
+        />
+      )}
     </div>
   );
 }

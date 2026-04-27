@@ -11,7 +11,7 @@ import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { Bell, Info, Loader2, Settings, Share2, Users } from "lucide-react";
+import { Bell, Info, Loader2, Settings, Share2 } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -21,7 +21,6 @@ import SubscriptionBadge from "./SubscriptionBadge";
 import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
-import RoomMemberSettingsModal from "./RoomMemberSettingsModal";
 import RoomPolicyModal from "./RoomPolicyModal";
 
 export default function RoomHeader() {
@@ -43,10 +42,8 @@ export default function RoomHeader() {
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const refreshHumanRooms = useDashboardSessionStore((state) => state.refreshHumanRooms);
-  const { openedRoomId, rightPanelOpen, toggleRightPanel } = useDashboardUIStore(useShallow((state) => ({
+  const { openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
-    rightPanelOpen: state.rightPanelOpen,
-    toggleRightPanel: state.toggleRightPanel,
   })));
   const { overview, getRoomSummary, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -133,12 +130,6 @@ export default function RoomHeader() {
   useEffect(() => {
     setRuleExpanded(false);
   }, [openedRoomId]);
-
-  const handleOpenMembersPanel = () => {
-    if (!rightPanelOpen) {
-      toggleRightPanel();
-    }
-  };
 
   const handleJoinOpenRoom = () => {
     if (!room?.room_id) return;
@@ -282,7 +273,7 @@ export default function RoomHeader() {
           </div>
           <div className="flex items-center gap-1.5 text-xs text-text-secondary">
             <button
-              onClick={handleOpenMembersPanel}
+              onClick={() => setShowSettingsModal(true)}
               className="shrink-0 whitespace-nowrap hover:text-neon-cyan hover:underline transition-colors"
             >
               {room.member_count} {room.member_count !== 1 ? t.members : t.member}
@@ -355,7 +346,7 @@ export default function RoomHeader() {
               <span className={tooltipCls}>我的回复策略</span>
             </span>
           )}
-          {isAuthedReady && (isJoined || isDMRoom) && !isOwnerChatRoom && (
+          {!isOwnerChatRoom && (
             <span className="group relative">
               <button
                 onClick={() => setShowSettingsModal(true)}
@@ -365,18 +356,6 @@ export default function RoomHeader() {
                 <Settings className="h-4 w-4" />
               </button>
               <span className={tooltipCls}>{t.roomSettings}</span>
-            </span>
-          )}
-          {!isDMRoom && !isOwnerChatRoom && (
-            <span className="group relative">
-              <button
-                onClick={handleOpenMembersPanel}
-                className={iconBtn}
-                aria-label={t.viewMembers}
-              >
-                <Users className="h-4 w-4" />
-              </button>
-              <span className={tooltipCls}>{t.viewMembers}</span>
             </span>
           )}
         </div>
@@ -402,17 +381,22 @@ export default function RoomHeader() {
         />
       )}
 
-      {showSettingsModal && !isDMRoom && isOwnerOrAdmin && (
+      {showSettingsModal && !isDMRoom && (
         <RoomSettingsModal
           roomId={room.room_id}
+          viewerMode={viewMode}
+          viewerRole={myRole}
           initialName={room.name}
           initialDescription={room.description || ""}
           initialRule={room.rule || ""}
           initialVisibility={room.visibility}
           initialJoinPolicy={room.join_policy}
+          initialDefaultSend={room.default_send ?? true}
+          initialDefaultInvite={room.default_invite ?? false}
+          initialMaxMembers={room.max_members ?? null}
+          initialSlowModeSeconds={room.slow_mode_seconds ?? null}
           initialSubscriptionProductId={room.required_subscription_product_id ?? null}
-          initialAllowHumanSend={authRoom?.allow_human_send !== false}
-          isOwner={authRoom?.my_role === "owner"}
+          initialAllowHumanSend={room.allow_human_send !== false}
           onClose={() => setShowSettingsModal(false)}
         />
       )}
@@ -422,18 +406,6 @@ export default function RoomHeader() {
           agentId={activeAgentId}
           roomId={openedRoomId}
           onClose={() => setShowPolicyModal(false)}
-        />
-      )}
-
-      {showSettingsModal && !isDMRoom && !isOwnerOrAdmin && myRole && (
-        <RoomMemberSettingsModal
-          roomId={room.room_id}
-          roomName={room.name}
-          roomDescription={room.description}
-          roomRule={room.rule}
-          myRole={myRole}
-          requiredSubscriptionProductId={room.required_subscription_product_id}
-          onClose={() => setShowSettingsModal(false)}
         />
       )}
 
