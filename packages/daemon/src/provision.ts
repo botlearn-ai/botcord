@@ -55,6 +55,7 @@ import {
 } from "./agent-workspace.js";
 import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
 import { log as daemonLog } from "./log.js";
+import { discoverAgentCredentials } from "./agent-discovery.js";
 
 /** Options accepted by {@link createProvisioner}. */
 export interface ProvisionerOptions {
@@ -267,6 +268,8 @@ interface ProvisionCtx {
   register: typeof BotCordClient.register;
 }
 
+const openclawProvisionLocks = new Map<string, Promise<unknown>>();
+
 async function provisionAgent(
   params: ProvisionAgentParams,
   ctx: ProvisionCtx,
@@ -278,13 +281,53 @@ async function provisionAgent(
   const explicitCwd = params.credentials?.cwd ?? params.cwd;
   assertSafeCwd(explicitCwd);
 
+  const openclawSel = pickOpenclawSelection(params);
+  if (openclawSel.gateway && openclawSel.agent) {
+    return withOpenclawProvisionLock(openclawSel.gateway, openclawSel.agent, async () => {
+      const existing = findCredentialsByOpenclaw(openclawSel.gateway!, openclawSel.agent!);
+      if (existing) {
+        daemonLog.info("provision_agent: openclaw binding already exists", {
+          gateway: openclawSel.gateway,
+          openclawAgent: openclawSel.agent,
+          agentId: existing.agentId,
+        });
+        return installExistingOpenclawBinding(existing.agentId, ctx);
+      }
+      const cfg = loadConfig();
+      const credentials = await materializeCredentials(params, cfg, ctx, explicitCwd);
+      return installLocalAgent(credentials, {
+        ...ctx,
+        cfg,
+        bio: params.bio,
+        source: params.credentials ? "hub-supplied" : "registered",
+      });
+    });
+  }
+
   const cfg = loadConfig();
   const credentials = await materializeCredentials(params, cfg, ctx, explicitCwd);
+  return installLocalAgent(credentials, {
+    ...ctx,
+    cfg,
+    bio: params.bio,
+    source: params.credentials ? "hub-supplied" : "registered",
+  });
+}
+
+async function installLocalAgent(
+  credentials: StoredBotCordCredentials,
+  ctx: ProvisionCtx & {
+    cfg: DaemonConfig;
+    bio?: string;
+    source: "hub-supplied" | "registered" | "adopted-openclaw";
+  },
+): Promise<ProvisionedAgent> {
+  const cfg = ctx.cfg;
   daemonLog.debug("provision: credentials materialized", {
     agentId: credentials.agentId,
     hubUrl: credentials.hubUrl,
     runtime: credentials.runtime ?? null,
-    source: params.credentials ? "hub-supplied" : "registered",
+    source: ctx.source,
   });
 
   const credentialsFile = writeCredentialsFile(
@@ -298,7 +341,7 @@ async function provisionAgent(
   try {
     ensureAgentWorkspace(credentials.agentId, {
       displayName: credentials.displayName,
-      bio: params.bio,
+      bio: ctx.bio,
       runtime: credentials.runtime,
       keyId: credentials.keyId,
       savedAt: credentials.savedAt,
@@ -358,37 +401,7 @@ async function provisionAgent(
   // Hot-add the synthesized per-agent managed route so the next turn picks
   // the agent's runtime + workspace cwd without waiting for reload_config.
   try {
-    const synthRoute: import("./gateway/index.js").GatewayRoute = {
-      match: { accountId: credentials.agentId },
-      runtime: credentials.runtime ?? cfg.defaultRoute.adapter,
-      cwd: credentials.cwd ?? agentWorkspaceDir(credentials.agentId),
-    };
-    if (synthRoute.runtime === "openclaw-acp") {
-      // Resolve gateway from the freshly written credentials + the live
-      // openclawGateways registry. A missing/unknown gateway here yields a
-      // disabled route (set_route style); next turn for this agent falls
-      // back to defaultRoute. Caller already validated via reload semantics.
-      const profile = (cfg.openclawGateways ?? []).find(
-        (g) => g.name === credentials.openclawGateway,
-      );
-      if (profile) {
-        // Run the same tokenFile-aware resolver `toGatewayConfig` uses so the
-        // first turn after provisioning doesn't auth-fail when the gateway
-        // ships its bearer via `tokenFile` instead of an inline `token`.
-        const prepared = prepareGatewayProfile(profile);
-        synthRoute.gateway = {
-          name: prepared.name,
-          url: prepared.url,
-          ...(prepared.resolvedToken ? { token: prepared.resolvedToken } : {}),
-          ...(credentials.openclawAgent
-            ? { openclawAgent: credentials.openclawAgent }
-            : prepared.defaultAgent
-              ? { openclawAgent: prepared.defaultAgent }
-              : {}),
-        };
-      }
-    }
-    ctx.gateway.upsertManagedRoute(credentials.agentId, synthRoute);
+    upsertManagedRouteForCredentials(credentials, cfg, ctx.gateway);
   } catch (err) {
     // Rollback the channel + config + credentials on managed-route failure
     // (shouldn't happen — pure map op — but keeps the invariant tight).
@@ -420,6 +433,63 @@ async function provisionAgent(
     credentialsFile,
   });
 
+  return {
+    agentId: credentials.agentId,
+    hubUrl: credentials.hubUrl,
+    credentialsFile,
+  };
+}
+
+function upsertManagedRouteForCredentials(
+  credentials: StoredBotCordCredentials,
+  cfg: DaemonConfig,
+  gateway: Gateway,
+): void {
+  const synthRoute: import("./gateway/index.js").GatewayRoute = {
+    match: { accountId: credentials.agentId },
+    runtime: credentials.runtime ?? cfg.defaultRoute.adapter,
+    cwd: credentials.cwd ?? agentWorkspaceDir(credentials.agentId),
+  };
+  if (synthRoute.runtime === "openclaw-acp") {
+    const profile = (cfg.openclawGateways ?? []).find(
+      (g) => g.name === credentials.openclawGateway,
+    );
+    if (profile) {
+      const prepared = prepareGatewayProfile(profile);
+      synthRoute.gateway = {
+        name: prepared.name,
+        url: prepared.url,
+        ...(prepared.resolvedToken ? { token: prepared.resolvedToken } : {}),
+        ...(credentials.openclawAgent
+          ? { openclawAgent: credentials.openclawAgent }
+          : prepared.defaultAgent
+            ? { openclawAgent: prepared.defaultAgent }
+            : {}),
+      };
+    }
+  }
+  gateway.upsertManagedRoute(credentials.agentId, synthRoute);
+}
+
+async function installExistingOpenclawBinding(
+  agentId: string,
+  ctx: ProvisionCtx,
+): Promise<ProvisionedAgent> {
+  const credentialsFile = defaultCredentialsFile(agentId);
+  const credentials = loadStoredCredentials(credentialsFile);
+  const cfg = loadConfig();
+  const updated = addAgentToConfig(cfg, credentials.agentId);
+  if (updated) saveConfig(updated);
+  const snap = ctx.gateway.snapshot();
+  if (!snap.channels[credentials.agentId]) {
+    await ctx.gateway.addChannel({
+      id: credentials.agentId,
+      type: BOTCORD_CHANNEL_TYPE,
+      accountId: credentials.agentId,
+      agentId: credentials.agentId,
+    });
+  }
+  upsertManagedRouteForCredentials(credentials, cfg, ctx.gateway);
   return {
     agentId: credentials.agentId,
     hubUrl: credentials.hubUrl,
@@ -535,6 +605,140 @@ function pickOpenclawSelection(
     }
   }
   return out;
+}
+
+async function withOpenclawProvisionLock<T>(
+  gateway: string,
+  agent: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const key = `${gateway}\0${agent}`;
+  const prev = openclawProvisionLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const chain = prev.then(() => current);
+  openclawProvisionLocks.set(key, chain);
+  await prev.catch(() => undefined);
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (openclawProvisionLocks.get(key) === chain) {
+      openclawProvisionLocks.delete(key);
+    }
+  }
+}
+
+function findCredentialsByOpenclaw(
+  gateway: string,
+  openclawAgent: string,
+): { agentId: string; credentialsFile: string } | null {
+  const discovered = discoverAgentCredentials({
+    credentialsDir: path.join(homedir(), ".botcord", "credentials"),
+  });
+  for (const a of discovered.agents) {
+    if (a.openclawGateway === gateway && a.openclawAgent === openclawAgent) {
+      return { agentId: a.agentId, credentialsFile: a.credentialsFile };
+    }
+  }
+  return null;
+}
+
+export interface AdoptDiscoveredOpenclawAgentsResult {
+  adopted: string[];
+  skipped: Array<{ gateway: string; openclawAgent?: string; reason: string }>;
+  failed: Array<{ gateway: string; openclawAgent?: string; error: string }>;
+}
+
+export async function adoptDiscoveredOpenclawAgents(ctx: {
+  gateway: Gateway;
+  register?: typeof BotCordClient.register;
+  cfg?: DaemonConfig;
+  timeoutMs?: number;
+  probe?: WsEndpointProbeFn;
+}): Promise<AdoptDiscoveredOpenclawAgentsResult> {
+  const register = ctx.register ?? BotCordClient.register;
+  const cfg = ctx.cfg ?? loadConfig();
+  const result: AdoptDiscoveredOpenclawAgentsResult = {
+    adopted: [],
+    skipped: [],
+    failed: [],
+  };
+  for (const gw of cfg.openclawGateways ?? []) {
+    let probeResult: Awaited<ReturnType<typeof probeOpenclawAgents>>;
+    try {
+      probeResult = await probeOpenclawAgents(gw, {
+        timeoutMs: ctx.timeoutMs,
+        probe: ctx.probe,
+      });
+    } catch (err) {
+      result.failed.push({
+        gateway: gw.name,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
+    if (!probeResult.ok) {
+      result.skipped.push({
+        gateway: gw.name,
+        reason: probeResult.error ?? "gateway_unreachable",
+      });
+      continue;
+    }
+    for (const oc of probeResult.agents ?? []) {
+      await withOpenclawProvisionLock(gw.name, oc.id, async () => {
+        const existing = findCredentialsByOpenclaw(gw.name, oc.id);
+        if (existing) {
+          result.skipped.push({
+            gateway: gw.name,
+            openclawAgent: oc.id,
+            reason: "already_bound",
+          });
+          return;
+        }
+        const freshCfg = loadConfig();
+        if (!inferHubUrl(freshCfg)) {
+          result.skipped.push({
+            gateway: gw.name,
+            openclawAgent: oc.id,
+            reason: "missing_hub_url",
+          });
+          daemonLog.warn("openclaw adopt skipped: no known hubUrl", {
+            gateway: gw.name,
+            openclawAgent: oc.id,
+          });
+          return;
+        }
+        try {
+          const params: ProvisionAgentParams = {
+            runtime: "openclaw-acp",
+            name: oc.name ?? `openclaw-${oc.id}`,
+            openclaw: { gateway: gw.name, agent: oc.id },
+          };
+          const credentials = await materializeCredentials(params, freshCfg, {
+            gateway: ctx.gateway,
+            register,
+          }, undefined);
+          const installed = await installLocalAgent(credentials, {
+            gateway: ctx.gateway,
+            register,
+            cfg: freshCfg,
+            source: "adopted-openclaw",
+          });
+          result.adopted.push(installed.agentId);
+        } catch (err) {
+          result.failed.push({
+            gateway: gw.name,
+            openclawAgent: oc.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    }
+  }
+  return result;
 }
 
 async function revokeAgent(
@@ -872,6 +1076,34 @@ async function defaultWsProbe(args: {
   });
 }
 
+export async function probeOpenclawAgents(
+  profile: { url: string; token?: string; tokenFile?: string },
+  opts: { timeoutMs?: number; probe?: WsEndpointProbeFn } = {},
+): Promise<{
+  ok: boolean;
+  version?: string;
+  agents?: Array<{
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  }>;
+  error?: string;
+}> {
+  const probe = opts.probe ?? defaultWsProbe;
+  const prepared = prepareGatewayProfile({
+    name: "probe",
+    url: profile.url,
+    ...(profile.token ? { token: profile.token } : {}),
+    ...(profile.tokenFile ? { tokenFile: profile.tokenFile } : {}),
+  });
+  return probe({
+    url: profile.url,
+    token: prepared.resolvedToken,
+    timeoutMs: opts.timeoutMs ?? 3000,
+  });
+}
+
 /**
  * Async variant that includes L2 (gateway reachability) and L3 (agent listing)
  * probes for runtimes that talk to external services. Used by the production
@@ -889,7 +1121,6 @@ export async function collectRuntimeSnapshotAsync(opts: {
   const base = collectRuntimeSnapshot();
   const gateways = opts.cfg?.openclawGateways ?? [];
   if (gateways.length === 0) return base;
-  const probe = opts.wsProbe ?? defaultWsProbe;
   // Default daemon-side budget is 3s — it must stay below the Hub's
   // `list_runtimes` ack wait (5s, see backend/hub/routers/daemon_control.py)
   // so a single slow gateway can't blow the whole snapshot to a 504.
@@ -897,11 +1128,11 @@ export async function collectRuntimeSnapshotAsync(opts: {
   const capped = gateways.slice(0, RUNTIME_ENDPOINTS_CAP);
   const endpoints = await Promise.all(
     capped.map(async (g) => {
-      // Resolve `tokenFile` here so token-file-only profiles probe with auth
-      // and aren't falsely marked unreachable in the dashboard.
-      const prepared = prepareGatewayProfile(g);
       try {
-        const res = await probe({ url: g.url, token: prepared.resolvedToken, timeoutMs });
+        const res = await probeOpenclawAgents(g, {
+          probe: opts.wsProbe,
+          timeoutMs,
+        });
         const entry: any = { name: g.name, url: g.url, reachable: res.ok };
         if (res.version) entry.version = res.version;
         if (res.error) entry.error = res.error;
@@ -1299,6 +1530,14 @@ function inferHubUrl(cfg: DaemonConfig): string | null {
       if (creds.hubUrl) return creds.hubUrl;
     } catch {
       // skip
+    }
+  }
+  if (ids.length === 0) {
+    const discovered = discoverAgentCredentials({
+      credentialsDir: path.join(homedir(), ".botcord", "credentials"),
+    });
+    for (const a of discovered.agents) {
+      if (a.hubUrl) return a.hubUrl;
     }
   }
   return null;
