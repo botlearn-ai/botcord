@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -23,6 +24,9 @@ from hub.enums import AttentionMode, ContactPolicy, MessagePolicy, RoomInvitePol
 from hub.i18n import I18nHTTPException
 from hub.models import Agent, AgentRoomPolicyOverride, Room
 from hub.policy import EffectiveAttention, resolve_effective_attention
+from hub.routers.daemon_control import is_daemon_online, send_control_frame
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["app-policy"])
 
@@ -159,7 +163,62 @@ async def patch_policy(
 
     await db.commit()
     await db.refresh(agent)
-    return _serialize(agent)
+
+    serialized = _serialize(agent)
+    await _dispatch_policy_updated(
+        agent,
+        policy={
+            "mode": serialized.default_attention,
+            "keywords": serialized.attention_keywords,
+        },
+    )
+    return serialized
+
+
+# ---------------------------------------------------------------------------
+# policy_updated control-frame dispatch helper (PR3 plumbing)
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_policy_updated(
+    agent: Agent,
+    *,
+    room_id: str | None = None,
+    policy: dict | None = None,
+) -> None:
+    """Best-effort: tell the daemon to invalidate its cached policy.
+
+    Daemon offline / dispatch error must never break the BFF response. The
+    inline ``policy`` blob lets the daemon avoid a refetch when the global
+    policy is the only thing that changed. For per-room edits we omit
+    ``policy`` and pass ``room_id`` so the daemon refetches just that key
+    when PR2/PR4 wires the room-aware fetcher.
+    """
+    if not agent.daemon_instance_id or not is_daemon_online(agent.daemon_instance_id):
+        return
+    payload: dict = {"agent_id": agent.agent_id}
+    if room_id is not None:
+        payload["room_id"] = room_id
+    if policy is not None:
+        payload["policy"] = policy
+    try:
+        await send_control_frame(agent.daemon_instance_id, "policy_updated", payload)
+    except HTTPException as exc:
+        logger.warning(
+            "policy_updated dispatch failed: agent=%s daemon=%s room=%s detail=%s",
+            agent.agent_id,
+            agent.daemon_instance_id,
+            room_id,
+            exc.detail,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "policy_updated dispatch error: agent=%s daemon=%s room=%s err=%s",
+            agent.agent_id,
+            agent.daemon_instance_id,
+            room_id,
+            exc,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +426,7 @@ async def delete_room_policy(
     if override is not None:
         await db.delete(override)
         await db.commit()
+        await _dispatch_policy_updated(agent, room_id=room_id)
     # Idempotent: 204 either way.
     return Response(status_code=204)
 
@@ -403,6 +463,7 @@ async def snooze_room(
     await db.refresh(override)
 
     eff = await resolve_effective_attention(db, agent=agent, room_id=room_id)
+    await _dispatch_policy_updated(agent, room_id=room_id)
     return RoomPolicyOut(
         effective=_serialize_effective(eff),
         override=_serialize_override(override),

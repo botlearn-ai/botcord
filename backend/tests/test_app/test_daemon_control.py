@@ -874,3 +874,53 @@ async def test_refresh_runtimes_daemon_disconnect_returns_502(
         assert detail["code"] == "daemon_disconnected"
     finally:
         await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_policy_updated_is_allowed(
+    client: AsyncClient, seed_user, monkeypatch
+):
+    """PR3: `policy_updated` must be in the dispatch allowlist."""
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    from hub.routers.daemon_control import _DaemonConn, _registry_for_tests
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+    registry = _registry_for_tests()
+    await registry.register(conn)
+    try:
+        async def _reply_when_sent() -> None:
+            for _ in range(50):
+                if fake_ws.sent:
+                    break
+                await asyncio.sleep(0.01)
+            assert fake_ws.sent, "dispatch never wrote to the fake WS"
+            sent_frame = json.loads(fake_ws.sent[0])
+            assert sent_frame["type"] == "policy_updated"
+            ack = {"id": sent_frame["id"], "ok": True, "result": {"applied": True}}
+            fut = conn.pending_acks.get(sent_frame["id"])
+            assert fut is not None
+            fut.set_result(ack)
+
+        reply_task = asyncio.create_task(_reply_when_sent())
+        r = await client.post(
+            f"/daemon/instances/{instance_id}/dispatch",
+            json={
+                "type": "policy_updated",
+                "params": {"agent_id": "ag_test"},
+                "timeout_ms": 2000,
+            },
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        await reply_task
+        assert r.status_code == 200, r.text
+        assert r.json()["ack"]["ok"] is True
+    finally:
+        await registry.unregister(conn)

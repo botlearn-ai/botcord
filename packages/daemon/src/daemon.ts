@@ -1,4 +1,8 @@
-import { CONTROL_FRAME_TYPES } from "@botcord/protocol-core";
+import {
+  CONTROL_FRAME_TYPES,
+  shouldWake,
+  type AttentionPolicy,
+} from "@botcord/protocol-core";
 import {
   Gateway,
   createBotCordChannel,
@@ -31,6 +35,8 @@ import {
 } from "./loop-risk.js";
 import { composeBotCordUserTurn } from "./turn-text.js";
 import { UserAuthManager } from "./user-auth.js";
+import { PolicyResolver } from "./gateway/policy-resolver.js";
+import { scanMention } from "./mention-scan.js";
 
 /**
  * Matches the 10-minute turn timeout the legacy daemon dispatcher used, so
@@ -319,6 +325,40 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     });
   };
 
+  // Per-agent attention policy cache (PR3, design §4.2 / §5). Seeded from
+  // the optional `defaultAttention` / `attentionKeywords` carried by
+  // `provision_agent`, refreshed in-place by the `policy_updated` control
+  // frame. PR2 will plug per-room overrides into `fetchEffective`; PR3
+  // leaves it absent so the resolver collapses to per-agent state.
+  const policyResolver = new PolicyResolver({
+    fetchGlobal: async (_agentId: string) => undefined,
+  });
+
+  // Display-name lookup for the mention text-fallback. Populated from boot
+  // credentials; multi-agent daemons can reuse the same map via accountId.
+  const displayNameByAgent = new Map<string, string>();
+  for (const a of boot.agents) {
+    if (a.displayName) displayNameByAgent.set(a.agentId, a.displayName);
+  }
+
+  // Attention gate: compose `messages.mentioned` (sender-supplied — distrust)
+  // with a local `@<display_name>` / `@<agent_id>` text scan, resolve the
+  // effective policy, then defer to the protocol-core `shouldWake` decision.
+  const attentionGate = async (msg: GatewayInboundMessage): Promise<boolean> => {
+    const policy: AttentionPolicy = await policyResolver.resolve(
+      msg.accountId,
+      msg.conversation.id,
+    );
+    const localMention = scanMention(msg.text, {
+      agentId: msg.accountId,
+      displayName: displayNameByAgent.get(msg.accountId),
+    });
+    return shouldWake(policy, {
+      mentioned: msg.mentioned === true || localMention,
+      text: msg.text,
+    });
+  };
+
   const gateway = new Gateway({
     config: gwConfig,
     sessionStorePath: opts.sessionStorePath ?? SESSIONS_PATH,
@@ -340,6 +380,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     onInbound,
     onOutbound,
     composeUserTurn: composeBotCordUserTurn,
+    attentionGate,
   });
 
   logger.info("daemon starting", {
@@ -376,7 +417,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
       userId: userAuth.current.userId,
       hubUrl: userAuth.current.hubUrl,
     });
-    const provisioner = createProvisioner({ gateway });
+    const provisioner = createProvisioner({ gateway, policyResolver });
     controlChannel = new ControlChannel({
       auth: userAuth,
       handle: provisioner,

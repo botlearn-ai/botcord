@@ -1941,6 +1941,19 @@ async def provision_agent(
     if body.bio:
         frame_params["bio"] = body.bio
 
+    # Seed the daemon's policyResolver with the agent's default attention so
+    # it has a real policy from message zero (no first-message refetch race).
+    # `attention_keywords` is JSON-encoded TEXT in the DB.
+    try:
+        _seed_kw = json.loads(agent.attention_keywords or "[]")
+        if not isinstance(_seed_kw, list):
+            _seed_kw = []
+    except (json.JSONDecodeError, TypeError):
+        _seed_kw = []
+    _attn = agent.default_attention
+    frame_params["defaultAttention"] = _attn.value if hasattr(_attn, "value") else str(_attn)
+    frame_params["attentionKeywords"] = [str(x) for x in _seed_kw if isinstance(x, str)]
+
     try:
         ack = await send_control_frame(
             body.daemon_instance_id, "provision_agent", frame_params
