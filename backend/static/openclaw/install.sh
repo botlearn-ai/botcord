@@ -45,6 +45,7 @@ OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-}"
 
 BIND_CODE=""
 BIND_NONCE=""
+PURPOSE="install_claim"
 
 # ── Logging + cleanup ─────────────────────────────────────────────────────
 
@@ -107,6 +108,8 @@ Usage:
 Required (issued by the dashboard):
   --bind-code <bd_xxx>      One-time bind code from "Add Agent to OpenClaw"
   --bind-nonce <base64>     Ticket nonce to sign with the local keypair
+  --purpose <kind>          install_claim (default; agent-only legacy flow)
+                            or openclaw_install (host + agent first-install)
 
 Plugin source (mutually exclusive; default: npm registry):
   --plugin-version <ver>    Pin a specific version of $PLUGIN_PACKAGE
@@ -154,6 +157,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --bind-code)       need_next_arg "$1" "$#"; BIND_CODE="$2"; shift 2 ;;
     --bind-nonce)      need_next_arg "$1" "$#"; BIND_NONCE="$2"; shift 2 ;;
+    --purpose)         need_next_arg "$1" "$#"; PURPOSE="$2"; shift 2 ;;
     --server-url)      need_next_arg "$1" "$#"; SERVER_URL="$2"; shift 2 ;;
     --plugin-version)  need_next_arg "$1" "$#"; PLUGIN_VERSION="$2"; shift 2 ;;
     --tgz-url)         need_next_arg "$1" "$#"; TGZ_URL="$2"; shift 2 ;;
@@ -179,6 +183,10 @@ if [ -z "$BIND_CODE" ] || [ -z "$BIND_NONCE" ]; then
 fi
 
 case "$BIND_CODE" in bd_*) ;; *) log_error "--bind-code must start with bd_"; exit 1 ;; esac
+case "$PURPOSE" in
+  install_claim|openclaw_install) ;;
+  *) log_error "--purpose must be 'install_claim' or 'openclaw_install'"; exit 1 ;;
+esac
 
 require_cmd node "Install Node.js >= 18 first (https://nodejs.org)"
 require_cmd curl "Install curl first"
@@ -255,8 +263,129 @@ fi
 
 # ── Step 2: Generate keypair, sign, claim ────────────────────────────────
 
-log "claiming bind code on $SERVER_URL"
+log "claiming bind code on $SERVER_URL (purpose=$PURPOSE)"
 
+if [ "$PURPOSE" = "openclaw_install" ]; then
+  RESULT="$(
+    SERVER_URL="$SERVER_URL" \
+    BIND_CODE="$BIND_CODE" \
+    BIND_NONCE="$BIND_NONCE" \
+    node --input-type=module <<'NODE' 2>>"$RUN_LOG"
+import { generateKeyPairSync, createPrivateKey, sign } from "node:crypto";
+import { mkdirSync, writeFileSync, chmodSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+const serverUrl = process.env.SERVER_URL.replace(/\/+$/, "");
+const bindCode  = process.env.BIND_CODE;
+const bindNonce = process.env.BIND_NONCE;
+
+const PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+
+function generateKeypair() {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const privDer = privateKey.export({ type: "pkcs8", format: "der" });
+  const privB64 = Buffer.from(privDer.subarray(-32)).toString("base64");
+  const pubDer  = publicKey.export({ type: "spki",  format: "der" });
+  const pubB64  = Buffer.from(pubDer.subarray(-32)).toString("base64");
+  return { privB64, pubB64 };
+}
+
+function signNonce(privB64, nonce) {
+  const pk = createPrivateKey({
+    key: Buffer.concat([PKCS8_PREFIX, Buffer.from(privB64, "base64")]),
+    format: "der",
+    type: "pkcs8",
+  });
+  return sign(null, Buffer.from(nonce, "base64"), pk).toString("base64");
+}
+
+const host  = generateKeypair();
+const agent = generateKeypair();
+
+const claimUrl = `${serverUrl}/openclaw/install-claim`;
+const body = {
+  bind_code: bindCode,
+  host: {
+    pubkey: `ed25519:${host.pubB64}`,
+    proof:  { nonce: bindNonce, sig: signNonce(host.privB64,  bindNonce) },
+  },
+  agent: {
+    pubkey: `ed25519:${agent.pubB64}`,
+    proof:  { nonce: bindNonce, sig: signNonce(agent.privB64, bindNonce) },
+  },
+};
+
+const resp = await fetch(claimUrl, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+  signal: AbortSignal.timeout(20000),
+});
+if (!resp.ok) {
+  const text = await resp.text().catch(() => "");
+  process.stderr.write(`openclaw install-claim failed (${resp.status}): ${text}\n`);
+  process.exit(1);
+}
+const data = await resp.json();
+
+const agentId = data.agent.id;
+const hostId  = data.host.host_instance_id;
+const hubUrl  = data.hub_url || serverUrl;
+
+const credDir = join(homedir(), ".botcord", "credentials");
+mkdirSync(credDir, { recursive: true, mode: 0o700 });
+const credPath = join(credDir, `${agentId}.json`);
+writeFileSync(credPath, JSON.stringify({
+  version: 1,
+  hubUrl,
+  agentId,
+  keyId: data.agent.key_id,
+  privateKey: agent.privB64,
+  publicKey:  agent.pubB64,
+  displayName: data.agent.display_name || agentId,
+  bio: data.agent.bio || null,
+  savedAt: new Date().toISOString(),
+  token: data.agent.token || undefined,
+  tokenExpiresAt: data.agent.token_expires_at ?? undefined,
+  openclawHostId: hostId,
+}, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+chmodSync(credPath, 0o600);
+
+const hostDir = join(homedir(), ".botcord", "openclaw");
+mkdirSync(hostDir, { recursive: true, mode: 0o700 });
+const hostPath = join(hostDir, "host.json");
+writeFileSync(hostPath, JSON.stringify({
+  version: 1,
+  hubUrl,
+  hostInstanceId: hostId,
+  privateKey: host.privB64,
+  publicKey:  host.pubB64,
+  accessToken: data.host.access_token,
+  refreshToken: data.host.refresh_token,
+  accessExpiresAt: data.host.access_expires_at,
+  refreshExpiresAt: data.host.refresh_expires_at,
+  controlWsUrl: data.host.control_ws_url,
+  savedAt: new Date().toISOString(),
+}, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+chmodSync(hostPath, 0o600);
+
+process.stdout.write(JSON.stringify({
+  agentId,
+  keyId: data.agent.key_id,
+  displayName: data.agent.display_name || agentId,
+  hubUrl,
+  wsUrl: null,
+  credentialsFile: credPath,
+  hostFile: hostPath,
+  openclawHostId: hostId,
+}));
+NODE
+  )" || {
+    log_error "openclaw install-claim failed (bind code may be expired, already used, or proof rejected)"
+    exit 1
+  }
+else
 RESULT="$(
   SERVER_URL="$SERVER_URL" \
   BIND_CODE="$BIND_CODE" \
@@ -350,6 +479,7 @@ NODE
   log_error "claim step failed (bind code may be expired, already used, or the server rejected the proof)"
   exit 1
 }
+fi
 
 if [ -z "$RESULT" ]; then
   log_error "claim step returned no output; nothing was written"

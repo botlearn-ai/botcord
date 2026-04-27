@@ -33,6 +33,7 @@ from hub.models import (
     Agent,
     AgentSubscription,
     DaemonInstance,
+    OpenclawHostInstance,
     Role,
     ShortCode,
     SigningKey,
@@ -469,32 +470,80 @@ async def _consume_bind_code(code: str) -> bool:
     return await _consume_short_code(code, "bind")
 
 
-async def _consume_bind_code_with_claim(code: str, agent_id: str) -> bool:
-    """Atomically consume a bind code AND stamp the resulting agent_id.
+async def _revert_short_code_claim(
+    code: str, kind: str, *, reopen: bool = False
+) -> None:
+    """Best-effort: roll back a ``claimed_agent_id`` stamp on a short_code.
 
-    install-claim derives ``agent_id`` deterministically from the public
-    key before it ever touches the short_code row, so we can write
-    ``payload_json.claimed_agent_id`` in the same transaction that flips
-    ``consumed_at`` to non-null. Doing it as two separate writes left a
-    race window where ``GET /bind-ticket/{code}`` between the consume and
-    the metadata write saw a consumed row with no claimed_agent_id and
-    reported it as ``revoked`` — terminal-looking — even though the
-    agent was about to appear.
+    Used when the downstream insert (Agent / SigningKey / etc.) fails
+    after :func:`_consume_short_code_with_claim` already stamped the
+    short_code. The claim metadata is always stripped so polling never
+    reports a phantom "claimed but agent missing" state.
 
-    Returns True on first-use, False if the code was already consumed,
-    expired, or unknown (semantics identical to ``_consume_bind_code``).
+    ``reopen`` controls what happens to the consumed bookkeeping:
+
+    - ``False`` (default, **safe for bind tickets**): leave ``consumed_at``
+      and ``use_count`` set. The row stays terminal — polling reports the
+      bind code as no longer pending and the user must request a fresh one.
+      This avoids a phantom-pending state when the ``jti`` was burned by
+      :func:`_consume_bind_ticket_jti` (one-shot, irreversible) and the
+      ticket can therefore never be redeemed again even if reopened.
+
+    - ``True``: also reset ``consumed_at = None`` and ``use_count = 0`` so
+      the code can be re-redeemed. Only safe for short_code kinds whose
+      consume path is *not* JTI-gated (e.g. ``openclaw_provision``).
+
+    Failures are swallowed: if the revert can't run (DB down, transaction
+    poisoned), the row is left consumed-with-stamp, which is the
+    fail-closed direction for credential issuance.
+    """
+    try:
+        async with _short_code_session_factory() as code_session:
+            select_result = await code_session.execute(
+                select(ShortCode.payload_json).where(
+                    ShortCode.code == code,
+                    ShortCode.kind == kind,
+                )
+            )
+            existing = select_result.scalar_one_or_none()
+            if existing is None:
+                return
+            try:
+                payload = json.loads(existing)
+            except json.JSONDecodeError:
+                payload = {}
+            payload.pop("claimed_agent_id", None)
+            payload.pop("claimed_at", None)
+            new_payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            values: dict = {"payload_json": new_payload_json}
+            if reopen:
+                values["consumed_at"] = None
+                values["use_count"] = 0
+            await code_session.execute(
+                update(ShortCode)
+                .where(ShortCode.code == code, ShortCode.kind == kind)
+                .values(**values)
+            )
+            await code_session.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _consume_short_code_with_claim(code: str, kind: str, agent_id: str) -> bool:
+    """Generalized variant of :func:`_consume_bind_code_with_claim`.
+
+    Atomically consumes any ``ShortCode`` row by ``(code, kind)`` and
+    stamps ``payload_json.claimed_agent_id`` in the same transaction so
+    polling readers never observe a "consumed but no agent" intermediate
+    state. Used by both the bind-ticket install path and the OpenClaw
+    install / provision claim paths.
     """
     async with _short_code_session_factory() as code_session:
         now = _utc_now()
-        # Read the row first to merge the existing payload (so we keep
-        # bind_ticket / intended_name) with the new claim metadata. The
-        # WHERE clause on the UPDATE below still guarantees only one
-        # caller wins the consume, so the read is harmless to the
-        # uniqueness invariant.
         select_result = await code_session.execute(
             select(ShortCode.payload_json).where(
                 ShortCode.code == code,
-                ShortCode.kind == "bind",
+                ShortCode.kind == kind,
                 ShortCode.consumed_at.is_(None),
                 ShortCode.use_count < ShortCode.max_uses,
                 ShortCode.expires_at > now,
@@ -515,7 +564,7 @@ async def _consume_bind_code_with_claim(code: str, agent_id: str) -> bool:
             update(ShortCode)
             .where(
                 ShortCode.code == code,
-                ShortCode.kind == "bind",
+                ShortCode.kind == kind,
                 ShortCode.consumed_at.is_(None),
                 ShortCode.use_count < ShortCode.max_uses,
                 ShortCode.expires_at > now,
@@ -534,6 +583,24 @@ async def _consume_bind_code_with_claim(code: str, agent_id: str) -> bool:
             return False
         await code_session.commit()
         return True
+
+
+async def _consume_bind_code_with_claim(code: str, agent_id: str) -> bool:
+    """Atomically consume a bind code AND stamp the resulting agent_id.
+
+    install-claim derives ``agent_id`` deterministically from the public
+    key before it ever touches the short_code row, so we can write
+    ``payload_json.claimed_agent_id`` in the same transaction that flips
+    ``consumed_at`` to non-null. Doing it as two separate writes left a
+    race window where ``GET /bind-ticket/{code}`` between the consume and
+    the metadata write saw a consumed row with no claimed_agent_id and
+    reported it as ``revoked`` — terminal-looking — even though the
+    agent was about to appear.
+
+    Returns True on first-use, False if the code was already consumed,
+    expired, or unknown (semantics identical to ``_consume_bind_code``).
+    """
+    return await _consume_short_code_with_claim(code, "bind", agent_id)
 
 
 async def _peek_reset_code(code: str) -> str | None:
@@ -2025,3 +2092,503 @@ async def provision_agent(
         daemon_instance_id=body.daemon_instance_id,
         is_default=agent.is_default,
     )
+
+
+# ---------------------------------------------------------------------------
+# OpenClaw onboarding — BFF routes
+# ---------------------------------------------------------------------------
+#
+# The user-authenticated entry points for the OpenClaw flow.  The
+# unauthenticated counterparts (``/openclaw/install-claim``,
+# ``/openclaw/host/provision-claim``, ``/openclaw/auth/refresh``,
+# ``WS /openclaw/control``) live in ``hub.routers.openclaw_control``.
+
+
+class OpenclawInstallBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    bio: str | None = Field(default=None, max_length=4000)
+
+
+class OpenclawInstallResponse(BaseModel):
+    bind_code: str
+    bind_ticket: str
+    nonce: str
+    expires_at: int
+    install_command: str
+
+
+@router.post("/me/agents/openclaw/install", response_model=OpenclawInstallResponse)
+async def openclaw_install(
+    body: OpenclawInstallBody,
+    ctx: RequestContext = Depends(require_user),
+) -> OpenclawInstallResponse:
+    """Issue a bind ticket for the OpenClaw one-line install command."""
+    intended_name = body.name.strip()
+    if not intended_name:
+        raise HTTPException(status_code=400, detail="name is required")
+    intended_bio = (body.bio.strip() if body.bio else None) or None
+
+    now = _utc_now()
+    exp = now + datetime.timedelta(minutes=BIND_TICKET_TTL_MINUTES)
+    nonce = base64.b64encode(os.urandom(32)).decode()
+    jti = uuid4().hex
+    bind_code = f"bd_{uuid4().hex[:12]}"
+
+    async with _short_code_session_factory() as code_session:
+        active_count_result = await code_session.execute(
+            select(sa_func.count())
+            .select_from(ShortCode)
+            .where(
+                ShortCode.kind == "bind",
+                ShortCode.owner_user_id == ctx.user_id,
+                ShortCode.consumed_at.is_(None),
+                ShortCode.expires_at > now,
+            )
+        )
+        active_count = active_count_result.scalar_one()
+        if active_count >= MAX_ACTIVE_BIND_CODES_PER_USER:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Too many active bind codes (max {MAX_ACTIVE_BIND_CODES_PER_USER}); "
+                    "revoke or wait for one to expire"
+                ),
+            )
+
+    ticket_payload = {
+        "uid": str(ctx.user_id),
+        "purpose": "openclaw_install",
+        "nonce": nonce,
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+        "jti": jti,
+        "intended_name": intended_name,
+    }
+    if intended_bio:
+        ticket_payload["intended_bio"] = intended_bio
+
+    ticket = _build_signed_ticket(ticket_payload)
+
+    short_code_payload: dict = {
+        "bind_ticket": ticket,
+        "intended_name": intended_name,
+    }
+    if intended_bio:
+        short_code_payload["intended_bio"] = intended_bio
+
+    short_code = ShortCode(
+        code=bind_code,
+        kind="bind",
+        owner_user_id=ctx.user_id,
+        payload_json=json.dumps(short_code_payload, separators=(",", ":"), sort_keys=True),
+        expires_at=exp,
+    )
+    async with _short_code_session_factory() as code_session:
+        code_session.add(short_code)
+        await code_session.commit()
+
+    base = HUB_PUBLIC_BASE_URL.rstrip("/")
+    install_command = (
+        f"curl -fsSL {base}/openclaw/install.sh | bash -s -- "
+        f"--purpose openclaw_install --bind-code {bind_code} --bind-nonce {nonce}"
+    )
+
+    return OpenclawInstallResponse(
+        bind_code=bind_code,
+        bind_ticket=ticket,
+        nonce=nonce,
+        expires_at=int(exp.timestamp()),
+        install_command=install_command,
+    )
+
+
+# ---- hosts CRUD -----------------------------------------------------------
+
+
+class OpenclawHostView(BaseModel):
+    id: str
+    label: str | None = None
+    online: bool
+    last_seen_at: datetime.datetime | None = None
+    revoked_at: datetime.datetime | None = None
+    agent_count: int
+    created_at: datetime.datetime
+
+
+class OpenclawHostsResponse(BaseModel):
+    hosts: list[OpenclawHostView]
+
+
+@router.get(
+    "/me/agents/openclaw/hosts",
+    response_model=OpenclawHostsResponse,
+)
+async def list_openclaw_hosts(
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> OpenclawHostsResponse:
+    from hub.routers.openclaw_control import is_openclaw_host_online
+
+    rows = (
+        await db.execute(
+            select(OpenclawHostInstance)
+            .where(OpenclawHostInstance.owner_user_id == ctx.user_id)
+            .order_by(OpenclawHostInstance.created_at.desc())
+        )
+    ).scalars().all()
+
+    hosts: list[OpenclawHostView] = []
+    for row in rows:
+        count_result = await db.execute(
+            select(sa_func.count())
+            .select_from(Agent)
+            .where(
+                Agent.user_id == ctx.user_id,
+                Agent.openclaw_host_id == row.id,
+                Agent.status == "active",
+            )
+        )
+        agent_count = count_result.scalar_one() or 0
+        hosts.append(
+            OpenclawHostView(
+                id=row.id,
+                label=row.label,
+                online=row.revoked_at is None and is_openclaw_host_online(row.id),
+                last_seen_at=row.last_seen_at,
+                revoked_at=row.revoked_at,
+                agent_count=agent_count,
+                created_at=row.created_at,
+            )
+        )
+    return OpenclawHostsResponse(hosts=hosts)
+
+
+async def _load_owned_openclaw_host(
+    db: AsyncSession, user_id: UUID, host_id: str
+) -> OpenclawHostInstance:
+    result = await db.execute(
+        select(OpenclawHostInstance).where(OpenclawHostInstance.id == host_id)
+    )
+    instance = result.scalar_one_or_none()
+    if instance is None or str(instance.owner_user_id) != str(user_id):
+        raise HTTPException(status_code=404, detail="openclaw_host_not_found")
+    return instance
+
+
+class OpenclawHostPatchBody(BaseModel):
+    label: str | None = Field(default=None, max_length=64)
+
+
+@router.patch(
+    "/me/agents/openclaw/hosts/{host_id}",
+    response_model=OpenclawHostView,
+)
+async def patch_openclaw_host(
+    host_id: str,
+    body: OpenclawHostPatchBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> OpenclawHostView:
+    from hub.routers.openclaw_control import is_openclaw_host_online
+
+    instance = await _load_owned_openclaw_host(db, ctx.user_id, host_id)
+    new_label = body.label.strip() if isinstance(body.label, str) else None
+    instance.label = new_label or None
+    await db.commit()
+    await db.refresh(instance)
+
+    count_result = await db.execute(
+        select(sa_func.count())
+        .select_from(Agent)
+        .where(
+            Agent.user_id == ctx.user_id,
+            Agent.openclaw_host_id == instance.id,
+            Agent.status == "active",
+        )
+    )
+    return OpenclawHostView(
+        id=instance.id,
+        label=instance.label,
+        online=instance.revoked_at is None and is_openclaw_host_online(instance.id),
+        last_seen_at=instance.last_seen_at,
+        revoked_at=instance.revoked_at,
+        agent_count=count_result.scalar_one() or 0,
+        created_at=instance.created_at,
+    )
+
+
+@router.delete("/me/agents/openclaw/hosts/{host_id}")
+async def delete_openclaw_host(
+    host_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Revoke an OpenClaw host and unbind all of its agents.
+
+    Mirrors the existing per-agent unbind semantics (``user_id`` /
+    ``claimed_at`` / ``agent_token`` are cleared) so the agent rows
+    remain reusable after the user re-installs on the host.
+    """
+    from hub.routers.openclaw_control import _REGISTRY as _HOST_REGISTRY
+
+    instance = await _load_owned_openclaw_host(db, ctx.user_id, host_id)
+
+    now = _utc_now()
+    if instance.revoked_at is None:
+        instance.revoked_at = now
+    instance.refresh_token_hash = None
+    instance.refresh_token_expires_at = None
+
+    rows = (
+        await db.execute(
+            select(Agent).where(
+                Agent.user_id == ctx.user_id,
+                Agent.openclaw_host_id == host_id,
+                Agent.status == "active",
+            )
+        )
+    ).scalars().all()
+    revoked_ids = {a.agent_id for a in rows}
+    any_was_default = False
+    for agent in rows:
+        try:
+            await _ensure_agent_unbind_allowed(db, agent.agent_id)
+        except HTTPException:
+            await db.rollback()
+            raise
+        if agent.is_default:
+            any_was_default = True
+        await _cancel_agent_subscriptions(db, agent.agent_id, now)
+        agent.user_id = None
+        agent.claimed_at = None
+        agent.is_default = False
+        agent.agent_token = None
+        agent.token_expires_at = None
+        agent.openclaw_host_id = None
+        agent.claim_code = f"clm_{uuid4().hex}"
+
+    # Promote a single replacement default *after* every host agent has been
+    # detached, so the helper can't pick another agent that is still in
+    # ``rows`` but not yet processed.
+    if any_was_default:
+        next_q = await db.execute(
+            select(Agent)
+            .where(
+                Agent.user_id == ctx.user_id,
+                Agent.agent_id.notin_(revoked_ids) if revoked_ids else True,
+                Agent.status == "active",
+            )
+            .order_by(Agent.created_at)
+            .limit(1)
+        )
+        next_agent = next_q.scalar_one_or_none()
+        if next_agent is not None:
+            next_agent.is_default = True
+
+    if rows:
+        await _maybe_remove_agent_owner_role(db, ctx.user_id)
+
+    await db.commit()
+
+    conn = _HOST_REGISTRY.get(host_id)
+    if conn is not None:
+        try:
+            await conn.ws.close(code=4403, reason="host revoked")
+        except Exception:
+            pass
+        await _HOST_REGISTRY.unregister(conn)
+
+    return {"ok": True, "revoked_agents": [a.agent_id for a in rows]}
+
+
+# ---- provision (host-authorized) ------------------------------------------
+
+
+class OpenclawProvisionBody(BaseModel):
+    openclaw_host_id: str
+    name: str = Field(..., min_length=1, max_length=128)
+    bio: str | None = Field(default=None, max_length=4000)
+
+
+class OpenclawProvisionResponse(BaseModel):
+    agent_id: str
+    display_name: str
+    openclaw_host_id: str
+    is_default: bool
+    # Forwarded from the host's provision-claim ack so the dashboard can
+    # surface a "manually attach this agent in your OpenClaw config" warning
+    # when the plugin couldn't update ``~/.openclaw/openclaw.json`` itself
+    # (multi-account guard, IO error, etc.). ``True`` means the new agent
+    # will auto-load on the host's next plugin reload; ``False`` means the
+    # user (or follow-up automation) must take an action.
+    config_patched: bool = True
+    config_skip_reason: str | None = None
+
+
+@router.post(
+    "/me/agents/openclaw/provision",
+    status_code=201,
+    response_model=OpenclawProvisionResponse,
+)
+async def openclaw_provision(
+    body: OpenclawProvisionBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> OpenclawProvisionResponse:
+    """Create an agent on an already-registered OpenClaw host.
+
+    Allocates a one-time provision short-code, dispatches a signed
+    ``provision_agent`` frame over the host control WS, and waits for
+    the host's ack — which fires only after the host has called
+    ``POST /openclaw/host/provision-claim`` to materialise the agent.
+    """
+    from hub.config import OPENCLAW_PROVISION_TICKET_TTL_SECONDS
+    from hub.routers.openclaw_control import (
+        is_openclaw_host_online,
+        send_host_control_frame,
+    )
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    bio = (body.bio.strip() if body.bio else None) or None
+
+    instance = await _load_owned_openclaw_host(db, ctx.user_id, body.openclaw_host_id)
+    if instance.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="host_revoked")
+    if not is_openclaw_host_online(instance.id):
+        raise HTTPException(status_code=409, detail="host_offline")
+
+    user_result = await db.execute(select(User).where(User.id == ctx.user_id))
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    count_result = await db.execute(
+        select(sa_func.count())
+        .select_from(Agent)
+        .where(Agent.user_id == ctx.user_id, Agent.status == "active")
+    )
+    if count_result.scalar_one() >= user.max_agents:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent quota exceeded (max {user.max_agents})",
+        )
+
+    now = _utc_now()
+    provision_id = f"prv_{uuid4().hex[:16]}"
+    nonce = base64.b64encode(os.urandom(32)).decode()
+    expires_at = now + datetime.timedelta(seconds=OPENCLAW_PROVISION_TICKET_TTL_SECONDS)
+
+    sc_payload = {
+        "owner_user_id": str(ctx.user_id),
+        "openclaw_host_id": instance.id,
+        "intended_name": name,
+        "nonce": nonce,
+    }
+    if bio:
+        sc_payload["intended_bio"] = bio
+
+    short_code = ShortCode(
+        code=provision_id,
+        kind="openclaw_provision",
+        owner_user_id=ctx.user_id,
+        payload_json=json.dumps(sc_payload, separators=(",", ":"), sort_keys=True),
+        expires_at=expires_at,
+    )
+    async with _short_code_session_factory() as code_session:
+        code_session.add(short_code)
+        await code_session.commit()
+
+    frame_params: dict = {
+        "provision_id": provision_id,
+        "nonce": nonce,
+        "owner_user_id": str(ctx.user_id),
+    }
+
+    async def _burn_provision_code() -> None:
+        # Best-effort: stamp consumed_at on the unredeemed provision code so
+        # a late host claim can't sneak through after we've already returned
+        # an error to the dashboard. Failures here are intentionally
+        # swallowed — the TTL provides a hard ceiling either way.
+        try:
+            async with _short_code_session_factory() as code_session:
+                await code_session.execute(
+                    update(ShortCode)
+                    .where(
+                        ShortCode.code == provision_id,
+                        ShortCode.kind == "openclaw_provision",
+                        ShortCode.consumed_at.is_(None),
+                    )
+                    .values(consumed_at=_utc_now())
+                )
+                await code_session.commit()
+        except Exception:  # noqa: BLE001
+            pass
+
+    try:
+        ack = await send_host_control_frame(
+            instance.id, "provision_agent", frame_params
+        )
+    except HTTPException:
+        await _burn_provision_code()
+        raise
+
+    if not isinstance(ack, dict) or not ack.get("ok"):
+        err = ack.get("error") if isinstance(ack, dict) else None
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        message = (err or {}).get("message") if isinstance(err, dict) else None
+        await _burn_provision_code()
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "openclaw_provision_failed",
+                "host_code": code,
+                "host_message": message,
+            },
+        )
+
+    result = ack.get("result") if isinstance(ack.get("result"), dict) else None
+    agent_id = (result or {}).get("agent_id")
+    if not isinstance(agent_id, str):
+        await _burn_provision_code()
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "openclaw_provision_failed",
+                "host_message": "host ack missing agent_id",
+            },
+        )
+
+    # Trust check: a buggy or compromised host could ack with someone
+    # else's agent_id. Only return success if the row was actually
+    # produced by *this* provision (correct owner + same host instance).
+    # Note we deliberately don't fall through to a different "wrong agent"
+    # error code — leaking that an unrelated agent_id exists is itself a
+    # disclosure.
+    agent_q = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = agent_q.scalar_one_or_none()
+    if (
+        agent is None
+        or str(agent.user_id) != str(ctx.user_id)
+        or agent.openclaw_host_id != instance.id
+    ):
+        await _burn_provision_code()
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "openclaw_provision_failed",
+                "host_message": "agent row not found or not bound to this host",
+            },
+        )
+
+    config_patched_raw = (result or {}).get("config_patched")
+    config_skip_reason = (result or {}).get("config_skip_reason")
+    return OpenclawProvisionResponse(
+        agent_id=agent.agent_id,
+        display_name=agent.display_name,
+        openclaw_host_id=instance.id,
+        is_default=agent.is_default,
+        config_patched=bool(config_patched_raw) if config_patched_raw is not None else True,
+        config_skip_reason=config_skip_reason if isinstance(config_skip_reason, str) else None,
+    )
+
