@@ -60,8 +60,6 @@ export default function SubscriptionBadge({
   const [errorKind, setErrorKind] = useState<"generic" | "insufficient_balance">("generic");
   const [subscribing, setSubscribing] = useState(false);
 
-  if (!productId) return null;
-
   const { activeAgentId, sessionMode, activeIdentityType } = useDashboardSessionStore(useShallow((state) => ({
     activeAgentId: state.activeAgentId,
     sessionMode: state.sessionMode,
@@ -105,6 +103,7 @@ export default function SubscriptionBadge({
 
   // Eagerly load product data on mount so the badge can show subscriber count
   useEffect(() => {
+    if (!productId) return;
     let cancelled = false;
     if (productCache.has(productId)) {
       setProductData(productCache.get(productId)!);
@@ -139,6 +138,8 @@ export default function SubscriptionBadge({
       cancelled = true;
     };
   }, [activeAgentId, isAgentMode, ensureSubscriptions, isAuthedReady]);
+
+  if (!productId) return null;
 
   const loadData = async () => {
     const productPromise = productCache.has(productId)
