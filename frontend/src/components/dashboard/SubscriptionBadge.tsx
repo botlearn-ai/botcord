@@ -86,7 +86,7 @@ export default function SubscriptionBadge({
   })));
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
-  const subscription = getActiveSubscription(productId);
+  const subscription = productId ? getActiveSubscription(productId) : null;
   const showLoginModal = () => {
     if (typeof window !== "undefined") {
       window.location.href = loginHref || "/login";
