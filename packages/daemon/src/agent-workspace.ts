@@ -7,6 +7,14 @@
  *   codex-home/  — per-agent CODEX_HOME used by the codex adapter so codex
  *                  reads a daemon-written AGENTS.md (systemContext carrier)
  *                  and stores its sessions/ without touching ~/.codex.
+ *   hermes-home/      — per-agent HERMES_HOME used by the hermes-acp
+ *                       adapter (carries .env, state.db, skills/) so
+ *                       hermes-acp's per-user state stays isolated.
+ *   hermes-workspace/ — per-agent runtime cwd for hermes-acp; the adapter
+ *                       writes systemContext into AGENTS.md here every turn.
+ *                       Kept separate from `workspace/` so daemon-written
+ *                       systemContext does not clobber the user/agent-
+ *                       editable workspace AGENTS.md.
  */
 import {
   chmodSync,
@@ -57,6 +65,26 @@ export function agentStateDir(agentId: string): string {
  */
 export function agentCodexHomeDir(agentId: string): string {
   return path.join(agentHomeDir(agentId), "codex-home");
+}
+
+/**
+ * Per-agent HERMES_HOME. Carries the hermes-acp `.env`, `state.db`, and
+ * `skills/` so each daemon-managed agent has an isolated hermes config
+ * tree and never reads/writes the user's `~/.hermes`.
+ */
+export function agentHermesHomeDir(agentId: string): string {
+  return path.join(agentHomeDir(agentId), "hermes-home");
+}
+
+/**
+ * Per-agent runtime cwd for hermes-acp. Distinct from `workspace/` so the
+ * adapter can rewrite `AGENTS.md` here every turn (carrying the dynamic
+ * systemContext) without clobbering the user/agent-editable workspace
+ * `AGENTS.md`. hermes discovers `AGENTS.md` from cwd upward, so the file
+ * must live alongside the spawn cwd.
+ */
+export function agentHermesWorkspaceDir(agentId: string): string {
+  return path.join(agentHomeDir(agentId), "hermes-workspace");
 }
 
 export interface WorkspaceSeed {
@@ -221,6 +249,28 @@ export function ensureAgentCodexHome(agentId: string): string {
 }
 
 /**
+ * Idempotently create the per-agent HERMES_HOME and HERMES workspace
+ * directories. Writes a stub `.env` inside HERMES_HOME so hermes-acp's
+ * `_load_env` does not log "No .env found" on every spawn; users can edit
+ * this file to add API keys / model overrides.
+ */
+export function ensureAgentHermesWorkspace(agentId: string): {
+  hermesHome: string;
+  hermesWorkspace: string;
+} {
+  const hermesHome = agentHermesHomeDir(agentId);
+  const hermesWorkspace = agentHermesWorkspaceDir(agentId);
+  mkdirTolerant(hermesHome);
+  mkdirTolerant(hermesWorkspace);
+  writeIfMissing(
+    path.join(hermesHome, ".env"),
+    "# hermes-agent environment overrides for this BotCord agent.\n" +
+      "# Add e.g. HERMES_INFERENCE_PROVIDER=openrouter, OPENROUTER_API_KEY=...\n",
+  );
+  return { hermesHome, hermesWorkspace };
+}
+
+/**
  * Idempotently create the agent's home / workspace / state directories and
  * seed the workspace Markdown files. Existing files are never overwritten —
  * users' edits to AGENTS.md, memory.md, etc. are preserved across calls.
@@ -238,6 +288,7 @@ export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void
   mkdirTolerant(notes);
   mkdirTolerant(state);
   ensureAgentCodexHome(agentId);
+  ensureAgentHermesWorkspace(agentId);
 
   const agentsMdPath = path.join(workspace, "AGENTS.md");
   const claudeMdPath = path.join(workspace, "CLAUDE.md");
