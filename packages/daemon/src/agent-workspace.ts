@@ -88,10 +88,14 @@ This directory is your persistent workspace. You run with \`cwd\` set here.
 
 ## How to use this
 
-You are **instructed** to skim \`identity.md\`, \`memory.md\`, \`task.md\` before each
-response and to write back what changed after meaningful turns. Nothing in the
-runtime enforces this — the daemon does not auto-load these files into your
-context. Treat AGENTS.md as a convention, not a mechanism.
+- \`identity.md\` is **auto-loaded** by the daemon and injected into every turn's
+  system context as the \`[BotCord Identity]\` block. Edits to this file (yours,
+  the dashboard's via \`applyAgentIdentity\`, or a hello-snapshot reapply) take
+  effect on the next turn — no restart needed.
+- \`memory.md\` and \`task.md\` are **convention, not mechanism**. The daemon does
+  not auto-load them; you are instructed to skim them before responding and to
+  write back what changed after meaningful turns. Keep them tight enough to be
+  worth re-reading.
 `;
 
 const MEMORY_MD = `# Memory
@@ -99,9 +103,9 @@ const MEMORY_MD = `# Memory
 <!--
 Long-lived facts about the user, past decisions, and preferences that should
 survive across conversations. Organize by topic. Keep entries short. Prune
-regularly — AGENTS.md instructs the runtime to consult this file before each
-response, but nothing loads it automatically; keep it short enough to be
-worth re-reading.
+regularly — AGENTS.md instructs you to consult this file before each
+response, but nothing loads it automatically (unlike identity.md); keep it
+short enough to be worth re-reading.
 -->
 `;
 
@@ -331,4 +335,26 @@ export function applyAgentIdentity(
 
   writeFileSync(file, text, { mode: 0o600 });
   return { changed: true };
+}
+
+/**
+ * Read the agent's `identity.md` verbatim, if it exists. Returns the raw
+ * contents (including the leading `# Identity` heading) so callers can
+ * splice it into the system context. Returns `null` when the workspace
+ * has not been provisioned yet, the file is empty, or the read fails.
+ *
+ * Each call hits disk — same contract as `readWorkingMemory`, so a
+ * dashboard-driven edit (`applyAgentIdentity` from a control frame, or
+ * a hello-snapshot reapply, or the agent's own self-edit) is visible
+ * on the very next turn without restarting the gateway.
+ */
+export function readIdentity(agentId: string): string | null {
+  assertSafeAgentId(agentId);
+  const file = path.join(agentWorkspaceDir(agentId), "identity.md");
+  try {
+    const raw = readFileSync(file, "utf8");
+    return raw.trim().length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
 }
