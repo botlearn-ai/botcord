@@ -53,7 +53,11 @@ interface Actions {
   provisionOnHost: (
     hostId: string,
     input: { name: string; bio?: string },
-  ) => Promise<{ agentId: string }>;
+  ) => Promise<{
+    agentId: string;
+    configPatched: boolean;
+    configSkipReason: string | null;
+  }>;
   renameHost: (hostId: string, label: string | null) => Promise<void>;
   revokeHost: (hostId: string) => Promise<void>;
 }
@@ -160,7 +164,15 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
     if (typeof data.agent_id !== "string") {
       throw new OpenclawProvisionError("missing_agent_id", "missing agent_id in response");
     }
-    return { agentId: data.agent_id };
+    return {
+      agentId: data.agent_id,
+      configPatched:
+        typeof data.config_patched === "boolean" ? data.config_patched : true,
+      configSkipReason:
+        typeof data.config_skip_reason === "string"
+          ? data.config_skip_reason
+          : null,
+    };
   },
 
   async renameHost(hostId, label) {

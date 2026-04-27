@@ -163,22 +163,41 @@ function writeAgentCredentials(args: {
 }
 
 /**
+ * Possible outcomes of :func:`patchOpenclawConfigForAgent`. ``applied`` is
+ * the only one that means the new agent will be picked up on next plugin
+ * load — the rest require the user (or the dashboard) to take a follow-up
+ * action.
+ */
+export type ConfigPatchResult =
+  /** Patch landed; account is registered under channels.botcord.accounts. */
+  | { applied: true; reason: "fresh" | "rewired_existing" }
+  /** Account already references this exact credentials file — no-op. */
+  | { applied: false; reason: "already_present" }
+  /**
+   * Skipped because patching would push BotCord above one configured
+   * account, which the per-tool ``with-client`` guard currently refuses
+   * to handle (`SINGLE_ACCOUNT_ONLY_MESSAGE`). Without this skip, adding
+   * a second agent on a host would *break* botcord_send et al for the
+   * existing agent. Tracked as a follow-up — once the tool layer is
+   * session-aware (session→accountId resolution), drop this guard.
+   */
+  | { applied: false; reason: "multi_account_guard"; existingAccountIds: string[] }
+  /** File-system / write failure. */
+  | { applied: false; reason: "io_error"; error: string };
+
+/**
  * Patch ``~/.openclaw/openclaw.json`` to register a freshly-provisioned
  * agent under ``channels.botcord.accounts.{agentId}``. Mirrors the
  * single-account → multi-account upgrade path used by
- * ``backend/static/openclaw/install.sh``.
- *
- * Returns ``true`` when the patch was applied, ``false`` when the config
- * file is missing or unwritable. The OpenClaw plugin SDK exposes no
- * runtime-reload hook today, so the new account becomes active on the
- * next plugin load — but the patch ensures the account *will* be picked
- * up automatically rather than requiring the user to edit JSON by hand.
+ * ``backend/static/openclaw/install.sh``, but refuses to push the
+ * configuration over one active account because the BotCord tool layer
+ * still hard-fails on multi-account configs.
  */
 export function patchOpenclawConfigForAgent(args: {
   agentId: string;
   credentialsFile: string;
   configPath?: string;
-}): boolean {
+}): ConfigPatchResult {
   const path =
     args.configPath ??
     process.env.OPENCLAW_CONFIG_PATH ??
@@ -197,44 +216,84 @@ export function patchOpenclawConfigForAgent(args: {
   if (!channels.botcord || typeof channels.botcord !== "object") channels.botcord = {};
   const botcord = channels.botcord as Record<string, any>;
 
-  // Promote single-account legacy shape into multi-account when needed:
-  // if the channel currently carries a top-level credentialsFile and we
-  // are about to add a *second* account, fold the existing one into the
-  // accounts map under the explicit account id "default".
-  if (!botcord.accounts || typeof botcord.accounts !== "object") {
-    botcord.accounts = {};
-  }
-  const accounts = botcord.accounts as Record<string, any>;
-  if (
+  // Discover existing accounts (legacy flat shape counts as one).
+  const accountsObj =
+    botcord.accounts && typeof botcord.accounts === "object"
+      ? (botcord.accounts as Record<string, any>)
+      : {};
+  const existingMultiIds = Object.keys(accountsObj);
+  const hasLegacySingle =
     typeof botcord.credentialsFile === "string" &&
-    !accounts.default &&
-    botcord.credentialsFile !== args.credentialsFile
+    botcord.credentialsFile.length > 0 &&
+    existingMultiIds.length === 0;
+  const existingIds = hasLegacySingle ? ["default"] : existingMultiIds;
+
+  // Idempotent re-patch of the same agent → no-op.
+  const existingForAgent = accountsObj[args.agentId];
+  if (
+    existingForAgent &&
+    existingForAgent.credentialsFile === args.credentialsFile &&
+    existingForAgent.enabled !== false
   ) {
-    accounts.default = {
-      enabled: botcord.enabled !== false,
-      credentialsFile: botcord.credentialsFile,
-      deliveryMode: botcord.deliveryMode || "websocket",
-    };
-    delete botcord.credentialsFile;
-    delete botcord.enabled;
-    delete botcord.deliveryMode;
+    return { applied: false, reason: "already_present" };
   }
 
-  accounts[args.agentId] = {
-    ...(accounts[args.agentId] || {}),
-    enabled: true,
-    credentialsFile: args.credentialsFile,
-    deliveryMode: accounts[args.agentId]?.deliveryMode || "websocket",
-  };
-  // Keep the channel itself enabled when we have at least one account.
-  if (botcord.enabled === undefined) botcord.enabled = true;
+  // Multi-account guard: refuse to push above one configured account.
+  // Re-attaching the same agentId, or rewiring a legacy single-account
+  // entry that happens to point at this agent's credentials file, is
+  // still allowed because the resulting config stays single-account.
+  const wouldBeIds = new Set(existingIds);
+  wouldBeIds.add(args.agentId);
+  if (hasLegacySingle && botcord.credentialsFile === args.credentialsFile) {
+    // legacy single → keep as single (will overwrite below)
+  } else if (wouldBeIds.size > 1) {
+    return {
+      applied: false,
+      reason: "multi_account_guard",
+      existingAccountIds: existingIds,
+    };
+  }
+
+  // Apply the patch. Two shapes depending on whether we're staying
+  // single-account or migrating from legacy → multi (only possible when
+  // the legacy entry already points at this same credentialsFile, see
+  // above; otherwise we'd have bailed with multi_account_guard).
+  let reason: "fresh" | "rewired_existing";
+  if (existingIds.length === 0) {
+    reason = "fresh";
+  } else {
+    reason = "rewired_existing";
+  }
+
+  if (hasLegacySingle) {
+    // Stay in legacy flat shape — overwrite to point at the new agent.
+    botcord.credentialsFile = args.credentialsFile;
+    if (botcord.enabled === undefined) botcord.enabled = true;
+    if (!botcord.deliveryMode) botcord.deliveryMode = "websocket";
+  } else {
+    if (!botcord.accounts || typeof botcord.accounts !== "object") {
+      botcord.accounts = {};
+    }
+    const accounts = botcord.accounts as Record<string, any>;
+    accounts[args.agentId] = {
+      ...(accounts[args.agentId] || {}),
+      enabled: true,
+      credentialsFile: args.credentialsFile,
+      deliveryMode: accounts[args.agentId]?.deliveryMode || "websocket",
+    };
+    if (botcord.enabled === undefined) botcord.enabled = true;
+  }
 
   try {
     mkdirSync(join(botcordHome(), ".openclaw"), { recursive: true });
     writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n", { encoding: "utf8" });
-    return true;
-  } catch {
-    return false;
+    return { applied: true, reason };
+  } catch (err) {
+    return {
+      applied: false,
+      reason: "io_error",
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -308,7 +367,7 @@ export async function provisionAgentLocal(args: {
   privateKey: string;
   publicKey: string;
   credentialsFile: string;
-  configPatched: boolean;
+  config: ConfigPatchResult;
 }> {
   const fetchFn = args.fetchImpl ?? fetch;
   const kp = generateKeypair();
@@ -351,8 +410,11 @@ export async function provisionAgentLocal(args: {
   });
   // Register the new agent in OpenClaw's config so it actually gets loaded
   // (next plugin reload). Without this the credentials file is on disk but
-  // unreferenced and OpenClaw never spawns a channel for it.
-  const configPatched = patchOpenclawConfigForAgent({
+  // unreferenced and OpenClaw never spawns a channel for it. The patch is
+  // best-effort: when it can't be applied (e.g. multi-account guard, IO
+  // error), the structured `config` result is propagated up to the
+  // provision-claim ack so the dashboard can warn the user.
+  const config = patchOpenclawConfigForAgent({
     agentId: result.agent_id,
     credentialsFile: credPath,
   });
@@ -361,7 +423,7 @@ export async function provisionAgentLocal(args: {
     privateKey: kp.privateKey,
     publicKey: kp.publicKey,
     credentialsFile: credPath,
-    configPatched,
+    config,
   };
 }
 
@@ -399,19 +461,32 @@ export async function handleControlFrame(
         };
       }
       try {
-        const { result, credentialsFile } = await provisionAgentLocal({
+        const { result, credentialsFile, config } = await provisionAgentLocal({
           host: ctx.host,
           provisionId: params.provision_id,
           nonce: params.nonce,
         });
         ctx.log("info", `provisioned agent ${result.agent_id} → ${credentialsFile}`);
+        if (!config.applied) {
+          ctx.log(
+            "warn",
+            `openclaw config not patched (${config.reason}); agent ${result.agent_id} will not auto-load`,
+          );
+        }
         if (ctx.onAgentProvisioned) {
           await ctx.onAgentProvisioned({
             agentId: result.agent_id,
             credentialsFile,
           });
         }
-        return { ok: true, result: { agent_id: result.agent_id } };
+        return {
+          ok: true,
+          result: {
+            agent_id: result.agent_id,
+            config_patched: config.applied,
+            config_skip_reason: config.applied ? undefined : config.reason,
+          },
+        };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         ctx.log("warn", `provision_agent failed: ${message}`);

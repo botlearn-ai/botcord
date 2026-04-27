@@ -641,6 +641,16 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           bio: bio.trim() || undefined,
         });
         await onSuccess(res.agentId);
+        if (!res.configPatched) {
+          // Hub created the agent + the host wrote credentials, but the
+          // host couldn't auto-attach (multi-account guard or IO error).
+          // Warn loudly via console so the dashboard at least surfaces a
+          // signal until the toast plumbing carries it. Closing the
+          // dialog still happens — the agent IS created.
+          console.warn(
+            `[botcord] agent ${res.agentId} created but openclaw config not auto-patched (${res.configSkipReason || "unknown"}). Manually edit ~/.openclaw/openclaw.json on the host.`,
+          );
+        }
         onClose();
       } else {
         const t = await issueInstall({

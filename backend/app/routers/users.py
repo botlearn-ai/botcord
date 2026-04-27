@@ -2366,6 +2366,14 @@ class OpenclawProvisionResponse(BaseModel):
     display_name: str
     openclaw_host_id: str
     is_default: bool
+    # Forwarded from the host's provision-claim ack so the dashboard can
+    # surface a "manually attach this agent in your OpenClaw config" warning
+    # when the plugin couldn't update ``~/.openclaw/openclaw.json`` itself
+    # (multi-account guard, IO error, etc.). ``True`` means the new agent
+    # will auto-load on the host's next plugin reload; ``False`` means the
+    # user (or follow-up automation) must take an action.
+    config_patched: bool = True
+    config_skip_reason: str | None = None
 
 
 @router.post(
@@ -2514,10 +2522,14 @@ async def openclaw_provision(
             },
         )
 
+    config_patched_raw = (result or {}).get("config_patched")
+    config_skip_reason = (result or {}).get("config_skip_reason")
     return OpenclawProvisionResponse(
         agent_id=agent.agent_id,
         display_name=agent.display_name,
         openclaw_host_id=instance.id,
         is_default=agent.is_default,
+        config_patched=bool(config_patched_raw) if config_patched_raw is not None else True,
+        config_skip_reason=config_skip_reason if isinstance(config_skip_reason, str) else None,
     )
 

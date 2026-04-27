@@ -77,15 +77,19 @@ describe("provisionAgentLocal", () => {
     expect(written.openclawHostId).toBe("oc_aaaaaaaaaaaa");
     expect(written.privateKey).toBe(res.privateKey);
 
-    // openclaw.json must now reference the new agent account.
-    expect(res.configPatched).toBe(true);
+    // Fresh install → accounts shape with the new agent registered.
+    // The multi-account guard only kicks in when *adding* to an
+    // already-configured account.
+    expect(res.config.applied).toBe(true);
+    if (res.config.applied) {
+      expect(res.config.reason).toBe("fresh");
+    }
     const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
     const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
-    expect(cfg.channels.botcord.accounts["ag_provtest1234"]).toEqual({
-      enabled: true,
-      credentialsFile: credPath,
-      deliveryMode: "websocket",
-    });
+    expect(cfg.channels.botcord.accounts["ag_provtest1234"].credentialsFile).toBe(
+      credPath,
+    );
+    expect(cfg.channels.botcord.enabled).toBe(true);
   });
 
   it("throws on non-2xx response", async () => {
@@ -104,20 +108,22 @@ describe("provisionAgentLocal", () => {
 });
 
 describe("patchOpenclawConfigForAgent", () => {
-  it("creates accounts map on a fresh config", () => {
+  it("writes a fresh accounts-shaped config", () => {
     const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
-    const ok = patchOpenclawConfigForAgent({
+    const r = patchOpenclawConfigForAgent({
       agentId: "ag_new1",
       credentialsFile: "/tmp/creds.json",
       configPath: cfgPath,
     });
-    expect(ok).toBe(true);
+    expect(r).toEqual({ applied: true, reason: "fresh" });
     const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
     expect(cfg.channels.botcord.enabled).toBe(true);
-    expect(cfg.channels.botcord.accounts.ag_new1.credentialsFile).toBe("/tmp/creds.json");
+    expect(cfg.channels.botcord.accounts.ag_new1.credentialsFile).toBe(
+      "/tmp/creds.json",
+    );
   });
 
-  it("promotes a single-account legacy shape into the accounts map", () => {
+  it("refuses to push an existing single-account config to multi-account", () => {
     const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
     mkdirSync(join(tmpHome, ".openclaw"), { recursive: true });
     writeFileSync(
@@ -132,35 +138,57 @@ describe("patchOpenclawConfigForAgent", () => {
         },
       }),
     );
-    const ok = patchOpenclawConfigForAgent({
+    const r = patchOpenclawConfigForAgent({
       agentId: "ag_new2",
       credentialsFile: "/tmp/new.json",
       configPath: cfgPath,
     });
-    expect(ok).toBe(true);
+    expect(r.applied).toBe(false);
+    if (r.applied === false) {
+      expect(r.reason).toBe("multi_account_guard");
+    }
+    // Legacy config must remain intact — adding a second account would
+    // trigger the SINGLE_ACCOUNT_ONLY guard and break botcord_send.
     const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
-    expect(cfg.channels.botcord.credentialsFile).toBeUndefined();
-    expect(cfg.channels.botcord.accounts.default.credentialsFile).toBe(
-      "/legacy/creds.json",
-    );
-    expect(cfg.channels.botcord.accounts.default.deliveryMode).toBe("polling");
-    expect(cfg.channels.botcord.accounts.ag_new2.credentialsFile).toBe("/tmp/new.json");
+    expect(cfg.channels.botcord.credentialsFile).toBe("/legacy/creds.json");
+    expect(cfg.channels.botcord.accounts).toBeUndefined();
   });
 
-  it("is idempotent on repeated patch", () => {
+  it("rewires legacy single-account when re-attaching the same agent", () => {
+    const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
+    mkdirSync(join(tmpHome, ".openclaw"), { recursive: true });
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({
+        channels: {
+          botcord: {
+            enabled: true,
+            credentialsFile: "/old/creds.json",
+          },
+        },
+      }),
+    );
+    const r = patchOpenclawConfigForAgent({
+      agentId: "ag_same",
+      credentialsFile: "/old/creds.json",
+      configPath: cfgPath,
+    });
+    expect(r).toEqual({ applied: true, reason: "rewired_existing" });
+  });
+
+  it("is idempotent when re-patching an unchanged account", () => {
     const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
     patchOpenclawConfigForAgent({
       agentId: "ag_x",
       credentialsFile: "/c1",
       configPath: cfgPath,
     });
-    patchOpenclawConfigForAgent({
+    const r = patchOpenclawConfigForAgent({
       agentId: "ag_x",
       credentialsFile: "/c1",
       configPath: cfgPath,
     });
-    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
-    expect(Object.keys(cfg.channels.botcord.accounts)).toEqual(["ag_x"]);
+    expect(r).toEqual({ applied: false, reason: "already_present" });
   });
 });
 
