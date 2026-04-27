@@ -26,6 +26,7 @@ vi.mock("../config.js", async () => {
 
 const {
   addAgentToConfig,
+  adoptDiscoveredOpenclawAgents,
   removeAgentFromConfig,
   reloadConfig,
   setRoute,
@@ -775,6 +776,110 @@ describe("provision_agent seeds workspace + hot-adds managed route", () => {
       const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_chfail.json");
       expect(fs.existsSync(credFile)).toBe(false);
       expect(gw.listManagedRoutes()).toHaveLength(0);
+    });
+  });
+});
+
+describe("adoptDiscoveredOpenclawAgents", () => {
+  it("registers unbound OpenClaw agents and writes the routing binding", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const credDir = nodePath.join(tmp, ".botcord", "credentials");
+      fs.mkdirSync(credDir, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(credDir, "ag_seed.json"),
+        JSON.stringify({
+          version: 1,
+          hubUrl: "https://hub.example",
+          agentId: "ag_seed",
+          keyId: "k_seed",
+          privateKey: Buffer.alloc(32, 5).toString("base64"),
+          savedAt: new Date().toISOString(),
+        }),
+      );
+      mockState.cfg = {
+        defaultRoute: { adapter: "claude-code", cwd: "/tmp" },
+        routes: [],
+        streamBlocks: true,
+        agents: ["ag_seed"],
+        openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }],
+      };
+
+      const gw = makeFakeGateway(["ag_seed"]);
+      const register = vi.fn(async () => ({
+        agentId: "ag_adopted",
+        keyId: "k_adopted",
+        privateKey: Buffer.alloc(32, 31).toString("base64"),
+        publicKey: Buffer.alloc(32, 32).toString("base64"),
+        hubUrl: "https://hub.example",
+        token: "tok",
+        expiresAt: Date.now() + 60_000,
+      }));
+
+      const res = await adoptDiscoveredOpenclawAgents({
+        gateway: gw as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["gateway"],
+        register: register as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["register"],
+        cfg: mockState.cfg as unknown as DaemonConfig,
+        probe: async () => ({ ok: true, agents: [{ id: "main", name: "Main Agent" }] }),
+      });
+
+      expect(res.adopted).toEqual(["ag_adopted"]);
+      expect(register).toHaveBeenCalledWith("https://hub.example", "Main Agent", undefined);
+      const saved = JSON.parse(
+        fs.readFileSync(nodePath.join(credDir, "ag_adopted.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(saved.runtime).toBe("openclaw-acp");
+      expect(saved.openclawGateway).toBe("local");
+      expect(saved.openclawAgent).toBe("main");
+      expect((mockState.cfg.agents as string[])).toContain("ag_adopted");
+      expect(gw.addChannel).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "ag_adopted", type: "botcord" }),
+      );
+      const route = gw.listManagedRoutes().find((r) => r.match?.accountId === "ag_adopted");
+      expect(route?.runtime).toBe("openclaw-acp");
+      expect(route?.gateway?.name).toBe("local");
+      expect(route?.gateway?.openclawAgent).toBe("main");
+    });
+  });
+
+  it("skips an OpenClaw agent that is already bound in credentials", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const credDir = nodePath.join(tmp, ".botcord", "credentials");
+      fs.mkdirSync(credDir, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(credDir, "ag_existing.json"),
+        JSON.stringify({
+          version: 1,
+          hubUrl: "https://hub.example",
+          agentId: "ag_existing",
+          keyId: "k_existing",
+          privateKey: Buffer.alloc(32, 6).toString("base64"),
+          savedAt: new Date().toISOString(),
+          runtime: "openclaw-acp",
+          openclawGateway: "local",
+          openclawAgent: "main",
+        }),
+      );
+      mockState.cfg = {
+        defaultRoute: { adapter: "claude-code", cwd: "/tmp" },
+        routes: [],
+        streamBlocks: true,
+        agents: ["ag_existing"],
+        openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }],
+      };
+      const register = vi.fn();
+
+      const res = await adoptDiscoveredOpenclawAgents({
+        gateway: makeFakeGateway(["ag_existing"]) as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["gateway"],
+        register: register as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["register"],
+        cfg: mockState.cfg as unknown as DaemonConfig,
+        probe: async () => ({ ok: true, agents: [{ id: "main" }] }),
+      });
+
+      expect(res.adopted).toEqual([]);
+      expect(res.skipped).toEqual([
+        { gateway: "local", openclawAgent: "main", reason: "already_bound" },
+      ]);
+      expect(register).not.toHaveBeenCalled();
     });
   });
 });

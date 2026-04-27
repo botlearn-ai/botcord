@@ -57,6 +57,11 @@ import {
   updateWorkingMemory,
   DEFAULT_SECTION,
 } from "./working-memory.js";
+import {
+  discoverLocalOpenclawGateways,
+  mergeOpenclawGateways,
+  openclawDiscoveryConfigEnabled,
+} from "./openclaw-discovery.js";
 
 const ADAPTER_LIST = listAdapterIds().join("|");
 
@@ -402,7 +407,28 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
 }
 
 async function cmdStart(args: ParsedArgs): Promise<void> {
-  const cfg = loadOrInitConfig(args);
+  let cfg = loadOrInitConfig(args);
+  if (openclawDiscoveryConfigEnabled(cfg)) {
+    try {
+      const found = await discoverLocalOpenclawGateways({
+        searchPaths: cfg.openclawDiscovery?.searchPaths,
+        defaultPorts: cfg.openclawDiscovery?.defaultPorts,
+        timeoutMs: 500,
+      });
+      const merged = mergeOpenclawGateways(cfg, found);
+      if (merged.changed) {
+        cfg = merged.cfg;
+        saveConfig(cfg);
+        log.info("openclaw discovery: gateways merged", {
+          added: merged.added.map((g) => ({ name: g.name, url: g.url })),
+        });
+      }
+    } catch (err) {
+      log.warn("openclaw discovery failed; continuing", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   // Foreground is now the default. --background (alias -d) detaches.
   // --foreground is still accepted (no-op) for backwards compatibility and
   // is also what the detached child re-execs itself with.

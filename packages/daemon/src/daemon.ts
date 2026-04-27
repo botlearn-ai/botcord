@@ -23,7 +23,12 @@ import { ensureAgentWorkspace } from "./agent-workspace.js";
 import { ControlChannel } from "./control-channel.js";
 import { toGatewayConfig } from "./daemon-config-map.js";
 import { log as daemonLog } from "./log.js";
-import { collectRuntimeSnapshot, createProvisioner } from "./provision.js";
+import {
+  adoptDiscoveredOpenclawAgents,
+  collectRuntimeSnapshot,
+  createProvisioner,
+} from "./provision.js";
+import { openclawAutoProvisionEnabled } from "./openclaw-discovery.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
 import { createRoomStaticContextBuilder } from "./room-context.js";
@@ -421,6 +426,30 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
 
   await gateway.start();
   logger.info("daemon started", { agents: agentIds });
+
+  if (openclawAutoProvisionEnabled(opts.config)) {
+    try {
+      const adopted = await adoptDiscoveredOpenclawAgents({
+        gateway,
+        cfg: opts.config,
+      });
+      if (
+        adopted.adopted.length > 0 ||
+        adopted.failed.length > 0 ||
+        adopted.skipped.length > 0
+      ) {
+        logger.info("openclaw auto-provision completed", {
+          adopted: adopted.adopted,
+          skipped: adopted.skipped,
+          failed: adopted.failed,
+        });
+      }
+    } catch (err) {
+      logger.warn("openclaw auto-provision failed; continuing", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   // Control channel is optional — daemon still runs (data-plane only)
   // when user-auth hasn't been set up yet. Operators can `login` later

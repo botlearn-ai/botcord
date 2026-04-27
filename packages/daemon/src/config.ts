@@ -88,6 +88,17 @@ export interface AgentDiscoveryConfig {
   credentialsDir?: string;
 }
 
+export interface OpenclawDiscoveryConfig {
+  /** Defaults to true. */
+  enabled?: boolean;
+  /** Overrides the local config-file search roots. */
+  searchPaths?: string[];
+  /** Overrides the local loopback ports to probe. */
+  defaultPorts?: number[];
+  /** Defaults to true. When false, discovery only persists gateways. */
+  autoProvision?: boolean;
+}
+
 export interface DaemonConfig {
   /**
    * @deprecated Kept for backward compatibility with pre-multi-agent configs.
@@ -131,6 +142,12 @@ export interface DaemonConfig {
    * so the dispatcher never re-queries this list.
    */
   openclawGateways?: OpenclawGatewayProfile[];
+
+  /**
+   * Daemon-side local OpenClaw discovery. Omitted means enabled with default
+   * search paths/ports and automatic adoption of discovered agents.
+   */
+  openclawDiscovery?: OpenclawDiscoveryConfig;
 }
 
 /**
@@ -356,6 +373,25 @@ export function loadConfig(): DaemonConfig {
       copy.credentialsDir = discovery.credentialsDir;
     }
     out.agentDiscovery = copy;
+  }
+  const openclawDiscovery = parsed.openclawDiscovery;
+  if (openclawDiscovery && typeof openclawDiscovery === "object") {
+    const copy: OpenclawDiscoveryConfig = {};
+    if (typeof openclawDiscovery.enabled === "boolean") copy.enabled = openclawDiscovery.enabled;
+    if (Array.isArray(openclawDiscovery.searchPaths)) {
+      copy.searchPaths = openclawDiscovery.searchPaths.filter(
+        (p): p is string => typeof p === "string" && p.length > 0,
+      );
+    }
+    if (Array.isArray(openclawDiscovery.defaultPorts)) {
+      copy.defaultPorts = openclawDiscovery.defaultPorts.filter(
+        (p): p is number => Number.isInteger(p) && p > 0 && p < 65536,
+      );
+    }
+    if (typeof openclawDiscovery.autoProvision === "boolean") {
+      copy.autoProvision = openclawDiscovery.autoProvision;
+    }
+    out.openclawDiscovery = copy;
   }
   return out;
 }
