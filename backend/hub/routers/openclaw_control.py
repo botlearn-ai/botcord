@@ -268,6 +268,7 @@ async def openclaw_install_claim(
         _consume_bind_ticket_jti,
         _ensure_agent_owner_role,
         _peek_bind_code,
+        _revert_short_code_claim,
         _utc_now,
         _verify_bind_ticket,
     )
@@ -425,10 +426,20 @@ async def openclaw_install_claim(
             db.add(signing_key)
     except IntegrityError:
         await db.rollback()
+        # The bind code was already stamped + the JTI burned. The agent
+        # row never landed; revert the short_code so polling readers don't
+        # see a phantom "claimed" state. The JTI stays burned (replay
+        # safety > the user redoing this exact flow).
+        await _revert_short_code_claim(body.bind_code, "bind")
         raise HTTPException(status_code=409, detail="PUBKEY_ALREADY_REGISTERED")
 
-    await _ensure_agent_owner_role(db, owner_user_id)
-    await db.commit()
+    try:
+        await _ensure_agent_owner_role(db, owner_user_id)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await _revert_short_code_claim(body.bind_code, "bind")
+        raise
     await db.refresh(agent)
 
     control_ws_url = (
@@ -530,6 +541,7 @@ async def openclaw_provision_claim(
     from app.routers.users import (
         _consume_short_code_with_claim,
         _ensure_agent_owner_role,
+        _revert_short_code_claim,
         _utc_now,
     )
     from hub.models import User
@@ -676,10 +688,16 @@ async def openclaw_provision_claim(
             db.add(signing_key)
     except IntegrityError:
         await db.rollback()
+        await _revert_short_code_claim(body.provision_id, "openclaw_provision")
         raise HTTPException(status_code=409, detail="PUBKEY_ALREADY_REGISTERED")
 
-    await _ensure_agent_owner_role(db, owner_user_id)
-    await db.commit()
+    try:
+        await _ensure_agent_owner_role(db, owner_user_id)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await _revert_short_code_claim(body.provision_id, "openclaw_provision")
+        raise
     await db.refresh(agent)
 
     return {

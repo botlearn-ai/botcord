@@ -469,6 +469,55 @@ async def _consume_bind_code(code: str) -> bool:
     return await _consume_short_code(code, "bind")
 
 
+async def _revert_short_code_claim(code: str, kind: str) -> None:
+    """Best-effort: re-open a short_code that was consumed-with-claim.
+
+    Used when the downstream insert (Agent / SigningKey / etc.) fails after
+    :func:`_consume_short_code_with_claim` has already stamped
+    ``claimed_agent_id`` and bumped ``use_count``. We re-set ``use_count``
+    to 0 / ``consumed_at`` to NULL and strip the claim metadata so polling
+    readers don't observe a "claimed but agent missing" state. The
+    underlying ticket (signed JWT-style payload) and ``jti`` are *not*
+    re-issued — replay is still impossible because the JTI burn is
+    independent.
+
+    Failures are swallowed: if the revert can't run (DB down, transaction
+    poisoned), the consumer is left in the consumed state, which is the
+    safe direction for credential issuance — the user can simply request
+    a new bind code.
+    """
+    try:
+        async with _short_code_session_factory() as code_session:
+            select_result = await code_session.execute(
+                select(ShortCode.payload_json).where(
+                    ShortCode.code == code,
+                    ShortCode.kind == kind,
+                )
+            )
+            existing = select_result.scalar_one_or_none()
+            if existing is None:
+                return
+            try:
+                payload = json.loads(existing)
+            except json.JSONDecodeError:
+                payload = {}
+            payload.pop("claimed_agent_id", None)
+            payload.pop("claimed_at", None)
+            new_payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            await code_session.execute(
+                update(ShortCode)
+                .where(ShortCode.code == code, ShortCode.kind == kind)
+                .values(
+                    consumed_at=None,
+                    use_count=0,
+                    payload_json=new_payload_json,
+                )
+            )
+            await code_session.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _consume_short_code_with_claim(code: str, kind: str, agent_id: str) -> bool:
     """Generalized variant of :func:`_consume_bind_code_with_claim`.
 
@@ -2079,7 +2128,11 @@ async def openclaw_install(
         code_session.add(short_code)
         await code_session.commit()
 
-    install_command = _build_install_command(bind_code, nonce)
+    base = HUB_PUBLIC_BASE_URL.rstrip("/")
+    install_command = (
+        f"curl -fsSL {base}/openclaw/install.sh | bash -s -- "
+        f"--purpose openclaw_install --bind-code {bind_code} --bind-nonce {nonce}"
+    )
 
     return OpenclawInstallResponse(
         bind_code=bind_code,
@@ -2236,13 +2289,16 @@ async def delete_openclaw_host(
             )
         )
     ).scalars().all()
+    revoked_ids = {a.agent_id for a in rows}
+    any_was_default = False
     for agent in rows:
         try:
             await _ensure_agent_unbind_allowed(db, agent.agent_id)
         except HTTPException:
             await db.rollback()
             raise
-        was_default = agent.is_default
+        if agent.is_default:
+            any_was_default = True
         await _cancel_agent_subscriptions(db, agent.agent_id, now)
         agent.user_id = None
         agent.claimed_at = None
@@ -2251,8 +2307,25 @@ async def delete_openclaw_host(
         agent.token_expires_at = None
         agent.openclaw_host_id = None
         agent.claim_code = f"clm_{uuid4().hex}"
-        if was_default:
-            await _promote_next_default_agent(db, ctx.user_id, agent.agent_id)
+
+    # Promote a single replacement default *after* every host agent has been
+    # detached, so the helper can't pick another agent that is still in
+    # ``rows`` but not yet processed.
+    if any_was_default:
+        next_q = await db.execute(
+            select(Agent)
+            .where(
+                Agent.user_id == ctx.user_id,
+                Agent.agent_id.notin_(revoked_ids) if revoked_ids else True,
+                Agent.status == "active",
+            )
+            .order_by(Agent.created_at)
+            .limit(1)
+        )
+        next_agent = next_q.scalar_one_or_none()
+        if next_agent is not None:
+            next_agent.is_default = True
+
     if rows:
         await _maybe_remove_agent_owner_role(db, ctx.user_id)
 
