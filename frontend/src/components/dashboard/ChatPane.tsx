@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/ui/chat/contact store 与 RoomHeader/MessageList/ExploreEntityCard 等内容组件
+ * [INPUT]: 依赖 session/ui/chat/contact store 与 RoomHeader/MessageList/PaidRoomPreview/ExploreEntityCard 等内容组件
  * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图，并把公开目录搜索委托给远端查询
  * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -16,6 +16,7 @@ import { Loader2 } from "lucide-react";
 import { buildVisibleMessageRooms, compareRoomsByActivityDesc } from "@/store/dashboard-shared";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
+import PaidRoomPreview from "./PaidRoomPreview";
 import RoomHumanComposer from "./RoomHumanComposer";
 import TopicDrawer from "./TopicDrawer";
 import JoinGuidePrompt from "./JoinGuidePrompt";
@@ -30,7 +31,6 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import RoomZeroState from "./RoomZeroState";
 import PendingApprovalsPanel from "./PendingApprovalsPanel";
-import SubscriptionBadge from "./SubscriptionBadge";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
@@ -616,21 +616,13 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
       {openedRoomId && <RoomHeader />}
       <div className="flex-1 overflow-hidden flex flex-col">
         {openedRoomId ? (
-          isPaidAndNotJoined ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-              <div className="text-4xl opacity-30">🔒</div>
-              <h3 className="text-sm font-semibold text-text-primary">{t.subscriptionRequired}</h3>
-              <p className="max-w-xs text-xs text-text-secondary">{t.subscriptionRequiredDesc}</p>
-              {openedRoom?.required_subscription_product_id && (
-                <SubscriptionBadge
-                  productId={openedRoom.required_subscription_product_id}
-                  roomId={openedRoomId}
-                  variant="button"
-                  triggerLabel={isGuest ? t.loginToParticipate : t.subscriptionRequired}
-                  loginHref={loginHref}
-                />
-              )}
-            </div>
+          isPaidAndNotJoined && openedRoom?.required_subscription_product_id ? (
+            <PaidRoomPreview
+              roomId={openedRoomId}
+              productId={openedRoom.required_subscription_product_id}
+              isGuest={isGuest}
+              loginHref={loginHref}
+            />
           ) : (
             <MessageList />
           )

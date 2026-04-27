@@ -8,6 +8,7 @@ import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock
 
@@ -178,6 +179,74 @@ async def test_public_room_messages(client: AsyncClient, seed: dict):
 @pytest.mark.asyncio
 async def test_public_room_messages_private_403(client: AsyncClient, seed: dict):
     resp = await client.get("/api/public/rooms/rm_private01/messages")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_message_previews_are_safe(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed: dict,
+):
+    room_result = await db_session.execute(
+        select(Room).where(Room.room_id == "rm_public001")
+    )
+    room = room_result.scalar_one()
+    room.required_subscription_product_id = "sp_preview"
+
+    long_text = "paid alpha " * 30
+    for idx in range(4):
+        envelope = json.dumps({
+            "from": "ag_pub_agent1",
+            "type": "message",
+            "payload": {"text": f"{long_text}{idx}"},
+        })
+        db_session.add(MessageRecord(
+            hub_msg_id=f"h_preview{idx}",
+            msg_id=f"m_preview{idx}",
+            sender_id="ag_pub_agent1",
+            receiver_id="ag_pub_agent1",
+            room_id="rm_public001",
+            envelope_json=envelope,
+            state=MessageState.delivered,
+            ttl_sec=3600,
+        ))
+    await db_session.commit()
+
+    resp = await client.get("/api/public/rooms/rm_public001/message-previews")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["messages"]) == 3
+    for item in data["messages"]:
+        assert set(item) == {"hub_msg_id", "sender_id", "sender_name", "preview", "created_at"}
+        assert item["sender_name"] == "Public Agent"
+        assert len(item["preview"]) <= 99
+        assert item["preview"].endswith("...")
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_message_previews_require_subscription_room(
+    client: AsyncClient,
+    seed: dict,
+):
+    resp = await client.get("/api/public/rooms/rm_public001/message-previews")
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_subscription_room_message_previews_private_403(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed: dict,
+):
+    room_result = await db_session.execute(
+        select(Room).where(Room.room_id == "rm_private01")
+    )
+    room = room_result.scalar_one()
+    room.required_subscription_product_id = "sp_preview"
+    await db_session.commit()
+
+    resp = await client.get("/api/public/rooms/rm_private01/message-previews")
     assert resp.status_code == 403
 
 

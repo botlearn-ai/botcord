@@ -20,6 +20,7 @@ import type {
   LeaveRoomResponse,
   PlatformStats,
   PublicRoomsResponse,
+  PublicRoomMessagePreviewResponse,
   PublicAgentsResponse,
   PublicHumanProfile,
   PublicHumansResponse,
@@ -473,6 +474,10 @@ export const api = {
     if (opts?.after) params.after = opts.after;
     if (opts?.limit) params.limit = String(opts.limit);
     return apiGet<DashboardMessageResponse>(`/api/public/rooms/${roomId}/messages`, params);
+  },
+
+  getPublicRoomMessagePreviews(roomId: string) {
+    return apiGet<PublicRoomMessagePreviewResponse>(`/api/public/rooms/${roomId}/message-previews`);
   },
 
   getPublicAgents(opts?: { q?: string; limit?: number; offset?: number }) {

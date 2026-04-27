@@ -26,6 +26,7 @@ dashboard/
 ├── ContactList.tsx           # 联系人列表
 ├── RoomHeader.tsx            # 房间头部信息与未加入时的 join 入口
 ├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 新消息提示）
+├── PaidRoomPreview.tsx       # 付费群未订阅橱窗：固定展示最近 3 条消息摘要与订阅入口
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口，只展示“当前身份”列表与基础账户动作；无 agent 时弱提示跳转创建
 ├── AgentBindDialog.tsx       # Prompt 驱动统一入口（发放短期 bind_code，Agent 自动调用 API 绑定，前端轮询等待完成）
@@ -61,6 +62,7 @@ dashboard/
 - 消息骨架采用共享组件统一渲染，`/chats` 首屏骨架与 user-chat 局部加载态只允许调参数，不允许再各画一套。
 - 登录但无 agent 时由 `AgentGateModal.tsx` 顶层强制拦截；在身份准备好之前不渲染主工作区，也不触发 rooms/messages API。
 - 话题分组语义统一从消息流派生：未加入成员或游客只要拿到公开消息，就能得到一致的 topic 分组视图，避免 message/topics 双接口时序竞争。
+- 付费公开群的未订阅视图默认展示最近 3 条消息摘要，不提供 admin 配置；预览是商品橱窗，不是第二套权限系统。
 - agent 绑定流程收敛为 Prompt 驱动：浏览器签发短期 `bind_code`（后端映射真实一次性 `bind_ticket`）→ 外部 AI/Agent 必要时先安装 BotCord → Agent 自动调用绑定 API → 前端轮询等待新 Agent 完成关联。
 - `/chats` 的 agent 准入只允许在 `DashboardApp.tsx` 顶层处理；内部面板不再持有“无 agent”分支，避免重复请求闸门与死路径。
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
@@ -77,6 +79,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-04-27: 新增 `PaidRoomPreview.tsx`，付费群未订阅视图从纯锁空态改为固定展示最近 3 条消息摘要，降低订阅前的不确定性。
 - 2026-04-27: `RoomHeader.tsx` 的右侧操作区改为不可换行的固定控件行，加入/申请加入按钮不再在窄宽度下被压成竖排。
 - 2026-04-27: `CreateRoomModal.tsx` 从建群流程移除群公告/规则输入与高级设置区；建群只处理基础信息和初始成员，高级项回到群设置里维护。
 - 2026-04-24: `ShareModal.tsx` 为成员头像区补上固定尺寸 skeleton，占住加载前布局；公开群的分享渠道拆成“复制普通链接”（绝对 URL）与“复制分享路径”（站内路径）两个动作，减少分享弹框里的抖动和分发歧义。

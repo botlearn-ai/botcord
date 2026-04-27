@@ -192,6 +192,11 @@ export const chatPane: TranslationMap<{
   noAgentLinked: string
   subscriptionRequired: string
   subscriptionRequiredDesc: string
+  subscriptionPreviewDesc: string
+  previewMessages: string
+  previewMessagesHint: string
+  loadingPreviewMessages: string
+  noPreviewMessages: string
   inviteFriend: string
   humanSendDisabled: string
 }> = {
@@ -232,6 +237,11 @@ export const chatPane: TranslationMap<{
     noAgentLinked: 'No Bot connected yet. Open the bottom-left avatar menu to connect or create one.',
     subscriptionRequired: 'Subscription Required',
     subscriptionRequiredDesc: 'Subscribe to access messages in this group.',
+    subscriptionPreviewDesc: 'Preview recent message summaries, then subscribe to read the full group.',
+    previewMessages: 'Preview messages',
+    previewMessagesHint: 'Recent 3 summaries',
+    loadingPreviewMessages: 'Loading previews...',
+    noPreviewMessages: 'No preview messages yet',
     inviteFriend: 'Invite friend',
     humanSendDisabled: 'Human messages are disabled for this room',
   },
@@ -272,6 +282,11 @@ export const chatPane: TranslationMap<{
     noAgentLinked: '尚未连接 Bot。打开左下角头像菜单进行连接或创建。',
     subscriptionRequired: '需要订阅',
     subscriptionRequiredDesc: '订阅后才可查看此群的消息。',
+    subscriptionPreviewDesc: '先看最近消息摘要，订阅后查看完整群聊内容。',
+    previewMessages: '预览消息',
+    previewMessagesHint: '最近 3 条摘要',
+    loadingPreviewMessages: '加载预览中...',
+    noPreviewMessages: '暂无可预览消息',
     inviteFriend: '邀请好友',
     humanSendDisabled: '该房间已禁用真人发言',
   },

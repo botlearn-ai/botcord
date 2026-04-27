@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 FastAPI Query/Depends、数据库 session、hub models 与公共文本提取辅助函数
-[OUTPUT]: 对外提供 /api/public 下的公开概览、房间目录、Agent 目录、Human 目录与公开房间消息接口
+[OUTPUT]: 对外提供 /api/public 下的公开概览、房间目录、Agent 目录、Human 目录、公开房间消息与订阅群预览接口
 [POS]: backend public router，承接无需鉴权的社区浏览能力，并为前端公开目录搜索提供真相源
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -27,10 +27,22 @@ _logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/public", tags=["app-public"])
 
+SUBSCRIPTION_PREVIEW_LIMIT = 3
+SUBSCRIPTION_PREVIEW_TEXT_LIMIT = 96
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _compact_preview_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = " ".join(value.split())
+    if len(text) <= SUBSCRIPTION_PREVIEW_TEXT_LIMIT:
+        return text
+    return f"{text[:SUBSCRIPTION_PREVIEW_TEXT_LIMIT]}..."
 
 
 async def _get_public_room_previews(
@@ -391,6 +403,69 @@ async def get_public_room_messages(
         })
 
     return {"messages": messages, "has_more": has_more}
+
+
+@router.get("/rooms/{room_id}/message-previews")
+async def get_subscription_room_message_previews(
+    room_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get fixed public previews for a subscription-gated public room."""
+    room_result = await db.execute(
+        select(Room).where(Room.room_id == room_id)
+    )
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.visibility != RoomVisibility.public:
+        raise HTTPException(status_code=403, detail="Room is not public")
+    if not room.required_subscription_product_id:
+        raise HTTPException(status_code=400, detail="Room does not require subscription")
+
+    dedup_sub = (
+        select(
+            MessageRecord.msg_id,
+            func.min(MessageRecord.id).label("min_id"),
+        )
+        .where(MessageRecord.room_id == room_id)
+        .group_by(MessageRecord.msg_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(MessageRecord)
+        .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
+        .order_by(MessageRecord.id.desc())
+        .limit(SUBSCRIPTION_PREVIEW_LIMIT)
+    )
+
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    sender_ids = {r.sender_id for r in records}
+    sender_names: dict[str, str] = {}
+    if sender_ids:
+        name_result = await db.execute(
+            select(Agent.agent_id, Agent.display_name)
+            .where(Agent.agent_id.in_(sender_ids))
+        )
+        sender_names = dict(name_result.all())
+
+    previews = []
+    for rec in records:
+        parsed = extract_text_from_envelope(rec.envelope_json)
+        preview = _compact_preview_text(parsed["text"])
+        if not preview:
+            continue
+        previews.append({
+            "hub_msg_id": rec.hub_msg_id,
+            "sender_id": rec.sender_id,
+            "sender_name": sender_names.get(rec.sender_id),
+            "preview": preview,
+            "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        })
+
+    return {"messages": previews}
 
 
 @router.get("/agents")

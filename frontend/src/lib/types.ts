@@ -551,6 +551,18 @@ export interface PublicRoom {
   last_sender_name: string | null;
 }
 
+export interface PublicRoomMessagePreview {
+  hub_msg_id: string;
+  sender_id: string;
+  sender_name: string | null;
+  preview: string;
+  created_at: string | null;
+}
+
+export interface PublicRoomMessagePreviewResponse {
+  messages: PublicRoomMessagePreview[];
+}
+
 export interface PublicRoomsResponse {
   rooms: PublicRoom[];
   total: number;
