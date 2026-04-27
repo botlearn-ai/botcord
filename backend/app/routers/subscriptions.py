@@ -143,6 +143,7 @@ async def create_product(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     await db.refresh(product)
     return _product_response(product)
 
@@ -160,6 +161,7 @@ async def archive_product(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     await db.refresh(product)
     return _product_response(product)
 
@@ -187,6 +189,7 @@ async def subscribe(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     # Refresh to load server-generated defaults (updated_at, created_at)
     await db.refresh(subscription)
     return _subscription_response(subscription)
@@ -256,5 +259,6 @@ async def cancel_subscription(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    await db.commit()
     await db.refresh(subscription)
     return _subscription_response(subscription)

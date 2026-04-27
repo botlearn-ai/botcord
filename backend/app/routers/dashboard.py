@@ -1275,6 +1275,37 @@ async def update_room_settings(
                 raise HTTPException(
                     status_code=400, detail="Subscription product is not active"
                 )
+        # When clearing paid access, backfill room_id on legacy subs of the
+        # current product so the next billing cycle's mismatch check fires.
+        # Only do this when no other room references the same product —
+        # otherwise the legacy NULL room_id is genuinely ambiguous.
+        old_pid = room.required_subscription_product_id
+        if (
+            new_pid is None
+            and old_pid is not None
+        ):
+            other_rooms = (
+                await db.execute(
+                    select(func.count(Room.id)).where(
+                        Room.required_subscription_product_id == old_pid,
+                        Room.room_id != room.room_id,
+                    )
+                )
+            ).scalar() or 0
+            if other_rooms == 0:
+                from sqlalchemy import update as _sa_update
+
+                await db.execute(
+                    _sa_update(AgentSubscription)
+                    .where(
+                        AgentSubscription.product_id == old_pid,
+                        AgentSubscription.room_id.is_(None),
+                        AgentSubscription.status.in_(
+                            [SubscriptionStatus.active, SubscriptionStatus.past_due]
+                        ),
+                    )
+                    .values(room_id=room.room_id)
+                )
         room.required_subscription_product_id = new_pid
 
     await db.commit()
@@ -1382,6 +1413,29 @@ async def migrate_room_subscription_plan(
         amount_minor=amount,
         billing_interval=interval,
     )
+
+    # Backfill room_id on any pre-existing subscriptions that point at the
+    # old product but never recorded which room they were bought for. Without
+    # this, _charge_subscription's mismatch check is skipped (it gates on
+    # `room_id IS NOT NULL`) and those subs would keep auto-renewing on the
+    # archived old product. Safe to do unconditionally here because the
+    # multi-room reuse guard above already rejected any product referenced by
+    # >1 room.
+    if old_product_id is not None:
+        from sqlalchemy import update as _sa_update
+
+        await db.execute(
+            _sa_update(AgentSubscription)
+            .where(
+                AgentSubscription.product_id == old_product_id,
+                AgentSubscription.room_id.is_(None),
+                AgentSubscription.status.in_(
+                    [SubscriptionStatus.active, SubscriptionStatus.past_due]
+                ),
+            )
+            .values(room_id=room.room_id)
+        )
+
     room.required_subscription_product_id = new_product.product_id
 
     if old_product_id is not None:
