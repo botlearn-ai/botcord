@@ -1991,7 +1991,7 @@ async def provision_agent(
         raise HTTPException(status_code=409, detail="daemon_revoked")
     if not is_daemon_online(body.daemon_instance_id):
         raise HTTPException(status_code=409, detail="daemon_offline")
-    if not _daemon_lists_runtime(instance, runtime):
+    if not _daemon_lists_runtime(instance, runtime, body.openclaw_gateway):
         raise HTTPException(status_code=409, detail="runtime_unavailable")
 
     # --- Quota check ---------------------------------------------------
