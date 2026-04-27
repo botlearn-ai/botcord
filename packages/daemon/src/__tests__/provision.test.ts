@@ -920,3 +920,111 @@ describe("revoke_agent respects deleteState / deleteWorkspace flags", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// hello + update_agent identity sync (lightweight reconcile path)
+// ---------------------------------------------------------------------------
+
+describe("hello identity snapshot", () => {
+  it("rewrites identity.md for every agent in the snapshot", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const { ensureAgentWorkspace } = await import("../agent-workspace.js");
+      ensureAgentWorkspace("ag_h1", { displayName: "Old1", bio: "Old bio 1" });
+      ensureAgentWorkspace("ag_h2", { displayName: "Old2", bio: "Old bio 2" });
+      void tmp;
+
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+
+      const ack = await provisioner({
+        id: "req_hello",
+        type: CONTROL_FRAME_TYPES.HELLO,
+        params: {
+          server_time: Date.now(),
+          agents: [
+            { agentId: "ag_h1", displayName: "Fresh1", bio: "Fresh bio 1" },
+            { agentId: "ag_h2", displayName: "Fresh2", bio: null },
+            { agentId: "ag_missing", displayName: "Nope", bio: "Nope" },
+          ],
+        },
+      });
+      expect(ack.ok).toBe(true);
+      const result = ack.result as { updated: number; skipped: number };
+      expect(result.updated).toBe(2);
+      expect(result.skipped).toBe(1);
+
+      const id1 = fs.readFileSync(
+        nodePath.join(tmp, ".botcord", "agents", "ag_h1", "workspace", "identity.md"),
+        "utf8",
+      );
+      expect(id1).toContain("Fresh1");
+      expect(id1).toContain("Fresh bio 1");
+      expect(id1).not.toContain("Old1");
+
+      const id2 = fs.readFileSync(
+        nodePath.join(tmp, ".botcord", "agents", "ag_h2", "workspace", "identity.md"),
+        "utf8",
+      );
+      expect(id2).toContain("Fresh2");
+      // bio cleared → placeholder
+      expect(id2).toContain("_(none provided at provision time");
+    });
+  });
+
+  it("tolerates a hello frame with no agents array", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_hello_empty",
+      type: CONTROL_FRAME_TYPES.HELLO,
+      params: { server_time: Date.now() },
+    });
+    expect(ack.ok).toBe(true);
+  });
+});
+
+describe("update_agent handler", () => {
+  it("rewrites identity.md for the targeted agent", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const { ensureAgentWorkspace } = await import("../agent-workspace.js");
+      ensureAgentWorkspace("ag_u1", { displayName: "Before", bio: "Before bio" });
+
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const ack = await provisioner({
+        id: "req_update",
+        type: CONTROL_FRAME_TYPES.UPDATE_AGENT,
+        params: { agentId: "ag_u1", displayName: "After", bio: "After bio" },
+      });
+      expect(ack.ok).toBe(true);
+      expect((ack.result as { changed: boolean }).changed).toBe(true);
+
+      const md = fs.readFileSync(
+        nodePath.join(tmp, ".botcord", "agents", "ag_u1", "workspace", "identity.md"),
+        "utf8",
+      );
+      expect(md).toContain("After");
+      expect(md).toContain("After bio");
+    });
+  });
+
+  it("rejects update_agent without agentId", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_update_bad",
+      type: CONTROL_FRAME_TYPES.UPDATE_AGENT,
+      params: {},
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
+  });
+});

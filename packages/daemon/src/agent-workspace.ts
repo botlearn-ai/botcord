@@ -14,6 +14,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   readlinkSync,
   symlinkSync,
   unlinkSync,
@@ -242,4 +243,92 @@ export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void
   writeIfMissing(path.join(workspace, "memory.md"), MEMORY_MD);
   writeIfMissing(path.join(workspace, "task.md"), TASK_MD);
   writeIfMissing(path.join(notes, ".gitkeep"), "");
+}
+
+/** Patch fields accepted by {@link applyAgentIdentity}. `bio = null` clears it. */
+export interface AgentIdentityPatch {
+  displayName?: string;
+  bio?: string | null;
+}
+
+/**
+ * Result of applying an identity patch. `changed` is true only when the
+ * file was rewritten on disk; `skipped` reports why (no-op vs. unable).
+ */
+export interface AgentIdentityApplyResult {
+  changed: boolean;
+  skipped?: "missing-file" | "no-change" | "unparseable";
+}
+
+const DISPLAY_NAME_LINE = /^- \*\*Display name\*\*: .*$/m;
+// Match the Bio section's body. Anchor on the next `##` heading when one
+// exists, otherwise consume to end-of-file — keeps the rewrite working when
+// the user has stripped Role/Boundaries sections.
+const BIO_SECTION = /(## Bio\n\n)([\s\S]*?)(\n+##\s|$)/;
+
+/**
+ * Surgically rewrite the `Display name` and `Bio` fields inside an existing
+ * `identity.md`, preserving anything the user has authored elsewhere
+ * (Role / Boundaries / arbitrary new sections). No-op when the file is
+ * missing — provisioning will create it with the correct values, and
+ * subsequent hello snapshots simply reapply the dashboard truth.
+ *
+ * The identity.md template carries `Role` / `Boundaries` headings after
+ * `## Bio`; we anchor the Bio rewrite on "next `##`" so user-added
+ * paragraphs inside Bio are replaced wholesale (the dashboard is the
+ * source of truth) without disturbing siblings.
+ */
+export function applyAgentIdentity(
+  agentId: string,
+  patch: AgentIdentityPatch,
+): AgentIdentityApplyResult {
+  assertSafeAgentId(agentId);
+  const file = path.join(agentWorkspaceDir(agentId), "identity.md");
+  if (!existsSync(file)) {
+    return { changed: false, skipped: "missing-file" };
+  }
+
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return { changed: false, skipped: "missing-file" };
+  }
+
+  const original = text;
+  let touched = false;
+
+  if (typeof patch.displayName === "string") {
+    const value = patch.displayName.length > 0 ? patch.displayName : FIELD_PLACEHOLDER;
+    if (DISPLAY_NAME_LINE.test(text)) {
+      // Use a function replacer so `$1`, `$&` etc. inside the value are
+      // treated literally rather than as backreferences.
+      text = text.replace(DISPLAY_NAME_LINE, () => `- **Display name**: ${value}`);
+      touched = true;
+    } else {
+      // Heavily-edited file without the canonical metadata block — bail
+      // out rather than guess where to splice.
+      return { changed: false, skipped: "unparseable" };
+    }
+  }
+
+  if (patch.bio !== undefined) {
+    const bioText =
+      patch.bio !== null && patch.bio.trim().length > 0
+        ? patch.bio.trim()
+        : BIO_PLACEHOLDER;
+    if (BIO_SECTION.test(text)) {
+      text = text.replace(BIO_SECTION, (_match, head, _body, tail) => `${head}${bioText}${tail}`);
+      touched = true;
+    } else {
+      return { changed: false, skipped: "unparseable" };
+    }
+  }
+
+  if (!touched || text === original) {
+    return { changed: false, skipped: "no-change" };
+  }
+
+  writeFileSync(file, text, { mode: 0o600 });
+  return { changed: true };
 }

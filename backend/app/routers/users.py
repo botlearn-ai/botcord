@@ -5,6 +5,7 @@
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
 
+import asyncio
 import base64
 import datetime
 import hashlib
@@ -977,20 +978,68 @@ async def patch_agent(
         )
         agent.is_default = True
 
+    identity_changed = False
     if body.display_name is not None:
         name = body.display_name.strip()
         if not name:
             raise HTTPException(status_code=400, detail="display_name must not be empty")
-        agent.display_name = name
+        if agent.display_name != name:
+            agent.display_name = name
+            identity_changed = True
 
     if body.bio is not None:
         # Normalise empty string to NULL so it reads as "no bio" downstream.
-        bio = body.bio.strip()
-        agent.bio = bio or None
+        bio = body.bio.strip() or None
+        if agent.bio != bio:
+            agent.bio = bio
+            identity_changed = True
 
     await db.commit()
     await db.refresh(agent)
+
+    # Best-effort live push to the daemon — fire-and-forget so a slow or
+    # half-open daemon WS can never inflate this PATCH's latency. Offline
+    # daemons reconcile via the `hello.agents` snapshot on next reconnect.
+    if identity_changed and agent.daemon_instance_id and is_daemon_online(agent.daemon_instance_id):
+        params: dict[str, object | None] = {"agentId": agent.agent_id}
+        if body.display_name is not None:
+            params["displayName"] = agent.display_name
+        if body.bio is not None:
+            params["bio"] = agent.bio
+        task = asyncio.create_task(
+            _push_update_agent_frame(agent.daemon_instance_id, agent.agent_id, params)
+        )
+        # Keep a strong reference until completion — without this, the
+        # asyncio event loop only weakly tracks tasks and GC can collect
+        # the coroutine mid-flight (documented CPython behaviour).
+        _BACKGROUND_TASKS.add(task)
+        task.add_done_callback(_BACKGROUND_TASKS.discard)
+
     return _agent_meta(agent)
+
+
+# Strong-reference set keeping fire-and-forget background tasks alive until
+# they complete. See the matching `add` / `discard` calls in `patch_agent`.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+async def _push_update_agent_frame(
+    daemon_instance_id: str, agent_id: str, params: dict[str, object | None]
+) -> None:
+    """Best-effort `update_agent` dispatch — never raises, only logs."""
+    try:
+        await send_control_frame(daemon_instance_id, "update_agent", params)
+    except HTTPException as exc:
+        _logger.info(
+            "update_agent push skipped: agent=%s status=%s detail=%s",
+            agent_id,
+            exc.status_code,
+            exc.detail,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning(
+            "update_agent push failed: agent=%s err=%s", agent_id, exc
+        )
 
 
 # ---------------------------------------------------------------------------
