@@ -380,6 +380,51 @@ class RoomMember(Base):
     )
 
 
+class AgentRoomPolicyOverride(Base):
+    """Per-room attention override for an agent (sparse).
+
+    NULL columns mean "inherit from agent default". ``muted_until`` is a
+    transient snooze timestamp; the resolver treats past values as no-op.
+
+    Admission policy is intentionally NOT scoped here — see design doc §3.2.
+    """
+
+    __tablename__ = "agent_room_policy_overrides"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "room_id", name="uq_arpo_agent_room"),
+        Index("ix_arpo_agent", "agent_id"),
+    )
+
+    # ``BigInteger`` for the Postgres BIGSERIAL; in SQLite tests this maps to
+    # plain INTEGER which still supports rowid autoincrement. Mirroring the
+    # dialect-neutral pattern used elsewhere in this module.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    room_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("rooms.room_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attention_mode: Mapped[AttentionMode | None] = mapped_column(
+        Enum(AttentionMode, name="attentionmode", native_enum=False, length=32),
+        nullable=True,
+    )
+    # JSON-encoded list[str]; NULL means inherit from the agent default.
+    keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
+    muted_until: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class RoomJoinRequest(Base):
     __tablename__ = "room_join_requests"
     __table_args__ = (
