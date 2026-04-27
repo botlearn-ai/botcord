@@ -162,6 +162,7 @@ async def subscribe(
             product_id=product_id,
             subscriber_agent_id=current_agent,
             idempotency_key=req.idempotency_key,
+            room_id=req.room_id,
         )
         await db.commit()
         await db.refresh(subscription)

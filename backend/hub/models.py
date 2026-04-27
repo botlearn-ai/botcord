@@ -958,6 +958,12 @@ class AgentSubscription(Base):
     provider_agent_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
     )
+    room_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("rooms.room_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     asset_code: Mapped[str] = mapped_column(String(16), nullable=False, default="COIN")
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     billing_interval: Mapped[BillingInterval] = mapped_column(
