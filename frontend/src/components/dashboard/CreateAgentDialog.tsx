@@ -27,6 +27,13 @@ import {
   type DaemonInstance,
   type DaemonRuntime,
 } from "@/store/useDaemonStore";
+import {
+  useOpenclawHostStore,
+  OpenclawProvisionError,
+  type OpenclawHost,
+  type OpenclawInstallTicket,
+} from "@/store/useOpenclawHostStore";
+import InstallCommandPanel from "./InstallCommandPanel";
 
 interface CreateAgentDialogProps {
   onClose: () => void;
@@ -67,6 +74,7 @@ export default function CreateAgentDialog({
     [daemons],
   );
 
+  const [hostKind, setHostKind] = useState<"daemon" | "openclaw">("daemon");
   const [selectedDaemonId, setSelectedDaemonId] = useState<string | null>(null);
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -197,7 +205,42 @@ export default function CreateAgentDialog({
           <p className="mt-2 text-sm text-text-secondary">{t.description}</p>
         </div>
 
-        {!loaded && loading ? (
+        <div className="mb-4 inline-flex rounded-xl border border-glass-border bg-glass-bg/40 p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setHostKind("daemon");
+              setError(null);
+            }}
+            disabled={submitting}
+            className={`rounded-lg px-3 py-1.5 transition-colors ${
+              hostKind === "daemon"
+                ? "bg-neon-cyan/20 text-neon-cyan"
+                : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            Local daemon
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setHostKind("openclaw");
+              setError(null);
+            }}
+            disabled={submitting}
+            className={`rounded-lg px-3 py-1.5 transition-colors ${
+              hostKind === "openclaw"
+                ? "bg-neon-cyan/20 text-neon-cyan"
+                : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            OpenClaw host
+          </button>
+        </div>
+
+        {hostKind === "openclaw" ? (
+          <OpenclawBranch onSuccess={onSuccess} onClose={onClose} />
+        ) : !loaded && loading ? (
           <div className="flex items-center justify-center py-10 text-text-secondary">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
@@ -541,3 +584,235 @@ function RuntimeCard({
     </button>
   );
 }
+
+// ── OpenClaw branch ─────────────────────────────────────────────────────────
+
+interface OpenclawBranchProps {
+  onSuccess: (agentId: string) => Promise<void> | void;
+  onClose: () => void;
+}
+
+type OpenclawTarget = { kind: "host"; hostId: string } | { kind: "new" };
+
+function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
+  const hosts = useOpenclawHostStore((s) => s.hosts);
+  const loaded = useOpenclawHostStore((s) => s.loaded);
+  const refresh = useOpenclawHostStore((s) => s.refresh);
+  const issueInstall = useOpenclawHostStore((s) => s.issueInstall);
+  const provisionOnHost = useOpenclawHostStore((s) => s.provisionOnHost);
+
+  const [target, setTarget] = useState<OpenclawTarget>({ kind: "new" });
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ticket, setTicket] = useState<OpenclawInstallTicket | null>(null);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // Default to a registered online host if any exist.
+  useEffect(() => {
+    if (target.kind === "host") return;
+    const onlineHost = hosts.find((h) => h.online && !h.revoked_at);
+    if (onlineHost) setTarget({ kind: "host", hostId: onlineHost.id });
+  }, [hosts, target.kind]);
+
+  function describeError(err: unknown): string {
+    if (err instanceof OpenclawProvisionError) {
+      return err.detail || err.message;
+    }
+    return err instanceof Error ? err.message : "Failed";
+  }
+
+  async function handleSubmit() {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Name is required");
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      if (target.kind === "host") {
+        const res = await provisionOnHost(target.hostId, {
+          name: trimmedName,
+          bio: bio.trim() || undefined,
+        });
+        await onSuccess(res.agentId);
+        onClose();
+      } else {
+        const t = await issueInstall({
+          name: trimmedName,
+          bio: bio.trim() || undefined,
+        });
+        setTicket(t);
+      }
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (ticket) {
+    return (
+      <InstallCommandPanel
+        ticket={ticket}
+        onClaimed={async (agentId) => {
+          await onSuccess(agentId);
+          onClose();
+        }}
+        onCancel={() => setTicket(null)}
+      />
+    );
+  }
+
+  const visibleHosts = hosts.filter((h) => !h.revoked_at);
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          OpenClaw host
+        </label>
+        <div className="grid grid-cols-1 gap-2">
+          {visibleHosts.map((h) => (
+            <HostCard
+              key={h.id}
+              host={h}
+              selected={target.kind === "host" && target.hostId === h.id}
+              onSelect={() => setTarget({ kind: "host", hostId: h.id })}
+              disabled={submitting}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={() => setTarget({ kind: "new" })}
+            disabled={submitting}
+            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+              target.kind === "new"
+                ? "border-neon-cyan/60 bg-neon-cyan/10 text-text-primary"
+                : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              Add a new OpenClaw host
+            </span>
+            {target.kind === "new" && <Check className="h-4 w-4 text-neon-cyan" />}
+          </button>
+        </div>
+        {!loaded && (
+          <p className="mt-2 text-[11px] text-text-tertiary">Loading registered hosts…</p>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Agent name
+        </label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. research-bot"
+          disabled={submitting}
+          className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+          maxLength={64}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          Bio (optional)
+        </label>
+        <textarea
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
+          placeholder="What this bot is for"
+          disabled={submitting}
+          rows={2}
+          className="w-full resize-none rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+          maxLength={240}
+        />
+      </div>
+
+      {error && (
+        <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={submitting}
+          className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleSubmit()}
+          disabled={submitting || !name.trim()}
+          className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Working…
+            </>
+          ) : target.kind === "new" ? (
+            "Get install command"
+          ) : (
+            "Create"
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HostCard({
+  host,
+  selected,
+  onSelect,
+  disabled,
+}: {
+  host: OpenclawHost;
+  selected: boolean;
+  onSelect: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled || !host.online}
+      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+        selected
+          ? "border-neon-cyan/60 bg-neon-cyan/10 text-text-primary"
+          : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+      } ${!host.online ? "cursor-not-allowed opacity-60" : ""}`}
+    >
+      <span className="flex items-center gap-2">
+        <Server className="h-4 w-4 text-neon-cyan" />
+        <span className="text-text-primary">{host.label || host.id}</span>
+        {host.online ? (
+          <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
+        ) : (
+          <span className="ml-1 text-[10px] uppercase tracking-wider text-text-tertiary">
+            offline
+          </span>
+        )}
+      </span>
+      <span className="text-[11px] text-text-tertiary">
+        {host.agent_count} agent{host.agent_count === 1 ? "" : "s"}
+      </span>
+    </button>
+  );
+}
+
