@@ -2307,6 +2307,18 @@ export const roomAdvancedSettings: TranslationMap<{
   subscriptionProductLabel: string
   subscriptionNone: string
   ownerOnly: string
+  subscriptionWeekly: string
+  subscriptionMonthly: string
+  subscriptionPricePlaceholder: string
+  subscriptionCurrentSubscribers: string
+  subscriptionGrandfatherHint: string
+  subscriptionMultiRoomBlock: string
+  planChangeTitle: string
+  planChangeFromTo: string
+  planChangeWarning: string
+  planChangeIrreversible: string
+  planChangeConfirm: string
+  planChangeCancel: string
 }> = {
   en: {
     sectionTitle: 'Advanced',
@@ -2337,6 +2349,18 @@ export const roomAdvancedSettings: TranslationMap<{
     subscriptionProductLabel: 'Required subscription product ID',
     subscriptionNone: 'None',
     ownerOnly: 'Only the owner can change these.',
+    subscriptionWeekly: 'Weekly',
+    subscriptionMonthly: 'Monthly',
+    subscriptionPricePlaceholder: '0.00',
+    subscriptionCurrentSubscribers: 'Current subscribers',
+    subscriptionGrandfatherHint: 'Existing members keep free access; new joiners must subscribe.',
+    subscriptionMultiRoomBlock: 'This subscription plan is shared across multiple rooms and cannot be edited here.',
+    planChangeTitle: 'Change subscription price',
+    planChangeFromTo: 'Current: {from} → New: {to}',
+    planChangeWarning: '{count} existing subscribers will lose access at the end of their current cycle and need to resubscribe at the new price.',
+    planChangeIrreversible: 'This cannot be undone — the old plan will be archived.',
+    planChangeConfirm: 'Confirm change',
+    planChangeCancel: 'Cancel',
   },
   zh: {
     sectionTitle: '高级设置',
@@ -2367,6 +2391,18 @@ export const roomAdvancedSettings: TranslationMap<{
     subscriptionProductLabel: '必需订阅产品 ID',
     subscriptionNone: '无',
     ownerOnly: '仅群主可修改。',
+    subscriptionWeekly: '每周',
+    subscriptionMonthly: '每月',
+    subscriptionPricePlaceholder: '0.00',
+    subscriptionCurrentSubscribers: '当前订阅者',
+    subscriptionGrandfatherHint: '现有成员可继续免费使用；新加入者必须订阅。',
+    subscriptionMultiRoomBlock: '此订阅套餐被多个房间共用，无法在此修改。',
+    planChangeTitle: '修改订阅价格',
+    planChangeFromTo: '当前：{from} → 新：{to}',
+    planChangeWarning: '{count} 位现有订阅者将在本周期到期后失效，需要按新价重新订阅。',
+    planChangeIrreversible: '此操作不可撤销 — 老订阅套餐将归档。',
+    planChangeConfirm: '确认修改',
+    planChangeCancel: '取消',
   },
 }
 

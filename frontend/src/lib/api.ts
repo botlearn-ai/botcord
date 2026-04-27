@@ -45,6 +45,9 @@ import type {
   SubscriptionProductResponse,
   SubscriptionProductListResponse,
   MySubscriptionsResponse,
+  ProductSubscribersResponse,
+  MigrateRoomPlanResponse,
+  SubscriptionProduct,
   UserChatRoom,
   UserChatSendResponse,
   RoomHumanSendResponse,
@@ -615,14 +618,48 @@ export const api = {
   getMySubscriptionProducts() {
     return apiGet<SubscriptionProductListResponse>("/api/subscriptions/products/me");
   },
-  subscribeToProduct(productId: string) {
-    return apiPost<any>(`/api/subscriptions/products/${productId}/subscribe`);
+  subscribeToProduct(productId: string, opts?: { roomId?: string }) {
+    const body: Record<string, unknown> = {};
+    if (opts?.roomId) body.room_id = opts.roomId;
+    return apiPost<any>(`/api/subscriptions/products/${productId}/subscribe`, body);
   },
   cancelSubscription(subscriptionId: string) {
     return apiPost<{ subscription_id: string; status: string }>(`/api/subscriptions/${subscriptionId}/cancel`);
   },
   getMySubscriptions() {
     return apiGet<MySubscriptionsResponse>("/api/subscriptions/me");
+  },
+  createSubscriptionProduct(body: {
+    name: string;
+    amount_minor: string;
+    billing_interval: "week" | "month";
+    description?: string;
+  }) {
+    return apiPost<SubscriptionProduct>("/api/subscriptions/products", body);
+  },
+  archiveSubscriptionProduct(productId: string) {
+    return apiPost<SubscriptionProduct>(
+      `/api/subscriptions/products/${productId}/archive`,
+    );
+  },
+  listProductSubscribers(productId: string, opts?: { status?: string }) {
+    return apiGet<ProductSubscribersResponse>(
+      `/api/subscriptions/products/${productId}/subscribers`,
+      opts?.status ? { status: opts.status } : undefined,
+    );
+  },
+  migrateRoomSubscriptionPlan(
+    roomId: string,
+    body: {
+      amount_minor: string;
+      billing_interval: "week" | "month";
+      description?: string;
+    },
+  ) {
+    return apiPost<MigrateRoomPlanResponse>(
+      `/api/dashboard/rooms/${roomId}/subscription/migrate-plan`,
+      body,
+    );
   },
 
   // --- User Chat (owner-agent direct messaging) ---

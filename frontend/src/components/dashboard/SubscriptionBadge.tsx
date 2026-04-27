@@ -185,7 +185,7 @@ export default function SubscriptionBadge({
     setErrorKind("generic");
     try {
       if (!alreadySubscribed) {
-        await subscribeToProduct(productId);
+        await subscribeToProduct(productId, roomId ? { roomId } : undefined);
       }
       if (roomId) {
         await joinRoom(roomId);

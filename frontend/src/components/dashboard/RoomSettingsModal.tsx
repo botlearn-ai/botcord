@@ -13,6 +13,7 @@ import {
 import type { PublicRoomMember, SubscriptionProduct } from "@/lib/types";
 import AddRoomMemberModal from "./AddRoomMemberModal";
 import MemberActionsMenu from "./MemberActionsMenu";
+import PlanChangeConfirmDialog from "./PlanChangeConfirmDialog";
 import TransferOwnershipDialog from "./TransferOwnershipDialog";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -166,6 +167,7 @@ export default function RoomSettingsModal({
   const getActiveSubscription = useDashboardSubscriptionStore((s) => s.getActiveSubscription);
   const ensureSubscriptions = useDashboardSubscriptionStore((s) => s.ensureSubscriptions);
   const cancelSubscription = useDashboardSubscriptionStore((s) => s.cancelSubscription);
+  const upsertRoomPlan = useDashboardSubscriptionStore((s) => s.upsertRoomPlan);
   const setFocusedRoomId = useDashboardUIStore((s) => s.setFocusedRoomId);
   const setOpenedRoomId = useDashboardUIStore((s) => s.setOpenedRoomId);
 
@@ -198,6 +200,13 @@ export default function RoomSettingsModal({
   const [ownedProducts, setOwnedProducts] = useState<SubscriptionProduct[]>([]);
   const [subscriptionProduct, setSubscriptionProduct] = useState<SubscriptionProduct | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [priceInput, setPriceInput] = useState("");
+  const [billingInterval, setBillingInterval] = useState<"week" | "month">("month");
+  const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
+  const [multiRoomBlocked, setMultiRoomBlocked] = useState(false);
+  const [planChangeDialogOpen, setPlanChangeDialogOpen] = useState(false);
+  const [planChangeAffected, setPlanChangeAffected] = useState(0);
+  const [planChangeBusy, setPlanChangeBusy] = useState(false);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [memberQuery, setMemberQuery] = useState("");
   const [membersLoading, setMembersLoading] = useState(false);
@@ -279,15 +288,52 @@ export default function RoomSettingsModal({
           ? (productsResult as { products: SubscriptionProduct[] }).products
           : [];
         setOwnedProducts(myProducts);
+        let product: SubscriptionProduct | null = null;
         if (productResult && "product" in (productResult as { product: SubscriptionProduct })) {
-          setSubscriptionProduct((productResult as { product: SubscriptionProduct }).product);
-        } else {
-          setSubscriptionProduct(null);
+          product = (productResult as { product: SubscriptionProduct }).product;
+        }
+        setSubscriptionProduct(product);
+        if (product) {
+          const major = Number(product.amount_minor) / 100;
+          setPriceInput(Number.isFinite(major) ? major.toFixed(2) : "");
+          if (product.billing_interval === "week" || product.billing_interval === "month") {
+            setBillingInterval(product.billing_interval);
+          }
+        }
+        // Multi-room reuse detection: count rooms whose
+        // `required_subscription_product_id` matches the current product.
+        if (product && isOwner) {
+          try {
+            const overview = await api.getOverview();
+            const refCount = (overview.rooms ?? []).filter(
+              (r) => r.required_subscription_product_id === product.product_id,
+            ).length;
+            if (!cancelled) setMultiRoomBlocked(refCount > 1);
+          } catch {
+            if (!cancelled) setMultiRoomBlocked(false);
+          }
+        } else if (!cancelled) {
+          setMultiRoomBlocked(false);
+        }
+        // Subscriber count for confirm dialog and current display.
+        if (product && isOwner) {
+          try {
+            const subs = await api.listProductSubscribers(product.product_id, {
+              status: "active,past_due",
+            });
+            if (!cancelled) setSubscriberCount(subs.subscribers.length);
+          } catch {
+            if (!cancelled) setSubscriberCount(null);
+          }
+        } else if (!cancelled) {
+          setSubscriberCount(null);
         }
       } catch {
         if (cancelled) return;
         setOwnedProducts([]);
         setSubscriptionProduct(null);
+        setSubscriberCount(null);
+        setMultiRoomBlocked(false);
       } finally {
         if (!cancelled) setSubscriptionLoading(false);
       }
@@ -334,17 +380,8 @@ export default function RoomSettingsModal({
         if (nextMax !== initialMaxMembers) patch.max_members = nextMax;
         const nextSlow = slowMode ? Number(slowMode) : null;
         if (nextSlow !== initialSlowModeSeconds) patch.slow_mode_seconds = nextSlow;
-        const nextSub = subscriptionEnabled
-          ? (subscriptionProductId.trim() || availableProduct?.product_id || null)
-          : null;
-        if (subscriptionEnabled && !nextSub) {
-          setError(ta.subscriptionNoPlan);
-          setSaving(false);
-          return;
-        }
-        if (nextSub !== initialSubscriptionProductId) {
-          patch.required_subscription_product_id = nextSub;
-        }
+        // Subscription handling is split into a separate write below, so the
+        // PATCH only carries non-subscription fields here.
       }
       if (Object.keys(patch).length > 0) {
         const updater = viewerMode === "human" ? humansApi.updateRoomSettings : api.updateRoomSettings;
@@ -354,6 +391,19 @@ export default function RoomSettingsModal({
           refreshHumanRooms(),
         ]);
       }
+
+      if (isOwner) {
+        const subscriptionResult = await applySubscriptionChange();
+        if (subscriptionResult === "deferred") {
+          // Plan change confirm dialog is open; keep modal mounted.
+          setSaving(false);
+          return;
+        }
+        if (subscriptionResult === "blocked") {
+          setSaving(false);
+          return;
+        }
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : t.saveFailed);
@@ -361,6 +411,85 @@ export default function RoomSettingsModal({
       setSaving(false);
     }
   };
+
+  // Returns one of:
+  //   "noop"     — nothing changed
+  //   "applied"  — wrote the change immediately
+  //   "deferred" — opened the plan-change confirm dialog
+  //   "blocked"  — user-visible error already set
+  async function applySubscriptionChange(): Promise<
+    "noop" | "applied" | "deferred" | "blocked"
+  > {
+    if (!isOwner) return "noop";
+
+    // Toggle off → unbind product on the room (mismatch will cancel old subs).
+    if (!subscriptionEnabled) {
+      if (!initialSubscriptionProductId) return "noop";
+      await api.updateRoomSettings(roomId, {
+        required_subscription_product_id: null,
+      });
+      await refreshOverview({ reloadOpenedRoom: true });
+      return "applied";
+    }
+
+    if (multiRoomBlocked) {
+      setError(ta.subscriptionMultiRoomBlock);
+      return "blocked";
+    }
+
+    const priceMajor = Number(priceInput);
+    if (!Number.isFinite(priceMajor) || priceMajor <= 0) {
+      setError(ta.subscriptionPriceLabel);
+      return "blocked";
+    }
+    const amountMinor = String(Math.round(priceMajor * 100));
+
+    // First-time enable: no current product on the room → create + bind.
+    if (!initialSubscriptionProductId) {
+      await upsertRoomPlan(roomId, {
+        amount_minor: amountMinor,
+        billing_interval: billingInterval,
+      });
+      await refreshOverview({ reloadOpenedRoom: true });
+      return "applied";
+    }
+
+    // Same product, identical price + interval → noop.
+    const currentMinor = subscriptionProduct
+      ? Number(subscriptionProduct.amount_minor)
+      : NaN;
+    const sameAmount =
+      Number.isFinite(currentMinor) && Number(amountMinor) === currentMinor;
+    const sameInterval =
+      subscriptionProduct?.billing_interval === billingInterval;
+    if (sameAmount && sameInterval) return "noop";
+
+    // Plan change → defer to confirm dialog.
+    setPlanChangeAffected(subscriberCount ?? 0);
+    setPlanChangeDialogOpen(true);
+    return "deferred";
+  }
+
+  async function confirmPlanChange() {
+    setPlanChangeBusy(true);
+    setError(null);
+    try {
+      const priceMajor = Number(priceInput);
+      const amountMinor = String(Math.round(priceMajor * 100));
+      await upsertRoomPlan(roomId, {
+        amount_minor: amountMinor,
+        billing_interval: billingInterval,
+        currentProductId: initialSubscriptionProductId ?? undefined,
+      });
+      await refreshOverview({ reloadOpenedRoom: true });
+      setPlanChangeDialogOpen(false);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.saveFailed);
+    } finally {
+      setPlanChangeBusy(false);
+    }
+  }
 
   const handleLeave = async () => {
     if (isOwner) return;
@@ -719,54 +848,77 @@ export default function RoomSettingsModal({
                     </div>
                     <button
                       type="button"
-                      disabled={!isOwner || (!subscriptionEnabled && !subscriptionProductId && !availableProduct)}
-                      onClick={() => {
-                        if (!subscriptionEnabled) {
-                          const nextProductId = subscriptionProductId || availableProduct?.product_id || "";
-                          if (!nextProductId) return;
-                          setSubscriptionProductId(nextProductId);
-                          if (!subscriptionProduct && availableProduct) {
-                            setSubscriptionProduct(availableProduct);
-                          }
-                          setSubscriptionEnabled(true);
-                          return;
-                        }
-                        setSubscriptionEnabled(false);
-                      }}
+                      disabled={!isOwner || multiRoomBlocked}
+                      onClick={() => setSubscriptionEnabled((v) => !v)}
                       className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${subscriptionEnabled ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan" : "border-glass-border text-text-secondary hover:bg-glass-bg"}`}
                     >
                       {subscriptionEnabled ? ta.subscriptionToggleOn : ta.subscriptionToggleOff}
                     </button>
                   </div>
 
-                  {!subscriptionEnabled && isOwner && !subscriptionProductId && !availableProduct && (
-                    <p className="text-xs text-text-secondary/70">{ta.subscriptionNoPlan}</p>
+                  {multiRoomBlocked && (
+                    <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
+                      {ta.subscriptionMultiRoomBlock}
+                    </p>
                   )}
 
-                  {!subscriptionEnabled && isOwner && availableProduct && (
-                    <p className="text-xs text-text-secondary/70">{ta.subscriptionAutoPick}</p>
-                  )}
-
-                  {subscriptionEnabled && (
-                    <div className="rounded-xl border border-glass-border bg-deep-black/40 px-4 py-3">
-                      <p className="text-sm font-medium text-text-primary">{ta.subscriptionCurrentPlan}</p>
-                      {subscriptionLoading ? (
-                        <p className="mt-2 text-xs text-text-secondary/70">{t.saving}</p>
-                      ) : subscriptionProduct || availableProduct ? (
-                        (() => {
-                          const product = subscriptionProduct ?? availableProduct;
-                          if (!product) return null;
-                          return (
-                            <div className="mt-2 space-y-1 text-xs text-text-secondary/80">
-                              <p className="text-sm font-medium text-text-primary">{product.name}</p>
-                              {product.description ? <p>{product.description}</p> : null}
-                              <p>{ta.subscriptionPriceLabel}: {typeof product.amount_minor === "number" ? (product.amount_minor / 100).toFixed(2) : String(Number(product.amount_minor) / 100)} {product.asset_code}</p>
-                              <p>{ta.subscriptionBillingLabel}: {product.billing_interval}</p>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <p className="mt-2 text-xs text-text-secondary/70">{ta.subscriptionNone}</p>
+                  {subscriptionEnabled && isOwner && (
+                    <div className="space-y-3 rounded-xl border border-glass-border bg-deep-black/40 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm text-text-primary">
+                          {ta.subscriptionPriceLabel}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          disabled={multiRoomBlocked}
+                          placeholder={ta.subscriptionPricePlaceholder}
+                          value={priceInput}
+                          onChange={(e) => setPriceInput(e.target.value)}
+                          className="w-28 rounded-lg border border-glass-border bg-deep-black px-2 py-1 text-sm text-text-primary"
+                        />
+                        <span className="text-xs text-text-secondary/80">USDC</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <label className="text-sm text-text-primary">
+                          {ta.subscriptionBillingLabel}
+                        </label>
+                        <label className="flex items-center gap-1.5 text-sm text-text-secondary">
+                          <input
+                            type="radio"
+                            name="billing-interval"
+                            value="week"
+                            checked={billingInterval === "week"}
+                            onChange={() => setBillingInterval("week")}
+                            disabled={multiRoomBlocked}
+                            className="accent-neon-cyan"
+                          />
+                          {ta.subscriptionWeekly}
+                        </label>
+                        <label className="flex items-center gap-1.5 text-sm text-text-secondary">
+                          <input
+                            type="radio"
+                            name="billing-interval"
+                            value="month"
+                            checked={billingInterval === "month"}
+                            onChange={() => setBillingInterval("month")}
+                            disabled={multiRoomBlocked}
+                            className="accent-neon-cyan"
+                          />
+                          {ta.subscriptionMonthly}
+                        </label>
+                      </div>
+                      {subscriberCount !== null && (
+                        <p className="text-xs text-text-secondary/80">
+                          {ta.subscriptionCurrentSubscribers}: {subscriberCount}
+                        </p>
+                      )}
+                      {!initialSubscriptionProductId && (
+                        <p className="text-xs text-text-secondary/70">
+                          {ta.subscriptionGrandfatherHint}
+                        </p>
                       )}
                     </div>
                   )}
@@ -909,6 +1061,26 @@ export default function RoomSettingsModal({
           onClose={() => setLeaveDialogOpen(false)}
           onConfirm={() => {
             void handleLeave();
+          }}
+        />
+      )}
+
+      {planChangeDialogOpen && isOwner && (
+        <PlanChangeConfirmDialog
+          fromLabel={
+            subscriptionProduct
+              ? `${(Number(subscriptionProduct.amount_minor) / 100).toFixed(2)} ${subscriptionProduct.asset_code} / ${subscriptionProduct.billing_interval}`
+              : "—"
+          }
+          toLabel={`${Number(priceInput).toFixed(2)} USDC / ${billingInterval}`}
+          affectedCount={planChangeAffected}
+          loading={planChangeBusy}
+          onClose={() => {
+            if (planChangeBusy) return;
+            setPlanChangeDialogOpen(false);
+          }}
+          onConfirm={() => {
+            void confirmPlanChange();
           }}
         />
       )}

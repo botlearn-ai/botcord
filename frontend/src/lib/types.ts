@@ -653,6 +653,22 @@ export interface MySubscriptionsResponse {
   subscriptions: AgentSubscription[];
 }
 
+export interface ProductSubscribersResponse {
+  subscribers: AgentSubscription[];
+}
+
+export interface MigrateRoomPlanResponse {
+  product_id: string;
+  room: {
+    room_id: string;
+    name: string;
+    description: string;
+    rule: string | null;
+    required_subscription_product_id: string | null;
+  };
+  affected_count: number;
+}
+
 // --- Wallet types ---
 
 export interface WalletSummary {
