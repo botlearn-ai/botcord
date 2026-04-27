@@ -150,8 +150,12 @@ export interface ProvisionAgentParams {
  * inline. A daemon that doesn't recognize `policy` simply invalidates its
  * cache and falls back to the seed values from `provision_agent`.
  *
- * `room_id` is reserved for PR2's per-room override endpoints; when absent
- * the daemon drops every cache entry for `agent_id` (global + per-room).
+ * `room_id` is set when a per-room override is created/updated/cleared; it
+ * targets the agent_id:room_id cache slot. When `room_id` is absent the
+ * frame targets the agent's global cache slot. Per-room overrides survive
+ * a global update (resolution is room-first with global as fallback), so a
+ * global frame need not invalidate room entries — updating the global slot
+ * automatically propagates to every room that still inherits.
  */
 export interface PolicyUpdatedParams {
   agent_id: string;

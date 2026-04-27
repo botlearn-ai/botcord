@@ -474,3 +474,127 @@ async def test_patch_policy_swallows_dispatch_failure(
     )
     assert r.status_code == 200, r.text
     assert r.json()["default_attention"] == "muted"
+
+
+@pytest.mark.asyncio
+async def test_put_room_override_dispatches_with_embedded_policy(
+    client, room_seed, db_session, monkeypatch
+):
+    """PUT must fan out the post-mutation effective policy so the daemon's
+    cache can install it directly. Prior to this fix PUT did not dispatch
+    at all and the daemon kept stale state until TTL."""
+    from sqlalchemy import select
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "di_x"
+    await db_session.commit()
+
+    calls: list[dict] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append({"daemon_instance_id": daemon_instance_id, "type": type_, "params": params})
+        return {"ok": True, "result": {"applied": True}}
+
+    import app.routers.policy as policy_mod
+
+    monkeypatch.setattr(policy_mod, "is_daemon_online", lambda _id: True)
+    monkeypatch.setattr(policy_mod, "send_control_frame", fake_send)
+
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy",
+        headers=headers,
+        json={"attention_mode": "mention_only", "keywords": None},
+    )
+    assert r.status_code == 200, r.text
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["type"] == "policy_updated"
+    assert call["params"]["agent_id"] == "ag_owned"
+    assert call["params"]["room_id"] == "rm_pub_1"
+    assert call["params"]["policy"]["mode"] == "mention_only"
+
+
+@pytest.mark.asyncio
+async def test_snooze_dispatches_with_muted_until(
+    client, room_seed, db_session, monkeypatch
+):
+    """Snooze must embed the resulting policy (including muted_until); without
+    it the daemon would invalidate the room key and fall back to the global,
+    which has no muted_until — losing the snooze entirely."""
+    from sqlalchemy import select
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "di_x"
+    await db_session.commit()
+
+    calls: list[dict] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append({"daemon_instance_id": daemon_instance_id, "type": type_, "params": params})
+        return {"ok": True, "result": {"applied": True}}
+
+    import app.routers.policy as policy_mod
+
+    monkeypatch.setattr(policy_mod, "is_daemon_online", lambda _id: True)
+    monkeypatch.setattr(policy_mod, "send_control_frame", fake_send)
+
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_owned/rooms/rm_pub_1/snooze",
+        headers=headers,
+        json={"minutes": 60},
+    )
+    assert r.status_code == 200, r.text
+    assert len(calls) == 1
+    payload = calls[0]["params"]
+    assert payload["room_id"] == "rm_pub_1"
+    assert payload["policy"]["mode"] == "always"
+    assert isinstance(payload["policy"]["muted_until"], int)
+    assert payload["policy"]["muted_until"] > 0
+
+
+@pytest.mark.asyncio
+async def test_delete_room_override_dispatches_invalidate_only(
+    client, room_seed, db_session, monkeypatch
+):
+    """DELETE leaves the per-room slot empty so the daemon falls back to the
+    cached global. The frame should carry agent_id + room_id, no policy."""
+    from sqlalchemy import select
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "di_x"
+    await db_session.commit()
+
+    # Seed an override so the DELETE has something to remove.
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy",
+        headers=headers,
+        json={"attention_mode": "muted", "keywords": None},
+    )
+    assert r.status_code == 200
+
+    calls: list[dict] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append({"params": params})
+        return {"ok": True, "result": {}}
+
+    import app.routers.policy as policy_mod
+
+    monkeypatch.setattr(policy_mod, "is_daemon_online", lambda _id: True)
+    monkeypatch.setattr(policy_mod, "send_control_frame", fake_send)
+
+    r = await client.delete(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy", headers=headers
+    )
+    assert r.status_code == 204
+    assert len(calls) == 1
+    payload = calls[0]["params"]
+    assert payload["agent_id"] == "ag_owned"
+    assert payload["room_id"] == "rm_pub_1"
+    assert "policy" not in payload

@@ -186,13 +186,15 @@ async def _dispatch_policy_updated(
     room_id: str | None = None,
     policy: dict | None = None,
 ) -> None:
-    """Best-effort: tell the daemon to invalidate its cached policy.
+    """Best-effort: tell the daemon to install / drop its cached policy.
 
     Daemon offline / dispatch error must never break the BFF response. The
-    inline ``policy`` blob lets the daemon avoid a refetch when the global
-    policy is the only thing that changed. For per-room edits we omit
-    ``policy`` and pass ``room_id`` so the daemon refetches just that key
-    when PR2/PR4 wires the room-aware fetcher.
+    inline ``policy`` blob carries the post-mutation effective policy so the
+    daemon avoids a refetch — the daemon currently has no per-room fetcher,
+    so callers MUST embed ``policy`` for any frame that should leave a cache
+    entry behind (PUT override, snooze). Frames that only need to drop a
+    cache entry (DELETE override, falling back to inherited global) may omit
+    ``policy``.
     """
     if not agent.daemon_instance_id or not is_daemon_online(agent.daemon_instance_id):
         return
@@ -302,6 +304,20 @@ class SnoozeIn(BaseModel):
     minutes: int = Field(..., ge=0, le=43200)  # 0 clears; max 30 days
 
 
+def _wire_policy(eff: EffectiveAttention) -> dict:
+    """Project EffectiveAttention onto the daemon's AttentionPolicy wire shape.
+
+    `muted_until` is converted to unix milliseconds (matches the daemon's
+    `Date.now()` reference; see `protocol-core/src/should-wake.ts`)."""
+    payload: dict = {
+        "mode": eff.mode.value if hasattr(eff.mode, "value") else str(eff.mode),
+        "keywords": list(eff.keywords),
+    }
+    if eff.muted_until is not None:
+        payload["muted_until"] = int(eff.muted_until.timestamp() * 1000)
+    return payload
+
+
 def _serialize_effective(eff: EffectiveAttention) -> EffectiveAttentionOut:
     return EffectiveAttentionOut(
         mode=eff.mode.value,  # type: ignore[arg-type]
@@ -403,6 +419,7 @@ async def put_room_policy(
     await db.refresh(override)
 
     eff = await resolve_effective_attention(db, agent=agent, room_id=room_id)
+    await _dispatch_policy_updated(agent, room_id=room_id, policy=_wire_policy(eff))
     return RoomPolicyOut(
         effective=_serialize_effective(eff),
         override=_serialize_override(override),
@@ -463,7 +480,7 @@ async def snooze_room(
     await db.refresh(override)
 
     eff = await resolve_effective_attention(db, agent=agent, room_id=room_id)
-    await _dispatch_policy_updated(agent, room_id=room_id)
+    await _dispatch_policy_updated(agent, room_id=room_id, policy=_wire_policy(eff))
     return RoomPolicyOut(
         effective=_serialize_effective(eff),
         override=_serialize_override(override),

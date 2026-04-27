@@ -75,6 +75,44 @@ describe("PolicyResolver", () => {
     expect(p.mode).toBe("always");
   });
 
+  it("falls back to the cached global when resolving a room with no override", async () => {
+    // Regression: prior to the room→global fallback, group messages
+    // collapsed to mode=always whenever the daemon had no fetchEffective
+    // wired (the default state), silently breaking global mention_only/muted.
+    const resolver = new PolicyResolver({ fetchGlobal: async () => undefined });
+    resolver.put("ag_a", null, { mode: "mention_only", keywords: [] });
+    const p = await resolver.resolve("ag_a", "rm_1");
+    expect(p.mode).toBe("mention_only");
+  });
+
+  it("per-room override wins over the cached global", async () => {
+    const resolver = new PolicyResolver({ fetchGlobal: async () => undefined });
+    resolver.put("ag_a", null, { mode: "always", keywords: [] });
+    resolver.put("ag_a", "rm_1", { mode: "muted", keywords: [] });
+    const p = await resolver.resolve("ag_a", "rm_1");
+    expect(p.mode).toBe("muted");
+    // Other rooms still inherit the global.
+    expect((await resolver.resolve("ag_a", "rm_2")).mode).toBe("always");
+  });
+
+  it("invalidate(agent, room) drops the override and falls back to the cached global", async () => {
+    const resolver = new PolicyResolver({ fetchGlobal: async () => undefined });
+    resolver.put("ag_a", null, { mode: "mention_only", keywords: [] });
+    resolver.put("ag_a", "rm_1", { mode: "muted", keywords: [] });
+    expect((await resolver.resolve("ag_a", "rm_1")).mode).toBe("muted");
+    resolver.invalidate("ag_a", "rm_1");
+    expect((await resolver.resolve("ag_a", "rm_1")).mode).toBe("mention_only");
+  });
+
+  it("global update via put propagates to inheriting rooms without invalidation", async () => {
+    const resolver = new PolicyResolver({ fetchGlobal: async () => undefined });
+    resolver.put("ag_a", null, { mode: "always", keywords: [] });
+    expect((await resolver.resolve("ag_a", "rm_1")).mode).toBe("always");
+    // Hub fires policy_updated with new global policy → daemon does put().
+    resolver.put("ag_a", null, { mode: "muted", keywords: [] });
+    expect((await resolver.resolve("ag_a", "rm_1")).mode).toBe("muted");
+  });
+
   it("expires cached entries after ttlMs", async () => {
     const fetchGlobal = vi.fn(async () => ({ mode: "muted", keywords: [] }) as AttentionPolicy);
     const resolver = new PolicyResolver({ fetchGlobal, ttlMs: 1 });

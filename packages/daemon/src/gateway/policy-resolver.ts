@@ -2,20 +2,24 @@
  * Daemon-side per-agent attention-policy cache (PR3, design §5).
  *
  * The dispatcher consults this resolver after `onInbound` fires and before
- * the runtime turn enqueues. Cache keys:
+ * the runtime turn enqueues. Cache layout:
  *
- *   - `agent_id`              → global default policy
- *   - `agent_id:room_id`      → effective per-room override (PR2 will start
- *                                writing to this slot once override APIs land)
+ *   - `agent_id`              → global default policy (seeded by
+ *                                `provision_agent` + `policy_updated{agent}`).
+ *   - `agent_id:room_id`      → genuine per-room override only — installed
+ *                                exclusively via `put` from a per-room
+ *                                `policy_updated` frame. Inheritance reads
+ *                                never write here.
  *
- * On cache miss the resolver calls the caller-supplied `fetchEffective`
- * factory; on `invalidate(agent_id, room_id)` the matching entry is dropped,
- * and on `invalidate(agent_id)` every entry for that agent is dropped.
+ * `resolve(agent, room)` checks the room key first, then falls back to the
+ * global key. This means a per-room override always wins, and the global
+ * propagates to every room without explicit fan-out (a global update only
+ * needs to refresh the agent_id entry).
  *
- * For PR3 the daemon does not yet know the per-room override URL — that is
- * PR2's surface. When `fetchEffective` is omitted we fall back to the
- * global policy, which means the resolver is effectively per-agent only
- * until PR2 wires up the per-room fetch.
+ * `invalidate(agent_id, room_id)` drops the matching room entry; the next
+ * resolve falls through to the global. `invalidate(agent_id)` drops every
+ * entry for that agent — both global and any room overrides — used when
+ * the agent is revoked or the cache must rebuild from scratch.
  */
 
 import type { AttentionPolicy } from "@botcord/protocol-core";
@@ -53,6 +57,7 @@ interface Entry {
 }
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
+const FETCH_FAILED = Symbol("fetch_failed");
 
 /**
  * Force DM rooms (`rm_dm_*`) to `mode: "always"` per design §4.2 — UI never
@@ -83,29 +88,59 @@ export class PolicyResolver implements PolicyResolverLike {
   }
 
   async resolve(agentId: string, roomId: string | null): Promise<AttentionPolicy> {
-    const key = cacheKey(agentId, roomId);
     const now = Date.now();
-    const hit = this.cache.get(key);
-    if (hit && hit.expiresAt > now) {
-      return hit.policy;
+
+    // 1. Per-room cache — populated either by a `policy_updated{room_id}`
+    //    push (genuine override) or by a prior `fetchEffective` cold-start.
+    if (roomId) {
+      const roomHit = this.cache.get(cacheKey(agentId, roomId));
+      if (roomHit && roomHit.expiresAt > now) return roomHit.policy;
     }
 
-    let fetched: AttentionPolicy | undefined;
+    // 2. If a per-room fetcher is wired, treat it as authoritative for cold
+    //    rooms — it returns the override-merged effective policy and so must
+    //    not be skipped just because the global cache is warm.
+    if (roomId && this.fetchEffective) {
+      const fetched = await this.safeFetch(() =>
+        this.fetchEffective!(agentId, roomId),
+      );
+      if (fetched === FETCH_FAILED) return defaultPolicy();
+      const policy = fetched ?? defaultPolicy();
+      this.cache.set(cacheKey(agentId, roomId), {
+        policy: maybeForceDm(roomId, policy),
+        expiresAt: now + this.ttlMs,
+      });
+      return maybeForceDm(roomId, policy);
+    }
+
+    // 3. No room override known — inherit from the cached agent-wide global.
+    //    Without this layer, group messages collapsed to mode=always whenever
+    //    the daemon ran without a per-room fetcher (the current production
+    //    state), silently breaking global mention_only/muted.
+    const globalKey = cacheKey(agentId, null);
+    const globalHit = this.cache.get(globalKey);
+    if (globalHit && globalHit.expiresAt > now) {
+      return maybeForceDm(roomId, globalHit.policy);
+    }
+
+    // 4. Cold start for global.
+    const fetched = await this.safeFetch(() => this.fetchGlobal(agentId));
+    if (fetched === FETCH_FAILED) return defaultPolicy();
+    const policy = fetched ?? defaultPolicy();
+    this.cache.set(globalKey, { policy, expiresAt: now + this.ttlMs });
+    return maybeForceDm(roomId, policy);
+  }
+
+  private async safeFetch(
+    fn: () => Promise<AttentionPolicy | undefined>,
+  ): Promise<AttentionPolicy | undefined | typeof FETCH_FAILED> {
     try {
-      if (roomId && this.fetchEffective) {
-        fetched = await this.fetchEffective(agentId, roomId);
-      } else {
-        fetched = await this.fetchGlobal(agentId);
-      }
+      return await fn();
     } catch {
-      // Fail-open: a fetch error must not silence the agent. Use the default
-      // policy and skip caching so the next resolve retries.
-      return defaultPolicy();
+      // Fail-open: a fetch error must not silence the agent. The caller
+      // returns the default policy without caching so the next resolve retries.
+      return FETCH_FAILED;
     }
-
-    const policy = maybeForceDm(roomId, fetched ?? defaultPolicy());
-    this.cache.set(key, { policy, expiresAt: now + this.ttlMs });
-    return policy;
   }
 
   invalidate(agentId: string, roomId?: string): void {
