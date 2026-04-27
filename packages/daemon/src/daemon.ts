@@ -228,6 +228,18 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
 
   const gwConfig = toGatewayConfig(opts.config, { agentIds, agentRuntimes });
 
+  // Per-agent hub URL — read from each credential file at boot. Used to
+  // populate `BOTCORD_HUB` for runtime CLI subprocesses so the bundled
+  // `botcord` CLI talks to the same hub the agent is registered against,
+  // even when a single daemon hosts agents from different hubs.
+  const hubUrlByAgentId = new Map<string, string>();
+  for (const a of boot.agents) {
+    if (a.hubUrl) hubUrlByAgentId.set(a.agentId, a.hubUrl);
+  }
+  const fallbackHubUrl = opts.hubBaseUrl;
+  const resolveHubUrl = (accountId: string): string | undefined =>
+    hubUrlByAgentId.get(accountId) ?? fallbackHubUrl;
+
   // ActivityTracker lives at the daemon layer (not the gateway core). We
   // expose it to the gateway via (a) the `buildSystemContext` hook so the
   // cross-room digest reflects current activity, and (b) the `onInbound`
@@ -381,6 +393,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     onOutbound,
     composeUserTurn: composeBotCordUserTurn,
     attentionGate,
+    resolveHubUrl,
   });
 
   logger.info("daemon starting", {

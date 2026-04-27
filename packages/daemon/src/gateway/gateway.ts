@@ -57,6 +57,12 @@ export interface GatewayBootOptions {
   attentionGate?: (
     message: GatewayInboundMessage,
   ) => Promise<boolean> | boolean;
+  /**
+   * Resolve the per-agent hub URL for an inbound message. Forwarded to the
+   * dispatcher as `RuntimeRunOptions.hubUrl` so spawned CLI subprocesses
+   * (`BOTCORD_HUB`) target the correct hub for the owning agent.
+   */
+  resolveHubUrl?: (accountId: string) => string | undefined;
 }
 
 /** Default runtime factory: delegates to the built-in registry; ignores extraArgs at construction. */
@@ -128,6 +134,7 @@ export class Gateway {
       onOutbound: opts.onOutbound,
       managedRoutes: this.managedRoutes,
       attentionGate: opts.attentionGate,
+      resolveHubUrl: opts.resolveHubUrl,
     });
 
     this.channelManager = new ChannelManager({

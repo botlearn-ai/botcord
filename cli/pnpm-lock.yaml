@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@botcord/protocol-core':
-        specifier: ^0.1.0
-        version: 0.1.1
+        specifier: ^0.2.0
+        version: 0.2.0
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -21,8 +21,8 @@ importers:
 
 packages:
 
-  '@botcord/protocol-core@0.1.1':
-    resolution: {integrity: sha512-qxbiavALKS7ecxw/DG3kXNxEgknvw7th+TUvapxKVuI87PCbGRnPL6kEOdNesJwj9h0lGyDtDnv3LIBfz9Y3Gw==}
+  '@botcord/protocol-core@0.2.0':
+    resolution: {integrity: sha512-n2W2/1lXGQRIncrRE5MafYiGIsSt+o3ChqxP43TdEc1b/LOmX6Ghw/du7gMVLpvRaZW6xTlUkmvsxNwWQkuYyQ==}
     engines: {node: '>=18'}
 
   '@types/node@20.19.39':
@@ -38,7 +38,7 @@ packages:
 
 snapshots:
 
-  '@botcord/protocol-core@0.1.1': {}
+  '@botcord/protocol-core@0.2.0': {}
 
   '@types/node@20.19.39':
     dependencies:

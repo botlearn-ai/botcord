@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { agentCodexHomeDir, ensureAgentCodexHome } from "../../agent-workspace.js";
+import { buildCliEnv } from "../cli-resolver.js";
 import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
 import {
   firstExistingPath,
@@ -214,8 +215,14 @@ export class CodexAdapter extends NdjsonStreamAdapter {
   }
 
   protected spawnEnv(opts: RuntimeRunOptions): NodeJS.ProcessEnv {
+    const cliEnv = buildCliEnv({
+      hubUrl: opts.hubUrl,
+      accountId: opts.accountId,
+      basePath: process.env.PATH,
+    });
     const env: NodeJS.ProcessEnv = {
       ...process.env,
+      ...cliEnv,
       // Keep JSONL free of ANSI codes regardless of user terminal settings.
       FORCE_COLOR: "0",
       NO_COLOR: "1",
