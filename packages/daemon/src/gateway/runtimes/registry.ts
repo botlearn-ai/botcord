@@ -2,6 +2,7 @@ import { ClaudeCodeAdapter, probeClaude } from "./claude-code.js";
 import { CodexAdapter, probeCodex } from "./codex.js";
 import { GeminiAdapter, probeGemini } from "./gemini.js";
 import { HermesAgentAdapter, probeHermesAgent } from "./hermes-agent.js";
+import { OpenclawAcpAdapter, probeOpenclaw } from "./openclaw-acp.js";
 import type { RuntimeAdapter, RuntimeProbeResult } from "../types.js";
 
 /**
@@ -69,6 +70,16 @@ export const geminiModule: RuntimeModule = {
   supportsRun: false,
 };
 
+/** Built-in runtime module entry for OpenClaw (ACP). */
+export const openclawAcpModule: RuntimeModule = {
+  id: "openclaw-acp",
+  displayName: "OpenClaw (ACP)",
+  binary: "openclaw",
+  envVar: "BOTCORD_OPENCLAW_BIN",
+  probe: () => probeOpenclaw(),
+  create: () => new OpenclawAcpAdapter(),
+};
+
 /**
  * Built-in runtime modules. To add a new runtime:
  *   1. Create `runtimes/<name>.ts` extending `NdjsonStreamAdapter` (or
@@ -80,6 +91,7 @@ export const RUNTIME_MODULES: readonly RuntimeModule[] = [
   codexModule,
   hermesAgentModule,
   geminiModule,
+  openclawAcpModule,
 ];
 
 const BY_ID = new Map<string, RuntimeModule>(

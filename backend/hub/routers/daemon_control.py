@@ -849,9 +849,18 @@ def _parse_runtime_snapshot_params(
     if len(runtimes) > 64:
         return None
     # Each entry must be a dict — beyond that we trust the daemon's schema.
+    # The one schema-aware check we run is on the optional nested
+    # ``endpoints[]`` (RFC §3.8.2): a misconfigured daemon could otherwise
+    # ship thousands of OpenClaw gateway entries inside the jsonb column.
+    # Cap at 32 (matches RUNTIME_ENDPOINTS_CAP on the daemon side); silently
+    # truncate rather than reject so a transient overflow doesn't drop the
+    # whole snapshot.
     for entry in runtimes:
         if not isinstance(entry, dict):
             return None
+        endpoints = entry.get("endpoints")
+        if isinstance(endpoints, list) and len(endpoints) > 32:
+            entry["endpoints"] = endpoints[:32]
     if not isinstance(probed_at, (int, float)) or isinstance(probed_at, bool):
         return None
     if probed_at <= 0:

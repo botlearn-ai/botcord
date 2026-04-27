@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 
 from hub.enums import (
     BillingInterval,
+    ParticipantType,
     SubscriptionProductStatus,
     SubscriptionStatus,
     TxStatus,
@@ -410,7 +411,9 @@ async def test_unbind_agent_rejects_product_with_active_subscribers(
     db_session.add(
         SubscriptionProduct(
             product_id="sp_test001",
-            owner_agent_id="ag_agent001",
+            owner_id="ag_agent001",
+            owner_type=ParticipantType.agent,
+            provider_agent_id="ag_agent001",
             name="Paid Room",
             amount_minor=100,
             billing_interval=BillingInterval.month,
@@ -460,7 +463,9 @@ async def test_unbind_agent_cancels_subscriber_subscriptions(
     db_session.add(
         SubscriptionProduct(
             product_id="sp_provider",
-            owner_agent_id="ag_provider",
+            owner_id="ag_provider",
+            owner_type=ParticipantType.agent,
+            provider_agent_id="ag_provider",
             name="Provider Plan",
             amount_minor=100,
             billing_interval=BillingInterval.month,

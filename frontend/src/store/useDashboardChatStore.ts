@@ -66,6 +66,9 @@ function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRo
     name: room.name,
     description: room.description ?? "",
     owner_id: room.owner_id,
+    // ownedAgentRoomToDashboardRoom is the human-as-owner-via-bot listing —
+    // these rooms are by definition agent-owned.
+    owner_type: "agent",
     visibility: room.visibility,
     join_policy: room.join_policy ?? undefined,
     can_invite: undefined,

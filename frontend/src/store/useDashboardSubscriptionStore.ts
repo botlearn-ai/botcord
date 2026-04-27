@@ -29,6 +29,8 @@ interface DashboardSubscriptionState {
       billing_interval: "week" | "month";
       description?: string;
       currentProductId?: string | null;
+      // Required when the room is human-owned, ignored otherwise.
+      providerAgentId?: string;
     },
   ) => Promise<{ productId: string; affectedCount: number }>;
 }
@@ -131,25 +133,14 @@ export const useDashboardSubscriptionStore = create<DashboardSubscriptionState>(
   },
 
   upsertRoomPlan: async (roomId, body) => {
-    // First-time enable: room has no product yet → create product, then bind
-    // it via the existing PATCH /rooms/{id} route.
-    if (!body.currentProductId) {
-      const product = await api.createSubscriptionProduct({
-        name: `room:${roomId}:plan:${Date.now()}`,
-        amount_minor: body.amount_minor,
-        billing_interval: body.billing_interval,
-        description: body.description,
-      });
-      await api.updateRoomSettings(roomId, {
-        required_subscription_product_id: product.product_id,
-      });
-      return { productId: product.product_id, affectedCount: 0 };
-    }
-    // Plan change: backend handles create + bind + archive atomically.
+    // Single code path: migrate-plan creates + binds + archives atomically,
+    // and works without X-Active-Agent (human-as-owner) once the human path
+    // sends provider_agent_id explicitly.
     const result = await api.migrateRoomSubscriptionPlan(roomId, {
       amount_minor: body.amount_minor,
       billing_interval: body.billing_interval,
       description: body.description,
+      provider_agent_id: body.providerAgentId,
     });
     return { productId: result.product_id, affectedCount: result.affected_count };
   },

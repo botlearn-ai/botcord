@@ -217,7 +217,9 @@ async def test_create_product_and_list(client: AsyncClient):
         amount_minor=10000,
         billing_interval="week",
     )
-    assert product["owner_agent_id"] == agent_id
+    assert product["owner_id"] == agent_id
+    assert product["owner_type"] == "agent"
+    assert product["provider_agent_id"] == agent_id
     assert product["status"] == "active"
     assert product["billing_interval"] == "week"
 

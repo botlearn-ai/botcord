@@ -6,6 +6,7 @@ import {
 import {
   Gateway,
   createBotCordChannel,
+  resolveTranscriptEnabled,
   sanitizeUntrustedContent,
   type ChannelAdapter,
   type GatewayChannelConfig,
@@ -394,6 +395,10 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     composeUserTurn: composeBotCordUserTurn,
     attentionGate,
     resolveHubUrl,
+    transcriptEnabled: resolveTranscriptEnabled(
+      process.env.BOTCORD_TRANSCRIPT,
+      opts.config.transcript?.enabled === true,
+    ),
   });
 
   logger.info("daemon starting", {
@@ -497,7 +502,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
  */
 export interface BootBackfillResult {
   credentialPathByAgentId: Map<string, string>;
-  agentRuntimes: Record<string, { runtime?: string; cwd?: string }>;
+  agentRuntimes: Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string }>;
 }
 
 /**
@@ -520,10 +525,12 @@ export function backfillBootAgents(
   const failed: string[] = [];
   for (const a of agents) {
     if (a.credentialsFile) credentialPathByAgentId.set(a.agentId, a.credentialsFile);
-    if (a.runtime || a.cwd) {
+    if (a.runtime || a.cwd || a.openclawGateway || a.openclawAgent) {
       agentRuntimes[a.agentId] = {
         ...(a.runtime ? { runtime: a.runtime } : {}),
         ...(a.cwd ? { cwd: a.cwd } : {}),
+        ...(a.openclawGateway ? { openclawGateway: a.openclawGateway } : {}),
+        ...(a.openclawAgent ? { openclawAgent: a.openclawAgent } : {}),
       };
     }
     // Seed files are written only when missing (see `ensureAgentWorkspace`),

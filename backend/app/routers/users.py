@@ -253,10 +253,14 @@ async def _ensure_agent_unbind_allowed(db: AsyncSession, agent_id: str) -> None:
     if wallet_result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="wallet_not_empty")
 
+    # An agent being decommissioned could be either the owner of an
+    # agent-owned product OR the provider for a human-owned product. Block
+    # decommission while either kind has active subscribers.
     active_owner_products = (
         select(SubscriptionProduct.product_id)
         .where(
-            SubscriptionProduct.owner_agent_id == agent_id,
+            (SubscriptionProduct.owner_id == agent_id)
+            | (SubscriptionProduct.provider_agent_id == agent_id),
             SubscriptionProduct.status == SubscriptionProductStatus.active,
         )
         .subquery()
@@ -1899,6 +1903,11 @@ class ProvisionAgentBody(BaseModel):
     runtime: str
     cwd: str | None = None
     bio: str | None = None
+    # Optional OpenClaw routing selection. Only meaningful when
+    # `runtime == "openclaw-acp"` — daemon writes these to credentials so the
+    # synthesized managed route can resolve a `ResolvedOpenclawGateway`.
+    openclaw_gateway: str | None = None
+    openclaw_agent: str | None = None
 
 
 class ProvisionAgentResponse(BaseModel):
@@ -1909,13 +1918,23 @@ class ProvisionAgentResponse(BaseModel):
     is_default: bool
 
 
-def _daemon_lists_runtime(instance: DaemonInstance, runtime: str) -> bool:
+def _daemon_lists_runtime(
+    instance: DaemonInstance,
+    runtime: str,
+    openclaw_gateway: str | None = None,
+) -> bool:
     """Check that the daemon's last runtime probe lists `runtime` as available.
 
     Empty / missing snapshots are treated permissively: the daemon may not
     have completed its first probe yet, and rejecting here would deadlock
     provisioning on a freshly-connected daemon. The daemon will still reject
     unknown runtimes in `provision.ts` at the handler boundary.
+
+    For `runtime == "openclaw-acp"`, RFC §3.8.2 requires an additional check:
+    when `openclaw_gateway` is given, the matching `endpoints[]` entry must
+    be reachable. Without this, a daemon with the OpenClaw CLI installed but
+    a misconfigured / unreachable gateway would still pass the gate and only
+    fail at first turn.
     """
     snap = instance.runtimes_json
     if not isinstance(snap, list) or not snap:
@@ -1923,8 +1942,21 @@ def _daemon_lists_runtime(instance: DaemonInstance, runtime: str) -> bool:
     for entry in snap:
         if not isinstance(entry, dict):
             continue
-        if entry.get("id") == runtime and entry.get("available") is True:
-            return True
+        if entry.get("id") != runtime:
+            continue
+        if entry.get("available") is not True:
+            return False
+        if runtime == "openclaw-acp" and openclaw_gateway:
+            endpoints = entry.get("endpoints")
+            if not isinstance(endpoints, list):
+                return False
+            for ep in endpoints:
+                if not isinstance(ep, dict):
+                    continue
+                if ep.get("name") == openclaw_gateway and ep.get("reachable") is True:
+                    return True
+            return False
+        return True
     return False
 
 
@@ -1963,7 +1995,7 @@ async def provision_agent(
         raise HTTPException(status_code=409, detail="daemon_revoked")
     if not is_daemon_online(body.daemon_instance_id):
         raise HTTPException(status_code=409, detail="daemon_offline")
-    if not _daemon_lists_runtime(instance, runtime):
+    if not _daemon_lists_runtime(instance, runtime, body.openclaw_gateway):
         raise HTTPException(status_code=409, detail="runtime_unavailable")
 
     # --- Quota check ---------------------------------------------------
@@ -2056,6 +2088,17 @@ async def provision_agent(
         frame_params["credentials"]["cwd"] = body.cwd
     if body.bio:
         frame_params["bio"] = body.bio
+    if body.openclaw_gateway:
+        # Top-level nested form (RFC §3.9.2).
+        oc: dict[str, str] = {"gateway": body.openclaw_gateway}
+        if body.openclaw_agent:
+            oc["agent"] = body.openclaw_agent
+        frame_params["openclaw"] = oc
+        # Mirror onto the flat credentials envelope so daemon's offline reload
+        # path picks the same gateway without seeing the top-level field.
+        frame_params["credentials"]["openclawGateway"] = body.openclaw_gateway
+        if body.openclaw_agent:
+            frame_params["credentials"]["openclawAgent"] = body.openclaw_agent
 
     # Seed the daemon's policyResolver with the agent's default attention so
     # it has a real policy from message zero (no first-message refetch race).

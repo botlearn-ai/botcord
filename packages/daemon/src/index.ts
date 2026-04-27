@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, rmSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
 import {
@@ -17,6 +17,12 @@ import {
   type RouteRuleMatch,
 } from "./config.js";
 import { resolveBootAgents } from "./agent-discovery.js";
+import {
+  defaultTranscriptRoot,
+  resolveTranscriptEnabled,
+  transcriptAgentRoot,
+  transcriptFilePath,
+} from "./gateway/index.js";
 import { startDaemon } from "./daemon.js";
 import { log, LOG_FILE_PATH } from "./log.js";
 import { detectRuntimes, getAdapterModule, listAdapterIds } from "./adapters/runtimes.js";
@@ -35,6 +41,7 @@ import {
   type UserAuthRecord,
 } from "./user-auth.js";
 import { renderStatus, type StatusRenderInput } from "./status-render.js";
+import { appendNextParam } from "./url-utils.js";
 import {
   channelsFromDaemonConfig,
   defaultHttpFetcher,
@@ -94,6 +101,15 @@ Commands:
   stop                                    Stop the running daemon (SIGTERM)
   status                                  Print daemon status (pid, agent)
   logs [-f]                               Print log tail (use -f to follow)
+  transcript enable|disable|status        Toggle persistent transcript logging
+  transcript list --agent <ag_xxx>        List rooms with transcripts for an agent
+  transcript tail --agent <ag_xxx> --room <rm_xxx> [--topic <tp>] [-n 50] [-f]
+                                          Tail recent transcript records (NDJSON)
+  transcript dump --agent <ag_xxx> --room <rm_xxx> [--topic <tp>]
+                                          Print full transcript file to stdout
+  transcript prune --agent <ag_xxx> [--older-than 30d] [--all]
+                                          Remove rotated transcript files (or all
+                                          for the agent with --all --yes)
   route add [match flags] --adapter <${ADAPTER_LIST}> --cwd <path>
       match flags (first match wins; at least one conversation/sender selector required):
         --conversation-id <rm_xxx>        (alias: --room <rm_xxx>)
@@ -274,10 +290,15 @@ async function runDeviceCodeFlow(opts: {
     opts.hubUrl,
     opts.label ? { label: opts.label } : undefined,
   );
-  const display = dc.verificationUriComplete ?? dc.verificationUri;
+  const base = dc.verificationUriComplete ?? dc.verificationUri;
+  const display = appendNextParam(base, "/settings/daemons");
   console.log("");
-  console.log(`Visit ${display}`);
-  console.log(`Code: ${dc.userCode}`);
+  console.log("Open this URL in a browser where you're signed in to BotCord");
+  console.log("(typically your laptop, NOT this machine):");
+  console.log("");
+  console.log(`  ${display}`);
+  console.log("");
+  console.log(`Or enter this code at ${dc.verificationUri}: ${dc.userCode}`);
   console.log("Waiting for authorization (Ctrl-C to abort)...");
 
   const expiresAt = Date.now() + dc.expiresIn * 1000;
@@ -597,6 +618,225 @@ async function cmdLogs(args: ParsedArgs): Promise<void> {
   console.log(lines.slice(-100).join("\n"));
 }
 
+// ---------------------------------------------------------------------------
+// transcript subcommands (design §5)
+// ---------------------------------------------------------------------------
+
+function transcriptStringFlag(args: ParsedArgs, name: string): string | null {
+  const v = args.flags[name];
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+function parseDurationToMs(s: string): number | null {
+  const m = /^(\d+)\s*([smhd])?$/.exec(s.trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  const unit = m[2] ?? "d";
+  const mult: Record<string, number> = {
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 86_400_000,
+  };
+  return n * mult[unit];
+}
+
+async function cmdTranscript(args: ParsedArgs): Promise<void> {
+  switch (args.sub) {
+    case "enable":
+      return cmdTranscriptToggle(true);
+    case "disable":
+      return cmdTranscriptToggle(false);
+    case "status":
+      return cmdTranscriptStatus();
+    case "list":
+      return cmdTranscriptList(args);
+    case "tail":
+      return cmdTranscriptTail(args);
+    case "dump":
+      return cmdTranscriptDump(args);
+    case "prune":
+      return cmdTranscriptPrune(args);
+    default:
+      console.error("usage: botcord-daemon transcript <enable|disable|status|list|tail|dump|prune>");
+      process.exit(1);
+  }
+}
+
+function cmdTranscriptToggle(enable: boolean): void {
+  let cfg: DaemonConfig;
+  try {
+    cfg = loadConfig();
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e.code === CONFIG_MISSING) {
+      console.error(
+        `daemon config not found — run \`botcord-daemon start\` once to initialize, then retry`,
+      );
+      process.exit(1);
+    }
+    throw err;
+  }
+  cfg.transcript = { ...(cfg.transcript ?? {}), enabled: enable };
+  saveConfig(cfg);
+  console.log(
+    `transcript persistence ${enable ? "enabled" : "disabled"} (next daemon start)`,
+  );
+}
+
+function cmdTranscriptStatus(): void {
+  let cfg: DaemonConfig | null = null;
+  try {
+    cfg = loadConfig();
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e.code !== CONFIG_MISSING) throw err;
+  }
+  const configEnabled = cfg?.transcript?.enabled === true;
+  const env = process.env.BOTCORD_TRANSCRIPT;
+  const effective = resolveTranscriptEnabled(env, configEnabled);
+  let source: string;
+  if (env === "1" || env === "0") source = `env BOTCORD_TRANSCRIPT=${env}`;
+  else if (configEnabled) source = "config (transcript.enabled=true)";
+  else source = "default-off";
+  console.log(`enabled: ${effective}`);
+  console.log(`source: ${source}`);
+  console.log(`root: ${defaultTranscriptRoot()}`);
+}
+
+function cmdTranscriptList(args: ParsedArgs): void {
+  const agent = transcriptStringFlag(args, "agent");
+  if (!agent) {
+    console.error("transcript list requires --agent <ag_xxx>");
+    process.exit(1);
+  }
+  const root = transcriptAgentRoot(defaultTranscriptRoot(), agent);
+  if (!existsSync(root)) {
+    return; // no rooms → empty output
+  }
+  for (const entry of readdirSync(root)) {
+    const dir = path.join(root, entry);
+    let st;
+    try {
+      st = statSync(dir);
+    } catch {
+      continue;
+    }
+    if (!st.isDirectory()) continue;
+    console.log(entry);
+  }
+}
+
+function cmdTranscriptTail(args: ParsedArgs): Promise<void> | void {
+  const agent = transcriptStringFlag(args, "agent");
+  const room = transcriptStringFlag(args, "room");
+  if (!agent || !room) {
+    console.error("transcript tail requires --agent <ag_xxx> --room <rm_xxx>");
+    process.exit(1);
+  }
+  const topic = transcriptStringFlag(args, "topic");
+  const file = transcriptFilePath(defaultTranscriptRoot(), agent, room, topic);
+  if (!existsSync(file)) {
+    console.error(`no transcript at ${file}`);
+    process.exit(1);
+  }
+  const follow = args.flags.f === true || args.flags.follow === true;
+  const nFlag = transcriptStringFlag(args, "n");
+  const n = nFlag && /^\d+$/.test(nFlag) ? Number(nFlag) : 50;
+  if (follow) {
+    const child = spawn("tail", ["-n", String(n), "-f", file], { stdio: "inherit" });
+    process.on("SIGINT", () => child.kill("SIGINT"));
+    return new Promise<void>((resolve) => {
+      child.on("close", () => resolve());
+    });
+  }
+  const data = readFileSync(file, "utf8");
+  const lines = data.split("\n").filter((l) => l.length > 0);
+  console.log(lines.slice(-n).join("\n"));
+}
+
+function cmdTranscriptDump(args: ParsedArgs): void {
+  const agent = transcriptStringFlag(args, "agent");
+  const room = transcriptStringFlag(args, "room");
+  if (!agent || !room) {
+    console.error("transcript dump requires --agent <ag_xxx> --room <rm_xxx>");
+    process.exit(1);
+  }
+  const topic = transcriptStringFlag(args, "topic");
+  const file = transcriptFilePath(defaultTranscriptRoot(), agent, room, topic);
+  if (!existsSync(file)) {
+    console.error(`no transcript at ${file}`);
+    process.exit(1);
+  }
+  process.stdout.write(readFileSync(file, "utf8"));
+}
+
+function cmdTranscriptPrune(args: ParsedArgs): void {
+  const agent = transcriptStringFlag(args, "agent");
+  if (!agent) {
+    console.error("transcript prune requires --agent <ag_xxx>");
+    process.exit(1);
+  }
+  const all = args.flags.all === true;
+  const olderThanFlag = transcriptStringFlag(args, "older-than");
+  const yes = args.flags.yes === true;
+  const root = transcriptAgentRoot(defaultTranscriptRoot(), agent);
+  if (!existsSync(root)) return;
+
+  if (all) {
+    if (!yes) {
+      console.error(
+        `transcript prune --all will delete every transcript under ${root}; rerun with --yes to confirm`,
+      );
+      process.exit(1);
+    }
+    rmSync(root, { recursive: true, force: true });
+    console.log(`removed ${root}`);
+    return;
+  }
+
+  // Default and --older-than: prune rotated files only (the "{topic}.STAMP.jsonl" form).
+  // Active files (`{topic}.jsonl` / `_default.jsonl`) are never touched.
+  const cutoffMs = olderThanFlag ? parseDurationToMs(olderThanFlag) : null;
+  if (olderThanFlag && cutoffMs === null) {
+    console.error(`transcript prune --older-than: invalid duration "${olderThanFlag}" (use 30d / 12h / 30m / 60s)`);
+    process.exit(1);
+  }
+  const cutoff = cutoffMs !== null ? Date.now() - cutoffMs : null;
+
+  let removed = 0;
+  for (const roomEntry of readdirSync(root)) {
+    const dir = path.join(root, roomEntry);
+    let st;
+    try {
+      st = statSync(dir);
+    } catch {
+      continue;
+    }
+    if (!st.isDirectory()) continue;
+    for (const f of readdirSync(dir)) {
+      // rotated files: <topic>.<YYYYMMDD-HHMMSS>.jsonl — must contain a stamp segment
+      if (!/^.+\.\d{8}-\d{6}\.jsonl$/.test(f)) continue;
+      const full = path.join(dir, f);
+      if (cutoff !== null) {
+        try {
+          const fst = statSync(full);
+          if (fst.mtimeMs >= cutoff) continue;
+        } catch {
+          continue;
+        }
+      }
+      try {
+        unlinkSync(full);
+        removed += 1;
+      } catch (err) {
+        console.error(`failed to remove ${full}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+  console.log(`removed ${removed} rotated transcript file(s)`);
+}
+
 function formatRouteMatch(m: RouteRuleMatch): string {
   const parts: string[] = [];
   if (m.channel) parts.push(`channel=${m.channel}`);
@@ -907,15 +1147,26 @@ const fsFileReader: DoctorFileReader = {
 };
 
 async function cmdDoctor(args: ParsedArgs): Promise<void> {
-  const entries = detectRuntimes();
+  const entries: import("./doctor.js").DoctorRuntimeEntry[] = detectRuntimes();
   // Doctor should not hard-fail when no config exists yet; channel probes
   // simply produce an empty list in that case.
   let channels: ReturnType<typeof channelsFromDaemonConfig> = [];
+  let cfgForEndpoints: import("./config.js").DaemonConfig | null = null;
   try {
     const cfg = loadConfig();
+    cfgForEndpoints = cfg;
     channels = channelsFromDaemonConfig(cfg);
   } catch {
     channels = [];
+  }
+  if (cfgForEndpoints?.openclawGateways && cfgForEndpoints.openclawGateways.length > 0) {
+    const { collectRuntimeSnapshotAsync } = await import("./provision.js");
+    const snap = await collectRuntimeSnapshotAsync({ cfg: cfgForEndpoints });
+    const byId = new Map(snap.runtimes.map((r) => [r.id, r]));
+    for (const e of entries) {
+      const r = byId.get(e.id);
+      if (r?.endpoints) e.endpoints = r.endpoints;
+    }
   }
 
   const credentialsPath = (accountId: string) =>
@@ -954,6 +1205,9 @@ async function main(): Promise<void> {
         break;
       case "logs":
         await cmdLogs(args);
+        break;
+      case "transcript":
+        await cmdTranscript(args);
         break;
       case "route":
         await cmdRoute(args);
