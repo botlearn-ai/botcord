@@ -14,6 +14,8 @@ export interface DashboardUIState {
   userChatRoomId: string | null;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
+  /** Dispatch slot: a component requests opening the HumanCardModal for a given human. */
+  pendingHumanOpen: { humanId: string; displayName: string } | null;
   /** When set, the topic side drawer is open for this topic_id in the opened room. */
   openedTopicId: string | null;
   sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
@@ -36,6 +38,8 @@ export interface DashboardUIState {
   toggleRightPanel: () => void;
   openAgentCard: () => void;
   closeAgentCard: () => void;
+  requestOpenHuman: (humanId: string, displayName: string) => void;
+  clearPendingHumanOpen: () => void;
   sidebarWidth: number;
   setSidebarWidth: (width: number) => void;
   resetUIState: () => void;
@@ -48,6 +52,7 @@ const initialUIState = {
   userChatRoomId: null,
   rightPanelOpen: false,
   agentCardOpen: false,
+  pendingHumanOpen: null as { humanId: string; displayName: string } | null,
   openedTopicId: null as string | null,
   sidebarTab: "messages" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
@@ -83,6 +88,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
   openAgentCard: () => set({ agentCardOpen: true }),
   closeAgentCard: () => set({ agentCardOpen: false }),
+  requestOpenHuman: (humanId, displayName) => set({ pendingHumanOpen: { humanId, displayName } }),
+  clearPendingHumanOpen: () => set({ pendingHumanOpen: null }),
   resetUIState: () =>
     set((state) => ({
       ...initialUIState,

@@ -723,6 +723,14 @@ export default function DashboardApp() {
     }
   };
 
+  useEffect(() => {
+    const pending = uiStore.pendingHumanOpen;
+    if (!pending) return;
+    void handleOpenHumanCard(pending);
+    uiStore.clearPendingHumanOpen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiStore.pendingHumanOpen]);
+
   const handleRetryOwnerHumanCard = () => {
     const human = ownerHumanCard?.human;
     if (!human) return;

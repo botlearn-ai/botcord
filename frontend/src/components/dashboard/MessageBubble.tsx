@@ -11,6 +11,7 @@ import MarkdownContent from "@/components/ui/MarkdownContent";
 import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { PresenceDot } from "./PresenceDot";
 
 interface MessageBubbleProps {
@@ -99,6 +100,7 @@ function formatMessageTimestamp(isoTime: string): string {
 
 export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false }: MessageBubbleProps) {
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
+  const requestOpenHuman = useDashboardUIStore((state) => state.requestOpenHuman);
   const stateConfig = useStateConfig();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
@@ -121,7 +123,11 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
 
   const sc = stateConfig[message.state];
   const handleSelectSender = () => {
-    selectAgent(message.sender_id);
+    if (isHuman) {
+      requestOpenHuman(message.sender_id, senderDisplayName);
+    } else {
+      selectAgent(message.sender_id);
+    }
   };
 
   const handleSelectSenderByKey = (e: KeyboardEvent<HTMLDivElement>) => {
