@@ -410,7 +410,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     logger.warn("daemon starting with no channels", {
       source: boot.source,
       credentialsDir: boot.credentialsDir,
-      hint: "drop a credentials JSON in the discovery dir and restart, or run `botcord-daemon init --agent <ag_xxx>`",
+      hint: "drop a credentials JSON in the discovery dir and restart, or run `botcord-daemon start --agent <ag_xxx>` (only seeds config on first run)",
     });
   }
 

@@ -160,11 +160,15 @@ function ensureDir(): void {
   }
 }
 
+export const CONFIG_MISSING = "CONFIG_MISSING";
+
 export function loadConfig(): DaemonConfig {
   if (!existsSync(CONFIG_PATH)) {
-    throw new Error(
-      `daemon config not found at ${CONFIG_PATH}. Run \`botcord-daemon init\` first.`,
-    );
+    const err = new Error(`daemon config not found at ${CONFIG_PATH}`) as Error & {
+      code?: string;
+    };
+    err.code = CONFIG_MISSING;
+    throw err;
   }
   const raw = readFileSync(CONFIG_PATH, "utf8");
   const parsed = JSON.parse(raw) as Partial<DaemonConfig>;
