@@ -62,13 +62,17 @@ Global options:
   --help, -h        Show help
 
 Environment:
-  BOTCORD_HUB       Default hub URL override`;
+  BOTCORD_HUB       Default hub URL override
+  BOTCORD_AGENT_ID  Default agent id (used when --agent is not passed)`;
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   // Global options
-  const globalAgent = typeof args.flags["agent"] === "string" ? args.flags["agent"] : undefined;
+  const globalAgent =
+    (typeof args.flags["agent"] === "string" ? args.flags["agent"] : undefined)
+    || process.env.BOTCORD_AGENT_ID
+    || undefined;
   const globalHub = typeof args.flags["hub"] === "string"
     ? args.flags["hub"]
     : (process.env.BOTCORD_HUB || undefined);

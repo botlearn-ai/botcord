@@ -96,6 +96,13 @@ export interface DispatcherOptions {
   attentionGate?: (
     message: GatewayInboundMessage,
   ) => Promise<boolean> | boolean;
+  /**
+   * Resolve the hub URL the inbound message's agent is registered against.
+   * Threaded into `RuntimeRunOptions.hubUrl` so spawned CLI subprocesses
+   * target the correct hub. If unset, runtimes leave `BOTCORD_HUB`
+   * unspecified and fall back to whatever the bundled CLI defaults to.
+   */
+  resolveHubUrl?: (accountId: string) => string | undefined;
 }
 
 interface TurnSlot {
@@ -164,6 +171,7 @@ export class Dispatcher {
   private readonly attentionGate?: (
     message: GatewayInboundMessage,
   ) => Promise<boolean> | boolean;
+  private readonly resolveHubUrl?: (accountId: string) => string | undefined;
   private readonly queues: Map<string, QueueState> = new Map();
 
   constructor(opts: DispatcherOptions) {
@@ -179,6 +187,7 @@ export class Dispatcher {
     this.composeUserTurn = opts.composeUserTurn;
     this.managedRoutes = opts.managedRoutes;
     this.attentionGate = opts.attentionGate;
+    this.resolveHubUrl = opts.resolveHubUrl;
   }
 
   /** Consume one inbound envelope, ack it once ownership is decided, then run its turn. */
@@ -617,6 +626,7 @@ export class Dispatcher {
           sessionId,
           cwd: route.cwd,
           accountId: msg.accountId,
+          hubUrl: this.resolveHubUrl?.(msg.accountId),
           extraArgs: route.extraArgs,
           signal: controller.signal,
           trustLevel,

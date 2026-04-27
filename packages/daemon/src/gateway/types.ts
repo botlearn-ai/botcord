@@ -268,6 +268,15 @@ export interface RuntimeRunOptions {
    * per-agent `CODEX_HOME` carrying the AGENTS.md that injects systemContext.
    */
   accountId: string;
+  /**
+   * Hub URL the owning agent is registered against. Forwarded to runtimes
+   * so spawned CLI subprocesses can target the correct hub via
+   * `BOTCORD_HUB` (see `cli-resolver.buildCliEnv`). Optional because the
+   * dispatcher cannot always resolve a per-agent hub (e.g. for agents
+   * provisioned after boot); when unset, runtimes leave `BOTCORD_HUB`
+   * unspecified and the bundled CLI falls back to its own default.
+   */
+  hubUrl?: string;
   signal: AbortSignal;
   extraArgs?: string[];
   trustLevel: TrustLevel;
