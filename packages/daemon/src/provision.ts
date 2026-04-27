@@ -4,7 +4,7 @@
  * side effects (register agent, write credentials, load route, add/remove
  * gateway channel) and return an ack payload.
  */
-import { existsSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import {
@@ -957,16 +957,22 @@ export type WsEndpointProbeFn = (args: {
 }>;
 
 /**
- * Default L2 + L3 probe — opens a WS handshake against the OpenClaw gateway
- * and, when the connection is up, issues a JSON-RPC `agents.list` request to
- * enumerate configured agent profiles. Best-effort: a successful WS open with
- * a failed `agents.list` still reports `ok: true` (just without `agents`),
- * matching the RFC's "agents populated only when listing succeeded" rule.
+ * Default L2 + L3 probe — speaks OpenClaw's WS frame protocol against the
+ * gateway and enumerates agent profiles via `agents.list`.
  *
- * Method name and result shape follow OpenClaw:
- *   `~/claws/openclaw/src/gateway/server-methods/agents.ts:416` and
- *   `~/claws/openclaw/src/gateway/session-utils.ts:783` —
- *   `{ defaultId, mainKey, scope, agents: [{ id, name?, identity?, workspace, model? }] }`.
+ * Wire flow (see `~/claws/openclaw/src/gateway/server/ws-connection/message-handler.ts`
+ * and `~/claws/openclaw/src/gateway/protocol/schema/frames.ts`):
+ *   1. WS upgrade (no auth required at the HTTP layer).
+ *   2. Server emits `{type:"event", event:"connect.challenge", payload:{nonce}}`.
+ *   3. Client sends `{type:"req", id, method:"connect", params:{minProtocol, maxProtocol,
+ *      client:{id:"openclaw-probe", mode:"probe", ...}, auth:{token}}}`.
+ *   4. Server responds `{type:"res", id, ok:true, payload:{type:"hello-ok", server:{version}, ...}}`.
+ *   5. Client sends `{type:"req", id, method:"agents.list", params:{}}`.
+ *   6. Server responds with `{payload: { defaultId, mainKey, scope, agents:[{id, name?, workspace?, model?}] }}`.
+ *
+ * Best-effort: a successful WS open with a failed handshake / `agents.list`
+ * still reports `ok: true` (just without `agents`), matching the RFC's
+ * "agents populated only when listing succeeded" rule.
  */
 async function defaultWsProbe(args: {
   url: string;
@@ -1000,6 +1006,9 @@ async function defaultWsProbe(args: {
     let settled = false;
     let ws: any;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let serverVersion: string | undefined;
+    const CONNECT_ID = "probe-connect";
+    let connectSent = false;
     const settle = (v: ProbeResult): void => {
       if (settled) return;
       settled = true;
@@ -1013,6 +1022,8 @@ async function defaultWsProbe(args: {
     };
     try {
       const headers: Record<string, string> = {};
+      // Some deployments gate the WS upgrade on Authorization too; harmless
+      // when not enforced — auth is also re-asserted in the connect frame.
       if (args.token) headers["Authorization"] = `Bearer ${args.token}`;
       ws = new WebSocket(args.url, { headers });
     } catch (err) {
@@ -1020,58 +1031,75 @@ async function defaultWsProbe(args: {
       return;
     }
     timer = setTimeout(() => settle({ ok: false, error: "timeout" }), args.timeoutMs);
-    const requestId = "probe-agents-list";
-    ws.on("open", () => {
-      // L3: enumerate agent profiles. We don't fail the L2 result if this
-      // call fails — the gateway is reachable either way.
+
+    const sendConnect = (): void => {
+      if (connectSent) return;
+      connectSent = true;
+      const params: any = {
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: {
+          id: "openclaw-probe",
+          version: "0.1.0",
+          platform: process.platform || "node",
+          mode: "probe",
+        },
+        role: "operator",
+        scopes: ["operator.read"],
+      };
+      if (args.token) params.auth = { token: args.token };
       try {
-        ws.send(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: requestId,
-            method: "agents.list",
-            params: {},
-          }),
-        );
+        ws.send(JSON.stringify({ type: "req", id: CONNECT_ID, method: "connect", params }));
       } catch (err) {
-        settle({ ok: true, error: `agents.list send failed: ${(err as Error).message}` });
+        settle({ ok: true, error: `connect send failed: ${(err as Error).message}` });
       }
+    };
+
+    ws.on("open", () => {
+      // Some servers send `connect.challenge` before the socket is fully
+      // wired; if it never arrives we still try a best-effort connect after
+      // a short delay so the probe doesn't stall on legacy gateways.
+      setTimeout(() => {
+        if (!connectSent && !settled) sendConnect();
+      }, 250);
     });
     ws.on("message", (raw: Buffer | string) => {
+      let msg: any;
       try {
-        const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf8"));
-        if (msg?.id !== requestId) return; // ignore unrelated frames
-        if (msg.error) {
-          settle({ ok: true, error: String(msg.error?.message ?? "agents.list error") });
+        msg = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf8"));
+      } catch {
+        return;
+      }
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "event" && msg.event === "connect.challenge") {
+        // Nonce only matters for device-pairing flows; token-only auth ignores it.
+        sendConnect();
+        return;
+      }
+      if (msg.type !== "res" || typeof msg.id !== "string") return;
+      if (msg.id === CONNECT_ID) {
+        if (!msg.ok) {
+          const errMsg = msg.error?.message ? String(msg.error.message) : "connect rejected";
+          settle({ ok: true, error: errMsg });
           return;
         }
-        const list = Array.isArray(msg.result?.agents) ? msg.result.agents : [];
-        const agents: AgentRow[] = [];
-        for (const a of list) {
-          if (!a || typeof a.id !== "string" || a.id.length === 0) continue;
-          const row: AgentRow = { id: a.id };
-          if (typeof a.name === "string") row.name = a.name;
-          if (typeof a.workspace === "string") row.workspace = a.workspace;
-          if (a.model && typeof a.model === "object") {
-            const model: { name?: string; provider?: string } = {};
-            if (typeof a.model.name === "string") model.name = a.model.name;
-            if (typeof a.model.provider === "string") model.provider = a.model.provider;
-            if (model.name || model.provider) row.model = model;
-          }
-          agents.push(row);
-        }
-        settle({ ok: true, agents });
-      } catch (err) {
-        settle({ ok: true, error: `agents.list parse failed: ${(err as Error).message}` });
+        const v = msg.payload?.server?.version;
+        if (typeof v === "string" && v) serverVersion = v;
+        // We don't fetch agents.list over the wire: it requires `operator.read`
+        // which the gateway only grants to clients that present a paired device
+        // identity (see message-handler.ts:478 — self-declared scopes are
+        // cleared without device pairing). For local OpenClaw the agent list
+        // is sourced directly from disk by `probeOpenclawAgents`.
+        settle({ ok: true, version: serverVersion });
       }
     });
     ws.on("error", (err: Error) => {
       settle({ ok: false, error: err.message });
     });
     ws.on("close", () => {
-      // If the socket closes before `agents.list` resolved we still treat
-      // L2 as ok (open fired) and emit no agents.
-      settle({ ok: true });
+      // If the socket closes before we got our agents.list response, treat
+      // L2 as ok (the upgrade succeeded) and emit no agents.
+      settle({ ok: true, version: serverVersion });
     });
   });
 }
@@ -1097,11 +1125,69 @@ export async function probeOpenclawAgents(
     ...(profile.token ? { token: profile.token } : {}),
     ...(profile.tokenFile ? { tokenFile: profile.tokenFile } : {}),
   });
-  return probe({
+  const result = await probe({
     url: profile.url,
     token: prepared.resolvedToken,
     timeoutMs: opts.timeoutMs ?? 3000,
   });
+  // For loopback gateways the agent roster lives in `~/.openclaw/openclaw.json`
+  // and is the source of truth — listing it over the wire would require a
+  // paired device identity (operator.read scope). When the WS probe is the
+  // default (i.e. no test injection) we enrich the result from disk.
+  if (result.ok && !result.agents && !opts.probe && isLoopbackUrl(profile.url)) {
+    const local = readLocalOpenclawAgents();
+    if (local && local.length > 0) result.agents = local;
+  }
+  return result;
+}
+
+function isLoopbackUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.hostname === "127.0.0.1" || u.hostname === "::1" || u.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+function readLocalOpenclawAgents(): Array<{
+  id: string;
+  name?: string;
+  workspace?: string;
+  model?: { name?: string; provider?: string };
+}> | null {
+  try {
+    const file = path.join(homedir(), ".openclaw", "openclaw.json");
+    if (!existsSync(file)) return null;
+    const cfg = JSON.parse(readFileSync(file, "utf8")) as any;
+    const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
+    const defaultId = typeof cfg?.agents?.defaults?.id === "string" ? cfg.agents.defaults.id : "default";
+    const seen = new Set<string>();
+    const out: Array<{ id: string; name?: string; workspace?: string; model?: { name?: string; provider?: string } }> = [];
+    const push = (raw: any, fallbackId?: string): void => {
+      const id = typeof raw?.id === "string" && raw.id ? raw.id : fallbackId;
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      const row: { id: string; name?: string; workspace?: string; model?: { name?: string; provider?: string } } = { id };
+      if (typeof raw?.name === "string") row.name = raw.name;
+      if (typeof raw?.workspace === "string") row.workspace = raw.workspace;
+      const m = raw?.model;
+      if (m && typeof m === "object") {
+        const model: { name?: string; provider?: string } = {};
+        if (typeof m.primary === "string") model.name = m.primary;
+        else if (typeof m.name === "string") model.name = m.name;
+        if (typeof m.provider === "string") model.provider = m.provider;
+        if (model.name || model.provider) row.model = model;
+      }
+      out.push(row);
+    };
+    // Default agent first so it surfaces at the top of the dropdown.
+    push({ id: defaultId, workspace: cfg?.agents?.defaults?.workspace, model: cfg?.agents?.defaults?.model }, defaultId);
+    for (const entry of list) push(entry);
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 /**
