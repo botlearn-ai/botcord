@@ -13,12 +13,45 @@ import {
   type AcpUpdateCtx,
   type AcpUpdateParams,
 } from "./acp-stream.js";
-import { readCommandVersion, resolveCommandOnPath, type ProbeDeps } from "./probe.js";
+import {
+  firstExistingPath,
+  readCommandVersion,
+  resolveCommandOnPath,
+  resolveHomePath,
+  type ProbeDeps,
+} from "./probe.js";
 import type { RuntimeProbeResult, RuntimeRunOptions, StreamBlock } from "../types.js";
 
-/** Resolve the `hermes-acp` executable on PATH. */
+/**
+ * Known absolute locations of the `hermes-acp` entry point when it is not on
+ * PATH. The upstream `scripts/install.sh` (curl|bash installer) installs a
+ * private virtualenv under `~/.hermes/hermes-agent/venv/` and only symlinks
+ * the user-facing `hermes` command into `~/.local/bin/` — the `hermes-acp`
+ * entry point stays inside the venv. Without a fallback, daemon's PATH-only
+ * probe misses every user who installed via the README-recommended script.
+ */
+const HERMES_ACP_FALLBACK_RELATIVE_PATHS = [
+  path.join(".hermes", "hermes-agent", "venv", "bin", "hermes-acp"),
+];
+const HERMES_ACP_FALLBACK_SYSTEM_PATHS = [
+  "/opt/hermes/hermes-agent/venv/bin/hermes-acp",
+];
+
+/**
+ * Resolve the `hermes-acp` executable. Tries PATH first, then falls back to
+ * the upstream install.sh's private venv location (`~/.hermes/...`) before
+ * giving up. `BOTCORD_HERMES_AGENT_BIN` always wins via the adapter override.
+ */
 export function resolveHermesAcpCommand(deps: ProbeDeps = {}): string | null {
-  return resolveCommandOnPath("hermes-acp", deps);
+  const onPath = resolveCommandOnPath("hermes-acp", deps);
+  if (onPath) return onPath;
+  return firstExistingPath(
+    [
+      ...HERMES_ACP_FALLBACK_RELATIVE_PATHS.map((p) => resolveHomePath(p, deps)),
+      ...HERMES_ACP_FALLBACK_SYSTEM_PATHS,
+    ],
+    deps,
+  );
 }
 
 /** Probe whether `hermes-acp` is installed and report its version. */

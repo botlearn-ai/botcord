@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -9,7 +10,10 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HermesAgentAdapter } from "../runtimes/hermes-agent.js";
+import {
+  HermesAgentAdapter,
+  resolveHermesAcpCommand,
+} from "../runtimes/hermes-agent.js";
 import { agentHermesWorkspaceDir } from "../../agent-workspace.js";
 
 // Spawn a tiny Node "ACP server" we control instead of the real hermes-acp.
@@ -286,6 +290,30 @@ describe("HermesAgentAdapter", () => {
     });
     expect(res.text).toBe("");
     expect(res.error).toMatch(/aborted before spawn/);
+  });
+
+  it("resolveHermesAcpCommand falls back to ~/.hermes venv when PATH lookup fails", () => {
+    // Upstream `scripts/install.sh` puts hermes-acp at
+    // ~/.hermes/hermes-agent/venv/bin/hermes-acp and only symlinks `hermes`
+    // into ~/.local/bin. Simulate that layout: `which hermes-acp` fails,
+    // but the venv path exists on disk.
+    const fakeHome = mkdtempSync(path.join(os.tmpdir(), "hermes-fallback-"));
+    const venvBin = path.join(fakeHome, ".hermes", "hermes-agent", "venv", "bin");
+    const target = path.join(venvBin, "hermes-acp");
+    mkdirSync(venvBin, { recursive: true });
+    writeFileSync(target, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    chmodSync(target, 0o755);
+
+    const resolved = resolveHermesAcpCommand({
+      env: { PATH: "/nonexistent" },
+      homeDir: fakeHome,
+      execFileSyncFn: (() => {
+        throw new Error("which: not found");
+      }) as never,
+    });
+    expect(resolved).toBe(target);
+
+    rmSync(fakeHome, { recursive: true, force: true });
   });
 
   it("surfaces non-zero exit with stderr snippet", async () => {

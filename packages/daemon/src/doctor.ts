@@ -257,6 +257,9 @@ export function renderDoctor(input: DoctorInput): string {
     lines.push(
       `${pad(r.runtime, widths.runtime)}  ${pad(r.name, widths.name)}  ${pad(r.status, widths.status)}  ${pad(r.version, widths.version)}  ${r.path}`,
     );
+    if (!e.result.available && e.installHint) {
+      lines.push(`    → ${e.installHint}`);
+    }
     if (e.endpoints && e.endpoints.length > 0) {
       for (const ep of e.endpoints) {
         const mark = ep.reachable ? "✓" : "✗";

@@ -29,6 +29,11 @@ export interface RuntimeModule {
    * config loader rejects routing turns to this adapter.
    */
   supportsRun?: boolean;
+  /**
+   * Short, single-line install hint shown by `doctor` when the runtime
+   * probes as unavailable. Helps users recover without reading source.
+   */
+  installHint?: string;
 }
 
 /** Built-in runtime module entry for Claude Code. */
@@ -58,6 +63,8 @@ export const hermesAgentModule: RuntimeModule = {
   envVar: "BOTCORD_HERMES_AGENT_BIN",
   probe: () => probeHermesAgent(),
   create: () => new HermesAgentAdapter(),
+  installHint:
+    'Install: pip install "hermes-agent[acp]"  (or set BOTCORD_HERMES_AGENT_BIN to the absolute path of hermes-acp)',
 };
 
 /** Built-in runtime module entry for Gemini (probe-only stub). */
@@ -143,6 +150,7 @@ export interface RuntimeProbeEntry {
   binary: string;
   supportsRun: boolean;
   result: RuntimeProbeResult;
+  installHint?: string;
 }
 
 /** Probe every registered runtime and report installation status. */
@@ -161,6 +169,7 @@ export function detectRuntimes(): RuntimeProbeEntry[] {
       binary: m.binary,
       supportsRun: m.supportsRun !== false,
       result,
+      installHint: m.installHint,
     });
   }
   return out;
