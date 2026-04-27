@@ -1,6 +1,7 @@
 import { ClaudeCodeAdapter, probeClaude } from "./claude-code.js";
 import { CodexAdapter, probeCodex } from "./codex.js";
 import { GeminiAdapter, probeGemini } from "./gemini.js";
+import { HermesAgentAdapter, probeHermesAgent } from "./hermes-agent.js";
 import { OpenclawAcpAdapter, probeOpenclaw } from "./openclaw-acp.js";
 import type { RuntimeAdapter, RuntimeProbeResult } from "../types.js";
 
@@ -49,6 +50,16 @@ export const codexModule: RuntimeModule = {
   create: () => new CodexAdapter(),
 };
 
+/** Built-in runtime module entry for Hermes Agent (ACP stdio). */
+export const hermesAgentModule: RuntimeModule = {
+  id: "hermes-agent",
+  displayName: "Hermes Agent",
+  binary: "hermes-acp",
+  envVar: "BOTCORD_HERMES_AGENT_BIN",
+  probe: () => probeHermesAgent(),
+  create: () => new HermesAgentAdapter(),
+};
+
 /** Built-in runtime module entry for Gemini (probe-only stub). */
 export const geminiModule: RuntimeModule = {
   id: "gemini",
@@ -78,6 +89,7 @@ export const openclawAcpModule: RuntimeModule = {
 export const RUNTIME_MODULES: readonly RuntimeModule[] = [
   claudeCodeModule,
   codexModule,
+  hermesAgentModule,
   geminiModule,
   openclawAcpModule,
 ];

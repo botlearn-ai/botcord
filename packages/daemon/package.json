@@ -27,7 +27,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@botcord/cli": "0.1.7",
+    "@botcord/cli": "^0.1.7",
     "@botcord/protocol-core": "^0.2.0",
     "ws": "^8.18.0"
   },
