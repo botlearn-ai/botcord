@@ -91,6 +91,10 @@ export function buildVisibleMessageRooms(state: {
   token: string | null;
   humanRooms?: HumanRoomSummary[];
 }): DashboardRoom[] {
+  if (!state.token) {
+    return [];
+  }
+
   const joinedRooms = (state.overview?.rooms || []).filter((room) => !isOwnerChatRoom(room.room_id));
   const joinedRoomIds = new Set(joinedRooms.map((room) => room.room_id));
   const recentUnjoinedRooms = state.recentVisitedRooms
@@ -101,7 +105,7 @@ export function buildVisibleMessageRooms(state: {
     .filter((r) => !allKnownRoomIds.has(r.room_id) && !isOwnerChatRoom(r.room_id))
     .map(humanRoomToDashboardRoom);
   const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms, ...humanOnlyRooms].sort(compareRoomsByActivityDesc);
-  return state.token ? mergedRooms : state.recentVisitedRooms.map(toRoomSummary);
+  return mergedRooms;
 }
 
 export function getLatestSeenAtForRoom(
