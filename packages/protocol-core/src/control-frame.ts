@@ -316,8 +316,18 @@ export interface RuntimeEndpointProbe {
   version?: string;
   /** Failure reason when `reachable === false`. */
   error?: string;
-  /** Listing of agent profiles, only set when `reachable` and the listing RPC succeeded. */
-  agents?: Array<{ name: string; model?: string }>;
+  /**
+   * Listing of agent profiles, only set when `reachable` and the listing RPC
+   * (`agents.list`) succeeded. Shape mirrors OpenClaw's
+   * `gateway/session-utils.ts` — `id` is the stable key (used by daemon
+   * routes / `openclawAgent`), `name` is display-only.
+   */
+  agents?: Array<{
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  }>;
 }
 
 /**

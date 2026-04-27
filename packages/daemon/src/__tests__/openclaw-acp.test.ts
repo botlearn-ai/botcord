@@ -148,6 +148,53 @@ describe("OpenclawAcpAdapter.run", () => {
     expect(spawnFn.mock.calls[0][1]).toEqual(["acp", "--url", "ws://127.0.0.1:1"]);
   });
 
+  it("respawns the pooled child when gateway.url or gateway.token changes under the same name", async () => {
+    function newChild(): FakeChild {
+      const c = new FakeChild();
+      c.stdin.on("data", (chunk: Buffer) => {
+        for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+          const frame = JSON.parse(line);
+          if (frame.method === "initialize") {
+            c.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: {} }) + "\n");
+          } else if (frame.method === "session/new") {
+            c.stdout.write(
+              JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "s" } }) + "\n",
+            );
+          } else if (frame.method === "session/prompt") {
+            c.stdout.write(
+              JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "ok" } }) + "\n",
+            );
+          }
+        }
+      });
+      return c;
+    }
+    const children = [newChild(), newChild(), newChild()];
+    const spawnFn = vi.fn().mockImplementation(() => children.shift()! as any);
+    const adapter = new OpenclawAcpAdapter({ spawnFn: spawnFn as any });
+    const baseOpts = {
+      text: "hi",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner" as const,
+    };
+    await adapter.run({
+      ...baseOpts,
+      gateway: { name: "p1", url: "ws://a", token: "t1", openclawAgent: "main" },
+    });
+    await adapter.run({
+      ...baseOpts,
+      gateway: { name: "p1", url: "ws://b", token: "t1", openclawAgent: "main" },
+    });
+    await adapter.run({
+      ...baseOpts,
+      gateway: { name: "p1", url: "ws://b", token: "t2", openclawAgent: "main" },
+    });
+    expect(spawnFn).toHaveBeenCalledTimes(3);
+  });
+
   it("reuses the pooled child for the same (accountId, gateway)", async () => {
     const child = new FakeChild();
     const spawnFn = vi.fn().mockReturnValue(child);

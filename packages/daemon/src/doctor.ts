@@ -38,7 +38,12 @@ export interface DoctorRuntimeEndpoint {
   reachable: boolean;
   version?: string;
   error?: string;
-  agents?: Array<{ name: string; model?: string }>;
+  agents?: Array<{
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  }>;
   /**
    * Optional warning surfaced by the doctor: e.g. botcord plugin loaded on
    * the gateway (would form a daemon → openclaw → botcord → Hub loop).
@@ -260,7 +265,12 @@ export function renderDoctor(input: DoctorInput): string {
           : ep.error ?? "unreachable";
         lines.push(`    gateway ${pad(`"${ep.name}"`, 16)} ${pad(ep.url, 40)} ${mark} ${detail}`);
         if (ep.agents && ep.agents.length > 0) {
-          lines.push(`      agents: ${ep.agents.map((a) => a.name).join(", ")}`);
+          // RFC §3.8.4: list by `id` (stable key); show display name when distinct.
+          lines.push(
+            `      agents (id): ${ep.agents
+              .map((a) => (a.name && a.name !== a.id ? `${a.id} (${a.name})` : a.id))
+              .join(", ")}`,
+          );
         }
         if (ep.warnings) {
           for (const w of ep.warnings) lines.push(`      WARN: ${w}`);

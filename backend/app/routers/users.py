@@ -1914,13 +1914,23 @@ class ProvisionAgentResponse(BaseModel):
     is_default: bool
 
 
-def _daemon_lists_runtime(instance: DaemonInstance, runtime: str) -> bool:
+def _daemon_lists_runtime(
+    instance: DaemonInstance,
+    runtime: str,
+    openclaw_gateway: str | None = None,
+) -> bool:
     """Check that the daemon's last runtime probe lists `runtime` as available.
 
     Empty / missing snapshots are treated permissively: the daemon may not
     have completed its first probe yet, and rejecting here would deadlock
     provisioning on a freshly-connected daemon. The daemon will still reject
     unknown runtimes in `provision.ts` at the handler boundary.
+
+    For `runtime == "openclaw-acp"`, RFC §3.8.2 requires an additional check:
+    when `openclaw_gateway` is given, the matching `endpoints[]` entry must
+    be reachable. Without this, a daemon with the OpenClaw CLI installed but
+    a misconfigured / unreachable gateway would still pass the gate and only
+    fail at first turn.
     """
     snap = instance.runtimes_json
     if not isinstance(snap, list) or not snap:
@@ -1928,8 +1938,21 @@ def _daemon_lists_runtime(instance: DaemonInstance, runtime: str) -> bool:
     for entry in snap:
         if not isinstance(entry, dict):
             continue
-        if entry.get("id") == runtime and entry.get("available") is True:
-            return True
+        if entry.get("id") != runtime:
+            continue
+        if entry.get("available") is not True:
+            return False
+        if runtime == "openclaw-acp" and openclaw_gateway:
+            endpoints = entry.get("endpoints")
+            if not isinstance(endpoints, list):
+                return False
+            for ep in endpoints:
+                if not isinstance(ep, dict):
+                    continue
+                if ep.get("name") == openclaw_gateway and ep.get("reachable") is True:
+                    return True
+            return False
+        return True
     return False
 
 

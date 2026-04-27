@@ -29,8 +29,10 @@ export interface AgentRuntimeMeta {
   openclawAgent?: string;
 }
 
-/** Internal: profile + tokenFile-resolved bearer token. */
-interface PreparedGatewayProfile extends OpenclawGatewayProfile {
+/** Profile + tokenFile-resolved bearer token. Exported so other module-boundary
+ *  paths (runtime probing, post-provision hot-add) reuse the same resolver
+ *  instead of duplicating tokenFile semantics. */
+export interface PreparedGatewayProfile extends OpenclawGatewayProfile {
   /** Token actually usable at dispatch time; empty when load failed. */
   resolvedToken?: string;
   /** Reason `resolvedToken` is empty, for logs. */
@@ -43,29 +45,37 @@ function expandHome(p: string): string {
   return p;
 }
 
-function prepareGatewayProfiles(
+/** Resolve one profile's token (inline > tokenFile). Failures are swallowed
+ *  into `tokenError`; `resolvedToken` is left undefined. Logs at warn for ops
+ *  visibility. */
+export function prepareGatewayProfile(
+  p: OpenclawGatewayProfile,
+): PreparedGatewayProfile {
+  const prepared: PreparedGatewayProfile = { ...p };
+  if (p.token && p.token.length > 0) {
+    prepared.resolvedToken = p.token;
+  } else if (p.tokenFile && p.tokenFile.length > 0) {
+    try {
+      prepared.resolvedToken = readFileSync(expandHome(p.tokenFile), "utf8").trim();
+    } catch (err: any) {
+      prepared.tokenError = err?.message ?? String(err);
+      daemonLog.warn("daemon.config.openclaw.tokenfile_failed", {
+        gateway: p.name,
+        tokenFile: p.tokenFile,
+        error: prepared.tokenError,
+      });
+    }
+  }
+  return prepared;
+}
+
+/** Build a name → prepared-profile map for a config's gateway registry. */
+export function prepareGatewayProfiles(
   profiles: OpenclawGatewayProfile[] | undefined,
 ): Map<string, PreparedGatewayProfile> {
   const out = new Map<string, PreparedGatewayProfile>();
   if (!profiles) return out;
-  for (const p of profiles) {
-    const prepared: PreparedGatewayProfile = { ...p };
-    if (p.token && p.token.length > 0) {
-      prepared.resolvedToken = p.token;
-    } else if (p.tokenFile && p.tokenFile.length > 0) {
-      try {
-        prepared.resolvedToken = readFileSync(expandHome(p.tokenFile), "utf8").trim();
-      } catch (err: any) {
-        prepared.tokenError = err?.message ?? String(err);
-        daemonLog.warn("daemon.config.openclaw.tokenfile_failed", {
-          gateway: p.name,
-          tokenFile: p.tokenFile,
-          error: prepared.tokenError,
-        });
-      }
-    }
-    out.set(p.name, prepared);
-  }
+  for (const p of profiles) out.set(p.name, prepareGatewayProfile(p));
   return out;
 }
 

@@ -23,7 +23,12 @@ export interface DaemonRuntimeEndpoint {
   reachable: boolean;
   version?: string;
   error?: string;
-  agents?: Array<{ name: string; model?: string }>;
+  agents?: Array<{
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  }>;
 }
 
 export interface DaemonRuntime {
@@ -169,14 +174,30 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
                     .map((a) => {
                       if (!a || typeof a !== "object") return null;
                       const ax = a as Record<string, unknown>;
-                      const an = typeof ax.name === "string" ? ax.name : null;
-                      if (!an) return null;
+                      const id = typeof ax.id === "string" ? ax.id : null;
+                      if (!id) return null;
+                      const model =
+                        ax.model && typeof ax.model === "object"
+                          ? {
+                              name:
+                                typeof (ax.model as any).name === "string"
+                                  ? (ax.model as any).name
+                                  : undefined,
+                              provider:
+                                typeof (ax.model as any).provider === "string"
+                                  ? (ax.model as any).provider
+                                  : undefined,
+                            }
+                          : undefined;
                       return {
-                        name: an,
-                        model: typeof ax.model === "string" ? ax.model : undefined,
+                        id,
+                        name: typeof ax.name === "string" ? ax.name : undefined,
+                        workspace:
+                          typeof ax.workspace === "string" ? ax.workspace : undefined,
+                        model,
                       };
                     })
-                    .filter(Boolean) as Array<{ name: string; model?: string }>)
+                    .filter(Boolean) as DaemonRuntimeEndpoint["agents"])
                 : undefined,
             } as DaemonRuntimeEndpoint;
           })

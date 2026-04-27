@@ -41,7 +41,11 @@ import {
   type RouteRule,
   type RouteRuleMatch,
 } from "./config.js";
-import { BOTCORD_CHANNEL_TYPE, buildManagedRoutes } from "./daemon-config-map.js";
+import {
+  BOTCORD_CHANNEL_TYPE,
+  buildManagedRoutes,
+  prepareGatewayProfile,
+} from "./daemon-config-map.js";
 import {
   agentHomeDir,
   agentStateDir,
@@ -368,14 +372,18 @@ async function provisionAgent(
         (g) => g.name === credentials.openclawGateway,
       );
       if (profile) {
+        // Run the same tokenFile-aware resolver `toGatewayConfig` uses so the
+        // first turn after provisioning doesn't auth-fail when the gateway
+        // ships its bearer via `tokenFile` instead of an inline `token`.
+        const prepared = prepareGatewayProfile(profile);
         synthRoute.gateway = {
-          name: profile.name,
-          url: profile.url,
-          ...(profile.token ? { token: profile.token } : {}),
+          name: prepared.name,
+          url: prepared.url,
+          ...(prepared.resolvedToken ? { token: prepared.resolvedToken } : {}),
           ...(credentials.openclawAgent
             ? { openclawAgent: credentials.openclawAgent }
-            : profile.defaultAgent
-              ? { openclawAgent: profile.defaultAgent }
+            : prepared.defaultAgent
+              ? { openclawAgent: prepared.defaultAgent }
               : {}),
         };
       }
@@ -723,7 +731,7 @@ export function collectRuntimeSnapshot(): ListRuntimesResult {
 /** Maximum number of `endpoints[]` entries persisted per runtime (RFC §3.8.2). */
 export const RUNTIME_ENDPOINTS_CAP = 32;
 
-/** Injection seam for L2 endpoint probes — kept testable + side-effect-free. */
+/** Injection seam for L2 + L3 endpoint probes — kept testable + side-effect-free. */
 export type WsEndpointProbeFn = (args: {
   url: string;
   token?: string;
@@ -731,11 +739,31 @@ export type WsEndpointProbeFn = (args: {
 }) => Promise<{
   ok: boolean;
   version?: string;
-  agents?: Array<{ name: string; model?: string }>;
+  /**
+   * L3 — populated when `agents.list` succeeds. `id` is the stable key
+   * consumed by route lookups / `openclawAgent`; `name` is display-only.
+   */
+  agents?: Array<{
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  }>;
   error?: string;
 }>;
 
-/** Default L2 probe — best-effort WS handshake against the OpenClaw gateway. */
+/**
+ * Default L2 + L3 probe — opens a WS handshake against the OpenClaw gateway
+ * and, when the connection is up, issues a JSON-RPC `agents.list` request to
+ * enumerate configured agent profiles. Best-effort: a successful WS open with
+ * a failed `agents.list` still reports `ok: true` (just without `agents`),
+ * matching the RFC's "agents populated only when listing succeeded" rule.
+ *
+ * Method name and result shape follow OpenClaw:
+ *   `~/claws/openclaw/src/gateway/server-methods/agents.ts:416` and
+ *   `~/claws/openclaw/src/gateway/session-utils.ts:783` —
+ *   `{ defaultId, mainKey, scope, agents: [{ id, name?, identity?, workspace, model? }] }`.
+ */
 async function defaultWsProbe(args: {
   url: string;
   token?: string;
@@ -743,28 +771,42 @@ async function defaultWsProbe(args: {
 }): Promise<{
   ok: boolean;
   version?: string;
-  agents?: Array<{ name: string; model?: string }>;
+  agents?: Array<{
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  }>;
   error?: string;
 }> {
+  type AgentRow = {
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  };
+  type ProbeResult = {
+    ok: boolean;
+    version?: string;
+    agents?: AgentRow[];
+    error?: string;
+  };
   const { default: WebSocket } = await import("ws");
-  return new Promise((resolve) => {
+  return new Promise<ProbeResult>((resolve) => {
     let settled = false;
-    const settle = (v: {
-      ok: boolean;
-      version?: string;
-      agents?: Array<{ name: string; model?: string }>;
-      error?: string;
-    }): void => {
+    let ws: any;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (v: ProbeResult): void => {
       if (settled) return;
       settled = true;
+      if (timer) clearTimeout(timer);
       try {
-        ws.terminate();
+        ws?.terminate();
       } catch {
         // ignore
       }
       resolve(v);
     };
-    let ws: any;
     try {
       const headers: Record<string, string> = {};
       if (args.token) headers["Authorization"] = `Bearer ${args.token}`;
@@ -773,14 +815,59 @@ async function defaultWsProbe(args: {
       resolve({ ok: false, error: (err as Error).message });
       return;
     }
-    const timer = setTimeout(() => settle({ ok: false, error: "timeout" }), args.timeoutMs);
+    timer = setTimeout(() => settle({ ok: false, error: "timeout" }), args.timeoutMs);
+    const requestId = "probe-agents-list";
     ws.on("open", () => {
-      clearTimeout(timer);
-      settle({ ok: true });
+      // L3: enumerate agent profiles. We don't fail the L2 result if this
+      // call fails — the gateway is reachable either way.
+      try {
+        ws.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: requestId,
+            method: "agents.list",
+            params: {},
+          }),
+        );
+      } catch (err) {
+        settle({ ok: true, error: `agents.list send failed: ${(err as Error).message}` });
+      }
+    });
+    ws.on("message", (raw: Buffer | string) => {
+      try {
+        const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf8"));
+        if (msg?.id !== requestId) return; // ignore unrelated frames
+        if (msg.error) {
+          settle({ ok: true, error: String(msg.error?.message ?? "agents.list error") });
+          return;
+        }
+        const list = Array.isArray(msg.result?.agents) ? msg.result.agents : [];
+        const agents: AgentRow[] = [];
+        for (const a of list) {
+          if (!a || typeof a.id !== "string" || a.id.length === 0) continue;
+          const row: AgentRow = { id: a.id };
+          if (typeof a.name === "string") row.name = a.name;
+          if (typeof a.workspace === "string") row.workspace = a.workspace;
+          if (a.model && typeof a.model === "object") {
+            const model: { name?: string; provider?: string } = {};
+            if (typeof a.model.name === "string") model.name = a.model.name;
+            if (typeof a.model.provider === "string") model.provider = a.model.provider;
+            if (model.name || model.provider) row.model = model;
+          }
+          agents.push(row);
+        }
+        settle({ ok: true, agents });
+      } catch (err) {
+        settle({ ok: true, error: `agents.list parse failed: ${(err as Error).message}` });
+      }
     });
     ws.on("error", (err: Error) => {
-      clearTimeout(timer);
       settle({ ok: false, error: err.message });
+    });
+    ws.on("close", () => {
+      // If the socket closes before `agents.list` resolved we still treat
+      // L2 as ok (open fired) and emit no agents.
+      settle({ ok: true });
     });
   });
 }
@@ -803,13 +890,18 @@ export async function collectRuntimeSnapshotAsync(opts: {
   const gateways = opts.cfg?.openclawGateways ?? [];
   if (gateways.length === 0) return base;
   const probe = opts.wsProbe ?? defaultWsProbe;
-  const timeoutMs = opts.timeoutMs ?? 5000;
+  // Default daemon-side budget is 3s — it must stay below the Hub's
+  // `list_runtimes` ack wait (5s, see backend/hub/routers/daemon_control.py)
+  // so a single slow gateway can't blow the whole snapshot to a 504.
+  const timeoutMs = opts.timeoutMs ?? 3000;
   const capped = gateways.slice(0, RUNTIME_ENDPOINTS_CAP);
   const endpoints = await Promise.all(
     capped.map(async (g) => {
-      const token = g.token; // tokenFile resolution lives in toGatewayConfig; if a caller hands us only tokenFile we skip auth.
+      // Resolve `tokenFile` here so token-file-only profiles probe with auth
+      // and aren't falsely marked unreachable in the dashboard.
+      const prepared = prepareGatewayProfile(g);
       try {
-        const res = await probe({ url: g.url, token, timeoutMs });
+        const res = await probe({ url: g.url, token: prepared.resolvedToken, timeoutMs });
         const entry: any = { name: g.name, url: g.url, reachable: res.ok };
         if (res.version) entry.version = res.version;
         if (res.error) entry.error = res.error;

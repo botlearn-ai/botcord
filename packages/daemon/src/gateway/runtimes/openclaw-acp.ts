@@ -43,6 +43,13 @@ interface AcpProcessHandle {
   inFlight: number;
   closed: boolean;
   exitReason?: string;
+  /**
+   * URL + token the child was spawned with. We compare against the live
+   * `route.gateway` on every `acquireHandle` so a config-reload/token-rotation
+   * under the same gateway name doesn't keep using a stale child.
+   */
+  spawnedUrl: string;
+  spawnedToken: string | undefined;
 }
 
 interface PendingCall {
@@ -326,6 +333,23 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       ACP_POOL.delete(key);
       handle = undefined;
     }
+    // Invalidate the cached child if its spawn args drifted from the live
+    // gateway endpoint — config reload / token rotation under the same
+    // profile name must not keep talking to the old --url / --token.
+    if (
+      handle &&
+      (handle.spawnedUrl !== gateway.url || handle.spawnedToken !== gateway.token)
+    ) {
+      log.info("openclaw-acp.gateway-args-changed", {
+        key,
+        oldUrl: handle.spawnedUrl,
+        newUrl: gateway.url,
+        tokenChanged: handle.spawnedToken !== gateway.token,
+      });
+      shutdownHandle(handle, "gateway-args-changed");
+      ACP_POOL.delete(key);
+      handle = undefined;
+    }
     if (!handle) {
       handle = this.spawnAcpProcess(key, gateway);
       ACP_POOL.set(key, handle);
@@ -366,6 +390,8 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       initialized: false,
       inFlight: 0,
       closed: false,
+      spawnedUrl: gateway.url,
+      spawnedToken: gateway.token,
     };
 
     child.stdout.setEncoding("utf8");

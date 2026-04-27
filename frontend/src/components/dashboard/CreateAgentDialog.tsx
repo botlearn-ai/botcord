@@ -704,12 +704,16 @@ function OpenclawGatewayPicker({
             className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
           >
             <option value="">(use gateway defaultAgent)</option>
-            {agents.map((a) => (
-              <option key={a.name} value={a.name}>
-                {a.name}
-                {a.model ? ` — ${a.model}` : ""}
-              </option>
-            ))}
+            {agents.map((a) => {
+              const label =
+                (a.name && a.name !== a.id ? `${a.name} (${a.id})` : a.id) +
+                (a.model?.name ? ` — ${a.model.name}` : "");
+              return (
+                <option key={a.id} value={a.id}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
         )}
       </div>
