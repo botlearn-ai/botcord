@@ -1,14 +1,98 @@
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import type {
   GatewayChannelConfig,
   GatewayConfig,
   GatewayRoute,
+  ResolvedOpenclawGateway,
   RouteMatch,
   TrustLevel as GatewayTrustLevel,
 } from "./gateway/index.js";
-import type { DaemonConfig, RouteRule } from "./config.js";
+import type {
+  DaemonConfig,
+  DaemonRouteDefault,
+  OpenclawGatewayProfile,
+  RouteRule,
+} from "./config.js";
 import { resolveAgentIds } from "./config.js";
 import { agentWorkspaceDir } from "./agent-workspace.js";
 import { log as daemonLog } from "./log.js";
+
+/** Per-agent metadata cached from credentials, used by `buildManagedRoutes`. */
+export interface AgentRuntimeMeta {
+  runtime?: string;
+  cwd?: string;
+  /** OpenClaw gateway profile name to lookup in the registry. */
+  openclawGateway?: string;
+  /** Optional override of the OpenClaw agent profile within the gateway. */
+  openclawAgent?: string;
+}
+
+/** Internal: profile + tokenFile-resolved bearer token. */
+interface PreparedGatewayProfile extends OpenclawGatewayProfile {
+  /** Token actually usable at dispatch time; empty when load failed. */
+  resolvedToken?: string;
+  /** Reason `resolvedToken` is empty, for logs. */
+  tokenError?: string;
+}
+
+function expandHome(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/")) return path.join(homedir(), p.slice(2));
+  return p;
+}
+
+function prepareGatewayProfiles(
+  profiles: OpenclawGatewayProfile[] | undefined,
+): Map<string, PreparedGatewayProfile> {
+  const out = new Map<string, PreparedGatewayProfile>();
+  if (!profiles) return out;
+  for (const p of profiles) {
+    const prepared: PreparedGatewayProfile = { ...p };
+    if (p.token && p.token.length > 0) {
+      prepared.resolvedToken = p.token;
+    } else if (p.tokenFile && p.tokenFile.length > 0) {
+      try {
+        prepared.resolvedToken = readFileSync(expandHome(p.tokenFile), "utf8").trim();
+      } catch (err: any) {
+        prepared.tokenError = err?.message ?? String(err);
+        daemonLog.warn("daemon.config.openclaw.tokenfile_failed", {
+          gateway: p.name,
+          tokenFile: p.tokenFile,
+          error: prepared.tokenError,
+        });
+      }
+    }
+    out.set(p.name, prepared);
+  }
+  return out;
+}
+
+function resolveGateway(
+  profiles: Map<string, PreparedGatewayProfile>,
+  gatewayName: string | undefined,
+  agentOverride: string | undefined,
+  where: string,
+): ResolvedOpenclawGateway | undefined {
+  if (!gatewayName) {
+    daemonLog.warn("daemon.config.openclaw.missing_gateway", { where });
+    return undefined;
+  }
+  const profile = profiles.get(gatewayName);
+  if (!profile) {
+    daemonLog.warn("daemon.config.openclaw.unknown_gateway", { where, gateway: gatewayName });
+    return undefined;
+  }
+  const resolved: ResolvedOpenclawGateway = {
+    name: profile.name,
+    url: profile.url,
+  };
+  if (profile.resolvedToken) resolved.token = profile.resolvedToken;
+  const agent = agentOverride ?? profile.defaultAgent;
+  if (agent) resolved.openclawAgent = agent;
+  return resolved;
+}
 
 /** Options accepted by {@link toGatewayConfig}. */
 export interface ToGatewayConfigOptions {
@@ -24,7 +108,7 @@ export interface ToGatewayConfigOptions {
    * turns to its runtime. Explicit `cfg.routes` entries still win because
    * synthesized routes are appended after them.
    */
-  agentRuntimes?: Record<string, { runtime?: string; cwd?: string }>;
+  agentRuntimes?: Record<string, AgentRuntimeMeta>;
 }
 
 /**
@@ -59,7 +143,11 @@ function mapTrustLevel(
  * legacy alias and its canonical field are present, the canonical field
  * wins and a warning is logged.
  */
-function mapRoute(r: RouteRule): GatewayRoute {
+function mapRoute(
+  r: RouteRule,
+  profiles: Map<string, PreparedGatewayProfile>,
+  index: number,
+): GatewayRoute {
   const match: RouteMatch = {};
   if (r.match.channel) match.channel = r.match.channel;
   if (r.match.accountId) match.accountId = r.match.accountId;
@@ -95,13 +183,22 @@ function mapRoute(r: RouteRule): GatewayRoute {
   if (typeof r.match.mentioned === "boolean") match.mentioned = r.match.mentioned;
 
   const rawTrust = (r as { trustLevel?: "owner" | "untrusted" }).trustLevel;
-  return {
+  const out: GatewayRoute = {
     match,
     runtime: r.adapter,
     cwd: r.cwd,
     extraArgs: r.extraArgs,
     trustLevel: mapTrustLevel(rawTrust),
   };
+  if (r.adapter === "openclaw-acp") {
+    out.gateway = resolveGateway(
+      profiles,
+      r.gateway,
+      r.openclawAgent,
+      `routes[${index}]`,
+    );
+  }
+  return out;
 }
 
 /**
@@ -134,6 +231,8 @@ export function toGatewayConfig(
 
   // DaemonConfig's typed surface doesn't carry `trustLevel`, but we read it
   // defensively so future config extensions can propagate without a shape bump.
+  const profiles = prepareGatewayProfiles(cfg.openclawGateways);
+
   const rawDefaultTrust = (cfg.defaultRoute as { trustLevel?: "owner" | "untrusted" })
     .trustLevel;
   const defaultRoute: GatewayRoute = {
@@ -144,8 +243,17 @@ export function toGatewayConfig(
     // (direct → cancel-previous, group → serial).
     trustLevel: mapTrustLevel(rawDefaultTrust),
   };
+  if (cfg.defaultRoute.adapter === "openclaw-acp") {
+    const dr = cfg.defaultRoute as DaemonRouteDefault;
+    defaultRoute.gateway = resolveGateway(
+      profiles,
+      dr.gateway,
+      dr.openclawAgent,
+      "defaultRoute",
+    );
+  }
 
-  const routes: GatewayRoute[] = (cfg.routes ?? []).map(mapRoute);
+  const routes: GatewayRoute[] = (cfg.routes ?? []).map((r, i) => mapRoute(r, profiles, i));
 
   // Synthesize a per-agent route for every bound agent and hand it to the
   // gateway via the managed-routes bucket (plan §10.1). User-authored
@@ -157,6 +265,7 @@ export function toGatewayConfig(
     agentIds,
     opts.agentRuntimes ?? {},
     defaultRoute,
+    profiles,
   );
 
   return {
@@ -184,17 +293,39 @@ export function toGatewayConfig(
  */
 export function buildManagedRoutes(
   agentIds: string[],
-  agentRuntimes: Record<string, { runtime?: string; cwd?: string }>,
+  agentRuntimes: Record<string, AgentRuntimeMeta>,
   defaultRoute: GatewayRoute,
+  openclawProfiles?: Map<string, PreparedGatewayProfile>,
 ): Map<string, GatewayRoute> {
   const out = new Map<string, GatewayRoute>();
+  // Lazy-build profile map when caller didn't pass one (legacy callers).
+  const profiles = openclawProfiles ?? new Map<string, PreparedGatewayProfile>();
   for (const agentId of agentIds) {
     const meta = agentRuntimes[agentId] ?? {};
-    out.set(agentId, {
+    const runtime = meta.runtime ?? defaultRoute.runtime;
+    const route: GatewayRoute = {
       match: { accountId: agentId },
-      runtime: meta.runtime ?? defaultRoute.runtime,
+      runtime,
       cwd: meta.cwd || agentWorkspaceDir(agentId),
-    });
+    };
+    if (runtime === "openclaw-acp") {
+      // Per RFC §3.4: prefer credentials, fall back to defaultRoute.gateway.
+      const gatewayName = meta.openclawGateway ?? defaultRoute.gateway?.name;
+      const agentOverride = meta.openclawAgent;
+      const resolved = gatewayName
+        ? resolveGateway(profiles, gatewayName, agentOverride, `managedRoute[${agentId}]`)
+        : defaultRoute.gateway;
+      if (!resolved) {
+        // No usable gateway — skip the managed route so defaultRoute can take over.
+        daemonLog.warn("daemon.config.openclaw.managed_route_skipped", {
+          agentId,
+          gatewayName,
+        });
+        continue;
+      }
+      route.gateway = resolved;
+    }
+    out.set(agentId, route);
   }
   return out;
 }

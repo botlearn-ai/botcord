@@ -133,6 +133,27 @@ export interface ProvisionAgentParams {
     runtime?: string;
     /** Working directory cached alongside the runtime, for route synthesis. */
     cwd?: string;
+    /**
+     * OpenClaw gateway profile name to bind to this agent. Only meaningful
+     * when `runtime === "openclaw-acp"`. Flat naming chosen to match the
+     * existing flat shape of the `credentials` envelope.
+     */
+    openclawGateway?: string;
+    /** Optional OpenClaw agent profile override for this agent. */
+    openclawAgent?: string;
+  };
+  /**
+   * OpenClaw runtime parameters. When `runtime === "openclaw-acp"` the daemon
+   * routes this agent's turns through the named gateway profile (must exist in
+   * `DaemonConfig.openclawGateways[].name`). Top-level nesting groups the
+   * fields as a runtime cluster; the duplicate flat fields under `credentials`
+   * exist because the credentials envelope is intentionally flat.
+   */
+  openclaw?: {
+    /** References `DaemonConfig.openclawGateways[].name` on the daemon side. */
+    gateway: string;
+    /** Overrides `OpenclawGatewayProfile.defaultAgent` for this agent. */
+    agent?: string;
   };
   /**
    * Optional initial attention policy seed. When the Hub already knows the
@@ -267,6 +288,36 @@ export interface RuntimeProbeResult {
   path?: string;
   /** Human-readable reason the probe failed (only when `available === false`). */
   error?: string;
+  /**
+   * Optional per-endpoint probe results. Populated by runtimes that talk to
+   * external services (the openclaw-acp runtime uses one entry per
+   * `DaemonConfig.openclawGateways` profile). Length is capped (32) by the
+   * daemon before send and by the Hub on ingest. Older Hub builds that don't
+   * recognize this field simply pass it through inside the opaque
+   * `runtimes_json` blob.
+   */
+  endpoints?: RuntimeEndpointProbe[];
+}
+
+/**
+ * One endpoint probe entry attached to a `RuntimeProbeResult`. For the
+ * openclaw-acp runtime, each entry is a configured gateway profile and
+ * carries the WS reachability outcome (L2) plus, when reachable, the list of
+ * agent profiles available on that gateway (L3).
+ */
+export interface RuntimeEndpointProbe {
+  /** Gateway profile name (`DaemonConfig.openclawGateways[].name`). */
+  name: string;
+  /** Endpoint URL (e.g. `wss://gw.example:18789`). */
+  url: string;
+  /** True when the gateway responded successfully within the timeout. */
+  reachable: boolean;
+  /** Gateway-reported version, when available. */
+  version?: string;
+  /** Failure reason when `reachable === false`. */
+  error?: string;
+  /** Listing of agent profiles, only set when `reachable` and the listing RPC succeeded. */
+  agents?: Array<{ name: string; model?: string }>;
 }
 
 /**

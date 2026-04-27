@@ -632,6 +632,7 @@ export class Dispatcher {
           trustLevel,
           systemContext,
           onBlock,
+          gateway: route.gateway,
         });
       } catch (err) {
         threw = err;

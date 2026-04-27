@@ -17,12 +17,23 @@
 import { create } from "zustand";
 import { useDashboardSessionStore } from "./useDashboardSessionStore";
 
+export interface DaemonRuntimeEndpoint {
+  name: string;
+  url: string;
+  reachable: boolean;
+  version?: string;
+  error?: string;
+  agents?: Array<{ name: string; model?: string }>;
+}
+
 export interface DaemonRuntime {
   id: string;
   available: boolean;
   version?: string;
   path?: string;
   error?: string;
+  /** OpenClaw-style runtimes carry per-gateway endpoint probe results. */
+  endpoints?: DaemonRuntimeEndpoint[];
 }
 
 export interface DaemonInstance {
@@ -41,6 +52,10 @@ export interface ProvisionAgentInput {
   bio?: string;
   runtime?: string;
   cwd?: string;
+  /** OpenClaw gateway profile name (only when runtime === "openclaw-acp"). */
+  openclawGateway?: string;
+  /** OpenClaw agent profile override. */
+  openclawAgent?: string;
 }
 
 export interface ProvisionAgentResult {
@@ -135,12 +150,45 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
     const r = entry as Record<string, unknown>;
     const id = typeof r.id === "string" ? r.id : null;
     if (!id) continue;
+    const endpoints = Array.isArray(r.endpoints)
+      ? (r.endpoints as unknown[])
+          .map((rawEp) => {
+            if (!rawEp || typeof rawEp !== "object") return null;
+            const ep = rawEp as Record<string, unknown>;
+            const epName = typeof ep.name === "string" ? ep.name : null;
+            const epUrl = typeof ep.url === "string" ? ep.url : null;
+            if (!epName || !epUrl) return null;
+            return {
+              name: epName,
+              url: epUrl,
+              reachable: ep.reachable === true,
+              version: typeof ep.version === "string" ? ep.version : undefined,
+              error: typeof ep.error === "string" ? ep.error : undefined,
+              agents: Array.isArray(ep.agents)
+                ? ((ep.agents as unknown[])
+                    .map((a) => {
+                      if (!a || typeof a !== "object") return null;
+                      const ax = a as Record<string, unknown>;
+                      const an = typeof ax.name === "string" ? ax.name : null;
+                      if (!an) return null;
+                      return {
+                        name: an,
+                        model: typeof ax.model === "string" ? ax.model : undefined,
+                      };
+                    })
+                    .filter(Boolean) as Array<{ name: string; model?: string }>)
+                : undefined,
+            } as DaemonRuntimeEndpoint;
+          })
+          .filter(Boolean) as DaemonRuntimeEndpoint[]
+      : undefined;
     out.push({
       id,
       available: r.available === true,
       version: typeof r.version === "string" ? r.version : undefined,
       path: typeof r.path === "string" ? r.path : undefined,
       error: typeof r.error === "string" ? r.error : undefined,
+      endpoints,
     });
   }
   return out;
@@ -355,6 +403,8 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
     if (input.runtime) body.runtime = input.runtime;
     if (input.cwd) body.cwd = input.cwd;
     if (input.bio) body.bio = input.bio;
+    if (input.openclawGateway) body.openclaw_gateway = input.openclawGateway;
+    if (input.openclawAgent) body.openclaw_agent = input.openclawAgent;
 
     const res = await fetch("/api/users/me/agents/provision", {
       method: "POST",

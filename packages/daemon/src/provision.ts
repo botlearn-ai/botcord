@@ -226,7 +226,15 @@ export function createProvisioner(opts: ProvisionerOptions): (
       }
 
       case CONTROL_FRAME_TYPES.LIST_RUNTIMES: {
-        const snapshot = collectRuntimeSnapshot();
+        // Async path so the openclaw-acp endpoints get probed inline; gateway
+        // / WS errors are swallowed inside `collectRuntimeSnapshotAsync`.
+        let cfgForProbe: { openclawGateways?: any[] } | undefined;
+        try {
+          cfgForProbe = loadConfig();
+        } catch {
+          cfgForProbe = undefined;
+        }
+        const snapshot = await collectRuntimeSnapshotAsync({ cfg: cfgForProbe });
         daemonLog.debug("list_runtimes", { count: snapshot.runtimes.length });
         return { ok: true, result: snapshot };
       }
@@ -346,11 +354,33 @@ async function provisionAgent(
   // Hot-add the synthesized per-agent managed route so the next turn picks
   // the agent's runtime + workspace cwd without waiting for reload_config.
   try {
-    ctx.gateway.upsertManagedRoute(credentials.agentId, {
+    const synthRoute: import("./gateway/index.js").GatewayRoute = {
       match: { accountId: credentials.agentId },
       runtime: credentials.runtime ?? cfg.defaultRoute.adapter,
       cwd: credentials.cwd ?? agentWorkspaceDir(credentials.agentId),
-    });
+    };
+    if (synthRoute.runtime === "openclaw-acp") {
+      // Resolve gateway from the freshly written credentials + the live
+      // openclawGateways registry. A missing/unknown gateway here yields a
+      // disabled route (set_route style); next turn for this agent falls
+      // back to defaultRoute. Caller already validated via reload semantics.
+      const profile = (cfg.openclawGateways ?? []).find(
+        (g) => g.name === credentials.openclawGateway,
+      );
+      if (profile) {
+        synthRoute.gateway = {
+          name: profile.name,
+          url: profile.url,
+          ...(profile.token ? { token: profile.token } : {}),
+          ...(credentials.openclawAgent
+            ? { openclawAgent: credentials.openclawAgent }
+            : profile.defaultAgent
+              ? { openclawAgent: profile.defaultAgent }
+              : {}),
+        };
+      }
+    }
+    ctx.gateway.upsertManagedRoute(credentials.agentId, synthRoute);
   } catch (err) {
     // Rollback the channel + config + credentials on managed-route failure
     // (shouldn't happen — pure map op — but keeps the invariant tight).
@@ -432,6 +462,9 @@ async function materializeCredentials(
     if (typeof c.tokenExpiresAt === "number") record.tokenExpiresAt = c.tokenExpiresAt;
     if (runtime) record.runtime = runtime;
     record.cwd = cwd;
+    const openclawSel = pickOpenclawSelection(params);
+    if (openclawSel.gateway) record.openclawGateway = openclawSel.gateway;
+    if (openclawSel.agent) record.openclawAgent = openclawSel.agent;
     return record;
   }
 
@@ -461,7 +494,39 @@ async function materializeCredentials(
   };
   if (runtime) record.runtime = runtime;
   record.cwd = cwd;
+  const openclawSel = pickOpenclawSelection(params);
+  if (openclawSel.gateway) record.openclawGateway = openclawSel.gateway;
+  if (openclawSel.agent) record.openclawAgent = openclawSel.agent;
   return record;
+}
+
+/**
+ * Resolve OpenClaw routing selection from a `provision_agent` frame. Top-level
+ * `params.openclaw` (nested) wins over the flat `credentials.openclaw*` mirror.
+ * Returning `{}` is fine — only meaningful when the agent's runtime is
+ * `openclaw-acp`, and `buildManagedRoutes` falls back to defaultRoute.gateway
+ * when both are missing.
+ */
+function pickOpenclawSelection(
+  params: ProvisionAgentParams,
+): { gateway?: string; agent?: string } {
+  const out: { gateway?: string; agent?: string } = {};
+  const top = params.openclaw;
+  if (top && typeof top.gateway === "string" && top.gateway.length > 0) {
+    out.gateway = top.gateway;
+    if (typeof top.agent === "string" && top.agent.length > 0) out.agent = top.agent;
+    return out;
+  }
+  const flat = params.credentials;
+  if (flat) {
+    if (typeof flat.openclawGateway === "string" && flat.openclawGateway.length > 0) {
+      out.gateway = flat.openclawGateway;
+    }
+    if (typeof flat.openclawAgent === "string" && flat.openclawAgent.length > 0) {
+      out.agent = flat.openclawAgent;
+    }
+  }
+  return out;
 }
 
 async function revokeAgent(
@@ -655,6 +720,118 @@ export function collectRuntimeSnapshot(): ListRuntimesResult {
   return { runtimes, probedAt: Date.now() };
 }
 
+/** Maximum number of `endpoints[]` entries persisted per runtime (RFC §3.8.2). */
+export const RUNTIME_ENDPOINTS_CAP = 32;
+
+/** Injection seam for L2 endpoint probes — kept testable + side-effect-free. */
+export type WsEndpointProbeFn = (args: {
+  url: string;
+  token?: string;
+  timeoutMs: number;
+}) => Promise<{
+  ok: boolean;
+  version?: string;
+  agents?: Array<{ name: string; model?: string }>;
+  error?: string;
+}>;
+
+/** Default L2 probe — best-effort WS handshake against the OpenClaw gateway. */
+async function defaultWsProbe(args: {
+  url: string;
+  token?: string;
+  timeoutMs: number;
+}): Promise<{
+  ok: boolean;
+  version?: string;
+  agents?: Array<{ name: string; model?: string }>;
+  error?: string;
+}> {
+  const { default: WebSocket } = await import("ws");
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (v: {
+      ok: boolean;
+      version?: string;
+      agents?: Array<{ name: string; model?: string }>;
+      error?: string;
+    }): void => {
+      if (settled) return;
+      settled = true;
+      try {
+        ws.terminate();
+      } catch {
+        // ignore
+      }
+      resolve(v);
+    };
+    let ws: any;
+    try {
+      const headers: Record<string, string> = {};
+      if (args.token) headers["Authorization"] = `Bearer ${args.token}`;
+      ws = new WebSocket(args.url, { headers });
+    } catch (err) {
+      resolve({ ok: false, error: (err as Error).message });
+      return;
+    }
+    const timer = setTimeout(() => settle({ ok: false, error: "timeout" }), args.timeoutMs);
+    ws.on("open", () => {
+      clearTimeout(timer);
+      settle({ ok: true });
+    });
+    ws.on("error", (err: Error) => {
+      clearTimeout(timer);
+      settle({ ok: false, error: err.message });
+    });
+  });
+}
+
+/**
+ * Async variant that includes L2 (gateway reachability) and L3 (agent listing)
+ * probes for runtimes that talk to external services. Used by the production
+ * `list_runtimes` and first-connect snapshot paths.
+ *
+ * `cfg` is optional so existing callers without a loaded config (e.g. tests)
+ * can keep using the sync `collectRuntimeSnapshot()` — when absent, the result
+ * is identical to that function.
+ */
+export async function collectRuntimeSnapshotAsync(opts: {
+  cfg?: { openclawGateways?: Array<{ name: string; url: string; token?: string; tokenFile?: string }> };
+  wsProbe?: WsEndpointProbeFn;
+  timeoutMs?: number;
+} = {}): Promise<ListRuntimesResult> {
+  const base = collectRuntimeSnapshot();
+  const gateways = opts.cfg?.openclawGateways ?? [];
+  if (gateways.length === 0) return base;
+  const probe = opts.wsProbe ?? defaultWsProbe;
+  const timeoutMs = opts.timeoutMs ?? 5000;
+  const capped = gateways.slice(0, RUNTIME_ENDPOINTS_CAP);
+  const endpoints = await Promise.all(
+    capped.map(async (g) => {
+      const token = g.token; // tokenFile resolution lives in toGatewayConfig; if a caller hands us only tokenFile we skip auth.
+      try {
+        const res = await probe({ url: g.url, token, timeoutMs });
+        const entry: any = { name: g.name, url: g.url, reachable: res.ok };
+        if (res.version) entry.version = res.version;
+        if (res.error) entry.error = res.error;
+        if (res.agents) entry.agents = res.agents;
+        return entry;
+      } catch (err) {
+        return {
+          name: g.name,
+          url: g.url,
+          reachable: false,
+          error: (err as Error).message,
+        };
+      }
+    }),
+  );
+  const out: ListRuntimesResult = { ...base };
+  out.runtimes = base.runtimes.map((r) =>
+    r.id === "openclaw-acp" ? { ...r, endpoints } : r,
+  );
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // hello agents snapshot (lightweight identity sync)
 // ---------------------------------------------------------------------------
@@ -789,17 +966,19 @@ export async function reloadConfig(ctx: { gateway: Gateway }): Promise<ReloadRes
  */
 function readAgentRuntimesFromCredentials(
   agentIds: string[],
-): Record<string, { runtime?: string; cwd?: string }> {
-  const out: Record<string, { runtime?: string; cwd?: string }> = {};
+): Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string }> {
+  const out: Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string }> = {};
   for (const id of agentIds) {
     const file = defaultCredentialsFile(id);
     try {
       if (!existsSync(file)) continue;
       const creds = loadStoredCredentials(file);
-      const entry: { runtime?: string; cwd?: string } = {};
+      const entry: { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string } = {};
       if (creds.runtime) entry.runtime = creds.runtime;
       if (creds.cwd) entry.cwd = creds.cwd;
-      if (entry.runtime || entry.cwd) out[id] = entry;
+      if (creds.openclawGateway) entry.openclawGateway = creds.openclawGateway;
+      if (creds.openclawAgent) entry.openclawAgent = creds.openclawAgent;
+      if (entry.runtime || entry.cwd || entry.openclawGateway || entry.openclawAgent) out[id] = entry;
     } catch {
       // best-effort — skip agents with unreadable credentials
     }

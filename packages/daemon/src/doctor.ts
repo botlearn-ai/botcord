@@ -31,9 +31,29 @@ export interface DoctorHttpResult {
   error?: string;
 }
 
+/** One endpoint probe entry, mirrored from `RuntimeEndpointProbe`. */
+export interface DoctorRuntimeEndpoint {
+  name: string;
+  url: string;
+  reachable: boolean;
+  version?: string;
+  error?: string;
+  agents?: Array<{ name: string; model?: string }>;
+  /**
+   * Optional warning surfaced by the doctor: e.g. botcord plugin loaded on
+   * the gateway (would form a daemon → openclaw → botcord → Hub loop).
+   */
+  warnings?: string[];
+}
+
+/** Augmented runtime entry that may carry endpoint probe results. */
+export interface DoctorRuntimeEntry extends RuntimeProbeEntry {
+  endpoints?: DoctorRuntimeEndpoint[];
+}
+
 /** Input for the rendered doctor output. */
 export interface DoctorInput {
-  runtimes: RuntimeProbeEntry[];
+  runtimes: DoctorRuntimeEntry[];
   channels: ChannelProbeResult[];
 }
 
@@ -226,10 +246,27 @@ export function renderDoctor(input: DoctorInput): string {
   lines.push(
     `${pad("RUNTIME", widths.runtime)}  ${pad("NAME", widths.name)}  ${pad("STATUS", widths.status)}  ${pad("VERSION", widths.version)}  PATH`,
   );
-  for (const r of rows) {
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    const e = input.runtimes[i];
     lines.push(
       `${pad(r.runtime, widths.runtime)}  ${pad(r.name, widths.name)}  ${pad(r.status, widths.status)}  ${pad(r.version, widths.version)}  ${r.path}`,
     );
+    if (e.endpoints && e.endpoints.length > 0) {
+      for (const ep of e.endpoints) {
+        const mark = ep.reachable ? "✓" : "✗";
+        const detail = ep.reachable
+          ? ep.version ?? "ok"
+          : ep.error ?? "unreachable";
+        lines.push(`    gateway ${pad(`"${ep.name}"`, 16)} ${pad(ep.url, 40)} ${mark} ${detail}`);
+        if (ep.agents && ep.agents.length > 0) {
+          lines.push(`      agents: ${ep.agents.map((a) => a.name).join(", ")}`);
+        }
+        if (ep.warnings) {
+          for (const w of ep.warnings) lines.push(`      WARN: ${w}`);
+        }
+      }
+    }
   }
   const available = input.runtimes.filter((e) => e.result.available).length;
   lines.push(`\n${available}/${input.runtimes.length} runtimes available`);

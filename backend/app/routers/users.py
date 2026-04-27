@@ -1899,6 +1899,11 @@ class ProvisionAgentBody(BaseModel):
     runtime: str
     cwd: str | None = None
     bio: str | None = None
+    # Optional OpenClaw routing selection. Only meaningful when
+    # `runtime == "openclaw-acp"` — daemon writes these to credentials so the
+    # synthesized managed route can resolve a `ResolvedOpenclawGateway`.
+    openclaw_gateway: str | None = None
+    openclaw_agent: str | None = None
 
 
 class ProvisionAgentResponse(BaseModel):
@@ -2056,6 +2061,17 @@ async def provision_agent(
         frame_params["credentials"]["cwd"] = body.cwd
     if body.bio:
         frame_params["bio"] = body.bio
+    if body.openclaw_gateway:
+        # Top-level nested form (RFC §3.9.2).
+        oc: dict[str, str] = {"gateway": body.openclaw_gateway}
+        if body.openclaw_agent:
+            oc["agent"] = body.openclaw_agent
+        frame_params["openclaw"] = oc
+        # Mirror onto the flat credentials envelope so daemon's offline reload
+        # path picks the same gateway without seeing the top-level field.
+        frame_params["credentials"]["openclawGateway"] = body.openclaw_gateway
+        if body.openclaw_agent:
+            frame_params["credentials"]["openclawAgent"] = body.openclaw_agent
 
     # Seed the daemon's policyResolver with the agent's default attention so
     # it has a real policy from message zero (no first-message refetch race).
