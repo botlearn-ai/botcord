@@ -15,6 +15,7 @@ import {
   agentHomeDir,
   agentStateDir,
   agentWorkspaceDir,
+  applyAgentIdentity,
   ensureAgentWorkspace,
 } from "../agent-workspace.js";
 
@@ -131,6 +132,98 @@ describe("ensureAgentWorkspace", () => {
       for (const ok of ["ag_abc123", "ag_XYZ_9", "ag-dash-ok", "A1", "ag_0"]) {
         expect(() => agentHomeDir(ok)).not.toThrow();
       }
+    });
+  });
+
+  describe("applyAgentIdentity", () => {
+    it("rewrites display name + bio while preserving Role/Boundaries", () => {
+      ensureAgentWorkspace("ag_edit", {
+        displayName: "Old",
+        bio: "Old bio",
+        runtime: "claude-code",
+      });
+      const identityPath = path.join(agentWorkspaceDir("ag_edit"), "identity.md");
+      const original = readFileSync(identityPath, "utf8");
+      // User personalises Role/Boundaries — must survive identity sync.
+      const customised = original
+        .replace("_(Describe what you do and for whom. Edit this section.)_", "I write poetry.")
+        .replace("_(What you will and will not do. Edit this section.)_", "No financial advice.");
+      writeFileSync(identityPath, customised);
+
+      const result = applyAgentIdentity("ag_edit", {
+        displayName: "New Name",
+        bio: "Refreshed bio.",
+      });
+      expect(result.changed).toBe(true);
+
+      const updated = readFileSync(identityPath, "utf8");
+      expect(updated).toContain("- **Display name**: New Name");
+      expect(updated).toContain("Refreshed bio.");
+      expect(updated).not.toContain("Old bio");
+      expect(updated).toContain("I write poetry.");
+      expect(updated).toContain("No financial advice.");
+    });
+
+    it("clears bio back to placeholder when null is passed", () => {
+      ensureAgentWorkspace("ag_clearbio", { bio: "Some bio" });
+      const result = applyAgentIdentity("ag_clearbio", { bio: null });
+      expect(result.changed).toBe(true);
+      const updated = readFileSync(
+        path.join(agentWorkspaceDir("ag_clearbio"), "identity.md"),
+        "utf8",
+      );
+      expect(updated).not.toContain("Some bio");
+      expect(updated).toContain("_(none provided at provision time");
+    });
+
+    it("returns no-change when patch matches current values", () => {
+      ensureAgentWorkspace("ag_idempotent", { displayName: "Same", bio: "Same bio" });
+      const result = applyAgentIdentity("ag_idempotent", {
+        displayName: "Same",
+        bio: "Same bio",
+      });
+      expect(result.changed).toBe(false);
+      expect(result.skipped).toBe("no-change");
+    });
+
+    it("skips when identity.md is missing", () => {
+      const result = applyAgentIdentity("ag_missing", { displayName: "X" });
+      expect(result.changed).toBe(false);
+      expect(result.skipped).toBe("missing-file");
+    });
+
+    it("rewrites correctly when identity.md has no trailing sections after Bio", () => {
+      ensureAgentWorkspace("ag_eofbio", { displayName: "Old", bio: "Old bio" });
+      const identityPath = path.join(agentWorkspaceDir("ag_eofbio"), "identity.md");
+      // Strip everything after `## Bio` so the Bio section runs to EOF.
+      const truncated =
+        readFileSync(identityPath, "utf8").replace(/(## Bio\n\nOld bio)[\s\S]*$/, "$1\n");
+      writeFileSync(identityPath, truncated);
+
+      const result = applyAgentIdentity("ag_eofbio", { bio: "New bio" });
+      expect(result.changed).toBe(true);
+      const updated = readFileSync(identityPath, "utf8");
+      expect(updated).toContain("New bio");
+      expect(updated).not.toContain("Old bio");
+    });
+
+    it("returns unparseable when the canonical metadata header is missing", () => {
+      ensureAgentWorkspace("ag_corrupt", {});
+      const identityPath = path.join(agentWorkspaceDir("ag_corrupt"), "identity.md");
+      writeFileSync(identityPath, "# Identity\n\nThis file was rewritten by a user.\n");
+
+      const result = applyAgentIdentity("ag_corrupt", { displayName: "X" });
+      expect(result.changed).toBe(false);
+      expect(result.skipped).toBe("unparseable");
+    });
+
+    it("treats display names containing regex specials literally", () => {
+      ensureAgentWorkspace("ag_specials", { displayName: "old" });
+      const identityPath = path.join(agentWorkspaceDir("ag_specials"), "identity.md");
+      const result = applyAgentIdentity("ag_specials", { displayName: "$1 backref $&" });
+      expect(result.changed).toBe(true);
+      const updated = readFileSync(identityPath, "utf8");
+      expect(updated).toContain("- **Display name**: $1 backref $&");
     });
   });
 
