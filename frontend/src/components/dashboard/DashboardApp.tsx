@@ -662,6 +662,14 @@ export default function DashboardApp() {
     router.replace(continueTarget);
   }, [continueTarget, pathname, router, sessionStore.sessionMode]);
 
+  useEffect(() => {
+    const pending = uiStore.pendingHumanOpen;
+    if (!pending) return;
+    void handleOpenHumanCard(pending);
+    uiStore.clearPendingHumanOpen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiStore.pendingHumanOpen]);
+
   if (shouldShowBootstrapSkeleton) {
     return <DashboardShellSkeleton />;
   }
