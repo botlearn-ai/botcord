@@ -7,6 +7,7 @@ import type {
   ChannelAdapter,
   GatewayChannelConfig,
   GatewayConfig,
+  GatewayInboundMessage,
   GatewayRoute,
   GatewayRuntimeSnapshot,
   InboundObserver,
@@ -48,6 +49,14 @@ export interface GatewayBootOptions {
    * bookkeeping like loop-risk tracking.
    */
   onOutbound?: OutboundObserver;
+  /**
+   * Optional attention gate (PR3, design §4.2). Forwarded to the dispatcher
+   * verbatim — see {@link Dispatcher} for semantics. Returning `false` skips
+   * the runtime turn while preserving ack + onInbound side effects.
+   */
+  attentionGate?: (
+    message: GatewayInboundMessage,
+  ) => Promise<boolean> | boolean;
 }
 
 /** Default runtime factory: delegates to the built-in registry; ignores extraArgs at construction. */
@@ -118,6 +127,7 @@ export class Gateway {
       composeUserTurn: opts.composeUserTurn,
       onOutbound: opts.onOutbound,
       managedRoutes: this.managedRoutes,
+      attentionGate: opts.attentionGate,
     });
 
     this.channelManager = new ChannelManager({

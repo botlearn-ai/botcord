@@ -65,6 +65,13 @@ export const CONTROL_FRAME_TYPES = {
    * daemon is offline. Plan §8.5 "push" path.
    */
   RUNTIME_SNAPSHOT: "runtime_snapshot",
+  /**
+   * Hub→daemon: invalidate the daemon's cached attention policy for a given
+   * agent (and optionally a single room override). Sent by the BFF after
+   * `PATCH /api/agents/{id}/policy` and the per-room override endpoints.
+   * Payload shape: see {@link PolicyUpdatedParams}.
+   */
+  POLICY_UPDATED: "policy_updated",
 } as const;
 
 export type ControlFrameType = (typeof CONTROL_FRAME_TYPES)[keyof typeof CONTROL_FRAME_TYPES];
@@ -118,6 +125,42 @@ export interface ProvisionAgentParams {
     runtime?: string;
     /** Working directory cached alongside the runtime, for route synthesis. */
     cwd?: string;
+  };
+  /**
+   * Optional initial attention policy seed. When the Hub already knows the
+   * agent's stored `default_attention` and `attention_keywords` (i.e. a
+   * non-fresh provision flow), it can hand the values down so the daemon's
+   * `policyResolver` is warm before the first inbound message lands. Daemons
+   * that don't recognize these fields safely ignore them (PR3 §5).
+   */
+  defaultAttention?: "always" | "mention_only" | "keyword" | "muted";
+  attentionKeywords?: string[];
+}
+
+/**
+ * Payload shape for `policy_updated` (PR3). Sent by the BFF after a policy
+ * mutation lands so the daemon hosting the agent can drop its cached entry
+ * and (when `policy` is embedded) install the fresh values without a
+ * network round-trip.
+ *
+ * Wire-shape rationale: the design doc (§5) specifies `{agent_id, room_id?}`.
+ * PR3 augments the payload with an optional `policy` blob so the daemon does
+ * not need a separate signed-fetch endpoint to get the new values — the Hub
+ * already holds the authoritative state, so it pushes the post-update view
+ * inline. A daemon that doesn't recognize `policy` simply invalidates its
+ * cache and falls back to the seed values from `provision_agent`.
+ *
+ * `room_id` is reserved for PR2's per-room override endpoints; when absent
+ * the daemon drops every cache entry for `agent_id` (global + per-room).
+ */
+export interface PolicyUpdatedParams {
+  agent_id: string;
+  room_id?: string;
+  policy?: {
+    mode: "always" | "mention_only" | "keyword" | "muted";
+    keywords: string[];
+    /** Unix milliseconds; absent means no temporary mute. */
+    muted_until?: number;
   };
 }
 

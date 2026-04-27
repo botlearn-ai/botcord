@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,9 @@ from app.auth import RequestContext, require_user
 from hub.database import get_db
 from hub.enums import AttentionMode, ContactPolicy, MessagePolicy, RoomInvitePolicy
 from hub.models import Agent
+from hub.routers.daemon_control import is_daemon_online, send_control_frame
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["app-policy"])
 
@@ -156,4 +160,40 @@ async def patch_policy(
 
     await db.commit()
     await db.refresh(agent)
-    return _serialize(agent)
+
+    # PR3: notify the daemon hosting this agent so its policyResolver drops
+    # the stale cache entry. Best-effort — daemon offline / dispatch error
+    # must not break the BFF response. We embed the post-update policy
+    # inline so the daemon avoids a refetch.
+    # TODO(pr3-merge): fire policy_updated from per-room endpoints once PR2
+    # lands its PUT/DELETE/snooze surface.
+    serialized = _serialize(agent)
+    if agent.daemon_instance_id and is_daemon_online(agent.daemon_instance_id):
+        try:
+            await send_control_frame(
+                agent.daemon_instance_id,
+                "policy_updated",
+                {
+                    "agent_id": agent.agent_id,
+                    "policy": {
+                        "mode": serialized.default_attention,
+                        "keywords": serialized.attention_keywords,
+                    },
+                },
+            )
+        except HTTPException as exc:
+            logger.warning(
+                "policy_updated dispatch failed: agent=%s daemon=%s detail=%s",
+                agent.agent_id,
+                agent.daemon_instance_id,
+                exc.detail,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "policy_updated dispatch error: agent=%s daemon=%s err=%s",
+                agent.agent_id,
+                agent.daemon_instance_id,
+                exc,
+            )
+
+    return serialized

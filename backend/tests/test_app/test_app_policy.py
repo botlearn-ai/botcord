@@ -186,3 +186,81 @@ async def test_policy_404_for_other_users_agent(client, seed):
         json={"contact_policy": "open"},
     )
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_policy_dispatches_policy_updated_to_daemon(
+    client, seed, db_session, monkeypatch
+):
+    """PR3: PATCH /api/agents/{id}/policy fans out a `policy_updated` control
+    frame to the daemon hosting the agent."""
+    from sqlalchemy import select
+
+    # Bind the agent to a daemon so the dispatch fires.
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "di_fake"
+    await db_session.commit()
+
+    calls: list[dict] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append(
+            {
+                "daemon_instance_id": daemon_instance_id,
+                "type": type_,
+                "params": params,
+            }
+        )
+        return {"ok": True, "result": {"applied": True}}
+
+    import app.routers.policy as policy_mod
+
+    monkeypatch.setattr(policy_mod, "is_daemon_online", lambda _id: True)
+    monkeypatch.setattr(policy_mod, "send_control_frame", fake_send)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        "/api/agents/ag_owned/policy",
+        headers=headers,
+        json={"default_attention": "mention_only", "attention_keywords": ["alpha"]},
+    )
+    assert r.status_code == 200, r.text
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["daemon_instance_id"] == "di_fake"
+    assert call["type"] == "policy_updated"
+    assert call["params"]["agent_id"] == "ag_owned"
+    assert call["params"]["policy"]["mode"] == "mention_only"
+    assert call["params"]["policy"]["keywords"] == ["alpha"]
+
+
+@pytest.mark.asyncio
+async def test_patch_policy_swallows_dispatch_failure(
+    client, seed, db_session, monkeypatch
+):
+    """PR3: a dispatch error must NOT 500 the BFF — best-effort fan-out."""
+    from sqlalchemy import select
+    from fastapi import HTTPException
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "di_offline"
+    await db_session.commit()
+
+    async def boom(*args, **kwargs):
+        raise HTTPException(status_code=409, detail="daemon_offline")
+
+    import app.routers.policy as policy_mod
+
+    monkeypatch.setattr(policy_mod, "is_daemon_online", lambda _id: True)
+    monkeypatch.setattr(policy_mod, "send_control_frame", boom)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        "/api/agents/ag_owned/policy",
+        headers=headers,
+        json={"default_attention": "muted"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["default_attention"] == "muted"
