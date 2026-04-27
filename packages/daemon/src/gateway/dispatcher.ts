@@ -1,6 +1,14 @@
+import { randomUUID } from "node:crypto";
+
 import type { GatewayLogger } from "./log.js";
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
+import {
+  truncateTextField,
+  type DeliveryStatus,
+  type TranscriptBlockSummary,
+  type TranscriptWriter,
+} from "./transcript.js";
 import type {
   ChannelAdapter,
   GatewayConfig,
@@ -103,13 +111,43 @@ export interface DispatcherOptions {
    * unspecified and fall back to whatever the bundled CLI defaults to.
    */
   resolveHubUrl?: (accountId: string) => string | undefined;
+  /**
+   * Optional NDJSON transcript writer. When provided, dispatcher emits one
+   * inbound record + one path record + (for dispatched turns) one terminal
+   * record per `handle()` call. A noop writer is used by default so existing
+   * call sites keep working unchanged. See `docs/transcript-logging.md`.
+   */
+  transcript?: TranscriptWriter;
 }
 
+/**
+ * Reason carried on `AbortController.abort()` when a cancel-previous wave
+ * is taking over the slot. Distinguishing this from a timeout abort lets
+ * `runTurn`'s finalize know NOT to write a `turn_error` — the supersede
+ * path already wrote a `dropped` record for the old turnId before the abort.
+ */
+class TurnSupersededError extends Error {
+  constructor(public readonly supersededBy: string) {
+    super("turn superseded");
+    this.name = "TurnSupersededError";
+  }
+}
+
+const NOOP_TRANSCRIPT: TranscriptWriter = {
+  enabled: false,
+  rootDir: "",
+  write: () => {},
+};
+
 interface TurnSlot {
+  turnId: string;
   controller: AbortController;
   timedOut: boolean;
   snapshot: TurnStatusSnapshot;
   done: Promise<void>;
+  dispatchedAt: number;
+  /** Streamed block summaries flushed into the terminal `outbound` record. */
+  blocks: TranscriptBlockSummary[];
 }
 
 /**
@@ -121,6 +159,8 @@ interface BufferedSerialEntry {
   route: GatewayRoute;
   msg: GatewayInboundEnvelope["message"];
   channel: ChannelAdapter;
+  /** Per-arrival turnId; preserved through merge so transcript can record dropped/dispatched correctly. */
+  turnId: string;
 }
 
 interface QueueState {
@@ -172,6 +212,7 @@ export class Dispatcher {
     message: GatewayInboundMessage,
   ) => Promise<boolean> | boolean;
   private readonly resolveHubUrl?: (accountId: string) => string | undefined;
+  private readonly transcript: TranscriptWriter;
   private readonly queues: Map<string, QueueState> = new Map();
 
   constructor(opts: DispatcherOptions) {
@@ -188,21 +229,30 @@ export class Dispatcher {
     this.managedRoutes = opts.managedRoutes;
     this.attentionGate = opts.attentionGate;
     this.resolveHubUrl = opts.resolveHubUrl;
+    this.transcript = opts.transcript ?? NOOP_TRANSCRIPT;
   }
 
   /** Consume one inbound envelope, ack it once ownership is decided, then run its turn. */
   async handle(envelope: GatewayInboundEnvelope): Promise<void> {
     const msg = envelope.message;
 
-    // Skip rule: empty/whitespace text.
-    const rawText = typeof msg.text === "string" ? msg.text.trim() : "";
-    if (!rawText) {
-      this.log.debug("dispatcher skip: empty text", { messageId: msg.id });
+    // ---- Pre-skip branches: NEVER write a transcript record (design §3.2).
+    // Order matters: unknown channel → own echo → empty text. Each ack's the
+    // envelope (when applicable) and returns silently with only a debug/warn
+    // line in the daemon log.
+
+    // Pre-skip: unknown channel — configuration error, not a conversation event.
+    const channel = this.channels.get(msg.channel);
+    if (!channel) {
+      this.log.warn("dispatcher: unknown channel for outbound reply", {
+        channel: msg.channel,
+        messageId: msg.id,
+      });
       await this.safeAck(envelope);
       return;
     }
 
-    // Skip rule: echo from the agent itself (own agent output looped back).
+    // Pre-skip: echo from the agent itself (own agent output looped back).
     // Owner/human messages in dashboard rooms share the agent's id as sender.id
     // but carry sender.kind === "user", so we only skip when kind === "agent".
     if (msg.sender.id === msg.accountId && msg.sender.kind === "agent") {
@@ -210,6 +260,18 @@ export class Dispatcher {
       await this.safeAck(envelope);
       return;
     }
+
+    // Pre-skip: empty/whitespace text.
+    const rawText = typeof msg.text === "string" ? msg.text.trim() : "";
+    if (!rawText) {
+      this.log.debug("dispatcher skip: empty text", { messageId: msg.id });
+      await this.safeAck(envelope);
+      return;
+    }
+
+    // From here on, the inbound is a real conversation event — generate a
+    // turnId and write the inbound transcript record.
+    const turnId = randomUUID();
 
     const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;
     const route = resolveRoute(msg, this.config, managed);
@@ -222,6 +284,7 @@ export class Dispatcher {
     // the full coalesced batch instead of any single arrival), so calling
     // the composer here would just be redundant work.
     let text = rawText;
+    let composeFailedError: string | undefined;
     if (mode === "cancel-previous" && this.composeUserTurn) {
       try {
         const composed = this.composeUserTurn(msg);
@@ -229,15 +292,20 @@ export class Dispatcher {
           text = composed;
         }
       } catch (err) {
+        composeFailedError = err instanceof Error ? err.message : String(err);
         this.log.warn("dispatcher: composeUserTurn threw — using raw text", {
           messageId: msg.id,
-          error: err instanceof Error ? err.message : String(err),
+          error: composeFailedError,
         });
       }
     }
 
     // Ack immediately: once the dispatcher has a route + queue key, ownership is decided.
     await this.safeAck(envelope);
+
+    // Inbound transcript record — always before observers / gates so we have a
+    // grounded turnId for any downstream attention_skipped / dropped / etc.
+    this.emitInbound(turnId, msg);
 
     // Notify the optional observer (activity tracking, metrics, etc.) as soon
     // as the dispatcher owns the message. Errors must not abort the turn.
@@ -274,23 +342,36 @@ export class Dispatcher {
           accountId: msg.accountId,
           conversationId: msg.conversation.id,
         });
+        this.transcript.write({
+          ts: nowIso(),
+          kind: "attention_skipped",
+          turnId,
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          reason: "attention_gate_false",
+        });
         return;
       }
     }
 
-    const channel = this.channels.get(msg.channel);
-    if (!channel) {
-      this.log.warn("dispatcher: unknown channel for outbound reply", {
-        channel: msg.channel,
-        messageId: msg.id,
+    if (composeFailedError) {
+      this.transcript.write({
+        ts: nowIso(),
+        kind: "compose_failed",
+        turnId,
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        error: composeFailedError,
+        fallback: "raw_text",
       });
-      return;
     }
 
     if (mode === "cancel-previous") {
-      await this.runCancelPrevious(queueKey, route, text, msg, channel);
+      await this.runCancelPrevious(queueKey, route, text, msg, channel, turnId);
     } else {
-      await this.runSerial(queueKey, route, text, msg, channel);
+      await this.runSerial(queueKey, route, text, msg, channel, turnId);
     }
   }
 
@@ -340,6 +421,7 @@ export class Dispatcher {
     text: string,
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
+    turnId: string,
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     // Bump the generation on every arrival. Older arrivals still awaiting
@@ -350,7 +432,19 @@ export class Dispatcher {
     const prev = q.current;
     if (prev) {
       this.log.info("dispatcher: cancelling previous turn", { queueKey });
-      prev.controller.abort();
+      // Record the supersede BEFORE aborting so the prev turn's finalize sees
+      // the abort reason (TurnSupersededError) and skips writing turn_error.
+      this.transcript.write({
+        ts: nowIso(),
+        kind: "dropped",
+        turnId: prev.turnId,
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        reason: "queue_cancel_previous",
+        supersededBy: turnId,
+      });
+      prev.controller.abort(new TurnSupersededError(turnId));
       // Wait for it to finish cleanup (it won't reply, won't persist).
       await prev.done.catch(() => undefined);
     }
@@ -359,9 +453,22 @@ export class Dispatcher {
     // drop out silently — the newest turn is the only one that should run.
     if (myGen !== q.cancelGen) {
       this.log.info("dispatcher: cancel-previous superseded", { queueKey });
+      // We didn't run the turn; emit dropped so the caller's inbound has a
+      // matching path record. supersededBy is unknown at this layer (newer
+      // arrival owns its own bump) — leave null.
+      this.transcript.write({
+        ts: nowIso(),
+        kind: "dropped",
+        turnId,
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        reason: "queue_cancel_previous",
+        supersededBy: null,
+      });
       return;
     }
-    await this.runTurn(queueKey, route, text, msg, channel);
+    await this.runTurn(queueKey, route, text, msg, channel, turnId, []);
   }
 
   /**
@@ -388,15 +495,26 @@ export class Dispatcher {
     _text: string,
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
+    turnId: string,
   ): Promise<void> {
     const q = this.getQueue(queueKey);
-    q.serialBuffer.push({ route, msg, channel });
+    q.serialBuffer.push({ route, msg, channel, turnId });
     while (q.serialBuffer.length > MAX_BATCH_BUFFER_ENTRIES) {
       const dropped = q.serialBuffer.shift()!;
       this.log.warn("dispatcher: serial buffer overflow — dropped oldest entry", {
         queueKey,
         droppedMessageId: dropped.msg.id,
         bufferCap: MAX_BATCH_BUFFER_ENTRIES,
+      });
+      this.transcript.write({
+        ts: nowIso(),
+        kind: "dropped",
+        turnId: dropped.turnId,
+        agentId: dropped.msg.accountId,
+        roomId: dropped.msg.conversation.id,
+        topicId: dropped.msg.conversation.threadId ?? null,
+        reason: "queue_overflow",
+        supersededBy: null,
       });
     }
     if (q.serialWorkerActive) return;
@@ -406,12 +524,33 @@ export class Dispatcher {
         const drained = q.serialBuffer.splice(0, q.serialBuffer.length);
         const merged = this.mergeSerialBuffer(drained, queueKey);
         if (!merged) continue;
+        // Drained entries other than the winner get a `batch_merged` dropped
+        // record now (winner is always the last entry — see mergeSerialBuffer).
+        if (drained.length > 1) {
+          for (let i = 0; i < drained.length - 1; i++) {
+            const lost = drained[i]!;
+            this.transcript.write({
+              ts: nowIso(),
+              kind: "dropped",
+              turnId: lost.turnId,
+              agentId: lost.msg.accountId,
+              roomId: lost.msg.conversation.id,
+              topicId: lost.msg.conversation.threadId ?? null,
+              reason: "batch_merged",
+              supersededBy: merged.turnId,
+            });
+          }
+        }
+        const mergedFromTurnIds =
+          drained.length > 1 ? drained.slice(0, -1).map((e) => e.turnId) : [];
         await this.runTurn(
           queueKey,
           merged.route,
           merged.text,
           merged.msg,
           merged.channel,
+          merged.turnId,
+          mergedFromTurnIds,
         );
       }
     } finally {
@@ -436,6 +575,7 @@ export class Dispatcher {
     text: string;
     msg: GatewayInboundEnvelope["message"];
     channel: ChannelAdapter;
+    turnId: string;
   } | null {
     if (entries.length === 0) return null;
     if (entries.length === 1) {
@@ -445,6 +585,7 @@ export class Dispatcher {
         text: this.recomposeUserTurn(only.msg),
         msg: only.msg,
         channel: only.channel,
+        turnId: only.turnId,
       };
     }
 
@@ -500,6 +641,7 @@ export class Dispatcher {
       text: this.recomposeUserTurn(mergedMsg),
       msg: mergedMsg,
       channel: latest.channel,
+      turnId: latest.turnId,
     };
   }
 
@@ -530,6 +672,8 @@ export class Dispatcher {
     text: string,
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
+    turnId: string,
+    mergedFromTurnIds: string[],
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     const controller = new AbortController();
@@ -548,8 +692,34 @@ export class Dispatcher {
     const done = new Promise<void>((res) => {
       resolveDone = res;
     });
-    const slot: TurnSlot = { controller, timedOut: false, snapshot, done };
+    const slot: TurnSlot = {
+      turnId,
+      controller,
+      timedOut: false,
+      snapshot,
+      done,
+      dispatchedAt: startedAt,
+      blocks: [],
+    };
     q.current = slot;
+
+    // Dispatched record — marks "this turn entered runtime".
+    {
+      const composedField = truncateTextField(text);
+      const dispatched: import("./transcript.js").DispatchedTranscriptRecord = {
+        ts: nowIso(),
+        kind: "dispatched",
+        turnId,
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        composedText: composedField.text,
+        runtime: route.runtime,
+      };
+      if (mergedFromTurnIds.length > 0) dispatched.mergedFromTurnIds = mergedFromTurnIds;
+      if (composedField.truncated) dispatched.truncated = { composedText: true };
+      this.transcript.write(dispatched);
+    }
 
     // Hard-cap turn with a timeout.
     const timer = setTimeout(() => {
@@ -578,8 +748,18 @@ export class Dispatcher {
     const traceId = msg.trace?.id;
     const canStream =
       streamable && typeof traceId === "string" && typeof channel.streamBlock === "function";
+    const recordBlock = (block: StreamBlock): void => {
+      const summary: TranscriptBlockSummary = { type: block.kind };
+      const raw = block.raw as { text?: unknown; name?: unknown } | null | undefined;
+      if (raw && typeof raw === "object") {
+        if (typeof raw.text === "string") summary.chars = raw.text.length;
+        if (typeof raw.name === "string") summary.name = raw.name;
+      }
+      slot.blocks.push(summary);
+    };
     const onBlock = canStream
       ? (block: StreamBlock) => {
+          recordBlock(block);
           // Fire-and-forget: stream errors must not break the turn.
           channel
             .streamBlock!({
@@ -646,6 +826,11 @@ export class Dispatcher {
       // until after the reply lets the new arrival trip our abort signal, and
       // this check then drops us silently. Timed-out turns still fall through
       // to send their error reply.
+      //
+      // Note on transcript: the supersede path already wrote the `dropped`
+      // record from `runCancelPrevious` BEFORE aborting, so we MUST NOT also
+      // emit a `turn_error` here — that would violate the "exactly one
+      // terminal record per turnId" invariant.
       if (controller.signal.aborted && !slot.timedOut) {
         return;
       }
@@ -669,6 +854,17 @@ export class Dispatcher {
       const isOwnerChat = isOwnerChatRoom(msg);
 
       if (slot.timedOut) {
+        this.transcript.write({
+          ts: nowIso(),
+          kind: "turn_error",
+          turnId,
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          phase: "timeout",
+          error: `runtime timeout after ${this.turnTimeoutMs}ms`,
+          durationMs: Date.now() - slot.dispatchedAt,
+        });
         if (isOwnerChat) {
           await this.sendReply(channel, {
             channel: msg.channel,
@@ -690,19 +886,30 @@ export class Dispatcher {
       }
 
       if (threw) {
+        const errMsg = threw instanceof Error ? threw.message : String(threw);
         this.log.error("dispatcher: runtime threw", {
           queueKey,
           runtime: route.runtime,
-          error: threw instanceof Error ? threw.message : String(threw),
+          error: errMsg,
+        });
+        this.transcript.write({
+          ts: nowIso(),
+          kind: "turn_error",
+          turnId,
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          phase: "runtime",
+          error: errMsg,
+          durationMs: Date.now() - slot.dispatchedAt,
         });
         if (isOwnerChat) {
-          const shortMsg = threw instanceof Error ? threw.message : String(threw);
           await this.sendReply(channel, {
             channel: msg.channel,
             accountId: msg.accountId,
             conversationId: msg.conversation.id,
             threadId: msg.conversation.threadId ?? null,
-            text: `⚠️ Runtime error: ${truncate(shortMsg, 500)}`,
+            text: `⚠️ Runtime error: ${truncate(errMsg, 500)}`,
             replyTo: msg.id,
             traceId: msg.trace?.id ?? null,
           });
@@ -770,7 +977,23 @@ export class Dispatcher {
       }
 
       const replyText = (result.text || "").trim();
-      if (!replyText) return;
+      const finalTextField = truncateTextField(result.text || "");
+
+      if (!replyText) {
+        this.emitOutbound({
+          turnId,
+          msg,
+          runtime: route.runtime,
+          runtimeSessionId: result.newSessionId || null,
+          startedAt: slot.dispatchedAt,
+          costUsd: result.costUsd,
+          finalText: finalTextField,
+          deliveryStatus: "empty_text",
+          deliveryReason: null,
+          blocks: slot.blocks,
+        });
+        return;
+      }
 
       if (!isOwnerChat) {
         // Non-owner-chat rooms: result.text never goes out. The agent is
@@ -785,6 +1008,18 @@ export class Dispatcher {
             replyTextLen: replyText.length,
           },
         );
+        this.emitOutbound({
+          turnId,
+          msg,
+          runtime: route.runtime,
+          runtimeSessionId: result.newSessionId || null,
+          startedAt: slot.dispatchedAt,
+          costUsd: result.costUsd,
+          finalText: finalTextField,
+          deliveryStatus: "gated_non_owner_chat",
+          deliveryReason: null,
+          blocks: slot.blocks,
+        });
         return;
       }
 
@@ -795,7 +1030,7 @@ export class Dispatcher {
         return;
       }
 
-      await this.sendReply(channel, {
+      const sendResult = await this.sendReply(channel, {
         channel: msg.channel,
         accountId: msg.accountId,
         conversationId: msg.conversation.id,
@@ -803,6 +1038,18 @@ export class Dispatcher {
         text: replyText,
         replyTo: msg.id,
         traceId: msg.trace?.id ?? null,
+      });
+      this.emitOutbound({
+        turnId,
+        msg,
+        runtime: route.runtime,
+        runtimeSessionId: result.newSessionId || null,
+        startedAt: slot.dispatchedAt,
+        costUsd: result.costUsd,
+        finalText: finalTextField,
+        deliveryStatus: sendResult.ok ? "delivered" : "send_failed",
+        deliveryReason: sendResult.ok ? null : sendResult.error,
+        blocks: slot.blocks,
       });
     } finally {
       // Clear slot ownership AFTER the reply has been sent (or skipped).
@@ -818,16 +1065,17 @@ export class Dispatcher {
   private async sendReply(
     channel: ChannelAdapter,
     outbound: GatewayOutboundMessage,
-  ): Promise<void> {
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     try {
       await channel.send({ message: outbound, log: this.log });
     } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
       this.log.warn("dispatcher: channel.send failed", {
         channel: outbound.channel,
         conversationId: outbound.conversationId,
-        error: err instanceof Error ? err.message : String(err),
+        error,
       });
-      return;
+      return { ok: false, error };
     }
     if (this.onOutbound) {
       try {
@@ -839,7 +1087,73 @@ export class Dispatcher {
         });
       }
     }
+    return { ok: true };
   }
+
+  private emitInbound(turnId: string, msg: GatewayInboundEnvelope["message"]): void {
+    if (!this.transcript.enabled) return;
+    const rawText = typeof msg.text === "string" ? msg.text : "";
+    const tField = truncateTextField(rawText);
+    const raw = msg.raw as Record<string, unknown> | null | undefined;
+    const batch =
+      raw && typeof raw === "object" && Array.isArray((raw as { batch?: unknown }).batch)
+        ? (raw as { batch: unknown[] }).batch.length
+        : undefined;
+    const rec: import("./transcript.js").InboundTranscriptRecord = {
+      ts: nowIso(),
+      kind: "inbound",
+      turnId,
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+      messageId: msg.id,
+      sender: { id: msg.sender.id, kind: msg.sender.kind, ...(msg.sender.name ? { name: msg.sender.name } : {}) },
+      text: tField.text,
+    };
+    if (batch !== undefined && batch > 1) rec.rawBatchEntries = batch;
+    if (msg.trace?.id) {
+      rec.trace = { id: msg.trace.id, ...(msg.trace.streamable ? { streamable: true } : {}) };
+    }
+    if (tField.truncated) rec.truncated = { text: true };
+    this.transcript.write(rec);
+  }
+
+  private emitOutbound(args: {
+    turnId: string;
+    msg: GatewayInboundEnvelope["message"];
+    runtime: string;
+    runtimeSessionId: string | null;
+    startedAt: number;
+    costUsd?: number;
+    finalText: { text: string; truncated: boolean };
+    deliveryStatus: DeliveryStatus;
+    deliveryReason: string | null;
+    blocks: TranscriptBlockSummary[];
+  }): void {
+    if (!this.transcript.enabled) return;
+    const rec: import("./transcript.js").OutboundTranscriptRecord = {
+      ts: nowIso(),
+      kind: "outbound",
+      turnId: args.turnId,
+      agentId: args.msg.accountId,
+      roomId: args.msg.conversation.id,
+      topicId: args.msg.conversation.threadId ?? null,
+      runtime: args.runtime,
+      runtimeSessionId: args.runtimeSessionId,
+      durationMs: Date.now() - args.startedAt,
+      finalText: args.finalText.text,
+      deliveryStatus: args.deliveryStatus,
+      deliveryReason: args.deliveryReason,
+    };
+    if (typeof args.costUsd === "number") rec.costUsd = args.costUsd;
+    if (args.blocks.length > 0) rec.blocks = args.blocks;
+    if (args.finalText.truncated) rec.truncated = { finalText: true };
+    this.transcript.write(rec);
+  }
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
 function buildQueueKey(msg: GatewayInboundEnvelope["message"]): string {

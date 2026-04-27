@@ -6,6 +6,7 @@ import {
 import {
   Gateway,
   createBotCordChannel,
+  resolveTranscriptEnabled,
   sanitizeUntrustedContent,
   type ChannelAdapter,
   type GatewayChannelConfig,
@@ -394,6 +395,10 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     composeUserTurn: composeBotCordUserTurn,
     attentionGate,
     resolveHubUrl,
+    transcriptEnabled: resolveTranscriptEnabled(
+      process.env.BOTCORD_TRANSCRIPT,
+      opts.config.transcript?.enabled === true,
+    ),
   });
 
   logger.info("daemon starting", {
