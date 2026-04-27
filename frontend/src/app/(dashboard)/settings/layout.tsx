@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Server } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, Server } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 function SettingsNavLink({
@@ -85,6 +85,12 @@ export default function SettingsLayout({
             icon={<Server className="h-4 w-4" />}
           >
             Daemons
+          </SettingsNavLink>
+          <SettingsNavLink
+            href="/settings/policy"
+            icon={<MessageSquare className="h-4 w-4" />}
+          >
+            对话与回复
           </SettingsNavLink>
         </nav>
         <div className="border-t border-glass-border px-3 py-3">
