@@ -688,7 +688,9 @@ async def openclaw_provision_claim(
             db.add(signing_key)
     except IntegrityError:
         await db.rollback()
-        await _revert_short_code_claim(body.provision_id, "openclaw_provision")
+        await _revert_short_code_claim(
+            body.provision_id, "openclaw_provision", reopen=True
+        )
         raise HTTPException(status_code=409, detail="PUBKEY_ALREADY_REGISTERED")
 
     try:
@@ -696,7 +698,9 @@ async def openclaw_provision_claim(
         await db.commit()
     except Exception:
         await db.rollback()
-        await _revert_short_code_claim(body.provision_id, "openclaw_provision")
+        await _revert_short_code_claim(
+            body.provision_id, "openclaw_provision", reopen=True
+        )
         raise
     await db.refresh(agent)
 

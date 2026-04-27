@@ -162,6 +162,82 @@ function writeAgentCredentials(args: {
   return path;
 }
 
+/**
+ * Patch ``~/.openclaw/openclaw.json`` to register a freshly-provisioned
+ * agent under ``channels.botcord.accounts.{agentId}``. Mirrors the
+ * single-account → multi-account upgrade path used by
+ * ``backend/static/openclaw/install.sh``.
+ *
+ * Returns ``true`` when the patch was applied, ``false`` when the config
+ * file is missing or unwritable. The OpenClaw plugin SDK exposes no
+ * runtime-reload hook today, so the new account becomes active on the
+ * next plugin load — but the patch ensures the account *will* be picked
+ * up automatically rather than requiring the user to edit JSON by hand.
+ */
+export function patchOpenclawConfigForAgent(args: {
+  agentId: string;
+  credentialsFile: string;
+  configPath?: string;
+}): boolean {
+  const path =
+    args.configPath ??
+    process.env.OPENCLAW_CONFIG_PATH ??
+    join(botcordHome(), ".openclaw", "openclaw.json");
+
+  let cfg: Record<string, any> = {};
+  try {
+    cfg = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    // Missing/empty file — start fresh.
+  }
+
+  if (typeof cfg !== "object" || cfg === null) cfg = {};
+  if (!cfg.channels || typeof cfg.channels !== "object") cfg.channels = {};
+  const channels = cfg.channels as Record<string, any>;
+  if (!channels.botcord || typeof channels.botcord !== "object") channels.botcord = {};
+  const botcord = channels.botcord as Record<string, any>;
+
+  // Promote single-account legacy shape into multi-account when needed:
+  // if the channel currently carries a top-level credentialsFile and we
+  // are about to add a *second* account, fold the existing one into the
+  // accounts map under the explicit account id "default".
+  if (!botcord.accounts || typeof botcord.accounts !== "object") {
+    botcord.accounts = {};
+  }
+  const accounts = botcord.accounts as Record<string, any>;
+  if (
+    typeof botcord.credentialsFile === "string" &&
+    !accounts.default &&
+    botcord.credentialsFile !== args.credentialsFile
+  ) {
+    accounts.default = {
+      enabled: botcord.enabled !== false,
+      credentialsFile: botcord.credentialsFile,
+      deliveryMode: botcord.deliveryMode || "websocket",
+    };
+    delete botcord.credentialsFile;
+    delete botcord.enabled;
+    delete botcord.deliveryMode;
+  }
+
+  accounts[args.agentId] = {
+    ...(accounts[args.agentId] || {}),
+    enabled: true,
+    credentialsFile: args.credentialsFile,
+    deliveryMode: accounts[args.agentId]?.deliveryMode || "websocket",
+  };
+  // Keep the channel itself enabled when we have at least one account.
+  if (botcord.enabled === undefined) botcord.enabled = true;
+
+  try {
+    mkdirSync(join(botcordHome(), ".openclaw"), { recursive: true });
+    writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n", { encoding: "utf8" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Frame signature verification ────────────────────────────────────────────
 
 function controlSigningInput(frame: ControlFrame): string {
@@ -232,6 +308,7 @@ export async function provisionAgentLocal(args: {
   privateKey: string;
   publicKey: string;
   credentialsFile: string;
+  configPatched: boolean;
 }> {
   const fetchFn = args.fetchImpl ?? fetch;
   const kp = generateKeypair();
@@ -272,11 +349,19 @@ export async function provisionAgentLocal(args: {
     tokenExpiresAt: result.token_expires_at,
     openclawHostId: args.host.hostInstanceId,
   });
+  // Register the new agent in OpenClaw's config so it actually gets loaded
+  // (next plugin reload). Without this the credentials file is on disk but
+  // unreferenced and OpenClaw never spawns a channel for it.
+  const configPatched = patchOpenclawConfigForAgent({
+    agentId: result.agent_id,
+    credentialsFile: credPath,
+  });
   return {
     result,
     privateKey: kp.privateKey,
     publicKey: kp.publicKey,
     credentialsFile: credPath,
+    configPatched,
   };
 }
 
@@ -534,6 +619,10 @@ export function startOpenclawHostControl(
   };
 }
 
-// TODO(plugin): hot-attach a freshly-provisioned agent into the running
-// channel without requiring an OpenClaw config reload. Today the
-// credentials file lands on disk and is picked up on next plugin restart.
+// NOTE: provisionAgentLocal patches `~/.openclaw/openclaw.json` to register
+// the new agent under `channels.botcord.accounts.<agentId>`, mirroring the
+// install.sh flow. The OpenClaw plugin SDK currently exposes no in-process
+// reload hook, so the new account becomes active on the *next* plugin load.
+// True hot-attach (zero-downtime add of a running channel) would need an
+// SDK-side `runtime.reloadChannel(...)` API or a SIGHUP-style protocol —
+// tracked separately.

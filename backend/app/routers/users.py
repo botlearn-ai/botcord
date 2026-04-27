@@ -469,22 +469,32 @@ async def _consume_bind_code(code: str) -> bool:
     return await _consume_short_code(code, "bind")
 
 
-async def _revert_short_code_claim(code: str, kind: str) -> None:
-    """Best-effort: re-open a short_code that was consumed-with-claim.
+async def _revert_short_code_claim(
+    code: str, kind: str, *, reopen: bool = False
+) -> None:
+    """Best-effort: roll back a ``claimed_agent_id`` stamp on a short_code.
 
-    Used when the downstream insert (Agent / SigningKey / etc.) fails after
-    :func:`_consume_short_code_with_claim` has already stamped
-    ``claimed_agent_id`` and bumped ``use_count``. We re-set ``use_count``
-    to 0 / ``consumed_at`` to NULL and strip the claim metadata so polling
-    readers don't observe a "claimed but agent missing" state. The
-    underlying ticket (signed JWT-style payload) and ``jti`` are *not*
-    re-issued — replay is still impossible because the JTI burn is
-    independent.
+    Used when the downstream insert (Agent / SigningKey / etc.) fails
+    after :func:`_consume_short_code_with_claim` already stamped the
+    short_code. The claim metadata is always stripped so polling never
+    reports a phantom "claimed but agent missing" state.
+
+    ``reopen`` controls what happens to the consumed bookkeeping:
+
+    - ``False`` (default, **safe for bind tickets**): leave ``consumed_at``
+      and ``use_count`` set. The row stays terminal — polling reports the
+      bind code as no longer pending and the user must request a fresh one.
+      This avoids a phantom-pending state when the ``jti`` was burned by
+      :func:`_consume_bind_ticket_jti` (one-shot, irreversible) and the
+      ticket can therefore never be redeemed again even if reopened.
+
+    - ``True``: also reset ``consumed_at = None`` and ``use_count = 0`` so
+      the code can be re-redeemed. Only safe for short_code kinds whose
+      consume path is *not* JTI-gated (e.g. ``openclaw_provision``).
 
     Failures are swallowed: if the revert can't run (DB down, transaction
-    poisoned), the consumer is left in the consumed state, which is the
-    safe direction for credential issuance — the user can simply request
-    a new bind code.
+    poisoned), the row is left consumed-with-stamp, which is the
+    fail-closed direction for credential issuance.
     """
     try:
         async with _short_code_session_factory() as code_session:
@@ -504,14 +514,14 @@ async def _revert_short_code_claim(code: str, kind: str) -> None:
             payload.pop("claimed_agent_id", None)
             payload.pop("claimed_at", None)
             new_payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            values: dict = {"payload_json": new_payload_json}
+            if reopen:
+                values["consumed_at"] = None
+                values["use_count"] = 0
             await code_session.execute(
                 update(ShortCode)
                 .where(ShortCode.code == code, ShortCode.kind == kind)
-                .values(
-                    consumed_at=None,
-                    use_count=0,
-                    payload_json=new_payload_json,
-                )
+                .values(**values)
             )
             await code_session.commit()
     except Exception:  # noqa: BLE001
@@ -2438,29 +2448,39 @@ async def openclaw_provision(
         "owner_user_id": str(ctx.user_id),
     }
 
-    try:
-        ack = await send_host_control_frame(
-            instance.id, "provision_agent", frame_params
-        )
-    except HTTPException:
-        # Best-effort revoke the unconsumed short code so it can't be
-        # racey-redeemed later.
+    async def _burn_provision_code() -> None:
+        # Best-effort: stamp consumed_at on the unredeemed provision code so
+        # a late host claim can't sneak through after we've already returned
+        # an error to the dashboard. Failures here are intentionally
+        # swallowed — the TTL provides a hard ceiling either way.
         try:
             async with _short_code_session_factory() as code_session:
                 await code_session.execute(
                     update(ShortCode)
-                    .where(ShortCode.code == provision_id)
+                    .where(
+                        ShortCode.code == provision_id,
+                        ShortCode.kind == "openclaw_provision",
+                        ShortCode.consumed_at.is_(None),
+                    )
                     .values(consumed_at=_utc_now())
                 )
                 await code_session.commit()
         except Exception:  # noqa: BLE001
             pass
+
+    try:
+        ack = await send_host_control_frame(
+            instance.id, "provision_agent", frame_params
+        )
+    except HTTPException:
+        await _burn_provision_code()
         raise
 
     if not isinstance(ack, dict) or not ack.get("ok"):
         err = ack.get("error") if isinstance(ack, dict) else None
         code = (err or {}).get("code") if isinstance(err, dict) else None
         message = (err or {}).get("message") if isinstance(err, dict) else None
+        await _burn_provision_code()
         raise HTTPException(
             status_code=502,
             detail={
@@ -2473,6 +2493,7 @@ async def openclaw_provision(
     result = ack.get("result") if isinstance(ack.get("result"), dict) else None
     agent_id = (result or {}).get("agent_id")
     if not isinstance(agent_id, str):
+        await _burn_provision_code()
         raise HTTPException(
             status_code=502,
             detail={
@@ -2484,6 +2505,7 @@ async def openclaw_provision(
     agent_q = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = agent_q.scalar_one_or_none()
     if agent is None:
+        await _burn_provision_code()
         raise HTTPException(
             status_code=502,
             detail={

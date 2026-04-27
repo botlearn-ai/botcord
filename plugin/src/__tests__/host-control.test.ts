@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   handleControlFrame,
+  patchOpenclawConfigForAgent,
   provisionAgentLocal,
 } from "../host-control.js";
 
@@ -75,6 +76,16 @@ describe("provisionAgentLocal", () => {
     expect(written.token).toBe("agent-token-xyz");
     expect(written.openclawHostId).toBe("oc_aaaaaaaaaaaa");
     expect(written.privateKey).toBe(res.privateKey);
+
+    // openclaw.json must now reference the new agent account.
+    expect(res.configPatched).toBe(true);
+    const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    expect(cfg.channels.botcord.accounts["ag_provtest1234"]).toEqual({
+      enabled: true,
+      credentialsFile: credPath,
+      deliveryMode: "websocket",
+    });
   });
 
   it("throws on non-2xx response", async () => {
@@ -89,6 +100,67 @@ describe("provisionAgentLocal", () => {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/provision-claim failed: 400/);
+  });
+});
+
+describe("patchOpenclawConfigForAgent", () => {
+  it("creates accounts map on a fresh config", () => {
+    const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
+    const ok = patchOpenclawConfigForAgent({
+      agentId: "ag_new1",
+      credentialsFile: "/tmp/creds.json",
+      configPath: cfgPath,
+    });
+    expect(ok).toBe(true);
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    expect(cfg.channels.botcord.enabled).toBe(true);
+    expect(cfg.channels.botcord.accounts.ag_new1.credentialsFile).toBe("/tmp/creds.json");
+  });
+
+  it("promotes a single-account legacy shape into the accounts map", () => {
+    const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
+    mkdirSync(join(tmpHome, ".openclaw"), { recursive: true });
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({
+        channels: {
+          botcord: {
+            enabled: true,
+            credentialsFile: "/legacy/creds.json",
+            deliveryMode: "polling",
+          },
+        },
+      }),
+    );
+    const ok = patchOpenclawConfigForAgent({
+      agentId: "ag_new2",
+      credentialsFile: "/tmp/new.json",
+      configPath: cfgPath,
+    });
+    expect(ok).toBe(true);
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    expect(cfg.channels.botcord.credentialsFile).toBeUndefined();
+    expect(cfg.channels.botcord.accounts.default.credentialsFile).toBe(
+      "/legacy/creds.json",
+    );
+    expect(cfg.channels.botcord.accounts.default.deliveryMode).toBe("polling");
+    expect(cfg.channels.botcord.accounts.ag_new2.credentialsFile).toBe("/tmp/new.json");
+  });
+
+  it("is idempotent on repeated patch", () => {
+    const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
+    patchOpenclawConfigForAgent({
+      agentId: "ag_x",
+      credentialsFile: "/c1",
+      configPath: cfgPath,
+    });
+    patchOpenclawConfigForAgent({
+      agentId: "ag_x",
+      credentialsFile: "/c1",
+      configPath: cfgPath,
+    });
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    expect(Object.keys(cfg.channels.botcord.accounts)).toEqual(["ag_x"]);
   });
 });
 
