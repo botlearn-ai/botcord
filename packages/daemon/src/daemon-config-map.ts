@@ -43,6 +43,39 @@ function expandHome(p: string): string {
   return p;
 }
 
+/**
+ * Resolve a gateway profile's bearer token, preferring the inline `token` and
+ * falling back to reading `tokenFile` from disk. Exported so callers outside
+ * of `toGatewayConfig` (notably `provision.ts`'s runtime-snapshot probe and
+ * the post-provision hot-add path) get the same semantics — without it,
+ * tokenFile-only profiles look unauthenticated.
+ *
+ * Returns the trimmed token string or `null` when neither source produced
+ * one. Read failures are logged via `daemonLog.warn` so misconfiguration is
+ * surfaced; the function never throws.
+ */
+export function resolveProfileToken(
+  profile: { name: string; token?: string; tokenFile?: string },
+  where: string = "resolveProfileToken",
+): string | null {
+  if (profile.token && profile.token.length > 0) return profile.token;
+  if (profile.tokenFile && profile.tokenFile.length > 0) {
+    try {
+      const t = readFileSync(expandHome(profile.tokenFile), "utf8").trim();
+      return t.length > 0 ? t : null;
+    } catch (err: any) {
+      daemonLog.warn("daemon.config.openclaw.tokenfile_failed", {
+        where,
+        gateway: profile.name,
+        tokenFile: profile.tokenFile,
+        error: err?.message ?? String(err),
+      });
+      return null;
+    }
+  }
+  return null;
+}
+
 function prepareGatewayProfiles(
   profiles: OpenclawGatewayProfile[] | undefined,
 ): Map<string, PreparedGatewayProfile> {
@@ -50,19 +83,12 @@ function prepareGatewayProfiles(
   if (!profiles) return out;
   for (const p of profiles) {
     const prepared: PreparedGatewayProfile = { ...p };
-    if (p.token && p.token.length > 0) {
-      prepared.resolvedToken = p.token;
-    } else if (p.tokenFile && p.tokenFile.length > 0) {
-      try {
-        prepared.resolvedToken = readFileSync(expandHome(p.tokenFile), "utf8").trim();
-      } catch (err: any) {
-        prepared.tokenError = err?.message ?? String(err);
-        daemonLog.warn("daemon.config.openclaw.tokenfile_failed", {
-          gateway: p.name,
-          tokenFile: p.tokenFile,
-          error: prepared.tokenError,
-        });
-      }
+    const resolved = resolveProfileToken(p, "prepareGatewayProfiles");
+    if (resolved !== null) prepared.resolvedToken = resolved;
+    else if (p.tokenFile && p.tokenFile.length > 0) {
+      // resolveProfileToken already logged the failure; keep the marker so
+      // resolveGateway() callers can introspect why `resolvedToken` is empty.
+      prepared.tokenError = "tokenFile read failed";
     }
     out.set(p.name, prepared);
   }

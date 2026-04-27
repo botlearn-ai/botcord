@@ -41,7 +41,7 @@ import {
   type RouteRule,
   type RouteRuleMatch,
 } from "./config.js";
-import { BOTCORD_CHANNEL_TYPE, buildManagedRoutes } from "./daemon-config-map.js";
+import { BOTCORD_CHANNEL_TYPE, buildManagedRoutes, resolveProfileToken } from "./daemon-config-map.js";
 import {
   agentHomeDir,
   agentStateDir,
@@ -368,10 +368,14 @@ async function provisionAgent(
         (g) => g.name === credentials.openclawGateway,
       );
       if (profile) {
+        // Resolve tokenFile alongside inline token so the freshly hot-added
+        // route authenticates correctly on the very first turn (matches the
+        // semantics applied by toGatewayConfig at boot).
+        const token = resolveProfileToken(profile, "provision.upsertManagedRoute");
         synthRoute.gateway = {
           name: profile.name,
           url: profile.url,
-          ...(profile.token ? { token: profile.token } : {}),
+          ...(token ? { token } : {}),
           ...(credentials.openclawAgent
             ? { openclawAgent: credentials.openclawAgent }
             : profile.defaultAgent
@@ -803,11 +807,17 @@ export async function collectRuntimeSnapshotAsync(opts: {
   const gateways = opts.cfg?.openclawGateways ?? [];
   if (gateways.length === 0) return base;
   const probe = opts.wsProbe ?? defaultWsProbe;
-  const timeoutMs = opts.timeoutMs ?? 5000;
+  // Default 3s — Hub waits 5s for the list_runtimes ack (see
+  // backend/hub/routers/daemon_control.py); leaving 2s of headroom for
+  // serialization + a few gateways probing in parallel keeps a single slow
+  // gateway from blowing the entire snapshot window.
+  const timeoutMs = opts.timeoutMs ?? 3000;
   const capped = gateways.slice(0, RUNTIME_ENDPOINTS_CAP);
   const endpoints = await Promise.all(
     capped.map(async (g) => {
-      const token = g.token; // tokenFile resolution lives in toGatewayConfig; if a caller hands us only tokenFile we skip auth.
+      // Resolve tokenFile here so token-file-only gateways probe with their
+      // bearer token instead of being marked unreachable for missing auth.
+      const token = resolveProfileToken(g, "collectRuntimeSnapshotAsync") ?? undefined;
       try {
         const res = await probe({ url: g.url, token, timeoutMs });
         const entry: any = { name: g.name, url: g.url, reachable: res.ok };

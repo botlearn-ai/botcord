@@ -184,4 +184,64 @@ describe("OpenclawAcpAdapter.run", () => {
     await adapter.run({ ...opts, sessionId: "s1" });
     expect(spawnFn).toHaveBeenCalledTimes(1);
   });
+
+  it("respawns the pooled child when gateway.url or gateway.token changes", async () => {
+    // Each call to spawnFn must hand back a fresh child — the second `run`
+    // should detect the rotated token and shut down the first child before
+    // spawning a new one.
+    const childA = new FakeChild();
+    const childB = new FakeChild();
+    const spawnFn = vi
+      .fn()
+      .mockReturnValueOnce(childA)
+      .mockReturnValueOnce(childB);
+    const adapter = new OpenclawAcpAdapter({ spawnFn: spawnFn as any });
+
+    function wireChild(c: FakeChild, sid: string): void {
+      c.stdin.on("data", (chunk: Buffer) => {
+        for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+          const frame = JSON.parse(line);
+          if (frame.method === "initialize") {
+            c.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+          } else if (frame.method === "session/new") {
+            c.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: sid } }) + "\n");
+          } else if (frame.method === "session/prompt") {
+            c.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "ok" } }) + "\n");
+          }
+        }
+      });
+    }
+    wireChild(childA, "s1");
+    wireChild(childB, "s2");
+
+    const baseOpts = {
+      text: "hi",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner" as const,
+    };
+    const gatewayV1: ResolvedOpenclawGateway = {
+      name: "remote",
+      url: "ws://10.0.0.1:8080",
+      token: "token-old",
+      openclawAgent: "main",
+    };
+    const gatewayV2: ResolvedOpenclawGateway = {
+      ...gatewayV1,
+      token: "token-rotated",
+    };
+
+    await adapter.run({ ...baseOpts, gateway: gatewayV1 });
+    expect(spawnFn).toHaveBeenCalledTimes(1);
+    expect(spawnFn.mock.calls[0][1]).toContain("token-old");
+    expect(childA.killed).toBe(false);
+
+    await adapter.run({ ...baseOpts, gateway: gatewayV2 });
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    expect(spawnFn.mock.calls[1][1]).toContain("token-rotated");
+    // The stale child must have been signaled.
+    expect(childA.killed).toBe(true);
+  });
 });

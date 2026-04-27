@@ -1,8 +1,12 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DaemonConfig } from "../config.js";
 import {
   BOTCORD_CHANNEL_TYPE,
   buildManagedRoutes,
+  resolveProfileToken,
   toGatewayConfig,
 } from "../daemon-config-map.js";
 import { agentWorkspaceDir } from "../agent-workspace.js";
@@ -469,6 +473,38 @@ describe("openclawGateways resolution", () => {
       agentRuntimes: { ag_one: { runtime: "openclaw-acp", openclawGateway: "missing" } },
     });
     expect(gw.managedRoutes).toEqual([]);
+  });
+
+  it("resolveProfileToken prefers inline token", () => {
+    expect(resolveProfileToken({ name: "p", token: "inline" })).toBe("inline");
+  });
+
+  it("resolveProfileToken reads tokenFile from disk and trims whitespace", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "tokenfile-"));
+    const file = path.join(dir, "tok");
+    writeFileSync(file, "  secret-token\n", { mode: 0o600 });
+    expect(resolveProfileToken({ name: "p", tokenFile: file })).toBe("secret-token");
+  });
+
+  it("resolveProfileToken returns null and logs when tokenFile read fails", () => {
+    const missing = path.join(tmpdir(), `nope-${Date.now()}-${Math.random()}.txt`);
+    expect(resolveProfileToken({ name: "p", tokenFile: missing })).toBeNull();
+  });
+
+  it("resolveProfileToken returns null when neither token nor tokenFile is set", () => {
+    expect(resolveProfileToken({ name: "p" })).toBeNull();
+  });
+
+  it("toGatewayConfig still resolves tokenFile via the new helper", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "gw-tokenfile-"));
+    const file = path.join(dir, "tok");
+    writeFileSync(file, "from-file", { mode: 0o600 });
+    const cfg = baseConfig({
+      openclawGateways: [{ name: "remote", url: "ws://x", tokenFile: file }],
+      routes: [{ match: { conversationId: "rm_x" }, adapter: "openclaw-acp", cwd: "/home/alice", gateway: "remote" }],
+    });
+    const gw = toGatewayConfig(cfg);
+    expect(gw.routes[0].gateway?.token).toBe("from-file");
   });
 });
 

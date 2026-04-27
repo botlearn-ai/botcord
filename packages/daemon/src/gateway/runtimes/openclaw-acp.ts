@@ -43,6 +43,14 @@ interface AcpProcessHandle {
   inFlight: number;
   closed: boolean;
   exitReason?: string;
+  /**
+   * Spawn arguments captured at process-start time. Compared on reuse so a
+   * config reload or token rotation under the same `(accountId, gateway.name)`
+   * pool key shuts down the stale child before the next turn instead of
+   * silently keeping the old `--url` / `--token`.
+   */
+  spawnUrl: string;
+  spawnToken: string;
 }
 
 interface PendingCall {
@@ -326,6 +334,22 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       ACP_POOL.delete(key);
       handle = undefined;
     }
+    // Pool key is `(accountId, gateway.name)`, but the spawned child is
+    // pinned to the URL + token the gateway profile carried at spawn time.
+    // If either has changed (config reload, token rotation, tokenFile
+    // rewrite), we must shut down the stale child before reusing the slot
+    // — otherwise the next turn would still hit the old endpoint with the
+    // old credential.
+    if (handle && !handle.closed && (handle.spawnUrl !== gateway.url || handle.spawnToken !== (gateway.token ?? ""))) {
+      log.info("openclaw-acp.respawn-on-config-change", {
+        key,
+        urlChanged: handle.spawnUrl !== gateway.url,
+        tokenChanged: handle.spawnToken !== (gateway.token ?? ""),
+      });
+      shutdownHandle(handle, "config-changed");
+      ACP_POOL.delete(key);
+      handle = undefined;
+    }
     if (!handle) {
       handle = this.spawnAcpProcess(key, gateway);
       ACP_POOL.set(key, handle);
@@ -366,6 +390,8 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       initialized: false,
       inFlight: 0,
       closed: false,
+      spawnUrl: gateway.url,
+      spawnToken: gateway.token ?? "",
     };
 
     child.stdout.setEncoding("utf8");
