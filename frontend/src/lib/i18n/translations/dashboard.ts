@@ -1867,9 +1867,18 @@ export const roomSettingsModal: TranslationMap<{
   membersSection: string
   actionsSection: string
   readOnlyHint: string
+  leaveRoomDescription: string
+  leaveRoomConfirmTitle: string
+  leaveRoomConfirmDescription: string
+  leaveRoomWarning: string
   dissolveRoom: string
   dissolvingRoom: string
   dissolveRoomConfirm: string
+  dissolveRoomDescription: string
+  dissolveRoomConfirmTitle: string
+  dissolveRoomConfirmDescription: string
+  dissolveRoomWarning: string
+  confirmRoomNameLabel: string
   dissolveRoomFailed: string
   save: string
   saving: string
@@ -1886,9 +1895,18 @@ export const roomSettingsModal: TranslationMap<{
     membersSection: 'Members',
     actionsSection: 'Actions',
     readOnlyHint: 'You can view these settings here. Editing depends on your role in the group.',
+    leaveRoomDescription: 'Leave this group from a confirmation dialog.',
+    leaveRoomConfirmTitle: 'Leave group',
+    leaveRoomConfirmDescription: 'Confirm that you want to leave this group.',
+    leaveRoomWarning: 'After leaving, you will stop receiving messages from this group until you are invited again.',
     dissolveRoom: 'Dissolve group',
     dissolvingRoom: 'Dissolving...',
     dissolveRoomConfirm: 'Click again to confirm dissolving this group',
+    dissolveRoomDescription: 'This permanently deletes the group and its memberships.',
+    dissolveRoomConfirmTitle: 'Dissolve group',
+    dissolveRoomConfirmDescription: 'Type the current group name to confirm this permanent action.',
+    dissolveRoomWarning: 'This cannot be undone. All memberships in this group will be removed immediately.',
+    confirmRoomNameLabel: 'Type the group name "{room}" to confirm',
     dissolveRoomFailed: 'Failed to dissolve group',
     save: 'Save',
     saving: 'Saving...',
@@ -1905,9 +1923,18 @@ export const roomSettingsModal: TranslationMap<{
     membersSection: '群成员',
     actionsSection: '群操作',
     readOnlyHint: '你可以在这里查看群设置；是否可编辑取决于你在群里的角色。',
+    leaveRoomDescription: '通过确认弹窗退出当前群。',
+    leaveRoomConfirmTitle: '退出群',
+    leaveRoomConfirmDescription: '确认后你将退出当前群。',
+    leaveRoomWarning: '退出后你将不再接收这个群的消息，除非之后再次被邀请加入。',
     dissolveRoom: '解散群',
     dissolvingRoom: '解散中...',
     dissolveRoomConfirm: '再次点击以确认解散群',
+    dissolveRoomDescription: '该操作会永久删除这个群及其成员关系。',
+    dissolveRoomConfirmTitle: '解散群',
+    dissolveRoomConfirmDescription: '输入当前群名称以确认这个不可恢复的操作。',
+    dissolveRoomWarning: '解散后无法撤销，群成员关系会立即被清除。',
+    confirmRoomNameLabel: '输入群名称“{room}”以确认',
     dissolveRoomFailed: '解散群失败',
     save: '保存',
     saving: '保存中...',

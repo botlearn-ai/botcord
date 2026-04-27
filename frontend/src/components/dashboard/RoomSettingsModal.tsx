@@ -37,6 +37,106 @@ interface RoomSettingsModalProps {
   onClose: () => void;
 }
 
+interface ActionConfirmDialogProps {
+  title: string;
+  description: string;
+  warning?: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  confirmTextLabel?: string;
+  confirmPlaceholder?: string;
+  confirmValue?: string;
+  onConfirmValueChange?: (value: string) => void;
+  confirmDisabled?: boolean;
+  loading?: boolean;
+  loadingLabel?: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+function ActionConfirmDialog({
+  title,
+  description,
+  warning,
+  confirmLabel,
+  cancelLabel,
+  confirmTextLabel,
+  confirmPlaceholder,
+  confirmValue = "",
+  onConfirmValueChange,
+  confirmDisabled = false,
+  loading = false,
+  loadingLabel,
+  onClose,
+  onConfirm,
+}: ActionConfirmDialogProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={loading}
+          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          aria-label={cancelLabel}
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="pr-8">
+          <h3 className="text-xl font-bold text-text-primary">{title}</h3>
+          <p className="mt-2 text-sm text-text-secondary">{description}</p>
+        </div>
+
+        {confirmTextLabel ? (
+          <label className="mt-5 block">
+            <span className="mb-1.5 block text-xs text-text-secondary">{confirmTextLabel}</span>
+            <input
+              type="text"
+              value={confirmValue}
+              onChange={(e) => onConfirmValueChange?.(e.target.value)}
+              placeholder={confirmPlaceholder}
+              className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2.5 text-sm text-text-primary outline-none focus:border-red-400/50 placeholder:text-text-secondary/40"
+            />
+          </label>
+        ) : null}
+
+        {warning ? (
+          <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
+            <p className="text-xs leading-5 text-amber-300">{warning}</p>
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={confirmDisabled || loading}
+            className="inline-flex items-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-300 transition-all hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {loading ? loadingLabel ?? confirmLabel : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RoomSettingsModal({
   roomId,
   viewerMode,
@@ -108,12 +208,15 @@ export default function RoomSettingsModal({
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dissolving, setDissolving] = useState(false);
-  const [confirmingLeave, setConfirmingLeave] = useState(false);
-  const [confirmingDissolve, setConfirmingDissolve] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [dissolveDialogOpen, setDissolveDialogOpen] = useState(false);
+  const [dissolveConfirmText, setDissolveConfirmText] = useState("");
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ownerMember = members.find((member) => member.role === "owner") ?? null;
   const groupInitial = name.trim().charAt(0).toUpperCase() || "G";
+  const persistedRoomName = initialName.trim();
+  const dissolveConfirmArmed = dissolveConfirmText.trim() === persistedRoomName;
   const filteredMembers = useMemo(() => {
     const query = memberQuery.trim().toLowerCase();
     if (!query) return members;
@@ -261,17 +364,13 @@ export default function RoomSettingsModal({
 
   const handleLeave = async () => {
     if (isOwner) return;
-    if (!confirmingLeave) {
-      setConfirmingLeave(true);
-      return;
-    }
     setError(null);
     try {
       await Promise.all([leaveRoom(roomId), refreshHumanRooms()]);
+      setLeaveDialogOpen(false);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : tm.leaveRoomFailed);
-      setConfirmingLeave(false);
     }
   };
 
@@ -290,23 +389,20 @@ export default function RoomSettingsModal({
   };
 
   const handleDissolve = async () => {
-    if (!isOwner || dissolving) return;
-    if (!confirmingDissolve) {
-      setConfirmingDissolve(true);
-      return;
-    }
+    if (!isOwner || dissolving || !dissolveConfirmArmed) return;
     setError(null);
     setDissolving(true);
     try {
       const dissolve = viewerMode === "human" ? humansApi.dissolveRoom : api.dissolveRoom;
       await dissolve(roomId);
+      setDissolveDialogOpen(false);
+      setDissolveConfirmText("");
       setFocusedRoomId(null);
       setOpenedRoomId(null);
       await Promise.all([refreshOverview(), refreshHumanRooms()]);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : t.dissolveRoomFailed);
-      setConfirmingDissolve(false);
     } finally {
       setDissolving(false);
     }
@@ -692,11 +788,11 @@ export default function RoomSettingsModal({
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text-primary">{tm.leaveRoom}</p>
                       <p className="mt-1 text-xs text-text-secondary/70">
-                        {confirmingLeave ? t.dissolveRoomConfirm : t.readOnlyHint}
+                        {t.leaveRoomDescription}
                       </p>
                     </div>
                     <button
-                      onClick={() => void handleLeave()}
+                      onClick={() => setLeaveDialogOpen(true)}
                       disabled={isLeaving}
                       className="shrink-0 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45"
                     >
@@ -737,10 +833,13 @@ export default function RoomSettingsModal({
                   <div className="flex items-center justify-between gap-4 border-t border-red-500/20 py-3 first:border-t-0">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-red-200">{t.dissolveRoom}</p>
-                      <p className="mt-1 text-xs text-red-200/70">{confirmingDissolve ? t.dissolveRoomConfirm : t.dissolveRoomFailed.replace("失败", "后将删除群及其成员关系").replace("Failed to dissolve group", "This permanently deletes the group and its memberships.")}</p>
+                      <p className="mt-1 text-xs text-red-200/70">{t.dissolveRoomDescription}</p>
                     </div>
                     <button
-                      onClick={() => void handleDissolve()}
+                      onClick={() => {
+                        setDissolveConfirmText("");
+                        setDissolveDialogOpen(true);
+                      }}
                       disabled={dissolving}
                       className="shrink-0 rounded-lg border border-red-500/35 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45"
                     >
@@ -794,6 +893,48 @@ export default function RoomSettingsModal({
             void refreshRoomDetails();
           }}
           onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {leaveDialogOpen && !isOwner && (
+        <ActionConfirmDialog
+          title={t.leaveRoomConfirmTitle}
+          description={t.leaveRoomConfirmDescription}
+          warning={t.leaveRoomWarning}
+          confirmLabel={tm.leaveRoom}
+          cancelLabel={t.cancel}
+          confirmDisabled={isLeaving}
+          loading={isLeaving}
+          loadingLabel={tm.leavingRoom}
+          onClose={() => setLeaveDialogOpen(false)}
+          onConfirm={() => {
+            void handleLeave();
+          }}
+        />
+      )}
+
+      {dissolveDialogOpen && isOwner && (
+        <ActionConfirmDialog
+          title={t.dissolveRoomConfirmTitle}
+          description={t.dissolveRoomConfirmDescription}
+          warning={t.dissolveRoomWarning}
+          confirmLabel={t.dissolveRoom}
+          cancelLabel={t.cancel}
+          confirmTextLabel={t.confirmRoomNameLabel.replace("{room}", persistedRoomName)}
+          confirmPlaceholder={persistedRoomName}
+          confirmValue={dissolveConfirmText}
+          onConfirmValueChange={setDissolveConfirmText}
+          confirmDisabled={!dissolveConfirmArmed || dissolving}
+          loading={dissolving}
+          loadingLabel={t.dissolvingRoom}
+          onClose={() => {
+            if (dissolving) return;
+            setDissolveDialogOpen(false);
+            setDissolveConfirmText("");
+          }}
+          onConfirm={() => {
+            void handleDissolve();
+          }}
         />
       )}
     </div>
