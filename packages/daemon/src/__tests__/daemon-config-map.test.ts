@@ -400,6 +400,27 @@ describe("buildManagedRoutes", () => {
     });
   });
 
+  it("inherits defaultRoute.extraArgs (e.g. --permission-mode bypassPermissions)", () => {
+    const withExtraArgs: GatewayRoute = {
+      runtime: "claude-code",
+      cwd: "/home/default",
+      extraArgs: ["--permission-mode", "bypassPermissions"],
+    };
+    const map = buildManagedRoutes(["ag_one"], {}, withExtraArgs);
+    expect(map.get("ag_one")?.extraArgs).toEqual([
+      "--permission-mode",
+      "bypassPermissions",
+    ]);
+    // Ensure it's a copy, not the same reference — caller should not be able
+    // to mutate the defaultRoute by editing a managed route's extraArgs.
+    expect(map.get("ag_one")?.extraArgs).not.toBe(withExtraArgs.extraArgs);
+  });
+
+  it("omits extraArgs when defaultRoute has none", () => {
+    const map = buildManagedRoutes(["ag_one"], {}, defaultRoute);
+    expect(map.get("ag_one")).not.toHaveProperty("extraArgs");
+  });
+
   it("preserves agentIds insertion order in the returned map", () => {
     const map = buildManagedRoutes(
       ["ag_b", "ag_a", "ag_c"],
@@ -414,3 +435,61 @@ describe("buildManagedRoutes", () => {
     expect(map.size).toBe(0);
   });
 });
+
+describe("openclawGateways resolution", () => {
+  it("resolves a route gateway profile name into ResolvedOpenclawGateway", () => {
+    const cfg = baseConfig({
+      defaultRoute: { adapter: "claude-code", cwd: "/home/alice" },
+      openclawGateways: [
+        { name: "local", url: "ws://127.0.0.1:1", token: "t1", defaultAgent: "main" },
+      ],
+      routes: [
+        { match: { conversationId: "rm_x" }, adapter: "openclaw-acp", cwd: "/home/alice", gateway: "local" },
+      ],
+    });
+    const gw = toGatewayConfig(cfg);
+    expect(gw.routes[0].gateway).toEqual({
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      token: "t1",
+      openclawAgent: "main",
+    });
+  });
+
+  it("route.openclawAgent overrides profile.defaultAgent", () => {
+    const cfg = baseConfig({
+      openclawGateways: [{ name: "p1", url: "ws://x", defaultAgent: "main" }],
+      routes: [{ match: {}, adapter: "openclaw-acp", cwd: "/home/alice", gateway: "p1", openclawAgent: "design" }],
+    });
+    const gw = toGatewayConfig(cfg);
+    expect(gw.routes[0].gateway?.openclawAgent).toBe("design");
+  });
+
+  it("buildManagedRoutes uses credentials openclawGateway / openclawAgent", () => {
+    const cfg = baseConfig({
+      agents: ["ag_one"],
+      openclawGateways: [{ name: "p1", url: "ws://x", defaultAgent: "main" }],
+    });
+    const gw = toGatewayConfig(cfg, {
+      agentIds: ["ag_one"],
+      agentRuntimes: { ag_one: { runtime: "openclaw-acp", openclawGateway: "p1", openclawAgent: "qa" } },
+    });
+    const managed = gw.managedRoutes?.find((r) => r.match?.accountId === "ag_one");
+    expect(managed?.runtime).toBe("openclaw-acp");
+    expect(managed?.gateway?.name).toBe("p1");
+    expect(managed?.gateway?.openclawAgent).toBe("qa");
+  });
+
+  it("buildManagedRoutes skips an openclaw-acp managed route when its gateway is unknown", () => {
+    const cfg = baseConfig({
+      agents: ["ag_one"],
+      openclawGateways: [{ name: "p1", url: "ws://x" }],
+    });
+    const gw = toGatewayConfig(cfg, {
+      agentIds: ["ag_one"],
+      agentRuntimes: { ag_one: { runtime: "openclaw-acp", openclawGateway: "missing" } },
+    });
+    expect(gw.managedRoutes).toEqual([]);
+  });
+});
+

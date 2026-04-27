@@ -659,6 +659,8 @@ export const api = {
       amount_minor: string;
       billing_interval: "week" | "month";
       description?: string;
+      // Required when the target room is human-owned. Ignored otherwise.
+      provider_agent_id?: string;
     },
   ) {
     return apiPost<MigrateRoomPlanResponse>(

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hub import config as hub_config
 from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent
 from hub.database import get_db
+from hub.enums import ParticipantType
 from hub.models import SubscriptionRoomCreatorPolicy
 from hub.services import subscriptions as subscription_svc
 from hub.subscription_schemas import (
@@ -40,7 +41,9 @@ def _require_internal(authorization: str | None = None):
 def _product_response(product) -> SubscriptionProductResponse:
     return SubscriptionProductResponse(
         product_id=product.product_id,
-        owner_agent_id=product.owner_agent_id,
+        owner_id=product.owner_id,
+        owner_type=product.owner_type.value,
+        provider_agent_id=product.provider_agent_id,
         name=product.name,
         description=product.description,
         asset_code=product.asset_code,
@@ -97,7 +100,9 @@ async def create_product(
     try:
         product = await subscription_svc.create_subscription_product(
             db,
-            current_agent,
+            owner_id=current_agent,
+            owner_type=ParticipantType.agent,
+            provider_agent_id=current_agent,
             name=req.name,
             description=req.description,
             amount_minor=amount,
@@ -125,7 +130,10 @@ async def list_my_products(
     db: AsyncSession = Depends(get_db),
 ):
     products = await subscription_svc.list_subscription_products(
-        db, owner_agent_id=current_agent, include_archived=True
+        db,
+        owner_id=current_agent,
+        owner_type=ParticipantType.agent,
+        include_archived=True,
     )
     return SubscriptionProductListResponse(
         products=[_product_response(product) for product in products]
@@ -140,7 +148,10 @@ async def archive_product(
 ):
     try:
         product = await subscription_svc.archive_subscription_product(
-            db, product_id, current_agent
+            db,
+            product_id,
+            owner_id=current_agent,
+            owner_type=ParticipantType.agent,
         )
         await db.commit()
         await db.refresh(product)
@@ -191,7 +202,12 @@ async def list_subscribers(
     product = await subscription_svc.get_subscription_product(db, product_id)
     if product is None:
         raise I18nHTTPException(status_code=404, message_key="subscription_product_not_found")
-    if product.owner_agent_id != current_agent:
+    # The hub list-subscribers route is agent-JWT — only agent-owned products
+    # are reachable here (human-owned manage via dashboard BFF).
+    if not (
+        product.owner_type == ParticipantType.agent
+        and product.owner_id == current_agent
+    ):
         raise I18nHTTPException(status_code=403, message_key="not_authorized")
 
     subscriptions = await subscription_svc.list_product_subscribers(db, product_id)

@@ -13,7 +13,24 @@ export const SNAPSHOT_PATH = path.join(DAEMON_DIR, "snapshot.json");
  * Adapter ids. Built-in adapters are enumerated for editor hints; any string
  * accepted by the registry is valid at runtime.
  */
-export type AdapterName = "claude-code" | "codex" | "gemini" | (string & {});
+export type AdapterName = "claude-code" | "codex" | "gemini" | "openclaw-acp" | (string & {});
+
+/**
+ * One OpenClaw gateway profile. Referenced by `RouteRule.gateway` and
+ * `DaemonRouteDefault.gateway` (and `StoredBotCordCredentials.openclawGateway`)
+ * via `name`. `tokenFile` is `~`-expanded and read at `toGatewayConfig` time;
+ * read failures do not block boot — the gateway becomes unusable but other
+ * gateways still work.
+ */
+export interface OpenclawGatewayProfile {
+  name: string;
+  url: string;
+  /** Bearer token; mutually-exclusive priority is `token > tokenFile`. */
+  token?: string;
+  tokenFile?: string;
+  /** Default OpenClaw agent profile name when a route does not pin one. */
+  defaultAgent?: string;
+}
 
 /**
  * Predicates selecting messages for a route. `roomId` / `roomPrefix` are
@@ -41,12 +58,23 @@ export interface RouteRule {
   cwd: string;
   /** Extra CLI flags appended to the adapter invocation. */
   extraArgs?: string[];
+  /**
+   * Required when `adapter === "openclaw-acp"`: name of an entry in
+   * `DaemonConfig.openclawGateways[]`.
+   */
+  gateway?: string;
+  /** Overrides `OpenclawGatewayProfile.defaultAgent` when set. */
+  openclawAgent?: string;
 }
 
 export interface DaemonRouteDefault {
   adapter: AdapterName;
   cwd: string;
   extraArgs?: string[];
+  /** Same semantics as `RouteRule.gateway`. */
+  gateway?: string;
+  /** Same semantics as `RouteRule.openclawAgent`. */
+  openclawAgent?: string;
 }
 
 /**
@@ -95,6 +123,14 @@ export interface DaemonConfig {
    * disabled — see `BOTCORD_TRANSCRIPT` for env-driven temporary overrides.
    */
   transcript?: TranscriptConfig;
+
+  /**
+   * Optional registry of OpenClaw gateway endpoints. Routes / managed routes
+   * with `adapter === "openclaw-acp"` reference these by `name`. Resolution
+   * to {@link ResolvedOpenclawGateway} happens eagerly in `toGatewayConfig`
+   * so the dispatcher never re-queries this list.
+   */
+  openclawGateways?: OpenclawGatewayProfile[];
 }
 
 /**
@@ -214,6 +250,65 @@ export function loadConfig(): DaemonConfig {
   }
   validateAdapter(parsed.defaultRoute.adapter, "defaultRoute.adapter");
 
+  const gatewaysRaw = (parsed as Partial<DaemonConfig>).openclawGateways;
+  const gatewayNames = new Set<string>();
+  if (gatewaysRaw !== undefined) {
+    if (!Array.isArray(gatewaysRaw)) {
+      throw new Error(
+        `daemon config "openclawGateways" must be an array (${CONFIG_PATH})`,
+      );
+    }
+    for (const [i, g] of gatewaysRaw.entries()) {
+      if (!g || typeof g !== "object") {
+        throw new Error(
+          `daemon config openclawGateways[${i}] is not an object (${CONFIG_PATH})`,
+        );
+      }
+      const gg = g as Partial<OpenclawGatewayProfile>;
+      if (typeof gg.name !== "string" || gg.name.length === 0) {
+        throw new Error(
+          `daemon config openclawGateways[${i}].name must be a non-empty string (${CONFIG_PATH})`,
+        );
+      }
+      if (typeof gg.url !== "string" || gg.url.length === 0) {
+        throw new Error(
+          `daemon config openclawGateways[${i}].url must be a non-empty string (${CONFIG_PATH})`,
+        );
+      }
+      if (gatewayNames.has(gg.name)) {
+        throw new Error(
+          `daemon config openclawGateways[${i}].name "${gg.name}" duplicated (${CONFIG_PATH})`,
+        );
+      }
+      gatewayNames.add(gg.name);
+    }
+  }
+
+  const validateGatewayRef = (
+    adapter: string,
+    gateway: unknown,
+    where: string,
+  ): void => {
+    if (adapter === "openclaw-acp") {
+      if (typeof gateway !== "string" || gateway.length === 0) {
+        throw new Error(
+          `daemon config ${where} adapter "openclaw-acp" requires a "gateway" name (${CONFIG_PATH})`,
+        );
+      }
+      if (!gatewayNames.has(gateway)) {
+        throw new Error(
+          `daemon config ${where}.gateway "${gateway}" not in openclawGateways (${CONFIG_PATH})`,
+        );
+      }
+    }
+  };
+
+  validateGatewayRef(
+    parsed.defaultRoute.adapter,
+    (parsed.defaultRoute as DaemonRouteDefault).gateway,
+    "defaultRoute",
+  );
+
   const routesRaw = parsed.routes ?? [];
   if (!Array.isArray(routesRaw)) {
     throw new Error(`daemon config "routes" must be an array (${CONFIG_PATH})`);
@@ -228,6 +323,7 @@ export function loadConfig(): DaemonConfig {
       );
     }
     validateAdapter(r.adapter, `routes[${i}].adapter`);
+    validateGatewayRef(r.adapter, (r as RouteRule).gateway, `routes[${i}]`);
   }
   // Preserve the on-disk shape as-is so `config` prints what the user wrote.
   // Resolution of agents vs agentId happens at the consumption boundary
@@ -241,6 +337,15 @@ export function loadConfig(): DaemonConfig {
     const t: TranscriptConfig = {};
     if (typeof parsed.transcript.enabled === "boolean") t.enabled = parsed.transcript.enabled;
     out.transcript = t;
+  }
+  if (gatewaysRaw && Array.isArray(gatewaysRaw)) {
+    out.openclawGateways = (gatewaysRaw as OpenclawGatewayProfile[]).map((g) => {
+      const copy: OpenclawGatewayProfile = { name: g.name, url: g.url };
+      if (typeof g.token === "string") copy.token = g.token;
+      if (typeof g.tokenFile === "string") copy.tokenFile = g.tokenFile;
+      if (typeof g.defaultAgent === "string") copy.defaultAgent = g.defaultAgent;
+      return copy;
+    });
   }
   if (hasAgents) out.agents = (parsed.agents as string[]).slice();
   if (hasLegacy) out.agentId = parsed.agentId;

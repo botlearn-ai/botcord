@@ -21,6 +21,20 @@ export type QueueMode = "serial" | "cancel-previous";
 /** Source-based trust tier used by runtimes to pick default permission flags. */
 export type TrustLevel = "owner" | "trusted" | "public";
 
+/**
+ * Resolved OpenClaw gateway endpoint for a route. Built eagerly in
+ * `toGatewayConfig` from the `DaemonConfig.openclawGateways` registry plus the
+ * `RouteRule.gateway` / `openclawAgent` choice — the dispatcher never needs
+ * to re-query the registry. `name` is preserved purely for logging/snapshot.
+ */
+export interface ResolvedOpenclawGateway {
+  name: string;
+  url: string;
+  token?: string;
+  /** OpenClaw agent profile, with the route override already applied. */
+  openclawAgent?: string;
+}
+
 /** Declarative route entry selecting the runtime and execution flags for matched messages. */
 export interface GatewayRoute {
   match?: RouteMatch;
@@ -29,6 +43,8 @@ export interface GatewayRoute {
   extraArgs?: string[];
   queueMode?: QueueMode;
   trustLevel?: TrustLevel;
+  /** Required when `runtime === "openclaw-acp"`. Resolved at config-load time. */
+  gateway?: ResolvedOpenclawGateway;
 }
 
 // ---------------------------------------------------------------------------
@@ -286,6 +302,13 @@ export interface RuntimeRunOptions {
   context?: Record<string, unknown>;
   /** Called for every parsed block while the turn is in progress. */
   onBlock?: (block: StreamBlock) => void;
+  /**
+   * External service endpoint required by some runtimes (first user:
+   * openclaw-acp). Resolved at config-load time and passed through here per
+   * call — runtime factories do not see it. Mirrors the `hubUrl` precedent of
+   * lifting service URLs out of `extraArgs` into typed first-class fields.
+   */
+  gateway?: ResolvedOpenclawGateway;
 }
 
 /** Result returned by a runtime adapter after a turn completes. */

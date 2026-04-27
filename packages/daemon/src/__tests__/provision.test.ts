@@ -298,6 +298,58 @@ describe("set_route handler", () => {
     expect(saved.routes[0].extraArgs).toEqual(["--debug"]);
   });
 
+  it("inherits defaultRoute.extraArgs when caller omits them (mirrors adapter/cwd fallback)", () => {
+    mockState.cfg = {
+      defaultRoute: {
+        adapter: "claude-code",
+        cwd: process.env.HOME ?? "/tmp",
+        extraArgs: ["--permission-mode", "bypassPermissions"],
+      },
+      routes: [],
+      streamBlocks: true,
+    };
+    setRoute({ agentId: "ag_new", pattern: "rm_oc_" });
+    const saved = mockState.saved[mockState.saved.length - 1] as unknown as DaemonConfig;
+    expect(saved.routes[0].extraArgs).toEqual([
+      "--permission-mode",
+      "bypassPermissions",
+    ]);
+    // Mutating the saved route must not bleed back into defaultRoute.
+    saved.routes[0].extraArgs!.push("--mutated");
+    expect(mockState.cfg.defaultRoute).toEqual({
+      adapter: "claude-code",
+      cwd: process.env.HOME ?? "/tmp",
+      extraArgs: ["--permission-mode", "bypassPermissions"],
+    });
+  });
+
+  it("explicit extraArgs override defaultRoute.extraArgs", () => {
+    mockState.cfg = {
+      defaultRoute: {
+        adapter: "claude-code",
+        cwd: process.env.HOME ?? "/tmp",
+        extraArgs: ["--permission-mode", "bypassPermissions"],
+      },
+      routes: [],
+      streamBlocks: true,
+    };
+    setRoute({
+      agentId: "ag_new",
+      route: { adapter: "claude-code", cwd: process.env.HOME ?? "/tmp", extraArgs: ["--debug"] },
+    });
+    const saved = mockState.saved[mockState.saved.length - 1] as unknown as DaemonConfig;
+    expect(saved.routes[0].extraArgs).toEqual(["--debug"]);
+  });
+
+  it("omits extraArgs when neither route nor defaultRoute provide them", () => {
+    setRoute({
+      agentId: "ag_new",
+      route: { adapter: "claude-code", cwd: process.env.HOME ?? "/tmp" },
+    });
+    const saved = mockState.saved[mockState.saved.length - 1] as unknown as DaemonConfig;
+    expect(saved.routes[0]).not.toHaveProperty("extraArgs");
+  });
+
   it("forces match.accountId to the agentId even when callers omit it", () => {
     setRoute({
       agentId: "ag_x",

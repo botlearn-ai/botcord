@@ -25,6 +25,18 @@ export interface StoredBotCordCredentials {
   runtime?: string;
   /** Working directory pinned for this agent, cached alongside runtime. */
   cwd?: string;
+  /**
+   * Name of the OpenClaw gateway profile (`DaemonConfig.openclawGateways[].name`)
+   * to route this agent's turns through. Only meaningful when `runtime ===
+   * "openclaw-acp"`. Read by `buildManagedRoutes` to lookup the resolved
+   * gateway endpoint at config-load time.
+   */
+  openclawGateway?: string;
+  /**
+   * Optional override of the OpenClaw agent profile to use within the gateway,
+   * falling back to `OpenclawGatewayProfile.defaultAgent` when absent.
+   */
+  openclawAgent?: string;
 }
 
 function normalizeCredentialValue(raw: any, keys: string[]): string | undefined {
@@ -97,6 +109,8 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
   const onboardedAt = normalizeCredentialValue(raw, ["onboardedAt", "onboarded_at"]);
   const runtime = normalizeCredentialValue(raw, ["runtime"]);
   const cwd = normalizeCredentialValue(raw, ["cwd"]);
+  const openclawGateway = normalizeCredentialValue(raw, ["openclawGateway", "openclaw_gateway"]);
+  const openclawAgent = normalizeCredentialValue(raw, ["openclawAgent", "openclaw_agent"]);
 
   return {
     version: 1,
@@ -112,6 +126,8 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     onboardedAt,
     runtime,
     cwd,
+    openclawGateway,
+    openclawAgent,
   };
 }
 
