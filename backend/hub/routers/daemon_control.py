@@ -46,6 +46,7 @@ from hub.config import (
     DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS,
     DAEMON_DEVICE_CODE_INTERVAL_SECONDS,
     DAEMON_DEVICE_CODE_TTL_SECONDS,
+    DAEMON_INSTALL_TICKET_TTL_SECONDS,
     DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS,
     DAEMON_DISPATCH_MAX_TIMEOUT_MS,
     DAEMON_HUB_CONTROL_PRIVATE_KEY_B64,
@@ -57,10 +58,12 @@ from hub.config import (
 from hub.database import async_session, get_db
 from hub.id_generators import (
     generate_daemon_device_code,
+    generate_daemon_install_ticket_id,
+    generate_daemon_install_token,
     generate_daemon_instance_id,
     generate_daemon_user_code,
 )
-from hub.models import Agent, DaemonDeviceCode, DaemonInstance
+from hub.models import Agent, DaemonDeviceCode, DaemonInstallTicket, DaemonInstance
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +135,10 @@ def _aware(dt: datetime.datetime | None) -> datetime.datetime | None:
 
 
 def _hash_refresh_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _hash_install_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -246,6 +253,84 @@ _REGISTRY = _DaemonRegistry()
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
+
+
+class _InstallTicketRequest(BaseModel):
+    label: str | None = Field(default=None, max_length=64)
+
+
+class _InstallTicketResponse(BaseModel):
+    install_token: str
+    expires_in: int
+    expires_at: datetime.datetime
+
+
+@router.post("/daemon/auth/install-ticket", response_model=_InstallTicketResponse)
+async def issue_install_ticket(
+    body: _InstallTicketRequest,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> _InstallTicketResponse:
+    install_token = generate_daemon_install_token()
+    expires_at = _now() + datetime.timedelta(seconds=DAEMON_INSTALL_TICKET_TTL_SECONDS)
+    label = (
+        body.label.strip()
+        if isinstance(body.label, str) and body.label.strip()
+        else None
+    )
+    row = DaemonInstallTicket(
+        id=generate_daemon_install_ticket_id(),
+        user_id=ctx.user_id,
+        token_hash=_hash_install_token(install_token),
+        label=label,
+        expires_at=expires_at,
+    )
+    db.add(row)
+    await db.commit()
+    return _InstallTicketResponse(
+        install_token=install_token,
+        expires_in=DAEMON_INSTALL_TICKET_TTL_SECONDS,
+        expires_at=expires_at,
+    )
+
+
+class _InstallTokenRequest(BaseModel):
+    install_token: str = Field(..., min_length=8, max_length=128)
+    label: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/daemon/auth/install-token")
+async def redeem_install_token(
+    body: _InstallTokenRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    token_hash = _hash_install_token(body.install_token)
+    result = await db.execute(
+        select(DaemonInstallTicket).where(DaemonInstallTicket.token_hash == token_hash)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=401, detail="invalid_install_token")
+    if _aware(row.expires_at) <= _now():
+        raise HTTPException(status_code=410, detail="install_token_expired")
+    if row.consumed_at is not None:
+        raise HTTPException(status_code=400, detail="install_token_consumed")
+
+    label = (
+        body.label.strip()
+        if isinstance(body.label, str) and body.label.strip()
+        else row.label
+    )
+    daemon_instance_id, refresh_token = await _provision_daemon_instance(
+        db, row.user_id, label
+    )
+    bundle, _ = _build_token_bundle(str(row.user_id), daemon_instance_id)
+    bundle["refresh_token"] = refresh_token
+
+    row.consumed_at = _now()
+    row.daemon_instance_id = daemon_instance_id
+    await db.commit()
+    return bundle
 
 
 class _DeviceCodeResponse(BaseModel):

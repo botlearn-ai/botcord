@@ -51,8 +51,14 @@ const APP_BASE_URL =
     ? "http://localhost:3000"
     : "https://botcord.chat");
 
-function buildStartCommand(): string {
-  return `curl -fsSL ${APP_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- --hub ${HUB_BASE_URL}`;
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function buildStartCommand(installToken?: string): string {
+  const args = [`--hub ${shellQuote(HUB_BASE_URL)}`];
+  if (installToken) args.push(`--install-token ${shellQuote(installToken)}`);
+  return `curl -fsSL ${APP_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")}`;
 }
 
 function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
@@ -102,6 +108,9 @@ export default function CreateAgentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [installCommand, setInstallCommand] = useState(() => buildStartCommand());
+  const [installCommandLoading, setInstallCommandLoading] = useState(false);
+  const [installCommandError, setInstallCommandError] = useState<string | null>(null);
   const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -165,9 +174,44 @@ export default function CreateAgentDialog({
     setSelectedOpenclawAgent(null);
   }, [selectedRuntime, selectedRuntimeId, selectedGateway]);
 
+  const showEmptyState = loaded && onlineDaemons.length === 0;
+
+  async function refreshInstallCommand(): Promise<void> {
+    setInstallCommandLoading(true);
+    setInstallCommandError(null);
+    try {
+      const res = await fetch("/api/daemon/auth/install-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const data = (await res.json()) as { install_token?: string };
+      if (!data.install_token) throw new Error("install_token missing");
+      setInstallCommand(buildStartCommand(data.install_token));
+    } catch (err) {
+      setInstallCommand(buildStartCommand());
+      setInstallCommandError(
+        err instanceof Error ? err.message : "Failed to generate install token",
+      );
+    } finally {
+      setInstallCommandLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (showEmptyState) {
+      void refreshInstallCommand();
+    }
+    // Only refresh when entering the no-daemon state; manual refresh handles retries.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEmptyState]);
+
   async function handleCopy(): Promise<void> {
     try {
-      await navigator.clipboard.writeText(buildStartCommand());
+      await navigator.clipboard.writeText(installCommand);
       setCopied(true);
       if (copyTimerRef.current !== null) {
         window.clearTimeout(copyTimerRef.current);
@@ -226,7 +270,6 @@ export default function CreateAgentDialog({
     }
   }
 
-  const showEmptyState = loaded && onlineDaemons.length === 0;
   const needsOpenclawGateway = selectedRuntimeId === "openclaw-acp";
   const canSubmit =
     !!selectedDaemonId &&
@@ -259,11 +302,15 @@ export default function CreateAgentDialog({
           </div>
         ) : showEmptyState ? (
           <NoDaemonState
-            command={buildStartCommand()}
+            command={installCommand}
             copied={copied}
             onCopy={handleCopy}
-            loading={loading}
-            onRefresh={() => void refresh()}
+            loading={loading || installCommandLoading}
+            onRefresh={() => {
+              void refresh();
+              void refreshInstallCommand();
+            }}
+            error={installCommandError}
             labels={{
               title: t.noDaemonTitle,
               hint: t.noDaemonHint,
@@ -414,6 +461,7 @@ function NoDaemonState({
   onCopy,
   loading,
   onRefresh,
+  error,
   labels,
 }: {
   command: string;
@@ -421,6 +469,7 @@ function NoDaemonState({
   onCopy: () => void | Promise<void>;
   loading: boolean;
   onRefresh: () => void;
+  error: string | null;
   labels: {
     title: string;
     hint: string;
@@ -465,6 +514,11 @@ function NoDaemonState({
             )}
           </button>
         </div>
+        {error && (
+          <p className="mt-2 text-xs text-red-400">
+            Install token unavailable; command will fall back to interactive auth.
+          </p>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-3">

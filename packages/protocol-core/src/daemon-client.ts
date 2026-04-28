@@ -1,10 +1,9 @@
 /**
  * Minimal client for the daemon control plane (§6, §9 of the control-plane
  * plan). Wraps `/daemon/auth/*` endpoints so daemon code doesn't have to
- * hand-roll fetch calls. The only supported bootstrap is the device-code
- * flow (`POST /daemon/auth/device-code` + `POST /daemon/auth/device-token`);
- * non-interactive environments must mount a pre-existing
- * `~/.botcord/daemon/user-auth.json` per plan §6.4.
+ * hand-roll fetch calls. Supported bootstraps are the interactive device-code
+ * flow (`POST /daemon/auth/device-code` + `POST /daemon/auth/device-token`)
+ * and the dashboard-issued one-time install token flow.
  */
 import { normalizeAndValidateHubUrl } from "./hub-url.js";
 
@@ -69,6 +68,33 @@ export async function refreshDaemonToken(
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
     const err = new Error(`daemon auth refresh failed: ${resp.status} ${text}`);
+    (err as unknown as { status?: number }).status = resp.status;
+    throw err;
+  }
+  return parseTokenResponse(await resp.json(), base);
+}
+
+/**
+ * Redeem a dashboard-issued one-time install token for daemon user-auth.
+ * The token is consumed by the Hub and cannot be reused.
+ */
+export async function redeemDaemonInstallToken(
+  hubUrl: string,
+  installToken: string,
+  opts?: { label?: string; timeoutMs?: number },
+): Promise<DaemonTokenResponse> {
+  const base = normalizeAndValidateHubUrl(hubUrl);
+  const body: Record<string, unknown> = { install_token: installToken };
+  if (opts?.label) body.label = opts.label;
+  const resp = await fetch(`${base}/daemon/auth/install-token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? 10_000),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    const err = new Error(`daemon install-token redeem failed: ${resp.status} ${text}`);
     (err as unknown as { status?: number }).status = resp.status;
     throw err;
   }

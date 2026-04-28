@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import hashlib
 import json
 import uuid
 from unittest.mock import AsyncMock
@@ -19,7 +20,16 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hub.enums import MessagePolicy
-from hub.models import Agent, Base, DaemonDeviceCode, DaemonInstance, Role, User, UserRole
+from hub.models import (
+    Agent,
+    Base,
+    DaemonDeviceCode,
+    DaemonInstallTicket,
+    DaemonInstance,
+    Role,
+    User,
+    UserRole,
+)
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-daemon-control"
@@ -197,6 +207,62 @@ async def test_device_code_happy_path(client: AsyncClient, seed_user, db_session
         "/daemon/auth/device-token", json={"device_code": issued["device_code"]}
     )
     assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_install_ticket_redeems_once(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    r = await client.post(
+        "/daemon/auth/install-ticket",
+        json={"label": "MacBook"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    issued = r.json()
+    assert issued["install_token"].startswith("dit_")
+    assert issued["expires_in"] > 0
+
+    r = await client.post(
+        "/daemon/auth/install-token",
+        json={"install_token": issued["install_token"], "label": "Studio"},
+    )
+    assert r.status_code == 200, r.text
+    bundle = r.json()
+    assert bundle["access_token"]
+    assert bundle["refresh_token"].startswith("drt_")
+    assert bundle["daemon_instance_id"].startswith("dm_")
+
+    from sqlalchemy import select
+
+    res = await db_session.execute(
+        select(DaemonInstance).where(DaemonInstance.id == bundle["daemon_instance_id"])
+    )
+    inst = res.scalar_one()
+    assert str(inst.user_id) == str(seed_user["user_id"])
+    assert inst.label == "Studio"
+
+    res = await db_session.execute(
+        select(DaemonInstallTicket).where(
+            DaemonInstallTicket.token_hash
+            == hashlib.sha256(issued["install_token"].encode("utf-8")).hexdigest()
+        )
+    )
+    ticket = res.scalar_one()
+    assert ticket.consumed_at is not None
+    assert ticket.daemon_instance_id == bundle["daemon_instance_id"]
+
+    r = await client.post(
+        "/daemon/auth/install-token",
+        json={"install_token": issued["install_token"]},
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_install_ticket_requires_user_auth(client: AsyncClient):
+    r = await client.post("/daemon/auth/install-ticket", json={})
+    assert r.status_code == 401
 
 
 async def _provision_instance_via_device_code(
