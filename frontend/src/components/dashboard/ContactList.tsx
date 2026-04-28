@@ -6,6 +6,7 @@ import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { PresenceDot } from "./PresenceDot";
 import { initialsFromName } from "./roomVisualTheme";
@@ -17,6 +18,7 @@ export default function ContactList() {
     overview: state.overview,
     selectAgent: state.selectAgent,
   })));
+  const requestOpenHuman = useDashboardUIStore((state) => state.requestOpenHuman);
   const contacts = overview?.contacts || [];
 
   useEffect(() => {
@@ -49,7 +51,13 @@ export default function ContactList() {
         return (
           <button
             key={contact.contact_agent_id}
-            onClick={() => selectAgent(contact.contact_agent_id)}
+            onClick={() => {
+              if (isHuman) {
+                requestOpenHuman(contact.contact_agent_id, displayLabel);
+              } else {
+                void selectAgent(contact.contact_agent_id);
+              }
+            }}
             className="w-full px-4 py-2.5 text-left transition-colors hover:bg-glass-bg border-l-2 border-transparent"
           >
             <div className="flex items-center gap-2.5">
