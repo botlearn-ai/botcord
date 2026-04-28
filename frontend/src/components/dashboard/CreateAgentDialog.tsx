@@ -45,9 +45,14 @@ const HUB_BASE_URL =
   (process.env.NODE_ENV === "development"
     ? "http://localhost:8000"
     : "https://api.botcord.chat");
+const APP_BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:3000"
+    : "https://botcord.chat");
 
 function buildStartCommand(): string {
-  return `curl -fsSL ${HUB_BASE_URL}/daemon/install.sh | sh -s -- --hub ${HUB_BASE_URL}`;
+  return `curl -fsSL ${APP_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- --hub ${HUB_BASE_URL}`;
 }
 
 function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
