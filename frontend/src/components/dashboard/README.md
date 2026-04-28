@@ -39,8 +39,6 @@ dashboard/
 ├── StripeReturnBanner.tsx    # Stripe 回跳结果条
 ├── ShareModal.tsx            # 分享弹窗
 ├── roomVisualTheme.ts        # 房间视觉主题基建：根据房间名生成纹理、强调色与首字母徽标
-├── JoinGuidePrompt.tsx       # 加入/邀请引导编排器，按是否已加入分发到不同子组件
-├── SelfJoinGuide.tsx         # 自加入引导，只提供站内 join 动作，不生成可复制 Prompt
 ├── InviteOthersGuide.tsx     # 邀请他人引导，只消费真实 invite/share 资产并生成可复制 Prompt
 ├── RoomZeroState.tsx         # 无房间时的统一引导：复制建房 Prompt 或跳 Explore
 ├── LoginPanel.tsx            # 登录引导面板
@@ -91,8 +89,7 @@ dashboard/
 - 2026-04-07: dashboard 内所有留在原位等待异步结果的关键操作按钮统一补上旋转 loading icon，包括好友请求、联系人审批、Join/Request Join、订阅、转账、提现、充值与邀请/分享创建，结束“按钮变灰但无明确工作中信号”的坏味道。
 - 2026-04-08: `LedgerList.tsx` 账本视图开始直接显示交易来源类型（如 claim gift / grant / transfer），结束“只有收支方向却看不出钱从哪来”的坏味道。
 - 2026-03-27: `SubscriptionBadge.tsx` 在订阅失败且命中余额不足时，直接在错误提示内提供 `Top up wallet` 入口并跳转 `/chats/wallet`，结束“知道该充值但没有出口”的坏味道。
-- 2026-03-26: `JoinGuidePrompt.tsx` 不再为未加入群生成 `/chats/messages/{roomId}` 伪入口 Prompt；现在只有拿到真实 invite/share asset 时才允许复制给 AI，避免把内部路由伪装成加群入口。
-- 2026-03-26: `JoinGuidePrompt.tsx` 拆成 `SelfJoinGuide.tsx` 与 `InviteOthersGuide.tsx` 两条独立流程，结束一个组件同时承担“自己加入”和“邀请别人”两套状态机的坏味道。
+- 2026-04-28: 移除 `JoinGuidePrompt.tsx` 与 `SelfJoinGuide.tsx`：未加入公开群的引导收敛到 `RoomHeader` 右上角的 Join 按钮，正文不再渲染可复制 Bot Prompt 引导块；输入框未加入时整体隐藏。
 - 2026-03-22: `RoomHeader.tsx` 在未加入公开房间时于右侧提供 join 入口；普通房直接加入，付费房打开订阅模态；`AgentBrowser.tsx` 在成员面板底部新增 `Leave Room` 与 `Cancel Subscription`。
 - 2026-03-26: `ChatPane.tsx` 在联系人视图新增 `Invite friend` 入口，配合 `FriendInviteModal.tsx` 直接生成好友邀请链接与 Prompt，结束“后端已支持但前端无入口”的坏味道。
 - 2026-03-26: `AgentBindDialog.tsx` 改为优先发放短期 `bind_code`；Prompt 只暴露短码，真实 `bind_ticket` 留在后端，插件与 `/api/users/me/agents/bind` 统一兼容短码直连。

@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildFriendInvitePrompt, buildSelfJoinPrompt, buildSharePrompt } from "./onboarding";
+import { buildFriendInvitePrompt, buildSharePrompt } from "./onboarding";
 
 describe("invite onboarding prompts", () => {
   it("includes redeem instructions for friend invites in zh", () => {
@@ -47,20 +47,6 @@ describe("invite onboarding prompts", () => {
     });
 
     expect(prompt).toContain("查看分享详情并获取 room_id：GET https://api.botcord.chat/api/share/sh_demo");
-  });
-
-  it("includes join instructions for self join prompts in en", () => {
-    const prompt = buildSelfJoinPrompt({
-      roomId: "rm_demo",
-      roomName: "Room",
-      hubApiBaseUrl: "https://api.botcord.chat",
-      installGuideUrl: "https://www.botcord.chat/openclaw-setup-instruction-script.md",
-      locale: "en",
-    });
-
-    expect(prompt).toContain("Join the group: POST https://api.botcord.chat/hub/rooms/rm_demo/members");
-    expect(prompt).toContain("Authorization: Bearer <agent_jwt_token>");
-    expect(prompt).toContain('JSON body: {"agent_id":"<your_agent_id>"}');
   });
 
   it("generates subscription step instructions for paid room with productId in zh", () => {
