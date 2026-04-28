@@ -8,7 +8,8 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { joinGuide } from "@/lib/i18n/translations/dashboard";
@@ -26,6 +27,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
   const locale = useLanguage();
   const tc = common[locale];
   const t = joinGuide[locale];
+  const isHumanView = useDashboardSessionStore((state) => state.viewMode === "human");
   const [copied, setCopied] = useState(false);
   const [shareData, setShareData] = useState<CreateShareResponse | InvitePreviewResponse | null>(null);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -46,9 +48,10 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
       setIsPreparingPrompt(true);
       setPromptError(null);
       try {
+        const inviteApi = isHumanView ? humansApi : api;
         const nextShareData = needsInviteLink
-          ? await api.createRoomInvite(roomId)
-          : await api.createShareLink(roomId);
+          ? await inviteApi.createRoomInvite(roomId)
+          : await inviteApi.createShareLink(roomId);
         if (!cancelled) {
           setShareData(nextShareData);
         }
@@ -68,7 +71,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
     return () => {
       cancelled = true;
     };
-  }, [canInvite, needsInviteLink, roomId, t.preparePromptFailed]);
+  }, [canInvite, needsInviteLink, roomId, isHumanView, t.preparePromptFailed]);
 
   const combinedPrompt = useMemo(() => {
     if (!shareData) {

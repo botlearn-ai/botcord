@@ -1020,6 +1020,16 @@ const humansApi = {
     );
   },
 
+  /** Human creates a private-room invite link. */
+  createRoomInvite(roomId: string): Promise<InvitePreviewResponse> {
+    return apiPost<InvitePreviewResponse>(`/api/humans/me/rooms/${roomId}/invite`);
+  },
+
+  /** Human creates a public-room share snapshot. */
+  createShareLink(roomId: string): Promise<CreateShareResponse> {
+    return apiPost<CreateShareResponse>(`/api/humans/me/rooms/${roomId}/share`);
+  },
+
   /** Received contact requests (pending-by-default). */
   listReceivedContactRequests(
     opts?: { state?: "pending" | "accepted" | "rejected" },
