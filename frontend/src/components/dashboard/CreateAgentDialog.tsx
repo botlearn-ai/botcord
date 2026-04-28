@@ -55,10 +55,9 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function buildStartCommand(installToken?: string, label?: string): string {
+function buildStartCommand(installToken?: string): string {
   const args = [`--hub ${shellQuote(HUB_BASE_URL)}`];
   if (installToken) args.push(`--install-token ${shellQuote(installToken)}`);
-  if (label) args.push(`--label ${shellQuote(label)}`);
   return `curl -fsSL ${APP_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")}`;
 }
 
@@ -181,18 +180,17 @@ export default function CreateAgentDialog({
     setInstallCommandLoading(true);
     setInstallCommandError(null);
     try {
-      const label = "BotCord daemon";
       const res = await fetch("/api/daemon/auth/install-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         throw new Error(await res.text());
       }
       const data = (await res.json()) as { install_token?: string };
       if (!data.install_token) throw new Error("install_token missing");
-      setInstallCommand(buildStartCommand(data.install_token, label));
+      setInstallCommand(buildStartCommand(data.install_token));
     } catch (err) {
       setInstallCommand(buildStartCommand());
       setInstallCommandError(
