@@ -9,9 +9,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   Bot,
   Check,
   Loader2,
+  Plus,
   RefreshCcw,
   Server,
   X,
@@ -84,6 +86,7 @@ export default function CreateAgentDialog({
   const [bio, setBio] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addingDevice, setAddingDevice] = useState(false);
 
   useEffect(() => {
     void refresh();
@@ -227,13 +230,47 @@ export default function CreateAgentDialog({
               refresh: t.refreshDaemons,
             }}
           />
+        ) : addingDevice ? (
+          <div className="space-y-4">
+            <DaemonInstallCommand
+              busy={loading}
+              onRefresh={() => void refresh()}
+              labels={{
+                title: t.addDeviceTitle,
+                hint: t.addDeviceHint,
+                copy: t.copy,
+                copied: t.copied,
+                openActivate: t.openActivate,
+                refresh: t.refreshDaemons,
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setAddingDevice(false)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              {t.backLabel}
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
-            {onlineDaemons.length > 1 && (
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
                   {t.daemonLabel}
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setAddingDevice(true)}
+                  disabled={submitting}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                >
+                  <Plus className="h-3 w-3" />
+                  {t.addDeviceLabel}
+                </button>
+              </div>
+              {onlineDaemons.length > 1 ? (
                 <select
                   value={selectedDaemonId ?? ""}
                   onChange={(e) => setSelectedDaemonId(e.target.value)}
@@ -246,18 +283,16 @@ export default function CreateAgentDialog({
                     </option>
                   ))}
                 </select>
-              </div>
-            )}
-
-            {onlineDaemons.length === 1 && selectedDaemon && (
-              <div className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">
-                <Server className="h-3.5 w-3.5 text-neon-cyan" />
-                <span className="text-text-primary">
-                  {selectedDaemon.label || selectedDaemon.id}
-                </span>
-                <span className="ml-auto inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
-              </div>
-            )}
+              ) : selectedDaemon ? (
+                <div className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">
+                  <Server className="h-3.5 w-3.5 text-neon-cyan" />
+                  <span className="text-text-primary">
+                    {selectedDaemon.label || selectedDaemon.id}
+                  </span>
+                  <span className="ml-auto inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
+                </div>
+              ) : null}
+            </div>
 
             <RuntimePicker
               daemon={selectedDaemon}
@@ -331,7 +366,7 @@ export default function CreateAgentDialog({
           </p>
         )}
 
-        {!showEmptyState && loaded && (
+        {!showEmptyState && !addingDevice && loaded && (
           <div className="mt-6 flex items-center justify-end gap-3">
             <button
               onClick={onClose}
