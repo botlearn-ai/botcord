@@ -10,14 +10,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { Users, MessageSquare } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { roomZeroState } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { initialsFromName, themeFromRoomName } from "./roomVisualTheme";
 import CreateRoomModal from "./CreateRoomModal";
-import type { PublicRoom, AgentProfile } from "@/lib/types";
+import type { PublicRoom } from "@/lib/types";
 
 interface RoomZeroStateProps {
   compact?: boolean;
@@ -168,53 +168,56 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
               {t.viewAllRooms}
             </button>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {topRooms.map((room) => (
-              <div
-                key={room.room_id}
-                className="group flex h-full flex-col rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl transition-all duration-300 hover:border-neon-purple/30 hover:shadow-[0_0_28px_rgba(139,92,246,0.12)]"
-              >
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <h4
-                    className="line-clamp-1 cursor-pointer text-sm font-semibold text-white transition-colors duration-200 group-hover:text-neon-purple"
-                    onClick={() => handleOpenRoom(room)}
-                  >
-                    {room.name}
-                  </h4>
-                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-neon-purple/10 px-2 py-0.5 text-xs text-neon-purple">
-                    <Users size={10} />
-                    {room.member_count}
-                  </span>
-                </div>
-
-                {room.description && (
-                  <p className="mb-3 line-clamp-2 flex-1 text-xs leading-relaxed text-text-secondary">
-                    {room.description}
-                  </p>
-                )}
-
-                {room.last_message_preview && (
-                  <div className="flex items-start gap-1.5 rounded-lg bg-white/[0.03] p-2">
-                    <MessageSquare size={10} className="mt-0.5 shrink-0 text-neon-cyan/60" />
-                    <p className="line-clamp-2 text-xs text-text-secondary/70">
-                      {room.last_sender_name && (
-                        <span className="font-medium text-neon-cyan/80">{room.last_sender_name}: </span>
-                      )}
-                      {room.last_message_preview}
-                    </p>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={joiningId === room.room_id}
-                  onClick={() => handleJoin(room)}
-                  className="mt-3 rounded-xl border border-neon-purple/30 bg-neon-purple/10 px-3 py-1.5 text-xs font-medium text-neon-purple transition-all duration-200 hover:bg-neon-purple/20 hover:shadow-[0_0_12px_rgba(139,92,246,0.15)] disabled:opacity-50"
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {topRooms.map((room) => {
+              const theme = themeFromRoomName(room.name || room.room_id);
+              const initials = initialsFromName(room.name || "Room");
+              const memberWord = room.member_count === 1 ? "Member" : "Members";
+              return (
+                <div
+                  key={room.room_id}
+                  className="group overflow-hidden rounded-xl border border-glass-border bg-deep-black-light transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10"
                 >
-                  {joiningId === room.room_id ? t.joining : t.join}
-                </button>
-              </div>
-            ))}
+                  <div
+                    className="relative h-14 w-full"
+                    style={{
+                      backgroundImage: theme.patternUrl,
+                      backgroundRepeat: "repeat",
+                      backgroundSize: "auto",
+                    }}
+                  >
+                    <div className="absolute left-3 top-2 flex items-center gap-2">
+                      <div
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white/90 backdrop-blur-sm"
+                        style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
+                      >
+                        {initials}
+                      </div>
+                    </div>
+                    <span
+                      className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm"
+                      style={{ boxShadow: `0 0 0 1px ${theme.accent}55` }}
+                    >
+                      {room.member_count} {memberWord}
+                    </span>
+                  </div>
+                  <div className="px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-secondary">
+                      {room.description || (locale === "zh" ? "暂无描述" : "No description yet.")}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={joiningId === room.room_id}
+                      onClick={() => handleJoin(room)}
+                      className="mt-2 w-full rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-1.5 text-xs font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-50"
+                    >
+                      {joiningId === room.room_id ? t.joining : t.join}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -231,36 +234,33 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
               {t.viewAllAgents}
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {topAgents.map((agent) => (
-              <div
-                key={agent.agent_id}
-                className="group flex h-full flex-col rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl transition-all duration-300 hover:border-neon-cyan/30 hover:shadow-[0_0_28px_rgba(0,240,255,0.08)]"
-              >
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neon-cyan/10 text-sm font-bold text-neon-cyan">
-                    {agent.display_name.charAt(0).toUpperCase()}
-                  </div>
-                  <p className="line-clamp-1 text-sm font-semibold text-white transition-colors duration-200 group-hover:text-neon-cyan">
-                    {agent.display_name}
-                  </p>
-                </div>
-
-                {agent.bio && (
-                  <p className="mb-3 line-clamp-2 flex-1 text-xs leading-relaxed text-text-secondary">
-                    {agent.bio}
-                  </p>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => selectAgent(agent.agent_id)}
-                  className="mt-auto rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/20 hover:shadow-[0_0_12px_rgba(0,240,255,0.12)]"
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {topAgents.map((agent) => {
+              const initials = initialsFromName(agent.display_name);
+              return (
+                <div
+                  key={agent.agent_id}
+                  className="group rounded-xl border border-glass-border bg-deep-black-light p-3 transition-all hover:border-neon-purple/60 hover:bg-glass-bg"
                 >
-                  {t.viewProfile}
-                </button>
-              </div>
-            ))}
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
+                      {initials}
+                    </div>
+                    <p className="line-clamp-1 text-sm font-semibold text-text-primary">{agent.display_name}</p>
+                  </div>
+                  {agent.bio && (
+                    <p className="mb-2 line-clamp-2 text-[11px] leading-4 text-text-secondary">{agent.bio}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => selectAgent(agent.agent_id)}
+                    className="w-full rounded-lg border border-neon-purple/25 bg-neon-purple/10 py-1.5 text-xs font-medium text-neon-purple transition-all hover:bg-neon-purple/20"
+                  >
+                    {t.viewProfile}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
