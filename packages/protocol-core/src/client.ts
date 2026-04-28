@@ -897,15 +897,22 @@ export class BotCordClient {
         }
       : generateKeypair();
 
+    const trimmedBio = bio?.trim();
+    const body: {
+      display_name: string;
+      pubkey: string;
+      bio?: string;
+    } = {
+      display_name: name,
+      pubkey: keypair.pubkeyFormatted,
+    };
+    if (trimmedBio) body.bio = trimmedBio;
+
     // Step 1: POST /registry/agents
     const regResp = await fetch(`${normalizedHub}/registry/agents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        display_name: name,
-        pubkey: keypair.pubkeyFormatted,
-        bio: bio || "",
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(10000),
     });
 

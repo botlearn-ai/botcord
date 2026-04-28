@@ -59,6 +59,20 @@ function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
   return daemons.find((d) => d.status === "online") ?? null;
 }
 
+const UNSUPPORTED_RUNTIME_IDS = new Set(["gemini"]);
+
+function applyRuntimeSupport(
+  runtimes: DaemonRuntime[] | null | undefined,
+  notSupportedLabel: string,
+): DaemonRuntime[] {
+  if (!runtimes) return [];
+  return runtimes.map((r) =>
+    UNSUPPORTED_RUNTIME_IDS.has(r.id)
+      ? { ...r, available: false, error: notSupportedLabel }
+      : r,
+  );
+}
+
 export default function CreateAgentDialog({
   onClose,
   onSuccess,
@@ -113,10 +127,11 @@ export default function CreateAgentDialog({
     setSelectedDaemonId(pick?.id ?? null);
   }, [daemons, onlineDaemons, selectedDaemonId]);
 
-  const selectedDaemon = useMemo(
-    () => daemons.find((d) => d.id === selectedDaemonId) ?? null,
-    [daemons, selectedDaemonId],
-  );
+  const selectedDaemon = useMemo(() => {
+    const d = daemons.find((d) => d.id === selectedDaemonId) ?? null;
+    if (!d) return d;
+    return { ...d, runtimes: applyRuntimeSupport(d.runtimes, t.runtimeNotSupported) };
+  }, [daemons, selectedDaemonId, t.runtimeNotSupported]);
 
   // Auto-select first available runtime when daemon changes.
   useEffect(() => {

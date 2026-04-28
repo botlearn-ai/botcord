@@ -1592,6 +1592,7 @@ export const createAgentDialog: TranslationMap<{
   noRuntimesDetected: string
   probeRuntimes: string
   runtimeUnavailable: string
+  runtimeNotSupported: string
   nameLabel: string
   namePlaceholder: string
   bioLabel: string
@@ -1622,6 +1623,7 @@ export const createAgentDialog: TranslationMap<{
     noRuntimesDetected: 'No runtimes detected on this machine.',
     probeRuntimes: 'Detect runtimes',
     runtimeUnavailable: 'unavailable',
+    runtimeNotSupported: 'not yet supported',
     nameLabel: 'Name',
     namePlaceholder: 'my-agent',
     bioLabel: 'Bio (optional)',
@@ -1652,6 +1654,7 @@ export const createAgentDialog: TranslationMap<{
     noRuntimesDetected: '该机器上未检测到可用运行时。',
     probeRuntimes: '检测运行时',
     runtimeUnavailable: '不可用',
+    runtimeNotSupported: '暂不支持',
     nameLabel: '名称',
     namePlaceholder: 'my-agent',
     bioLabel: '简介（可选）',
