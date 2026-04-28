@@ -167,6 +167,16 @@ async def _build_rooms_from_sql(
             mapped.append(item)
         orm_rooms = await _build_rooms_from_membership(agent_id, db)
         if not orm_rooms:
+            unread_counts = await _build_room_unread_counts(agent_id, db, [
+                room["room_id"] for room in mapped if isinstance(room.get("room_id"), str)
+            ])
+            for item in mapped:
+                room_id = item.get("room_id")
+                if not isinstance(room_id, str):
+                    continue
+                count = unread_counts.get(room_id, 0)
+                item["unread_count"] = count
+                item["has_unread"] = bool(item.get("has_unread") or count > 0)
             return mapped
         orm_room_by_id = {room["room_id"]: room for room in orm_rooms}
         fill_keys = (
@@ -191,9 +201,18 @@ async def _build_rooms_from_sql(
                 if key not in item:
                     item[key] = fallback.get(key)
         missing_rooms = [room for room in orm_rooms if room["room_id"] not in sql_room_ids]
-        if not missing_rooms:
-            return mapped
-        return _sort_room_previews(mapped + missing_rooms)
+        combined = mapped if not missing_rooms else _sort_room_previews(mapped + missing_rooms)
+        unread_counts = await _build_room_unread_counts(agent_id, db, [
+            room["room_id"] for room in combined if isinstance(room.get("room_id"), str)
+        ])
+        for item in combined:
+            room_id = item.get("room_id")
+            if not isinstance(room_id, str):
+                continue
+            count = unread_counts.get(room_id, 0)
+            item["unread_count"] = count
+            item["has_unread"] = bool(item.get("has_unread") or count > 0)
+        return combined
     except Exception:
         _logger.debug(
             "get_agent_room_previews unavailable, falling back to ORM query",
@@ -213,6 +232,59 @@ def _sort_room_previews(rooms: list[dict]) -> list[dict]:
 
     rooms.sort(key=_sort_key, reverse=True)
     return rooms
+
+
+async def _build_room_unread_counts(
+    viewer_id: str,
+    db: AsyncSession,
+    room_ids: list[str],
+) -> dict[str, int]:
+    if not room_ids:
+        return {}
+
+    member_result = await db.execute(
+        select(RoomMember.room_id, RoomMember.last_viewed_at).where(
+            RoomMember.agent_id == viewer_id,
+            RoomMember.room_id.in_(room_ids),
+        )
+    )
+    last_viewed_by_room = dict(member_result.all())
+
+    dedup_sub = (
+        select(
+            MessageRecord.room_id,
+            MessageRecord.msg_id,
+            func.min(MessageRecord.id).label("min_id"),
+        )
+        .where(MessageRecord.room_id.in_(room_ids))
+        .group_by(MessageRecord.room_id, MessageRecord.msg_id)
+        .subquery()
+    )
+    message_result = await db.execute(
+        select(MessageRecord).where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
+    )
+
+    counts = {room_id: 0 for room_id in room_ids}
+    for rec in message_result.scalars().all():
+        room_id = rec.room_id
+        if not room_id or room_id not in counts:
+            continue
+        if rec.sender_id == viewer_id:
+            continue
+        _, _, msg_type = _extract_text_preview(rec.envelope_json)
+        if msg_type in _RECEIPT_TYPES:
+            continue
+        last_viewed_at = last_viewed_by_room.get(room_id)
+        if last_viewed_at is not None:
+            created_at = rec.created_at
+            if created_at.tzinfo is None and last_viewed_at.tzinfo is not None:
+                created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+            elif created_at.tzinfo is not None and last_viewed_at.tzinfo is None:
+                last_viewed_at = last_viewed_at.replace(tzinfo=datetime.timezone.utc)
+            if created_at <= last_viewed_at:
+                continue
+        counts[room_id] += 1
+    return counts
 
 
 async def _build_rooms_from_membership(
@@ -310,6 +382,8 @@ async def _build_rooms_from_membership(
         )
         sender_names = dict(agent_result.all())
 
+    unread_counts = await _build_room_unread_counts(agent_id, db, room_ids)
+
     result_rooms = []
     for rid in room_ids:
         room = rooms.get(rid)
@@ -367,6 +441,8 @@ async def _build_rooms_from_membership(
             "last_message_preview": last_preview,
             "last_message_at": last_at.isoformat() if last_at else None,
             "last_sender_name": last_sender,
+            "has_unread": unread_counts.get(rid, 0) > 0,
+            "unread_count": unread_counts.get(rid, 0),
             "created_at": room.created_at.isoformat() if room.created_at else None,
         })
 
