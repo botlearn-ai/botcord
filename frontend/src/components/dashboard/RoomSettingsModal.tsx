@@ -549,7 +549,14 @@ export default function RoomSettingsModal({
     if (isOwner) return;
     setError(null);
     try {
-      await Promise.all([leaveRoom(roomId), refreshHumanRooms()]);
+      if (viewerMode === "human") {
+        await humansApi.leaveRoom(roomId);
+        setFocusedRoomId(null);
+        setOpenedRoomId(null);
+        await Promise.all([refreshOverview(), refreshHumanRooms()]);
+      } else {
+        await Promise.all([leaveRoom(roomId), refreshHumanRooms()]);
+      }
       setLeaveDialogOpen(false);
       onClose();
     } catch (err) {
