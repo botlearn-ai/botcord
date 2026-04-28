@@ -25,11 +25,6 @@ const HUB_BASE_URL =
   (process.env.NODE_ENV === "development"
     ? "http://localhost:8000"
     : "https://api.botcord.chat");
-const APP_BASE_URL =
-  process.env.NEXT_PUBLIC_APP_URL ||
-  (process.env.NODE_ENV === "development"
-    ? "http://localhost:3000"
-    : "https://botcord.chat");
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -38,7 +33,7 @@ function shellQuote(value: string): string {
 export function buildDaemonStartCommand(installToken?: string): string {
   const args = [`--hub ${shellQuote(HUB_BASE_URL)}`];
   if (installToken) args.push(`--install-token ${shellQuote(installToken)}`);
-  return `curl -fsSL ${APP_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")}`;
+  return `curl -fsSL ${HUB_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")}`;
 }
 
 export interface DaemonInstallCommandLabels {
