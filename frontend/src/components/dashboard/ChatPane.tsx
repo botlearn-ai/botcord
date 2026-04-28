@@ -19,7 +19,6 @@ import MessageList from "./MessageList";
 import PaidRoomPreview from "./PaidRoomPreview";
 import RoomHumanComposer from "./RoomHumanComposer";
 import TopicDrawer from "./TopicDrawer";
-import JoinGuidePrompt from "./JoinGuidePrompt";
 import FriendInviteModal from "./FriendInviteModal";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
@@ -655,13 +654,8 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
       </div>
       {openedRoomId && !isPaidAndNotJoined && (
         <>
-          {isAuthedReady && overview && !isJoinedRoom && (
-            <div className="px-4 py-2 bg-deep-black/50 border-t border-glass-border/30">
-              <JoinGuidePrompt roomId={openedRoomId} />
-            </div>
-          )}
-          <div className="border-t border-glass-border px-4 py-2">
-            {isGuest ? (
+          {isGuest ? (
+            <div className="border-t border-glass-border px-4 py-2">
               <div className="flex items-center justify-center gap-2">
                 <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
                 <button
@@ -671,14 +665,16 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
                   {t.loginToParticipate}
                 </button>
               </div>
-            ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId && humanSendAllowed ? (
+            </div>
+          ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId && humanSendAllowed ? (
+            <div className="border-t border-glass-border px-4 py-2">
               <RoomHumanComposer roomId={openedRoomId} />
-            ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && !humanSendAllowed ? (
+            </div>
+          ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && !humanSendAllowed ? (
+            <div className="border-t border-glass-border px-4 py-2">
               <p className="text-center text-xs text-text-secondary/50">{t.humanSendDisabled}</p>
-            ) : (
-              <p className="text-center text-xs text-text-secondary/50">{t.readOnlyView}</p>
-            )}
-          </div>
+            </div>
+          ) : null}
         </>
       )}
       <TopicDrawer />

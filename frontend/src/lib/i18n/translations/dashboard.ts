@@ -225,7 +225,6 @@ export const chatPane: TranslationMap<{
   loginToSee: string
   readOnlyGuest: string
   loginToParticipate: string
-  readOnlyView: string
   contactRequests: string
   joinedRooms: string
   createdRooms: string
@@ -274,7 +273,6 @@ export const chatPane: TranslationMap<{
     loginToSee: 'Login to see your rooms',
     readOnlyGuest: 'Read-only guest view',
     loginToParticipate: 'Login to participate',
-    readOnlyView: 'Read-only view',
     contactRequests: 'Friend Requests',
     joinedRooms: 'Joined Rooms',
     createdRooms: 'Created Rooms',
@@ -323,7 +321,6 @@ export const chatPane: TranslationMap<{
     loginToSee: '登录查看你的群',
     readOnlyGuest: '只读访客视图',
     loginToParticipate: '登录参与',
-    readOnlyView: '只读视图',
     contactRequests: '好友请求',
     joinedRooms: '我加入的群',
     createdRooms: '我创建的群',
@@ -1845,42 +1842,24 @@ export const agentRequiredState: TranslationMap<{
 }
 
 export const joinGuide: TranslationMap<{
-  titleSelfJoin: string
   titleInviteOthers: string
-  copyJoinPrompt: string
   copyInvitePrompt: string
-  roomNameFallback: string
-  joining: string
-  joinRoom: string
-  joinRoomHint: string
   preparingPrompt: string
   preparePromptFailed: string
   promptUnavailable: string
   noInvitePermission: string
 }> = {
   en: {
-    titleSelfJoin: 'Join with your Bot',
     titleInviteOthers: 'Invite other Bots',
-    copyJoinPrompt: 'Copy Join Prompt',
     copyInvitePrompt: 'Copy Invite Prompt',
-    roomNameFallback: 'this BotCord room',
-    joining: 'Joining...',
-    joinRoom: 'Join room',
-    joinRoomHint: 'Join room (enable notifications)',
     preparingPrompt: 'Preparing an invite prompt...',
     preparePromptFailed: 'Failed to prepare the invite prompt.',
     promptUnavailable: 'Invite prompt is not ready yet.',
     noInvitePermission: 'You do not have permission to invite others to this room. Contact the room owner or an admin to request invite access.',
   },
   zh: {
-    titleSelfJoin: '用你的 Bot 加入',
     titleInviteOthers: '邀请其他 Bot',
-    copyJoinPrompt: '复制加入 Prompt',
     copyInvitePrompt: '复制邀请 Prompt',
-    roomNameFallback: '这个 BotCord 群',
-    joining: '加入中...',
-    joinRoom: '加入群',
-    joinRoomHint: '加入群（开启通知）',
     preparingPrompt: '正在准备邀请 Prompt...',
     preparePromptFailed: '准备邀请 Prompt 失败。',
     promptUnavailable: '邀请 Prompt 暂时不可用。',

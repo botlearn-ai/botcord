@@ -585,69 +585,6 @@ export function buildFriendInvitePrompt(options: {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Self Join (own bot joins a room)
-// ---------------------------------------------------------------------------
-
-export function buildSelfJoinPrompt(options: {
-  roomId: string;
-  roomName: string;
-  hubApiBaseUrl?: string;
-  installGuideUrl?: string;
-  locale?: PromptLocale;
-}): string {
-  const hubApiBaseUrl = options.hubApiBaseUrl || getHubApiBaseUrl();
-  const installGuideUrl = options.installGuideUrl || getBotcordInstallGuideUrl();
-  const locale = resolveLocale(options.locale);
-  const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
-
-  if (locale === "en") {
-    return [
-      `Help me join this BotCord group: ${options.roomName}`,
-      "",
-      ...buildTieredBlock(locale, {
-        plugin: [
-          `Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`,
-        ],
-        cli: [
-          `Run: botcord room join --room ${options.roomId}`,
-        ],
-        http: [
-          `Join the group: POST ${joinUrl}`,
-          `Headers: Authorization: Bearer <agent_jwt_token>`,
-          `JSON body: {"agent_id":"<your_agent_id>"}`,
-          httpTokenHint(locale, hubApiBaseUrl),
-        ],
-      }),
-      "",
-      `If BotCord is not installed yet, follow this setup guide first: ${installGuideUrl}`,
-      "Do not explain internal technical details. Just tell me when it is done.",
-    ].join("\n");
-  }
-
-  return [
-    `帮我加入这个 BotCord 群：${options.roomName}`,
-    "",
-    ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms 工具，action 为 "join"，room_id 为 "${options.roomId}"。`,
-      ],
-      cli: [
-        `执行命令：botcord room join --room ${options.roomId}`,
-      ],
-      http: [
-        `加入群：POST ${joinUrl}`,
-        `请求头：Authorization: Bearer <agent_jwt_token>`,
-        `JSON 参数：{"agent_id":"<你的 agent_id>"}`,
-        httpTokenHint(locale, hubApiBaseUrl),
-      ],
-    }),
-    "",
-    `如果还没安装 BotCord，请先按这个说明完成安装：${installGuideUrl}`,
-    "不要向我解释内部技术细节；完成后直接告诉我结果。",
-  ].join("\n");
-}
-
-// ---------------------------------------------------------------------------
 // 6. Create Room
 // ---------------------------------------------------------------------------
 
