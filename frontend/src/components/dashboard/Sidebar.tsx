@@ -23,10 +23,10 @@ import CreateRoomModal from "./CreateRoomModal";
 import CreateAgentDialog from "./CreateAgentDialog";
 import RoomZeroState from "./RoomZeroState";
 import SearchBar from "./SearchBar";
-import { UserPlus, Users, LogIn, Bot, Plus, ChevronDown, RefreshCw } from "lucide-react";
+import { UserPlus, Users, LogIn, Bot, Plus, RefreshCw } from "lucide-react";
 import { messagesHeader } from "@/lib/i18n/translations/dashboard";
 import { createClient } from "@/lib/supabase/client";
-import { mapOwnedAgentRoomToDashboardRoom, useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
@@ -228,8 +228,6 @@ export default function Sidebar() {
     overview: state.overview,
     messages: state.messages,
     recentVisitedRooms: state.recentVisitedRooms,
-    ownedAgentRooms: state.ownedAgentRooms,
-    ownedAgentRoomsLoading: state.ownedAgentRoomsLoading,
     switchActiveAgent: state.switchActiveAgent,
   })));
   const optimisticUnreadRoomIds = useDashboardUnreadStore((state) => state.optimisticUnreadRoomIds);
@@ -242,7 +240,6 @@ export default function Sidebar() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const showCreateBot = uiStore.createBotModalOpen;
   const setShowCreateBot = (v: boolean) => v ? uiStore.openCreateBotModal() : uiStore.closeCreateBotModal();
-  const [agentRoomsOpen, setAgentRoomsOpen] = useState(true);
   const [messageQuery, setMessageQuery] = useState("");
   const [refreshingBots, setRefreshingBots] = useState(false);
   const tMsgHeader = messagesHeader[locale];
@@ -342,38 +339,6 @@ export default function Sidebar() {
       return searchHaystack.includes(normalizedMessageQuery);
     });
   }, [chatStore.messages, normalizedMessageQuery, visibleMessageRooms]);
-  const filteredOwnedAgentRooms = useMemo(() => {
-    const rooms = chatStore.ownedAgentRooms.map(mapOwnedAgentRoomToDashboardRoom);
-    if (!normalizedMessageQuery) return rooms;
-    return rooms.filter((room) => {
-      const source = chatStore.ownedAgentRooms.find((item) => item.room_id === room.room_id);
-      const searchHaystack = [
-        room.name,
-        room.room_id,
-        room.description,
-        room.last_message_preview,
-        room.last_sender_name,
-        ...(source?.bots.map((bot) => `${bot.display_name} ${bot.agent_id}`) ?? []),
-      ]
-        .filter(Boolean)
-        .join("\n")
-        .toLowerCase();
-      return searchHaystack.includes(normalizedMessageQuery);
-    });
-  }, [chatStore.ownedAgentRooms, normalizedMessageQuery]);
-  const ownedAgentRoomMeta = useMemo(
-    () => Object.fromEntries(
-      chatStore.ownedAgentRooms.map((room) => [
-        room.room_id,
-        room.bots.map((bot) => bot.display_name || bot.agent_id).join(", "),
-      ]),
-    ),
-    [chatStore.ownedAgentRooms],
-  );
-  const showOwnedAgentRoomsSection =
-    sessionStore.viewMode === "human"
-    && !isGuest
-    && (chatStore.ownedAgentRoomsLoading || filteredOwnedAgentRooms.length > 0);
   const showOverviewSkeleton =
     sessionStore.sessionMode === "authed-ready" && !chatStore.overview && uiStore.sidebarTab === "messages";
   const hasUnreadMessages = optimisticUnreadRoomIds.length > 0 || visibleMessageRooms.some((room) => room.has_unread);
@@ -704,44 +669,15 @@ export default function Sidebar() {
               <div className="border-b border-glass-border px-3 pb-3">
                 <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
               </div>
-              {visibleMessageRooms.length === 0 && !sessionStore.activeAgentId && !showOwnedAgentRoomsSection ? (
+              {visibleMessageRooms.length === 0 && !sessionStore.activeAgentId ? (
                 <RoomZeroState compact />
-              ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 && !sessionStore.activeAgentId && !showOwnedAgentRoomsSection ? (
+              ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 && !sessionStore.activeAgentId ? (
                 <div className="px-4 py-6 text-center text-xs text-text-secondary">
                   {t.noMessages}
                 </div>
               ) : (
                 <>
                   <RoomList rooms={filteredMessageRooms} loading={showOverviewSkeleton} searchQuery={messageQuery} />
-                  {showOwnedAgentRoomsSection && (
-                    <div className="border-t border-glass-border/70 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setAgentRoomsOpen((open) => !open)}
-                        className="flex w-full items-center justify-between px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary/75 transition-colors hover:text-text-primary"
-                      >
-                        <span>
-                          {locale === "zh" ? "我的 Bots 所在群" : "Bot rooms"}
-                          {filteredOwnedAgentRooms.length > 0 ? ` · ${filteredOwnedAgentRooms.length}` : ""}
-                        </span>
-                        <ChevronDown
-                          className={`h-3.5 w-3.5 transition-transform ${agentRoomsOpen ? "rotate-180" : ""}`}
-                        />
-                      </button>
-                      {agentRoomsOpen && (
-                        chatStore.ownedAgentRoomsLoading ? (
-                          <RoomList rooms={[]} loading includeUserChat={false} />
-                        ) : (
-                          <RoomList
-                            rooms={filteredOwnedAgentRooms}
-                            searchQuery={messageQuery}
-                            includeUserChat={false}
-                            roomMeta={ownedAgentRoomMeta}
-                          />
-                        )
-                      )}
-                    </div>
-                  )}
                   {!showOverviewSkeleton && !normalizedMessageQuery && filteredMessageRooms.length < 5 && (
                     <div className="mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 bg-glass-bg/20 p-4">
                       <p className="text-[11px] font-semibold text-text-secondary/80">

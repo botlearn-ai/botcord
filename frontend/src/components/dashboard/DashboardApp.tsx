@@ -594,13 +594,6 @@ export default function DashboardApp() {
     if (!chatStore.publicHumansLoaded && !chatStore.publicHumansLoading) {
       void chatStore.loadPublicHumans();
     }
-    if (
-      sessionStore.activeIdentity?.type === "human"
-      && !chatStore.ownedAgentRoomsLoaded
-      && !chatStore.ownedAgentRoomsLoading
-    ) {
-      void chatStore.loadOwnedAgentRooms();
-    }
   }, [
     sessionStore.authResolved,
     sessionStore.activeIdentity?.type,
@@ -610,12 +603,9 @@ export default function DashboardApp() {
     chatStore.publicAgentsLoading,
     chatStore.publicHumansLoaded,
     chatStore.publicHumansLoading,
-    chatStore.ownedAgentRoomsLoaded,
-    chatStore.ownedAgentRoomsLoading,
     chatStore.loadPublicRooms,
     chatStore.loadPublicAgents,
     chatStore.loadPublicHumans,
-    chatStore.loadOwnedAgentRooms,
   ]);
 
   useEffect(() => {
