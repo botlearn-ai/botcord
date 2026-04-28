@@ -25,7 +25,14 @@ import {
 
 /** Exponential backoff plan for transient disconnects. */
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
-const KEEPALIVE_INTERVAL_MS = 25_000;
+/**
+ * Keepalive cadence. Has to stay below the smallest idle-timeout in any
+ * intermediary on the daemon → Hub WS path. Cloudflare and AWS ALB both
+ * default to ~60s of idle without app-level data, and some tunnels strip
+ * WS-level ping/pong control frames entirely — hence we send an app-level
+ * `pong` heartbeat alongside `ws.ping()` rather than relying on it alone.
+ */
+const KEEPALIVE_INTERVAL_MS = 20_000;
 const REPLAY_DEDUPE_CAP = 256;
 
 /**
@@ -258,11 +265,23 @@ export class ControlChannel {
     this.keepaliveTimer = setInterval(() => {
       const ws = this.ws;
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      // WS-level ping for normal cases.
       try {
         ws.ping();
       } catch {
         // ignore — next failed send will trigger close
       }
+      // App-level heartbeat: a `pong` daemon-initiated frame. Hub recognizes
+      // it via `_DAEMON_INITIATED_TYPES` and bumps `last_seen_at`. Critical
+      // when an intermediary (Cloudflare, AWS ALB, some k8s ingresses)
+      // drops WS-level control frames — those proxies idle-close the WS at
+      // ~60s without app-level activity, masquerading as a clean 1006 to
+      // both peers.
+      this.send({
+        id: `hb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: "pong",
+        ts: Date.now(),
+      });
     }, this.keepaliveMs);
   }
 
@@ -331,6 +350,16 @@ export class ControlChannel {
       return;
     }
     if (!frame || typeof frame.id !== "string" || typeof frame.type !== "string") {
+      // Hub ack responses for daemon-initiated frames (runtime_snapshot push,
+      // heartbeat, etc.) carry `{id, ok}` and no `type`. They're expected,
+      // not malformed — drop silently. Anything else stays a warn.
+      if (
+        frame &&
+        typeof (frame as { id?: unknown }).id === "string" &&
+        typeof (frame as { ok?: unknown }).ok === "boolean"
+      ) {
+        return;
+      }
       daemonLog.warn("control-channel: malformed frame", { frame });
       return;
     }

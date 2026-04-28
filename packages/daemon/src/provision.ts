@@ -904,14 +904,38 @@ export function removeAgentFromConfig(
 // ---------------------------------------------------------------------------
 
 /**
+ * TTL for the L1 runtime-detection cache. `detectRuntimes()` shells out to
+ * each adapter binary (claude / codex / gemini / openclaw / hermes) to read
+ * `--version`, which routinely costs 1.5–2s in aggregate — long enough to
+ * push `list_runtimes` past the Hub's 10s ack budget when combined with the
+ * 3s openclaw gateway probe. Versions don't change between dashboard refresh
+ * clicks, so cache the L1 snapshot briefly and recompute on miss.
+ */
+const RUNTIME_PROBE_CACHE_TTL_MS = 30_000;
+
+let _runtimeProbeCache: { at: number; value: ListRuntimesResult } | null = null;
+
+/** Drop the cache (e.g. before a `doctor`-style interactive re-probe). */
+export function clearRuntimeProbeCache(): void {
+  _runtimeProbeCache = null;
+}
+
+/**
  * Probe every registered adapter and shape the result as the wire-level
  * {@link ListRuntimesResult} — used by both the `list_runtimes` ack path and
  * the daemon-side first-connect `runtime_snapshot` push in `daemon.ts`.
  *
- * Kept pure: the only side effects are `detectRuntimes()` itself (which the
- * gateway already isolates from throwing) and reading the wall clock.
+ * Cached for {@link RUNTIME_PROBE_CACHE_TTL_MS}; pass `{ force: true }` to
+ * bypass the cache.
  */
-export function collectRuntimeSnapshot(): ListRuntimesResult {
+export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRuntimesResult {
+  if (
+    !opts.force &&
+    _runtimeProbeCache &&
+    Date.now() - _runtimeProbeCache.at < RUNTIME_PROBE_CACHE_TTL_MS
+  ) {
+    return _runtimeProbeCache.value;
+  }
   const entries = detectRuntimes();
   const runtimes: RuntimeProbeResult[] = entries.map((entry) => {
     const record: RuntimeProbeResult = {
@@ -929,7 +953,9 @@ export function collectRuntimeSnapshot(): ListRuntimesResult {
     // enough; filling a synthetic message would be misleading.
     return record;
   });
-  return { runtimes, probedAt: Date.now() };
+  const value: ListRuntimesResult = { runtimes, probedAt: Date.now() };
+  _runtimeProbeCache = { at: Date.now(), value };
+  return value;
 }
 
 /** Maximum number of `endpoints[]` entries persisted per runtime (RFC §3.8.2). */
@@ -1208,7 +1234,7 @@ export async function collectRuntimeSnapshotAsync(opts: {
   const gateways = opts.cfg?.openclawGateways ?? [];
   if (gateways.length === 0) return base;
   // Default daemon-side budget is 3s — it must stay below the Hub's
-  // `list_runtimes` ack wait (5s, see backend/hub/routers/daemon_control.py)
+  // `list_runtimes` ack wait (10s, see backend/hub/routers/daemon_control.py)
   // so a single slow gateway can't blow the whole snapshot to a 504.
   const timeoutMs = opts.timeoutMs ?? 3000;
   const capped = gateways.slice(0, RUNTIME_ENDPOINTS_CAP);
