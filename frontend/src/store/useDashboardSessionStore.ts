@@ -15,6 +15,19 @@ import {
   getStoredActiveIdentity,
   setStoredActiveIdentity,
 } from "@/lib/api";
+import { usePresenceStore } from "./usePresenceStore";
+
+// Sync owned agents' daemon-derived ws_online (from /api/users/me) into the
+// presence store, so MessageBubble's PresenceDot reflects the same state the
+// Sidebar shows. Realtime presence events will still override via setOnline's
+// timestamp ordering.
+function syncOwnedAgentsPresence(agents: UserAgent[]): void {
+  const setOnline = usePresenceStore.getState().setOnline;
+  const now = Date.now();
+  for (const agent of agents) {
+    setOnline(agent.agent_id, Boolean(agent.ws_online), now);
+  }
+}
 
 export type DashboardSessionMode = "guest" | "authed-no-agent" | "authed-ready";
 
@@ -130,12 +143,14 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     });
   },
 
-  setUser: (user) =>
+  setUser: (user) => {
+    syncOwnedAgentsPresence(user.agents);
     set((state) => ({
       user,
       ownedAgents: user.agents,
       sessionMode: resolveSessionMode(state.token, state.activeAgentId),
-    })),
+    }));
+  },
 
   setHuman: (human) =>
     set((state) => ({
@@ -238,6 +253,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       const activeIdentity: ActiveIdentity | null =
         stored ?? (human ? { type: "human", id: human.human_id } : deriveIdentityFromAgent(activeId));
       if (activeIdentity) setStoredActiveIdentity(activeIdentity);
+      syncOwnedAgentsPresence(user.agents);
       set({
         authResolved: true,
         authBootstrapping: false,
@@ -294,6 +310,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       const user = await userApi.getMe({ force: true });
       const activeAgentId = resolveStoredActiveAgentId(user);
       setActiveAgentId(activeAgentId);
+      syncOwnedAgentsPresence(user.agents);
       set((state) => {
         // Preserve human identity if already active; otherwise track agent.
         const nextIdentity: ActiveIdentity | null =
