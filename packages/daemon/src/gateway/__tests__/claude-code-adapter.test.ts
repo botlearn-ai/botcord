@@ -85,6 +85,41 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     expect(seen).toContain("system");
   });
 
+  it("emits thinking onStatus events for system init, tool_use, text, and result", async () => {
+    const script = makeScript(
+      "thinkflow.js",
+      `
+const lines = [
+  {type:"system", subtype:"init", session_id:"sid-thk"},
+  {type:"assistant", message:{content:[{type:"tool_use", id:"tu1", name:"Bash", input:{}}]}},
+  {type:"assistant", message:{content:[{type:"text", text:"done"}]}},
+  {type:"result", subtype:"success", session_id:"sid-thk", result:"done"},
+];
+for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
+`,
+    );
+    const adapter = new ClaudeCodeAdapter({ binary: script });
+    const ctrl = new AbortController();
+    const status: Array<{ phase: string; label?: string }> = [];
+    await adapter.run({
+      text: "x",
+      sessionId: null,
+      accountId: "ag_test",
+      cwd: tmpRoot,
+      signal: ctrl.signal,
+      trustLevel: "owner",
+      onStatus: (e) => {
+        if (e.kind === "thinking") status.push({ phase: e.phase, label: e.label });
+      },
+    });
+    expect(status).toEqual([
+      { phase: "started", label: "Starting session" },
+      { phase: "updated", label: "Bash" },
+      { phase: "stopped", label: undefined },
+      { phase: "stopped", label: undefined },
+    ]);
+  });
+
   it("skips non-JSON stdout lines and still returns result", async () => {
     const script = makeScript(
       "nonjson.js",

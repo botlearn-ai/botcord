@@ -242,6 +242,12 @@ export class CodexAdapter extends NdjsonStreamAdapter {
       turn?: { status?: string; error?: { message?: string } };
     };
 
+    // Emit a thinking lifecycle hint BEFORE the block so the dispatcher's
+    // auto-synthesis short-circuits (we provide a labeled event instead).
+    // Conservative mapping per design doc §"Runtime adapter 映射".
+    const status = codexStatusEvent(obj);
+    if (status) ctx.emitStatus(status);
+
     ctx.emitBlock(normalizeBlock(obj, ctx.seq));
 
     // Persist the thread_id so the next turn on this session key resumes
@@ -275,6 +281,58 @@ export class CodexAdapter extends NdjsonStreamAdapter {
           ? obj.error
           : obj.error?.message ?? "codex error";
     }
+  }
+}
+
+/**
+ * Map a Codex JSONL event to a `RuntimeStatusEvent` for the dispatcher's
+ * thinking UI. Returns `undefined` for events that should not influence
+ * status (the dispatcher already synthesizes a generic marker on the first
+ * non-assistant block, so we only override when a label is meaningful).
+ */
+function codexStatusEvent(obj: {
+  type?: string;
+  item?: { type?: string };
+  turn?: { status?: string };
+}): import("../types.js").RuntimeStatusEvent | undefined {
+  if (obj.type === "thread.started") {
+    return { kind: "thinking", phase: "started", label: "Starting session" };
+  }
+  if (obj.type === "turn.started") {
+    return { kind: "thinking", phase: "started", label: "Thinking" };
+  }
+  if (obj.type === "item.started" && typeof obj.item?.type === "string") {
+    const tool = obj.item.type;
+    if (
+      tool === "command_execution" ||
+      tool === "file_change" ||
+      tool === "mcp_tool_call" ||
+      tool === "web_search"
+    ) {
+      return { kind: "thinking", phase: "updated", label: codexToolLabel(tool) };
+    }
+  }
+  if (obj.type === "item.completed" && obj.item?.type === "agent_message") {
+    return { kind: "thinking", phase: "stopped" };
+  }
+  if (obj.type === "turn.completed") {
+    return { kind: "thinking", phase: "stopped" };
+  }
+  return undefined;
+}
+
+function codexToolLabel(tool: string): string {
+  switch (tool) {
+    case "command_execution":
+      return "Running command";
+    case "file_change":
+      return "Editing files";
+    case "mcp_tool_call":
+      return "Calling tool";
+    case "web_search":
+      return "Searching web";
+    default:
+      return tool;
   }
 }
 

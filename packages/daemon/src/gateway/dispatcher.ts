@@ -21,6 +21,7 @@ import type {
   OutboundObserver,
   QueueMode,
   RuntimeAdapter,
+  RuntimeStatusEvent,
   StreamBlock,
   SystemContextBuilder,
   TurnStatusSnapshot,
@@ -46,6 +47,16 @@ const MAX_BATCH_BUFFER_ENTRIES = 40;
  * runtime prompt stays bounded even if the channel-side batch was huge.
  */
 const MAX_BATCH_BUFFER_CHARS = 16000;
+
+/**
+ * Per-(accountId, conversationId) cooldown between successive `/hub/typing`
+ * pings. Hub rate-limits to 20 typing/min per agent (backend hub.py:1675);
+ * cancel-previous bursts on a fast user can otherwise trip 429 silently.
+ */
+const TYPING_DEBOUNCE_MS = 2000;
+
+/** LRU cap on the typing-recency map so long-running daemons don't grow unbounded. */
+const TYPING_RECENCY_CAP = 1024;
 
 /** Factory signature for building a runtime adapter at turn dispatch time. */
 export type RuntimeFactory = (
@@ -214,6 +225,12 @@ export class Dispatcher {
   private readonly resolveHubUrl?: (accountId: string) => string | undefined;
   private readonly transcript: TranscriptWriter;
   private readonly queues: Map<string, QueueState> = new Map();
+  /**
+   * Last `/hub/typing` ping timestamp per (accountId, conversationId).
+   * Used to debounce cancel-previous bursts so we don't trip Hub's 20/min
+   * rate limit. True LRU (delete + set on access) capped at TYPING_RECENCY_CAP.
+   */
+  private readonly recentTypingPings: Map<string, number> = new Map();
 
   constructor(opts: DispatcherOptions) {
     this.config = opts.config;
@@ -757,26 +774,205 @@ export class Dispatcher {
       }
       slot.blocks.push(summary);
     };
-    const onBlock = canStream
+
+    // Owner-chat lifecycle state for typing/thinking. The dispatcher is the
+    // only component that sees turn boundaries + channel capabilities + trace
+    // ids together, so it owns the收束: once `typing.started` fires we never
+    // re-fire it within this turn (frontend clears via stream/message
+    // arrival), and `thinking` is auto-synthesized on the first non-assistant
+    // block so adapters that emit nothing-but-blocks still drive the
+    // "Thinking..." UI.
+    let typingFired = false;
+    let thinkingActive = false;
+    /**
+     * Sticky: once we've forwarded any assistant_text to the wire, we stop
+     * auto-synthesizing thinking on plain `system`/`other` blocks. This
+     * prevents the post-prose flicker caused by Codex's `turn.completed` /
+     * Claude Code's `result` (both arrive as system/other AFTER the prose).
+     * `tool_use` is the explicit exception — agents that legitimately go
+     * back to work after a partial answer should still drive "Thinking…".
+     */
+    let sawAssistantText = false;
+    let blocksSent = 0;
+
+    const forwardBlockToChannel = canStream
       ? (block: StreamBlock) => {
-          recordBlock(block);
-          // Fire-and-forget: stream errors must not break the turn.
-          channel
-            .streamBlock!({
-              traceId: traceId!,
-              accountId: msg.accountId,
-              conversationId: msg.conversation.id,
-              block,
-              log: this.log,
-            })
-            .catch((err) => {
-              this.log.warn("dispatcher: streamBlock failed", {
-                traceId,
-                error: err instanceof Error ? err.message : String(err),
+          // Re-sequence at the wire boundary so synthesized thinking blocks
+          // interleave cleanly with adapter-emitted blocks; adapters keep
+          // their own per-turn seq for tracing/logging only.
+          blocksSent += 1;
+          const ctx = {
+            traceId: traceId!,
+            accountId: msg.accountId,
+            conversationId: msg.conversation.id,
+            block: { ...block, seq: blocksSent },
+            log: this.log,
+          };
+          // Coerce a synchronous throw from a non-async adapter into the same
+          // warn path as an async rejection so a buggy channel never tears
+          // down the turn (the adapter contract is fire-and-forget).
+          try {
+            const ret = channel.streamBlock!(ctx);
+            if (ret && typeof (ret as Promise<void>).catch === "function") {
+              (ret as Promise<void>).catch((err) => {
+                this.log.warn("dispatcher: streamBlock failed", {
+                  traceId,
+                  error: err instanceof Error ? err.message : String(err),
+                });
               });
+            }
+          } catch (err) {
+            this.log.warn("dispatcher: streamBlock threw", {
+              traceId,
+              error: err instanceof Error ? err.message : String(err),
             });
+          }
         }
       : undefined;
+
+    const sendThinkingMarker = (
+      phase: "started" | "updated" | "stopped",
+      label: string | undefined,
+      source: "dispatcher" | "runtime",
+    ): void => {
+      if (!forwardBlockToChannel) return;
+      const raw: Record<string, unknown> = { phase, source };
+      if (label) raw.label = label;
+      const synth: StreamBlock = { raw, kind: "thinking", seq: 0 };
+      // Intentionally NOT `recordBlock(synth)` — the transcript stays
+      // adapter-truth so downstream log consumers see only what the runtime
+      // actually emitted, not daemon-synthesized lifecycle frames.
+      forwardBlockToChannel(synth);
+    };
+
+    const fireTypingIfNeeded = (): void => {
+      if (!canStream || typingFired || typeof channel.typing !== "function") return;
+      typingFired = true;
+      const key = `${msg.accountId}:${msg.conversation.id}`;
+      const now = Date.now();
+      const last = this.recentTypingPings.get(key);
+      if (last !== undefined && now - last < TYPING_DEBOUNCE_MS) {
+        // Within the debounce window — Hub's 2s dedup absorbs this. The
+        // window thins out cancel-previous bursts; it does NOT fully
+        // prevent 429s when many active rooms ping concurrently, so the
+        // try/catch around `channel.typing()` is what actually keeps the
+        // turn alive on rate-limit (backend hub.py:1675).
+        return;
+      }
+      // True LRU: delete-then-set bumps the entry to the tail of the Map
+      // insertion order, so chronically active conversations never get
+      // evicted by an unrelated newcomer at the cap.
+      this.recentTypingPings.delete(key);
+      this.recentTypingPings.set(key, now);
+      if (this.recentTypingPings.size > TYPING_RECENCY_CAP) {
+        const oldest = this.recentTypingPings.keys().next().value;
+        if (oldest !== undefined) this.recentTypingPings.delete(oldest);
+      }
+      const ctx = {
+        traceId: traceId!,
+        accountId: msg.accountId,
+        conversationId: msg.conversation.id,
+        log: this.log,
+      };
+      try {
+        const ret = channel.typing!(ctx);
+        if (ret && typeof (ret as Promise<void>).catch === "function") {
+          (ret as Promise<void>).catch((err) => {
+            this.log.warn("dispatcher: channel.typing failed", {
+              traceId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
+      } catch (err) {
+        this.log.warn("dispatcher: channel.typing threw", {
+          traceId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    };
+
+    const onStatus = canStream
+      ? (event: RuntimeStatusEvent) => {
+          // Drop runtime callbacks after this turn's controller aborts —
+          // NDJSON/ACP adapters keep parsing stdout until the child exits
+          // (up to KILL_GRACE_MS after SIGTERM), so without this guard a
+          // superseded turn leaks frames to the new turn's UI.
+          if (controller.signal.aborted) return;
+          if (event.kind === "typing") {
+            // `/hub/typing` has no stopped semantic — frontend self-clears on
+            // stream/message arrival. typing.stopped is observed for daemon
+            // bookkeeping only (currently a no-op; kept for telemetry).
+            if (event.phase === "started") fireTypingIfNeeded();
+            return;
+          }
+          if (event.phase === "stopped") {
+            // Forward to wire ONLY if we previously announced thinking — that
+            // way `finalizeThinkingIfActive` doesn't double-emit, and adapters
+            // that signal terminal closure earlier than child exit (e.g.
+            // acp-stream's prompt-done) reach the frontend without waiting.
+            if (thinkingActive) {
+              sendThinkingMarker("stopped", event.label, "runtime");
+            }
+            thinkingActive = false;
+            return;
+          }
+          // Runtime-emitted thinking.started/.updated is trusted unconditionally:
+          // we deliberately do NOT apply the `sawAssistantText` sticky guard
+          // here, only to dispatcher-synthesized starts. Adapters opting into
+          // explicit status events accept the responsibility of driving a
+          // sensible lifecycle (don't fire .started after the final answer).
+          thinkingActive = true;
+          sendThinkingMarker(event.phase, event.label, "runtime");
+        }
+      : undefined;
+
+    const onBlock = canStream
+      ? (block: StreamBlock) => {
+          // Always record adapter-emitted blocks for transcript fidelity, even
+          // after abort — the transcript reflects what the runtime emitted,
+          // not what the dispatcher chose to forward.
+          recordBlock(block);
+          if (controller.signal.aborted) return;
+          // Synthesize thinking.started before non-assistant blocks. After
+          // we've seen any assistant_text, only `tool_use` may re-enter
+          // thinking — terminal markers like `system`/`other` (codex
+          // `turn.completed`, claude `result`) would otherwise flicker
+          // "Thinking…" right after the final answer.
+          if (!thinkingActive && block.kind !== "assistant_text") {
+            const allowed = !sawAssistantText || block.kind === "tool_use";
+            if (allowed) {
+              thinkingActive = true;
+              sendThinkingMarker("started", undefined, "dispatcher");
+            }
+          }
+          // Once assistant prose lands, the user is reading the answer — exit
+          // thinking. Frontend hides "Thinking..." once any assistant_text
+          // block has flushed; we just keep our internal flag aligned.
+          if (block.kind === "assistant_text") {
+            thinkingActive = false;
+            sawAssistantText = true;
+          }
+          forwardBlockToChannel!(block);
+        }
+      : undefined;
+
+    // Helper used by terminal paths (success / timeout / error) to ensure
+    // the frontend doesn't get stuck in "Thinking..." when no assistant_text
+    // ever lands. Skips on cancel-previous because the superseder will run
+    // its own typing/thinking sequence.
+    const finalizeThinkingIfActive = (): void => {
+      if (!canStream || !thinkingActive) return;
+      const supersededByCancel = controller.signal.aborted && !slot.timedOut;
+      if (supersededByCancel) return;
+      thinkingActive = false;
+      sendThinkingMarker("stopped", undefined, "dispatcher");
+    };
+
+    // Eagerly fire typing.started before runtime.run so the user sees
+    // "agent is responding" within ~one round-trip even if the runtime takes
+    // seconds before its first block.
+    fireTypingIfNeeded();
 
     // Compute systemContext right before dispatch. The builder must NOT block
     // the turn on failure — log and continue so a flaky memory read can't
@@ -812,6 +1008,7 @@ export class Dispatcher {
           trustLevel,
           systemContext,
           onBlock,
+          onStatus,
           gateway: route.gateway,
         });
       } catch (err) {
@@ -1053,6 +1250,11 @@ export class Dispatcher {
         blocks: slot.blocks,
       });
     } finally {
+      // Emit a final thinking.stopped on terminal paths so the frontend
+      // never sticks at "Thinking..." when no assistant_text ever landed
+      // (timeout, error, gated reply). Skipped on cancel-previous: the
+      // superseder is about to run its own typing/thinking lifecycle.
+      finalizeThinkingIfActive();
       // Clear slot ownership AFTER the reply has been sent (or skipped).
       // Only then do cancel-previous arrivals stop finding this slot — which
       // is exactly what we want: while we're in the post-runtime window, a

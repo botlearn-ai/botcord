@@ -91,6 +91,7 @@ interface RunOpts {
   systemContext?: string;
   accountId?: string;
   onBlock?: (b: unknown) => void;
+  onStatus?: (e: unknown) => void;
 }
 
 function runAdapter(script: string, opts: RunOpts = {}) {
@@ -105,6 +106,7 @@ function runAdapter(script: string, opts: RunOpts = {}) {
     trustLevel: opts.trustLevel ?? "owner",
     systemContext: opts.systemContext,
     onBlock: opts.onBlock as never,
+    onStatus: opts.onStatus as never,
   });
 }
 
@@ -326,5 +328,42 @@ describe("HermesAgentAdapter", () => {
     chmodSync(p, 0o755);
     const res = await runAdapter(p);
     expect(res.error).toBeDefined();
+  });
+
+  it("agent_thought_chunk emits ONLY thinking.updated status, not a block", async () => {
+    const script = makeAcpServer(
+      "thoughtonly.js",
+      `
+        if (msg.method === "initialize") {
+          reply(msg, { protocolVersion: 1 });
+        } else if (msg.method === "session/new") {
+          reply(msg, { sessionId: "sess-thought" });
+        } else if (msg.method === "session/prompt") {
+          notify("session/update", { sessionId: msg.params.sessionId, update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "musing..." } } });
+          notify("session/update", { sessionId: msg.params.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "answer" } } });
+          reply(msg, { stopReason: "end_turn" });
+          process.stdin.pause();
+          process.exit(0);
+        }
+      `,
+    );
+    const blocks: Array<{ kind: string }> = [];
+    const status: Array<{ phase: string; label?: string }> = [];
+    await runAdapter(script, {
+      onBlock: (b) => blocks.push(b as { kind: string }),
+      onStatus: (e) => {
+        const ev = e as { kind: string; phase: string; label?: string };
+        if (ev.kind === "thinking") status.push({ phase: ev.phase, label: ev.label });
+      },
+    });
+    // No block was produced for the thought chunk — the only block should be
+    // the assistant_message_chunk.
+    const blockKinds = blocks.map((b) => b.kind);
+    expect(blockKinds).not.toContain("system");
+    expect(blockKinds).toContain("assistant_text");
+    // But the status stream did surface the thinking.updated frame for it.
+    expect(status.some((s) => s.phase === "updated" && s.label === "Thinking")).toBe(true);
+    // And the prompt-done thinking.stopped fires from the ACP base.
+    expect(status.some((s) => s.phase === "stopped")).toBe(true);
   });
 });
