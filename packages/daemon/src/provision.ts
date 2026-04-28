@@ -712,9 +712,11 @@ export async function adoptDiscoveredOpenclawAgents(ctx: {
           return;
         }
         try {
+          const name = resolveOpenclawIdentityName(oc.id, oc.workspace) ?? oc.name ?? `openclaw-${oc.id}`;
           const params: ProvisionAgentParams = {
             runtime: "openclaw-acp",
-            name: oc.name ?? `openclaw-${oc.id}`,
+            name,
+            bio: `OpenClaw agent ${oc.id} adopted from gateway ${gw.name}.`,
             openclaw: { gateway: gw.name, agent: oc.id },
           };
           const credentials = await materializeCredentials(params, freshCfg, {
@@ -1197,6 +1199,8 @@ function readLocalOpenclawAgents(): Array<{
       const row: { id: string; name?: string; workspace?: string; model?: { name?: string; provider?: string } } = { id };
       if (typeof raw?.name === "string") row.name = raw.name;
       if (typeof raw?.workspace === "string") row.workspace = raw.workspace;
+      const identityName = resolveOpenclawIdentityName(id, row.workspace, cfg);
+      if (identityName) row.name = identityName;
       const m = raw?.model;
       if (m && typeof m === "object") {
         const model: { name?: string; provider?: string } = {};
@@ -1214,6 +1218,63 @@ function readLocalOpenclawAgents(): Array<{
   } catch {
     return null;
   }
+}
+
+function resolveOpenclawIdentityName(
+  agentId: string,
+  workspace?: string,
+  cfg?: any,
+): string | undefined {
+  const root = workspace ?? resolveOpenclawWorkspace(agentId, cfg);
+  if (!root) return undefined;
+  const file = path.join(expandHomePath(root), "IDENTITY.md");
+  try {
+    if (!existsSync(file)) return undefined;
+    return parseIdentityName(readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveOpenclawWorkspace(agentId: string, cfg?: any): string | undefined {
+  let parsed = cfg;
+  if (!parsed) {
+    try {
+      const file = path.join(homedir(), ".openclaw", "openclaw.json");
+      if (!existsSync(file)) return undefined;
+      parsed = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      return undefined;
+    }
+  }
+
+  const defaults = parsed?.agents?.defaults;
+  const defaultId = typeof defaults?.id === "string" && defaults.id ? defaults.id : "default";
+  if ((agentId === defaultId || agentId === "default") && typeof defaults?.workspace === "string") {
+    return defaults.workspace;
+  }
+
+  const list = Array.isArray(parsed?.agents?.list) ? parsed.agents.list : [];
+  for (const entry of list) {
+    if (entry?.id === agentId && typeof entry.workspace === "string") return entry.workspace;
+  }
+  return undefined;
+}
+
+function parseIdentityName(raw: string): string | undefined {
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^\s*-\s*\*\*Name:\*\*\s*(.+?)\s*$/i);
+    if (!m) continue;
+    const name = m[1].trim();
+    if (name && !name.startsWith("_(")) return name;
+  }
+  return undefined;
+}
+
+function expandHomePath(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/")) return path.join(homedir(), p.slice(2));
+  return p;
 }
 
 /**
