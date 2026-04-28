@@ -220,6 +220,7 @@ async def health():
 
 
 _INSTALL_SH_PATH = _PROJECT_ROOT / "static" / "openclaw" / "install.sh"
+_DAEMON_INSTALL_SH_PATH = _PROJECT_ROOT / "static" / "daemon" / "install.sh"
 
 
 @app.get("/openclaw/install.sh", tags=["onboarding"])
@@ -233,6 +234,18 @@ async def serve_install_script():
         raise HTTPException(status_code=404, detail="install.sh not packaged")
     return FileResponse(
         _INSTALL_SH_PATH,
+        media_type="text/x-sh",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
+@app.get("/daemon/install.sh", tags=["onboarding"])
+async def serve_daemon_install_script():
+    """Serve the daemon installer for users without Node.js/npx."""
+    if not _DAEMON_INSTALL_SH_PATH.is_file():
+        raise HTTPException(status_code=404, detail="daemon install.sh not packaged")
+    return FileResponse(
+        _DAEMON_INSTALL_SH_PATH,
         media_type="text/x-sh",
         headers={"Cache-Control": "public, max-age=300"},
     )
