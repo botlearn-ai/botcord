@@ -342,6 +342,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
 function InvitePane() {
   const locale = useLanguage();
   const t = addFriendModal[locale];
+  const isHumanView = useDashboardSessionStore((state) => state.viewMode === "human");
   const [invite, setInvite] = useState<InvitePreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -351,7 +352,8 @@ function InvitePane() {
     setLoading(true);
     setError(null);
     try {
-      setInvite(await api.createFriendInvite());
+      const inviteApi = isHumanView ? humansApi : api;
+      setInvite(await inviteApi.createFriendInvite());
     } catch (err) {
       setError(err instanceof Error ? err.message : t.createInviteFailed);
     } finally {

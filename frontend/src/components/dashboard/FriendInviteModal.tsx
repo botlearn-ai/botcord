@@ -8,7 +8,8 @@
  */
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { common } from "@/lib/i18n/translations/common";
 import { useLanguage } from "@/lib/i18n";
 import type { InvitePreviewResponse } from "@/lib/types";
@@ -20,6 +21,7 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
   const locale = useLanguage();
   const tc = common[locale];
   const t = friendInviteModal[locale];
+  const isHumanView = useDashboardSessionStore((state) => state.viewMode === "human");
   const [invite, setInvite] = useState<InvitePreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,8 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
     setLoading(true);
     setError(null);
     try {
-      setInvite(await api.createFriendInvite());
+      const inviteApi = isHumanView ? humansApi : api;
+      setInvite(await inviteApi.createFriendInvite());
     } catch (err) {
       setError(err instanceof Error ? err.message : t.createFailed);
     } finally {

@@ -634,8 +634,10 @@ class Invite(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Polymorphic — holds either ``ag_*`` or ``hu_*``. FK to agents was
+    # dropped in migration 034 so Human creators don't violate it.
     creator_agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
     )
     room_id: Mapped[str | None] = mapped_column(
         String(64), ForeignKey("rooms.room_id"), nullable=True, index=True
@@ -663,8 +665,10 @@ class InviteRedemption(Base):
     code: Mapped[str] = mapped_column(
         String(32), ForeignKey("invites.code"), nullable=False, index=True
     )
+    # Polymorphic — holds either ``ag_*`` or ``hu_*``. FK to agents was
+    # dropped in migration 034.
     redeemer_agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False, index=True
+        String(32), nullable=False, index=True
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
