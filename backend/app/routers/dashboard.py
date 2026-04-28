@@ -422,22 +422,32 @@ async def get_overview(
     rooms = await _build_rooms_from_sql(viewer_id, db)
 
     contact_result = await db.execute(
-        select(Contact, Agent.display_name)
+        select(
+            Contact,
+            Agent.display_name.label("agent_dn"),
+            User.display_name.label("user_dn"),
+            User.avatar_url.label("user_avatar"),
+        )
         .outerjoin(Agent, Agent.agent_id == Contact.contact_agent_id)
+        .outerjoin(User, User.human_id == Contact.contact_agent_id)
         .where(
             Contact.owner_id == viewer_id,
             Contact.owner_type == viewer_type,
         )
     )
-    contacts = [
-        {
+    contacts = []
+    for c, agent_dn, user_dn, user_avatar in contact_result.all():
+        is_human = c.peer_type == ParticipantType.human
+        dn = (user_dn if is_human else agent_dn) or c.contact_agent_id
+        avatar = user_avatar if is_human else None
+        contacts.append({
             "contact_agent_id": c.contact_agent_id,
             "alias": c.alias,
-            "display_name": dn or c.contact_agent_id,
+            "display_name": dn,
+            "avatar_url": avatar,
+            "peer_type": c.peer_type.value if hasattr(c.peer_type, "value") else str(c.peer_type),
             "created_at": c.created_at.isoformat() if c.created_at else None,
-        }
-        for c, dn in contact_result.all()
-    ]
+        })
 
     pending_result = await db.execute(
         select(func.count())

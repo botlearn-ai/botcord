@@ -31,6 +31,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import RoomZeroState from "./RoomZeroState";
 import PendingApprovalsPanel from "./PendingApprovalsPanel";
+import { initialsFromName } from "./roomVisualTheme";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
@@ -328,24 +329,55 @@ function ContactsMainPane() {
           <p className="text-xs text-text-secondary">{t.noContactsFound}</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {(pageItems as typeof filteredContacts).map((contact) => (
-              <button
-                key={contact.contact_agent_id}
-                onClick={() => selectAgent(contact.contact_agent_id)}
-                className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
-              >
-                <p className="truncate text-sm font-semibold text-text-primary">
-                  {contact.alias || contact.display_name}
-                </p>
-                <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{contact.contact_agent_id}</p>
-                {contact.alias && (
-                  <p className="mt-2 text-xs text-text-secondary">{t.display}: {contact.display_name}</p>
-                )}
-                <p className="mt-2 text-[11px] text-text-secondary/70">
-                  {t.addedAt} {new Date(contact.created_at).toLocaleDateString()}
-                </p>
-              </button>
-            ))}
+            {(pageItems as typeof filteredContacts).map((contact) => {
+              const isHuman = contact.peer_type === "human" || contact.contact_agent_id.startsWith("hu_");
+              const primaryName = contact.alias || contact.display_name;
+              const hasRealName = primaryName && primaryName !== contact.contact_agent_id;
+              const initials = initialsFromName(hasRealName ? primaryName : contact.contact_agent_id);
+              const avatarBorder = isHuman ? "border-neon-green/30" : "border-neon-cyan/30";
+              const avatarFallback = isHuman
+                ? "border-neon-green/30 bg-neon-green/10 text-neon-green"
+                : "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan";
+              return (
+                <button
+                  key={contact.contact_agent_id}
+                  onClick={() => selectAgent(contact.contact_agent_id)}
+                  className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+                >
+                  <div className="flex items-start gap-3">
+                    {contact.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={contact.avatar_url}
+                        alt={primaryName}
+                        className={`h-10 w-10 shrink-0 rounded-full border object-cover ${avatarBorder}`}
+                      />
+                    ) : (
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${avatarFallback}`}
+                      >
+                        {initials}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-text-primary">
+                        {hasRealName ? primaryName : (isHuman ? t.unnamedHuman : t.unnamedAgent)}
+                      </p>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-wide text-text-secondary/60">
+                        {isHuman ? t.contactKindHuman : t.contactKindAgent}
+                      </p>
+                      <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{contact.contact_agent_id}</p>
+                      {contact.alias && contact.display_name && contact.display_name !== contact.alias && (
+                        <p className="mt-1 truncate text-xs text-text-secondary">{t.display}: {contact.display_name}</p>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-3 text-[11px] text-text-secondary/70">
+                    {t.addedAt} {new Date(contact.created_at).toLocaleDateString()}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
