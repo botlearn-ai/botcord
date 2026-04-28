@@ -823,7 +823,11 @@ describe("adoptDiscoveredOpenclawAgents", () => {
       });
 
       expect(res.adopted).toEqual(["ag_adopted"]);
-      expect(register).toHaveBeenCalledWith("https://hub.example", "Main Agent", undefined);
+      expect(register).toHaveBeenCalledWith(
+        "https://hub.example",
+        "Main Agent",
+        "OpenClaw agent main adopted from gateway local.",
+      );
       const saved = JSON.parse(
         fs.readFileSync(nodePath.join(credDir, "ag_adopted.json"), "utf8"),
       ) as Record<string, unknown>;
@@ -880,6 +884,69 @@ describe("adoptDiscoveredOpenclawAgents", () => {
         { gateway: "local", openclawAgent: "main", reason: "already_bound" },
       ]);
       expect(register).not.toHaveBeenCalled();
+    });
+  });
+
+  it("uses the OpenClaw workspace identity name when agents.list has no name", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const credDir = nodePath.join(tmp, ".botcord", "credentials");
+      fs.mkdirSync(credDir, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(credDir, "ag_seed.json"),
+        JSON.stringify({
+          version: 1,
+          hubUrl: "https://hub.example",
+          agentId: "ag_seed",
+          keyId: "k_seed",
+          privateKey: Buffer.alloc(32, 7).toString("base64"),
+          savedAt: new Date().toISOString(),
+        }),
+      );
+      const ocWorkspace = nodePath.join(tmp, ".openclaw", "workspace-swe");
+      fs.mkdirSync(ocWorkspace, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(ocWorkspace, "IDENTITY.md"),
+        ["# IDENTITY.md", "", "- **Name:** Danny", "- **Vibe:** ships fast"].join("\n"),
+      );
+      fs.writeFileSync(
+        nodePath.join(tmp, ".openclaw", "openclaw.json"),
+        JSON.stringify({
+          agents: {
+            defaults: { workspace: nodePath.join(tmp, ".openclaw", "workspace") },
+            list: [{ id: "swe", workspace: ocWorkspace }],
+          },
+        }),
+      );
+      mockState.cfg = {
+        defaultRoute: { adapter: "claude-code", cwd: "/tmp" },
+        routes: [],
+        streamBlocks: true,
+        agents: ["ag_seed"],
+        openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }],
+      };
+
+      const register = vi.fn(async () => ({
+        agentId: "ag_swe",
+        keyId: "k_swe",
+        privateKey: Buffer.alloc(32, 33).toString("base64"),
+        publicKey: Buffer.alloc(32, 34).toString("base64"),
+        hubUrl: "https://hub.example",
+        token: "tok",
+        expiresAt: Date.now() + 60_000,
+      }));
+
+      await adoptDiscoveredOpenclawAgents({
+        gateway: makeFakeGateway(["ag_seed"]) as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["gateway"],
+        register: register as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["register"],
+        cfg: mockState.cfg as unknown as DaemonConfig,
+        probe: async () => ({ ok: true, agents: [{ id: "swe" }] }),
+      });
+
+      expect(register).toHaveBeenCalledWith(
+        "https://hub.example",
+        "Danny",
+        "OpenClaw agent swe adopted from gateway local.",
+      );
     });
   });
 });
