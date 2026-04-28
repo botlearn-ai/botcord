@@ -629,7 +629,7 @@ class _RefreshRuntimesResponse(BaseModel):
     runtimes_probed_at: datetime.datetime
 
 
-_REFRESH_RUNTIMES_TIMEOUT_MS = 5000
+_REFRESH_RUNTIMES_TIMEOUT_MS = 10000
 
 
 @router.post(

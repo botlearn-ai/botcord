@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Hoisted mock for `../adapters/runtimes.js` so each suite can stub
 // `detectRuntimes()` independently — we want coverage of the "empty
@@ -24,7 +24,13 @@ vi.mock("../adapters/runtimes.js", async () => {
   };
 });
 
-const { collectRuntimeSnapshot, createProvisioner } = await import("../provision.js");
+const { collectRuntimeSnapshot, clearRuntimeProbeCache, createProvisioner } = await import("../provision.js");
+
+beforeEach(() => {
+  // The L1 probe is memoized for 30s in production; tests rotate the
+  // mocked runtime list between cases, so reset before each.
+  clearRuntimeProbeCache();
+});
 const { pushRuntimeSnapshot } = await import("../daemon.js");
 const { CONTROL_FRAME_TYPES } = await import("@botcord/protocol-core");
 import type { GatewayChannelConfig, GatewayRuntimeSnapshot } from "../gateway/index.js";
