@@ -36,6 +36,10 @@ import { useDashboardRealtimeStore } from "@/store/useDashboardRealtimeStore";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
 
+function formatBadgeCount(count: number): string {
+  return count > 99 ? "99+" : String(count);
+}
+
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
   if (isNaN(minor)) return "0.00";
@@ -230,7 +234,10 @@ export default function Sidebar() {
     recentVisitedRooms: state.recentVisitedRooms,
     switchActiveAgent: state.switchActiveAgent,
   })));
-  const optimisticUnreadRoomIds = useDashboardUnreadStore((state) => state.optimisticUnreadRoomIds);
+  const unreadStore = useDashboardUnreadStore(useShallow((state) => ({
+    optimisticUnreadRoomIds: state.optimisticUnreadRoomIds,
+    isRoomUnread: state.isRoomUnread,
+  })));
   const wallet = useDashboardWalletStore(useShallow((state) => ({
     wallet: state.wallet,
     walletError: state.walletError,
@@ -341,7 +348,17 @@ export default function Sidebar() {
   }, [chatStore.messages, normalizedMessageQuery, visibleMessageRooms]);
   const showOverviewSkeleton =
     sessionStore.sessionMode === "authed-ready" && !chatStore.overview && uiStore.sidebarTab === "messages";
-  const hasUnreadMessages = optimisticUnreadRoomIds.length > 0 || visibleMessageRooms.some((room) => room.has_unread);
+  const unreadMessageCount = useMemo(() => {
+    const roomIds = new Set(visibleMessageRooms.map((room) => room.room_id));
+    const persistedCount = visibleMessageRooms.reduce((total, room) => {
+      if (!unreadStore.isRoomUnread(room.room_id, room.has_unread)) {
+        return total;
+      }
+      return total + Math.max(1, room.unread_count ?? 1);
+    }, 0);
+    const optimisticOnlyCount = unreadStore.optimisticUnreadRoomIds.filter((roomId) => !roomIds.has(roomId)).length;
+    return persistedCount + optimisticOnlyCount;
+  }, [unreadStore, visibleMessageRooms]);
   const pendingContactRequests = chatStore.overview?.pending_requests || 0;
 
   useEffect(() => {
@@ -404,9 +421,11 @@ export default function Sidebar() {
             const isExplore = item.key === "explore";
             const requiresLogin = isGuest && (item.key === "contacts" || item.key === "activity");
             let badge: ReactNode = null;
-            if (item.key === "messages" && hasUnreadMessages && !requiresLogin) {
+            if (item.key === "messages" && unreadMessageCount > 0 && !requiresLogin) {
               badge = (
-                <div className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]">
+                  {formatBadgeCount(unreadMessageCount)}
+                </span>
               );
             }
             if (item.key === "contacts" && pendingContactRequests > 0 && !requiresLogin) {

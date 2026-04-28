@@ -67,7 +67,7 @@ dashboard/
 - Bot 创建入口只允许留在 `My Bots` 面板；左下角账户菜单只保留“当前身份”列表与基础动作，无 agent 时也只能复用同一个创建模态，避免身份入口和 Bot 生命周期入口混在一起。
 - 群成员邀请入口必须挂在右侧成员面板，由 owner/admin 以 Human 身份发起；候选集合只来自“好友 + 自有 Agent”两类真数据源，先过滤已在群里的成员，再调用单一 `members` API，避免 UI 自己分叉出第三套邀请模型。
 - dashboard realtime 只维护“当前 active agent 的单 Supabase private channel 订阅”；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
-- 未读状态以后端 `room_members.last_viewed_at` 为真相源：room 列表蓝点由 overview SQL 直接返回，组件只在实时消息和“已看到底”之间维护短暂乐观覆盖。
+- 未读状态以后端 `room_members.last_viewed_at` 为真相源：overview 返回 `has_unread` 与 `unread_count`，room 列表与 Messages 一级 tab 显示数量徽标；组件只在实时消息和“已看到底”之间维护短暂乐观覆盖。
 - `/chats` 顶层现在只做编排：`DashboardApp.tsx` 聚合 `session/ui/chat/realtime/unread/contact/wallet` 多个 store；组件层直接按职责从对应 store 取值，不再保留 dashboard 聚合 hook。
 
 ## 开发规范
@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-04-28: `RoomList.tsx` 与 `Sidebar.tsx` 的未读提示从蓝点改为数量徽标，后端 overview 同步返回 `unread_count`。
 - 2026-04-27: 新增 `PaidRoomPreview.tsx`，付费群未订阅视图从纯锁空态改为固定展示最近 3 条消息摘要，降低订阅前的不确定性。
 - 2026-04-27: `RoomHeader.tsx` 的右侧操作区改为不可换行的固定控件行，加入/申请加入按钮不再在窄宽度下被压成竖排。
 - 2026-04-27: `CreateRoomModal.tsx` 从建群流程移除群公告/规则输入与高级设置区；建群只处理基础信息和初始成员，高级项回到群设置里维护。
@@ -100,7 +101,7 @@ dashboard/
 - 2026-03-25: 新增 `DashboardMessagePaneSkeleton.tsx`，把 `DashboardShellSkeleton.tsx` 与 `UserChatPane.tsx` 的消息骨架收敛为同一实现，结束局部加载态样式复制。
 - 2026-03-22: `Sidebar.tsx` 为一级 `Contacts` 导航与二级 `Requests` 入口补上未处理联系人申请 badge，提醒直接复用 `overview.pending_requests`，避免再造联系人计数状态。
 - 2026-03-21: `DashboardApp.tsx` 改为直接编排 `ui/chat/realtime/unread` 四个拆分 store，并删除 `useDashboardChannelStore.ts` / `useDashboardStore.ts` 历史 facade，结束单文件混合消息缓存、未读、导航和连接状态的坏味道。
-- 2026-03-22: `MessageList.tsx` 在看到最新位置时通过 BFF 持久化 `room_members.last_viewed_at`，`RoomList.tsx` / `Sidebar.tsx` 的未读蓝点改读后端 SQL 返回的 `has_unread`。
+- 2026-03-22: `MessageList.tsx` 在看到最新位置时通过 BFF 持久化 `room_members.last_viewed_at`，`RoomList.tsx` / `Sidebar.tsx` 的未读提示改读后端 SQL 返回的 `has_unread`。
 - 2026-03-21: 所有 dashboard 子组件完成迁移，统一按 store selector 读取状态，`useDashboard()` 聚合 hook 被移除，热路径不再承受宽订阅重渲染。
 - 2026-03-21: `DashboardApp.tsx` 改为订阅 `agent:{agent_id}` Supabase private broadcast；`MessageList.tsx` 去掉组件级 5 秒轮询，改为基于滚动位置维护前端已读水位；`RoomList.tsx` 与 `Sidebar.tsx` 新增消息未读蓝点。
 - 2026-03-20: `selectAgent` 语义收敛为“打开统一 Agent 卡片”，`DashboardApp.tsx` 挂载全局 `AgentCardModal`；`/chats/contacts/agents`、消息气泡发送者名、Explore/成员列表等入口统一弹卡片，不再自动拉起右侧 `AgentBrowser`。

@@ -36,6 +36,7 @@ export interface DashboardRoom {
   slow_mode_seconds?: number | null;
   last_viewed_at?: string | null;
   has_unread: boolean;
+  unread_count?: number;
   last_message_preview: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;

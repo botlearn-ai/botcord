@@ -16,6 +16,7 @@ from hub.models import (
     Contact,
     ContactRequest,
     ContactRequestState,
+    MessageRecord,
     MessagePolicy,
     Role,
     Room,
@@ -212,6 +213,73 @@ async def test_dashboard_overview(client: AsyncClient, seed_data: dict):
 
     # Pending requests
     assert data["pending_requests"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dashboard_overview_includes_unread_count(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+):
+    token = seed_data["token"]
+    db_session.add_all([
+        MessageRecord(
+            hub_msg_id="hm_unread001",
+            msg_id="msg_unread001",
+            sender_id="ag_other00001",
+            receiver_id="ag_dashtest001",
+            room_id="rm_testroom001",
+            envelope_json='{"from":"ag_other00001","type":"message","payload":{"text":"one"}}',
+            ttl_sec=3600,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_unread002",
+            msg_id="msg_unread002",
+            sender_id="ag_other00001",
+            receiver_id="ag_dashtest001",
+            room_id="rm_testroom001",
+            envelope_json='{"from":"ag_other00001","type":"message","payload":{"text":"two"}}',
+            ttl_sec=3600,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_ack001",
+            msg_id="msg_ack001",
+            sender_id="ag_other00001",
+            receiver_id="ag_dashtest001",
+            room_id="rm_testroom001",
+            envelope_json='{"from":"ag_other00001","type":"ack","payload":{}}',
+            ttl_sec=3600,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_own001",
+            msg_id="msg_own001",
+            sender_id="ag_dashtest001",
+            receiver_id="ag_other00001",
+            room_id="rm_testroom001",
+            envelope_json='{"from":"ag_dashtest001","type":"message","payload":{"text":"mine"}}',
+            ttl_sec=3600,
+        ),
+    ])
+    await db_session.commit()
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Active-Agent": "ag_dashtest001",
+    }
+    resp = await client.get("/api/dashboard/overview", headers=headers)
+    assert resp.status_code == 200
+    room = resp.json()["rooms"][0]
+    assert room["has_unread"] is True
+    assert room["unread_count"] == 2
+
+    read_resp = await client.post("/api/dashboard/rooms/rm_testroom001/read", headers=headers)
+    assert read_resp.status_code == 200
+
+    resp = await client.get("/api/dashboard/overview", headers=headers)
+    assert resp.status_code == 200
+    room = resp.json()["rooms"][0]
+    assert room["has_unread"] is False
+    assert room["unread_count"] == 0
 
 
 @pytest.mark.asyncio

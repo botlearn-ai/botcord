@@ -21,7 +21,7 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 组件层统一通过 `DashboardApp/useDashboard` 聚合多 store，不再保留历史 facade；状态真相只存在于拆分后的业务 store。
 - realtime 不直接把 Supabase broadcast 当消息源；channel 只负责投递 meta 脉冲，`realtime/chat` store 负责通过 Next BFF 拉取最新 overview / 当前房间增量消息并合并本地状态。
 - realtime 事件以 `type` 作为唯一分发语义，`ext` 只承载附加字段；不要再引入第二个 `kind/category` 制造重复含义。
-- 已读未读以数据库为真相源：`room_members.last_viewed_at` 持久化成员级阅读水位，`unread` store 只保留本地乐观覆盖与 realtime 瞬时提示，不再单独定义持久化规则。
+- 已读未读以数据库为真相源：`room_members.last_viewed_at` 持久化成员级阅读水位，overview 提供 `has_unread` / `unread_count`，`unread` store 只保留本地乐观覆盖与 realtime 瞬时提示，不再单独定义持久化规则。
 
 开发规范
 - 新增业务状态优先放到对应业务 store，不再向 `DashboardApp` 回灌跨域字段。
@@ -29,9 +29,10 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 任何跨域状态重置（如 agent 切换、退出登录）必须在聚合层显式同步。
 - `useDashboardChatStore.ts` 的会话列表缓存必须绑定当前 active agent；身份切换后先换真相源，再清空上一身份残留，不能让 recents/overview 跨 agent 泄漏。
 - Supabase realtime 在线时，消息更新必须走 `useDashboardRealtimeStore.ts` 的同步动作；不要重新引入组件级定时轮询制造第二数据入口。
-- 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地蓝点只能做短暂覆盖，不能替代后端状态。
+- 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地未读数量只能做短暂覆盖，不能替代后端状态。
 
 变更日志
+- 2026-04-28: overview 房间摘要新增 `unread_count`，Messages 一级 tab 与 room 列表使用数量徽标替代未读蓝点。
 - 2026-04-24: `dashboard-shared.ts` 新增统一房间活跃度排序 helper，消息列表与联系人房间视图都以 `last_message_at -> created_at` 同一规则排序，消除重复排序逻辑漂移。
 - 2026-04-24: `useDashboardChatStore.ts` 的公开目录加载动作开始接收 `q` 并做请求序号保护，公开社区搜索不再依赖首屏缓存，也不会被旧请求回写覆盖。
 - 2026-04-08: `useDashboardChatStore.ts` 新增 `boundAgentId` 边界，claim/切换身份后会先切 active agent 再硬刷新，并在 agent 不一致时清空上一身份的会话缓存，修复 `/chats` 继续进入仍显示旧身份与旧会话列表残留的问题。
