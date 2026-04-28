@@ -85,7 +85,9 @@ export default function RoomHeader() {
   const dmContact = isDMRoom && dmPartnerAgentId
     ? (overview?.contacts.find((c) => c.contact_agent_id === dmPartnerAgentId) ?? null)
     : null;
-  const canInvite = isHumanView ? isOwnerOrAdmin : (authRoom?.can_invite ?? true);
+  const canInvite = isHumanView
+    ? isOwnerOrAdmin || (Boolean(myRole) && Boolean(humanRoom?.default_invite))
+    : (authRoom?.can_invite ?? true);
   const roleLabel = myRole
     ? locale === "zh"
       ? `你是 ${myRole}`
