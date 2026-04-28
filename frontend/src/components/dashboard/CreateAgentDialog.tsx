@@ -139,6 +139,29 @@ export default function CreateAgentDialog({
 
   const showEmptyState = loaded && onlineDaemons.length === 0;
 
+  // Auto-detect daemon coming online while user stares at the install command.
+  useEffect(() => {
+    if (!showEmptyState) return;
+    const id = window.setInterval(() => {
+      void refresh({ quiet: true });
+    }, 3_000);
+    return () => window.clearInterval(id);
+  }, [showEmptyState, refresh]);
+
+  // Auto-detect OpenClaw gateways once the user picks the openclaw-acp runtime
+  // but no reachable endpoint has been probed yet.
+  useEffect(() => {
+    if (selectedRuntimeId !== "openclaw-acp") return;
+    if (!selectedDaemon) return;
+    const reachable = (selectedRuntime?.endpoints ?? []).filter((e) => e.reachable);
+    if (reachable.length > 0) return;
+    const daemonId = selectedDaemon.id;
+    const id = window.setInterval(() => {
+      void refreshRuntimes(daemonId, { quiet: true });
+    }, 5_000);
+    return () => window.clearInterval(id);
+  }, [selectedRuntimeId, selectedDaemon, selectedRuntime, refreshRuntimes]);
+
   function translateError(err: unknown): string {
     if (err instanceof ProvisionAgentError) {
       switch (err.code) {

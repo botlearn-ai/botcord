@@ -96,10 +96,10 @@ interface DaemonState {
   runtimeErrors: Record<string, string>;
   renameErrors: Record<string, string>;
 
-  refresh: () => Promise<void>;
+  refresh: (opts?: { quiet?: boolean }) => Promise<void>;
   revoke: (id: string) => Promise<void>;
   rename: (id: string, label: string | null) => Promise<boolean>;
-  refreshRuntimes: (id: string) => Promise<void>;
+  refreshRuntimes: (id: string, opts?: { quiet?: boolean }) => Promise<void>;
   provisionAgent: (
     daemonId: string,
     input: ProvisionAgentInput,
@@ -246,14 +246,16 @@ function normalizeDaemon(raw: Record<string, unknown>): DaemonInstance {
 export const useDaemonStore = create<DaemonState>()((set, get) => ({
   ...initialState,
 
-  refresh: async () => {
-    set({ loading: true, error: null });
+  refresh: async (opts) => {
+    const quiet = opts?.quiet === true;
+    if (!quiet) set({ loading: true, error: null });
     try {
       const res = await fetch("/api/daemon/instances", {
         method: "GET",
         cache: "no-store",
       });
       if (!res.ok) {
+        if (quiet) return;
         const msg = await parseError(res);
         set({ loading: false, error: msg });
         return;
@@ -266,13 +268,14 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
           : Array.isArray(data)
             ? data
             : [];
-      set({
-        daemons: (list as Record<string, unknown>[]).map(normalizeDaemon),
-        loading: false,
-        loaded: true,
-        error: null,
-      });
+      const daemons = (list as Record<string, unknown>[]).map(normalizeDaemon);
+      set(
+        quiet
+          ? { daemons, loaded: true }
+          : { daemons, loading: false, loaded: true, error: null },
+      );
     } catch (err) {
+      if (quiet) return;
       set({
         loading: false,
         error: err instanceof Error ? err.message : "Failed to load daemons",
@@ -361,18 +364,22 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
     }
   },
 
-  refreshRuntimes: async (id: string) => {
-    set((state) => {
-      const next = { ...state.runtimeErrors };
-      delete next[id];
-      return { refreshingRuntimesId: id, runtimeErrors: next };
-    });
+  refreshRuntimes: async (id, opts) => {
+    const quiet = opts?.quiet === true;
+    if (!quiet) {
+      set((state) => {
+        const next = { ...state.runtimeErrors };
+        delete next[id];
+        return { refreshingRuntimesId: id, runtimeErrors: next };
+      });
+    }
     try {
       const res = await fetch(
         `/api/daemon/instances/${encodeURIComponent(id)}/refresh-runtimes`,
         { method: "POST" },
       );
       if (!res.ok) {
+        if (quiet) return;
         let msg: string;
         if (res.status === 409) {
           msg = "daemon offline, start it first";
@@ -399,9 +406,10 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
             ? { ...d, runtimes, runtimes_probed_at: probedAt }
             : d,
         ),
-        refreshingRuntimesId: null,
+        ...(quiet ? {} : { refreshingRuntimesId: null }),
       });
     } catch (err) {
+      if (quiet) return;
       const msg = err instanceof Error ? err.message : "Failed to refresh runtimes";
       set((state) => ({
         refreshingRuntimesId: null,
