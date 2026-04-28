@@ -107,6 +107,50 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     expect(seen).toContain("system");
   });
 
+  it("emits thinking onStatus events for thread.started, turn.started, tool item, and assistant_message", async () => {
+    const script = makeScript(
+      "thinkflow.js",
+      `
+const lines = [
+  {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde2"},
+  {type:"turn.started"},
+  {type:"item.started", item:{id:"i0", type:"web_search", query:"x"}},
+  {type:"item.completed", item:{id:"i1", type:"agent_message", text:"ok"}},
+  {type:"turn.completed", usage:{}},
+];
+for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
+`,
+    );
+    const adapter = new CodexAdapter({ binary: script });
+    const ctrl = new AbortController();
+    const status: Array<{ phase: string; label?: string }> = [];
+    await adapter.run({
+      text: "x",
+      sessionId: null,
+      accountId: "ag_test",
+      cwd: tmpRoot,
+      signal: ctrl.signal,
+      trustLevel: "owner",
+      onStatus: (e) => {
+        if (e.kind === "thinking") {
+          status.push({ phase: e.phase, label: e.label });
+        }
+      },
+    });
+    // thread.started → started/Starting session
+    // turn.started → started/Thinking
+    // item.started(web_search) → updated/Searching web
+    // item.completed(agent_message) → stopped
+    // turn.completed → stopped
+    expect(status).toEqual([
+      { phase: "started", label: "Starting session" },
+      { phase: "started", label: "Thinking" },
+      { phase: "updated", label: "Searching web" },
+      { phase: "stopped", label: undefined },
+      { phase: "stopped", label: undefined },
+    ]);
+  });
+
   it("no sessionId → `exec` subcommand (no resume)", async () => {
     const script = makeScript(
       "fresh-argv.js",

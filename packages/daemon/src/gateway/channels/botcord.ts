@@ -15,6 +15,7 @@ import type {
   ChannelStatusSnapshot,
   ChannelStopContext,
   ChannelStreamBlockContext,
+  ChannelTypingContext,
   GatewayInboundEnvelope,
   GatewayInboundMessage,
   GatewayLogger,
@@ -690,6 +691,32 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       }
     },
 
+    async typing(ctx: ChannelTypingContext): Promise<void> {
+      const client = ensureClient();
+      const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
+      try {
+        const token = await client.ensureToken();
+        const resp = await fetch(`${hubUrl}/hub/typing`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ room_id: ctx.conversationId }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!resp.ok && resp.status !== 204) {
+          const body = await resp.text().catch(() => "");
+          ctx.log.warn("botcord typing non-ok", {
+            status: resp.status,
+            body: body.slice(0, 200),
+          });
+        }
+      } catch (err) {
+        ctx.log.warn("botcord typing failed", { err: String(err) });
+      }
+    },
+
     status(): ChannelStatusSnapshot {
       return { ...statusSnapshot };
     },
@@ -775,6 +802,17 @@ function normalizeBlockForHub(
     if (typeof raw?.session_id === "string") payload.session_id = raw.session_id;
     if (typeof raw?.model === "string") payload.model = raw.model;
     return { kind: "system", seq, payload };
+  }
+
+  if (kind === "thinking") {
+    // Daemon-synthesized lifecycle marker. `raw` carries `{ phase, label?, source? }`
+    // — see Dispatcher's status forwarding. The frontend uses `phase` to decide
+    // whether to enter/leave the compact "Thinking..." UI; `label` is a free-form
+    // human hint (e.g. "Searching web"). Treat as untrusted text — never inject.
+    if (typeof raw?.phase === "string") payload.phase = raw.phase;
+    if (typeof raw?.label === "string") payload.label = raw.label;
+    if (typeof raw?.source === "string") payload.source = raw.source;
+    return { kind: "thinking", seq, payload };
   }
 
   // "other" — e.g. Claude Code `type:"result"` end-of-turn summary.

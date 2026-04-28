@@ -247,6 +247,19 @@ export interface ChannelStreamBlockContext {
   log: GatewayLogger;
 }
 
+/**
+ * Context passed to `ChannelAdapter.typing()` when the dispatcher signals
+ * "agent has accepted this turn but no execution block has surfaced yet".
+ * Adapters that bridge to a presence-style API (BotCord `/hub/typing`, etc.)
+ * map this into a one-shot ephemeral notification.
+ */
+export interface ChannelTypingContext {
+  traceId: string;
+  accountId: string;
+  conversationId: string;
+  log: GatewayLogger;
+}
+
 /** Upstream messaging surface such as BotCord, Telegram, or WeChat. */
 export interface ChannelAdapter {
   readonly id: string;
@@ -256,6 +269,12 @@ export interface ChannelAdapter {
   send(ctx: ChannelSendContext): Promise<ChannelSendResult>;
   status?(): ChannelStatusSnapshot;
   streamBlock?(ctx: ChannelStreamBlockContext): Promise<void>;
+  /**
+   * Optional ephemeral "agent is responding" hint. Fire-and-forget; failures
+   * must not break the turn. Channels without a presence concept should leave
+   * this undefined.
+   */
+  typing?(ctx: ChannelTypingContext): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,11 +285,37 @@ export interface ChannelAdapter {
 export interface StreamBlock {
   /** Raw JSON object as emitted by the underlying CLI (e.g. claude-code stream-json). */
   raw: unknown;
-  /** Normalized kind, used by channels to decide whether to forward progressive output. */
-  kind: "assistant_text" | "tool_use" | "tool_result" | "system" | "other";
+  /**
+   * Normalized kind, used by channels to decide whether to forward progressive
+   * output. `thinking` is synthesized by the dispatcher (or emitted explicitly
+   * by an adapter) to represent "the runtime is busy but has nothing visible
+   * to show yet" — see `RuntimeStatusEvent`.
+   */
+  kind: "assistant_text" | "tool_use" | "tool_result" | "system" | "thinking" | "other";
   /** 1-based sequence number within this turn. */
   seq: number;
 }
+
+/**
+ * Lightweight lifecycle event emitted by runtime adapters and consumed by the
+ * dispatcher to drive Dashboard-side `typing` / `thinking` UI states. Not
+ * exposed to channels directly — the dispatcher decides how to forward.
+ *
+ *   - `typing`   — ephemeral presence; dispatcher pings the channel's
+ *                  `typing()` API on `started`. `stopped` is observed for
+ *                  internal bookkeeping but not forwarded (frontend clears on
+ *                  stream/message arrival).
+ *   - `thinking` — trace-bound execution state; dispatcher converts each
+ *                  event into a `kind: "thinking"` stream block.
+ */
+export type RuntimeStatusEvent =
+  | { kind: "typing"; phase: "started" | "stopped" }
+  | {
+      kind: "thinking";
+      phase: "started" | "updated" | "stopped";
+      label?: string;
+      raw?: unknown;
+    };
 
 /** Options passed to a runtime adapter for a single turn. */
 export interface RuntimeRunOptions {
@@ -302,6 +347,14 @@ export interface RuntimeRunOptions {
   context?: Record<string, unknown>;
   /** Called for every parsed block while the turn is in progress. */
   onBlock?: (block: StreamBlock) => void;
+  /**
+   * Optional lifecycle hook for `typing` / `thinking` status. Adapters that
+   * can identify session/turn/tool transitions before any `StreamBlock` is
+   * available should emit through here so the dispatcher can drive
+   * Dashboard-side state. Errors from this callback must be swallowed
+   * by the adapter — the dispatcher's handler is fire-and-forget.
+   */
+  onStatus?: (event: RuntimeStatusEvent) => void;
   /**
    * External service endpoint required by some runtimes (first user:
    * openclaw-acp). Resolved at config-load time and passed through here per

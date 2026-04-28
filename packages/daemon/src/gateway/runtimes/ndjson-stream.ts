@@ -6,6 +6,7 @@ import type {
   RuntimeProbeResult,
   RuntimeRunOptions,
   RuntimeRunResult,
+  RuntimeStatusEvent,
   StreamBlock,
 } from "../types.js";
 
@@ -40,6 +41,13 @@ export interface NdjsonEventCtx {
    * Subclasses should use this instead of `state.assistantTextChunks.push(...)`.
    */
   appendAssistantText: (text: string) => void;
+  /**
+   * Forward a runtime status event (typing / thinking) to the dispatcher.
+   * Adapters should call this when an event reveals the runtime's lifecycle
+   * stage before any visible block lands — e.g. Codex `thread.started`,
+   * Claude Code `system` init. Errors thrown here are swallowed.
+   */
+  emitStatus: (event: RuntimeStatusEvent) => void;
 }
 
 const log = consoleLogger;
@@ -189,6 +197,13 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
           seq,
           emitBlock: (b) => opts.onBlock?.(b),
           appendAssistantText,
+          emitStatus: (e) => {
+            try {
+              opts.onStatus?.(e);
+            } catch (err) {
+              log.warn(`${this.id} onStatus threw`, { err: String(err) });
+            }
+          },
         });
       } catch (err) {
         log.warn(`${this.id} event handler threw`, { err: String(err) });
