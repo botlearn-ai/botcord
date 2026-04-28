@@ -561,3 +561,11 @@ async def test_install_script_served(client: AsyncClient):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/x-sh") or resp.headers["content-type"].startswith("application/")
     assert "BotCord" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_daemon_install_script_served(client: AsyncClient):
+    resp = await client.get("/daemon/install.sh")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/x-sh") or resp.headers["content-type"].startswith("application/")
+    assert "@botcord/daemon@latest" in resp.text

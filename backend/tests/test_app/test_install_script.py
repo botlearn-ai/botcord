@@ -30,6 +30,7 @@ from pathlib import Path
 import pytest
 
 INSTALL_SH = Path(__file__).resolve().parents[2] / "static" / "openclaw" / "install.sh"
+DAEMON_INSTALL_SH = Path(__file__).resolve().parents[2] / "static" / "daemon" / "install.sh"
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +64,23 @@ def test_install_sh_missing_args_exits_nonzero(tmp_path: Path):
     )
     assert proc.returncode != 0
     assert "--bind-code" in proc.stderr or "--bind-code" in proc.stdout
+
+
+def test_daemon_install_sh_syntax_ok():
+    assert DAEMON_INSTALL_SH.is_file(), f"missing {DAEMON_INSTALL_SH}"
+    proc = subprocess.run(
+        ["bash", "-n", str(DAEMON_INSTALL_SH)], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_daemon_install_sh_help_exits_zero():
+    proc = subprocess.run(
+        ["sh", str(DAEMON_INSTALL_SH), "--help"], capture_output=True, text=True
+    )
+    assert proc.returncode == 0
+    assert "--hub" in proc.stdout
+    assert "@botcord/daemon@latest" in proc.stdout
 
 
 # ---------------------------------------------------------------------------
