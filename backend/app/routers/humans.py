@@ -930,6 +930,44 @@ async def create_room_share_as_human(
     )
 
 
+@router.post("/me/invite", status_code=201)
+async def create_friend_invite_as_human(
+    body: CreateHumanInviteBody | None = None,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _load_human(db, ctx)
+    payload = body or CreateHumanInviteBody()
+    invite = Invite(
+        code=f"iv_{uuid4().hex[:20]}",
+        kind="friend",
+        creator_agent_id=user.human_id,
+        expires_at=_now() + datetime.timedelta(hours=payload.expires_in_hours)
+        if payload.expires_in_hours
+        else None,
+        max_uses=max(1, payload.max_uses),
+    )
+    db.add(invite)
+    await db.commit()
+    return {
+        "code": invite.code,
+        "kind": invite.kind,
+        "entry_type": "friend_invite",
+        "target_type": "friend",
+        "target_id": user.human_id,
+        "invite_url": _invite_url(invite.code),
+        "continue_url": frontend_url("/chats/contacts/agents"),
+        "expires_at": invite.expires_at.isoformat() if invite.expires_at else None,
+        "max_uses": invite.max_uses,
+        "use_count": invite.use_count,
+        "creator": {
+            "agent_id": user.human_id,
+            "display_name": user.display_name or user.human_id,
+        },
+        "room": None,
+    }
+
+
 @router.post(
     "/me/rooms/{room_id}/invite",
     status_code=201,

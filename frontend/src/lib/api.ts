@@ -1020,6 +1020,11 @@ const humansApi = {
     );
   },
 
+  /** Human creates a friend invite link. */
+  createFriendInvite(): Promise<InvitePreviewResponse> {
+    return apiPost<InvitePreviewResponse>("/api/humans/me/invite");
+  },
+
   /** Human creates a private-room invite link. */
   createRoomInvite(roomId: string): Promise<InvitePreviewResponse> {
     return apiPost<InvitePreviewResponse>(`/api/humans/me/rooms/${roomId}/invite`);

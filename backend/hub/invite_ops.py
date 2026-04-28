@@ -12,8 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.enums import RoomRole, SubscriptionStatus
-from hub.models import Agent, AgentSubscription, Contact, Invite, InviteRedemption, Room, RoomMember
+from hub.enums import ParticipantType, RoomRole, SubscriptionStatus
+from hub.models import Agent, AgentSubscription, Contact, Invite, InviteRedemption, Room, RoomMember, User
 from hub.share_payloads import frontend_url, room_continue_url, room_entry_type
 
 
@@ -33,21 +33,53 @@ def _invite_url(code: str) -> str:
     return frontend_url(f"/i/{code}")
 
 
-def _serialize_invite_preview(invite: Invite, creator: Agent, room: Room | None, member_count: int = 0) -> dict:
+def _participant_type_for(participant_id: str) -> ParticipantType:
+    if participant_id.startswith("hu_"):
+        return ParticipantType.human
+    return ParticipantType.agent
+
+
+async def _load_invite_creator(
+    creator_id: str, db: AsyncSession
+) -> tuple[str, str] | None:
+    """Resolve an invite creator to ``(id, display_name)``.
+
+    Friend/room invites can be created by either an Agent (``ag_*``) or a
+    Human (``hu_*``); we look up whichever matches the prefix and fall back
+    to a degraded preview when the principal can't be found.
+    """
+    if creator_id.startswith("hu_"):
+        user = await db.scalar(select(User).where(User.human_id == creator_id))
+        if user is None:
+            return None
+        return creator_id, user.display_name or creator_id
+    agent = await db.scalar(select(Agent).where(Agent.agent_id == creator_id))
+    if agent is None:
+        return None
+    return agent.agent_id, agent.display_name or creator_id
+
+
+def _serialize_invite_preview(
+    invite: Invite,
+    creator_id: str,
+    creator_display_name: str,
+    room: Room | None,
+    member_count: int = 0,
+) -> dict:
     return {
         "code": invite.code,
         "kind": invite.kind,
         "entry_type": "friend_invite" if invite.kind == "friend" else room_entry_type(room).replace("private_room", "private_invite") if room else "private_invite",
         "target_type": "friend" if invite.kind == "friend" else "room",
-        "target_id": creator.agent_id if invite.kind == "friend" else invite.room_id,
+        "target_id": creator_id if invite.kind == "friend" else invite.room_id,
         "invite_url": _invite_url(invite.code),
         "continue_url": _continue_url_for_invite(invite, room),
         "expires_at": invite.expires_at.isoformat() if invite.expires_at else None,
         "max_uses": invite.max_uses,
         "use_count": invite.use_count,
         "creator": {
-            "agent_id": creator.agent_id,
-            "display_name": creator.display_name,
+            "agent_id": creator_id,
+            "display_name": creator_display_name,
         },
         "room": None if room is None else {
             "room_id": room.room_id,
@@ -128,9 +160,10 @@ async def preview_invite(code: str, db: AsyncSession) -> dict:
     invite = await _load_invite_or_404(code, db)
     _ensure_invite_active(invite)
 
-    creator = await db.scalar(select(Agent).where(Agent.agent_id == invite.creator_agent_id))
-    if creator is None:
+    resolved = await _load_invite_creator(invite.creator_agent_id, db)
+    if resolved is None:
         raise HTTPException(status_code=404, detail="Invite creator not found")
+    creator_id, creator_display_name = resolved
 
     room = None
     member_count = 0
@@ -140,7 +173,13 @@ async def preview_invite(code: str, db: AsyncSession) -> dict:
             select(func.count(RoomMember.id)).where(RoomMember.room_id == invite.room_id)
         ) or 0
 
-    return _serialize_invite_preview(invite, creator=creator, room=room, member_count=member_count)
+    return _serialize_invite_preview(
+        invite,
+        creator_id=creator_id,
+        creator_display_name=creator_display_name,
+        room=room,
+        member_count=member_count,
+    )
 
 
 async def redeem_invite_for_agent(code: str, agent_id: str, db: AsyncSession) -> dict:
@@ -165,8 +204,24 @@ async def redeem_invite_for_agent(code: str, agent_id: str, db: AsyncSession) ->
         if invite.creator_agent_id == agent_id:
             raise HTTPException(status_code=400, detail="You cannot use your own friend invite")
         _ensure_invite_active(invite)
-        db.add(Contact(owner_id=agent_id, contact_agent_id=invite.creator_agent_id))
-        db.add(Contact(owner_id=invite.creator_agent_id, contact_agent_id=agent_id))
+        redeemer_type = _participant_type_for(agent_id)
+        creator_type = _participant_type_for(invite.creator_agent_id)
+        db.add(
+            Contact(
+                owner_id=agent_id,
+                owner_type=redeemer_type,
+                contact_agent_id=invite.creator_agent_id,
+                peer_type=creator_type,
+            )
+        )
+        db.add(
+            Contact(
+                owner_id=invite.creator_agent_id,
+                owner_type=creator_type,
+                contact_agent_id=agent_id,
+                peer_type=redeemer_type,
+            )
+        )
         await _record_redemption(invite, agent_id, db)
         await db.commit()
         return {
