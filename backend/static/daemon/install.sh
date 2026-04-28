@@ -22,6 +22,8 @@ NODE_DIST_URL="${BOTCORD_NODE_DIST_URL:-https://nodejs.org/dist}"
 HUB_URL="${BOTCORD_HUB:-https://api.botcord.chat}"
 START_DAEMON="true"
 EXTRA_DAEMON_ARGS=""
+INSTALL_TOKEN=""
+DAEMON_LABEL=""
 
 log() { printf '[botcord-daemon] %s\n' "$*"; }
 warn() { printf '[botcord-daemon] WARN: %s\n' "$*" >&2; }
@@ -34,6 +36,8 @@ Usage:
 
 Options:
   --hub <url>             Hub URL passed to botcord-daemon start
+  --install-token <token> One-time dashboard install token for non-interactive auth
+  --label <name>          Human label for this daemon in the dashboard
   --package <spec>        npm package spec (default: @botcord/daemon@latest)
   --install-root <path>   Install root (default: ~/.botcord)
   --node-version <ver>    Bundled Node.js version when system Node is missing
@@ -93,6 +97,16 @@ while [ "$#" -gt 0 ]; do
     --package)
       need_next_arg "$1" "$@"
       DAEMON_PACKAGE="$2"
+      shift 2
+      ;;
+    --install-token)
+      need_next_arg "$1" "$@"
+      INSTALL_TOKEN="$2"
+      shift 2
+      ;;
+    --label)
+      need_next_arg "$1" "$@"
+      DAEMON_LABEL="$2"
       shift 2
       ;;
     --install-root)
@@ -204,8 +218,15 @@ esac
 
 if [ "$START_DAEMON" = "true" ]; then
   log "starting daemon"
+  set -- start --hub "$HUB_URL"
+  if [ -n "$INSTALL_TOKEN" ]; then
+    set -- "$@" --install-token "$INSTALL_TOKEN"
+  fi
+  if [ -n "$DAEMON_LABEL" ]; then
+    set -- "$@" --label "$DAEMON_LABEL"
+  fi
   # shellcheck disable=SC2086
-  "$WRAPPER" start --hub "$HUB_URL" $EXTRA_DAEMON_ARGS
+  "$WRAPPER" "$@" $EXTRA_DAEMON_ARGS
 else
   log "install complete; start with: $WRAPPER start --hub $HUB_URL"
 fi
