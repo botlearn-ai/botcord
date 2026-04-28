@@ -32,6 +32,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
+import { useDashboardRealtimeStore } from "@/store/useDashboardRealtimeStore";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
 
@@ -286,6 +287,7 @@ export default function Sidebar() {
     sessionStore.logout();
     useDashboardUIStore.getState().logout();
     useDashboardChatStore.getState().logout();
+    useDashboardRealtimeStore.getState().logout();
     useDashboardUnreadStore.getState().logout();
     useDashboardContactStore.getState().resetContactState();
     useDashboardWalletStore.getState().resetWalletState();

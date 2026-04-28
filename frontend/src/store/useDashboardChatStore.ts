@@ -273,12 +273,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }),
 
       logout: () =>
-        set({
-          ...initialChatState,
-          publicRooms: get().publicRooms,
-          publicAgents: get().publicAgents,
-          publicRoomDetails: get().publicRoomDetails,
-        }),
+        set({ ...initialChatState }),
 
       closeAgentCardState: () =>
         set((state) => ({
