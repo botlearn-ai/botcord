@@ -181,31 +181,46 @@ export class HermesAgentAdapter extends AcpRuntimeAdapter {
    * assistant text. We surface the common shapes that hermes emits:
    *   - `agent_message_chunk` / `user_message_chunk` content blocks
    *   - `tool_call` / `tool_call_update`
-   *   - `agent_thought_chunk`
+   *   - `agent_thought_chunk` (status-only — see below)
    *
-   * Anything else is forwarded as `kind: "other"` so subclasses /
-   * downstream channels can introspect.
+   * `agent_thought_chunk` deliberately maps to ONLY a `thinking.updated`
+   * status event, NOT a block: the underlying ACP payload has no `subtype`
+   * / `session_id` / `model` fields that `normalizeBlockForHub("system")`
+   * would render, so emitting a `kind:"system"` block here just produces an
+   * empty payload alongside the labeled thinking frame. Anything else is
+   * forwarded as `kind: "other"` so subclasses / downstream channels can
+   * introspect.
    */
   protected onUpdate(params: AcpUpdateParams, ctx: AcpUpdateCtx): void {
     const update = params.update ?? {};
     const kind = typeof update.sessionUpdate === "string" ? update.sessionUpdate : "";
 
+    if (kind === "agent_thought_chunk") {
+      ctx.emitStatus({ kind: "thinking", phase: "updated", label: "Thinking" });
+      return;
+    }
+
     let blockKind: StreamBlock["kind"] = "other";
+    let assistantTextSeen = false;
 
     if (kind === "agent_message_chunk") {
       const content = (update as { content?: { type?: string; text?: string } })
         .content;
       if (content && content.type === "text" && typeof content.text === "string") {
         ctx.appendAssistantText(content.text);
+        assistantTextSeen = content.text.length > 0;
       }
       blockKind = "assistant_text";
-    } else if (kind === "agent_thought_chunk") {
-      blockKind = "system";
     } else if (kind === "tool_call" || kind === "tool_call_update") {
       blockKind = "tool_use";
     } else if (kind === "user_message_chunk") {
       blockKind = "other";
     }
+
+    // Status hint BEFORE the block so the dispatcher's auto-synthesis sees a
+    // labeled `thinking.updated`/`stopped` instead of a bare `started`.
+    const status = hermesStatusEvent(kind, update, assistantTextSeen);
+    if (status) ctx.emitStatus(status);
 
     ctx.emitBlock({ raw: params, kind: blockKind, seq: ctx.seq });
   }
@@ -236,4 +251,29 @@ export class HermesAgentAdapter extends AcpRuntimeAdapter {
     // public: deny everything that requires explicit approval
     return { outcome: { outcome: "cancelled" } };
   }
+}
+
+/**
+ * Map an ACP `session/update` payload to a `RuntimeStatusEvent`. We only
+ * return events that add a label or convey a transition the dispatcher
+ * cannot infer from block kinds — the auto-synthesis path covers the rest.
+ */
+function hermesStatusEvent(
+  kind: string,
+  update: { content?: { type?: string; text?: string }; toolCall?: { name?: string } } & Record<
+    string,
+    unknown
+  >,
+  assistantTextSeen: boolean,
+): import("../types.js").RuntimeStatusEvent | undefined {
+  // `agent_thought_chunk` is handled inline in `onUpdate` (status-only path).
+  if (kind === "tool_call" || kind === "tool_call_update") {
+    const tool = (update as { toolCall?: { name?: string } }).toolCall;
+    const name = typeof tool?.name === "string" && tool.name ? tool.name : "tool";
+    return { kind: "thinking", phase: "updated", label: name };
+  }
+  if (kind === "agent_message_chunk" && assistantTextSeen) {
+    return { kind: "thinking", phase: "stopped" };
+  }
+  return undefined;
 }

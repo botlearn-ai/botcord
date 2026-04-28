@@ -140,8 +140,13 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
       session_id?: string;
       total_cost_usd?: number;
       result?: string;
-      message?: { content?: Array<{ type?: string; text?: string }> };
+      message?: { content?: Array<{ type?: string; text?: string; name?: string }> };
     };
+
+    // Emit a thinking lifecycle hint BEFORE the block so the dispatcher's
+    // auto-synthesis short-circuits (we provide a labeled event instead).
+    const status = claudeStatusEvent(obj);
+    if (status) ctx.emitStatus(status);
 
     ctx.emitBlock(normalizeBlock(obj, ctx.seq));
 
@@ -174,6 +179,41 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
       }
     }
   }
+}
+
+/**
+ * Map a Claude Code stream-json event to a `RuntimeStatusEvent`. We only
+ * return events for transitions the dispatcher cannot infer from block kinds
+ * alone — the auto-synthesis path covers the unlabeled case.
+ *
+ * Note: Claude Code's `assistant` events sometimes mix `text` and `tool_use`
+ * blocks. When `text` is present we treat it as "thinking stopped"; when
+ * `tool_use` is present without `text` we surface the tool name as a label.
+ */
+function claudeStatusEvent(obj: {
+  type?: string;
+  subtype?: string;
+  message?: { content?: Array<{ type?: string; text?: string; name?: string }> };
+}): import("../types.js").RuntimeStatusEvent | undefined {
+  if (obj.type === "system" && obj.subtype === "init") {
+    return { kind: "thinking", phase: "started", label: "Starting session" };
+  }
+  if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
+    const contents = obj.message.content;
+    const hasText = contents.some(
+      (c) => c?.type === "text" && typeof c.text === "string" && c.text.length > 0,
+    );
+    if (hasText) return { kind: "thinking", phase: "stopped" };
+    const tool = contents.find((c) => c?.type === "tool_use");
+    if (tool) {
+      const name = typeof tool.name === "string" && tool.name ? tool.name : "tool";
+      return { kind: "thinking", phase: "updated", label: name };
+    }
+  }
+  if (obj.type === "result") {
+    return { kind: "thinking", phase: "stopped" };
+  }
+  return undefined;
 }
 
 function normalizeBlock(obj: any, seq: number): StreamBlock {

@@ -5,6 +5,7 @@ import type {
   RuntimeProbeResult,
   RuntimeRunOptions,
   RuntimeRunResult,
+  RuntimeStatusEvent,
   StreamBlock,
 } from "../types.js";
 
@@ -85,6 +86,12 @@ export interface AcpUpdateCtx {
   appendAssistantText(text: string): void;
   /** Forward a normalized StreamBlock to `opts.onBlock`. */
   emitBlock(block: StreamBlock): void;
+  /**
+   * Forward a runtime status event (typing / thinking) to the dispatcher.
+   * Useful for ACP `session/update` shapes that signal "agent is busy" but
+   * carry no displayable content (e.g. thought chunks, tool progress).
+   */
+  emitStatus(event: RuntimeStatusEvent): void;
   /** 1-based sequence within this turn. */
   seq: number;
 }
@@ -381,6 +388,13 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
             this.onUpdate(params as AcpUpdateParams, {
               appendAssistantText,
               emitBlock: (b) => opts.onBlock?.(b),
+              emitStatus: (e) => {
+                try {
+                  opts.onStatus?.(e);
+                } catch (err) {
+                  log.warn(`${this.id} onStatus threw`, { err: String(err) });
+                }
+              },
               seq,
             });
           }
@@ -465,6 +479,16 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       const stopReason = promptResult?.stopReason ?? "end_turn";
       if (stopReason === "refusal" || stopReason === "error") {
         state.errorText = state.errorText ?? `prompt stopped: ${stopReason}`;
+      }
+      // Tell the dispatcher the runtime has finished its reasoning loop —
+      // important for turns that ended without an `agent_message_chunk`
+      // (tool-only side effect, refusal, error). The dispatcher's finally
+      // block also emits a final thinking.stopped, but firing here delivers
+      // it on the wire before child exit (which can take seconds).
+      try {
+        opts.onStatus?.({ kind: "thinking", phase: "stopped" });
+      } catch (err) {
+        log.warn(`${this.id} onStatus(prompt-done) threw`, { err: String(err) });
       }
 
       // Politely close stdin so the server can exit. Some ACP servers shut

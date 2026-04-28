@@ -510,6 +510,103 @@ describe("createBotCordChannel — streamBlock()", () => {
       globalThis.fetch = realFetch;
     }
   });
+
+  it("normalizes a thinking block with phase/label/source payload", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await channel.streamBlock!({
+        traceId: "trace_thk",
+        accountId: "ag_self",
+        conversationId: "rm_oc_1",
+        block: {
+          kind: "thinking",
+          seq: 7,
+          raw: { phase: "updated", label: "Searching web", source: "runtime" },
+        },
+        log: silentLog,
+      });
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+      expect(body.block).toEqual({
+        kind: "thinking",
+        seq: 7,
+        payload: { phase: "updated", label: "Searching web", source: "runtime" },
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
+
+describe("createBotCordChannel — typing()", () => {
+  it("POSTs to /hub/typing with the room id", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await channel.typing!({
+        traceId: "trace_typ",
+        accountId: "ag_self",
+        conversationId: "rm_oc_42",
+        log: silentLog,
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe("https://hub.example.com/hub/typing");
+      expect(init.method).toBe("POST");
+      const body = JSON.parse(init.body as string);
+      expect(body).toEqual({ room_id: "rm_oc_42" });
+      expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("swallows fetch failures (fire-and-forget)", async () => {
+    const fetchSpy = vi.fn().mockRejectedValue(new Error("network down"));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client: makeClient(),
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await expect(
+        channel.typing!({
+          traceId: "t",
+          accountId: "ag_self",
+          conversationId: "rm_oc_1",
+          log: silentLog,
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

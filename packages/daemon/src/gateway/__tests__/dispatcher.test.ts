@@ -9,12 +9,14 @@ import type {
   ChannelSendContext,
   ChannelSendResult,
   ChannelStreamBlockContext,
+  ChannelTypingContext,
   GatewayConfig,
   GatewayInboundEnvelope,
   GatewayInboundMessage,
   RuntimeAdapter,
   RuntimeRunOptions,
   RuntimeRunResult,
+  RuntimeStatusEvent,
   StreamBlock,
 } from "../types.js";
 import type { GatewayLogger } from "../log.js";
@@ -26,8 +28,10 @@ function silentLogger(): GatewayLogger {
 interface FakeChannelOptions {
   id?: string;
   withStream?: boolean;
+  withTyping?: boolean;
   sendImpl?: (ctx: ChannelSendContext) => Promise<ChannelSendResult> | ChannelSendResult;
   streamImpl?: (ctx: ChannelStreamBlockContext) => Promise<void> | void;
+  typingImpl?: (ctx: ChannelTypingContext) => Promise<void> | void;
 }
 
 class FakeChannel implements ChannelAdapter {
@@ -35,18 +39,28 @@ class FakeChannel implements ChannelAdapter {
   readonly type = "fake";
   readonly sends: ChannelSendContext[] = [];
   readonly streams: ChannelStreamBlockContext[] = [];
+  readonly typings: ChannelTypingContext[] = [];
   private readonly sendImpl?: FakeChannelOptions["sendImpl"];
   private readonly streamImpl?: FakeChannelOptions["streamImpl"];
+  private readonly typingImpl?: FakeChannelOptions["typingImpl"];
   streamBlock?: (ctx: ChannelStreamBlockContext) => Promise<void>;
+  typing?: (ctx: ChannelTypingContext) => Promise<void>;
 
   constructor(opts: FakeChannelOptions = {}) {
     this.id = opts.id ?? "botcord";
     this.sendImpl = opts.sendImpl;
     this.streamImpl = opts.streamImpl;
+    this.typingImpl = opts.typingImpl;
     if (opts.withStream !== false) {
       this.streamBlock = async (ctx) => {
         this.streams.push(ctx);
         if (this.streamImpl) await this.streamImpl(ctx);
+      };
+    }
+    if (opts.withTyping !== false) {
+      this.typing = async (ctx) => {
+        this.typings.push(ctx);
+        if (this.typingImpl) await this.typingImpl(ctx);
       };
     }
   }
@@ -67,6 +81,13 @@ interface FakeRuntimeOptions {
   throwError?: Error | string;
   errorText?: string;
   blocks?: StreamBlock[];
+  /** Status events emitted before any blocks. */
+  preStatus?: RuntimeStatusEvent[];
+  /** Interleaved scripted events (status + blocks) replayed in order. */
+  events?: Array<
+    | { kind: "block"; block: StreamBlock }
+    | { kind: "status"; event: RuntimeStatusEvent }
+  >;
   hang?: boolean;
   observeRun?: (opts: RuntimeRunOptions) => void;
 }
@@ -84,8 +105,17 @@ class FakeRuntime implements RuntimeAdapter {
   async run(options: RuntimeRunOptions): Promise<RuntimeRunResult> {
     this.calls.push(options);
     this.opts.observeRun?.(options);
+    if (this.opts.preStatus) {
+      for (const s of this.opts.preStatus) options.onStatus?.(s);
+    }
     if (this.opts.blocks) {
       for (const b of this.opts.blocks) options.onBlock?.(b);
+    }
+    if (this.opts.events) {
+      for (const ev of this.opts.events) {
+        if (ev.kind === "status") options.onStatus?.(ev.event);
+        else options.onBlock?.(ev.block);
+      }
     }
     if (this.opts.hang) {
       // Never resolve naturally; wait for abort.
@@ -523,9 +553,11 @@ describe("Dispatcher", () => {
   });
 
   it("streaming: forwards blocks when trace.streamable === true and channel has streamBlock", async () => {
+    // Use only assistant_text so we don't trip the thinking-synthesis path
+    // (covered separately below); this test stays focused on basic forwarding.
     const blocks: StreamBlock[] = [
       { raw: { type: "a" }, kind: "assistant_text", seq: 1 },
-      { raw: { type: "b" }, kind: "tool_use", seq: 2 },
+      { raw: { type: "b" }, kind: "assistant_text", seq: 2 },
     ];
     const runtime = new FakeRuntime({ blocks, newSessionId: "sid" });
     const channel = new FakeChannel();
@@ -540,6 +572,8 @@ describe("Dispatcher", () => {
     await new Promise((r) => setTimeout(r, 5));
     expect(channel.streams.length).toBe(2);
     expect(channel.streams[0].traceId).toBe("trace_abc");
+    // Dispatcher re-sequences on the wire so synthesized thinking blocks
+    // interleave cleanly. Two assistant_text blocks → wire seq 1, 2.
     expect(channel.streams.map((s) => (s.block as StreamBlock).seq)).toEqual([1, 2]);
   });
 
@@ -567,6 +601,523 @@ describe("Dispatcher", () => {
     );
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.text).toBe("ok");
+  });
+
+  // ---------------------------------------------------------------------------
+  // typing / thinking lifecycle (design: runtime-typing-thinking-status-design.md)
+  // ---------------------------------------------------------------------------
+
+  it("typing: fires channel.typing once before runtime.run when canStream", async () => {
+    const observed: Array<{ typings: number; calls: number }> = [];
+    const runtime = new FakeRuntime({
+      observeRun: () => {
+        // Snapshot the typing count at the moment runtime.run is invoked so we
+        // can prove typing.started fired BEFORE the runtime started.
+        observed.push({ typings: channel.typings.length, calls: 1 });
+      },
+      reply: "ok",
+      newSessionId: "sid",
+    });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "trace_t", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(channel.typings.length).toBe(1);
+    expect(channel.typings[0].traceId).toBe("trace_t");
+    expect(channel.typings[0].conversationId).toBe("rm_oc_1");
+    expect(observed[0]?.typings).toBe(1);
+  });
+
+  it("typing: not fired when streamable is false", async () => {
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "t1", streamable: false } }),
+    );
+    expect(channel.typings.length).toBe(0);
+  });
+
+  it("typing: not fired when channel has no typing capability", async () => {
+    const channel = new FakeChannel({ withTyping: false });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "t1", streamable: true } }),
+    );
+    expect(channel.typings.length).toBe(0);
+  });
+
+  it("typing: failure in channel.typing must not break the turn", async () => {
+    const channel = new FakeChannel({
+      typingImpl: () => {
+        throw new Error("typing exploded");
+      },
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "t1", streamable: true } }),
+    );
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.text).toBe("ok");
+  });
+
+  it("thinking: synthesized before first non-assistant block", async () => {
+    const blocks: StreamBlock[] = [
+      { raw: { type: "system", subtype: "init" }, kind: "system", seq: 1 },
+      { raw: { type: "assistant" }, kind: "assistant_text", seq: 2 },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    // [synthesized thinking, system, assistant_text]
+    expect(channel.streams.length).toBe(3);
+    const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
+    expect(kinds).toEqual(["thinking", "system", "assistant_text"]);
+    expect(channel.streams.map((s) => (s.block as StreamBlock).seq)).toEqual([1, 2, 3]);
+    const thinkingRaw = channel.streams[0].block as StreamBlock;
+    expect((thinkingRaw.raw as { phase: string }).phase).toBe("started");
+    expect((thinkingRaw.raw as { source: string }).source).toBe("dispatcher");
+  });
+
+  it("thinking: NOT synthesized when first block is assistant_text", async () => {
+    const blocks: StreamBlock[] = [
+      { raw: { type: "assistant" }, kind: "assistant_text", seq: 1 },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(channel.streams.length).toBe(1);
+    expect((channel.streams[0].block as StreamBlock).kind).toBe("assistant_text");
+  });
+
+  it("thinking: re-enters thinking on tool_use after assistant_text exits it, then closes on terminal", async () => {
+    const blocks: StreamBlock[] = [
+      { raw: { type: "assistant" }, kind: "assistant_text", seq: 1 },
+      { raw: { type: "tool" }, kind: "tool_use", seq: 2 },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    // [assistant_text, synthesized thinking.started, tool_use, terminal thinking.stopped]
+    expect(channel.streams.length).toBe(4);
+    const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
+    expect(kinds).toEqual(["assistant_text", "thinking", "tool_use", "thinking"]);
+    const terminal = channel.streams[3].block as StreamBlock;
+    expect((terminal.raw as { phase: string }).phase).toBe("stopped");
+  });
+
+  it("thinking: runtime onStatus(thinking.started) suppresses dispatcher synthesis and forwards label", async () => {
+    const runtime = new FakeRuntime({
+      events: [
+        {
+          kind: "status",
+          event: { kind: "thinking", phase: "started", label: "Searching web" },
+        },
+        { kind: "block", block: { raw: { type: "tool" }, kind: "tool_use", seq: 1 } },
+      ],
+      reply: "ok",
+      newSessionId: "sid",
+    });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    // [labeled thinking, tool_use, terminal thinking.stopped] — no auto-synthesized bare thinking.
+    expect(channel.streams.length).toBe(3);
+    const first = channel.streams[0].block as StreamBlock;
+    expect(first.kind).toBe("thinking");
+    expect((first.raw as { label: string }).label).toBe("Searching web");
+    expect((first.raw as { source: string }).source).toBe("runtime");
+    expect((channel.streams[1].block as StreamBlock).kind).toBe("tool_use");
+    const terminal = channel.streams[2].block as StreamBlock;
+    expect(terminal.kind).toBe("thinking");
+    expect((terminal.raw as { phase: string }).phase).toBe("stopped");
+  });
+
+  it("thinking: runtime onStatus(typing.started) is idempotent — no second /hub/typing call", async () => {
+    const runtime = new FakeRuntime({
+      preStatus: [{ kind: "typing", phase: "started" }],
+      reply: "ok",
+      newSessionId: "sid",
+    });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    // Dispatcher pre-fires once before runtime.run; runtime's redundant
+    // typing.started status event must not trigger a second hub ping.
+    expect(channel.typings.length).toBe(1);
+  });
+
+  it("thinking: timeout path emits terminal thinking.stopped + no extra frames after abort", async () => {
+    const runtime = new FakeRuntime({
+      blocks: [{ raw: {}, kind: "system", seq: 1 }],
+      hang: true,
+    });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      turnTimeoutMs: 30,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+
+    // Timeout reply is sent in owner-chat.
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.text).toMatch(/Runtime timeout/);
+    // [synth thinking.started, system, terminal thinking.stopped]
+    const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
+    expect(kinds).toEqual(["thinking", "system", "thinking"]);
+    const terminal = channel.streams[2].block as StreamBlock;
+    expect((terminal.raw as { phase: string }).phase).toBe("stopped");
+    // Nothing else should sneak in after the timeout's abort.
+    const lastSeq = channel.streams.length;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(channel.streams.length).toBe(lastSeq);
+  });
+
+  it("thinking: terminal thinking.stopped fires on success when turn ends with thinking active", async () => {
+    // Empty reply + only a tool_use block → assistant_text never lands, so
+    // the dispatcher's finally is the only place thinking gets收束.
+    const blocks: StreamBlock[] = [
+      { raw: { type: "tool" }, kind: "tool_use", seq: 1 },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    // [synth thinking.started, tool_use, terminal thinking.stopped]
+    const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
+    expect(kinds).toEqual(["thinking", "tool_use", "thinking"]);
+    expect((channel.streams[2].block as StreamBlock).raw as { phase: string }).toMatchObject({
+      phase: "stopped",
+    });
+  });
+
+  it("thinking: post-abort onBlock callbacks are dropped after controller.signal.aborted", async () => {
+    // Drive runtime manually so we can fire callbacks AFTER the dispatcher
+    // marks the turn aborted (simulating the NDJSON adapter's stdout-flush
+    // window between SIGTERM and SIGKILL).
+    let captured: RuntimeRunOptions | null = null;
+    const runtime: RuntimeAdapter = {
+      id: "fake",
+      run: async (opts) => {
+        captured = opts;
+        // Block 1 fires while the turn is still live.
+        opts.onBlock?.({ raw: {}, kind: "system", seq: 1 });
+        // Wait for caller-side abort. Reject to simulate the runtime exiting.
+        return new Promise<RuntimeRunResult>((_resolve, reject) => {
+          opts.signal.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+        });
+      },
+    };
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      turnTimeoutMs: 30,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    // Timeout has fired by now → controller.signal.aborted=true.
+    const beforeLate = channel.streams.length;
+    // Simulate adapter flushing one more block AFTER abort.
+    captured!.onBlock?.({ raw: { type: "late" }, kind: "tool_use", seq: 99 });
+    captured!.onStatus?.({ kind: "thinking", phase: "updated", label: "late" });
+    await new Promise((r) => setTimeout(r, 5));
+    // Late callbacks are dropped — wire frame count unchanged.
+    expect(channel.streams.length).toBe(beforeLate);
+  });
+
+  it("typing: cancel-previous within debounce window does NOT double-ping /hub/typing", async () => {
+    const runtime = new FakeRuntime({ hang: true });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      turnTimeoutMs: 30,
+    });
+
+    // First turn pings typing.
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m1",
+        conversation: { id: "rm_oc_dbnc", kind: "direct" },
+        trace: { id: "tr1", streamable: true },
+      }),
+    );
+    expect(channel.typings.length).toBe(1);
+
+    // Second turn arrives immediately (cancel-previous superseder); within
+    // the 2s debounce, no second hub ping should fire.
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m2",
+        conversation: { id: "rm_oc_dbnc", kind: "direct" },
+        trace: { id: "tr2", streamable: true },
+      }),
+    );
+    expect(channel.typings.length).toBe(1);
+  });
+
+  it("typing: synchronous throw from channel.typing is logged but does not break turn", async () => {
+    const channel = new FakeChannel();
+    // Replace typing with a sync-throwing function (non-async).
+    (channel as unknown as { typing: (ctx: ChannelTypingContext) => Promise<void> }).typing =
+      ((_ctx: ChannelTypingContext) => {
+        throw new Error("sync boom");
+      }) as unknown as (ctx: ChannelTypingContext) => Promise<void>;
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.text).toBe("ok");
+  });
+
+  it("thinking: post-assistant_text system/other blocks do NOT re-flicker thinking (sticky guard)", async () => {
+    // Mirrors the codex `turn.completed` / claude `result` shapes — both arrive
+    // as system/other AFTER the prose. They must NOT re-enter thinking,
+    // otherwise the UI flickers right after the final answer.
+    const blocks: StreamBlock[] = [
+      { raw: { type: "assistant" }, kind: "assistant_text", seq: 1 },
+      { raw: { type: "turn.completed" }, kind: "system", seq: 2 },
+      { raw: { type: "result" }, kind: "other", seq: 3 },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
+    // [assistant_text, system, other] — no thinking flicker after prose.
+    expect(kinds).toEqual(["assistant_text", "system", "other"]);
+  });
+
+  it("thinking: tool_use AFTER assistant_text still re-enters thinking (multi-step reply)", async () => {
+    // Sticky only blocks system/other re-entry. A genuine follow-up tool call
+    // SHOULD drive "Thinking…" again so the user knows the agent is working.
+    const blocks: StreamBlock[] = [
+      { raw: { type: "assistant" }, kind: "assistant_text", seq: 1 },
+      { raw: { type: "tool" }, kind: "tool_use", seq: 2 },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
+    // [assistant_text, synth thinking.started, tool_use, terminal thinking.stopped]
+    expect(kinds).toEqual(["assistant_text", "thinking", "tool_use", "thinking"]);
+  });
+
+  it("thinking: runtime onStatus(thinking.stopped) forwards to wire and prevents finally double-emit", async () => {
+    // Mirrors hermes/acp-stream's prompt-done path: the runtime explicitly
+    // tells us thinking is over BEFORE the dispatcher's finally runs.
+    const runtime = new FakeRuntime({
+      events: [
+        { kind: "block", block: { raw: { type: "tool" }, kind: "tool_use", seq: 1 } },
+        { kind: "status", event: { kind: "thinking", phase: "stopped" } },
+      ],
+      reply: "ok",
+      newSessionId: "sid",
+    });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    // [synth thinking.started, tool_use, runtime thinking.stopped]
+    // The finalizeThinkingIfActive in finally must NOT re-emit a 4th frame.
+    const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
+    expect(kinds).toEqual(["thinking", "tool_use", "thinking"]);
+    const stoppedFrames = channel.streams.filter(
+      (s) => (s.block as StreamBlock).kind === "thinking" &&
+        ((s.block as StreamBlock).raw as { phase: string }).phase === "stopped",
+    );
+    expect(stoppedFrames.length).toBe(1);
+  });
+
+  it("thinking: cancel-previous superseder skips finalize (prior turn does NOT emit terminal stopped)", async () => {
+    // Streamable cancel-previous race: the SUPERSEDED turn's finalize must
+    // NOT push a `thinking.stopped` frame, because the new turn is about to
+    // start its own typing/thinking lifecycle and an old stopped frame would
+    // race the new started frame on the wire.
+    let priorObserved: RuntimeRunOptions | null = null;
+    const prior = new FakeRuntime({
+      hang: true,
+      observeRun: (opts) => {
+        priorObserved = opts;
+      },
+    });
+    const newer = new FakeRuntime({ reply: "newer", newSessionId: "sid-new" });
+    let callNo = 0;
+    const runtimeFactory: RuntimeFactory = () => (++callNo === 1 ? prior : newer);
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory });
+
+    // First turn — fires typing + a system block to prime thinkingActive,
+    // then hangs.
+    const first = dispatcher.handle(
+      makeEnvelope({
+        id: "m_prior",
+        conversation: { id: "rm_oc_cancel", kind: "direct" },
+        trace: { id: "tr_prior", streamable: true },
+      }),
+    );
+    while (!priorObserved) await new Promise((r) => setTimeout(r, 1));
+    priorObserved!.onBlock?.({ raw: { type: "system" }, kind: "system", seq: 1 });
+    await new Promise((r) => setTimeout(r, 5));
+    const beforeSupersede = channel.streams.length;
+
+    // Second turn supersedes prior.
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m_newer",
+        conversation: { id: "rm_oc_cancel", kind: "direct" },
+        trace: { id: "tr_newer", streamable: true },
+      }),
+    );
+    await first.catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 5));
+
+    // Frames belonging to prior trace before supersede:
+    //   [synth thinking.started, system]
+    // After supersede no terminal `thinking.stopped` should be emitted for
+    // tr_prior — `finalizeThinkingIfActive` skips on superseded turns.
+    const priorFrames = channel.streams
+      .slice(0, beforeSupersede)
+      .map((s) => (s.block as StreamBlock).kind);
+    expect(priorFrames).toEqual(["thinking", "system"]);
+    // No frame WITH the prior traceId after the supersede mark either.
+    const postSupersedePriorFrames = channel.streams
+      .slice(beforeSupersede)
+      .filter((s) => s.traceId === "tr_prior");
+    expect(postSupersedePriorFrames.length).toBe(0);
+  });
+
+  it("typing: second ping within debounce window does not double-fire /hub/typing", async () => {
+    // The recentTypingPings map's true-LRU behavior is implemented but not
+    // directly observable from this test surface (would require >1024 cold
+    // rooms to exercise eviction). What we DO verify here is the user-visible
+    // contract: rapid same-room pings within the 2s debounce coalesce to one.
+    const channel = new FakeChannel();
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "hot1",
+        conversation: { id: "rm_oc_hot", kind: "direct" },
+        trace: { id: "trh1", streamable: true },
+      }),
+    );
+    expect(channel.typings.length).toBe(1);
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "hot2",
+        conversation: { id: "rm_oc_hot", kind: "direct" },
+        trace: { id: "trh2", streamable: true },
+      }),
+    );
+    expect(channel.typings.length).toBe(1);
+  });
+
+  it("transcript: synthesized thinking does NOT pollute outbound.blocks", async () => {
+    const blocks: StreamBlock[] = [
+      { raw: { type: "system" }, kind: "system", seq: 1 },
+      { raw: { type: "tool" }, kind: "tool_use", seq: 2 },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const records: import("../transcript.js").TranscriptRecord[] = [];
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channels = new Map<string, ChannelAdapter>([[channel.id, channel]]);
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels,
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      transcript: { enabled: true, rootDir: dir, write: (rec) => records.push(rec) },
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    const outbound = records.find((r) => r.kind === "outbound");
+    expect(outbound).toBeDefined();
+    const blockTypes = (outbound as { blocks?: Array<{ type: string }> }).blocks?.map((b) => b.type) ?? [];
+    // Only the runtime-emitted blocks land in the transcript; synth thinking is intentionally skipped.
+    expect(blockTypes).toEqual(["system", "tool_use"]);
   });
 
   it("runtime throws: sends error reply, does not write session", async () => {
