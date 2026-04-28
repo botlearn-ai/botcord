@@ -12,10 +12,12 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  agentHermesHomeDir,
   agentHomeDir,
   agentStateDir,
   agentWorkspaceDir,
   applyAgentIdentity,
+  ensureAgentHermesWorkspace,
   ensureAgentWorkspace,
 } from "../agent-workspace.js";
 
@@ -86,6 +88,56 @@ describe("ensureAgentWorkspace", () => {
     ensureAgentWorkspace("ag_keep", {});
 
     expect(readFileSync(memoryPath, "utf8")).toBe("my custom notes\n");
+  });
+
+  it("seeds Hermes config and provider env without copying unrelated secrets", () => {
+    const globalHermes = path.join(tmpHome, ".hermes");
+    mkdirSync(globalHermes, { recursive: true });
+    writeFileSync(
+      path.join(globalHermes, ".env"),
+      [
+        "OPENAI_API_KEY=sk-test",
+        "HERMES_INFERENCE_PROVIDER=custom",
+        "BOTCORD_PRIVATE_KEY=must-not-copy",
+        "TELEGRAM_BOT_TOKEN=must-not-copy",
+        "AWS_REGION=us-east-1",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      path.join(globalHermes, "config.yaml"),
+      "model:\n  provider: custom\n  default: anthropic/claude-opus-4.6\n",
+    );
+
+    const { hermesHome } = ensureAgentHermesWorkspace("ag_hermes_seed");
+    const env = readFileSync(path.join(hermesHome, ".env"), "utf8");
+    const config = readFileSync(path.join(hermesHome, "config.yaml"), "utf8");
+
+    expect(env).toContain("OPENAI_API_KEY=sk-test");
+    expect(env).toContain("HERMES_INFERENCE_PROVIDER=custom");
+    expect(env).toContain("AWS_REGION=us-east-1");
+    expect(env).not.toContain("BOTCORD_PRIVATE_KEY");
+    expect(env).not.toContain("TELEGRAM_BOT_TOKEN");
+    expect(config).toContain("provider: custom");
+  });
+
+  it("does not overwrite existing per-agent Hermes env values", () => {
+    const globalHermes = path.join(tmpHome, ".hermes");
+    mkdirSync(globalHermes, { recursive: true });
+    writeFileSync(
+      path.join(globalHermes, ".env"),
+      "OPENAI_API_KEY=global\nOPENROUTER_API_KEY=openrouter\n",
+    );
+    const agentHome = agentHermesHomeDir("ag_hermes_keep");
+    mkdirSync(agentHome, { recursive: true });
+    writeFileSync(path.join(agentHome, ".env"), "OPENAI_API_KEY=local\n");
+
+    ensureAgentHermesWorkspace("ag_hermes_keep");
+    const env = readFileSync(path.join(agentHome, ".env"), "utf8");
+
+    expect(env).toContain("OPENAI_API_KEY=local");
+    expect(env).not.toContain("OPENAI_API_KEY=global");
+    expect(env).toContain("OPENROUTER_API_KEY=openrouter");
   });
 
   it("identity.md renders the bio placeholder when bio is missing", () => {
