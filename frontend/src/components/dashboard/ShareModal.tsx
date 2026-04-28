@@ -10,7 +10,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { shareModal } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
-import { api } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import type { CreateShareResponse, InvitePreviewResponse, PublicRoomMember } from "@/lib/types";
 import { buildSharePrompt } from "@/lib/onboarding";
 import { Copy, Globe2, Link2, Loader2, Lock, Sparkles, X } from "lucide-react";
@@ -28,6 +29,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   const locale = useLanguage();
   const t = shareModal[locale];
   const tc = common[locale];
+  const isHumanView = useDashboardSessionStore((state) => state.viewMode === "human");
   const [shareData, setShareData] = useState<(CreateShareResponse | InvitePreviewResponse) | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +64,10 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
     setLoading(true);
     setError(null);
     try {
+      const inviteApi = isHumanView ? humansApi : api;
       const data = roomVisibility === "private"
-        ? await api.createRoomInvite(roomId)
-        : await api.createShareLink(roomId);
+        ? await inviteApi.createRoomInvite(roomId)
+        : await inviteApi.createShareLink(roomId);
       setShareData(data);
     } catch (err: any) {
       setError(err.message || t.failedToCreateLink);
