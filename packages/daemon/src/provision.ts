@@ -667,6 +667,17 @@ export async function adoptDiscoveredOpenclawAgents(ctx: {
     failed: [],
   };
   for (const gw of cfg.openclawGateways ?? []) {
+    if (localOpenclawAcpDisabled(gw.url)) {
+      result.skipped.push({
+        gateway: gw.name,
+        reason: "acp_disabled",
+      });
+      daemonLog.warn("openclaw discovery: gateway found but ACP runtime disabled", {
+        gateway: gw.name,
+        url: gw.url,
+      });
+      continue;
+    }
     let probeResult: Awaited<ReturnType<typeof probeOpenclawAgents>>;
     try {
       probeResult = await probeOpenclawAgents(gw, {
@@ -741,6 +752,18 @@ export async function adoptDiscoveredOpenclawAgents(ctx: {
     }
   }
   return result;
+}
+
+function localOpenclawAcpDisabled(rawUrl: string): boolean {
+  if (!isLoopbackUrl(rawUrl)) return false;
+  try {
+    const file = path.join(homedir(), ".openclaw", "openclaw.json");
+    if (!existsSync(file)) return false;
+    const cfg = JSON.parse(readFileSync(file, "utf8")) as any;
+    return cfg?.acp?.enabled === false;
+  } catch {
+    return false;
+  }
 }
 
 async function revokeAgent(

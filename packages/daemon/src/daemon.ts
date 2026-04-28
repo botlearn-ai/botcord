@@ -217,12 +217,17 @@ function buildDaemonLogger(): GatewayLogger {
  */
 export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHandle> {
   const logger = opts.log ?? buildDaemonLogger();
+  const userAuth =
+    opts.userAuth === undefined
+      ? tryLoadUserAuth(logger)
+      : opts.userAuth;
+  const expectedHubUrl = opts.hubBaseUrl ?? userAuth?.current?.hubUrl;
 
   // Resolve boot agents: explicit `agents` config wins; otherwise scan the
   // credentials directory. A zero-agent result is valid in P1 — the daemon
   // still starts with zero channels so operators can drop credentials in
   // and restart without re-running `init`.
-  const boot = opts.bootAgents ?? resolveBootAgents(opts.config);
+  const boot = opts.bootAgents ?? resolveBootAgents(opts.config, { expectedHubUrl });
   for (const w of boot.warnings) {
     logger.warn("daemon.discovery.warning", { message: w });
   }
@@ -455,10 +460,6 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   // when user-auth hasn't been set up yet. Operators can `login` later
   // without restarting, but for P0 we require a restart to pick it up.
   let controlChannel: ControlChannel | null = null;
-  const userAuth =
-    opts.userAuth === undefined
-      ? tryLoadUserAuth(logger)
-      : opts.userAuth;
   if (userAuth?.current && !opts.disableControlChannel) {
     logger.info("control-channel: enabling", {
       userId: userAuth.current.userId,

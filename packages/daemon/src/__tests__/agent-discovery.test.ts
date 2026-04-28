@@ -159,6 +159,44 @@ describe("resolveBootAgents", () => {
     expect(res.agents[0].credentialsFile).toBe("/creds/x.json");
   });
 
+  it("skips discovered credentials from a different Hub host", () => {
+    const res = resolveBootAgents(cfg(), {
+      credentialsDir: "/creds",
+      expectedHubUrl: "https://api.preview.botcord.chat",
+      readDir: () => ["prod.json", "preview.json"],
+      stat: () => fakeStat(1),
+      loadCredentials: (f) =>
+        f.endsWith("prod.json")
+          ? fakeCreds("ag_prod", { hubUrl: "https://api.botcord.chat" })
+          : fakeCreds("ag_preview", { hubUrl: "https://api.preview.botcord.chat" }),
+    });
+
+    expect(res.source).toBe("credentials");
+    expect(res.agents.map((a) => a.agentId)).toEqual(["ag_preview"]);
+    expect(res.warnings).toEqual([
+      "credential skipped: hubUrl does not match daemon environment (/creds/prod.json)",
+    ]);
+  });
+
+  it("filters by Hub host before resolving duplicate agentIds", () => {
+    const res = resolveBootAgents(cfg(), {
+      credentialsDir: "/creds",
+      expectedHubUrl: "https://api.preview.botcord.chat",
+      readDir: () => ["preview.json", "prod.json"],
+      stat: (p) => (p.endsWith("prod.json") ? fakeStat(200) : fakeStat(100)),
+      loadCredentials: (f) =>
+        f.endsWith("prod.json")
+          ? fakeCreds("ag_same", { hubUrl: "https://api.botcord.chat" })
+          : fakeCreds("ag_same", { hubUrl: "https://api.preview.botcord.chat" }),
+    });
+
+    expect(res.agents.map((a) => a.agentId)).toEqual(["ag_same"]);
+    expect(res.agents[0].credentialsFile).toBe("/creds/preview.json");
+    expect(res.warnings).toEqual([
+      "credential skipped: hubUrl does not match daemon environment (/creds/prod.json)",
+    ]);
+  });
+
   it("returns an empty agent list (not a throw) when discovery finds nothing", () => {
     const res = resolveBootAgents(cfg(), {
       credentialsDir: "/creds",

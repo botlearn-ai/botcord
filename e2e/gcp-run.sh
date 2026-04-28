@@ -292,6 +292,11 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
   \"channels\": {},
   \"gateway\": {
     \"mode\": \"local\",
+    \"port\": ${GATEWAY_PORT},
+    \"auth\": {
+      \"mode\": \"token\",
+      \"token\": \"${TOKEN}\"
+    },
     \"controlUi\": {
       \"dangerouslyAllowHostHeaderOriginFallback\": true,
       \"allowInsecureAuth\": true,
@@ -321,6 +326,7 @@ Environment=\"NODE_OPTIONS=--require /home/openclaw/.openclaw/gaxios-fetch-patch
 Environment=GOOGLE_APPLICATION_CREDENTIALS=/home/openclaw/.openclaw/vertex-sa-key.json
 Environment=GOOGLE_CLOUD_PROJECT=${GCP_PROJECT}
 Environment=GOOGLE_CLOUD_LOCATION=global
+Environment=OPENCLAW_GATEWAY_PORT=${GATEWAY_PORT}
 Environment=OPENCLAW_GATEWAY_TOKEN=${TOKEN}
 ExecStart=/usr/bin/openclaw gateway --bind lan --port ${GATEWAY_PORT} --allow-unconfigured
 Restart=always
