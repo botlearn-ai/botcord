@@ -83,7 +83,7 @@ Usage: botcord-daemon <command> [options]
 
 Commands:
   start [--background|-d] [--relogin] [--hub <url>] [--label <name>]
-        [--agent <ag_xxx> ...] [--cwd <path>]
+        [--install-token <dit_xxx>] [--agent <ag_xxx> ...] [--cwd <path>]
                                           Start the daemon in the foreground by
                                           default. Pass --background (alias -d)
                                           to detach and return to the shell.
@@ -92,6 +92,9 @@ Commands:
                                           first. --hub defaults to ${DEFAULT_HUB}
                                           (or the URL stored in a previous
                                           login). --relogin forces re-login.
+                                          --install-token redeems a dashboard
+                                          issued one-time install ticket for
+                                          non-interactive first start.
                                           --label is sent to the Hub on connect
                                           for the dashboard device list
                                           (defaults to hostname). Non-TTY
@@ -275,6 +278,66 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+interface DaemonTokenResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  userId: string;
+  daemonInstanceId: string;
+  hubUrl: string;
+}
+
+function parseDaemonTokenResponse(raw: unknown, fallbackHubUrl: string): DaemonTokenResponse {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const pick = (camel: string, snake: string): unknown => obj[camel] ?? obj[snake];
+  const accessToken = pick("accessToken", "access_token");
+  const refreshToken = pick("refreshToken", "refresh_token");
+  const expiresIn = pick("expiresIn", "expires_in");
+  const userId = pick("userId", "user_id");
+  const daemonInstanceId = pick("daemonInstanceId", "daemon_instance_id");
+  const hubUrl = pick("hubUrl", "hub_url");
+  if (typeof accessToken !== "string" || !accessToken) {
+    throw new Error("daemon auth response missing accessToken");
+  }
+  if (typeof refreshToken !== "string" || !refreshToken) {
+    throw new Error("daemon auth response missing refreshToken");
+  }
+  if (typeof userId !== "string" || !userId) {
+    throw new Error("daemon auth response missing userId");
+  }
+  if (typeof daemonInstanceId !== "string" || !daemonInstanceId) {
+    throw new Error("daemon auth response missing daemonInstanceId");
+  }
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn: typeof expiresIn === "number" && expiresIn > 0 ? expiresIn : 3600,
+    userId,
+    daemonInstanceId,
+    hubUrl: typeof hubUrl === "string" && hubUrl.length > 0 ? hubUrl : fallbackHubUrl,
+  };
+}
+
+async function redeemInstallToken(opts: {
+  hubUrl: string;
+  installToken: string;
+  label?: string;
+}): Promise<DaemonTokenResponse> {
+  const body: Record<string, unknown> = { install_token: opts.installToken };
+  if (opts.label) body.label = opts.label;
+  const resp = await fetch(`${opts.hubUrl.replace(/\/+$/, "")}/daemon/auth/install-token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`daemon install-token redeem failed: ${resp.status} ${text}`);
+  }
+  return parseDaemonTokenResponse(await resp.json(), opts.hubUrl);
+}
+
 /**
  * Run the device-code login flow against the given Hub. Polls every
  * `interval` seconds (the Hub may bump this) until the user authorizes
@@ -354,15 +417,17 @@ async function runDeviceCodeFlow(opts: {
  * plane (legacy P0 behavior — caller may still log a warning).
  *
  * Decision tree (plan §4.4 + §6.4):
- * 1. `--relogin` → device-code login.
- * 2. Have valid creds (not near expiry) → return existing record.
- * 3. Have stale creds → leave as-is; the control channel will refresh.
+ * 1. Have existing creds and no `--relogin` → return existing record.
+ * 2. `--install-token` → redeem the one-time dashboard ticket.
+ * 3. `--relogin` → device-code login.
  * 4. No creds + TTY → device-code login.
  * 5. No creds + no TTY → exit 1 with the §6.4 hint.
  */
 async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord | null> {
   const hubFlag = typeof args.flags.hub === "string" ? args.flags.hub : undefined;
   const labelFlag = typeof args.flags.label === "string" ? args.flags.label : undefined;
+  const installToken =
+    typeof args.flags["install-token"] === "string" ? args.flags["install-token"] : undefined;
   const relogin = args.flags.relogin === true;
 
   const existing = safeLoadUserAuth();
@@ -383,11 +448,30 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
         `note: --label "${labelFlag}" ignored (already logged in as "${existing.label ?? "<unset>"}"); pass --relogin to change it`,
       );
     }
+    if (installToken) {
+      console.error("note: --install-token ignored because daemon is already logged in");
+    }
     return existing;
   }
 
   // Need a fresh login. Resolve hubUrl: explicit --hub > existing record > DEFAULT_HUB.
   const hubUrl = hubFlag ?? existing?.hubUrl ?? DEFAULT_HUB;
+  const label = labelFlag ?? defaultLoginLabel();
+
+  if (installToken) {
+    const tok = await redeemInstallToken({ hubUrl, installToken, label });
+    const record = userAuthFromTokenResponse(tok, { label });
+    saveUserAuth(record);
+    clearAuthExpiredFlag();
+    log.info("install-token flow: authorized", {
+      userId: record.userId,
+      daemonInstanceId: record.daemonInstanceId,
+      hubUrl: record.hubUrl,
+      label,
+    });
+    console.log(`Logged in as ${record.userId}`);
+    return record;
+  }
 
   if (!process.stdin.isTTY) {
     // Plan §6.4 — non-interactive environment. Fail fast with actionable
@@ -402,7 +486,6 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
     process.exit(1);
   }
 
-  const label = labelFlag ?? defaultLoginLabel();
   return runDeviceCodeFlow({ hubUrl, label });
 }
 

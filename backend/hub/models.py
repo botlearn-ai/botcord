@@ -1252,6 +1252,31 @@ class DaemonInstance(Base):
     )
 
 
+class DaemonInstallTicket(Base):
+    """Short-lived one-time token for non-interactive daemon bootstrap."""
+
+    __tablename__ = "daemon_install_tickets"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_daemon_install_tickets_token_hash"),
+        Index("ix_daemon_install_tickets_user_expires", "user_id", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # ditk_<12 hex>
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    consumed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    daemon_instance_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class OpenclawHostInstance(Base):
     """An OpenClaw VM/container hosting the BotCord plugin.
 
