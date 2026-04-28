@@ -50,7 +50,7 @@ function GridSkeletonCards({ count = 10 }: { count?: number }) {
   );
 }
 
-function ContactsMainPane() {
+function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanProfile) => void }) {
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
@@ -341,7 +341,23 @@ function ContactsMainPane() {
               return (
                 <button
                   key={contact.contact_agent_id}
-                  onClick={() => selectAgent(contact.contact_agent_id)}
+                  onClick={async () => {
+                    if (isHuman) {
+                      try {
+                        const human = await api.getPublicHuman(contact.contact_agent_id);
+                        onHumanOpen?.(human);
+                      } catch {
+                        onHumanOpen?.({
+                          human_id: contact.contact_agent_id,
+                          display_name: contact.display_name,
+                          avatar_url: contact.avatar_url ?? null,
+                          created_at: contact.created_at,
+                        });
+                      }
+                    } else {
+                      void selectAgent(contact.contact_agent_id);
+                    }
+                  }}
                   className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
                 >
                   <div className="flex items-start gap-3">
@@ -594,7 +610,7 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   }
 
   if (sidebarTab === "contacts") {
-    return <ContactsMainPane />;
+    return <ContactsMainPane onHumanOpen={onHumanOpen} />;
   }
 
   if (!focusedRoomId) {
