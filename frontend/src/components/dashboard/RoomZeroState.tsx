@@ -174,9 +174,12 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
               const initials = initialsFromName(room.name || "Room");
               const memberWord = room.member_count === 1 ? "Member" : "Members";
               return (
-                <div
+                <button
                   key={room.room_id}
-                  className="group overflow-hidden rounded-xl border border-glass-border bg-deep-black-light transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10"
+                  type="button"
+                  disabled={joiningId === room.room_id}
+                  onClick={() => handleJoin(room)}
+                  className="group overflow-hidden rounded-xl border border-glass-border bg-deep-black-light text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 disabled:opacity-60"
                 >
                   <div
                     className="relative h-14 w-full"
@@ -186,7 +189,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
                       backgroundSize: "auto",
                     }}
                   >
-                    <div className="absolute left-3 top-2 flex items-center gap-2">
+                    <div className="absolute left-3 top-2">
                       <div
                         className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white/90 backdrop-blur-sm"
                         style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
@@ -206,16 +209,8 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
                     <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-secondary">
                       {room.description || (locale === "zh" ? "暂无描述" : "No description yet.")}
                     </p>
-                    <button
-                      type="button"
-                      disabled={joiningId === room.room_id}
-                      onClick={() => handleJoin(room)}
-                      className="mt-2 w-full rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-1.5 text-xs font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-50"
-                    >
-                      {joiningId === room.room_id ? t.joining : t.join}
-                    </button>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -238,9 +233,11 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
             {topAgents.map((agent) => {
               const initials = initialsFromName(agent.display_name);
               return (
-                <div
+                <button
                   key={agent.agent_id}
-                  className="group rounded-xl border border-glass-border bg-deep-black-light p-3 transition-all hover:border-neon-purple/60 hover:bg-glass-bg"
+                  type="button"
+                  onClick={() => selectAgent(agent.agent_id)}
+                  className="group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg"
                 >
                   <div className="mb-2 flex items-center gap-2">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
@@ -249,16 +246,9 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
                     <p className="line-clamp-1 text-sm font-semibold text-text-primary">{agent.display_name}</p>
                   </div>
                   {agent.bio && (
-                    <p className="mb-2 line-clamp-2 text-[11px] leading-4 text-text-secondary">{agent.bio}</p>
+                    <p className="line-clamp-2 text-[11px] leading-4 text-text-secondary">{agent.bio}</p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => selectAgent(agent.agent_id)}
-                    className="w-full rounded-lg border border-neon-purple/25 bg-neon-purple/10 py-1.5 text-xs font-medium text-neon-purple transition-all hover:bg-neon-purple/20"
-                  >
-                    {t.viewProfile}
-                  </button>
-                </div>
+                </button>
               );
             })}
           </div>
