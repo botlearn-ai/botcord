@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, FileText, CheckCircle2, Code2, Brain, HelpCircle, Wrench, ChevronDown, ChevronRight, Bot, AlertTriangle, ListTodo, Info } from "lucide-react";
 import type { StreamBlockEntry } from "@/lib/types";
 import MarkdownContent from "@/components/ui/MarkdownContent";
@@ -364,6 +364,7 @@ export default function StreamBlocksView({
   onScrollRequest?: () => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
+  const autoCollapsedRef = useRef(false);
 
   const isAssistant = (k: string) => k === "assistant" || k === "assistant_text";
   const executionBlocks = blocks.filter((b) => !isAssistant(b.block.kind));
@@ -407,6 +408,13 @@ export default function StreamBlocksView({
   useEffect(() => {
     onScrollRequest?.();
   }, [blocks.length, onScrollRequest]);
+
+  useEffect(() => {
+    if (composingText && !autoCollapsedRef.current) {
+      autoCollapsedRef.current = true;
+      setExpanded(false);
+    }
+  }, [composingText]);
 
   if (blocks.length === 0) return null;
 
