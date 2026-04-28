@@ -1004,7 +1004,7 @@ export default function RoomSettingsModal({
               )}
             </section>
 
-            <section className="py-5">
+            {(viewerRole || isOwner) && <section className="py-5">
               <div>
                 <p className="text-lg font-semibold text-text-primary">{t.actionsSection}</p>
                 <p className="mt-1 text-xs text-text-secondary/70">
@@ -1013,7 +1013,7 @@ export default function RoomSettingsModal({
               </div>
 
               <div className="mt-4 space-y-3">
-                {!isOwner && (
+                {!isOwner && viewerRole && (
                   <div className="flex items-center justify-between gap-4 border-t border-glass-border/80 py-3 first:border-t-0">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text-primary">{tm.leaveRoom}</p>
@@ -1078,7 +1078,7 @@ export default function RoomSettingsModal({
                   </div>
                 )}
               </div>
-            </section>
+            </section>}
           </div>
         </div>
 

@@ -581,10 +581,11 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const { sessionMode, token, humanRooms } = useDashboardSessionStore(useShallow((state) => ({
+  const { sessionMode, token, humanRooms, viewMode } = useDashboardSessionStore(useShallow((state) => ({
     sessionMode: state.sessionMode,
     token: state.token,
     humanRooms: state.humanRooms,
+    viewMode: state.viewMode,
   })));
   const { sidebarTab, focusedRoomId, openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     sidebarTab: state.sidebarTab,
@@ -624,7 +625,8 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const openedRoom = openedRoomId ? getRoomSummary(openedRoomId) : null;
   const joinedRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const joinedHumanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
-  const isJoinedRoom = Boolean(joinedRoom || joinedHumanRoom);
+  const isHumanView = viewMode === "human";
+  const isJoinedRoom = (isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom) : Boolean(joinedRoom);
   const humanSendAllowed = joinedRoom?.allow_human_send !== false;
   const isPaidRoom = Boolean(openedRoom?.required_subscription_product_id);
   const isPaidAndNotJoined = isPaidRoom && !isJoinedRoom;
