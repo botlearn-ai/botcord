@@ -417,8 +417,9 @@ async function runDeviceCodeFlow(opts: {
  * plane (legacy P0 behavior — caller may still log a warning).
  *
  * Decision tree (plan §4.4 + §6.4):
- * 1. Have existing creds and no `--relogin` → return existing record.
- * 2. `--install-token` → redeem the one-time dashboard ticket.
+ * 1. Have existing creds, no `--relogin`, no `--install-token` → return existing record.
+ * 2. `--install-token` (overrides existing creds — they may be stale or
+ *    belong to a different account) → redeem the one-time dashboard ticket.
  * 3. `--relogin` → device-code login.
  * 4. No creds + TTY → device-code login.
  * 5. No creds + no TTY → exit 1 with the §6.4 hint.
@@ -432,7 +433,7 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
 
   const existing = safeLoadUserAuth();
 
-  if (!relogin && existing) {
+  if (!relogin && !installToken && existing) {
     // A previously-set auth-expired flag is stale by definition once the
     // operator runs `start` again — if creds genuinely don't work, the
     // control channel will re-write the flag on the next 4401/4403.
@@ -447,9 +448,6 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
       console.error(
         `note: --label "${labelFlag}" ignored (already logged in as "${existing.label ?? "<unset>"}"); pass --relogin to change it`,
       );
-    }
-    if (installToken) {
-      console.error("note: --install-token ignored because daemon is already logged in");
     }
     return existing;
   }
