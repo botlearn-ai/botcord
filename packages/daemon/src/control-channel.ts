@@ -18,6 +18,7 @@ import {
 } from "@botcord/protocol-core";
 import { log as daemonLog } from "./log.js";
 import {
+  AuthRefreshRejectedError,
   writeAuthExpiredFlag,
   type UserAuthManager,
 } from "./user-auth.js";
@@ -142,8 +143,17 @@ export class ControlChannel {
     });
     this.connectInflight = this.connect().catch((err) => {
       // Initial connect failure surfaces to the caller; subsequent
-      // reconnects are handled opaquely inside onClose.
-      this.scheduleReconnect(err);
+      // reconnects are handled opaquely inside onClose. A refresh-rejected
+      // error means the refresh token itself is dead — no point retrying;
+      // writeAuthExpiredFlag was already called in user-auth.refresh().
+      if (err instanceof AuthRefreshRejectedError) {
+        this.stopRequested = true;
+        daemonLog.warn("control-channel: refresh rejected; stopping (re-login required)", {
+          status: err.status,
+        });
+      } else {
+        this.scheduleReconnect(err);
+      }
       throw err;
     });
     try {
@@ -285,6 +295,13 @@ export class ControlChannel {
 
   private scheduleReconnect(err?: unknown): void {
     if (this.stopRequested) return;
+    if (err instanceof AuthRefreshRejectedError) {
+      this.stopRequested = true;
+      daemonLog.warn("control-channel: refresh rejected; halting reconnect (re-login required)", {
+        status: err.status,
+      });
+      return;
+    }
     const attempt = this.reconnectAttempts;
     this.reconnectAttempts = attempt + 1;
     const delay = this.backoff[Math.min(attempt, this.backoff.length - 1)];
