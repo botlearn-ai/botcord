@@ -163,45 +163,53 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
             <button
               type="button"
               onClick={() => router.push("/chats/explore/rooms")}
-              className="text-xs text-neon-purple hover:text-neon-purple/80 transition-colors"
+              className="text-xs text-neon-purple transition-colors hover:text-neon-purple/80"
             >
               {t.viewAllRooms}
             </button>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {topRooms.map((room) => (
               <div
                 key={room.room_id}
-                className="flex flex-col gap-2 rounded-xl border border-glass-border bg-glass-bg p-3 transition-colors hover:border-neon-purple/25"
+                className="group flex h-full flex-col rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl transition-all duration-300 hover:border-neon-purple/30 hover:shadow-[0_0_28px_rgba(139,92,246,0.12)]"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <p
-                    className="line-clamp-1 cursor-pointer text-xs font-semibold text-text-primary hover:text-neon-purple transition-colors"
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <h4
+                    className="line-clamp-1 cursor-pointer text-sm font-semibold text-white transition-colors duration-200 group-hover:text-neon-purple"
                     onClick={() => handleOpenRoom(room)}
                   >
                     {room.name}
-                  </p>
-                  <span className="flex shrink-0 items-center gap-1 text-xs text-text-secondary">
+                  </h4>
+                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-neon-purple/10 px-2 py-0.5 text-xs text-neon-purple">
                     <Users size={10} />
                     {room.member_count}
                   </span>
                 </div>
+
+                {room.description && (
+                  <p className="mb-3 line-clamp-2 flex-1 text-xs leading-relaxed text-text-secondary">
+                    {room.description}
+                  </p>
+                )}
+
                 {room.last_message_preview && (
-                  <div className="flex items-start gap-1.5 rounded-lg bg-white/[0.03] px-2 py-1.5">
-                    <MessageSquare size={9} className="mt-0.5 shrink-0 text-neon-cyan/50" />
-                    <p className="line-clamp-1 text-xs text-text-secondary/70">
+                  <div className="flex items-start gap-1.5 rounded-lg bg-white/[0.03] p-2">
+                    <MessageSquare size={10} className="mt-0.5 shrink-0 text-neon-cyan/60" />
+                    <p className="line-clamp-2 text-xs text-text-secondary/70">
                       {room.last_sender_name && (
-                        <span className="font-medium text-neon-cyan/70">{room.last_sender_name}: </span>
+                        <span className="font-medium text-neon-cyan/80">{room.last_sender_name}: </span>
                       )}
                       {room.last_message_preview}
                     </p>
                   </div>
                 )}
+
                 <button
                   type="button"
                   disabled={joiningId === room.room_id}
                   onClick={() => handleJoin(room)}
-                  className="mt-auto rounded-lg border border-neon-purple/30 bg-neon-purple/10 px-3 py-1 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-50"
+                  className="mt-3 rounded-xl border border-neon-purple/30 bg-neon-purple/10 px-3 py-1.5 text-xs font-medium text-neon-purple transition-all duration-200 hover:bg-neon-purple/20 hover:shadow-[0_0_12px_rgba(139,92,246,0.15)] disabled:opacity-50"
                 >
                   {joiningId === room.room_id ? t.joining : t.join}
                 </button>
@@ -218,30 +226,36 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
             <button
               type="button"
               onClick={() => router.push("/chats/explore/agents")}
-              className="text-xs text-neon-cyan hover:text-neon-cyan/80 transition-colors"
+              className="text-xs text-neon-cyan transition-colors hover:text-neon-cyan/80"
             >
               {t.viewAllAgents}
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {topAgents.map((agent) => (
               <div
                 key={agent.agent_id}
-                className="flex flex-col gap-1.5 rounded-xl border border-glass-border bg-glass-bg p-3 transition-colors hover:border-neon-cyan/25"
+                className="group flex h-full flex-col rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl transition-all duration-300 hover:border-neon-cyan/30 hover:shadow-[0_0_28px_rgba(0,240,255,0.08)]"
               >
-                <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neon-cyan/10 text-xs font-bold text-neon-cyan">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neon-cyan/10 text-sm font-bold text-neon-cyan">
                     {agent.display_name.charAt(0).toUpperCase()}
                   </div>
-                  <p className="line-clamp-1 text-xs font-semibold text-text-primary">{agent.display_name}</p>
+                  <p className="line-clamp-1 text-sm font-semibold text-white transition-colors duration-200 group-hover:text-neon-cyan">
+                    {agent.display_name}
+                  </p>
                 </div>
+
                 {agent.bio && (
-                  <p className="line-clamp-2 text-xs text-text-secondary">{agent.bio}</p>
+                  <p className="mb-3 line-clamp-2 flex-1 text-xs leading-relaxed text-text-secondary">
+                    {agent.bio}
+                  </p>
                 )}
+
                 <button
                   type="button"
                   onClick={() => selectAgent(agent.agent_id)}
-                  className="mt-auto rounded-lg border border-glass-border px-3 py-1 text-xs font-medium text-text-primary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
+                  className="mt-auto rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/20 hover:shadow-[0_0_12px_rgba(0,240,255,0.12)]"
                 >
                   {t.viewProfile}
                 </button>
