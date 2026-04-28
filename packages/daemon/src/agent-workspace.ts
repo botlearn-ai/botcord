@@ -195,6 +195,98 @@ function writeIfMissing(filePath: string, content: string): void {
   writeFileSync(filePath, content, { mode: 0o600 });
 }
 
+const HERMES_PROVIDER_ENV_KEYS = new Set([
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_TOKEN",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_BEARER_TOKEN_BEDROCK",
+  "AWS_DEFAULT_REGION",
+  "AWS_PROFILE",
+  "AWS_REGION",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "CEREBRAS_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GROQ_API_KEY",
+  "HERMES_INFERENCE_MODEL",
+  "HERMES_INFERENCE_PROVIDER",
+  "MISTRAL_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+  "TOGETHER_API_KEY",
+  "XAI_API_KEY",
+]);
+
+function parseEnvKeys(content: string): Set<string> {
+  const keys = new Set<string>();
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (match) keys.add(match[1]);
+  }
+  return keys;
+}
+
+/**
+ * Seed per-agent Hermes credentials from the user's normal ~/.hermes/.env.
+ * Only provider/model variables are copied; BotCord credentials, chat tokens,
+ * and unrelated integration secrets are intentionally left behind.
+ */
+function mergeHermesProviderEnv(targetEnv: string): void {
+  const sourceEnv = path.join(homedir(), ".hermes", ".env");
+  if (!existsSync(sourceEnv)) return;
+
+  let targetContent = "";
+  try {
+    targetContent = existsSync(targetEnv) ? readFileSync(targetEnv, "utf8") : "";
+  } catch {
+    targetContent = "";
+  }
+  const targetKeys = parseEnvKeys(targetContent);
+  const additions: string[] = [];
+
+  let sourceContent = "";
+  try {
+    sourceContent = readFileSync(sourceEnv, "utf8");
+  } catch {
+    return;
+  }
+
+  for (const rawLine of sourceContent.split(/\r?\n/)) {
+    const match = rawLine.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (!match) continue;
+    const key = match[1];
+    if (!HERMES_PROVIDER_ENV_KEYS.has(key) || targetKeys.has(key)) continue;
+    additions.push(rawLine);
+    targetKeys.add(key);
+  }
+  if (additions.length === 0) return;
+
+  const prefix = targetContent.endsWith("\n") || targetContent.length === 0 ? "" : "\n";
+  const header =
+    targetContent.includes("Imported from ~/.hermes/.env")
+      ? ""
+      : "# Imported provider credentials from ~/.hermes/.env for BotCord-managed Hermes.\n";
+  writeFileSync(targetEnv, `${targetContent}${prefix}${header}${additions.join("\n")}\n`, {
+    mode: 0o600,
+  });
+}
+
+function seedHermesConfig(hermesHome: string): void {
+  const source = path.join(homedir(), ".hermes", "config.yaml");
+  const target = path.join(hermesHome, "config.yaml");
+  if (!existsSync(source) || existsSync(target)) return;
+  try {
+    copyFileSync(source, target);
+    chmodSync(target, 0o600);
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
  * Best-effort link user's `~/.codex/auth.json` into the per-agent CODEX_HOME.
  * Prefers a symlink (auto-follows `codex login` refreshes) and falls back to
@@ -267,6 +359,8 @@ export function ensureAgentHermesWorkspace(agentId: string): {
     "# hermes-agent environment overrides for this BotCord agent.\n" +
       "# Add e.g. HERMES_INFERENCE_PROVIDER=openrouter, OPENROUTER_API_KEY=...\n",
   );
+  seedHermesConfig(hermesHome);
+  mergeHermesProviderEnv(path.join(hermesHome, ".env"));
   return { hermesHome, hermesWorkspace };
 }
 
