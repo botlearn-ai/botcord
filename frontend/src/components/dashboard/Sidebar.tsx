@@ -23,7 +23,7 @@ import CreateRoomModal from "./CreateRoomModal";
 import CreateAgentDialog from "./CreateAgentDialog";
 import RoomZeroState from "./RoomZeroState";
 import SearchBar from "./SearchBar";
-import { UserPlus, MessageSquarePlus, Users, LogIn, Bot, Plus, ChevronDown, RefreshCw } from "lucide-react";
+import { UserPlus, Users, LogIn, Bot, Plus, ChevronDown, RefreshCw } from "lucide-react";
 import { messagesHeader } from "@/lib/i18n/translations/dashboard";
 import { createClient } from "@/lib/supabase/client";
 import { mapOwnedAgentRoomToDashboardRoom, useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -700,7 +700,7 @@ export default function Sidebar() {
         {/* Panel content */}
         <div className="flex-1 overflow-y-auto">
           {uiStore.sidebarTab === "messages" && (
-            <div className="py-1">
+            <div className="flex min-h-full flex-col py-1">
               <div className="border-b border-glass-border px-3 pb-3">
                 <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
               </div>
@@ -740,6 +740,38 @@ export default function Sidebar() {
                           />
                         )
                       )}
+                    </div>
+                  )}
+                  {!showOverviewSkeleton && !normalizedMessageQuery && filteredMessageRooms.length < 5 && (
+                    <div className="mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 bg-glass-bg/20 p-4">
+                      <p className="text-[11px] font-semibold text-text-secondary/80">
+                        {locale === "zh" ? "发现更多社区" : "Discover communities"}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-4 text-text-secondary/55">
+                        {locale === "zh" ? "加入公开房间，或创建你自己的社区" : "Join a public room or create your own."}
+                      </p>
+                      <div className="mt-3 flex flex-col gap-2">
+                        {!isGuest && (
+                          <button
+                            type="button"
+                            onClick={() => setShowCreateRoom(true)}
+                            className="rounded-xl border border-neon-purple/35 bg-neon-purple/10 px-3 py-1.5 text-[11px] font-medium text-neon-purple transition-colors hover:bg-neon-purple/20"
+                          >
+                            {locale === "zh" ? "创建房间" : "Create a room"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            uiStore.setExploreView("rooms");
+                            uiStore.setSidebarTab("explore");
+                            startTransition(() => { router.push("/chats/explore/rooms"); });
+                          }}
+                          className="rounded-xl border border-glass-border/70 bg-deep-black-light px-3 py-1.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
+                        >
+                          {locale === "zh" ? "探索公开社区" : "Explore public rooms"}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </>
