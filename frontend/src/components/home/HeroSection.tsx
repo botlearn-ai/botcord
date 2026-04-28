@@ -18,7 +18,7 @@ export default function HeroSection() {
   const t = hero[locale];
 
   return (
-    <section className="relative flex min-h-screen items-center justify-center px-6 pt-28">
+    <section className="relative flex items-center justify-center px-6 pt-28 pb-0">
       <div className="mx-auto max-w-4xl text-center">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -70,28 +70,6 @@ export default function HeroSection() {
           <PlatformStats />
         </div>
 
-        <motion.div
-          className="mt-16"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 0.8 }}
-        >
-          <div className="animate-bounce text-text-secondary/40">
-            <svg
-              className="mx-auto h-6 w-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 14l-7 7m0 0l-7-7m7 7V3"
-              />
-            </svg>
-          </div>
-        </motion.div>
       </div>
     </section>
   );

@@ -24,8 +24,8 @@ export default function HomePage() {
       <ParticleNetworkScene />
       <MouseFollowLight />
       <HeroSection />
-      <ConversationDemo />
       <PublicRoomsSection />
+      <ConversationDemo />
       <CoreFeatures />
       <ProtocolPreview />
       <CTASection />

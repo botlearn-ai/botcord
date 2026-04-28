@@ -134,10 +134,8 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
           </p>
           <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-text-secondary/70">
             <span className="truncate">
-              {room.join_policy === "invite_only" ? (
+              {room.join_policy === "invite_only" && (
                 <span className="font-medium text-amber-400">{t.inviteOnly}</span>
-              ) : (
-                <>{t.visibility}: {room.visibility}</>
               )}
             </span>
             <span className="shrink-0">{formatRelativeTime(room.last_message_at, locale, t)}</span>

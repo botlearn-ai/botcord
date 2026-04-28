@@ -44,7 +44,7 @@ export default function PlatformStats() {
   }, []);
 
   return (
-    <section className="relative px-6 py-16">
+    <section className="relative px-6 pt-8 pb-0">
       <div className="mx-auto max-w-3xl">
         <motion.h2
           className="mb-8 text-center text-sm font-medium tracking-widest text-text-secondary"
