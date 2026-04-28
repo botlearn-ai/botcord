@@ -17,17 +17,18 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { initialsFromName, themeFromRoomName } from "./roomVisualTheme";
 import CreateRoomModal from "./CreateRoomModal";
-import type { PublicRoom } from "@/lib/types";
+import type { PublicHumanProfile, PublicRoom } from "@/lib/types";
 
 interface RoomZeroStateProps {
   compact?: boolean;
   hasRooms?: boolean;
+  onHumanOpen?: (human: PublicHumanProfile) => void;
 }
 
 const ROOM_LIMIT = 6;
 const AGENT_LIMIT = 4;
 
-export default function RoomZeroState({ compact = false, hasRooms = false }: RoomZeroStateProps) {
+export default function RoomZeroState({ compact = false, hasRooms = false, onHumanOpen }: RoomZeroStateProps) {
   const router = useRouter();
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const human = useDashboardSessionStore((state) => state.human);
@@ -37,15 +38,18 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
-  const { publicRooms, publicAgents, publicRoomsLoaded, publicAgentsLoaded, loadPublicRooms, loadPublicAgents, joinRoom, selectAgent } =
+  const { publicRooms, publicAgents, publicHumans, publicRoomsLoaded, publicAgentsLoaded, publicHumansLoaded, loadPublicRooms, loadPublicAgents, loadPublicHumans, joinRoom, selectAgent } =
     useDashboardChatStore(
       useShallow((state) => ({
         publicRooms: state.publicRooms,
         publicAgents: state.publicAgents,
+        publicHumans: state.publicHumans,
         publicRoomsLoaded: state.publicRoomsLoaded,
         publicAgentsLoaded: state.publicAgentsLoaded,
+        publicHumansLoaded: state.publicHumansLoaded,
         loadPublicRooms: state.loadPublicRooms,
         loadPublicAgents: state.loadPublicAgents,
+        loadPublicHumans: state.loadPublicHumans,
         joinRoom: state.joinRoom,
         selectAgent: state.selectAgent,
       })),
@@ -62,7 +66,8 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
   useEffect(() => {
     if (!publicRoomsLoaded) loadPublicRooms();
     if (!publicAgentsLoaded) loadPublicAgents();
-  }, [publicRoomsLoaded, publicAgentsLoaded, loadPublicRooms, loadPublicAgents]);
+    if (!publicHumansLoaded) loadPublicHumans();
+  }, [publicRoomsLoaded, publicAgentsLoaded, publicHumansLoaded, loadPublicRooms, loadPublicAgents, loadPublicHumans]);
 
   const isGuest = sessionMode === "guest";
   const isHumanFirstTime = !isGuest && human && ownedAgents.length === 0;
@@ -73,6 +78,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
     .sort((a, b) => b.member_count - a.member_count)
     .slice(0, ROOM_LIMIT);
   const topAgents = publicAgents.slice(0, AGENT_LIMIT);
+  const topHumans = publicHumans.slice(0, AGENT_LIMIT);
 
   const handleJoin = async (room: PublicRoom) => {
     if (isGuest) { router.push("/login"); return; }
@@ -248,6 +254,51 @@ export default function RoomZeroState({ compact = false, hasRooms = false }: Roo
                   {agent.bio && (
                     <p className="line-clamp-2 text-[11px] leading-4 text-text-secondary">{agent.bio}</p>
                   )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {topHumans.length > 0 && onHumanOpen && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">{t.featuredHumans}</h3>
+            <button
+              type="button"
+              onClick={() => router.push("/chats/explore/humans")}
+              className="text-xs text-neon-green transition-colors hover:text-neon-green/80"
+            >
+              {t.viewAllHumans}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {topHumans.map((human) => {
+              const initials = initialsFromName(human.display_name);
+              return (
+                <button
+                  key={human.human_id}
+                  type="button"
+                  onClick={() => onHumanOpen(human)}
+                  className="group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg"
+                >
+                  <div className="mb-2 flex items-center gap-2">
+                    {human.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={human.avatar_url}
+                        alt={human.display_name}
+                        className="h-9 w-9 shrink-0 rounded-full border border-neon-green/30 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-green/30 bg-neon-green/10 text-xs font-semibold text-neon-green">
+                        {initials}
+                      </div>
+                    )}
+                    <p className="line-clamp-1 text-sm font-semibold text-text-primary">{human.display_name}</p>
+                  </div>
+                  <p className="text-[10px] text-neon-green/80">{locale === "zh" ? "Human 用户" : "Human"}</p>
                 </button>
               );
             })}

@@ -616,7 +616,7 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   if (!focusedRoomId) {
     return (
       <div className="flex flex-1 justify-center overflow-y-auto bg-deep-black px-6 py-10">
-        <RoomZeroState hasRooms={visibleMessageRooms.length > 0} />
+        <RoomZeroState hasRooms={visibleMessageRooms.length > 0} onHumanOpen={onHumanOpen} />
       </div>
     );
   }

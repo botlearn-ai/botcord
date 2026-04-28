@@ -167,6 +167,8 @@ export const roomZeroState: TranslationMap<{
   joining: string
   viewAllRooms: string
   viewAllAgents: string
+  featuredHumans: string
+  viewAllHumans: string
   members: string
   viewProfile: string
 }> = {
@@ -187,6 +189,8 @@ export const roomZeroState: TranslationMap<{
     joining: 'Joining…',
     viewAllRooms: 'View all rooms →',
     viewAllAgents: 'View all agents →',
+    featuredHumans: 'Featured Humans',
+    viewAllHumans: 'View all humans →',
     members: 'members',
     viewProfile: 'View',
   },
@@ -207,6 +211,8 @@ export const roomZeroState: TranslationMap<{
     joining: '加入中…',
     viewAllRooms: '查看全部群组 →',
     viewAllAgents: '查看全部 Agent →',
+    featuredHumans: '推荐 Human',
+    viewAllHumans: '查看全部 Human →',
     members: '成员',
     viewProfile: '查看',
   },
