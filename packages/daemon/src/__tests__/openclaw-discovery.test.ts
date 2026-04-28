@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  defaultOpenclawDiscoveryPorts,
   discoverLocalOpenclawGateways,
   mergeOpenclawGateways,
 } from "../openclaw-discovery.js";
@@ -108,6 +109,69 @@ describe("discoverLocalOpenclawGateways", () => {
     ]);
   });
 
+  it("uses OPENCLAW_GATEWAY_URL and gateway token env vars", async () => {
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [],
+      defaultPorts: [],
+      env: {
+        OPENCLAW_GATEWAY_URL: "ws://127.0.0.1:16200",
+        OPENCLAW_GATEWAY_TOKEN: "gateway-token",
+      },
+    });
+
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:16200",
+        token: "gateway-token",
+        source: "env",
+      }),
+    ]);
+  });
+
+  it("builds gateway URL from OPENCLAW_GATEWAY_PORT", async () => {
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [],
+      defaultPorts: [],
+      env: {
+        OPENCLAW_GATEWAY_PORT: "16200",
+        OPENCLAW_GATEWAY_TOKEN: "gateway-token",
+      },
+    });
+
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:16200",
+        token: "gateway-token",
+        source: "env",
+      }),
+    ]);
+  });
+
+  it("prefers OPENCLAW_ACP env vars over OPENCLAW_GATEWAY env vars", async () => {
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [],
+      defaultPorts: [],
+      env: {
+        OPENCLAW_ACP_URL: "ws://127.0.0.1:18888",
+        OPENCLAW_ACP_TOKEN: "acp-token",
+        OPENCLAW_GATEWAY_URL: "ws://127.0.0.1:16200",
+        OPENCLAW_GATEWAY_TOKEN: "gateway-token",
+      },
+    });
+
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:18888",
+        token: "acp-token",
+        source: "env",
+      }),
+    ]);
+  });
+
+  it("includes 16200 in default discovery ports", () => {
+    expect(defaultOpenclawDiscoveryPorts()).toEqual(expect.arrayContaining([18789, 16200]));
+  });
+
   it("adds default-port candidates only when the probe succeeds", async () => {
     const probe = vi.fn<WsEndpointProbeFn>(async ({ url }) => ({
       ok: url.includes("18789"),
@@ -123,6 +187,37 @@ describe("discoverLocalOpenclawGateways", () => {
 
     expect(probe).toHaveBeenCalledTimes(2);
     expect(found.map((g) => g.url)).toEqual(["ws://127.0.0.1:18789"]);
+  });
+
+  it("attaches gateway token fallback to default-port discovery", async () => {
+    const probe = vi.fn<WsEndpointProbeFn>(async () => ({
+      ok: true,
+      agents: [],
+    }));
+
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [],
+      defaultPorts: [16200],
+      probe,
+      timeoutMs: 10,
+      env: {
+        OPENCLAW_GATEWAY_TOKEN: "gateway-token",
+      },
+    });
+
+    expect(probe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "ws://127.0.0.1:16200",
+        token: "gateway-token",
+      }),
+    );
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:16200",
+        token: "gateway-token",
+        source: "default-port",
+      }),
+    ]);
   });
 
   it("prefers config-file auth details over lower-priority duplicate sources", async () => {

@@ -66,6 +66,12 @@ export interface DiscoveryFs {
 export interface DiscoveryOptions extends DiscoveryFs {
   /** Directory to scan. Defaults to {@link DEFAULT_CREDENTIALS_DIR}. */
   credentialsDir?: string;
+  /**
+   * Optional daemon target Hub. When set, auto-discovered credentials whose
+   * hubUrl points at a different host are skipped so preview/prod identities
+   * are not mixed by accident.
+   */
+  expectedHubUrl?: string;
 }
 
 /**
@@ -137,6 +143,12 @@ export function discoverAgentCredentials(
       warnings.push(`credentials at ${file} missing agentId; skipped`);
       continue;
     }
+    if (opts.expectedHubUrl && !sameHubHost(creds.hubUrl, opts.expectedHubUrl)) {
+      warnings.push(
+        `credential skipped: hubUrl does not match daemon environment (${file})`,
+      );
+      continue;
+    }
 
     const existing = byAgent.get(creds.agentId);
     if (!existing) {
@@ -186,6 +198,15 @@ export function discoverAgentCredentials(
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function sameHubHost(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return true;
+  try {
+    return new URL(a).host === new URL(b).host;
+  } catch {
+    return true;
+  }
 }
 
 /** Result of composing explicit config + discovery into the final boot list. */

@@ -887,6 +887,56 @@ describe("adoptDiscoveredOpenclawAgents", () => {
     });
   });
 
+  it("skips auto-adopt when local OpenClaw ACP is explicitly disabled", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const credDir = nodePath.join(tmp, ".botcord", "credentials");
+      fs.mkdirSync(credDir, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(credDir, "ag_seed.json"),
+        JSON.stringify({
+          version: 1,
+          hubUrl: "https://hub.example",
+          agentId: "ag_seed",
+          keyId: "k_seed",
+          privateKey: Buffer.alloc(32, 8).toString("base64"),
+          savedAt: new Date().toISOString(),
+        }),
+      );
+      const openclawDir = nodePath.join(tmp, ".openclaw");
+      fs.mkdirSync(openclawDir, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(openclawDir, "openclaw.json"),
+        JSON.stringify({ acp: { enabled: false } }),
+      );
+      mockState.cfg = {
+        defaultRoute: { adapter: "claude-code", cwd: "/tmp" },
+        routes: [],
+        streamBlocks: true,
+        agents: ["ag_seed"],
+        openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }],
+      };
+      const register = vi.fn();
+      const probe = vi.fn<Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["probe"]>(
+        async () => ({ ok: true, agents: [{ id: "main" }] }),
+      );
+
+      const res = await adoptDiscoveredOpenclawAgents({
+        gateway: makeFakeGateway(["ag_seed"]) as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["gateway"],
+        register: register as unknown as Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["register"],
+        cfg: mockState.cfg as unknown as DaemonConfig,
+        probe,
+      });
+
+      expect(res).toEqual({
+        adopted: [],
+        skipped: [{ gateway: "local", reason: "acp_disabled" }],
+        failed: [],
+      });
+      expect(probe).not.toHaveBeenCalled();
+      expect(register).not.toHaveBeenCalled();
+    });
+  });
+
   it("uses the OpenClaw workspace identity name when agents.list has no name", async () => {
     await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
       const credDir = nodePath.join(tmp, ".botcord", "credentials");

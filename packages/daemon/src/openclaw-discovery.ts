@@ -30,7 +30,7 @@ export interface MergeOpenclawGatewayResult {
 }
 
 const DEFAULT_SEARCH_PATHS = ["~/.openclaw/", "/etc/openclaw/"];
-const DEFAULT_PORTS = [18789];
+const DEFAULT_PORTS = [18789, 16200];
 
 export async function discoverLocalOpenclawGateways(
   opts: OpenclawGatewayDiscoveryOptions = {},
@@ -41,17 +41,8 @@ export async function discoverLocalOpenclawGateways(
   }
 
   const env = opts.env ?? process.env;
-  const envUrl = env.OPENCLAW_ACP_URL;
-  if (envUrl) {
-    const item: DiscoveredOpenclawGateway = {
-      name: nameFromUrl(envUrl),
-      url: envUrl,
-      source: "env",
-    };
-    if (env.OPENCLAW_ACP_TOKEN) item.token = env.OPENCLAW_ACP_TOKEN;
-    else if (env.OPENCLAW_ACP_TOKEN_FILE) item.tokenFile = env.OPENCLAW_ACP_TOKEN_FILE;
-    found.push(item);
-  }
+  found.push(...discoverFromEnv(env));
+  const envAuth = pickOpenclawEnvAuth(env);
 
   const ports = opts.defaultPorts ?? DEFAULT_PORTS;
   if (ports.length > 0) {
@@ -60,11 +51,11 @@ export async function discoverLocalOpenclawGateways(
         const url = `ws://127.0.0.1:${port}`;
         try {
           const res = await probeOpenclawAgents(
-            { url },
+            { url, ...envAuth },
             { probe: opts.probe, timeoutMs: opts.timeoutMs },
           );
           if (res.ok) {
-            found.push({ name: nameFromUrl(url), url, source: "default-port" });
+            found.push({ name: nameFromUrl(url), url, source: "default-port", ...envAuth });
           }
         } catch (err) {
           daemonLog.debug("openclaw discovery default-port probe failed", {
@@ -77,6 +68,46 @@ export async function discoverLocalOpenclawGateways(
   }
 
   return dedupeDiscovered(found);
+}
+
+function discoverFromEnv(env: NodeJS.ProcessEnv): DiscoveredOpenclawGateway[] {
+  const url =
+    pickEnv(env, "OPENCLAW_ACP_URL") ??
+    pickEnv(env, "OPENCLAW_GATEWAY_URL") ??
+    urlFromGatewayPort(env);
+  if (!url) return [];
+
+  return [
+    {
+      name: nameFromUrl(url),
+      url,
+      source: "env",
+      ...pickOpenclawEnvAuth(env),
+    },
+  ];
+}
+
+function pickOpenclawEnvAuth(env: NodeJS.ProcessEnv): { token?: string; tokenFile?: string } {
+  const token = pickEnv(env, "OPENCLAW_ACP_TOKEN") ?? pickEnv(env, "OPENCLAW_GATEWAY_TOKEN");
+  if (token) return { token };
+  const tokenFile =
+    pickEnv(env, "OPENCLAW_ACP_TOKEN_FILE") ?? pickEnv(env, "OPENCLAW_GATEWAY_TOKEN_FILE");
+  if (tokenFile) return { tokenFile };
+  return {};
+}
+
+function urlFromGatewayPort(env: NodeJS.ProcessEnv): string | undefined {
+  const raw = pickEnv(env, "OPENCLAW_GATEWAY_PORT");
+  if (!raw) return undefined;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return undefined;
+  return `ws://127.0.0.1:${port}`;
+}
+
+function pickEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  const value = env[key];
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return undefined;
 }
 
 export function mergeOpenclawGateways(
