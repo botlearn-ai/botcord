@@ -13,7 +13,13 @@ const dynamicPublicDocs = [
   "register.sh",
   "install-beta.sh",
   "register-beta.sh",
+  "daemon-install.sh",
 ];
+
+const dynamicPublicDocRewrites = dynamicPublicDocs.map((slug) => ({
+  source: `/${slug}`,
+  destination: `/api/public-docs/${slug}`,
+}));
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.resolve(__dirname),
@@ -25,10 +31,13 @@ const nextConfig: NextConfig = {
   },
   transpilePackages: ["three", "@react-three/fiber", "@react-three/drei"],
   async rewrites() {
-    return dynamicPublicDocs.map((slug) => ({
-      source: `/${slug}`,
-      destination: `/api/public-docs/${slug}`,
-    }));
+    return [
+      ...dynamicPublicDocRewrites,
+      {
+        source: "/daemon/install.sh",
+        destination: "/api/public-docs/daemon-install.sh",
+      },
+    ];
   },
 };
 
