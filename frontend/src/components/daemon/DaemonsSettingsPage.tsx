@@ -8,14 +8,12 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   AlertTriangle,
   Check,
   Loader2,
   Pencil,
   RefreshCcw,
-  Server,
   X,
   XCircle,
 } from "lucide-react";
@@ -24,6 +22,7 @@ import {
   type DaemonInstance,
   type DaemonRuntime,
 } from "@/store/useDaemonStore";
+import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -330,6 +329,26 @@ export default function DaemonsSettingsPage() {
   }, [daemons]);
 
   const empty = loaded && sorted.length === 0;
+  const hasOffline = sorted.some((d) => d.status === "offline");
+  const showInstallPanel = empty || hasOffline;
+
+  const installLabels = empty
+    ? {
+        title: "No daemons connected yet",
+        hint: "Run this command on the machine you want to authorize. Once it connects, it will show up here automatically.",
+        copy: "Copy",
+        copied: "Copied",
+        openActivate: "Open activation page",
+        refresh: "Refresh",
+      }
+    : {
+        title: "Reconnect or install a daemon",
+        hint: "Daemon offline? Run this command on the machine to reinstall and reconnect. Same machine reuses its credentials; new machines are authorized automatically.",
+        copy: "Copy",
+        copied: "Copied",
+        openActivate: "Open activation page",
+        refresh: "Refresh",
+      };
 
   return (
     <div className="space-y-6">
@@ -361,24 +380,15 @@ export default function DaemonsSettingsPage() {
         </p>
       )}
 
-      {empty ? (
-        <div className="rounded-2xl border border-dashed border-glass-border bg-glass-bg/40 p-10 text-center">
-          <Server className="mx-auto mb-3 h-8 w-8 text-text-tertiary" />
-          <p className="text-sm text-text-secondary">
-            No daemons connected yet.
-          </p>
-          <p className="mt-1 text-sm text-text-secondary">
-            Visit{" "}
-            <Link
-              href="/activate"
-              className="font-medium text-neon-cyan hover:underline"
-            >
-              /activate
-            </Link>{" "}
-            to authorize one.
-          </p>
-        </div>
-      ) : (
+      {showInstallPanel && (
+        <DaemonInstallCommand
+          labels={installLabels}
+          busy={loading}
+          onRefresh={() => void refresh()}
+        />
+      )}
+
+      {empty ? null : (
         <div className="overflow-x-auto rounded-2xl border border-glass-border">
           <table className="w-full text-sm">
             <thead className="border-b border-glass-border bg-glass-bg">
