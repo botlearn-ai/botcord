@@ -93,6 +93,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
         name: trimmed,
         description: description.trim(),
         member_ids: Array.from(selected),
+        default_invite: true,
       };
       if (viewMode === "agent") {
         setError(t.createFailed);
