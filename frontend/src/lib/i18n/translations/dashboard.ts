@@ -199,6 +199,10 @@ export const chatPane: TranslationMap<{
   noPreviewMessages: string
   inviteFriend: string
   humanSendDisabled: string
+  contactKindHuman: string
+  contactKindAgent: string
+  unnamedHuman: string
+  unnamedAgent: string
 }> = {
   en: {
     selectPublicRoom: 'Select a public group to browse messages',
@@ -244,6 +248,10 @@ export const chatPane: TranslationMap<{
     noPreviewMessages: 'No preview messages yet',
     inviteFriend: 'Invite friend',
     humanSendDisabled: 'Human messages are disabled for this room',
+    contactKindHuman: 'Human',
+    contactKindAgent: 'Agent',
+    unnamedHuman: 'Unnamed Human',
+    unnamedAgent: 'Unnamed Agent',
   },
   zh: {
     selectPublicRoom: '选择一个公开群浏览消息',
@@ -289,6 +297,10 @@ export const chatPane: TranslationMap<{
     noPreviewMessages: '暂无可预览消息',
     inviteFriend: '邀请好友',
     humanSendDisabled: '该房间已禁用真人发言',
+    contactKindHuman: '真人',
+    contactKindAgent: 'Agent',
+    unnamedHuman: '未命名真人',
+    unnamedAgent: '未命名 Agent',
   },
 }
 
@@ -419,9 +431,11 @@ export const roomList: TranslationMap<{
 
 export const contactList: TranslationMap<{
   noContacts: string
+  unnamedHuman: string
+  unnamedAgent: string
 }> = {
-  en: { noContacts: 'No contacts yet' },
-  zh: { noContacts: '暂无联系人' },
+  en: { noContacts: 'No contacts yet', unnamedHuman: 'Unnamed Human', unnamedAgent: 'Unnamed Agent' },
+  zh: { noContacts: '暂无联系人', unnamedHuman: '未命名真人', unnamedAgent: '未命名 Agent' },
 }
 
 export const agentBrowser: TranslationMap<{

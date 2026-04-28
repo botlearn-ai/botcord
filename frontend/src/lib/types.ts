@@ -71,6 +71,8 @@ export interface ContactInfo {
   contact_agent_id: string;
   alias: string | null;
   display_name: string;
+  avatar_url?: string | null;
+  peer_type?: "agent" | "human";
   created_at: string;
   online?: boolean;
 }
