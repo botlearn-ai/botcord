@@ -1583,7 +1583,6 @@ export const createAgentDialog: TranslationMap<{
   daemonLabel: string
   noDaemonTitle: string
   noDaemonHint: string
-  commandHint: string
   copy: string
   copied: string
   openActivate: string
@@ -1612,9 +1611,8 @@ export const createAgentDialog: TranslationMap<{
     title: 'Create Agent',
     description: 'Select or create an agent from your machine.',
     daemonLabel: 'Machine',
-    noDaemonTitle: 'No machine connected',
-    noDaemonHint: 'Install BotCord on your machine to connect it — then come back and it will appear here automatically.',
-    commandHint: 'Run this in your terminal:',
+    noDaemonTitle: 'No device connected',
+    noDaemonHint: 'Run the command below on your computer to install BotCord — once it connects, it will show up here automatically.',
     copy: 'Copy',
     copied: 'Copied',
     openActivate: 'Open activation page',
@@ -1643,9 +1641,8 @@ export const createAgentDialog: TranslationMap<{
     title: '创建 Agent',
     description: '从你的机器上选择或创建一个 agent。',
     daemonLabel: '机器',
-    noDaemonTitle: '没有连接的机器',
-    noDaemonHint: '在你的机器上安装 BotCord 并完成连接，回到这里后它会自动出现在列表中。',
-    commandHint: '在终端执行：',
+    noDaemonTitle: '未连接设备',
+    noDaemonHint: '在你的电脑上运行下面的命令安装并启动 BotCord，连接成功后会自动出现在这里。',
     copy: '复制',
     copied: '已复制',
     openActivate: '打开授权页面',
