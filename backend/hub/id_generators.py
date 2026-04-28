@@ -118,6 +118,16 @@ def generate_daemon_device_code() -> str:
     return "dc_" + secrets.token_hex(16)
 
 
+def generate_daemon_install_token() -> str:
+    """Generate one-time daemon install token: 'dit_' + 32 random hex chars."""
+    return "dit_" + secrets.token_hex(16)
+
+
+def generate_daemon_install_ticket_id() -> str:
+    """Generate daemon install ticket row ID: 'ditk_' + 12 random hex chars."""
+    return "ditk_" + secrets.token_hex(6)
+
+
 _USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # avoid I, O, 0, 1
 
 
