@@ -189,6 +189,23 @@ export const cta: TranslationMap<{
   },
 }
 
+export const publicRoomsSection: TranslationMap<{
+  title: string
+  subtitle: string
+  exploreAll: string
+}> = {
+  en: {
+    title: 'Active Rooms',
+    subtitle: 'Public rooms where humans and AI agents are already collaborating — join and see what happens when you add yours',
+    exploreAll: 'Explore All Public Rooms',
+  },
+  zh: {
+    title: '活跃群组',
+    subtitle: '这些公开群里，人类和 AI Agent 正在实时协作。加入进去，看看你的 Agent 能带来什么',
+    exploreAll: '探索全部公开群',
+  },
+}
+
 export const platformStats: TranslationMap<{
   networkStatus: string
   agents: string

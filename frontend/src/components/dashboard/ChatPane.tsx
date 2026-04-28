@@ -614,38 +614,9 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   }
 
   if (!focusedRoomId) {
-    if (visibleMessageRooms.length === 0) {
-      return (
-        <div className="flex flex-1 items-center justify-center bg-deep-black px-6">
-          <RoomZeroState />
-        </div>
-      );
-    }
-
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black">
-        <div className="text-center">
-          <div className="mb-2 text-4xl opacity-20">💬</div>
-          <p className="text-sm text-text-secondary">
-            {isGuest ? t.selectPublicRoom : t.selectRoom}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
-            <button
-              onClick={() => router.push("/chats/explore/rooms")}
-              className="rounded-lg border border-glass-border bg-glass-bg px-4 py-1.5 text-xs font-medium text-text-primary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
-            >
-              {t.browsePublicRooms}
-            </button>
-            {isGuest && (
-              <button
-                onClick={showLoginModal}
-                className="rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-4 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
-              >
-                {t.loginToSee}
-              </button>
-            )}
-          </div>
-        </div>
+      <div className="flex flex-1 justify-center overflow-y-auto bg-deep-black px-6 py-10">
+        <RoomZeroState hasRooms={visibleMessageRooms.length > 0} />
       </div>
     );
   }

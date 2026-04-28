@@ -22,6 +22,10 @@ export interface DashboardUIState {
   /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
   selectedBotAgentId: string | null;
   setSelectedBotAgentId: (agentId: string | null) => void;
+  /** Controls the Create Bot modal visibility from any component. */
+  createBotModalOpen: boolean;
+  openCreateBotModal: () => void;
+  closeCreateBotModal: () => void;
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
   exploreView: "rooms" | "agents" | "humans" | "templates";
@@ -60,6 +64,7 @@ const initialUIState = {
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
   sidebarWidth: 260,
+  createBotModalOpen: false,
 };
 
 export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
@@ -90,6 +95,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   closeAgentCard: () => set({ agentCardOpen: false }),
   requestOpenHuman: (humanId, displayName) => set({ pendingHumanOpen: { humanId, displayName } }),
   clearPendingHumanOpen: () => set({ pendingHumanOpen: null }),
+  openCreateBotModal: () => set({ createBotModalOpen: true }),
+  closeCreateBotModal: () => set({ createBotModalOpen: false }),
   resetUIState: () =>
     set((state) => ({
       ...initialUIState,

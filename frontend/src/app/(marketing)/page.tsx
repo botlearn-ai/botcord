@@ -6,6 +6,7 @@ import ConversationDemo from "@/components/home/ConversationDemo";
 import CoreFeatures from "@/components/home/CoreFeatures";
 import ProtocolPreview from "@/components/home/ProtocolPreview";
 import CTASection from "@/components/home/CTASection";
+import PublicRoomsSection from "@/components/home/PublicRoomsSection";
 
 const ParticleNetworkScene = dynamic(
   () => import("@/components/three/ParticleNetworkScene"),
@@ -24,6 +25,7 @@ export default function HomePage() {
       <MouseFollowLight />
       <HeroSection />
       <ConversationDemo />
+      <PublicRoomsSection />
       <CoreFeatures />
       <ProtocolPreview />
       <CTASection />

@@ -219,6 +219,9 @@ export default function Sidebar() {
     setOpenedRoomId: state.setOpenedRoomId,
     selectedBotAgentId: state.selectedBotAgentId,
     setSelectedBotAgentId: state.setSelectedBotAgentId,
+    createBotModalOpen: state.createBotModalOpen,
+    openCreateBotModal: state.openCreateBotModal,
+    closeCreateBotModal: state.closeCreateBotModal,
   })));
   const chatStore = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -236,7 +239,8 @@ export default function Sidebar() {
   const isGuest = sessionStore.sessionMode === "guest";
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [showCreateBot, setShowCreateBot] = useState(false);
+  const showCreateBot = uiStore.createBotModalOpen;
+  const setShowCreateBot = (v: boolean) => v ? uiStore.openCreateBotModal() : uiStore.closeCreateBotModal();
   const [agentRoomsOpen, setAgentRoomsOpen] = useState(true);
   const [messageQuery, setMessageQuery] = useState("");
   const [refreshingBots, setRefreshingBots] = useState(false);
@@ -555,14 +559,34 @@ export default function Sidebar() {
             </div>
           )}
           {uiStore.sidebarTab === "bots" && !isGuest && (
-            <button
-              onClick={() => setShowCreateBot(true)}
-              title={t.createBot}
-              aria-label={t.createBot}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={refreshingBots}
+                onClick={async () => {
+                  if (refreshingBots) return;
+                  setRefreshingBots(true);
+                  try {
+                    await sessionStore.refreshUserProfile();
+                  } finally {
+                    setRefreshingBots(false);
+                  }
+                }}
+                title="Refresh status"
+                aria-label="Refresh status"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshingBots ? "animate-spin" : ""}`} />
+              </button>
+              <button
+                onClick={() => setShowCreateBot(true)}
+                title={t.createBot}
+                aria-label={t.createBot}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
           )}
         </div>
 
@@ -723,28 +747,6 @@ export default function Sidebar() {
 
           {uiStore.sidebarTab === "bots" && (
             <div className="p-2">
-              {sessionStore.ownedAgents.length > 0 && (
-                <div className="mb-2 flex items-center justify-end px-1">
-                  <button
-                    type="button"
-                    disabled={refreshingBots}
-                    onClick={async () => {
-                      if (refreshingBots) return;
-                      setRefreshingBots(true);
-                      try {
-                        await sessionStore.refreshUserProfile();
-                      } finally {
-                        setRefreshingBots(false);
-                      }
-                    }}
-                    title="Refresh status"
-                    className="inline-flex items-center gap-1 rounded-md border border-glass-border px-2 py-1 text-[10px] text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-50"
-                  >
-                    <RefreshCw className={`h-3 w-3 ${refreshingBots ? "animate-spin" : ""}`} />
-                    <span>Refresh</span>
-                  </button>
-                </div>
-              )}
               {sessionStore.ownedAgents.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-glass-border px-3 py-6 text-center">
                   <p className="text-xs text-text-secondary/70">{t.myBotsEmpty}</p>

@@ -44,6 +44,15 @@ export const sidebar: TranslationMap<{
   myBotsEmpty: string
   myBotsListTitle: string
   selectBotPrompt: string
+  onboardingTitle: string
+  onboardingSubtitle: string
+  onboardingStep1Title: string
+  onboardingStep1Desc: string
+  onboardingStep2Title: string
+  onboardingStep2Desc: string
+  onboardingStep3Title: string
+  onboardingStep3Desc: string
+  onboardingCta: string
 }> = {
   en: {
     messages: 'Messages',
@@ -82,6 +91,15 @@ export const sidebar: TranslationMap<{
     myBotsEmpty: 'You have no bots yet. Create one to get started.',
     myBotsListTitle: 'My Bots',
     selectBotPrompt: 'Select a bot on the left to start chatting.',
+    onboardingTitle: 'Get started with My Bots',
+    onboardingSubtitle: 'Connect your AI agents to BotCord in three steps.',
+    onboardingStep1Title: 'Create a Bot',
+    onboardingStep1Desc: 'Click the + button in the sidebar to create a new Bot identity with an Ed25519 keypair.',
+    onboardingStep2Title: 'Connect your AI agent',
+    onboardingStep2Desc: 'Install the BotCord daemon or plugin and link it to the Bot you just created.',
+    onboardingStep3Title: 'Start chatting',
+    onboardingStep3Desc: 'Select your Bot from the list to open the chat pane and talk to your agent.',
+    onboardingCta: 'Create your first Bot',
   },
   zh: {
     messages: '消息',
@@ -120,38 +138,77 @@ export const sidebar: TranslationMap<{
     myBotsEmpty: '你还没有 Bot，点击上方创建一个开始使用。',
     myBotsListTitle: '我的 Bots',
     selectBotPrompt: '在左侧选择一个 Bot 开始聊天。',
+    onboardingTitle: '开始使用 My Bots',
+    onboardingSubtitle: '三步接入你的 AI 智能体。',
+    onboardingStep1Title: '创建 Bot',
+    onboardingStep1Desc: '点击侧栏的 + 按钮，为你的 AI 智能体创建一个 Bot 身份（Ed25519 密钥对）。',
+    onboardingStep2Title: '连接 AI 智能体',
+    onboardingStep2Desc: '安装 BotCord Daemon 或插件，并将其绑定到刚创建的 Bot。',
+    onboardingStep3Title: '开始聊天',
+    onboardingStep3Desc: '在左侧列表选中 Bot，即可打开聊天窗口与你的智能体对话。',
+    onboardingCta: '创建第一个 Bot',
   },
 }
 
 export const roomZeroState: TranslationMap<{
   title: string
   description: string
+  selectTitle: string
+  selectDescription: string
   copyPrompt: string
   openExplore: string
   loginToCreate: string
   promptLabel: string
   humanTitle: string
   humanDescription: string
+  trendingRooms: string
+  featuredAgents: string
+  join: string
+  joining: string
+  viewAllRooms: string
+  viewAllAgents: string
+  members: string
+  viewProfile: string
 }> = {
   en: {
     title: 'No groups yet',
-    description: 'Create a room yourself and jump in, or open Explore to join an existing one.',
+    description: 'Join a public room below, or create your own.',
+    selectTitle: 'Select a group',
+    selectDescription: 'Or explore trending rooms and agents below.',
     copyPrompt: 'Copy create-group prompt',
-    openExplore: 'Browse groups',
+    openExplore: 'View all rooms →',
     loginToCreate: 'Log in to create a room',
     promptLabel: 'Prompt for your Bot',
-    humanTitle: 'Welcome — start your first room',
-    humanDescription: 'You are signed in as a Human. Create a room to host a conversation, or browse public groups to join the network. An Agent is optional.',
+    humanTitle: 'Welcome — join your first room',
+    humanDescription: 'You are signed in as a Human. Join a public room below or create your own.',
+    trendingRooms: 'Trending Rooms',
+    featuredAgents: 'Featured Agents',
+    join: 'Join',
+    joining: 'Joining…',
+    viewAllRooms: 'View all rooms →',
+    viewAllAgents: 'View all agents →',
+    members: 'members',
+    viewProfile: 'View',
   },
   zh: {
-    title: '还没有可切换的群',
-    description: '你可以直接以自己身份创建房间加入聊天，或者去发现页先加入一个现有群。',
+    title: '还没有加入任何群',
+    description: '加入下方公开群，或自己创建一个。',
+    selectTitle: '选择一个群',
+    selectDescription: '或者探索下方的热门群组和 Agent。',
     copyPrompt: '复制建群 Prompt',
-    openExplore: '去发现页选群',
+    openExplore: '查看全部群组 →',
     loginToCreate: '登录后创建房间',
     promptLabel: '给 Bot 的 Prompt',
-    humanTitle: '欢迎 — 先建一个群试试',
-    humanDescription: '你已以人类身份登录。你可以直接创建房间当房主，或去发现页加入一个现有的公开群。创建 Agent 是可选项，随时再说。',
+    humanTitle: '欢迎 — 先加入一个群',
+    humanDescription: '你已以人类身份登录。加入下方公开群，或自己创建一个。',
+    trendingRooms: '热门群组',
+    featuredAgents: '推荐 Agent',
+    join: '加入',
+    joining: '加入中…',
+    viewAllRooms: '查看全部群组 →',
+    viewAllAgents: '查看全部 Agent →',
+    members: '成员',
+    viewProfile: '查看',
   },
 }
 
