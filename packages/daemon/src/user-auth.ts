@@ -189,6 +189,20 @@ export function isTokenNearExpiry(record: UserAuthRecord, windowMs = 60_000): bo
 }
 
 /**
+ * Thrown when the Hub rejects a refresh token (401/403). Signals that the
+ * user must re-login — reconnect loops should stop instead of hammering
+ * the refresh endpoint forever with a known-bad token.
+ */
+export class AuthRefreshRejectedError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AuthRefreshRejectedError";
+    this.status = status;
+  }
+}
+
+/**
  * Stateful helper that owns the in-memory copy of user-auth and knows how
  * to refresh it. Used by the control channel so reconnects always carry
  * a fresh access token.
@@ -245,13 +259,35 @@ export class UserAuthManager {
       expiresInMs: current.expiresAt - Date.now(),
     });
     this.refreshInflight = (async () => {
-      const tok = await refreshDaemonToken(current.hubUrl, current.refreshToken);
+      // Refresh tokens rotate server-side. If another local process (e.g. a
+      // second daemon racing on the same user-auth.json) refreshed in the
+      // meantime, the on-disk refreshToken now differs from our in-memory
+      // copy — using the in-memory one would 401 because the server already
+      // invalidated it. Re-read disk first and adopt any newer record.
+      let basis = current;
+      try {
+        const onDisk = loadUserAuth(this.file);
+        if (onDisk && onDisk.refreshToken !== current.refreshToken) {
+          daemonLog.info("user-auth refresh: adopting newer on-disk token", {
+            userId: onDisk.userId,
+            expiresAt: onDisk.expiresAt,
+          });
+          this.record = onDisk;
+          if (!isTokenNearExpiry(onDisk)) return onDisk;
+          basis = onDisk;
+        }
+      } catch (err) {
+        daemonLog.debug("user-auth refresh: disk reread failed (ignored)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      const tok = await refreshDaemonToken(basis.hubUrl, basis.refreshToken);
       const next: UserAuthRecord = {
-        ...current,
+        ...basis,
         accessToken: tok.accessToken,
         refreshToken: tok.refreshToken,
         expiresAt: Date.now() + tok.expiresIn * 1000,
-        hubUrl: tok.hubUrl || current.hubUrl,
+        hubUrl: tok.hubUrl || basis.hubUrl,
       };
       saveUserAuth(next, this.file);
       this.record = next;
@@ -261,10 +297,23 @@ export class UserAuthManager {
       });
       return next;
     })().catch((err) => {
+      const status =
+        typeof (err as { status?: unknown }).status === "number"
+          ? ((err as { status: number }).status)
+          : null;
+      const message = err instanceof Error ? err.message : String(err);
       daemonLog.warn("user-auth refresh: failed", {
         userId: current.userId,
-        error: err instanceof Error ? err.message : String(err),
+        status,
+        error: message,
       });
+      if (status === 401 || status === 403) {
+        // Refresh token is permanently dead — write the expired flag so
+        // `status` surfaces it and re-throw a typed error so the control
+        // channel can stop reconnect loops instead of hammering the Hub.
+        writeAuthExpiredFlag();
+        throw new AuthRefreshRejectedError(status, message);
+      }
       throw err;
     }).finally(() => {
       this.refreshInflight = null;
