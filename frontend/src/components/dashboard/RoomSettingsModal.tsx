@@ -178,7 +178,6 @@ export default function RoomSettingsModal({
 
   const canEditBasics = viewerRole === "owner" || viewerRole === "admin";
   const isOwner = viewerRole === "owner";
-  const canManageMembers = viewerMode === "human" && (isOwner || viewerRole === "admin");
   const isLeaving = leavingRoomId === roomId;
   const activeSubscription = initialSubscriptionProductId
     ? getActiveSubscription(initialSubscriptionProductId)
@@ -191,6 +190,8 @@ export default function RoomSettingsModal({
   const [joinPolicy, setJoinPolicy] = useState(initialJoinPolicy);
   const [defaultSend, setDefaultSend] = useState(initialDefaultSend);
   const [defaultInvite, setDefaultInvite] = useState(initialDefaultInvite);
+  const canManageMembers =
+    isOwner || viewerRole === "admin" || (Boolean(viewerRole) && defaultInvite);
   const [allowHumanSend, setAllowHumanSend] = useState(initialAllowHumanSend);
   const [maxMembers, setMaxMembers] = useState(
     initialMaxMembers == null ? "" : String(initialMaxMembers),
