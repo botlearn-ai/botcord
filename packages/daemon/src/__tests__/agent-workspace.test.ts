@@ -80,6 +80,31 @@ describe("ensureAgentWorkspace", () => {
     expect(existsSync(path.join(agentWorkspaceDir("ag_notes"), "notes", ".gitkeep"))).toBe(true);
   });
 
+  it("seeds bundled Claude Code skills under .claude/skills/", () => {
+    ensureAgentWorkspace("ag_skills", {});
+    const skillsDir = path.join(agentWorkspaceDir("ag_skills"), ".claude", "skills");
+    expect(existsSync(path.join(skillsDir, "botcord", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord-user-guide", "SKILL.md"))).toBe(true);
+  });
+
+  it("re-seeds skills on a second call so daemon upgrades propagate", () => {
+    ensureAgentWorkspace("ag_skill_upgrade", {});
+    const skillFile = path.join(
+      agentWorkspaceDir("ag_skill_upgrade"),
+      ".claude",
+      "skills",
+      "botcord",
+      "SKILL.md",
+    );
+    writeFileSync(skillFile, "stale content from a prior daemon version\n");
+
+    ensureAgentWorkspace("ag_skill_upgrade", {});
+
+    const reseeded = readFileSync(skillFile, "utf8");
+    expect(reseeded).not.toBe("stale content from a prior daemon version\n");
+    expect(reseeded).toContain("name: botcord");
+  });
+
   it("does not overwrite a user-modified memory.md on a second call", () => {
     ensureAgentWorkspace("ag_keep", {});
     const memoryPath = path.join(agentWorkspaceDir("ag_keep"), "memory.md");

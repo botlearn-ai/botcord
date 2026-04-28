@@ -19,6 +19,7 @@
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -28,8 +29,11 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import path from "node:path";
+
+const require = createRequire(import.meta.url);
 
 // Accepted agent id pattern. Enforced at every path-builder entry so a
 // malicious / malformed agentId (e.g. "../../etc") cannot escape
@@ -365,6 +369,48 @@ export function ensureAgentHermesWorkspace(agentId: string): {
 }
 
 /**
+ * Bundled Claude Code skills shipped inside `@botcord/cli/skills/`. Seeded
+ * into every agent workspace so the spawned `claude` runtime (which loads
+ * `.claude/` via `--setting-sources project`) can discover the BotCord CLI
+ * skill without any manual setup.
+ */
+const BUNDLED_CC_SKILLS = ["botcord", "botcord-user-guide"] as const;
+
+function resolveBundledCliSkillsRoot(): string | null {
+  try {
+    const pkgJsonPath = require.resolve("@botcord/cli/package.json");
+    const root = path.join(path.dirname(pkgJsonPath), "skills");
+    return existsSync(root) ? root : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Copy daemon-owned Claude Code skills into the workspace. Re-copied on every
+ * `ensureAgentWorkspace` call (force-overwrite) so daemon upgrades propagate;
+ * users wanting custom skills should pick a different directory name under
+ * `.claude/skills/` — those are not touched here.
+ */
+function seedClaudeCodeSkills(workspace: string): void {
+  const sourceRoot = resolveBundledCliSkillsRoot();
+  if (!sourceRoot) return;
+  const skillsDir = path.join(workspace, ".claude", "skills");
+  mkdirTolerant(path.join(workspace, ".claude"));
+  mkdirTolerant(skillsDir);
+  for (const name of BUNDLED_CC_SKILLS) {
+    const src = path.join(sourceRoot, name);
+    if (!existsSync(src)) continue;
+    const dst = path.join(skillsDir, name);
+    try {
+      cpSync(src, dst, { recursive: true, force: true, dereference: true });
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+/**
  * Idempotently create the agent's home / workspace / state directories and
  * seed the workspace Markdown files. Existing files are never overwritten —
  * users' edits to AGENTS.md, memory.md, etc. are preserved across calls.
@@ -392,6 +438,7 @@ export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void
   writeIfMissing(path.join(workspace, "memory.md"), MEMORY_MD);
   writeIfMissing(path.join(workspace, "task.md"), TASK_MD);
   writeIfMissing(path.join(notes, ".gitkeep"), "");
+  seedClaudeCodeSkills(workspace);
 }
 
 /** Patch fields accepted by {@link applyAgentIdentity}. `bio = null` clears it. */
