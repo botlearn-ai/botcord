@@ -550,8 +550,8 @@ export default function Sidebar() {
               </button>
               <button
                 onClick={() => setShowCreateRoom(true)}
-                title={tMsgHeader.createGroup}
-                aria-label={tMsgHeader.createGroup}
+                title={tMsgHeader.createRoom}
+                aria-label={tMsgHeader.createRoom}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
               >
                 <Users className="h-4 w-4" />

@@ -25,7 +25,7 @@ export default function JoinGuidePrompt({ roomId }: JoinGuidePromptProps) {
     getRoomSummary: state.getRoomSummary,
   })));
   const room = getRoomSummary(roomId);
-  const roomName = room?.name || t.groupNameFallback;
+  const roomName = room?.name || t.roomNameFallback;
   // Wait for overview to load before deciding — otherwise isJoined is
   // falsely false on first paint and the self-join guide flashes for members.
   if (!overview) return null;
