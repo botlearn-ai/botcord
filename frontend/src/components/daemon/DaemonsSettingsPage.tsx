@@ -332,6 +332,15 @@ export default function DaemonsSettingsPage() {
   const hasOffline = sorted.some((d) => d.status === "offline");
   const showInstallPanel = empty || hasOffline;
 
+  // Auto-detect daemons coming online while the install/reconnect banner is up.
+  useEffect(() => {
+    if (!showInstallPanel) return;
+    const id = window.setInterval(() => {
+      void refresh({ quiet: true });
+    }, 3_000);
+    return () => window.clearInterval(id);
+  }, [showInstallPanel, refresh]);
+
   const installLabels = empty
     ? {
         title: "No daemons connected yet",
