@@ -314,7 +314,6 @@ export default function CreateAgentDialog({
             labels={{
               title: t.noDaemonTitle,
               hint: t.noDaemonHint,
-              commandHint: t.commandHint,
               copy: t.copy,
               copied: t.copied,
               openActivate: t.openActivate,
@@ -473,7 +472,6 @@ function NoDaemonState({
   labels: {
     title: string;
     hint: string;
-    commandHint: string;
     copy: string;
     copied: string;
     openActivate: string;
@@ -491,7 +489,6 @@ function NoDaemonState({
       </div>
 
       <div>
-        <p className="mb-2 text-xs text-text-secondary">{labels.commandHint}</p>
         <div className="flex items-stretch gap-2">
           <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xl border border-glass-border bg-deep-black px-3 py-2 font-mono text-xs text-text-primary">
             {command}
