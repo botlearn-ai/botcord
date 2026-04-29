@@ -1,28 +1,95 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { transferDialog } from '@/lib/i18n/translations/dashboard';
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
 
 interface TransferDialogProps {
+  /**
+   * Identity that owns the wallet sending the transfer. ``null`` follows the
+   * global active identity. The picker excludes this id so users can't
+   * select the source as the recipient.
+   */
+  viewer?: ActiveIdentity | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function TransferDialog({ onClose, onSuccess }: TransferDialogProps) {
+interface RecipientOption {
+  /** Stable key for <option> elements (group + id). */
+  key: string;
+  /** Display label rendered inline. */
+  label: string;
+  /** Owner id — `ag_*` or `hu_*`. Backend ``_assert_owner_exists`` accepts both. */
+  id: string;
+}
+
+export default function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
   const locale = useLanguage();
   const t = transferDialog[locale];
-  const myAgentId = useDashboardChatStore((state) => state.overview?.agent?.agent_id ?? "");
-  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
+
+  const sessionStore = useDashboardSessionStore(
+    useShallow((s) => ({
+      activeIdentity: s.activeIdentity,
+      ownedAgents: s.ownedAgents,
+      human: s.human,
+      sessionMode: s.sessionMode,
+    })),
+  );
+  const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? [];
+
+  const senderIdentity: ActiveIdentity | null = viewer ?? sessionStore.activeIdentity;
+  const senderId = senderIdentity?.id ?? "";
+
+  // Build grouped recipient options. Backend transfer accepts agent and
+  // human owner ids interchangeably, so all three categories live in a
+  // single picker with optgroup labels.
+  const ownedBotOptions: RecipientOption[] = useMemo(() => {
+    return sessionStore.ownedAgents
+      .filter((a) => a.agent_id !== senderId)
+      .map((a) => ({
+        key: `bot:${a.agent_id}`,
+        label: `${a.display_name} · ${a.agent_id}`,
+        id: a.agent_id,
+      }));
+  }, [sessionStore.ownedAgents, senderId]);
+
+  const humanSelfOption: RecipientOption | null = useMemo(() => {
+    if (!sessionStore.human?.human_id) return null;
+    if (sessionStore.human.human_id === senderId) return null;
+    return {
+      key: `human:${sessionStore.human.human_id}`,
+      label: `${sessionStore.human.display_name} · ${sessionStore.human.human_id}`,
+      id: sessionStore.human.human_id,
+    };
+  }, [sessionStore.human, senderId]);
+
+  const contactOptions: RecipientOption[] = useMemo(() => {
+    return contacts
+      .filter((c) => c.contact_agent_id !== senderId)
+      .map((c) => ({
+        key: `contact:${c.contact_agent_id}`,
+        label: `${c.alias ?? c.display_name} · ${c.contact_agent_id}`,
+        id: c.contact_agent_id,
+      }));
+  }, [contacts, senderId]);
+
+  const isAuthed = sessionStore.sessionMode !== "guest";
   const [recipientId, setRecipientId] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  const handlePickRecipient = (value: string) => {
+    if (!value) return;
+    setRecipientId(value);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +100,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
       setError(t.recipientRequired);
       return;
     }
-    if (trimmedRecipient === myAgentId) {
+    if (trimmedRecipient === senderId) {
       setError(t.cannotTransferSelf);
       return;
     }
@@ -46,7 +113,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
 
     const amountMinor = Math.round(amountNum * 100);
 
-    if (!isAuthedReady) return;
+    if (!isAuthed) return;
     setSubmitting(true);
     try {
       await api.createTransfer({
@@ -54,7 +121,7 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
         amount_minor: String(amountMinor),
         memo: memo.trim() || undefined,
         idempotency_key: crypto.randomUUID(),
-      });
+      }, viewer);
       onSuccess();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -66,6 +133,9 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
       setSubmitting(false);
     }
   };
+
+  const hasShortcuts =
+    humanSelfOption !== null || ownedBotOptions.length > 0 || contactOptions.length > 0;
 
   return (
     <div
@@ -91,6 +161,40 @@ export default function TransferDialog({ onClose, onSuccess }: TransferDialogPro
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {hasShortcuts ? (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">
+                {t.pickRecipient}
+              </label>
+              <select
+                value={recipientId}
+                onChange={(e) => handlePickRecipient(e.target.value)}
+                className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+              >
+                <option value="">{t.pickRecipientDefault}</option>
+                {humanSelfOption ? (
+                  <optgroup label={t.groupHumanSelf}>
+                    <option value={humanSelfOption.id}>{humanSelfOption.label}</option>
+                  </optgroup>
+                ) : null}
+                {ownedBotOptions.length > 0 ? (
+                  <optgroup label={t.groupMyBots}>
+                    {ownedBotOptions.map((o) => (
+                      <option key={o.key} value={o.id}>{o.label}</option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {contactOptions.length > 0 ? (
+                  <optgroup label={t.groupContacts}>
+                    {contactOptions.map((o) => (
+                      <option key={o.key} value={o.id}>{o.label}</option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+            </div>
+          ) : null}
+
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">
               {t.recipientAgentId}

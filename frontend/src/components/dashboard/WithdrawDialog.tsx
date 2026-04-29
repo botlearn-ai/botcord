@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { withdrawDialog } from '@/lib/i18n/translations/dashboard';
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { Loader2 } from "lucide-react";
 
 const MIN_WITHDRAWAL_MINOR = 1000 * 100;
 
 interface WithdrawDialogProps {
+  /** Identity that owns the wallet to withdraw from. ``null`` follows global active identity. */
+  viewer?: ActiveIdentity | null;
   onClose: () => void;
   onSuccess: () => void;
   availableBalance: string;
@@ -22,10 +24,10 @@ function formatCoinAmount(minorStr: string): string {
   return major.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function WithdrawDialog({ onClose, onSuccess, availableBalance }: WithdrawDialogProps) {
+export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: WithdrawDialogProps) {
   const locale = useLanguage();
   const t = withdrawDialog[locale];
-  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
+  const isAuthed = useDashboardSessionStore((state) => state.sessionMode !== "guest");
   const [amount, setAmount] = useState("");
   const [destinationType, setDestinationType] = useState<"bank" | "usdt_trc20" | "paypal">("bank");
   const [accountName, setAccountName] = useState("");
@@ -77,7 +79,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
       return;
     }
 
-    if (!isAuthedReady) return;
+    if (!isAuthed) return;
     setSubmitting(true);
     try {
       await api.createWithdrawal({
@@ -85,7 +87,7 @@ export default function WithdrawDialog({ onClose, onSuccess, availableBalance }:
         destination_type: destinationType,
         destination,
         idempotency_key: crypto.randomUUID(),
-      });
+      }, viewer);
       onSuccess();
     } catch (err) {
       if (err instanceof ApiError) {
