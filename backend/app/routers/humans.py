@@ -369,6 +369,16 @@ def _split_prefix(participant_id: str) -> ParticipantType:
     raise HTTPException(status_code=400, detail="peer_id must be prefixed with ag_ or hu_")
 
 
+def _parse_contact_request_id(request_id: str) -> int:
+    raw = request_id
+    if raw.startswith("cr_"):
+        raw = raw[len("cr_") :]
+    try:
+        return int(raw)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Contact request not found")
+
+
 def _invite_url(code: str) -> str:
     return frontend_url(f"/i/{code}")
 
@@ -2029,7 +2039,7 @@ async def _reject_human_contact_request(
     response_model=HumanContactRequestResolveResponse,
 )
 async def accept_contact_request_as_human(
-    request_id: int,
+    request_id: str,
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2043,7 +2053,7 @@ async def accept_contact_request_as_human(
     me = user.human_id
 
     result = await db.execute(
-        select(ContactRequest).where(ContactRequest.id == request_id)
+        select(ContactRequest).where(ContactRequest.id == _parse_contact_request_id(request_id))
     )
     req = result.scalar_one_or_none()
     if req is None:
@@ -2066,7 +2076,7 @@ async def accept_contact_request_as_human(
     response_model=HumanContactRequestResolveResponse,
 )
 async def reject_contact_request_as_human(
-    request_id: int,
+    request_id: str,
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2075,7 +2085,7 @@ async def reject_contact_request_as_human(
     me = user.human_id
 
     result = await db.execute(
-        select(ContactRequest).where(ContactRequest.id == request_id)
+        select(ContactRequest).where(ContactRequest.id == _parse_contact_request_id(request_id))
     )
     req = result.scalar_one_or_none()
     if req is None:
