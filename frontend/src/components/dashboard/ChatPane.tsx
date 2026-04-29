@@ -115,7 +115,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
     if (sessionMode === "authed-ready") {
       void refreshOverview();
     }
-  }, [sessionMode, contactsView, refreshOverview]);
+  }, [sessionMode, refreshOverview]);
 
   const normalized = query.trim().toLowerCase();
   const filteredContacts = contacts.filter((item) => {

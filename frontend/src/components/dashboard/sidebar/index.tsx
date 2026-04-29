@@ -30,7 +30,6 @@ import AccountMenu from "../AccountMenu";
 import AddFriendModal from "../AddFriendModal";
 import CreateRoomModal from "../CreateRoomModal";
 import CreateAgentDialog from "../CreateAgentDialog";
-import SettingsModal from "../SettingsModal";
 import { PrimaryNavButton, SecondaryNavButton } from "./NavButtons";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
@@ -149,7 +148,6 @@ export default function Sidebar() {
   const isGuest = sessionStore.sessionMode === "guest";
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [refreshingBots, setRefreshingBots] = useState(false);
   const [createBotForDaemonId, setCreateBotForDaemonId] = useState<string | null>(null);
   const [agentsWithApprovals, setAgentsWithApprovals] = useState<Set<string>>(new Set());
@@ -375,10 +373,8 @@ export default function Sidebar() {
                 agentsWithApprovals={agentsWithApprovals}
                 onSwitchAgent={chatStore.switchActiveAgent}
                 onOpenCreateBot={() => setShowCreateBot(true)}
-                onOpenSettings={() => setShowSettings(true)}
                 onLogout={handleLogout}
               />
-              {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
             </>
           )}
         </div>

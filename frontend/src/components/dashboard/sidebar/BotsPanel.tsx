@@ -11,39 +11,51 @@ import { useDaemonStore } from "@/store/useDaemonStore";
 import { Bot, Plus, Settings2 } from "lucide-react";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import DeviceSettingsModal from "./DeviceSettingsModal";
+import AgentSettingsDrawer from "@/components/dashboard/AgentSettingsDrawer";
 import type { UserAgent } from "@/lib/types";
 
 interface AgentRowProps {
   bot: UserAgent;
   isSelected: boolean;
   onSelect: (agentId: string) => void;
+  onOpenSettings: (bot: UserAgent) => void;
 }
 
-function AgentRow({ bot, isSelected, onSelect }: AgentRowProps) {
+function AgentRow({ bot, isSelected, onSelect, onOpenSettings }: AgentRowProps) {
   return (
-    <button
-      onClick={() => onSelect(bot.agent_id)}
-      className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
-        isSelected
-          ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-          : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
-      }`}
-    >
-      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-glass-bg">
-        <Bot className="h-3.5 w-3.5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-medium">
-          {bot.display_name || bot.agent_id}
+    <div className="group relative">
+      <button
+        onClick={() => onSelect(bot.agent_id)}
+        className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-8 text-left transition-colors ${
+          isSelected
+            ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
+            : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
+        }`}
+      >
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-glass-bg">
+          <Bot className="h-3.5 w-3.5" />
         </span>
-        <span className="block truncate font-mono text-[10px] text-text-secondary/60">
-          {bot.agent_id}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-medium">
+            {bot.display_name || bot.agent_id}
+          </span>
+          <span className="block truncate font-mono text-[10px] text-text-secondary/60">
+            {bot.agent_id}
+          </span>
         </span>
-      </span>
-      {bot.ws_online && (
-        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-neon-green" />
-      )}
-    </button>
+        {bot.ws_online && (
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-neon-green" />
+        )}
+      </button>
+      <button
+        type="button"
+        title="Agent 设置"
+        onClick={(e) => { e.stopPropagation(); onOpenSettings(bot); }}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded opacity-0 text-text-secondary/40 transition-all group-hover:opacity-100 hover:bg-glass-bg hover:text-text-secondary"
+      >
+        <Settings2 className="h-3 w-3" />
+      </button>
+    </div>
   );
 }
 
@@ -77,6 +89,7 @@ export default function BotsPanel({
 
   const [showAddDevice, setShowAddDevice] = useState(false);
   const [deviceSettingsId, setDeviceSettingsId] = useState<string | null>(null);
+  const [agentSettingsBot, setAgentSettingsBot] = useState<UserAgent | null>(null);
 
   const handleSelectAgent = (agentId: string) => {
     setSelectedBotAgentId(agentId);
@@ -154,6 +167,7 @@ export default function BotsPanel({
                     bot={bot}
                     isSelected={selectedBotAgentId === bot.agent_id}
                     onSelect={handleSelectAgent}
+                    onOpenSettings={setAgentSettingsBot}
                   />
                 ))}
               </div>
@@ -182,6 +196,7 @@ export default function BotsPanel({
                 bot={bot}
                 isSelected={selectedBotAgentId === bot.agent_id}
                 onSelect={handleSelectAgent}
+                onOpenSettings={setAgentSettingsBot}
               />
             ))}
           </div>
@@ -258,6 +273,17 @@ export default function BotsPanel({
             await renameDaemon(deviceSettingsId, newLabel);
           }}
           onRefreshDaemons={onRefreshDaemons}
+        />
+      )}
+
+      {/* Agent settings drawer */}
+      {agentSettingsBot && (
+        <AgentSettingsDrawer
+          agentId={agentSettingsBot.agent_id}
+          displayName={agentSettingsBot.display_name}
+          bio={null}
+          onClose={() => setAgentSettingsBot(null)}
+          onSaved={() => setAgentSettingsBot(null)}
         />
       )}
     </div>

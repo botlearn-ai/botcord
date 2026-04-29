@@ -10,7 +10,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings } from "lucide-react";
+import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2 } from "lucide-react";
+import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
@@ -23,7 +24,6 @@ import MarkdownContent from "@/components/ui/MarkdownContent";
 import StreamBlocksView from "./StreamBlocksView";
 import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
-import AgentProfileEditModal from "./AgentProfileEditModal";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -70,7 +70,6 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
   const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
   const { setUserChatRoomId } = useDashboardUIStore();
-  const [editOpen, setEditOpen] = useState(false);
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
@@ -87,6 +86,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
 
   const [chatRoomName, setChatRoomName] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
+  const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const animatedRef = useRef<Set<string>>(new Set());
@@ -314,22 +314,22 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           {ownedAgent && (
             <button
               type="button"
-              onClick={() => setEditOpen(true)}
-              title="Edit bot profile"
+              onClick={() => setAgentSettingsOpen(true)}
+              title="Agent 设置"
               className="rounded-md border border-transparent p-1 text-text-secondary transition-colors hover:border-glass-border hover:text-neon-cyan"
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Settings2 className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
       </div>
 
-      {editOpen && ownedAgent && (
-        <AgentProfileEditModal
+      {agentSettingsOpen && ownedAgent && (
+        <AgentSettingsDrawer
           agentId={ownedAgent.agent_id}
-          initialDisplayName={ownedAgent.display_name}
-          initialBio={ownedAgent.bio ?? null}
-          onClose={() => setEditOpen(false)}
+          displayName={ownedAgent.display_name}
+          bio={ownedAgent.bio ?? null}
+          onClose={() => setAgentSettingsOpen(false)}
         />
       )}
 

@@ -25,7 +25,6 @@ import {
   roomPollInFlight,
   toRoomSummary,
 } from "@/store/dashboard-shared";
-import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
@@ -504,7 +503,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         try {
           const overview = await api.getOverview();
           get().replaceOverview(overview);
-          await useDashboardContactStore.getState().loadContactRequests();
           if (openedRoomId) {
             void get().loadRoomMessages(openedRoomId);
           }
