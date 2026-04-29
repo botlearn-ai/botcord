@@ -57,6 +57,30 @@ import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
 import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
 
+/**
+ * Information passed to {@link OnAgentInstalledHook} after a successful
+ * provision. Mirrors the credential fields the daemon's per-agent caches
+ * (`credentialPathByAgentId`, `hubUrlByAgentId`, `displayNameByAgent`) read at
+ * boot — fired again here so hot-provisioned agents land in those caches
+ * without waiting for a daemon restart.
+ */
+export interface InstalledAgentInfo {
+  agentId: string;
+  credentialsFile: string;
+  hubUrl: string;
+  displayName?: string;
+  runtime?: string;
+}
+
+/**
+ * Hook fired after `installLocalAgent` / `installExistingOpenclawBinding`
+ * finish successfully. Synchronous on purpose — the caller updates a few
+ * in-memory maps and we don't want a slow hook to delay the control-frame
+ * ack. Throwing from the hook is treated as a programmer error and
+ * surfaced; rollback of the install is the caller's responsibility.
+ */
+export type OnAgentInstalledHook = (info: InstalledAgentInfo) => void;
+
 /** Options accepted by {@link createProvisioner}. */
 export interface ProvisionerOptions {
   /** Live gateway handle used to hot-plug channels. */
@@ -74,6 +98,15 @@ export interface ProvisionerOptions {
    * extra round-trip.
    */
   policyResolver?: PolicyResolverLike;
+  /**
+   * Optional hook called after each successful agent install (whether via
+   * `provision_agent` or `installExistingOpenclawBinding`). The daemon
+   * wires this to write the new agent into its boot-seeded caches —
+   * without it, `room-context-fetcher` keeps emitting
+   * `daemon.room-context.no-credentials` for hot-provisioned agents until
+   * the next restart.
+   */
+  onAgentInstalled?: OnAgentInstalledHook;
 }
 
 /** The value a frame handler returns (minus the `id` which the channel fills in). */
@@ -90,6 +123,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
   const gateway = opts.gateway;
   const register = opts.register ?? BotCordClient.register;
   const policyResolver = opts.policyResolver;
+  const onAgentInstalled = opts.onAgentInstalled;
 
   return async (frame: ControlFrame): Promise<AckBody> => {
     daemonLog.debug("provision.dispatch", { type: frame.type, id: frame.id });
@@ -137,7 +171,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
           runtime: pickRuntime(params) ?? null,
           name: params.name ?? null,
         });
-        const agent = await provisionAgent(params, { gateway, register });
+        const agent = await provisionAgent(params, { gateway, register, onAgentInstalled });
         // Seed the policy resolver from the optional `defaultAttention` /
         // `attentionKeywords` fields (PR3, control-frame.ts). Hub builds that
         // don't yet emit these stay backwards-compatible — the resolver just
@@ -266,6 +300,7 @@ interface ProvisionedAgent {
 interface ProvisionCtx {
   gateway: Gateway;
   register: typeof BotCordClient.register;
+  onAgentInstalled?: OnAgentInstalledHook;
 }
 
 const openclawProvisionLocks = new Map<string, Promise<unknown>>();
@@ -428,6 +463,32 @@ async function installLocalAgent(
     throw err;
   }
 
+  // Update the daemon's boot-seeded per-agent caches in place. Without this
+  // a hot-provisioned agent keeps missing `credentialPathByAgentId` /
+  // `hubUrlByAgentId` / `displayNameByAgent` until the next daemon restart,
+  // and `room-context-fetcher` logs `daemon.room-context.no-credentials` on
+  // every turn for it (so the system-context loses the room block — member
+  // names, rule, role).
+  if (ctx.onAgentInstalled) {
+    try {
+      ctx.onAgentInstalled({
+        agentId: credentials.agentId,
+        credentialsFile,
+        hubUrl: credentials.hubUrl,
+        ...(credentials.displayName ? { displayName: credentials.displayName } : {}),
+        ...(credentials.runtime ? { runtime: credentials.runtime } : {}),
+      });
+    } catch (err) {
+      // Hook misbehavior must not fail the install — the agent is already
+      // on disk + in the gateway. Surface it loudly so the daemon owner
+      // notices the cache is out of sync.
+      daemonLog.error("provision.onAgentInstalled threw — caches may be stale", {
+        agentId: credentials.agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   daemonLog.info("agent provisioned", {
     agentId: credentials.agentId,
     credentialsFile,
@@ -490,6 +551,26 @@ async function installExistingOpenclawBinding(
     });
   }
   upsertManagedRouteForCredentials(credentials, cfg, ctx.gateway);
+  // Same cache-warmup as `installLocalAgent` — re-binding an existing
+  // openclaw agent at runtime should also land it in the daemon's
+  // per-agent maps, otherwise room-context lookups stay broken until
+  // restart.
+  if (ctx.onAgentInstalled) {
+    try {
+      ctx.onAgentInstalled({
+        agentId: credentials.agentId,
+        credentialsFile,
+        hubUrl: credentials.hubUrl,
+        ...(credentials.displayName ? { displayName: credentials.displayName } : {}),
+        ...(credentials.runtime ? { runtime: credentials.runtime } : {}),
+      });
+    } catch (err) {
+      daemonLog.error("provision.onAgentInstalled threw — caches may be stale", {
+        agentId: credentials.agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   return {
     agentId: credentials.agentId,
     hubUrl: credentials.hubUrl,
@@ -658,9 +739,11 @@ export async function adoptDiscoveredOpenclawAgents(ctx: {
   cfg?: DaemonConfig;
   timeoutMs?: number;
   probe?: WsEndpointProbeFn;
+  onAgentInstalled?: OnAgentInstalledHook;
 }): Promise<AdoptDiscoveredOpenclawAgentsResult> {
   const register = ctx.register ?? BotCordClient.register;
   const cfg = ctx.cfg ?? loadConfig();
+  const onAgentInstalled = ctx.onAgentInstalled;
   const result: AdoptDiscoveredOpenclawAgentsResult = {
     adopted: [],
     skipped: [],
@@ -733,12 +816,14 @@ export async function adoptDiscoveredOpenclawAgents(ctx: {
           const credentials = await materializeCredentials(params, freshCfg, {
             gateway: ctx.gateway,
             register,
+            ...(onAgentInstalled ? { onAgentInstalled } : {}),
           }, undefined);
           const installed = await installLocalAgent(credentials, {
             gateway: ctx.gateway,
             register,
             cfg: freshCfg,
             source: "adopted-openclaw",
+            ...(onAgentInstalled ? { onAgentInstalled } : {}),
           });
           result.adopted.push(installed.agentId);
         } catch (err) {

@@ -12,11 +12,13 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  agentCodexHomeDir,
   agentHermesHomeDir,
   agentHomeDir,
   agentStateDir,
   agentWorkspaceDir,
   applyAgentIdentity,
+  ensureAgentCodexHome,
   ensureAgentHermesWorkspace,
   ensureAgentWorkspace,
 } from "../agent-workspace.js";
@@ -99,6 +101,30 @@ describe("ensureAgentWorkspace", () => {
     writeFileSync(skillFile, "stale content from a prior daemon version\n");
 
     ensureAgentWorkspace("ag_skill_upgrade", {});
+
+    const reseeded = readFileSync(skillFile, "utf8");
+    expect(reseeded).not.toBe("stale content from a prior daemon version\n");
+    expect(reseeded).toContain("name: botcord");
+  });
+
+  it("seeds bundled skills under codex-home/skills/ so per-agent CODEX_HOME sees them", () => {
+    ensureAgentWorkspace("ag_codex_skills", {});
+    const skillsDir = path.join(agentCodexHomeDir("ag_codex_skills"), "skills");
+    expect(existsSync(path.join(skillsDir, "botcord", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord-user-guide", "SKILL.md"))).toBe(true);
+  });
+
+  it("re-seeds codex skills on subsequent ensureAgentCodexHome calls", () => {
+    ensureAgentCodexHome("ag_codex_reseed");
+    const skillFile = path.join(
+      agentCodexHomeDir("ag_codex_reseed"),
+      "skills",
+      "botcord",
+      "SKILL.md",
+    );
+    writeFileSync(skillFile, "stale content from a prior daemon version\n");
+
+    ensureAgentCodexHome("ag_codex_reseed");
 
     const reseeded = readFileSync(skillFile, "utf8");
     expect(reseeded).not.toBe("stale content from a prior daemon version\n");
