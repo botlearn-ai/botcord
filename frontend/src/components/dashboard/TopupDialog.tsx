@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { topupDialog } from '@/lib/i18n/translations/dashboard';
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import type { StripePackageItem } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { Loader2 } from "lucide-react";
@@ -19,14 +19,19 @@ function formatFiat(amount: number): string {
 }
 
 interface TopupDialogProps {
+  /**
+   * Identity that owns the wallet receiving the topup. Defaults to the
+   * global active identity when ``null``.
+   */
+  viewer?: ActiveIdentity | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
+export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
   const locale = useLanguage();
   const t = topupDialog[locale];
-  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
+  const isAuthed = useDashboardSessionStore((state) => state.sessionMode !== "guest");
   const [packages, setPackages] = useState<StripePackageItem[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [packagesError, setPackagesError] = useState("");
@@ -61,7 +66,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
   };
 
   const handleCheckout = async () => {
-    if (!activePackage || !isAuthedReady) return;
+    if (!activePackage || !isAuthed) return;
     setError("");
     setSubmitting(true);
 
@@ -70,7 +75,7 @@ export default function TopupDialog({ onClose, onSuccess }: TopupDialogProps) {
         package_code: activePackage.package_code,
         idempotency_key: crypto.randomUUID(),
         quantity,
-      });
+      }, viewer);
       window.location.assign(res.checkout_url);
     } catch (err) {
       if (err instanceof ApiError) {

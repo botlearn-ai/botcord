@@ -191,7 +191,7 @@ async function getAccessToken(): Promise<string | null> {
   return session?.access_token ?? null;
 }
 
-async function buildAuthHeaders(): Promise<Record<string, string>> {
+async function buildAuthHeaders(identityOverride?: ActiveIdentity | null): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   const token = await getAccessToken();
   if (token) {
@@ -199,7 +199,9 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
   }
   // New identity model: only send X-Active-Agent when acting as an agent.
   // For type='human', the backend resolves human_id from the Supabase JWT.
-  const identity = getActiveIdentity();
+  // `identityOverride` lets per-call code (e.g. wallet viewer switcher)
+  // address a different owned identity without mutating global session state.
+  const identity = identityOverride !== undefined ? identityOverride : getActiveIdentity();
   if (identity?.type === "agent") {
     headers["X-Active-Agent"] = identity.id;
   }
@@ -207,25 +209,30 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * Pick the `?as=agent|human` query value for wallet APIs based on the
- * current active identity. Backend `_resolve_owner` uses this to choose
- * between `ctx.active_agent_id` (requires X-Active-Agent) and `ctx.human_id`
- * (resolved from Supabase JWT).
+ * Pick the `?as=agent|human` query value for wallet APIs based on a
+ * (possibly overridden) identity. Backend `_resolve_owner` uses this to
+ * choose between `ctx.active_agent_id` (requires X-Active-Agent) and
+ * `ctx.human_id` (resolved from Supabase JWT).
  */
-function currentWalletAs(): "agent" | "human" {
-  return getActiveIdentity()?.type === "human" ? "human" : "agent";
+function walletAsParam(identityOverride?: ActiveIdentity | null): "agent" | "human" {
+  const id = identityOverride !== undefined ? identityOverride : getActiveIdentity();
+  return id?.type === "human" ? "human" : "agent";
 }
 
 // --- Core request helpers ---
 
-async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+async function apiGet<T>(
+  path: string,
+  params?: Record<string, string>,
+  identityOverride?: ActiveIdentity | null,
+): Promise<T> {
   const url = new URL(path, API_BASE);
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null) url.searchParams.set(k, v);
     });
   }
-  const headers = await buildAuthHeaders();
+  const headers = await buildAuthHeaders(identityOverride);
   const res = await fetch(url.toString(), { headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -234,8 +241,12 @@ async function apiGet<T>(path: string, params?: Record<string, string>): Promise
   return res.json();
 }
 
-async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
+async function apiPost<T>(
+  path: string,
+  body?: unknown,
+  identityOverride?: ActiveIdentity | null,
+): Promise<T> {
+  const headers: Record<string, string> = { ...(await buildAuthHeaders(identityOverride)) };
   const init: RequestInit = { method: "POST", headers };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -578,37 +589,64 @@ export const api = {
   },
 
   // --- Wallet APIs ---
+  //
+  // All wallet methods accept an optional ``viewer`` (ActiveIdentity) so the
+  // wallet UI can switch between the user's owned identities (their human +
+  // owned bots) without mutating global session state. When omitted, the
+  // backend resolves the owner from the global active identity.
 
-  getWallet() {
-    return apiGet<WalletSummary>("/api/wallet/summary", { as: currentWalletAs() });
+  getWallet(viewer?: ActiveIdentity | null) {
+    return apiGet<WalletSummary>(
+      "/api/wallet/summary",
+      { as: walletAsParam(viewer) },
+      viewer,
+    );
   },
 
-  getWalletLedger(opts?: { cursor?: string; limit?: number }) {
-    const params: Record<string, string> = { as: currentWalletAs() };
+  getWalletLedger(opts?: { cursor?: string; limit?: number; viewer?: ActiveIdentity | null }) {
+    const params: Record<string, string> = { as: walletAsParam(opts?.viewer) };
     if (opts?.cursor) params.cursor = opts.cursor;
     if (opts?.limit) params.limit = String(opts.limit);
-    return apiGet<WalletLedgerResponse>("/api/wallet/ledger", params);
+    return apiGet<WalletLedgerResponse>("/api/wallet/ledger", params, opts?.viewer);
   },
 
-  createTransfer(payload: CreateTransferRequest) {
-    return apiPost<WalletTransaction>(`/api/wallet/transfers?as=${currentWalletAs()}`, payload);
+  createTransfer(payload: CreateTransferRequest, viewer?: ActiveIdentity | null) {
+    return apiPost<WalletTransaction>(
+      `/api/wallet/transfers?as=${walletAsParam(viewer)}`,
+      payload,
+      viewer,
+    );
   },
 
-  createTopup(payload: CreateTopupRequest) {
-    return apiPost<TopupResponse>(`/api/wallet/topups?as=${currentWalletAs()}`, payload);
+  createTopup(payload: CreateTopupRequest, viewer?: ActiveIdentity | null) {
+    return apiPost<TopupResponse>(
+      `/api/wallet/topups?as=${walletAsParam(viewer)}`,
+      payload,
+      viewer,
+    );
   },
 
-  createWithdrawal(payload: CreateWithdrawalRequest) {
-    return apiPost<WithdrawalResponse>(`/api/wallet/withdrawals?as=${currentWalletAs()}`, payload);
+  createWithdrawal(payload: CreateWithdrawalRequest, viewer?: ActiveIdentity | null) {
+    return apiPost<WithdrawalResponse>(
+      `/api/wallet/withdrawals?as=${walletAsParam(viewer)}`,
+      payload,
+      viewer,
+    );
   },
 
-  getWithdrawals() {
-    return apiGet<WithdrawalListResponse>("/api/wallet/withdrawals", { as: currentWalletAs() });
+  getWithdrawals(viewer?: ActiveIdentity | null) {
+    return apiGet<WithdrawalListResponse>(
+      "/api/wallet/withdrawals",
+      { as: walletAsParam(viewer) },
+      viewer,
+    );
   },
 
-  cancelWithdrawal(withdrawalId: string) {
+  cancelWithdrawal(withdrawalId: string, viewer?: ActiveIdentity | null) {
     return apiPost<{ withdrawal_id: string; status: string }>(
-      `/api/wallet/withdrawals/${withdrawalId}/cancel?as=${currentWalletAs()}`,
+      `/api/wallet/withdrawals/${withdrawalId}/cancel?as=${walletAsParam(viewer)}`,
+      undefined,
+      viewer,
     );
   },
 
@@ -618,18 +656,23 @@ export const api = {
     return apiGet<StripePackageResponse>("/api/wallet/stripe/packages");
   },
 
-  createStripeCheckoutSession(payload: StripeCheckoutRequest) {
+  createStripeCheckoutSession(payload: StripeCheckoutRequest, viewer?: ActiveIdentity | null) {
     return apiPost<StripeCheckoutResponse>(
-      `/api/wallet/stripe/checkout-session?as=${currentWalletAs()}`,
+      `/api/wallet/stripe/checkout-session?as=${walletAsParam(viewer)}`,
       payload,
+      viewer,
     );
   },
 
-  getStripeSessionStatus(sessionId: string) {
-    return apiGet<StripeSessionStatusResponse>("/api/wallet/stripe/session-status", {
-      session_id: sessionId,
-      as: currentWalletAs(),
-    });
+  getStripeSessionStatus(sessionId: string, viewer?: ActiveIdentity | null) {
+    return apiGet<StripeSessionStatusResponse>(
+      "/api/wallet/stripe/session-status",
+      {
+        session_id: sessionId,
+        as: walletAsParam(viewer),
+      },
+      viewer,
+    );
   },
 
   // --- Subscriptions ---
