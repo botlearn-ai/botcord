@@ -680,8 +680,11 @@ export default function DashboardApp() {
     });
     try {
       const human = await api.getPublicHuman(owner.humanId);
+      const localContact = (chatStore.overview?.contacts || []).some(
+        (item) => item.contact_agent_id === owner.humanId,
+      );
       const status =
-        human.contact_status === "contact" ? "exists"
+        human.contact_status === "contact" || localContact ? "exists"
         : human.contact_status === "pending" ? "pending"
         : "idle";
       setOwnerHumanCard({
@@ -738,9 +741,14 @@ export default function DashboardApp() {
   };
 
   const navigateToDmWith = (peerId: string, onClose: () => void) => {
-    const activeId = sessionStore.activeAgentId;
-    const dmRoomId = activeId
-      ? `rm_dm_${[activeId, peerId].sort().join("_")}`
+    // Pick the sender id based on view mode: human view uses the user's
+    // hu_*, agent view uses the active agent. DM ids encode both parties so
+    // the backend can ensure the room on first send.
+    const selfId = sessionStore.viewMode === "human"
+      ? sessionStore.human?.human_id ?? null
+      : sessionStore.activeAgentId;
+    const dmRoomId = selfId
+      ? `rm_dm_${[selfId, peerId].sort().join("_")}`
       : null;
     const dmRoom = dmRoomId
       ? chatStore.overview?.rooms.find((r) => r.room_id === dmRoomId)
