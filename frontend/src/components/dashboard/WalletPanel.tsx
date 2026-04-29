@@ -9,13 +9,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useLanguage } from '@/lib/i18n';
-import { walletPanel } from '@/lib/i18n/translations/dashboard';
+import { walletPanel, agentRequiredState } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
 import { api, ApiError } from "@/lib/api";
 import type { WithdrawalResponse } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import AgentRequiredState from "./AgentRequiredState";
 import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
@@ -32,6 +34,10 @@ export default function WalletPanel() {
   const locale = useLanguage();
   const t = walletPanel[locale];
   const tc = common[locale];
+  const tAgent = agentRequiredState[locale];
+  const isAgentIdentity = useDashboardSessionStore(
+    (state) => state.activeIdentity?.type === "agent",
+  );
   const {
     wallet,
     walletView,
@@ -65,10 +71,11 @@ export default function WalletPanel() {
   const view = walletView;
 
   useEffect(() => {
+    if (!isAgentIdentity) return;
     if (!wallet && !walletError && !walletLoading) {
       void loadWallet();
     }
-  }, [wallet, walletError, walletLoading, loadWallet]);
+  }, [isAgentIdentity, wallet, walletError, walletLoading, loadWallet]);
 
   // Load ledger when switching to ledger view
   useEffect(() => {
@@ -98,6 +105,17 @@ export default function WalletPanel() {
     void loadWalletLedger();
     void loadWithdrawalRequests();
   }, [loadWallet, loadWalletLedger, loadWithdrawalRequests]);
+
+  if (!isAgentIdentity) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black px-6">
+        <AgentRequiredState
+          title={tAgent.selectAgentFirst}
+          description={tAgent.walletScopedToAgent}
+        />
+      </div>
+    );
+  }
 
   if (!wallet) {
     return (
