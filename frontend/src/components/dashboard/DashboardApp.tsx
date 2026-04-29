@@ -30,7 +30,7 @@ import AgentGateModal from "./AgentGateModal";
 import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import HumanCardModal from "./HumanCardModal";
-import Sidebar from "./Sidebar";
+import Sidebar from "./sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
