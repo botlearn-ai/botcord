@@ -316,7 +316,9 @@ async function provisionAgent(
   const explicitCwd = params.credentials?.cwd ?? params.cwd;
   assertSafeCwd(explicitCwd);
 
-  const openclawSel = pickOpenclawSelection(params);
+  const initialCfg = loadConfig();
+  const openclawSel = await resolveProvisionOpenclawSelection(params, initialCfg);
+  const resolvedParams = withResolvedOpenclawSelection(params, openclawSel);
   if (openclawSel.gateway && openclawSel.agent) {
     return withOpenclawProvisionLock(openclawSel.gateway, openclawSel.agent, async () => {
       const existing = findCredentialsByOpenclaw(openclawSel.gateway!, openclawSel.agent!);
@@ -329,7 +331,7 @@ async function provisionAgent(
         return installExistingOpenclawBinding(existing.agentId, ctx);
       }
       const cfg = loadConfig();
-      const credentials = await materializeCredentials(params, cfg, ctx, explicitCwd);
+      const credentials = await materializeCredentials(resolvedParams, cfg, ctx, explicitCwd);
       return installLocalAgent(credentials, {
         ...ctx,
         cfg,
@@ -339,11 +341,10 @@ async function provisionAgent(
     });
   }
 
-  const cfg = loadConfig();
-  const credentials = await materializeCredentials(params, cfg, ctx, explicitCwd);
+  const credentials = await materializeCredentials(resolvedParams, initialCfg, ctx, explicitCwd);
   return installLocalAgent(credentials, {
     ...ctx,
-    cfg,
+    cfg: initialCfg,
     bio: params.bio,
     source: params.credentials ? "hub-supplied" : "registered",
   });
@@ -686,6 +687,67 @@ function pickOpenclawSelection(
     }
   }
   return out;
+}
+
+async function resolveProvisionOpenclawSelection(
+  params: ProvisionAgentParams,
+  cfg: DaemonConfig,
+): Promise<{ gateway?: string; agent?: string }> {
+  const out = pickOpenclawSelection(params);
+  if (!out.gateway || out.agent) return out;
+
+  const profile = (cfg.openclawGateways ?? []).find((g) => g.name === out.gateway);
+  if (!profile) return out;
+
+  const prepared = prepareGatewayProfile(profile);
+  if (prepared.defaultAgent) {
+    out.agent = prepared.defaultAgent;
+    return out;
+  }
+
+  if (isLoopbackUrl(prepared.url)) {
+    const localAgents = readLocalOpenclawAgents();
+    const defaultAgent = localAgents?.find((a) => a.id === "default") ?? (localAgents?.length === 1 ? localAgents[0] : undefined);
+    if (defaultAgent) {
+      out.agent = defaultAgent.id;
+      return out;
+    }
+  }
+
+  try {
+    const probeResult = await probeOpenclawAgents(prepared);
+    if (probeResult.ok) {
+      const agents = probeResult.agents ?? [];
+      const defaultAgent = agents.find((a) => a.id === "default") ?? (agents.length === 1 ? agents[0] : undefined);
+      if (defaultAgent) {
+        out.agent = defaultAgent.id;
+        return out;
+      }
+    }
+  } catch (err) {
+    daemonLog.debug("provision_agent: openclaw default probe failed", {
+      gateway: out.gateway,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  if (isLoopbackUrl(prepared.url)) out.agent = "default";
+  return out;
+}
+
+function withResolvedOpenclawSelection(
+  params: ProvisionAgentParams,
+  selection: { gateway?: string; agent?: string },
+): ProvisionAgentParams {
+  if (!selection.gateway) return params;
+  return {
+    ...params,
+    openclaw: {
+      ...(params.openclaw ?? {}),
+      gateway: selection.gateway,
+      ...(selection.agent ? { agent: selection.agent } : {}),
+    },
+  };
 }
 
 async function withOpenclawProvisionLock<T>(
@@ -1294,7 +1356,7 @@ function readLocalOpenclawAgents(): Array<{
 }> | null {
   try {
     const file = path.join(homedir(), ".openclaw", "openclaw.json");
-    if (!existsSync(file)) return null;
+    if (!existsSync(file)) return [{ id: "default" }];
     const cfg = JSON.parse(readFileSync(file, "utf8")) as any;
     const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
     const defaultId = typeof cfg?.agents?.defaults?.id === "string" ? cfg.agents.defaults.id : "default";

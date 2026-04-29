@@ -169,14 +169,9 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
         "openclaw-acp: missing gateway endpoint (route.gateway not resolved)",
       );
     }
-    if (!gateway.openclawAgent) {
-      return failResult(
-        opts.sessionId ?? "",
-        `openclaw-acp: gateway "${gateway.name}" did not resolve an openclawAgent (set defaultAgent on the profile or openclawAgent on the route)`,
-      );
-    }
+    const openclawAgent = gateway.openclawAgent ?? "default";
     const sessionKey = buildAcpSessionKey({
-      openclawAgent: gateway.openclawAgent,
+      openclawAgent,
       accountId: opts.accountId,
       // The dispatcher passes `context.conversationKey` in for routing;
       // fall back to a stable per-accountId key when it's not present (e.g.

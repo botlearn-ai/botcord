@@ -1228,6 +1228,40 @@ export class Dispatcher {
       const finalTextField = truncateTextField(result.text || "");
 
       if (!replyText) {
+        if (result.error) {
+          this.log.warn("dispatcher: runtime returned error without reply text", {
+            agentId: msg.accountId,
+            roomId: msg.conversation.id,
+            topicId: msg.conversation.threadId ?? null,
+            turnId,
+            runtime: route.runtime,
+            error: result.error,
+          });
+          if (isOwnerChat) {
+            const sendResult = await this.sendReply(channel, {
+              channel: msg.channel,
+              accountId: msg.accountId,
+              conversationId: msg.conversation.id,
+              threadId: msg.conversation.threadId ?? null,
+              text: `⚠️ Runtime error: ${truncate(result.error, 500)}`,
+              replyTo: msg.id,
+              traceId: msg.trace?.id ?? null,
+            }, turnId);
+            this.emitOutbound({
+              turnId,
+              msg,
+              runtime: route.runtime,
+              runtimeSessionId: result.newSessionId || null,
+              startedAt: slot.dispatchedAt,
+              costUsd: result.costUsd,
+              finalText: finalTextField,
+              deliveryStatus: sendResult.ok ? "delivered" : "send_failed",
+              deliveryReason: sendResult.ok ? null : sendResult.error,
+              blocks: slot.blocks,
+            });
+            return;
+          }
+        }
         this.emitOutbound({
           turnId,
           msg,
@@ -1237,7 +1271,7 @@ export class Dispatcher {
           costUsd: result.costUsd,
           finalText: finalTextField,
           deliveryStatus: "empty_text",
-          deliveryReason: null,
+          deliveryReason: result.error ?? null,
           blocks: slot.blocks,
         });
         return;
