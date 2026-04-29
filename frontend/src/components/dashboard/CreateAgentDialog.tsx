@@ -256,7 +256,6 @@ export default function CreateAgentDialog({
               hint: t.noDaemonHint,
               copy: t.copy,
               copied: t.copied,
-              openActivate: t.openActivate,
               refresh: t.refreshDaemons,
             }}
           />
@@ -270,8 +269,7 @@ export default function CreateAgentDialog({
                 hint: t.addDeviceHint,
                 copy: t.copy,
                 copied: t.copied,
-                openActivate: t.openActivate,
-                refresh: t.refreshDaemons,
+                  refresh: t.refreshDaemons,
               }}
             />
             <button

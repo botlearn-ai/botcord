@@ -10,11 +10,9 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
   Check,
   Copy,
-  ExternalLink,
   Loader2,
   RefreshCcw,
   Server,
@@ -41,7 +39,6 @@ export interface DaemonInstallCommandLabels {
   hint: string;
   copy: string;
   copied: string;
-  openActivate: string;
   refresh: string;
   installTokenError?: string;
 }
@@ -166,14 +163,7 @@ export default function DaemonInstallCommand({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <Link
-          href="/activate"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-neon-cyan hover:underline"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          {labels.openActivate}
-        </Link>
+      <div className="flex items-center justify-end gap-3">
         <button
           type="button"
           onClick={handleRefresh}

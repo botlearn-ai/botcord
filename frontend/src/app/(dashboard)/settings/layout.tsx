@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, MessageSquare, Server } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 function SettingsNavLink({
@@ -80,12 +80,6 @@ export default function SettingsLayout({
           <span className="text-sm font-bold text-neon-cyan">Settings</span>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          <SettingsNavLink
-            href="/settings/daemons"
-            icon={<Server className="h-4 w-4" />}
-          >
-            Daemons
-          </SettingsNavLink>
           <SettingsNavLink
             href="/settings/policy"
             icon={<MessageSquare className="h-4 w-4" />}

@@ -25,6 +25,7 @@ interface AccountMenuProps {
   pendingRequests: number;
   onSwitchAgent: (agentId: string) => Promise<void> | void;
   onOpenCreateBot: () => void;
+  onOpenSettings: () => void;
   onLogout: () => void;
 }
 
@@ -45,6 +46,7 @@ export default function AccountMenu({
   pendingRequests,
   onSwitchAgent,
   onOpenCreateBot,
+  onOpenSettings,
   onLogout,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
@@ -222,7 +224,7 @@ export default function AccountMenu({
 
             <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
             <DropdownMenu.Item
-              onClick={() => { window.location.href = "/settings/daemons"; }}
+              onClick={onOpenSettings}
               className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-text-primary focus:bg-neon-cyan/10 focus:text-neon-cyan"
             >
               <Settings className="mr-2 h-4 w-4 text-neon-cyan" />
