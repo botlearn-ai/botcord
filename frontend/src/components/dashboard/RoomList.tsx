@@ -12,7 +12,7 @@ import { roomList } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
-import { DashboardRoom, HumanRoomSummary } from "@/lib/types";
+import { ContactInfo, DashboardRoom, HumanRoomSummary } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -56,6 +56,7 @@ interface RoomListProps {
 }
 
 const USER_CHAT_PATH = "/chats/messages/__user-chat__";
+const EMPTY_CONTACTS: ContactInfo[] = [];
 
 function buildRoomAvatarLabel(roomName: string): string {
   const normalized = roomName.trim();
@@ -114,7 +115,11 @@ export default function RoomList({
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
-  const contacts = useDashboardChatStore((state) => state.overview?.contacts ?? []);
+  // Reuse `overview` (already subscribed above) to derive contacts. Returning
+  // `state.overview?.contacts ?? []` from a fresh selector minted a new `[]`
+  // whenever overview is null, breaking Zustand's Object.is check and
+  // triggering React error #185 (max update depth).
+  const contacts = overview?.contacts ?? EMPTY_CONTACTS;
   const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
