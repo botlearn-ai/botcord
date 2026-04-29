@@ -790,7 +790,7 @@ export default function RoomSettingsModal({
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {canManageMembers && !isSelf && member.role !== "owner" && (
+                              {isOwner && !isSelf && member.role !== "owner" && (
                                 confirmRemoveId === member.agent_id ? (
                                   <>
                                     <button
