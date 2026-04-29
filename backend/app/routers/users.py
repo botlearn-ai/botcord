@@ -1909,6 +1909,10 @@ class ProvisionAgentBody(BaseModel):
     # synthesized managed route can resolve a `ResolvedOpenclawGateway`.
     openclaw_gateway: str | None = None
     openclaw_agent: str | None = None
+    # Hermes profile to attach to. Only meaningful when `runtime ==
+    # "hermes-agent"` — daemon enforces 1 BotCord agent : 1 hermes profile
+    # and rejects with `hermes_profile_occupied` when already bound.
+    hermes_profile: str | None = None
 
 
 class ProvisionAgentResponse(BaseModel):
@@ -1923,6 +1927,7 @@ def _daemon_lists_runtime(
     instance: DaemonInstance,
     runtime: str,
     openclaw_gateway: str | None = None,
+    hermes_profile: str | None = None,
 ) -> bool:
     """Check that the daemon's last runtime probe lists `runtime` as available.
 
@@ -1955,6 +1960,25 @@ def _daemon_lists_runtime(
                 if not isinstance(ep, dict):
                     continue
                 if ep.get("name") == openclaw_gateway and ep.get("reachable") is True:
+                    return True
+            return False
+        if runtime == "hermes-agent" and hermes_profile:
+            # Mirror the openclaw gating: when a specific profile is selected,
+            # require it to appear in the snapshot's `profiles[]`. Daemon will
+            # still re-validate (existence + occupancy) under its per-profile
+            # lock, but rejecting here gives the dashboard a fast 409 instead
+            # of a 5s round-trip to the daemon.
+            profiles = entry.get("profiles")
+            if not isinstance(profiles, list):
+                # Empty / missing snapshot — let the daemon decide.
+                return True
+            for p in profiles:
+                if not isinstance(p, dict):
+                    continue
+                if p.get("name") == hermes_profile:
+                    occupied = p.get("occupiedBy")
+                    if isinstance(occupied, str) and occupied:
+                        return False
                     return True
             return False
         return True
@@ -1996,7 +2020,12 @@ async def provision_agent(
         raise HTTPException(status_code=409, detail="daemon_revoked")
     if not is_daemon_online(body.daemon_instance_id):
         raise HTTPException(status_code=409, detail="daemon_offline")
-    if not _daemon_lists_runtime(instance, runtime, body.openclaw_gateway):
+    if not _daemon_lists_runtime(
+        instance,
+        runtime,
+        body.openclaw_gateway,
+        body.hermes_profile,
+    ):
         raise HTTPException(status_code=409, detail="runtime_unavailable")
 
     # --- Quota check ---------------------------------------------------
@@ -2100,6 +2129,12 @@ async def provision_agent(
         frame_params["credentials"]["openclawGateway"] = body.openclaw_gateway
         if body.openclaw_agent:
             frame_params["credentials"]["openclawAgent"] = body.openclaw_agent
+    if body.hermes_profile:
+        # Same dual-write pattern as openclaw — top-level nested form for the
+        # daemon's runtime selector, flat credentials mirror for the offline
+        # reload path.
+        frame_params["hermes"] = {"profile": body.hermes_profile}
+        frame_params["credentials"]["hermesProfile"] = body.hermes_profile
 
     # Seed the daemon's policyResolver with the agent's default attention so
     # it has a real policy from message zero (no first-message refetch race).

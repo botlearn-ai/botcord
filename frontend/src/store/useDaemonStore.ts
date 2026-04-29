@@ -33,6 +33,19 @@ export interface DaemonRuntimeEndpoint {
   }>;
 }
 
+export interface DaemonHermesProfile {
+  name: string;
+  home: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  /** BotCord agent currently bound to this profile, if any. */
+  occupiedBy?: string;
+  occupiedByName?: string;
+  modelName?: string;
+  sessionsCount?: number;
+  hasSoul?: boolean;
+}
+
 export interface DaemonRuntime {
   id: string;
   available: boolean;
@@ -41,6 +54,8 @@ export interface DaemonRuntime {
   error?: string;
   /** OpenClaw-style runtimes carry per-gateway endpoint probe results. */
   endpoints?: DaemonRuntimeEndpoint[];
+  /** Hermes runtime carries the per-device profile listing (1 BotCord agent : 1 profile). */
+  profiles?: DaemonHermesProfile[];
 }
 
 export interface DaemonInstance {
@@ -63,6 +78,8 @@ export interface ProvisionAgentInput {
   openclawGateway?: string;
   /** OpenClaw agent profile override. */
   openclawAgent?: string;
+  /** Hermes profile name to attach to (only when runtime === "hermes-agent"). */
+  hermesProfile?: string;
 }
 
 export interface ProvisionAgentResult {
@@ -226,6 +243,34 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
           })
           .filter(Boolean) as DaemonRuntimeEndpoint[]
       : undefined;
+    const profiles = Array.isArray(r.profiles)
+      ? ((r.profiles as unknown[])
+          .map((rawP) => {
+            if (!rawP || typeof rawP !== "object") return null;
+            const p = rawP as Record<string, unknown>;
+            const name = typeof p.name === "string" ? p.name : null;
+            const home = typeof p.home === "string" ? p.home : null;
+            if (!name || !home) return null;
+            return {
+              name,
+              home,
+              isDefault: p.isDefault === true,
+              isActive: p.isActive === true,
+              occupiedBy:
+                typeof p.occupiedBy === "string" ? p.occupiedBy : undefined,
+              occupiedByName:
+                typeof p.occupiedByName === "string"
+                  ? p.occupiedByName
+                  : undefined,
+              modelName:
+                typeof p.modelName === "string" ? p.modelName : undefined,
+              sessionsCount:
+                typeof p.sessionsCount === "number" ? p.sessionsCount : undefined,
+              hasSoul: p.hasSoul === true,
+            } as DaemonHermesProfile;
+          })
+          .filter(Boolean) as DaemonHermesProfile[])
+      : undefined;
     out.push({
       id,
       available: r.available === true,
@@ -233,6 +278,7 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
       path: typeof r.path === "string" ? r.path : undefined,
       error: typeof r.error === "string" ? r.error : undefined,
       endpoints,
+      profiles,
     });
   }
   return out;
@@ -456,6 +502,7 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
     if (input.bio) body.bio = input.bio;
     if (input.openclawGateway) body.openclaw_gateway = input.openclawGateway;
     if (input.openclawAgent) body.openclaw_agent = input.openclawAgent;
+    if (input.hermesProfile) body.hermes_profile = input.hermesProfile;
 
     const res = await fetch("/api/users/me/agents/provision", {
       method: "POST",

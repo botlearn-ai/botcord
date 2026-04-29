@@ -12,6 +12,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   HermesAgentAdapter,
+  hermesProfileHomeDir,
+  listHermesProfiles,
   resolveHermesAcpCommand,
 } from "../runtimes/hermes-agent.js";
 import { agentHermesWorkspaceDir } from "../../agent-workspace.js";
@@ -365,5 +367,90 @@ describe("HermesAgentAdapter", () => {
     expect(status.some((s) => s.phase === "updated" && s.label === "Thinking")).toBe(true);
     // And the prompt-done thinking.stopped fires from the ACP base.
     expect(status.some((s) => s.phase === "stopped")).toBe(true);
+  });
+});
+
+describe("listHermesProfiles", () => {
+  it("returns the synthetic default entry when only ~/.hermes exists", () => {
+    // beforeAll set HOME to an empty tmp dir; create just ~/.hermes.
+    const root = path.join(agentHomeRoot, ".hermes");
+    mkdirSync(root, { recursive: true });
+    // Drop a config.yaml to exercise the optional model snapshot.
+    writeFileSync(
+      path.join(root, "config.yaml"),
+      "model:\n  default: anthropic/claude-opus-4.6\n  provider: custom\n",
+    );
+    writeFileSync(path.join(root, "SOUL.md"), "test soul");
+    mkdirSync(path.join(root, "sessions"), { recursive: true });
+    writeFileSync(path.join(root, "sessions", "20260101_abc.jsonl"), "{}\n");
+
+    const profiles = listHermesProfiles();
+    const def = profiles.find((p) => p.name === "default");
+    expect(def).toBeDefined();
+    expect(def?.isDefault).toBe(true);
+    expect(def?.home).toBe(root);
+    expect(def?.modelName).toBe("anthropic/claude-opus-4.6");
+    expect(def?.hasSoul).toBe(true);
+    expect(def?.sessionsCount).toBe(1);
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("enumerates named profiles and honours active_profile", () => {
+    const root = path.join(agentHomeRoot, ".hermes");
+    mkdirSync(path.join(root, "profiles", "coder"), { recursive: true });
+    mkdirSync(path.join(root, "profiles", "writer"), { recursive: true });
+    // Garbage / invalid profile names should be skipped.
+    mkdirSync(path.join(root, "profiles", "BadName"), { recursive: true });
+    writeFileSync(path.join(root, "active_profile"), "writer\n");
+
+    const profiles = listHermesProfiles();
+    const names = profiles.map((p) => p.name).sort();
+    expect(names).toEqual(["coder", "default", "writer"]);
+    const writer = profiles.find((p) => p.name === "writer");
+    expect(writer?.isActive).toBe(true);
+    expect(writer?.home).toBe(hermesProfileHomeDir("writer"));
+
+    rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("HermesAgentAdapter.spawnEnv attach mode", () => {
+  it("points HERMES_HOME at the user profile when hermesProfile is set", () => {
+    const adapter = new HermesAgentAdapter({ binary: "/dev/null" });
+    type EnvProbe = { HERMES_HOME?: string };
+    const env = (
+      adapter as unknown as {
+        spawnEnv: (opts: unknown) => EnvProbe;
+      }
+    ).spawnEnv({
+      text: "",
+      sessionId: null,
+      cwd: tmpRoot,
+      accountId: "ag_attach",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      hermesProfile: "coder",
+    });
+    expect(env.HERMES_HOME).toBe(hermesProfileHomeDir("coder"));
+  });
+
+  it("falls back to per-agent isolated home when hermesProfile is unset", () => {
+    const adapter = new HermesAgentAdapter({ binary: "/dev/null" });
+    type EnvProbe = { HERMES_HOME?: string };
+    const env = (
+      adapter as unknown as {
+        spawnEnv: (opts: unknown) => EnvProbe;
+      }
+    ).spawnEnv({
+      text: "",
+      sessionId: null,
+      cwd: tmpRoot,
+      accountId: "ag_isolated",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+    });
+    expect(env.HERMES_HOME).toContain(path.join(".botcord", "agents", "ag_isolated"));
+    expect(env.HERMES_HOME).not.toBe(hermesProfileHomeDir("default"));
   });
 });

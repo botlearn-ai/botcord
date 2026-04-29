@@ -84,6 +84,7 @@ export default function CreateAgentDialog({
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
   const [selectedGateway, setSelectedGateway] = useState<string | null>(null);
   const [selectedOpenclawAgent, setSelectedOpenclawAgent] = useState<string | null>(null);
+  const [selectedHermesProfile, setSelectedHermesProfile] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -147,6 +148,26 @@ export default function CreateAgentDialog({
     setSelectedGateway(reachable[0]?.name ?? null);
     setSelectedOpenclawAgent(null);
   }, [selectedRuntime, selectedRuntimeId, selectedGateway]);
+
+  // Auto-pick the first available hermes profile when the user lands on
+  // hermes-agent. Prefer the active profile, falling back to the first
+  // unoccupied entry. Reset when leaving the runtime.
+  useEffect(() => {
+    if (selectedRuntimeId !== "hermes-agent") {
+      setSelectedHermesProfile(null);
+      return;
+    }
+    const profiles = selectedRuntime?.profiles ?? [];
+    const stillAvailable =
+      selectedHermesProfile &&
+      profiles.some(
+        (p) => p.name === selectedHermesProfile && !p.occupiedBy,
+      );
+    if (stillAvailable) return;
+    const active = profiles.find((p) => p.isActive && !p.occupiedBy);
+    const firstFree = profiles.find((p) => !p.occupiedBy);
+    setSelectedHermesProfile((active ?? firstFree)?.name ?? null);
+  }, [selectedRuntime, selectedRuntimeId, selectedHermesProfile]);
 
   const showEmptyState = loaded && onlineDaemons.length === 0;
 
@@ -220,6 +241,9 @@ export default function CreateAgentDialog({
               ...(selectedOpenclawAgent ? { openclawAgent: selectedOpenclawAgent } : {}),
             }
           : {}),
+        ...(selectedRuntimeId === "hermes-agent" && selectedHermesProfile
+          ? { hermesProfile: selectedHermesProfile }
+          : {}),
       });
       await onSuccess(res.agentId);
       onClose();
@@ -231,10 +255,12 @@ export default function CreateAgentDialog({
   }
 
   const needsOpenclawGateway = selectedRuntimeId === "openclaw-acp";
+  const needsHermesProfile = selectedRuntimeId === "hermes-agent";
   const canSubmit =
     !!selectedDaemonId &&
     !!selectedRuntimeId &&
     (!needsOpenclawGateway || !!selectedGateway) &&
+    (!needsHermesProfile || !!selectedHermesProfile) &&
     !submitting;
 
   return (
@@ -370,6 +396,15 @@ export default function CreateAgentDialog({
                 }}
                 selectedAgent={selectedOpenclawAgent}
                 onSelectAgent={setSelectedOpenclawAgent}
+                disabled={submitting}
+              />
+            )}
+
+            {needsHermesProfile && (
+              <HermesProfilePicker
+                runtime={selectedRuntime}
+                selectedProfile={selectedHermesProfile}
+                onSelect={setSelectedHermesProfile}
                 disabled={submitting}
               />
             )}
@@ -650,6 +685,80 @@ function OpenclawGatewayPicker({
           </select>
         )}
       </div>
+    </div>
+  );
+}
+
+function HermesProfilePicker({
+  runtime,
+  selectedProfile,
+  onSelect,
+  disabled,
+}: {
+  runtime: DaemonRuntime | null;
+  selectedProfile: string | null;
+  onSelect: (name: string | null) => void;
+  disabled: boolean;
+}) {
+  const profiles = runtime?.profiles ?? [];
+  if (!runtime?.available) {
+    return null;
+  }
+  if (profiles.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-3 text-xs text-text-secondary">
+        No hermes profiles detected. Make sure hermes is installed and run{" "}
+        <code className="mx-1 font-mono">hermes profile create &lt;name&gt;</code>
+        on this device, then refresh runtimes.
+      </div>
+    );
+  }
+  const allOccupied = profiles.every((p) => !!p.occupiedBy);
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        Hermes profile
+      </label>
+      <select
+        disabled={disabled}
+        value={selectedProfile ?? ""}
+        onChange={(e) => onSelect(e.target.value || null)}
+        className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
+      >
+        <option value="" disabled>
+          Select a profile
+        </option>
+        {profiles.map((p) => {
+          const occupied = !!p.occupiedBy;
+          const labelParts: string[] = [p.name];
+          if (p.isDefault) labelParts.push("(default)");
+          if (p.modelName) labelParts.push(`— ${p.modelName}`);
+          if (occupied) {
+            labelParts.push(
+              `· bound to ${p.occupiedByName ?? p.occupiedBy ?? "another agent"}`,
+            );
+          } else if (p.isActive) {
+            labelParts.push("· active");
+          }
+          return (
+            <option key={p.name} value={p.name} disabled={occupied}>
+              {labelParts.join(" ")}
+            </option>
+          );
+        })}
+      </select>
+      <p className="mt-1 text-[11px] text-text-tertiary">
+        BotCord agent attaches to this profile&apos;s{" "}
+        <code className="font-mono">HERMES_HOME</code>; sessions, memory and
+        skills are shared with your command-line <code className="font-mono">hermes</code>.
+      </p>
+      {allOccupied && (
+        <p className="mt-1 text-[11px] text-orange-400">
+          All profiles are bound. Run{" "}
+          <code className="font-mono">hermes profile create &lt;name&gt; --clone</code>{" "}
+          on this device and refresh.
+        </p>
+      )}
     </div>
   );
 }

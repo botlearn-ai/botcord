@@ -562,7 +562,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
  */
 export interface BootBackfillResult {
   credentialPathByAgentId: Map<string, string>;
-  agentRuntimes: Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string }>;
+  agentRuntimes: Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }>;
 }
 
 /**
@@ -585,12 +585,13 @@ export function backfillBootAgents(
   const failed: string[] = [];
   for (const a of agents) {
     if (a.credentialsFile) credentialPathByAgentId.set(a.agentId, a.credentialsFile);
-    if (a.runtime || a.cwd || a.openclawGateway || a.openclawAgent) {
+    if (a.runtime || a.cwd || a.openclawGateway || a.openclawAgent || a.hermesProfile) {
       agentRuntimes[a.agentId] = {
         ...(a.runtime ? { runtime: a.runtime } : {}),
         ...(a.cwd ? { cwd: a.cwd } : {}),
         ...(a.openclawGateway ? { openclawGateway: a.openclawGateway } : {}),
         ...(a.openclawAgent ? { openclawAgent: a.openclawAgent } : {}),
+        ...(a.hermesProfile ? { hermesProfile: a.hermesProfile } : {}),
       };
     }
     // Seed files are written only when missing (see `ensureAgentWorkspace`),

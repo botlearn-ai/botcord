@@ -28,6 +28,13 @@ export interface ControlAck {
   error?: {
     code: string;
     message: string;
+    /**
+     * Optional structured details for error codes that carry context (e.g.
+     * `hermes_profile_occupied` carries `occupiedBy` + `profile`). Older
+     * consumers ignore unknown fields; new fields here must remain
+     * additive so wire compatibility is preserved.
+     */
+    [key: string]: unknown;
   };
 }
 
@@ -141,6 +148,15 @@ export interface ProvisionAgentParams {
     openclawGateway?: string;
     /** Optional OpenClaw agent profile override for this agent. */
     openclawAgent?: string;
+    /**
+     * Hermes profile name to attach this BotCord agent to. Only meaningful
+     * when `runtime === "hermes-agent"`. The daemon will set
+     * `HERMES_HOME=~/.hermes/profiles/<name>/` (or `~/.hermes` for `default`)
+     * on spawn so the BotCord agent shares state.db / sessions / skills with
+     * the user's command-line `hermes`. When unset, the daemon falls back to
+     * a BotCord-isolated HERMES_HOME under `~/.botcord/agents/<id>/`.
+     */
+    hermesProfile?: string;
   };
   /**
    * OpenClaw runtime parameters. When `runtime === "openclaw-acp"` the daemon
@@ -154,6 +170,17 @@ export interface ProvisionAgentParams {
     gateway: string;
     /** Overrides `OpenclawGatewayProfile.defaultAgent` for this agent. */
     agent?: string;
+  };
+  /**
+   * Hermes runtime parameters. When `runtime === "hermes-agent"` and
+   * `hermes.profile` is set, the daemon attaches the BotCord agent to the
+   * named hermes profile (1:1 mapping). Top-level nesting mirrors the
+   * `openclaw` cluster; the flat `credentials.hermesProfile` field exists
+   * for the same envelope-only reason.
+   */
+  hermes?: {
+    /** Hermes profile name (`~/.hermes/profiles/<name>/`); `"default"` → `~/.hermes`. */
+    profile: string;
   };
   /**
    * Optional initial attention policy seed. When the Hub already knows the
@@ -297,6 +324,51 @@ export interface RuntimeProbeResult {
    * `runtimes_json` blob.
    */
   endpoints?: RuntimeEndpointProbe[];
+  /**
+   * Optional list of hermes profiles available on this device. Populated only
+   * by the `hermes-agent` runtime; one entry per `~/.hermes/profiles/<name>/`
+   * directory plus a synthetic `default` entry for `~/.hermes` itself. The
+   * daemon attaches `occupiedBy` when a BotCord credential file already binds
+   * to that profile so picker UIs can render disabled rows. Older Hub builds
+   * that don't recognize this field pass it through opaquely (same precedent
+   * as `endpoints`).
+   */
+  profiles?: HermesProfileProbe[];
+}
+
+/**
+ * One hermes profile entry attached to a `RuntimeProbeResult` for the
+ * `hermes-agent` runtime. Daemon-side discovery is a pure local filesystem
+ * scan (`~/.hermes/profiles/*`); the synthetic `"default"` entry models
+ * `~/.hermes` itself per the upstream "default profile = HERMES_HOME"
+ * convention (`hermes_cli/profiles.py`).
+ */
+export interface HermesProfileProbe {
+  /** Profile name; `"default"` is reserved for `~/.hermes`. */
+  name: string;
+  /** Absolute HERMES_HOME for this profile. */
+  home: string;
+  /** True when this entry is the synthetic `~/.hermes` default. */
+  isDefault?: boolean;
+  /**
+   * True when this profile matches `~/.hermes/active_profile`. Picker UIs may
+   * use this to suggest a default selection.
+   */
+  isActive?: boolean;
+  /**
+   * BotCord agent id that already binds to this profile, when any. The
+   * daemon resolves this by scanning local `credentials/*.json` for matching
+   * `runtime === "hermes-agent"` + `hermesProfile === <name>` records.
+   */
+  occupiedBy?: string;
+  /** Display name of the occupying BotCord agent, if known. */
+  occupiedByName?: string;
+  /** Optional snapshot of the profile's default model (from `config.yaml`). */
+  modelName?: string;
+  /** Optional count of `sessions/*.jsonl` files. */
+  sessionsCount?: number;
+  /** Whether `SOUL.md` exists in the profile root. */
+  hasSoul?: boolean;
 }
 
 /**

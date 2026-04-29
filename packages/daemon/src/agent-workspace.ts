@@ -357,14 +357,25 @@ export function ensureAgentCodexHome(agentId: string): string {
  * loader (which only sees this isolated HERMES_HOME, not `~/.hermes`)
  * can discover them.
  */
-export function ensureAgentHermesWorkspace(agentId: string): {
+export function ensureAgentHermesWorkspace(
+  agentId: string,
+  opts: { attached?: boolean } = {},
+): {
   hermesHome: string;
   hermesWorkspace: string;
 } {
   const hermesHome = agentHermesHomeDir(agentId);
   const hermesWorkspace = agentHermesWorkspaceDir(agentId);
-  mkdirTolerant(hermesHome);
   mkdirTolerant(hermesWorkspace);
+  // Attach mode: HERMES_HOME points at the user's `~/.hermes/profiles/<n>/`
+  // so we MUST NOT touch the per-agent isolated home. The cwd
+  // (`hermesWorkspace`) is still ours and `prepareTurn` writes AGENTS.md
+  // there — that's the only thing the daemon is allowed to author when
+  // attached to a user-owned profile.
+  if (opts.attached) {
+    return { hermesHome, hermesWorkspace };
+  }
+  mkdirTolerant(hermesHome);
   writeIfMissing(
     path.join(hermesHome, ".env"),
     "# hermes-agent environment overrides for this BotCord agent.\n" +

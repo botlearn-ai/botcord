@@ -1050,6 +1050,7 @@ export class Dispatcher {
           onBlock,
           onStatus,
           gateway: route.gateway,
+          ...(route.hermesProfile ? { hermesProfile: route.hermesProfile } : {}),
         });
       } catch (err) {
         threw = err;
