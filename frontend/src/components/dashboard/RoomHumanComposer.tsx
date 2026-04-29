@@ -40,11 +40,11 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     : null;
   const placeholder = (viewMode === "agent" && activeAgent)
     ? locale === "zh"
-      ? `替我的 Agent · ${activeAgent.display_name} 发言…`
-      : `Speak on behalf of Agent · ${activeAgent.display_name}…`
+      ? `替我的 Agent · ${activeAgent.display_name} 发言，@ 可引用成员或群…`
+      : `Speak as Agent · ${activeAgent.display_name}… (@ to mention)`
     : locale === "zh"
-      ? `作为 ${displayName} 发言…`
-      : `Message as ${displayName}…`;
+      ? `作为 ${displayName} 发言，@ 可引用成员或群…`
+      : `Message as ${displayName}… (@ to mention)`;
   const senderId = human?.human_id ?? activeAgentId ?? "pending";
   const isObserverMode = viewMode === "agent";
 

@@ -546,7 +546,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
         <MessageComposer
           onSend={handleSend}
           allowAttachments
-          placeholder="Type a message..."
+          placeholder="输入消息，@ 可引用联系人或群..."
           mentionCandidates={mentionCandidates}
         />
       </div>
