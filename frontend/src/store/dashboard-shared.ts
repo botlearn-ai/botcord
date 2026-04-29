@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 dashboard 类型定义、@/lib/api 的 active-agent 工具与浏览器时间解析
- * [OUTPUT]: 对外提供 dashboard chat/unread/realtime store 共用的房间摘要与时间比较工具
+ * [OUTPUT]: 对外提供 dashboard chat/unread/realtime store 共用的房间摘要、合并与时间比较工具
  * [POS]: frontend store 层的共享基础模块，负责消除多 store 拆分后的重复逻辑
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -92,6 +92,32 @@ export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
   };
 }
 
+export function mergeDashboardRoomsWithHumanRooms(
+  agentRooms: DashboardRoom[],
+  humanRooms: HumanRoomSummary[],
+): DashboardRoom[] {
+  if (humanRooms.length === 0) {
+    return [...agentRooms].sort(compareRoomsByActivityDesc);
+  }
+
+  const seen = new Set(agentRooms.map((room) => room.room_id));
+  const humanOnlyRooms = humanRooms
+    .filter((room) => !seen.has(room.room_id))
+    .map(humanRoomToDashboardRoom);
+  return [...agentRooms, ...humanOnlyRooms].sort(compareRoomsByActivityDesc);
+}
+
+export function isRoomOwnedByCurrentViewer(
+  room: Pick<DashboardRoom, "owner_id" | "owner_type">,
+  viewer: { activeAgentId?: string | null; humanId?: string | null },
+): boolean {
+  const ownerType = room.owner_type ?? "agent";
+  if (ownerType === "human") {
+    return Boolean(viewer.humanId && room.owner_id === viewer.humanId);
+  }
+  return Boolean(viewer.activeAgentId && room.owner_id === viewer.activeAgentId);
+}
+
 export function buildVisibleMessageRooms(state: {
   overview: DashboardOverview | null;
   recentVisitedRooms: PublicRoom[];
@@ -107,12 +133,8 @@ export function buildVisibleMessageRooms(state: {
   const recentUnjoinedRooms = state.recentVisitedRooms
     .filter((room) => !joinedRoomIds.has(room.room_id) && !isOwnerChatRoom(room.room_id))
     .map(toRoomSummary);
-  const allKnownRoomIds = new Set([...joinedRoomIds, ...recentUnjoinedRooms.map((r) => r.room_id)]);
-  const humanOnlyRooms = (state.humanRooms || [])
-    .filter((r) => !allKnownRoomIds.has(r.room_id) && !isOwnerChatRoom(r.room_id))
-    .map(humanRoomToDashboardRoom);
-  const mergedRooms = [...joinedRooms, ...recentUnjoinedRooms, ...humanOnlyRooms].sort(compareRoomsByActivityDesc);
-  return mergedRooms;
+  const humanRooms = (state.humanRooms || []).filter((room) => !isOwnerChatRoom(room.room_id));
+  return mergeDashboardRoomsWithHumanRooms([...joinedRooms, ...recentUnjoinedRooms], humanRooms);
 }
 
 export function getLatestSeenAtForRoom(
