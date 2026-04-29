@@ -1068,6 +1068,41 @@ async def test_h2h_accept_creates_mutual_contacts(
 
 
 @pytest.mark.asyncio
+async def test_h2h_accept_direct_endpoint_accepts_prefixed_contact_request_id(
+    client, seed, db_session: AsyncSession
+):
+    """The UI may pass the merged approval id form (cr_<id>) to the direct
+    Human contact-request endpoint; it should resolve to the same row.
+    """
+    _, bob_human_id, bob_token = await _seed_second_human(db_session, "Bob")
+
+    resp = await client.post(
+        "/api/humans/me/contacts/request",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"peer_id": bob_human_id},
+    )
+    assert resp.status_code == 202
+
+    received = await client.get(
+        "/api/humans/me/contact-requests/received",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    req_id = received.json()["requests"][0]["id"]
+
+    accept = await client.post(
+        f"/api/humans/me/contact-requests/cr_{req_id}/accept",
+        headers={"Authorization": f"Bearer {bob_token}"},
+    )
+    assert accept.status_code == 200, accept.text
+    assert accept.json()["state"] == "accepted"
+
+    rows = list((await db_session.execute(select(Contact))).scalars().all())
+    pairs = {(c.owner_id, c.contact_agent_id) for c in rows}
+    assert (bob_human_id, seed["human_id"]) in pairs
+    assert (seed["human_id"], bob_human_id) in pairs
+
+
+@pytest.mark.asyncio
 async def test_h2h_request_surfaces_in_pending_approvals(
     client, seed, db_session: AsyncSession
 ):
