@@ -27,6 +27,7 @@ import {
   adoptDiscoveredOpenclawAgents,
   collectRuntimeSnapshot,
   createProvisioner,
+  type OnAgentInstalledHook,
 } from "./provision.js";
 import { openclawAutoProvisionEnabled } from "./openclaw-discovery.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
@@ -382,6 +383,34 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     });
   };
 
+  // Boot-seeded per-agent caches (`credentialPathByAgentId`,
+  // `hubUrlByAgentId`, `displayNameByAgent`, `scBuilders`) are scoped to
+  // the agents present at startup. Without this hook, agents added later
+  // via `provision_agent` or openclaw-adoption stay missing from those
+  // caches until the next daemon restart — `room-context-fetcher` then
+  // logs `daemon.room-context.no-credentials` on every turn for the new
+  // agent and the system context loses its `[BotCord Room]` block (member
+  // names, rule, role).
+  const onAgentInstalled: OnAgentInstalledHook = (info) => {
+    // Re-provision (e.g. credential rotation) overwrites in place so the
+    // next room-context fetch re-loads the BotCordClient against the new
+    // credential file.
+    credentialPathByAgentId.set(info.agentId, info.credentialsFile);
+    if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
+    if (info.displayName) displayNameByAgent.set(info.agentId, info.displayName);
+    if (!scBuilders.has(info.agentId)) {
+      scBuilders.set(
+        info.agentId,
+        createDaemonSystemContextBuilder({
+          agentId: info.agentId,
+          activityTracker,
+          roomContextBuilder,
+          loopRiskBuilder,
+        }),
+      );
+    }
+  };
+
   const gateway = new Gateway({
     config: gwConfig,
     sessionStorePath: opts.sessionStorePath ?? SESSIONS_PATH,
@@ -437,6 +466,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
       const adopted = await adoptDiscoveredOpenclawAgents({
         gateway,
         cfg: opts.config,
+        onAgentInstalled,
       });
       if (
         adopted.adopted.length > 0 ||
@@ -465,7 +495,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
       userId: userAuth.current.userId,
       hubUrl: userAuth.current.hubUrl,
     });
-    const provisioner = createProvisioner({ gateway, policyResolver });
+    const provisioner = createProvisioner({ gateway, policyResolver, onAgentInstalled });
     controlChannel = new ControlChannel({
       auth: userAuth,
       handle: provisioner,

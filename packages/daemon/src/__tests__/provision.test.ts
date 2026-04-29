@@ -778,6 +778,86 @@ describe("provision_agent seeds workspace + hot-adds managed route", () => {
       expect(gw.listManagedRoutes()).toHaveLength(0);
     });
   });
+
+  // Regression: the daemon's per-agent caches (credentialPathByAgentId,
+  // hubUrlByAgentId, displayNameByAgent) used to be seeded only at boot.
+  // Hot-provisioning then left those caches missing the new agent until the
+  // next restart, and `room-context-fetcher` logged
+  // `daemon.room-context.no-credentials` on every turn. This contract test
+  // pins the install path: a successful provision MUST fire the hook with
+  // the credential file + hub URL + display name.
+  it("fires onAgentInstalled after a successful install so daemon caches stay warm", async () => {
+    await withSandboxHome(async ({ tmp, path: nodePath }) => {
+      const gw = makeFakeGateway();
+      const installed: Array<Record<string, unknown>> = [];
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+        onAgentInstalled: (info) => {
+          installed.push({ ...info });
+        },
+      });
+      const privateKey = Buffer.alloc(32, 41).toString("base64");
+      const ack = await provisioner({
+        id: "req_hook",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          // `name` only flows into `displayName` on the slow (daemon-register)
+          // path. Hub's fast path carries it via `credentials.displayName`.
+          runtime: "claude-code",
+          credentials: {
+            agentId: "ag_hook",
+            keyId: "k_hook",
+            privateKey,
+            hubUrl: "https://hub.example",
+            displayName: "zhejian's cc",
+          },
+        },
+      });
+      expect(ack.ok).toBe(true);
+      expect(installed).toHaveLength(1);
+      const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_hook.json");
+      expect(installed[0]).toMatchObject({
+        agentId: "ag_hook",
+        credentialsFile: credFile,
+        hubUrl: "https://hub.example",
+        displayName: "zhejian's cc",
+        runtime: "claude-code",
+      });
+    });
+  });
+
+  // The hook is best-effort wiring, not part of the install transaction.
+  // A throwing hook must not roll back the install (the agent is already
+  // on disk and in the gateway), and must not flip the control-frame ack
+  // to failure — the operator only sees a loud error log.
+  it("does not roll back the install when onAgentInstalled throws", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+        onAgentInstalled: () => {
+          throw new Error("hook boom");
+        },
+      });
+      const privateKey = Buffer.alloc(32, 43).toString("base64");
+      const ack = await provisioner({
+        id: "req_hook_throws",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          credentials: {
+            agentId: "ag_hookboom",
+            keyId: "k_hb",
+            privateKey,
+            hubUrl: "https://hub.example",
+          },
+        },
+      });
+      expect(ack.ok).toBe(true);
+      const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_hookboom.json");
+      expect(fs.existsSync(credFile)).toBe(true);
+      expect(gw.listManagedRoutes()).toHaveLength(1);
+    });
+  });
 });
 
 describe("adoptDiscoveredOpenclawAgents", () => {

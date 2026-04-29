@@ -333,14 +333,18 @@ function isSymlink(p: string): boolean {
 }
 
 /**
- * Idempotently create the per-agent CODEX_HOME directory and link the
- * user's codex `auth.json` into it. Does NOT write an initial `AGENTS.md`
- * — the codex adapter writes it fresh per turn from `systemContext`.
+ * Idempotently create the per-agent CODEX_HOME directory, link the
+ * user's codex `auth.json` into it, and seed the bundled BotCord skills
+ * under `<dir>/skills/` so the codex runtime (which sees this as
+ * `CODEX_HOME`, not the user's `~/.codex`) can discover them. Does NOT
+ * write an initial `AGENTS.md` — the codex adapter writes it fresh per
+ * turn from `systemContext`.
  */
 export function ensureAgentCodexHome(agentId: string): string {
   const dir = agentCodexHomeDir(agentId);
   mkdirTolerant(dir);
   linkCodexAuth(dir);
+  seedCodexSkills(dir);
   return dir;
 }
 
@@ -369,12 +373,15 @@ export function ensureAgentHermesWorkspace(agentId: string): {
 }
 
 /**
- * Bundled Claude Code skills shipped inside `@botcord/cli/skills/`. Seeded
- * into every agent workspace so the spawned `claude` runtime (which loads
- * `.claude/` via `--setting-sources project`) can discover the BotCord CLI
- * skill without any manual setup.
+ * Bundled BotCord skills shipped inside `@botcord/cli/skills/`. Skill
+ * content (SKILL.md + helper scripts) is runtime-agnostic; only the
+ * discovery path differs:
+ *   - Claude Code: `<workspace>/.claude/skills/<name>/`
+ *   - Codex:       `<codex-home>/skills/<name>/`
+ * Seeded fresh per `ensureAgent*` call (force-overwrite) so daemon
+ * upgrades propagate.
  */
-const BUNDLED_CC_SKILLS = ["botcord", "botcord-user-guide"] as const;
+const BUNDLED_SKILLS = ["botcord", "botcord-user-guide"] as const;
 
 function resolveBundledCliSkillsRoot(): string | null {
   try {
@@ -387,27 +394,45 @@ function resolveBundledCliSkillsRoot(): string | null {
 }
 
 /**
- * Copy daemon-owned Claude Code skills into the workspace. Re-copied on every
- * `ensureAgentWorkspace` call (force-overwrite) so daemon upgrades propagate;
- * users wanting custom skills should pick a different directory name under
- * `.claude/skills/` — those are not touched here.
+ * Copy bundled skill directories into `destSkillsDir`, force-overwriting
+ * any prior copy of each named skill. Other entries in `destSkillsDir`
+ * are left alone so user-authored skills survive. Best-effort: silently
+ * skips on copy failure or when the bundled CLI isn't resolvable.
  */
-function seedClaudeCodeSkills(workspace: string): void {
+function copyBundledSkills(destSkillsDir: string): void {
   const sourceRoot = resolveBundledCliSkillsRoot();
   if (!sourceRoot) return;
-  const skillsDir = path.join(workspace, ".claude", "skills");
-  mkdirTolerant(path.join(workspace, ".claude"));
-  mkdirTolerant(skillsDir);
-  for (const name of BUNDLED_CC_SKILLS) {
+  mkdirTolerant(destSkillsDir);
+  for (const name of BUNDLED_SKILLS) {
     const src = path.join(sourceRoot, name);
     if (!existsSync(src)) continue;
-    const dst = path.join(skillsDir, name);
+    const dst = path.join(destSkillsDir, name);
     try {
       cpSync(src, dst, { recursive: true, force: true, dereference: true });
     } catch {
       /* best-effort */
     }
   }
+}
+
+/**
+ * Seed Claude Code's `.claude/skills/` discovery dir under the agent
+ * workspace. The `claude` adapter spawns with `--setting-sources project`
+ * so this dir is auto-discovered.
+ */
+function seedClaudeCodeSkills(workspace: string): void {
+  mkdirTolerant(path.join(workspace, ".claude"));
+  copyBundledSkills(path.join(workspace, ".claude", "skills"));
+}
+
+/**
+ * Seed Codex's `<CODEX_HOME>/skills/` discovery dir. The codex adapter
+ * sets `CODEX_HOME=<agent>/codex-home/`, isolating per-agent skills from
+ * the user's global `~/.codex/skills/` — so skills must be seeded here
+ * for Codex agents to discover them.
+ */
+function seedCodexSkills(codexHome: string): void {
+  copyBundledSkills(path.join(codexHome, "skills"));
 }
 
 /**
