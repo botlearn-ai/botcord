@@ -1042,7 +1042,9 @@ async def create_room_invite_as_human(
     )
     if inviter is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
-    if inviter.role not in (RoomRole.owner, RoomRole.admin) and not bool(
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = _effective_human_role(inviter.role, room, owned_agent_ids)
+    if effective_role not in (RoomRole.owner, RoomRole.admin) and not bool(
         inviter.can_invite or room.default_invite
     ):
         raise HTTPException(
@@ -1119,8 +1121,10 @@ async def invite_room_member_as_human(
     inviter = inviter_row.scalar_one_or_none()
     if inviter is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = _effective_human_role(inviter.role, room, owned_agent_ids)
     can_invite = (
-        inviter.role in (RoomRole.owner, RoomRole.admin)
+        effective_role in (RoomRole.owner, RoomRole.admin)
         or inviter.can_invite
         or room.default_invite
     )
