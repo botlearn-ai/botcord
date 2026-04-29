@@ -584,6 +584,44 @@ async def test_mentions_allow_at_all_and_drop_other_non_ag_prefix(
 
 
 @pytest.mark.asyncio
+async def test_mentions_allow_human_id(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    # Add Carol (uid3) as a Human RoomMember in rm_humanroom so she can be @-mentioned.
+    user_row = await db_session.execute(
+        select(User).where(User.email == "c@x.com")
+    )
+    carol = user_row.scalar_one()
+    carol_human_id = carol.human_id
+    assert carol_human_id and carol_human_id.startswith("hu_")
+    db_session.add(
+        RoomMember(
+            room_id="rm_humanroom",
+            agent_id=carol_human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        )
+    )
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": f"hey @{carol.display_name}", "mentions": [carol_human_id]},
+    )
+    assert r.status_code == 202, r.text
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
+    )).scalars().all()
+    by_receiver = {r.receiver_id: r for r in rows}
+    assert by_receiver[carol_human_id].mentioned is True
+    assert by_receiver["ag_user1___"].mentioned is False
+    env = json.loads(by_receiver[carol_human_id].envelope_json)
+    assert env["mentions"] == [carol_human_id]
+
+
+@pytest.mark.asyncio
 async def test_mentions_cap_at_20(client: AsyncClient, seed: dict):
     too_many = [f"ag_x{i:08d}" for i in range(21)]
     r = await client.post(

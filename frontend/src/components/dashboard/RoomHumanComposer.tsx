@@ -64,7 +64,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
   const mentionCandidates = useMemo<MentionCandidate[]>(() => {
     if (!allowAllMention) return [];
     const roomCandidates = members
-      .filter((m) => m.agent_id !== selfId && m.agent_id.startsWith("ag_"))
+      .filter((m) => m.agent_id !== selfId && (m.agent_id.startsWith("ag_") || m.agent_id.startsWith("hu_")))
       .map((m) => ({ agent_id: m.agent_id, display_name: m.display_name }));
     return [{ agent_id: "@all", display_name: "all" }, ...roomCandidates];
   }, [members, selfId, allowAllMention]);
