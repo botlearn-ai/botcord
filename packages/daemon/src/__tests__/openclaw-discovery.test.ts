@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultOpenclawDiscoveryPorts,
+  defaultOpenclawDiscoverySystemdUnitPaths,
   defaultOpenclawDiscoveryTokenFilePaths,
   discoverLocalOpenclawGateways,
   mergeOpenclawGateways,
@@ -144,6 +145,69 @@ describe("discoverLocalOpenclawGateways", () => {
         url: "ws://127.0.0.1:16200",
         token: "gateway-token",
         source: "env",
+      }),
+    ]);
+  });
+
+  it("discovers gateway port and token from a systemd OpenClaw unit", async () => {
+    const dir = tempDir();
+    const unit = path.join(dir, "openclaw.service");
+    writeFileSync(
+      unit,
+      [
+        "[Service]",
+        "User=openclaw",
+        'Environment="OPENCLAW_GATEWAY_TOKEN=systemd-token"',
+        "ExecStart=/usr/bin/openclaw gateway --bind lan --port 16200 --allow-unconfigured",
+      ].join("\n"),
+    );
+
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [],
+      defaultPorts: [],
+      systemdUnitPaths: [unit],
+      env: {},
+    });
+
+    expect(defaultOpenclawDiscoverySystemdUnitPaths()).toEqual(
+      expect.arrayContaining(["/etc/systemd/system/openclaw.service"]),
+    );
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:16200",
+        token: "systemd-token",
+        source: "systemd-unit",
+      }),
+    ]);
+  });
+
+  it("discovers gateway token from a systemd EnvironmentFile", async () => {
+    const dir = tempDir();
+    const unit = path.join(dir, "openclaw.service");
+    const envFile = path.join(dir, "openclaw.env");
+    writeFileSync(envFile, 'OPENCLAW_GATEWAY_TOKEN="file-token"\n');
+    writeFileSync(
+      unit,
+      [
+        "[Service]",
+        `EnvironmentFile=${envFile}`,
+        "Environment=OPENCLAW_GATEWAY_PORT=16200",
+        "ExecStart=/usr/bin/openclaw gateway --bind lan --allow-unconfigured",
+      ].join("\n"),
+    );
+
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [],
+      defaultPorts: [],
+      systemdUnitPaths: [unit],
+      env: {},
+    });
+
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:16200",
+        token: "file-token",
+        source: "systemd-unit",
       }),
     ]);
   });
