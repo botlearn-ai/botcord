@@ -15,6 +15,7 @@ import type {
 import { getActiveAgentId } from "@/lib/api";
 
 export const roomMessagesInFlight = new Set<string>();
+export const roomMessagesReloadPending = new Set<string>();
 export const roomPollInFlight = new Set<string>();
 
 export function toRoomSummary(room: PublicRoom): DashboardRoom {
@@ -84,9 +85,9 @@ export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
     slow_mode_seconds: r.slow_mode_seconds,
     last_viewed_at: null,
     has_unread: false,
-    last_message_preview: null,
-    last_message_at: null,
-    last_sender_name: null,
+    last_message_preview: r.last_message_preview ?? null,
+    last_message_at: r.last_message_at ?? null,
+    last_sender_name: r.last_sender_name ?? null,
     allow_human_send: r.allow_human_send,
     created_at: r.created_at,
   };
