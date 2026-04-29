@@ -28,6 +28,9 @@ const MAX_AUTH_FAILURES = 5;
 const SEEN_MESSAGES_CAP = 500;
 const OWNER_CHAT_PREFIX = "rm_oc_";
 const DM_ROOM_PREFIX = "rm_dm_";
+const INBOX_POLL_LIMIT = 50;
+
+type InboxDrainTrigger = "ws_auth_ok" | "ws_inbox_update" | "coalesced_inbox_update";
 
 /** Minimal surface the adapter needs from `BotCordClient`. Matches the subset used at runtime. */
 export interface BotCordChannelClient {
@@ -305,20 +308,43 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     client: BotCordChannelClient,
     emit: (env: GatewayInboundEnvelope) => Promise<void>,
     log: GatewayLogger,
+    trigger: InboxDrainTrigger,
   ): Promise<void> {
-    const resp = await client.pollInbox({ limit: 50, ack: false });
+    const startedAt = Date.now();
+    const resp = await client.pollInbox({ limit: INBOX_POLL_LIMIT, ack: false });
     const msgs = resp.messages ?? [];
-    log.info("botcord inbox drained", { count: msgs.length });
-    if (msgs.length === 0) return;
+    let duplicateCount = 0;
+    let skippedCount = 0;
+    let emittedGroups = 0;
+    const logDrain = () => {
+      log.info("botcord inbox drained", {
+        trigger,
+        count: msgs.length,
+        responseCount: resp.count,
+        hasMore: resp.has_more,
+        limit: INBOX_POLL_LIMIT,
+        ack: false,
+        eligibleCount: eligible.length,
+        duplicateCount,
+        skippedCount,
+        emittedGroups,
+        durationMs: Date.now() - startedAt,
+      });
+    };
+    const eligible: InboxMessage[] = [];
+    if (msgs.length === 0) {
+      logDrain();
+      return;
+    }
 
     // First pass: ack duplicates/skipped messages so Hub stops requeueing,
     // and collect eligible messages preserving poll order. Grouping by
     // `(room_id, topic)` mirrors plugin's `handleInboxMessageBatch` — the
     // same conversation thread folds into one turn so the agent sees all
     // new messages at once instead of running N turns back-to-back.
-    const eligible: InboxMessage[] = [];
     for (const msg of msgs) {
       if (!rememberSeen(msg.hub_msg_id)) {
+        duplicateCount += 1;
         try {
           await client.ackMessages([msg.hub_msg_id]);
         } catch (err) {
@@ -331,6 +357,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         accountId: options.accountId,
       });
       if (!normalized) {
+        skippedCount += 1;
         try {
           await client.ackMessages([msg.hub_msg_id]);
         } catch (err) {
@@ -341,7 +368,10 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       eligible.push(msg);
     }
 
-    if (eligible.length === 0) return;
+    if (eligible.length === 0) {
+      logDrain();
+      return;
+    }
 
     // Group by `(room_id, topic)`. Insertion order is the poll order, so
     // iterating the map yields groups with the same external chronology.
@@ -381,6 +411,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       };
       try {
         await emit(envelope);
+        emittedGroups += 1;
       } catch (err) {
         log.error("botcord emit threw", {
           hubMsgIds: hubIds,
@@ -388,6 +419,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         });
       }
     }
+    logDrain();
   }
 
   function startWsLoop(
@@ -429,16 +461,19 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       setStatus(patch);
     }
 
-    async function fireInbox() {
+    async function fireInbox(trigger: InboxDrainTrigger) {
       if (processing) {
         pendingUpdate = true;
+        log.debug("botcord inbox drain queued while previous drain is running", { trigger });
         return;
       }
       processing = true;
       try {
+        let currentTrigger = trigger;
         do {
           pendingUpdate = false;
-          await drainInbox(client, emit, log);
+          await drainInbox(client, emit, log, currentTrigger);
+          currentTrigger = "coalesced_inbox_update";
         } while (pendingUpdate && running);
       } catch (err) {
         log.error("botcord inbox drain failed", { err: String(err) });
@@ -521,7 +556,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
             lastError: null,
           });
           log.info("botcord ws authenticated", { agentId: msg.agent_id });
-          void fireInbox();
+          void fireInbox("ws_auth_ok");
           keepaliveTimer = setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
               try {
@@ -533,7 +568,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           }, KEEPALIVE_INTERVAL);
         } else if (msg.type === "inbox_update") {
           log.info("botcord ws inbox_update received");
-          void fireInbox();
+          void fireInbox("ws_inbox_update");
         } else if (msg.type === "heartbeat" || msg.type === "pong") {
           // no-op
         } else if (msg.type === "error" || msg.type === "auth_failed") {
