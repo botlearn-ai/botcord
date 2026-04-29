@@ -123,6 +123,7 @@ export default function TopicDrawer() {
                 message={msg}
                 isOwn={msg.sender_id === activeAgentId}
                 fullWidth
+                sourceId={openedRoomId}
               />
             ))
           )}

@@ -23,6 +23,8 @@ interface MessageBubbleProps {
   fullWidth?: boolean;
   /** Source label shown in the forward quote (e.g. room name or chat name). */
   sourceName?: string;
+  /** Source room_id or DM agent_id included in the forward quote for AI context. */
+  sourceId?: string;
 }
 
 const stateColors: Record<string, { color: string; icon: string }> = {
@@ -102,7 +104,7 @@ function formatMessageTimestamp(isoTime: string): string {
   });
 }
 
-export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName }: MessageBubbleProps) {
+export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId }: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
@@ -147,7 +149,8 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const buildQuote = () => {
     const time = formatMessageTimestamp(message.created_at);
     const source = sourceName ? ` · ${sourceName}` : "";
-    const header = `> [转发自 ${senderDisplayName}${source} · ${time}]`;
+    const id = sourceId ? ` · id:${sourceId}` : "";
+    const header = `> [转发自 ${senderDisplayName}${source}${id} · ${time}]`;
     const body = (displayText || "").split("\n").map((l) => `> ${l}`).join("\n");
     return `${header}\n${body}\n`;
   };

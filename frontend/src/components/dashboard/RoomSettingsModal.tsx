@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Loader2, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, Loader2, Search, Trash2, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -224,6 +224,8 @@ export default function RoomSettingsModal({
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
@@ -390,6 +392,20 @@ export default function RoomSettingsModal({
       refreshHumanRooms(),
     ]);
   }
+
+  const handleRemoveMember = useCallback(async (agentId: string) => {
+    setRemovingId(agentId);
+    try {
+      await humansApi.removeRoomMember(roomId, agentId);
+      await refreshRoomDetails();
+    } catch (e: any) {
+      setError(e?.message || "Failed to remove member");
+    } finally {
+      setRemovingId(null);
+      setConfirmRemoveId(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
 
   const handleSave = async () => {
     if (!canEditBasics) {
@@ -773,17 +789,47 @@ export default function RoomSettingsModal({
                                 <CopyableId value={member.agent_id} />
                               </div>
                             </div>
-                            {canManageMembers && !isSelf && (
-                              <MemberActionsMenu
-                                roomId={roomId}
-                                member={member}
-                                viewerRole={viewerRole ?? "member"}
-                                onMutated={() => {
-                                  void refreshRoomDetails();
-                                }}
-                                onError={(msg) => setError(msg)}
-                              />
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {canManageMembers && !isSelf && member.role !== "owner" && (
+                                confirmRemoveId === member.agent_id ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmRemoveId(null)}
+                                      className="rounded px-2 py-1 text-[11px] text-text-secondary hover:bg-glass-bg transition-colors"
+                                    >
+                                      取消
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={removingId === member.agent_id}
+                                      onClick={() => void handleRemoveMember(member.agent_id)}
+                                      className="rounded bg-red-500/15 px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+                                    >
+                                      {removingId === member.agent_id ? "…" : "确认移除"}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmRemoveId(member.agent_id)}
+                                    className="rounded p-1.5 text-text-secondary/50 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                                    title="移除成员"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )
+                              )}
+                              {canManageMembers && !isSelf && (
+                                <MemberActionsMenu
+                                  roomId={roomId}
+                                  member={member}
+                                  viewerRole={viewerRole ?? "member"}
+                                  onMutated={() => { void refreshRoomDetails(); }}
+                                  onError={(msg) => setError(msg)}
+                                />
+                              )}
+                            </div>
                           </div>
                         );
                       })}

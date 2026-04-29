@@ -100,11 +100,13 @@ function TopicCard({
   group,
   currentAgentId,
   sourceName,
+  sourceId,
   onOpen,
 }: {
   group: TopicGroup;
   currentAgentId: string | undefined;
   sourceName?: string;
+  sourceId?: string;
   onOpen: () => void;
 }) {
   const topicStatusConfig = useTopicStatusConfig();
@@ -149,6 +151,7 @@ function TopicCard({
           message={firstMsg}
           isOwn={firstMsg.sender_id === currentAgentId}
           sourceName={sourceName}
+          sourceId={sourceId}
         />
       )}
 
@@ -422,6 +425,7 @@ export default function MessageList() {
                 message={msg}
                 isOwn={msg.sender_id === currentAgentId}
                 sourceName={currentRoomName}
+                sourceId={roomId}
               />
             );
           }
@@ -434,6 +438,7 @@ export default function MessageList() {
               group={group}
               currentAgentId={currentAgentId}
               sourceName={currentRoomName}
+              sourceId={roomId}
               onOpen={() => group.topicId && setOpenedTopicId(group.topicId)}
             />
           );
