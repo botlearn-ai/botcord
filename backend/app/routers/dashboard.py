@@ -3,6 +3,7 @@
 import datetime
 import json
 import logging
+import re as _re
 import time as _time
 import uuid as _uuid
 
@@ -2243,6 +2244,118 @@ async def get_room_messages(
 # ---------------------------------------------------------------------------
 
 
+_DM_ROOM_RE = _re.compile(r"^rm_dm_((?:ag|hu)_[A-Za-z0-9]+)_((?:ag|hu)_[A-Za-z0-9]+)$")
+
+
+async def _ensure_dashboard_dm_room(
+    room_id: str, sender_id: str, db: AsyncSession
+) -> Room | None:
+    """Create a missing rm_dm_* room with both parties seated.
+
+    Returns the Room when ``room_id`` matches the DM format and the sender
+    is one of the two distinct encoded parties; returns ``None`` on shape
+    failures so the caller can surface a 404. Admission for agent peers is
+    delegated to ``check_direct_admission`` (block + contact_policy +
+    allow_*_sender) which raises ``I18nHTTPException(403)`` on deny, mirroring
+    ``_send_direct_message``. Human peers only need a bidirectional block
+    check since they have no ``message_policy``.
+    """
+    from hub.policy import Principal, check_direct_admission
+
+    match = _DM_ROOM_RE.match(room_id)
+    if match is None:
+        return None
+    a, b = match.group(1), match.group(2)
+    # Reject self-DMs — RoomMember (room_id, agent_id) is unique, and seating
+    # the same id twice would commit an orphan Room before failing on members.
+    if a == b:
+        return None
+    if sender_id not in (a, b):
+        return None
+    # Re-derive the canonical (sorted) form to reject mis-ordered ids.
+    canonical = f"rm_dm_{a}_{b}" if a < b else f"rm_dm_{b}_{a}"
+    if canonical != room_id:
+        return None
+
+    peer_id = b if sender_id == a else a
+    peer_is_human = peer_id.startswith("hu_")
+    sender_is_human = sender_id.startswith("hu_")
+    sender_type = ParticipantType.human if sender_is_human else ParticipantType.agent
+    peer_type = ParticipantType.human if peer_is_human else ParticipantType.agent
+
+    # Peer must exist before we seat it — RoomMember.agent_id no longer has a
+    # FK, so a phantom id would leave the user stuck in a half-formed DM.
+    if peer_is_human:
+        peer_row = await db.execute(select(User).where(User.human_id == peer_id))
+        peer_user = peer_row.scalar_one_or_none()
+        if peer_user is None or peer_user.banned_at is not None:
+            return None
+        # Humans have no message_policy; the only admission gate is mutual
+        # block. Mirror ``_is_blocked`` (typed) to match policy.py semantics.
+        block_row = await db.execute(
+            select(Block.id).where(
+                (
+                    (Block.owner_id == sender_id)
+                    & (Block.blocked_agent_id == peer_id)
+                    & (Block.blocked_type == peer_type)
+                )
+                | (
+                    (Block.owner_id == peer_id)
+                    & (Block.blocked_agent_id == sender_id)
+                    & (Block.blocked_type == sender_type)
+                )
+            ).limit(1)
+        )
+        if block_row.scalar_one_or_none() is not None:
+            return None
+    else:
+        peer_row = await db.execute(select(Agent).where(Agent.agent_id == peer_id))
+        peer_agent = peer_row.scalar_one_or_none()
+        if peer_agent is None:
+            return None
+        # Centralised admission: block + contact_policy + allow_*_sender.
+        # Allow same-room bypass off since this call IS the room creation.
+        await check_direct_admission(
+            db,
+            sender=Principal(id=sender_id, type=sender_type),
+            receiver=peer_agent,
+            allow_same_room_bypass=False,
+        )
+
+    room = Room(
+        room_id=room_id,
+        name=f"DM {a} & {b}",
+        owner_id=sender_id,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+        max_members=2,
+        default_send=True,
+    )
+    try:
+        async with db.begin_nested():
+            db.add(room)
+            await db.flush()
+    except IntegrityError:
+        # Concurrent creator won the race; reload and return.
+        existing = await db.execute(select(Room).where(Room.room_id == room_id))
+        return existing.scalar_one_or_none()
+
+    db.add(RoomMember(
+        room_id=room_id,
+        agent_id=sender_id,
+        participant_type=sender_type,
+        role=RoomRole.member,
+    ))
+    db.add(RoomMember(
+        room_id=room_id,
+        agent_id=peer_id,
+        participant_type=peer_type,
+        role=RoomRole.member,
+    ))
+    await db.flush()
+    return room
+
+
 class HumanRoomSendBody(BaseModel):
     text: str = Field(..., min_length=1, max_length=8000)
     mentions: list[str] | None = None
@@ -2295,13 +2408,17 @@ async def human_room_send(
             raise HTTPException(status_code=404, detail="Human identity not found")
         sender_id = user.human_id
 
-    # Room exists (PRD §6.2 step 4)
+    # Room exists (PRD §6.2 step 4). For rm_dm_* rooms we auto-create the
+    # DM and seat both participants on first send, mirroring the protocol-
+    # level /hub/send behaviour so dashboard users can start a brand-new DM.
     room_result = await db.execute(
         select(Room).where(Room.room_id == room_id)
     )
     room = room_result.scalar_one_or_none()
     if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
+        room = await _ensure_dashboard_dm_room(room_id, sender_id, db)
+        if room is None:
+            raise HTTPException(status_code=404, detail="Room not found")
 
     # Sender is a RoomMember (step 5). Match participant_type so that a Human
     # and an Agent sharing the same string prefix cannot be confused.

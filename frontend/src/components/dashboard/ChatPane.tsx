@@ -580,11 +580,13 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const { sessionMode, token, humanRooms, viewMode } = useDashboardSessionStore(useShallow((state) => ({
+  const { sessionMode, token, humanRooms, viewMode, activeAgentId, humanId } = useDashboardSessionStore(useShallow((state) => ({
     sessionMode: state.sessionMode,
     token: state.token,
     humanRooms: state.humanRooms,
     viewMode: state.viewMode,
+    activeAgentId: state.activeAgentId,
+    humanId: state.human?.human_id ?? null,
   })));
   const { sidebarTab, focusedRoomId, openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     sidebarTab: state.sidebarTab,
@@ -646,7 +648,19 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const joinedRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const joinedHumanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
   const isHumanView = viewMode === "human";
-  const isJoinedRoom = (isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom) : Boolean(joinedRoom);
+  // DM rooms are auto-created server-side on first send, so treat the user
+  // as a member of an unseen rm_dm_* room when their own id is one of the
+  // two encoded parties. Substring matching would false-positive on ids that
+  // happen to share a prefix, so parse the id explicitly.
+  const selfId = (isHumanView || isAuthedHuman) ? humanId : activeAgentId;
+  const dmRoomMatch = openedRoomId
+    ? openedRoomId.match(/^rm_dm_((?:ag|hu)_[A-Za-z0-9]+)_((?:ag|hu)_[A-Za-z0-9]+)$/)
+    : null;
+  const isPendingDmForSelf = Boolean(
+    dmRoomMatch && selfId && (dmRoomMatch[1] === selfId || dmRoomMatch[2] === selfId),
+  );
+  const isJoinedRoom = ((isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom) : Boolean(joinedRoom))
+    || isPendingDmForSelf;
   const humanSendAllowed = joinedRoom?.allow_human_send !== false;
   const isPaidRoom = Boolean(openedRoom?.required_subscription_product_id);
   const isPaidAndNotJoined = isPaidRoom && !isJoinedRoom;
