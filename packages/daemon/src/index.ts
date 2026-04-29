@@ -851,6 +851,21 @@ function cmdTranscriptTail(args: ParsedArgs): Promise<void> | void {
   const file = transcriptFilePath(defaultTranscriptRoot(), agent, room, topic);
   if (!existsSync(file)) {
     console.error(`no transcript at ${file}`);
+    let cfg: DaemonConfig | null = null;
+    try {
+      cfg = loadConfig();
+    } catch {
+      // ignore — config may simply not exist yet
+    }
+    const enabled = resolveTranscriptEnabled(
+      process.env.BOTCORD_TRANSCRIPT,
+      cfg?.transcript?.enabled === true,
+    );
+    if (!enabled) {
+      console.error(
+        "hint: transcripts are disabled (default-off). Run `botcord-daemon transcript enable` and restart the daemon, then send a new message.",
+      );
+    }
     process.exit(1);
   }
   const follow = args.flags.f === true || args.flags.follow === true;

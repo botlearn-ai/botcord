@@ -198,6 +198,10 @@ export PATH
 log "installing $DAEMON_PACKAGE"
 "$NPM_BIN" install --prefix "$DAEMON_PREFIX" "$DAEMON_PACKAGE"
 
+DAEMON_PKG_JSON="$DAEMON_PREFIX/node_modules/@botcord/daemon/package.json"
+DAEMON_VERSION="$("$NODE_BIN" -p "require('$DAEMON_PKG_JSON').version" 2>/dev/null || printf 'unknown')"
+log "installed @botcord/daemon@$DAEMON_VERSION"
+
 DAEMON_BIN="$DAEMON_PREFIX/node_modules/.bin/botcord-daemon"
 [ -x "$DAEMON_BIN" ] || die "botcord-daemon executable not found after install"
 
