@@ -30,7 +30,11 @@ const OWNER_CHAT_PREFIX = "rm_oc_";
 const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
 
-type InboxDrainTrigger = "ws_auth_ok" | "ws_inbox_update" | "coalesced_inbox_update";
+type InboxDrainTrigger =
+  | "ws_auth_ok"
+  | "ws_inbox_update"
+  | "coalesced_inbox_update"
+  | "has_more_continue";
 
 /** Minimal surface the adapter needs from `BotCordClient`. Matches the subset used at runtime. */
 export interface BotCordChannelClient {
@@ -309,7 +313,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     emit: (env: GatewayInboundEnvelope) => Promise<void>,
     log: GatewayLogger,
     trigger: InboxDrainTrigger,
-  ): Promise<void> {
+  ): Promise<{ hasMore: boolean }> {
     const startedAt = Date.now();
     const resp = await client.pollInbox({ limit: INBOX_POLL_LIMIT, ack: false });
     const msgs = resp.messages ?? [];
@@ -334,7 +338,10 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     const eligible: InboxMessage[] = [];
     if (msgs.length === 0) {
       logDrain();
-      return;
+      // Defensive: if Hub returns 0 messages, refuse to honor has_more=true.
+      // A stuck cursor on the Hub side could otherwise produce an unbounded
+      // poll loop here (count=0 with has_more=true on every iteration).
+      return { hasMore: false };
     }
 
     // First pass: ack duplicates/skipped messages so Hub stops requeueing,
@@ -370,7 +377,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
 
     if (eligible.length === 0) {
       logDrain();
-      return;
+      return { hasMore: Boolean(resp.has_more) };
     }
 
     // Group by `(room_id, topic)`. Insertion order is the poll order, so
@@ -384,6 +391,13 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       else groups.set(key, [msg]);
     }
 
+    // Emit groups in parallel: each `(room_id, topic)` group is an independent
+    // conversation thread, and the dispatcher already keys its per-turn queue
+    // by `(channel, accountId, roomId, threadId)` (see `buildQueueKey` in
+    // dispatcher.ts). Awaiting groups serially here forced a slow turn in
+    // room A to block room B's turn from starting; running them concurrently
+    // lets the dispatcher's per-room queues actually run in parallel.
+    const emitTasks: Promise<void>[] = [];
     for (const group of groups.values()) {
       const normalized = normalizeInboxBatch(group, {
         channelId: options.id,
@@ -409,17 +423,23 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           },
         },
       };
-      try {
-        await emit(envelope);
-        emittedGroups += 1;
-      } catch (err) {
-        log.error("botcord emit threw", {
-          hubMsgIds: hubIds,
-          err: String(err),
-        });
-      }
+      emitTasks.push(
+        emit(envelope).then(
+          () => {
+            emittedGroups += 1;
+          },
+          (err) => {
+            log.error("botcord emit threw", {
+              hubMsgIds: hubIds,
+              err: String(err),
+            });
+          },
+        ),
+      );
     }
+    await Promise.all(emitTasks);
     logDrain();
+    return { hasMore: Boolean(resp.has_more) };
   }
 
   function startWsLoop(
@@ -470,11 +490,16 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       processing = true;
       try {
         let currentTrigger = trigger;
+        let hasMore = false;
         do {
           pendingUpdate = false;
-          await drainInbox(client, emit, log, currentTrigger);
-          currentTrigger = "coalesced_inbox_update";
-        } while (pendingUpdate && running);
+          const result = await drainInbox(client, emit, log, currentTrigger);
+          hasMore = result.hasMore;
+          // Prefer `has_more_continue` when this iteration is chained because
+          // the previous poll capped at INBOX_POLL_LIMIT — distinguishes a
+          // backlog drain from a coalesced ws_inbox_update drain in logs.
+          currentTrigger = hasMore ? "has_more_continue" : "coalesced_inbox_update";
+        } while ((pendingUpdate || hasMore) && running);
       } catch (err) {
         log.error("botcord inbox drain failed", { err: String(err) });
       } finally {
