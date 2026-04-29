@@ -23,6 +23,7 @@ interface AccountMenuProps {
   agents: UserAgent[];
   activeAgentId: string | null;
   pendingRequests: number;
+  agentsWithApprovals?: Set<string>;
   onSwitchAgent: (agentId: string) => Promise<void> | void;
   onOpenCreateBot: () => void;
   onOpenSettings: () => void;
@@ -44,6 +45,7 @@ export default function AccountMenu({
   agents,
   activeAgentId,
   pendingRequests,
+  agentsWithApprovals,
   onSwitchAgent,
   onOpenCreateBot,
   onOpenSettings,
@@ -172,29 +174,35 @@ export default function AccountMenu({
                 </DropdownMenu.Item>
                 {agents.length > 0 ? (
                   <div className="max-h-32 overflow-y-auto">
-                    {agents.map((agent) => (
-                      <DropdownMenu.Item
-                        key={agent.agent_id}
-                        onClick={() => {
-                          setViewMode("agent");
-                          void onSwitchAgent(agent.agent_id);
-                        }}
-                        className="relative flex cursor-pointer select-none items-center rounded-xl px-2.5 py-2 text-sm outline-none transition-colors focus:bg-glass-bg"
-                      >
-                        <span className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-neon-cyan/20 bg-neon-cyan/10 text-[11px] font-semibold text-neon-cyan">
-                          {getAgentSeed(agent)}
-                        </span>
-                        <span className="flex-1 truncate text-text-primary">
-                          {agent.display_name}
-                        </span>
-                        <span className="ml-2 inline-flex items-center rounded-full border border-neon-cyan/25 bg-neon-cyan/[0.08] px-1.5 py-0.5 text-[9px] font-medium text-neon-cyan/75">
-                          Agent
-                        </span>
-                        {viewMode === "agent" && agent.agent_id === activeAgentId ? (
-                          <Check className="ml-2 h-4 w-4 text-neon-cyan" />
-                        ) : null}
-                      </DropdownMenu.Item>
-                    ))}
+                    {agents.map((agent) => {
+                      const hasPending = agentsWithApprovals?.has(agent.agent_id);
+                      return (
+                        <DropdownMenu.Item
+                          key={agent.agent_id}
+                          onClick={() => {
+                            setViewMode("agent");
+                            void onSwitchAgent(agent.agent_id);
+                          }}
+                          className="relative flex cursor-pointer select-none items-center rounded-xl px-2.5 py-2 text-sm outline-none transition-colors focus:bg-glass-bg"
+                        >
+                          <span className="relative mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-neon-cyan/20 bg-neon-cyan/10 text-[11px] font-semibold text-neon-cyan">
+                            {getAgentSeed(agent)}
+                            {hasPending ? (
+                              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-blue-400 ring-2 ring-deep-black-light" />
+                            ) : null}
+                          </span>
+                          <span className="flex-1 truncate text-text-primary">
+                            {agent.display_name}
+                          </span>
+                          <span className="ml-2 inline-flex items-center rounded-full border border-neon-cyan/25 bg-neon-cyan/[0.08] px-1.5 py-0.5 text-[9px] font-medium text-neon-cyan/75">
+                            Agent
+                          </span>
+                          {viewMode === "agent" && agent.agent_id === activeAgentId ? (
+                            <Check className="ml-2 h-4 w-4 text-neon-cyan" />
+                          ) : null}
+                        </DropdownMenu.Item>
+                      );
+                    })}
                   </div>
                 ) : (
                   <button

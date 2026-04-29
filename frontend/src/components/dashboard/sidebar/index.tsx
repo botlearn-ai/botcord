@@ -36,6 +36,7 @@ import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 import WalletPanel from "./WalletPanel";
 
+import { humansApi } from "@/lib/api";
 import { UserPlus, Users, LogIn, Bot, Plus, RefreshCw } from "lucide-react";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
@@ -151,6 +152,7 @@ export default function Sidebar() {
   const [showSettings, setShowSettings] = useState(false);
   const [refreshingBots, setRefreshingBots] = useState(false);
   const [createBotForDaemonId, setCreateBotForDaemonId] = useState<string | null>(null);
+  const [agentsWithApprovals, setAgentsWithApprovals] = useState<Set<string>>(new Set());
 
   const showCreateBot = uiStore.createBotModalOpen;
   const setShowCreateBot = (v: boolean) => v ? uiStore.openCreateBotModal() : uiStore.closeCreateBotModal();
@@ -253,6 +255,22 @@ export default function Sidebar() {
     prefetch("/chats/activity");
   }, [router, uiStore.contactsView, uiStore.exploreView]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const fetchApprovals = async () => {
+      try {
+        const res = await humansApi.listPendingApprovals();
+        if (!cancelled) {
+          setAgentsWithApprovals(new Set(res.approvals.map((a: { agent_id: string }) => a.agent_id)));
+        }
+      } catch {
+        // non-fatal
+      }
+    };
+    void fetchApprovals();
+    return () => { cancelled = true; };
+  }, []);
+
   const showLoginModal = () => router.push("/login");
 
   const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots") => {
@@ -354,6 +372,7 @@ export default function Sidebar() {
                 agents={sessionStore.ownedAgents}
                 activeAgentId={sessionStore.activeAgentId}
                 pendingRequests={chatStore.overview?.pending_requests || 0}
+                agentsWithApprovals={agentsWithApprovals}
                 onSwitchAgent={chatStore.switchActiveAgent}
                 onOpenCreateBot={() => setShowCreateBot(true)}
                 onOpenSettings={() => setShowSettings(true)}

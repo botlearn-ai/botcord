@@ -29,7 +29,6 @@ import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import RoomZeroState from "./RoomZeroState";
-import PendingApprovalsPanel from "./PendingApprovalsPanel";
 import { initialsFromName } from "./roomVisualTheme";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
@@ -213,7 +212,6 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        {isRequestsView ? <PendingApprovalsPanel /> : null}
         {isRequestsView ? (
           contactRequestsLoading ? (
             <GridSkeletonCards />
