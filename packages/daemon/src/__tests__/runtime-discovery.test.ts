@@ -194,6 +194,46 @@ describe("collectRuntimeSnapshotAsync", () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("reports missing_token when an OpenClaw gateway requires auth without a token", async () => {
+    setRuntimes([
+      {
+        id: "openclaw-acp",
+        displayName: "OpenClaw",
+        binary: "openclaw",
+        supportsRun: true,
+        result: { available: true },
+      },
+    ]);
+
+    const snap = await collectRuntimeSnapshotAsync({
+      cfg: {
+        openclawGateways: [{ name: "local", url: "ws://127.0.0.1:16200" }],
+      },
+      wsProbe: async () => ({
+        ok: false,
+        error: "unauthorized: gateway token missing (set gateway.remote.token to match gateway.auth.token)",
+      }),
+    });
+
+    const runtime = snap.runtimes.find((r) => r.id === "openclaw-acp");
+    expect(runtime?.endpoints).toEqual([
+      expect.objectContaining({
+        name: "local",
+        reachable: false,
+        status: "missing_token",
+        error:
+          "unauthorized: gateway token missing (set gateway.remote.token to match gateway.auth.token)",
+        diagnostics: [
+          {
+            code: "missing_token",
+            message:
+              "OpenClaw gateway requires token; configure OPENCLAW_GATEWAY_TOKEN or tokenFile",
+          },
+        ],
+      }),
+    ]);
+  });
 });
 
 interface FakeGateway {
