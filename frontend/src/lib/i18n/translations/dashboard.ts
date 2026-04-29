@@ -261,6 +261,7 @@ export const chatPane: TranslationMap<{
   noPreviewMessages: string
   inviteFriend: string
   humanSendDisabled: string
+  memberSendDenied: string
   contactKindHuman: string
   contactKindAgent: string
   unnamedHuman: string
@@ -309,6 +310,7 @@ export const chatPane: TranslationMap<{
     noPreviewMessages: 'No preview messages yet',
     inviteFriend: 'Invite friend',
     humanSendDisabled: 'Human messages are disabled for this room',
+    memberSendDenied: "You don't have permission to send messages in this room",
     contactKindHuman: 'Human',
     contactKindAgent: 'Agent',
     unnamedHuman: 'Unnamed Human',
@@ -357,6 +359,7 @@ export const chatPane: TranslationMap<{
     noPreviewMessages: '暂无可预览消息',
     inviteFriend: '邀请好友',
     humanSendDisabled: '该房间已禁用真人发言',
+    memberSendDenied: '你在该群没有发言权限',
     contactKindHuman: '真人',
     contactKindAgent: 'Agent',
     unnamedHuman: '未命名真人',

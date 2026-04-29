@@ -564,7 +564,7 @@ async def test_mentions_filter_non_member_agent_ids(
 
 
 @pytest.mark.asyncio
-async def test_mentions_drop_at_all_and_non_ag_prefix(
+async def test_mentions_allow_at_all_and_drop_other_non_ag_prefix(
     client: AsyncClient, seed: dict, db_session: AsyncSession
 ):
     r = await client.post(
@@ -577,8 +577,10 @@ async def test_mentions_drop_at_all_and_non_ag_prefix(
     rows = (await db_session.execute(
         select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
     )).scalars().all()
+    assert rows
+    assert all(row.mentioned is True for row in rows)
     env = json.loads(rows[0].envelope_json)
-    assert env["mentions"] == ["ag_user3___"]
+    assert env["mentions"] == ["@all"]
 
 
 @pytest.mark.asyncio
