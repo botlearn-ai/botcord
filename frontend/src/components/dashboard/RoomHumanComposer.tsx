@@ -22,10 +22,9 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const { insertMessage, loadRoomMessages, overview } = useDashboardChatStore(useShallow((s) => ({
+  const { insertMessage, loadRoomMessages } = useDashboardChatStore(useShallow((s) => ({
     insertMessage: s.insertMessage,
     loadRoomMessages: s.loadRoomMessages,
-    overview: s.overview,
   })));
 
   const [error, setError] = useState<string | null>(null);
@@ -67,33 +66,15 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
   const mentionCandidates = useMemo<MentionCandidate[]>(() => {
     if (!allowAllMention) return [];
     const candidates: MentionCandidate[] = [{ agent_id: "@all", display_name: "all" }];
-    // 1. own agents
-    for (const a of ownedAgents) {
-      if (a.agent_id !== selfId) {
-        candidates.push({ agent_id: a.agent_id, display_name: a.display_name, id: a.agent_id });
-      }
-    }
-    // 2. contacts (people first, before rooms)
-    for (const c of overview?.contacts ?? []) {
-      candidates.push({ agent_id: c.contact_agent_id, display_name: c.alias || c.display_name, id: c.contact_agent_id });
-    }
-    // 3. human members in this room not already in contacts
     const seen = new Set(candidates.map((c) => c.agent_id));
     for (const m of members) {
-      if (!seen.has(m.agent_id) && m.agent_id !== selfId &&
-          (m.agent_id.startsWith("ag_") || m.agent_id.startsWith("hu_"))) {
+      if (!seen.has(m.agent_id) && (m.agent_id.startsWith("ag_") || m.agent_id.startsWith("hu_"))) {
         candidates.push({ agent_id: m.agent_id, display_name: m.display_name, id: m.agent_id });
         seen.add(m.agent_id);
       }
     }
-    // 4. rooms (last, less commonly @-mentioned than people)
-    for (const r of overview?.rooms ?? []) {
-      if (r.room_id !== roomId && !r.room_id.startsWith("rm_oc_")) {
-        candidates.push({ agent_id: r.room_id, display_name: r.name, id: r.room_id });
-      }
-    }
     return candidates;
-  }, [allowAllMention, ownedAgents, overview, selfId, roomId, members]);
+  }, [allowAllMention, members]);
 
   const sendDenied = useMemo(() => {
     if (isOwnerChat || !selfId) return false;
