@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { DaemonConfig, OpenclawGatewayProfile } from "./config.js";
@@ -31,6 +31,11 @@ export interface MergeOpenclawGatewayResult {
 
 const DEFAULT_SEARCH_PATHS = ["~/.openclaw/", "/etc/openclaw/"];
 const DEFAULT_PORTS = [18789, 16200];
+const DEFAULT_TOKEN_FILE_PATHS = [
+  "/run/openclaw/gateway-token",
+  "/var/run/openclaw/gateway-token",
+  "~/.openclaw/gateway-token",
+];
 
 export async function discoverLocalOpenclawGateways(
   opts: OpenclawGatewayDiscoveryOptions = {},
@@ -42,7 +47,7 @@ export async function discoverLocalOpenclawGateways(
 
   const env = opts.env ?? process.env;
   found.push(...discoverFromEnv(env));
-  const envAuth = pickOpenclawEnvAuth(env);
+  const envAuth = pickOpenclawEnvAuth(env) ?? pickDefaultTokenFile();
 
   const ports = opts.defaultPorts ?? DEFAULT_PORTS;
   if (ports.length > 0) {
@@ -87,12 +92,19 @@ function discoverFromEnv(env: NodeJS.ProcessEnv): DiscoveredOpenclawGateway[] {
   ];
 }
 
-function pickOpenclawEnvAuth(env: NodeJS.ProcessEnv): { token?: string; tokenFile?: string } {
+function pickOpenclawEnvAuth(env: NodeJS.ProcessEnv): { token?: string; tokenFile?: string } | undefined {
   const token = pickEnv(env, "OPENCLAW_ACP_TOKEN") ?? pickEnv(env, "OPENCLAW_GATEWAY_TOKEN");
   if (token) return { token };
   const tokenFile =
     pickEnv(env, "OPENCLAW_ACP_TOKEN_FILE") ?? pickEnv(env, "OPENCLAW_GATEWAY_TOKEN_FILE");
   if (tokenFile) return { tokenFile };
+  return undefined;
+}
+
+function pickDefaultTokenFile(): { tokenFile?: string } {
+  for (const tokenFile of DEFAULT_TOKEN_FILE_PATHS) {
+    if (existsSync(expandHome(tokenFile))) return { tokenFile };
+  }
   return {};
 }
 
@@ -325,6 +337,10 @@ export function defaultOpenclawDiscoverySearchPaths(): string[] {
 
 export function defaultOpenclawDiscoveryPorts(): number[] {
   return DEFAULT_PORTS.slice();
+}
+
+export function defaultOpenclawDiscoveryTokenFilePaths(): string[] {
+  return DEFAULT_TOKEN_FILE_PATHS.slice();
 }
 
 export function openclawDiscoveryConfigEnabled(cfg: DaemonConfig): boolean {

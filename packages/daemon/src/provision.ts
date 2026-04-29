@@ -1154,6 +1154,27 @@ export type WsEndpointProbeFn = (args: {
   error?: string;
 }>;
 
+export function classifyOpenclawAuthError(message: string | undefined): "missing_token" | "auth_required" | null {
+  const text = (message ?? "").toLowerCase();
+  if (!text) return null;
+  if (
+    text.includes("token missing") ||
+    text.includes("missing token") ||
+    text.includes("gateway token missing")
+  ) {
+    return "missing_token";
+  }
+  if (
+    text.includes("unauthorized") ||
+    text.includes("authentication required") ||
+    text.includes("auth required") ||
+    text.includes("missing auth")
+  ) {
+    return "auth_required";
+  }
+  return null;
+}
+
 /**
  * Default L2 + L3 probe — speaks OpenClaw's WS frame protocol against the
  * gateway and enumerates agent profiles via `agents.list`.
@@ -1278,7 +1299,8 @@ async function defaultWsProbe(args: {
       if (msg.id === CONNECT_ID) {
         if (!msg.ok) {
           const errMsg = msg.error?.message ? String(msg.error.message) : "connect rejected";
-          settle({ ok: true, error: errMsg });
+          const authStatus = classifyOpenclawAuthError(errMsg);
+          settle({ ok: authStatus ? false : true, error: errMsg });
           return;
         }
         const v = msg.payload?.server?.version;
@@ -1491,6 +1513,21 @@ export async function collectRuntimeSnapshotAsync(opts: {
           probe: opts.wsProbe,
           timeoutMs,
         });
+        const authStatus = classifyOpenclawAuthError(res.error);
+        if (!res.ok && authStatus) {
+          const message =
+            authStatus === "missing_token"
+              ? "OpenClaw gateway requires token; configure OPENCLAW_GATEWAY_TOKEN or tokenFile"
+              : "OpenClaw gateway requires authentication; configure gateway credentials";
+          return {
+            name: g.name,
+            url: g.url,
+            reachable: false,
+            status: authStatus,
+            error: res.error ?? message,
+            diagnostics: [{ code: authStatus, message }],
+          };
+        }
         const entry: any = {
           name: g.name,
           url: g.url,
