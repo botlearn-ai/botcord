@@ -10,7 +10,7 @@
 import { useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Bot, Check, LogOut, Pencil, Plus, Settings } from "lucide-react";
+import { Check, LogOut, Pencil, Plus, Settings } from "lucide-react";
 import HumanProfileEditModal from "./HumanProfileEditModal";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu } from "@/lib/i18n/translations/dashboard";
@@ -119,13 +119,25 @@ export default function AccountMenu({
                     <p className="min-w-0 flex-1 truncate text-[18px] font-semibold tracking-tight text-white">
                       {user?.display_name || user?.email || t.user}
                     </p>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      viewMode === "human"
-                        ? "bg-neon-purple/10 text-neon-purple/75"
-                        : "bg-neon-cyan/10 text-neon-cyan/75"
-                    }`}>
-                      {viewMode === "human" ? "Human" : "Agent"}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        viewMode === "human"
+                          ? "bg-neon-purple/10 text-neon-purple/75"
+                          : "bg-neon-cyan/10 text-neon-cyan/75"
+                      }`}>
+                        {viewMode === "human" ? "Human" : "Agent"}
+                      </span>
+                      {human && (
+                        <button
+                          type="button"
+                          onClick={() => { setOpen(false); setEditProfileOpen(true); }}
+                          title={locale === "zh" ? "编辑个人资料" : "Edit profile"}
+                          className="flex h-5 w-5 items-center justify-center rounded-md text-text-secondary/50 transition-colors hover:bg-white/8 hover:text-neon-purple"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <p className="mt-1 text-xs text-text-secondary/78">
                     {locale === "zh" ? "个人账户" : "Personal account"}
@@ -214,19 +226,6 @@ export default function AccountMenu({
                 )}
               </DropdownMenu.Group>
             ) : null}
-
-            {human && (
-              <>
-                <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
-                <DropdownMenu.Item
-                  onClick={() => setEditProfileOpen(true)}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-text-primary focus:bg-neon-purple/10"
-                >
-                  <Pencil className="mr-2 h-4 w-4 text-neon-purple" />
-                  <span>{locale === "zh" ? "编辑个人资料" : "Edit profile"}</span>
-                </DropdownMenu.Item>
-              </>
-            )}
 
             {user?.beta_admin && (
               <>
