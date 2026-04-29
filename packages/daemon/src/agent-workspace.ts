@@ -352,7 +352,10 @@ export function ensureAgentCodexHome(agentId: string): string {
  * Idempotently create the per-agent HERMES_HOME and HERMES workspace
  * directories. Writes a stub `.env` inside HERMES_HOME so hermes-acp's
  * `_load_env` does not log "No .env found" on every spawn; users can edit
- * this file to add API keys / model overrides.
+ * this file to add API keys / model overrides. Also seeds the bundled
+ * BotCord skills under `<hermes-home>/skills/` so hermes-acp's skill
+ * loader (which only sees this isolated HERMES_HOME, not `~/.hermes`)
+ * can discover them.
  */
 export function ensureAgentHermesWorkspace(agentId: string): {
   hermesHome: string;
@@ -369,6 +372,7 @@ export function ensureAgentHermesWorkspace(agentId: string): {
   );
   seedHermesConfig(hermesHome);
   mergeHermesProviderEnv(path.join(hermesHome, ".env"));
+  seedHermesAgentSkills(hermesHome);
   return { hermesHome, hermesWorkspace };
 }
 
@@ -378,6 +382,7 @@ export function ensureAgentHermesWorkspace(agentId: string): {
  * discovery path differs:
  *   - Claude Code: `<workspace>/.claude/skills/<name>/`
  *   - Codex:       `<codex-home>/skills/<name>/`
+ *   - Hermes:      `<hermes-home>/skills/<name>/`
  * Seeded fresh per `ensureAgent*` call (force-overwrite) so daemon
  * upgrades propagate.
  */
@@ -433,6 +438,17 @@ function seedClaudeCodeSkills(workspace: string): void {
  */
 function seedCodexSkills(codexHome: string): void {
   copyBundledSkills(path.join(codexHome, "skills"));
+}
+
+/**
+ * Seed Hermes's `<HERMES_HOME>/skills/` discovery dir. hermes-acp's
+ * skill loader scans `$HERMES_HOME/skills/` (primary) plus any
+ * `skills.external_dirs` from config; the daemon points hermes-acp at
+ * the per-agent `<hermes-home>/`, so the user's global
+ * `~/.hermes/skills/` is invisible — bundled skills must be seeded here.
+ */
+function seedHermesAgentSkills(hermesHome: string): void {
+  copyBundledSkills(path.join(hermesHome, "skills"));
 }
 
 /**

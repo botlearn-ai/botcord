@@ -131,6 +131,25 @@ describe("ensureAgentWorkspace", () => {
     expect(reseeded).toContain("name: botcord");
   });
 
+  it("seeds bundled skills under hermes-home/skills/ so per-agent HERMES_HOME sees them", () => {
+    const { hermesHome } = ensureAgentHermesWorkspace("ag_hermes_skills");
+    const skillsDir = path.join(hermesHome, "skills");
+    expect(existsSync(path.join(skillsDir, "botcord", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord-user-guide", "SKILL.md"))).toBe(true);
+  });
+
+  it("re-seeds hermes skills on subsequent ensureAgentHermesWorkspace calls", () => {
+    const { hermesHome } = ensureAgentHermesWorkspace("ag_hermes_reseed");
+    const skillFile = path.join(hermesHome, "skills", "botcord", "SKILL.md");
+    writeFileSync(skillFile, "stale content from a prior daemon version\n");
+
+    ensureAgentHermesWorkspace("ag_hermes_reseed");
+
+    const reseeded = readFileSync(skillFile, "utf8");
+    expect(reseeded).not.toBe("stale content from a prior daemon version\n");
+    expect(reseeded).toContain("name: botcord");
+  });
+
   it("does not overwrite a user-modified memory.md on a second call", () => {
     ensureAgentWorkspace("ag_keep", {});
     const memoryPath = path.join(agentWorkspaceDir("ag_keep"), "memory.md");
