@@ -242,8 +242,27 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
               </div>
 
               <div className="space-y-4 px-1 pt-5">
-                {canInvite ? (
-                  !shareData ? (
+                {!canInvite ? (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => void handleCopyText(typeof window !== "undefined" ? window.location.href : "", "plain-link")}
+                      className="flex w-full items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 rounded-xl bg-neon-cyan/12 p-2 text-neon-cyan">
+                          <Link2 className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-text-primary">{t.copyCurrentUrlTitle}</p>
+                          <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyCurrentUrlDescription}</p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                        {copiedField === "plain-link" ? tc.copied : tc.copy}
+                      </span>
+                    </button>
+                  </div>
+                ) : !shareData ? (
                     <div className="space-y-3">
                       <p className="text-sm leading-6 text-text-secondary">{t.shareSetupDescription}</p>
                       <button
@@ -320,7 +339,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                       </button>
                     </div>
                   )
-                ) : null}
+                }
 
                 <div className="rounded-2xl bg-black/20 px-4 py-4">
                   <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">

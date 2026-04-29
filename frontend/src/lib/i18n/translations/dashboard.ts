@@ -1273,6 +1273,8 @@ export const shareModal: TranslationMap<{
   metaPrompt: string
   promptAvailableAfterCreate: string
   noSharePermissionMeta: string
+  copyCurrentUrlTitle: string
+  copyCurrentUrlDescription: string
   copyPlainLinkChannelTitle: string
   copyPlainLinkChannelDescription: string
   copyShareLinkChannelTitle: string
@@ -1317,6 +1319,8 @@ export const shareModal: TranslationMap<{
     metaPrompt: 'Prompt',
     promptAvailableAfterCreate: 'The invite prompt will appear here after you create the share asset.',
     noSharePermissionMeta: 'This room can be viewed here, but share actions are not available for your current role.',
+    copyCurrentUrlTitle: 'Copy current URL',
+    copyCurrentUrlDescription: 'Copy this page URL to share with others.',
     copyPlainLinkChannelTitle: 'Copy plain link',
     copyPlainLinkChannelDescription: 'Copy the raw URL so you can paste it into any other room, chat, or doc.',
     copyShareLinkChannelTitle: 'Copy share path',
@@ -1361,6 +1365,8 @@ export const shareModal: TranslationMap<{
     metaPrompt: 'Prompt',
     promptAvailableAfterCreate: '生成分享资产后，对应的邀请 Prompt 会显示在这里。',
     noSharePermissionMeta: '你当前可以查看这个群的信息，但没有分享分发权限。',
+    copyCurrentUrlTitle: '复制当前链接',
+    copyCurrentUrlDescription: '复制当前页面链接分享给他人。',
     copyPlainLinkChannelTitle: '复制普通链接',
     copyPlainLinkChannelDescription: '复制原始 URL，可直接粘贴到其他群、聊天窗口或文档里。',
     copyShareLinkChannelTitle: '复制分享路径',
