@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 // Hoisted mock for `../adapters/runtimes.js` so each suite can stub
 // `detectRuntimes()` independently — we want coverage of the "empty
@@ -24,7 +27,12 @@ vi.mock("../adapters/runtimes.js", async () => {
   };
 });
 
-const { collectRuntimeSnapshot, clearRuntimeProbeCache, createProvisioner } = await import("../provision.js");
+const {
+  collectRuntimeSnapshot,
+  collectRuntimeSnapshotAsync,
+  clearRuntimeProbeCache,
+  createProvisioner,
+} = await import("../provision.js");
 
 beforeEach(() => {
   // The L1 probe is memoized for 30s in production; tests rotate the
@@ -91,6 +99,100 @@ describe("collectRuntimeSnapshot", () => {
     const [entry] = collectRuntimeSnapshot().runtimes;
     expect(entry).toBeDefined();
     expect(Object.keys(entry!).sort()).toEqual(["available", "id"]);
+  });
+});
+
+describe("collectRuntimeSnapshotAsync", () => {
+  it("adds OpenClaw endpoint status and diagnostics", async () => {
+    setRuntimes([
+      {
+        id: "openclaw-acp",
+        displayName: "OpenClaw",
+        binary: "openclaw",
+        supportsRun: true,
+        result: { available: true, version: "0.1.0" },
+      },
+    ]);
+
+    const snap = await collectRuntimeSnapshotAsync({
+      cfg: {
+        openclawGateways: [
+          { name: "ok", url: "ws://127.0.0.1:18789" },
+          { name: "bad", url: "ws://127.0.0.1:16200" },
+        ],
+      },
+      wsProbe: async ({ url }) =>
+        url.includes("18789")
+          ? { ok: true, version: "gw-1", agents: [{ id: "main" }] }
+          : { ok: false, error: "connect rejected" },
+    });
+
+    const runtime = snap.runtimes.find((r) => r.id === "openclaw-acp");
+    expect(runtime?.endpoints).toEqual([
+      expect.objectContaining({
+        name: "ok",
+        reachable: true,
+        status: "reachable",
+        version: "gw-1",
+        agents: [{ id: "main" }],
+      }),
+      expect.objectContaining({
+        name: "bad",
+        reachable: false,
+        status: "unreachable",
+        error: "connect rejected",
+        diagnostics: [{ code: "gateway_unreachable", message: "connect rejected" }],
+      }),
+    ]);
+  });
+
+  it("reports acp_disabled without probing the gateway", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "daemon-runtime-openclaw-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      mkdirSync(path.join(tmp, ".openclaw"), { recursive: true });
+      writeFileSync(
+        path.join(tmp, ".openclaw", "openclaw.json"),
+        JSON.stringify({ acp: { enabled: false } }),
+      );
+      setRuntimes([
+        {
+          id: "openclaw-acp",
+          displayName: "OpenClaw",
+          binary: "openclaw",
+          supportsRun: true,
+          result: { available: true },
+        },
+      ]);
+      const wsProbe = vi.fn(async () => ({ ok: true }));
+
+      const snap = await collectRuntimeSnapshotAsync({
+        cfg: { openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }] },
+        wsProbe,
+      });
+
+      expect(wsProbe).not.toHaveBeenCalled();
+      const runtime = snap.runtimes.find((r) => r.id === "openclaw-acp");
+      expect(runtime?.endpoints).toEqual([
+        expect.objectContaining({
+          name: "local",
+          reachable: false,
+          status: "acp_disabled",
+          error: "OpenClaw ACP runtime disabled",
+          diagnostics: [
+            {
+              code: "acp_disabled",
+              message: "OpenClaw config explicitly disables the ACP runtime",
+            },
+          ],
+        }),
+      ]);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 

@@ -82,6 +82,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   })));
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
+  const isAuthed = sessionMode === "authed-ready" || sessionMode === "authed-no-agent";
   const [query, setQuery] = useState("");
   const [showFriendInvite, setShowFriendInvite] = useState(false);
   const isRequestsView = contactsView === "requests";
@@ -103,19 +104,19 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   const pendingReceived = contactRequestsReceived.filter((item) => item.state === "pending");
 
   useEffect(() => {
-    if (sessionMode === "authed-ready") {
+    if (isAuthed) {
       void loadContactRequests();
     }
-  }, [sessionMode, loadContactRequests]);
+  }, [isAuthed, loadContactRequests]);
 
   // Always refresh overview when entering the contacts pane so that newly
   // created rooms (built by the agent via /hub/rooms with no messages yet)
   // and freshly added contacts show up without waiting for a realtime event.
   useEffect(() => {
-    if (sessionMode === "authed-ready") {
+    if (isAuthed) {
       void refreshOverview();
     }
-  }, [sessionMode, refreshOverview]);
+  }, [isAuthed, contactsView, refreshOverview]);
 
   const normalized = query.trim().toLowerCase();
   const filteredContacts = contacts.filter((item) => {

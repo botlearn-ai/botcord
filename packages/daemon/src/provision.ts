@@ -1324,22 +1324,48 @@ export async function collectRuntimeSnapshotAsync(opts: {
   const capped = gateways.slice(0, RUNTIME_ENDPOINTS_CAP);
   const endpoints = await Promise.all(
     capped.map(async (g) => {
+      if (localOpenclawAcpDisabled(g.url)) {
+        return {
+          name: g.name,
+          url: g.url,
+          reachable: false,
+          status: "acp_disabled",
+          error: "OpenClaw ACP runtime disabled",
+          diagnostics: [
+            {
+              code: "acp_disabled",
+              message: "OpenClaw config explicitly disables the ACP runtime",
+            },
+          ],
+        };
+      }
       try {
         const res = await probeOpenclawAgents(g, {
           probe: opts.wsProbe,
           timeoutMs,
         });
-        const entry: any = { name: g.name, url: g.url, reachable: res.ok };
+        const entry: any = {
+          name: g.name,
+          url: g.url,
+          reachable: res.ok,
+          status: res.ok ? "reachable" : "unreachable",
+        };
         if (res.version) entry.version = res.version;
-        if (res.error) entry.error = res.error;
+        if (res.error) {
+          entry.error = res.error;
+          entry.diagnostics = [{ code: "gateway_unreachable", message: res.error }];
+        }
         if (res.agents) entry.agents = res.agents;
         return entry;
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
         return {
           name: g.name,
           url: g.url,
           reachable: false,
-          error: (err as Error).message,
+          status: "unreachable",
+          error: message,
+          diagnostics: [{ code: "probe_failed", message }],
         };
       }
     }),

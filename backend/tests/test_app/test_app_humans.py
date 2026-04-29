@@ -28,7 +28,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hub.enums import RoomJoinPolicy, RoomVisibility
+from hub.enums import RoomInvitePolicy, RoomJoinPolicy, RoomVisibility
 from hub.models import (
     Agent,
     AgentApprovalQueue,
@@ -635,6 +635,36 @@ async def test_invite_agent_via_members_endpoint(
     )
     m = row.scalar_one()
     assert m.participant_type == ParticipantType.agent
+
+
+@pytest.mark.asyncio
+async def test_invite_owned_contacts_only_agent_via_members_endpoint(
+    client, seed, db_session: AsyncSession
+):
+    """A Human owner/admin can add their own Agent even when the Agent's
+    room-invite policy is the default contacts_only.
+    """
+    db_session.add(
+        Agent(
+            agent_id="ag_owned00001",
+            display_name="Owned Helper",
+            message_policy=MessagePolicy.contacts_only,
+            room_invite_policy=RoomInvitePolicy.contacts_only,
+            user_id=seed["user_id"],
+        )
+    )
+    await db_session.commit()
+
+    room_id = await _create_room_as(client, seed["token"], "Owned agent invite room")
+    resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": "ag_owned00001"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["participant_id"] == "ag_owned00001"
+    assert body["participant_type"] == "agent"
 
 
 @pytest.mark.asyncio
