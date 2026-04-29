@@ -188,6 +188,73 @@ async def test_human_creates_and_lists_room(client, seed, db_session: AsyncSessi
 
 
 @pytest.mark.asyncio
+async def test_human_member_of_room_owned_by_their_agent_sees_owner_role(
+    client, seed, db_session: AsyncSession
+):
+    """The human owner of an agent that owns a room should see ``my_role ==
+    owner`` and be allowed to update room settings — even when the human's
+    own RoomMember row has ``role == member``."""
+    agent = Agent(
+        agent_id="ag_alice00099",
+        display_name="Alice Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    room = Room(
+        room_id="rm_agent_owned",
+        name="Agent Den",
+        description="owned by Alice Bot",
+        owner_id="ag_alice00099",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([agent, room])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id="rm_agent_owned",
+            agent_id="ag_alice00099",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id="rm_agent_owned",
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+
+    listing = await client.get("/api/humans/me/rooms", headers=headers)
+    assert listing.status_code == 200
+    listed = {r["room_id"]: r for r in listing.json()["rooms"]}
+    assert listed["rm_agent_owned"]["my_role"] == "owner"
+
+    # Basic field — owner-or-admin gate must pass
+    patch_basic = await client.patch(
+        "/api/humans/me/rooms/rm_agent_owned",
+        headers=headers,
+        json={"description": "renamed by human owner"},
+    )
+    assert patch_basic.status_code == 200, patch_basic.text
+    assert patch_basic.json()["my_role"] == "owner"
+    assert patch_basic.json()["description"] == "renamed by human owner"
+
+    # Owner-only field — must also pass via transitive ownership
+    patch_advanced = await client.patch(
+        "/api/humans/me/rooms/rm_agent_owned",
+        headers=headers,
+        json={"visibility": "public"},
+    )
+    assert patch_advanced.status_code == 200, patch_advanced.text
+    assert patch_advanced.json()["visibility"] == "public"
+
+
+@pytest.mark.asyncio
 async def test_list_owned_agent_rooms_excludes_current_human_rooms(
     client, seed, db_session: AsyncSession
 ):

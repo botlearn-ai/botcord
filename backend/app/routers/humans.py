@@ -313,6 +313,38 @@ def _ts(dt: datetime.datetime | None) -> int:
     return int(dt.timestamp())
 
 
+async def _load_owned_agent_ids(db: AsyncSession, user_id: UUID | None) -> set[str]:
+    """Return the set of ``agent_id`` rows whose ``user_id`` matches.
+
+    Used to honour transitive ownership: the human owner of an agent that
+    owns a room should see ``my_role == "owner"`` and pass owner-only gates
+    on that room. Mirrors :func:`app.auth_room.viewer_can_admin_room`.
+    """
+    if user_id is None:
+        return set()
+    result = await db.execute(select(Agent.agent_id).where(Agent.user_id == user_id))
+    return {row[0] for row in result.all()}
+
+
+def _effective_human_role(
+    role: RoomRole | str,
+    room: Room,
+    owned_agent_ids: set[str],
+) -> RoomRole | str:
+    """Promote ``role`` to ``owner`` when the human owns the room's agent owner.
+
+    Returning ``RoomRole.owner`` instead of mutating DB state keeps the
+    serialiser output and the in-process permission gates aligned without
+    rewriting room_members rows.
+    """
+    if (
+        room.owner_type == ParticipantType.agent
+        and room.owner_id in owned_agent_ids
+    ):
+        return RoomRole.owner
+    return role
+
+
 def _serialize_human_room_summary(
     room: Room,
     my_role: RoomRole | str,
@@ -541,8 +573,13 @@ async def list_human_rooms(
             .group_by(RoomMember.room_id)
         )
         member_counts = {room_id: int(count or 0) for room_id, count in count_result.all()}
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
     rooms = [
-        _serialize_human_room_summary(room, role, member_count=member_counts.get(room.room_id, 0))
+        _serialize_human_room_summary(
+            room,
+            _effective_human_role(role, room, owned_agent_ids),
+            member_count=member_counts.get(room.room_id, 0),
+        )
         for room, role in rows
     ]
     return HumanRoomListResponse(rooms=rooms)
@@ -1335,7 +1372,9 @@ async def update_room_settings_as_human(
 ):
     user = await _load_human(db, ctx)
     room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
-    if caller.role not in (RoomRole.owner, RoomRole.admin):
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = _effective_human_role(caller.role, room, owned_agent_ids)
+    if effective_role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Only owner or admin can update room settings")
 
     fields_set = body.model_fields_set
@@ -1349,7 +1388,7 @@ async def update_room_settings_as_human(
         "slow_mode_seconds",
         "required_subscription_product_id",
     }
-    if fields_set & owner_only_fields and caller.role != RoomRole.owner:
+    if fields_set & owner_only_fields and effective_role != RoomRole.owner:
         raise HTTPException(status_code=403, detail="Only the owner can change advanced settings")
 
     if "name" in fields_set:
@@ -1436,7 +1475,7 @@ async def update_room_settings_as_human(
         select(func.count(RoomMember.id)).where(RoomMember.room_id == room.room_id)
     )
     member_count = int(member_count_result.scalar() or 0)
-    return _serialize_human_room_summary(room, caller.role, member_count=member_count)
+    return _serialize_human_room_summary(room, effective_role, member_count=member_count)
 
 
 @router.delete("/me/rooms/{room_id}", response_model=dict)
