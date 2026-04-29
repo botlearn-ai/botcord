@@ -6,11 +6,18 @@ import type { StripeSessionStatusResponse } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import {
+  clearStripeTopupContext,
+  readStripeTopupContext,
+} from "@/lib/stripe-topup-context";
 
 type BannerMode = "success_polling" | "cancelled";
 
 export default function StripeReturnBanner() {
-  const isAuthedReady = useDashboardSessionStore((state) => state.sessionMode === "authed-ready");
+  // Relaxed from `authed-ready` to any authenticated session: human-only
+  // (`authed-no-agent`) sessions can also start a topup and need the same
+  // post-redirect polling.
+  const isAuthed = useDashboardSessionStore((state) => state.sessionMode !== "guest");
   const token = useDashboardSessionStore((state) => state.token);
   const { loadWallet, loadWalletLedger } = useDashboardWalletStore(useShallow((state) => ({
     loadWallet: state.loadWallet,
@@ -21,7 +28,7 @@ export default function StripeReturnBanner() {
   const [polling, setPolling] = useState(false);
 
   useEffect(() => {
-    if (!isAuthedReady) return;
+    if (!isAuthed) return;
 
     const params = new URLSearchParams(window.location.search);
     const walletTopup = params.get("wallet_topup");
@@ -36,21 +43,28 @@ export default function StripeReturnBanner() {
     window.history.replaceState({}, "", url.pathname + url.search);
 
     if (walletTopup === "cancelled") {
+      if (sessionId) clearStripeTopupContext(sessionId);
       setMode("cancelled");
       return;
     }
 
     if (walletTopup === "success" && sessionId) {
+      // Restore the wallet owner that started the checkout (saved by
+      // TopupDialog before redirect). Backend `get_checkout_status`
+      // requires the resolved owner to match the topup's owner_id, so
+      // polling without this would 403/404 for non-default viewers.
+      const topupViewer = readStripeTopupContext(sessionId);
       setMode("success_polling");
       setPolling(true);
 
       const poll = async () => {
         for (let i = 0; i < 10; i++) {
           try {
-            const res = await api.getStripeSessionStatus(sessionId);
+            const res = await api.getStripeSessionStatus(sessionId, topupViewer);
             setStatus(res);
             if (res.wallet_credited) {
               setPolling(false);
+              clearStripeTopupContext(sessionId);
               loadWallet();
               loadWalletLedger();
               return;
@@ -64,7 +78,7 @@ export default function StripeReturnBanner() {
       };
       poll();
     }
-  }, [isAuthedReady, token, loadWallet, loadWalletLedger]);
+  }, [isAuthed, token, loadWallet, loadWalletLedger]);
 
   if (!mode) return null;
 
