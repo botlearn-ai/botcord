@@ -759,6 +759,10 @@ export const api = {
     return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, body);
   },
 
+  openDmRoom(peerId: string) {
+    return apiPost<{ room_id: string }>("/api/dashboard/dms/open", { peer_id: peerId });
+  },
+
   async uploadFile(file: File, agentId?: string | null): Promise<FileUploadResult> {
     const headers = await buildAuthHeaders();
     const formData = new FormData();

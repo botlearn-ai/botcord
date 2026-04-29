@@ -2356,6 +2356,63 @@ async def _ensure_dashboard_dm_room(
     return room
 
 
+class OpenDmBody(BaseModel):
+    peer_id: str = Field(..., min_length=3, max_length=64)
+
+
+@router.post("/dms/open", status_code=201)
+async def open_dm_room(
+    body: OpenDmBody,
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ensure a DM room exists between the caller and ``peer_id`` and return
+    its id. Lets the dashboard "Send Message" button land users on a real
+    room (so RoomHeader / sidebar / composer all hydrate) instead of a
+    pending placeholder that materialises only on first send.
+
+    Reuses ``_ensure_dashboard_dm_room`` for admission so block / contact
+    policy / allow_*_sender all run identically to ``human_room_send``.
+    """
+    peer_id = body.peer_id.strip()
+    if not (peer_id.startswith("ag_") or peer_id.startswith("hu_")):
+        raise HTTPException(status_code=400, detail="Invalid peer_id")
+
+    active_agent_id = ctx.active_agent_id
+    if active_agent_id is not None:
+        agent_row = await db.execute(
+            select(Agent).where(Agent.agent_id == active_agent_id)
+        )
+        agent = agent_row.scalar_one_or_none()
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if getattr(agent, "claimed_at", None) is None:
+            raise HTTPException(status_code=403, detail="Agent not claimed")
+        sender_id = active_agent_id
+    else:
+        user_row = await db.execute(select(User).where(User.id == ctx.user_id))
+        user = user_row.scalar_one_or_none()
+        if user is None or not user.human_id:
+            raise HTTPException(status_code=404, detail="Human identity not found")
+        sender_id = user.human_id
+
+    if peer_id == sender_id:
+        raise HTTPException(status_code=400, detail="Cannot DM yourself")
+
+    ids = sorted([sender_id, peer_id])
+    room_id = f"rm_dm_{ids[0]}_{ids[1]}"
+
+    existing = await db.execute(select(Room).where(Room.room_id == room_id))
+    room = existing.scalar_one_or_none()
+    if room is None:
+        room = await _ensure_dashboard_dm_room(room_id, sender_id, db)
+        if room is None:
+            raise HTTPException(status_code=400, detail="Cannot open DM with this peer")
+        await db.commit()
+
+    return {"room_id": room.room_id}
+
+
 class HumanRoomSendBody(BaseModel):
     text: str = Field(..., min_length=1, max_length=8000)
     mentions: list[str] | None = None
