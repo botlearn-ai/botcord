@@ -40,7 +40,13 @@ function buildPattern(kind: (typeof PATTERN_KINDS)[number], seed: number, color:
   switch (kind) {
     case "dots": {
       const r = 1 + (seed % 3);
-      inner = `<circle cx='${size / 2}' cy='${size / 2}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`;
+      inner = [
+        `<circle cx='0' cy='0' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
+        `<circle cx='${size}' cy='0' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
+        `<circle cx='0' cy='${size}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
+        `<circle cx='${size}' cy='${size}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
+        `<circle cx='${size / 2}' cy='${size / 2}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
+      ].join("");
       break;
     }
     case "grid": {
