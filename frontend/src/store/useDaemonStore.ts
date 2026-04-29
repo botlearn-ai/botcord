@@ -291,7 +291,9 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
           : Array.isArray(data)
             ? data
             : [];
-      const daemons = (list as Record<string, unknown>[]).map(normalizeDaemon);
+      const daemons = (list as Record<string, unknown>[])
+        .map(normalizeDaemon)
+        .filter((d) => !d.revoked_at);
       set(
         quiet
           ? { daemons, loaded: true }
@@ -318,13 +320,10 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         set({ revokingId: null, error: msg });
         return;
       }
-      // Optimistic local update; refresh will reconcile
+      // Optimistic local update; refresh will reconcile. Revoked daemon
+      // instances are hidden from the frontend list.
       set({
-        daemons: get().daemons.map((d) =>
-          d.id === id
-            ? { ...d, status: "revoked", revoked_at: new Date().toISOString() }
-            : d,
-        ),
+        daemons: get().daemons.filter((d) => d.id !== id),
         revokingId: null,
       });
       void get().refresh();
