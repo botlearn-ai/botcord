@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultOpenclawDiscoveryPorts,
+  defaultOpenclawDiscoveryTokenFilePaths,
   discoverLocalOpenclawGateways,
   mergeOpenclawGateways,
 } from "../openclaw-discovery.js";
@@ -218,6 +219,49 @@ describe("discoverLocalOpenclawGateways", () => {
         source: "default-port",
       }),
     ]);
+  });
+
+  it("attaches conventional tokenFile fallback to default-port discovery", async () => {
+    const home = tempDir();
+    const prevHome = process.env.HOME;
+    process.env.HOME = home;
+    mkdirSync(path.join(home, ".openclaw"), { recursive: true });
+    const tokenFile = path.join(home, ".openclaw", "gateway-token");
+    writeFileSync(tokenFile, "gateway-token\n");
+    const probe = vi.fn<WsEndpointProbeFn>(async () => ({
+      ok: true,
+      agents: [],
+    }));
+
+    try {
+      const found = await discoverLocalOpenclawGateways({
+        searchPaths: [],
+        defaultPorts: [16200],
+        probe,
+        timeoutMs: 10,
+        env: {},
+      });
+
+      expect(defaultOpenclawDiscoveryTokenFilePaths()).toEqual(
+        expect.arrayContaining(["~/.openclaw/gateway-token"]),
+      );
+      expect(probe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "ws://127.0.0.1:16200",
+          token: "gateway-token",
+        }),
+      );
+      expect(found).toEqual([
+        expect.objectContaining({
+          url: "ws://127.0.0.1:16200",
+          tokenFile: "~/.openclaw/gateway-token",
+          source: "default-port",
+        }),
+      ]);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+    }
   });
 
   it("prefers config-file auth details over lower-priority duplicate sources", async () => {
