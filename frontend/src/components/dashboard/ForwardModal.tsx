@@ -90,20 +90,9 @@ export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) 
           if (kind === "agent") {
             await api.sendUserChatMessage(quoteText, undefined, id);
           } else if (kind === "contact") {
-            if (id.startsWith("hu_")) {
-              // Human contact — use the owner-chat send endpoint; it resolves/creates the DM room
-              const resp = await api.sendUserChatMessage(quoteText, undefined, null);
-              openRoomIds.push(resp.room_id);
-            } else {
-              // Agent contact — find or fall back to the DM room in the overview
-              const dmRoom = overview?.rooms?.find(
-                (r) => r.room_id.startsWith("rm_dm_") && r.room_id.includes(id)
-              );
-              if (dmRoom) {
-                await api.sendRoomHumanMessage(dmRoom.room_id, quoteText);
-                openRoomIds.push(dmRoom.room_id);
-              }
-            }
+            const dmRoom = await api.openDmRoom(id);
+            await api.sendRoomHumanMessage(dmRoom.room_id, quoteText);
+            openRoomIds.push(dmRoom.room_id);
           } else {
             await api.sendRoomHumanMessage(id, quoteText);
             openRoomIds.push(id);
