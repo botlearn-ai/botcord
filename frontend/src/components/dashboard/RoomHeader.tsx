@@ -311,14 +311,7 @@ export default function RoomHeader() {
           )}
         </div>
         <div className="flex shrink-0 flex-nowrap items-center gap-1.5 self-start py-0.5">
-          {isAuthedReady && isJoined && myRole && (
-            <span className="group relative">
-              <span className="rounded border border-glass-border px-2 py-0.5 font-mono text-[10px] text-text-secondary">
-                {myRole}
-              </span>
-              {roleLabel && <span className={tooltipCls}>{roleLabel}</span>}
-            </span>
-          )}
+
           {renderJoinButton()}
           {isGuest && (
             <span className="shrink-0 whitespace-nowrap rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
