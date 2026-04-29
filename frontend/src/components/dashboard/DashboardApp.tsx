@@ -740,37 +740,58 @@ export default function DashboardApp() {
     void contactStore.sendContactRequest(selectedAgentForCard.agent_id);
   };
 
-  const navigateToDmWith = (peerId: string, onClose: () => void) => {
+  const navigateToDmWith = async (peerId: string, onClose: () => void) => {
     // Pick the sender id based on view mode: human view uses the user's
-    // hu_*, agent view uses the active agent. DM ids encode both parties so
-    // the backend can ensure the room on first send.
+    // hu_*, agent view uses the active agent.
     const selfId = sessionStore.viewMode === "human"
       ? sessionStore.human?.human_id ?? null
       : sessionStore.activeAgentId;
-    const dmRoomId = selfId
+    const predictedRoomId = selfId
       ? `rm_dm_${[selfId, peerId].sort().join("_")}`
       : null;
-    const dmRoom = dmRoomId
-      ? chatStore.overview?.rooms.find((r) => r.room_id === dmRoomId)
+    const cachedRoom = predictedRoomId
+      ? chatStore.overview?.rooms.find((r) => r.room_id === predictedRoomId)
       : null;
     onClose();
     uiStore.setSidebarTab("messages");
-    if (dmRoom) {
-      uiStore.setFocusedRoomId(dmRoom.room_id);
-      uiStore.setOpenedRoomId(dmRoom.room_id);
-      router.push(`/chats/messages/${encodeURIComponent(dmRoom.room_id)}`);
-    } else if (dmRoomId) {
-      uiStore.setFocusedRoomId(dmRoomId);
-      uiStore.setOpenedRoomId(dmRoomId);
-      router.push(`/chats/messages/${encodeURIComponent(dmRoomId)}`);
-    } else {
-      router.push("/chats/messages");
+
+    // If the DM is already in the local rooms list, navigate immediately.
+    if (cachedRoom) {
+      uiStore.setFocusedRoomId(cachedRoom.room_id);
+      uiStore.setOpenedRoomId(cachedRoom.room_id);
+      router.push(`/chats/messages/${encodeURIComponent(cachedRoom.room_id)}`);
+      return;
+    }
+
+    // Otherwise ensure the DM exists on the backend so RoomHeader and the
+    // sidebar can hydrate before the user types anything. Falls back to a
+    // pending placeholder navigation if the call fails (auto-create on first
+    // send still kicks in via human_room_send).
+    try {
+      const { room_id } = await api.openDmRoom(peerId);
+      if (sessionStore.viewMode === "human") {
+        await sessionStore.refreshHumanRooms();
+      } else {
+        await chatStore.refreshOverview();
+      }
+      uiStore.setFocusedRoomId(room_id);
+      uiStore.setOpenedRoomId(room_id);
+      router.push(`/chats/messages/${encodeURIComponent(room_id)}`);
+    } catch (error) {
+      console.error("[DashboardApp] openDmRoom failed:", error);
+      if (predictedRoomId) {
+        uiStore.setFocusedRoomId(predictedRoomId);
+        uiStore.setOpenedRoomId(predictedRoomId);
+        router.push(`/chats/messages/${encodeURIComponent(predictedRoomId)}`);
+      } else {
+        router.push("/chats/messages");
+      }
     }
   };
 
   const handleSendMessageFromAgentCard = () => {
     if (!selectedAgentForCard) return;
-    navigateToDmWith(selectedAgentForCard.agent_id, () => {
+    void navigateToDmWith(selectedAgentForCard.agent_id, () => {
       uiStore.closeAgentCard();
       chatStore.closeAgentCardState();
     });
@@ -779,7 +800,7 @@ export default function DashboardApp() {
   const handleSendMessageFromHumanCard = () => {
     const human = ownerHumanCard?.human;
     if (!human) return;
-    navigateToDmWith(human.human_id, () => setOwnerHumanCard(null));
+    void navigateToDmWith(human.human_id, () => setOwnerHumanCard(null));
   };
 
   const handleRetryOwnerHumanCard = () => {
