@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardOverview, HumanRoomSummary, PublicRoom } from "@/lib/types";
-import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
+import {
+  buildVisibleMessageRooms,
+  isRoomOwnedByCurrentViewer,
+  mergeDashboardRoomsWithHumanRooms,
+} from "@/store/dashboard-shared";
 
 function makePublicRoom(overrides: Partial<PublicRoom> = {}): PublicRoom {
   return {
@@ -57,10 +61,19 @@ function makeHumanRoom(overrides: Partial<HumanRoomSummary> = {}): HumanRoomSumm
     name: "Human room",
     description: "human",
     owner_id: "hu_owner",
+    owner_type: "human",
     visibility: "private",
     join_policy: "invite",
+    member_count: 1,
     my_role: "member",
+    allow_human_send: true,
+    default_send: true,
+    default_invite: true,
+    max_members: null,
+    slow_mode_seconds: null,
+    required_subscription_product_id: null,
     created_at: "2026-04-27T08:00:00Z",
+    rule: null,
     ...overrides,
   };
 }
@@ -85,5 +98,43 @@ describe("buildVisibleMessageRooms", () => {
     });
 
     expect(rooms.map((room) => room.room_id)).toEqual(["rm_public_1", "rm_joined_1", "rm_human_1"]);
+  });
+});
+
+describe("mergeDashboardRoomsWithHumanRooms", () => {
+  it("keeps human-owned created rooms visible outside the agent overview", () => {
+    const rooms = mergeDashboardRoomsWithHumanRooms(makeOverview().rooms, [
+      makeHumanRoom({
+        room_id: "rm_created_by_human",
+        owner_id: "hu_1",
+        my_role: "owner",
+        created_at: "2026-04-27T11:00:00Z",
+      }),
+    ]);
+
+    expect(rooms.map((room) => room.room_id)).toEqual(["rm_created_by_human", "rm_joined_1"]);
+    expect(rooms[0]).toMatchObject({
+      owner_id: "hu_1",
+      owner_type: "human",
+      my_role: "owner",
+    });
+  });
+});
+
+describe("isRoomOwnedByCurrentViewer", () => {
+  it("matches human-owned rooms by human id", () => {
+    const room = mergeDashboardRoomsWithHumanRooms([], [
+      makeHumanRoom({ owner_id: "hu_1", owner_type: "human", my_role: "owner" }),
+    ])[0];
+
+    expect(isRoomOwnedByCurrentViewer(room, { activeAgentId: "ag_1", humanId: "hu_1" })).toBe(true);
+    expect(isRoomOwnedByCurrentViewer(room, { activeAgentId: "ag_1", humanId: "hu_2" })).toBe(false);
+  });
+
+  it("matches agent-owned rooms by active agent id", () => {
+    const room = makeOverview({ owner_id: "ag_1" }).rooms[0];
+
+    expect(isRoomOwnedByCurrentViewer(room, { activeAgentId: "ag_1", humanId: "hu_1" })).toBe(true);
+    expect(isRoomOwnedByCurrentViewer(room, { activeAgentId: "ag_2", humanId: "hu_1" })).toBe(false);
   });
 });

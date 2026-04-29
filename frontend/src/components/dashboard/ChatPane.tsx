@@ -13,7 +13,11 @@ import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
-import { buildVisibleMessageRooms, compareRoomsByActivityDesc } from "@/store/dashboard-shared";
+import {
+  buildVisibleMessageRooms,
+  isRoomOwnedByCurrentViewer,
+  mergeDashboardRoomsWithHumanRooms,
+} from "@/store/dashboard-shared";
 import RoomHeader from "./RoomHeader";
 import MessageList from "./MessageList";
 import PaidRoomPreview from "./PaidRoomPreview";
@@ -84,6 +88,8 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   })));
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
+  const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
+  const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const isAuthed = sessionMode === "authed-ready" || sessionMode === "authed-no-agent";
   const [query, setQuery] = useState("");
   const [showFriendInvite, setShowFriendInvite] = useState(false);
@@ -92,16 +98,17 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   const isCreatedView = contactsView === "created";
   const contacts = overview?.contacts || [];
   const sortedRooms = useMemo(
-    () => [...(overview?.rooms || [])].sort(compareRoomsByActivityDesc),
-    [overview?.rooms],
+    () => mergeDashboardRoomsWithHumanRooms(overview?.rooms || [], humanRooms),
+    [overview?.rooms, humanRooms],
   );
+  const ownerViewer = useMemo(() => ({ activeAgentId, humanId }), [activeAgentId, humanId]);
   const joinedRooms = useMemo(
-    () => sortedRooms.filter((room) => !activeAgentId || room.owner_id !== activeAgentId),
-    [sortedRooms, activeAgentId],
+    () => sortedRooms.filter((room) => !isRoomOwnedByCurrentViewer(room, ownerViewer)),
+    [sortedRooms, ownerViewer],
   );
   const createdRooms = useMemo(
-    () => sortedRooms.filter((room) => activeAgentId && room.owner_id === activeAgentId),
-    [sortedRooms, activeAgentId],
+    () => sortedRooms.filter((room) => isRoomOwnedByCurrentViewer(room, ownerViewer)),
+    [sortedRooms, ownerViewer],
   );
   const pendingReceived = contactRequestsReceived.filter((item) => item.state === "pending");
 
