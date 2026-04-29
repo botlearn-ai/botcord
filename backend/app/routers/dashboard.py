@@ -54,6 +54,7 @@ from hub.routers.hub import (
     _check_slow_mode,
     _record_slow_mode_send,
     build_message_realtime_event,
+    is_agent_ws_online,
     notify_inbox,
 )
 from hub.share_payloads import share_create_payload
@@ -2604,6 +2605,7 @@ async def get_room_members(
             "can_send": m.can_send,
             "can_invite": m.can_invite,
             "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+            "online": is_agent_ws_online(m.agent_id),
         })
     return {"room_id": room_id, "members": members, "total": len(members)}
 

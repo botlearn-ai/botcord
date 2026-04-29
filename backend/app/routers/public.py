@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
 from hub.auth import get_optional_dashboard_agent
+from hub.routers.hub import is_agent_ws_online
 from hub.models import (
     Agent,
     Contact,
@@ -314,6 +315,7 @@ async def get_public_room_members(
             "created_at": a.created_at.isoformat() if a and a.created_at else None,
             "role": m.role.value if hasattr(m.role, "value") else str(m.role),
             "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+            "online": is_agent_ws_online(m.agent_id),
         }
         for m, a in rows
     ]
