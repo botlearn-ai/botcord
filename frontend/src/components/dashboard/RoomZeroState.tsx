@@ -55,13 +55,23 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
       })),
     );
 
-  const { setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(
+  const { setFocusedRoomId, setOpenedRoomId, setSidebarTab, setMessagesPane } = useDashboardUIStore(
     useShallow((state) => ({
       setFocusedRoomId: state.setFocusedRoomId,
       setOpenedRoomId: state.setOpenedRoomId,
       setSidebarTab: state.setSidebarTab,
+      setMessagesPane: state.setMessagesPane,
     })),
   );
+
+  const handleCreatedRoom = (room: { room_id: string }) => {
+    setShowCreateRoom(false);
+    setSidebarTab("messages");
+    setMessagesPane("room");
+    setFocusedRoomId(room.room_id);
+    setOpenedRoomId(room.room_id);
+    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+  };
 
   useEffect(() => {
     if (!publicRoomsLoaded) loadPublicRooms();
@@ -130,7 +140,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
             </button>
           )}
         </div>
-        {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} />}
+        {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} onCreated={handleCreatedRoom} />}
       </div>
     );
   }
@@ -306,7 +316,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
         </section>
       )}
 
-      {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} />}
+      {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} onCreated={handleCreatedRoom} />}
     </div>
   );
 }

@@ -130,6 +130,7 @@ export default function Sidebar() {
     setExploreView: s.setExploreView,
     setContactsView: s.setContactsView,
     setSidebarWidth: s.setSidebarWidth,
+    setFocusedRoomId: s.setFocusedRoomId,
     setOpenedRoomId: s.setOpenedRoomId,
     createBotModalOpen: s.createBotModalOpen,
     openCreateBotModal: s.openCreateBotModal,
@@ -387,6 +388,9 @@ export default function Sidebar() {
           onClose={() => setShowCreateRoom(false)}
           onCreated={(room) => {
             setShowCreateRoom(false);
+            uiStore.setSidebarTab("messages");
+            uiStore.setMessagesPane("room");
+            uiStore.setFocusedRoomId(room.room_id);
             uiStore.setOpenedRoomId(room.room_id);
             router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
           }}

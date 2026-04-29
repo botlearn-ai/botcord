@@ -23,9 +23,10 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const { insertMessage, loadRoomMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
+  const { insertMessage, patchRoom, pollNewMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
     insertMessage: s.insertMessage,
-    loadRoomMessages: s.loadRoomMessages,
+    patchRoom: s.patchRoom,
+    pollNewMessages: s.pollNewMessages,
     refreshOverview: s.refreshOverview,
   })));
   const hasRoomInOverview = useDashboardChatStore(
@@ -114,8 +115,13 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     setError(null);
 
     try {
-      await api.sendRoomHumanMessage(roomId, text, mentions);
-      await loadRoomMessages(roomId);
+      const result = await api.sendRoomHumanMessage(roomId, text, mentions);
+      patchRoom(roomId, {
+        last_message_preview: text,
+        last_message_at: now,
+        last_sender_name: displayName,
+      });
+      await pollNewMessages(roomId, { expectedHubMsgId: result.hub_msg_id, retries: 4 });
       // First send into a brand-new DM room (auto-created server-side) won't
       // show up in the sidebar until overview/humanRooms is re-fetched.
       if (roomId.startsWith("rm_dm_")) {
@@ -128,7 +134,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send");
     }
-  }, [senderId, displayName, user?.id, roomId, viewMode, insertMessage, loadRoomMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
+  }, [senderId, displayName, user?.id, roomId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
 
   if (sendDenied) {
     return (

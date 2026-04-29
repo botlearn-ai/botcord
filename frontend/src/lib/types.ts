@@ -909,6 +909,9 @@ export interface HumanRoomSummary {
   max_members: number | null;
   slow_mode_seconds: number | null;
   required_subscription_product_id: string | null;
+  last_message_preview?: string | null;
+  last_message_at?: string | null;
+  last_sender_name?: string | null;
   created_at: string | null;
 }
 

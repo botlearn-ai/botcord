@@ -22,6 +22,7 @@ import { api, humansApi } from "@/lib/api";
 import {
   buildVisibleMessageRooms,
   roomMessagesInFlight,
+  roomMessagesReloadPending,
   roomPollInFlight,
   toRoomSummary,
 } from "@/store/dashboard-shared";
@@ -356,7 +357,10 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         })),
 
       loadRoomMessages: async (roomId: string) => {
-        if (roomMessagesInFlight.has(roomId)) return;
+        if (roomMessagesInFlight.has(roomId)) {
+          roomMessagesReloadPending.add(roomId);
+          return;
+        }
         set((state) => ({
           messagesLoading: { ...state.messagesLoading, [roomId]: true },
         }));
@@ -375,6 +379,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           set((state) => ({
             messagesLoading: { ...state.messagesLoading, [roomId]: false },
           }));
+          if (roomMessagesReloadPending.delete(roomId)) {
+            void get().loadRoomMessages(roomId);
+          }
         }
       },
 
@@ -402,8 +409,18 @@ export const useDashboardChatStore = create<DashboardChatState>()(
                 const existingIds = new Set(current.map((message) => message.hub_msg_id));
                 const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
                 if (deduped.length === 0) return state;
+                const currentWithoutMatchedOptimistic = current.filter((message) => {
+                  if (!message.hub_msg_id?.startsWith("tmp_")) return true;
+                  return !deduped.some((newMessage) =>
+                    newMessage.text === message.text
+                    && (
+                      newMessage.sender_id === message.sender_id
+                      || newMessage.is_mine === message.is_mine
+                    ),
+                  );
+                });
                 return {
-                  messages: { ...state.messages, [roomId]: [...current, ...deduped] },
+                  messages: { ...state.messages, [roomId]: [...currentWithoutMatchedOptimistic, ...deduped] },
                 };
               });
             }

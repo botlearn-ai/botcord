@@ -12,7 +12,8 @@ import { roomList } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
-import { ContactInfo, DashboardRoom, HumanRoomSummary } from "@/lib/types";
+import { ContactInfo, DashboardRoom } from "@/lib/types";
+import { humanRoomToDashboardRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -20,32 +21,6 @@ import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 import { resolveDmDisplayName } from "./dmRoom";
-
-/** Fill missing DashboardRoom fields so a Human-owned room renders alongside
- * agent rooms without special-casing the render path. Unread / last-message
- * metadata is not returned by /api/humans/me/rooms yet — zero-fill for now. */
-function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
-  return {
-    room_id: r.room_id,
-    name: r.name,
-    description: r.description,
-    owner_id: r.owner_id,
-    visibility: r.visibility,
-    join_policy: r.join_policy,
-    can_invite: undefined,
-    member_count: 0,
-    my_role: r.my_role,
-    created_at: null,
-    rule: null,
-    required_subscription_product_id: null,
-    last_viewed_at: null,
-    has_unread: false,
-    unread_count: 0,
-    last_message_preview: null,
-    last_message_at: null,
-    last_sender_name: null,
-  };
-}
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
@@ -278,7 +253,7 @@ export default function RoomList({
         }
         const previewLine = previewSender ? `${previewSender}: ${previewText}` : previewText;
         const metaLine = roomMeta?.[room.room_id] ?? null;
-        const messageTime = formatLastMessageTime(room.last_message_at);
+        const messageTime = formatLastMessageTime(room.last_message_at || cachedLatestMessage?.created_at || null);
         const selfRoomId = viewMode === "human" ? humanId : activeAgentId;
         const displayName = resolveDmDisplayName(room.room_id, selfRoomId, contacts, room.name);
         const avatarLabel = buildRoomAvatarLabel(displayName);
