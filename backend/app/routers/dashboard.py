@@ -2337,8 +2337,8 @@ async def human_room_send(
     _record_slow_mode_send(room_id, sender_id)
 
     # Normalize mentions. Owner-chat rooms (rm_oc_) ignore mentions entirely.
-    # Human sends may mention specific agent_ids or the special "@all" token;
-    # any other non-"ag_" string is dropped. Cap at 20 to avoid abuse.
+    # Human sends may mention agent_ids (ag_*), human_ids (hu_*) or the special
+    # "@all" token; anything else is dropped. Cap at 20 to avoid abuse.
     raw_mentions = body.mentions or []
     if room_id.startswith("rm_oc_"):
         raw_mentions = []
@@ -2353,7 +2353,7 @@ async def human_room_send(
             normalized_mentions = ["@all"]
             seen_mentions.add(m)
             break
-        if not m.startswith("ag_"):
+        if not (m.startswith("ag_") or m.startswith("hu_")):
             continue
         seen_mentions.add(m)
         normalized_mentions.append(m)

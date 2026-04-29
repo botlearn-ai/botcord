@@ -7,14 +7,15 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { walletPanel } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import type { WithdrawalResponse } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
@@ -38,6 +39,7 @@ export default function WalletPanel() {
     walletError,
     walletLoading,
     walletLedger,
+    walletViewer,
     withdrawalRequests,
     withdrawalRequestsLoading,
     withdrawalRequestsError,
@@ -46,12 +48,14 @@ export default function WalletPanel() {
     loadWalletLedger,
     loadWithdrawalRequests,
     setWalletView,
+    setWalletViewer,
   } = useDashboardWalletStore(useShallow((state) => ({
     wallet: state.wallet,
     walletView: state.walletView,
     walletError: state.walletError,
     walletLoading: state.walletLoading,
     walletLedger: state.walletLedger,
+    walletViewer: state.walletViewer,
     withdrawalRequests: state.withdrawalRequests,
     withdrawalRequestsLoading: state.withdrawalRequestsLoading,
     withdrawalRequestsError: state.withdrawalRequestsError,
@@ -60,9 +64,37 @@ export default function WalletPanel() {
     loadWalletLedger: state.loadWalletLedger,
     loadWithdrawalRequests: state.loadWithdrawalRequests,
     setWalletView: state.setWalletView,
+    setWalletViewer: state.setWalletViewer,
   })));
+  const sessionStore = useDashboardSessionStore(
+    useShallow((s) => ({
+      activeIdentity: s.activeIdentity,
+      ownedAgents: s.ownedAgents,
+      human: s.human,
+    })),
+  );
   const [activeDialog, setActiveDialog] = useState<"transfer" | "topup" | "withdraw" | null>(null);
   const view = walletView;
+
+  // Effective viewer: explicit override, otherwise the global active identity.
+  const effectiveViewer: ActiveIdentity | null = walletViewer ?? sessionStore.activeIdentity;
+  const ownerOptions = useMemo(() => {
+    const options: Array<{ identity: ActiveIdentity; label: string }> = [];
+    if (sessionStore.human?.human_id) {
+      options.push({
+        identity: { type: "human", id: sessionStore.human.human_id },
+        label: t.youHuman,
+      });
+    }
+    for (const agent of sessionStore.ownedAgents) {
+      options.push({
+        identity: { type: "agent", id: agent.agent_id },
+        label: `${t.botPrefix} · ${agent.display_name}`,
+      });
+    }
+    return options;
+  }, [sessionStore.human, sessionStore.ownedAgents, t.botPrefix, t.youHuman]);
+  const showOwnerSwitcher = ownerOptions.length > 1;
 
   useEffect(() => {
     if (!wallet && !walletError && !walletLoading) {
@@ -123,7 +155,17 @@ export default function WalletPanel() {
     <div className="flex flex-1 flex-col bg-deep-black">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
-        <h2 className="text-lg font-semibold text-text-primary">{t.wallet}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold text-text-primary">{t.wallet}</h2>
+          {showOwnerSwitcher ? (
+            <WalletOwnerSwitcher
+              effectiveViewer={effectiveViewer}
+              options={ownerOptions}
+              onSelect={(identity) => setWalletViewer(identity)}
+              label={t.viewingWalletFor}
+            />
+          ) : null}
+        </div>
         <div className="flex gap-1">
           <button
             onClick={() => setWalletView("overview")}
@@ -152,6 +194,7 @@ export default function WalletPanel() {
         {view === "overview" ? (
           <WalletOverview
             wallet={wallet}
+            viewer={effectiveViewer}
             withdrawalRequests={withdrawalRequests}
             withdrawalsLoading={withdrawalRequestsLoading}
             withdrawalsError={withdrawalRequestsError}
@@ -169,18 +212,21 @@ export default function WalletPanel() {
       {/* Dialogs */}
       {activeDialog === "transfer" && (
         <TransferDialog
+          viewer={effectiveViewer}
           onClose={() => setActiveDialog(null)}
           onSuccess={handleDialogSuccess}
         />
       )}
       {activeDialog === "topup" && (
         <TopupDialog
+          viewer={effectiveViewer}
           onClose={() => setActiveDialog(null)}
           onSuccess={handleDialogSuccess}
         />
       )}
       {activeDialog === "withdraw" && (
         <WithdrawDialog
+          viewer={effectiveViewer}
           onClose={() => setActiveDialog(null)}
           onSuccess={handleDialogSuccess}
           availableBalance={wallet.available_balance_minor}
@@ -190,8 +236,77 @@ export default function WalletPanel() {
   );
 }
 
+interface OwnerOption {
+  identity: ActiveIdentity;
+  label: string;
+}
+
+function WalletOwnerSwitcher({
+  effectiveViewer,
+  options,
+  onSelect,
+  label,
+}: {
+  effectiveViewer: ActiveIdentity | null;
+  options: OwnerOption[];
+  onSelect: (identity: ActiveIdentity) => void;
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = effectiveViewer
+    ? options.find(
+        (o) => o.identity.type === effectiveViewer.type && o.identity.id === effectiveViewer.id,
+      )
+    : null;
+  const display = current?.label ?? "—";
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
+      >
+        <span className="text-text-secondary/70">{label}</span>
+        <span className="font-medium text-text-primary">{display}</span>
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-20 mt-1 min-w-[200px] overflow-hidden rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
+          {options.map((opt) => {
+            const selected =
+              effectiveViewer?.type === opt.identity.type
+              && effectiveViewer?.id === opt.identity.id;
+            return (
+              <button
+                key={`${opt.identity.type}:${opt.identity.id}`}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelect(opt.identity);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-glass-bg ${
+                  selected ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-primary"
+                }`}
+              >
+                <span className="truncate">{opt.label}</span>
+                <span className="ml-2 truncate font-mono text-[10px] text-text-secondary/60">
+                  {opt.identity.id}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function WalletOverview({
   wallet,
+  viewer,
   withdrawalRequests,
   withdrawalsLoading,
   withdrawalsError,
@@ -202,6 +317,7 @@ function WalletOverview({
   onWithdraw,
 }: {
   wallet: { available_balance_minor: string; locked_balance_minor: string; total_balance_minor: string; asset_code: string; updated_at: string };
+  viewer: ActiveIdentity | null;
   withdrawalRequests: WithdrawalResponse[];
   withdrawalsLoading: boolean;
   withdrawalsError: string | null;
@@ -286,6 +402,7 @@ function WalletOverview({
       </div>
 
       <RecentWithdrawals
+        viewer={viewer}
         items={withdrawalRequests}
         loading={withdrawalsLoading}
         error={withdrawalsError}
@@ -297,12 +414,14 @@ function WalletOverview({
 }
 
 function RecentWithdrawals({
+  viewer,
   items,
   loading,
   error,
   onRefresh,
   onCancelled,
 }: {
+  viewer: ActiveIdentity | null;
   items: WithdrawalResponse[];
   loading: boolean;
   error: string | null;
@@ -321,7 +440,7 @@ function RecentWithdrawals({
 
     setCancellingId(withdrawalId);
     try {
-      await api.cancelWithdrawal(withdrawalId);
+      await api.cancelWithdrawal(withdrawalId, viewer);
       window.alert(t.cancelWithdrawalSuccess);
       onCancelled();
     } catch (err) {
@@ -333,7 +452,7 @@ function RecentWithdrawals({
     } finally {
       setCancellingId(null);
     }
-  }, [onCancelled, t]);
+  }, [onCancelled, t, viewer]);
 
   return (
     <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl">

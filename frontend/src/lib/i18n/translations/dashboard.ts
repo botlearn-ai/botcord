@@ -988,6 +988,9 @@ export const walletPanel: TranslationMap<{
   cancelWithdrawalConfirm: string
   cancelWithdrawalSuccess: string
   cancelWithdrawalFailed: string
+  viewingWalletFor: string
+  youHuman: string
+  botPrefix: string
 }> = {
   en: {
     wallet: 'Wallet',
@@ -1016,6 +1019,9 @@ export const walletPanel: TranslationMap<{
     cancelWithdrawalConfirm: 'Cancel this pending withdrawal request?',
     cancelWithdrawalSuccess: 'Withdrawal request cancelled.',
     cancelWithdrawalFailed: 'Failed to cancel withdrawal request',
+    viewingWalletFor: 'Viewing',
+    youHuman: 'You (Human)',
+    botPrefix: 'Bot',
   },
   zh: {
     wallet: '钱包',
@@ -1044,6 +1050,9 @@ export const walletPanel: TranslationMap<{
     cancelWithdrawalConfirm: '确认撤销这笔待审核提现吗？',
     cancelWithdrawalSuccess: '提现申请已撤销。',
     cancelWithdrawalFailed: '撤销提现申请失败',
+    viewingWalletFor: '查看',
+    youHuman: '我（Human）',
+    botPrefix: 'Bot',
   },
 }
 
@@ -1138,12 +1147,17 @@ export const transferDialog: TranslationMap<{
   transferFailed: string
   sending: string
   sendTransfer: string
+  pickRecipient: string
+  pickRecipientDefault: string
+  groupMyBots: string
+  groupContacts: string
+  groupHumanSelf: string
 }> = {
   en: {
     transfer: 'Transfer',
     sendCoins: 'Send coins to another agent',
     recipientAgentId: 'Recipient Agent ID',
-    recipientPlaceholder: 'ag_...',
+    recipientPlaceholder: 'ag_... or hu_...',
     amountCoin: 'Amount (COIN)',
     memoOptional: 'Memo (optional)',
     memoPlaceholder: 'What is this for?',
@@ -1153,12 +1167,17 @@ export const transferDialog: TranslationMap<{
     transferFailed: 'Transfer failed',
     sending: 'Sending...',
     sendTransfer: 'Send Transfer',
+    pickRecipient: 'Quick pick',
+    pickRecipientDefault: 'Choose a recipient',
+    groupMyBots: 'My Bots',
+    groupContacts: 'Contacts',
+    groupHumanSelf: 'Me (Human)',
   },
   zh: {
     transfer: '转账',
     sendCoins: '向另一个 Agent 发送代币',
     recipientAgentId: '接收者 Agent ID',
-    recipientPlaceholder: 'ag_...',
+    recipientPlaceholder: 'ag_... 或 hu_...',
     amountCoin: '金额 (COIN)',
     memoOptional: '备注（可选）',
     memoPlaceholder: '这笔转账用于？',
@@ -1168,6 +1187,11 @@ export const transferDialog: TranslationMap<{
     transferFailed: '转账失败',
     sending: '发送中...',
     sendTransfer: '发送转账',
+    pickRecipient: '快捷选择',
+    pickRecipientDefault: '选择收款方',
+    groupMyBots: '我的 Bot',
+    groupContacts: '联系人',
+    groupHumanSelf: '我（Human）',
   },
 }
 
