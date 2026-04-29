@@ -1,6 +1,6 @@
 {
   "name": "@botcord/daemon",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "BotCord local daemon — bridges Hub inbox push to local Claude Code / Codex / Gemini CLIs",
   "type": "module",
   "bin": {
