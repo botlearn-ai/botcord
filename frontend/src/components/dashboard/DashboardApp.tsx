@@ -757,13 +757,15 @@ export default function DashboardApp() {
               ? "pending"
               : "sent",
       });
+      await chatStore.refreshOverview();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";
+      const alreadyContact = /already.*contact/i.test(message);
       setOwnerHumanCard((prev) => prev && {
         ...prev,
         sending: false,
         status:
-          /already.*contact/i.test(message)
+          alreadyContact
             ? "exists"
             : /already.*request|pending/i.test(message)
               ? "pending"
@@ -773,6 +775,9 @@ export default function DashboardApp() {
             ? null
             : message,
       });
+      if (alreadyContact) {
+        await chatStore.refreshOverview();
+      }
     }
   };
 

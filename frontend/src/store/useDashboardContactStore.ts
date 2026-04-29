@@ -6,8 +6,8 @@
  */
 
 import { create } from "zustand";
-import type { ContactRequestItem } from "@/lib/types";
-import { api } from "@/lib/api";
+import type { ContactRequestItem, HumanContactRequestSummary } from "@/lib/types";
+import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 
@@ -16,7 +16,7 @@ interface DashboardContactState {
   contactRequestsReceived: ContactRequestItem[];
   contactRequestsSent: ContactRequestItem[];
   contactRequestsLoading: boolean;
-  processingContactRequestId: number | null;
+  processingContactRequestId: number | string | null;
   processingContactRequestAction: "accept" | "reject" | null;
   sendingContactRequestAgentId: string | null;
 
@@ -24,7 +24,7 @@ interface DashboardContactState {
   resetContactState: () => void;
   loadContactRequests: () => Promise<void>;
   sendContactRequest: (toAgentId: string, message?: string) => Promise<void>;
-  respondContactRequest: (requestId: number, action: "accept" | "reject") => Promise<void>;
+  respondContactRequest: (requestId: number | string, action: "accept" | "reject") => Promise<void>;
 }
 
 const initialContactState = {
@@ -37,9 +37,32 @@ const initialContactState = {
   sendingContactRequestAgentId: null,
 };
 
-function hasReadyAgent() {
-  const { token, activeAgentId } = useDashboardSessionStore.getState();
-  return Boolean(token && activeAgentId);
+function isHumanContactSurface() {
+  const { activeIdentity, viewMode } = useDashboardSessionStore.getState();
+  return activeIdentity?.type === "human" || viewMode === "human";
+}
+
+function hasReadyContactIdentity() {
+  const { token, activeAgentId, activeIdentity, viewMode, human } = useDashboardSessionStore.getState();
+  if (!token) return false;
+  if (activeIdentity?.type === "human" || viewMode === "human") {
+    return Boolean(human?.human_id);
+  }
+  return Boolean(activeAgentId);
+}
+
+function normalizeHumanContactRequest(item: HumanContactRequestSummary): ContactRequestItem {
+  return {
+    id: item.id,
+    from_agent_id: item.from_participant_id,
+    to_agent_id: item.to_participant_id,
+    state: item.state,
+    message: item.message,
+    created_at: new Date(item.created_at * 1000).toISOString(),
+    resolved_at: null,
+    from_display_name: item.from_display_name,
+    to_display_name: item.to_display_name,
+  };
 }
 
 export const useDashboardContactStore = create<DashboardContactState>()((set, get) => ({
@@ -55,7 +78,7 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
   resetContactState: () => set({ ...initialContactState }),
 
   loadContactRequests: async () => {
-    if (!hasReadyAgent()) {
+    if (!hasReadyContactIdentity()) {
       set({
         contactRequestsReceived: [],
         contactRequestsSent: [],
@@ -65,10 +88,18 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
     }
     set({ contactRequestsLoading: true });
     try {
-      const [received, sent] = await Promise.all([
-        api.getContactRequestsReceived(),
-        api.getContactRequestsSent(),
-      ]);
+      const [received, sent] = isHumanContactSurface()
+        ? await Promise.all([
+            humansApi.listReceivedContactRequests(),
+            humansApi.listSentContactRequests(),
+          ]).then(([receivedRes, sentRes]) => [
+            { requests: receivedRes.requests.map(normalizeHumanContactRequest) },
+            { requests: sentRes.requests.map(normalizeHumanContactRequest) },
+          ] as const)
+        : await Promise.all([
+            api.getContactRequestsReceived(),
+            api.getContactRequestsSent(),
+          ]);
       const pendingSentTargets = sent.requests
         .filter((item) => item.state === "pending")
         .map((item) => item.to_agent_id);
@@ -88,8 +119,13 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
     if (!token) return;
     set({ sendingContactRequestAgentId: toAgentId });
     try {
-      await api.createContactRequest({ to_agent_id: toAgentId, message });
-      await get().loadContactRequests();
+      if (isHumanContactSurface()) {
+        await humansApi.sendContactRequest({ peer_id: toAgentId, message });
+      } else {
+        await api.createContactRequest({ to_agent_id: toAgentId, message });
+      }
+      const chatStore = useDashboardChatStore.getState();
+      await Promise.all([chatStore.refreshOverview(), get().loadContactRequests()]);
       set((state) => ({
         pendingFriendRequests: state.pendingFriendRequests.includes(toAgentId)
           ? state.pendingFriendRequests
@@ -102,15 +138,23 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
     }
   },
 
-  respondContactRequest: async (requestId: number, action: "accept" | "reject") => {
+  respondContactRequest: async (requestId: number | string, action: "accept" | "reject") => {
     const { token } = useDashboardSessionStore.getState();
     if (!token) return;
     set({ processingContactRequestId: requestId, processingContactRequestAction: action });
     try {
       if (action === "accept") {
-        await api.acceptContactRequest(requestId);
+        if (isHumanContactSurface()) {
+          await humansApi.acceptContactRequest(String(requestId));
+        } else {
+          await api.acceptContactRequest(Number(requestId));
+        }
       } else {
-        await api.rejectContactRequest(requestId);
+        if (isHumanContactSurface()) {
+          await humansApi.rejectContactRequest(String(requestId));
+        } else {
+          await api.rejectContactRequest(Number(requestId));
+        }
       }
       const chatStore = useDashboardChatStore.getState();
       await Promise.all([chatStore.refreshOverview(), get().loadContactRequests()]);

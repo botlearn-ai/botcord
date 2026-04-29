@@ -79,7 +79,7 @@ export interface ContactInfo {
 }
 
 export interface ContactRequestItem {
-  id: number;
+  id: number | string;
   from_agent_id: string;
   to_agent_id: string;
   state: "pending" | "accepted" | "rejected";
