@@ -46,12 +46,8 @@ const initialWalletState = {
   walletView: "overview" as const,
 };
 
-function getAuthContext() {
-  const { token, activeAgentId, activeIdentity } = useDashboardSessionStore.getState();
-  return {
-    token,
-    hasReadyAgent: Boolean(token && activeAgentId && activeIdentity?.type === "agent"),
-  };
+function getToken(): string | null {
+  return useDashboardSessionStore.getState().token;
 }
 
 export const useDashboardWalletStore = create<DashboardWalletState>()((set, get) => ({
@@ -62,12 +58,7 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
   resetWalletState: () => set({ ...initialWalletState }),
 
   loadWallet: async () => {
-    const { token, hasReadyAgent } = getAuthContext();
-    if (!token) return;
-    if (!hasReadyAgent) {
-      set({ wallet: null, walletError: null });
-      return;
-    }
+    if (!getToken()) return;
     try {
       const wallet = await api.getWallet();
       set({ wallet, walletError: null });
@@ -77,19 +68,8 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
   },
 
   loadWalletLedger: async (loadMore = false) => {
-    const { token, hasReadyAgent } = getAuthContext();
+    if (!getToken()) return;
     const { walletLedgerCursor, walletLedger } = get();
-    if (!token) return;
-    if (!hasReadyAgent) {
-      set({
-        walletLedger: [],
-        walletLedgerCursor: null,
-        walletLedgerHasMore: false,
-        walletLedgerError: null,
-        walletLoading: false,
-      });
-      return;
-    }
     set({ walletLoading: true });
     try {
       const cursor = loadMore ? walletLedgerCursor : undefined;
@@ -115,17 +95,7 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
   },
 
   loadWithdrawalRequests: async () => {
-    const { token, hasReadyAgent } = getAuthContext();
-    if (!token) return;
-    if (!hasReadyAgent) {
-      set({
-        withdrawalRequests: [],
-        withdrawalRequestsError: null,
-        withdrawalRequestsLoaded: false,
-        withdrawalRequestsLoading: false,
-      });
-      return;
-    }
+    if (!getToken()) return;
     set({ withdrawalRequestsLoading: true, withdrawalRequestsError: null });
     try {
       const result = await api.getWithdrawals();
