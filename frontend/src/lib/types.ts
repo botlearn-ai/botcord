@@ -839,6 +839,7 @@ export interface UserAgent {
   is_default: boolean;
   claimed_at: string;
   ws_online: boolean;
+  daemon_instance_id?: string | null;
 }
 
 // --- Activity / Observability types ---

@@ -912,6 +912,7 @@ async def get_me(
                 "is_default": a.is_default,
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
                 "ws_online": is_agent_ws_online(a.agent_id),
+                "daemon_instance_id": a.daemon_instance_id,
             }
             for a in agents
         ],

@@ -38,6 +38,7 @@ import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 interface CreateAgentDialogProps {
   onClose: () => void;
   onSuccess: (agentId: string) => Promise<void> | void;
+  preselectedDaemonId?: string | null;
 }
 
 function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
@@ -61,6 +62,7 @@ function applyRuntimeSupport(
 export default function CreateAgentDialog({
   onClose,
   onSuccess,
+  preselectedDaemonId,
 }: CreateAgentDialogProps) {
   const locale = useLanguage();
   const t = createAgentDialog[locale];
@@ -93,14 +95,19 @@ export default function CreateAgentDialog({
   }, [refresh]);
 
   // Auto-select first online daemon once the list arrives.
+  // If a preselectedDaemonId was provided, use that instead.
   useEffect(() => {
+    if (preselectedDaemonId && daemons.some((d) => d.id === preselectedDaemonId)) {
+      setSelectedDaemonId(preselectedDaemonId);
+      return;
+    }
     if (selectedDaemonId) {
       const stillOnline = onlineDaemons.some((d) => d.id === selectedDaemonId);
       if (stillOnline) return;
     }
     const pick = firstOnline(daemons);
     setSelectedDaemonId(pick?.id ?? null);
-  }, [daemons, onlineDaemons, selectedDaemonId]);
+  }, [daemons, onlineDaemons, selectedDaemonId, preselectedDaemonId]);
 
   const selectedDaemon = useMemo(() => {
     const d = daemons.find((d) => d.id === selectedDaemonId) ?? null;
