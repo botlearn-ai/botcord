@@ -27,7 +27,7 @@ jobs:
   # ── Build + push docker image ────────────────────────────────────────────────
   deploy:
     name: Build & Push
-    runs-on: self-hosted
+    runs-on: [self-hosted, deploy-host]
     timeout-minutes: 20
     outputs:
       image_tag: ${{ steps.build.outputs.image_tag }}
@@ -61,7 +61,7 @@ jobs:
     name: Restart Preview
     needs: [deploy]
     if: inputs.env_name == 'preview'
-    runs-on: self-hosted
+    runs-on: [self-hosted, deploy-host]
     timeout-minutes: 10
     env:
       PROJECT: botcord-backend
@@ -77,7 +77,7 @@ jobs:
     name: Rollout Production
     needs: [deploy]
     if: inputs.env_name == 'prod'
-    runs-on: self-hosted
+    runs-on: [self-hosted, deploy-host]
     timeout-minutes: 15
     env:
       PROJECT: botcord-backend
