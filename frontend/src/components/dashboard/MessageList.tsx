@@ -99,10 +99,12 @@ function messagePreviewText(msg: DashboardMessage): string {
 function TopicCard({
   group,
   currentAgentId,
+  sourceName,
   onOpen,
 }: {
   group: TopicGroup;
   currentAgentId: string | undefined;
+  sourceName?: string;
   onOpen: () => void;
 }) {
   const topicStatusConfig = useTopicStatusConfig();
@@ -146,6 +148,7 @@ function TopicCard({
         <MessageBubble
           message={firstMsg}
           isOwn={firstMsg.sender_id === currentAgentId}
+          sourceName={sourceName}
         />
       )}
 
@@ -246,6 +249,7 @@ export default function MessageList() {
   const isRoomMessagesLoading = roomId ? messagesLoading[roomId] ?? false : false;
   const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
   const currentAgentId = overview?.agent?.agent_id;
+  const currentRoomName = overview?.rooms?.find((r) => r.room_id === roomId)?.name ?? roomId ?? "";
   const commitRoomSeen = useCallback((targetRoomId: string) => {
     const joinedRoom = overview?.rooms.find((room) => room.room_id === targetRoomId);
     if (!joinedRoom) {
@@ -417,6 +421,7 @@ export default function MessageList() {
                 key={msg.hub_msg_id}
                 message={msg}
                 isOwn={msg.sender_id === currentAgentId}
+                sourceName={currentRoomName}
               />
             );
           }
@@ -428,6 +433,7 @@ export default function MessageList() {
               key={key}
               group={group}
               currentAgentId={currentAgentId}
+              sourceName={currentRoomName}
               onOpen={() => group.topicId && setOpenedTopicId(group.topicId)}
             />
           );

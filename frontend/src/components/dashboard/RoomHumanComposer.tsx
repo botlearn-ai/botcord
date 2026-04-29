@@ -22,8 +22,11 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const insertMessage = useDashboardChatStore((s) => s.insertMessage);
-  const loadRoomMessages = useDashboardChatStore((s) => s.loadRoomMessages);
+  const { insertMessage, loadRoomMessages, overview } = useDashboardChatStore(useShallow((s) => ({
+    insertMessage: s.insertMessage,
+    loadRoomMessages: s.loadRoomMessages,
+    overview: s.overview,
+  })));
 
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
@@ -63,11 +66,22 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
 
   const mentionCandidates = useMemo<MentionCandidate[]>(() => {
     if (!allowAllMention) return [];
-    const roomCandidates = members
-      .filter((m) => m.agent_id !== selfId && m.agent_id.startsWith("ag_"))
-      .map((m) => ({ agent_id: m.agent_id, display_name: m.display_name }));
-    return [{ agent_id: "@all", display_name: "all" }, ...roomCandidates];
-  }, [members, selfId, allowAllMention]);
+    const candidates: MentionCandidate[] = [{ agent_id: "@all", display_name: "all" }];
+    for (const a of ownedAgents) {
+      if (a.agent_id !== selfId) {
+        candidates.push({ agent_id: a.agent_id, display_name: a.display_name, id: a.agent_id });
+      }
+    }
+    for (const c of overview?.contacts ?? []) {
+      candidates.push({ agent_id: c.contact_agent_id, display_name: c.alias || c.display_name, id: c.contact_agent_id });
+    }
+    for (const r of overview?.rooms ?? []) {
+      if (r.room_id !== roomId && !r.room_id.startsWith("rm_oc_")) {
+        candidates.push({ agent_id: r.room_id, display_name: r.name, id: r.room_id });
+      }
+    }
+    return candidates;
+  }, [allowAllMention, ownedAgents, overview, selfId, roomId]);
 
   const sendDenied = useMemo(() => {
     if (isOwnerChat || !selfId) return false;

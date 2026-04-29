@@ -12,6 +12,8 @@ interface PendingFile {
 export interface MentionCandidate {
   agent_id: string;
   display_name: string;
+  /** When set, inserted as @display_name(id) so the AI can resolve the exact target. */
+  id?: string;
 }
 
 interface MentionMatch {
@@ -28,6 +30,8 @@ interface MessageComposerProps {
   emptyState?: boolean;
   autoFocus?: boolean;
   mentionCandidates?: MentionCandidate[];
+  /** Pre-fill the composer with this text (e.g. forwarded quote). Triggers autoFocus. */
+  initialText?: string;
 }
 
 const MAX_SUGGESTIONS = 8;
@@ -71,8 +75,9 @@ export default function MessageComposer({
   emptyState = false,
   autoFocus = false,
   mentionCandidates,
+  initialText,
 }: MessageComposerProps) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText ?? "");
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [mentionMatch, setMentionMatch] = useState<MentionMatch | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -83,10 +88,22 @@ export default function MessageComposer({
   const mentionEnabled = !!mentionCandidates && mentionCandidates.length > 0;
 
   useEffect(() => {
-    if (!autoFocus) return;
+    if (!autoFocus && !initialText) return;
     const timer = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(timer);
-  }, [autoFocus]);
+  }, [autoFocus, initialText]);
+
+  useEffect(() => {
+    if (!initialText) return;
+    setText(initialText);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [initialText]);
 
   useEffect(() => {
     return () => {
@@ -151,7 +168,9 @@ export default function MessageComposer({
     const cursor = el.selectionStart ?? el.value.length;
     const before = text.slice(0, mentionMatch.start);
     const after = text.slice(cursor);
-    const insert = `@${candidate.display_name} `;
+    const insert = candidate.id
+      ? `@${candidate.display_name}(${candidate.id}) `
+      : `@${candidate.display_name} `;
     const next = `${before}${insert}${after}`;
     setText(next);
     setMentionMatch(null);
@@ -346,7 +365,7 @@ export default function MessageComposer({
                 }`}
               >
                 <span className="truncate font-medium">{s.display_name}</span>
-                <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-500">{s.agent_id}</span>
+                <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-500">{s.id ?? s.agent_id}</span>
               </button>
             ))}
           </div>

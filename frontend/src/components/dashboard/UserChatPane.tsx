@@ -9,12 +9,13 @@
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2 } from "lucide-react";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
@@ -67,12 +68,31 @@ function TypewriterText({
 export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const { activeAgentId, activeIdentity } = useDashboardSessionStore();
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
+  const overview = useDashboardChatStore((s) => s.overview);
   const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
   const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
   const { setUserChatRoomId } = useDashboardUIStore();
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
+
+  const mentionCandidates = useMemo(() => {
+    const candidates: { agent_id: string; display_name: string; id: string }[] = [];
+    for (const a of ownedAgents) {
+      if (a.agent_id !== chatAgentId) {
+        candidates.push({ agent_id: a.agent_id, display_name: a.display_name, id: a.agent_id });
+      }
+    }
+    for (const c of overview?.contacts ?? []) {
+      candidates.push({ agent_id: c.contact_agent_id, display_name: c.alias || c.display_name, id: c.contact_agent_id });
+    }
+    for (const r of overview?.rooms ?? []) {
+      if (!r.room_id.startsWith("rm_oc_")) {
+        candidates.push({ agent_id: r.room_id, display_name: r.name, id: r.room_id });
+      }
+    }
+    return candidates;
+  }, [ownedAgents, overview, chatAgentId]);
 
   // Owner-chat store
   const messages = useOwnerChatStore((s) => s.messages);
@@ -524,6 +544,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           onSend={handleSend}
           allowAttachments
           placeholder="Type a message..."
+          mentionCandidates={mentionCandidates}
         />
       </div>
     </div>

@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import type { KeyboardEvent } from "react";
-import { User } from "lucide-react";
+import { MoreHorizontal, User } from "lucide-react";
+import ForwardModal from "./ForwardModal";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
@@ -19,6 +21,8 @@ interface MessageBubbleProps {
   isOwn: boolean;
   /** When true, the bubble fills the container width instead of capping at 70%. */
   fullWidth?: boolean;
+  /** Source label shown in the forward quote (e.g. room name or chat name). */
+  sourceName?: string;
 }
 
 const stateColors: Record<string, { color: string; icon: string }> = {
@@ -98,7 +102,10 @@ function formatMessageTimestamp(isoTime: string): string {
   });
 }
 
-export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false }: MessageBubbleProps) {
+export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName }: MessageBubbleProps) {
+  const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const requestOpenHuman = useDashboardUIStore((state) => state.requestOpenHuman);
   const stateConfig = useStateConfig();
@@ -137,8 +144,52 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     }
   };
 
+  const buildQuote = () => {
+    const time = formatMessageTimestamp(message.created_at);
+    const source = sourceName ? ` · ${sourceName}` : "";
+    const header = `> [转发自 ${senderDisplayName}${source} · ${time}]`;
+    const body = (displayText || "").split("\n").map((l) => `> ${l}`).join("\n");
+    return `${header}\n${body}\n`;
+  };
+
+  const handleForwardClick = () => {
+    setMenuOpen(false);
+    if (displayText) setForwardQuote(buildQuote());
+  };
+
+  const moreButton = displayText && (
+    <div className="relative self-start pt-1 shrink-0">
+      <button
+        type="button"
+        onClick={() => setMenuOpen((v) => !v)}
+        className={`flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        aria-label="More actions"
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" />
+      </button>
+      {menuOpen && (
+        <div className={`absolute top-full mt-1 z-30 min-w-[80px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${isOwn ? "right-0" : "left-0"}`}>
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+          >
+            转发
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className={`flex ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}>
+    <>
+    <div
+      className={`flex items-start gap-1 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setMenuOpen(false); }}
+    >
+      {/* For own messages: button left of bubble */}
+      {isOwn && !fullWidth && moreButton}
       <div
         className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
           isOwn
@@ -214,6 +265,12 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           )}
         </div>
       </div>
+      {/* For others' messages: button right of bubble */}
+      {(!isOwn || fullWidth) && moreButton}
     </div>
+    {forwardQuote && (
+      <ForwardModal quoteText={forwardQuote} onClose={() => setForwardQuote(null)} />
+    )}
+    </>
   );
 }
