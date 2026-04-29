@@ -234,7 +234,6 @@ export default function RoomSettingsModal({
   const [dissolveConfirmText, setDissolveConfirmText] = useState("");
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ownerMember = members.find((member) => member.role === "owner") ?? null;
   const groupInitial = name.trim().charAt(0).toUpperCase() || "G";
   const persistedRoomName = initialName.trim();
   const dissolveConfirmArmed = dissolveConfirmText.trim() === persistedRoomName;
@@ -617,12 +616,6 @@ export default function RoomSettingsModal({
             </div>
           )}
 
-          {!canEditBasics && (
-            <div className="mb-4 rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-3 text-xs text-text-secondary/80">
-              {t.readOnlyHint}
-            </div>
-          )}
-
           <div className="divide-y divide-glass-border/80">
             <section className="py-5">
               <div className="flex items-start gap-4">
@@ -631,9 +624,6 @@ export default function RoomSettingsModal({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xl font-semibold text-text-primary">{name || initialName}</p>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    {canEditBasics ? t.ruleHint : t.readOnlyHint}
-                  </p>
                   <div className="mt-3 text-xs text-text-secondary/70">
                     <CopyableId value={roomId} />
                   </div>
@@ -641,45 +631,70 @@ export default function RoomSettingsModal({
               </div>
 
               <div className="mt-5 space-y-4 border-t border-glass-border pt-4">
-                <div>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                    {t.nameLabel}
-                  </label>
-                  <input
-                    type="text"
-                    disabled={!canEditBasics}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    maxLength={120}
-                    className="w-full rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-60"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                    {t.descriptionLabel}
-                  </label>
-                  <textarea
-                    rows={3}
-                    disabled={!canEditBasics}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    maxLength={500}
-                    className="w-full resize-none rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-60"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                    {t.ruleLabel}
-                  </label>
-                  <textarea
-                    disabled={!canEditBasics}
-                    value={rule}
-                    onChange={(e) => setRule(e.target.value)}
-                    rows={4}
-                    maxLength={4000}
-                    className="w-full resize-none rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-60"
-                  />
-                </div>
+                {canEditBasics ? (
+                  <>
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                        {t.nameLabel}
+                      </label>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        maxLength={120}
+                        className="w-full rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                        {t.descriptionLabel}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        maxLength={500}
+                        className="w-full resize-none rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                        {t.ruleLabel}
+                      </label>
+                      <p className="mb-1 text-[11px] text-text-secondary/60">{t.ruleHint}</p>
+                      <textarea
+                        value={rule}
+                        onChange={(e) => setRule(e.target.value)}
+                        rows={4}
+                        maxLength={4000}
+                        className="w-full resize-none rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none focus:border-neon-cyan/50"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                        {t.descriptionLabel}
+                      </p>
+                      {description ? (
+                        <p className="text-sm leading-relaxed text-text-primary/90 whitespace-pre-wrap">{description}</p>
+                      ) : (
+                        <p className="text-sm text-text-secondary/40">{locale === "zh" ? "暂无描述" : "No description"}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                        {t.ruleLabel}
+                      </p>
+                      {rule ? (
+                        <p className="text-sm leading-relaxed text-text-primary/90 whitespace-pre-wrap">{rule}</p>
+                      ) : (
+                        <p className="text-sm text-text-secondary/40">{locale === "zh" ? "暂无公告" : "No announcement"}</p>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </section>
 
@@ -1008,9 +1023,6 @@ export default function RoomSettingsModal({
             {(viewerRole || isOwner) && <section className="py-5">
               <div>
                 <p className="text-lg font-semibold text-text-primary">{t.actionsSection}</p>
-                <p className="mt-1 text-xs text-text-secondary/70">
-                  {ownerMember ? `${tm.ownerCannotLeave} ${ownerMember.display_name}` : tm.ownerCannotLeave}
-                </p>
               </div>
 
               <div className="mt-4 space-y-3">

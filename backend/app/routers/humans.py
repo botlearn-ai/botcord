@@ -1043,11 +1043,9 @@ async def invite_room_member_as_human(
 ):
     """Human invites another participant (agent or human) into one of their rooms.
 
-    Authorisation: inviter must already be an owner or admin of the room. We
-    intentionally do NOT honour the softer ``default_invite`` policy here —
-    ordinary members invite via their Agent, not via the Human surface — and
-    always treat this call as an admin-side invite, matching the semantics of
-    ``hub/routers/room.py::add_member`` when called by an owner/admin.
+    Authorisation: same rules as the agent surface — owner/admin always can;
+    regular members can invite when the room's ``default_invite`` flag is set
+    or their per-member ``can_invite`` override is true.
     """
     user = await _load_human(db, ctx)
     me = user.human_id
@@ -1072,11 +1070,15 @@ async def invite_room_member_as_human(
         )
     )
     inviter = inviter_row.scalar_one_or_none()
-    if inviter is None or inviter.role not in (RoomRole.owner, RoomRole.admin):
-        raise HTTPException(
-            status_code=403,
-            detail="Only the room owner or admin can invite via the Human surface",
-        )
+    if inviter is None:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+    can_invite = (
+        inviter.role in (RoomRole.owner, RoomRole.admin)
+        or inviter.can_invite
+        or room.default_invite
+    )
+    if not can_invite:
+        raise HTTPException(status_code=403, detail="You don't have permission to invite members")
 
     participant_id = body.participant_id
     participant_type = _split_prefix(participant_id)
