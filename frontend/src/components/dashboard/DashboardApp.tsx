@@ -101,7 +101,6 @@ export default function DashboardApp() {
   // optional CTA. AgentGateModal is kept for manual entry points (account
   // menu, etc.) but must never auto-mount.
   const shouldShowAgentGate = false;
-  const realtimeTopic = sessionStore.activeAgentId ? `agent:${sessionStore.activeAgentId}` : null;
   const continueTarget = searchParams.get("next");
   const continueHandledRef = useRef<string | null>(null);
   const [ownerHumanCard, setOwnerHumanCard] = useState<{
@@ -462,29 +461,31 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
-    // Phase 6 Human-first: pick the realtime anchor from activeIdentity.
-    // Agent viewer → ``agent:<ag_*>``; Human viewer → ``human:<hu_*>``.
-    // Guest / unresolved → idle.
-    const anchor = (() => {
-      if (!sessionStore.authResolved) return null;
-      if (sessionStore.activeIdentity?.type === "agent") {
-        return { kind: "agent" as const, id: sessionStore.activeIdentity.id };
-      }
-      if (sessionStore.activeIdentity?.type === "human" && sessionStore.human?.human_id) {
-        return { kind: "human" as const, id: sessionStore.human.human_id };
-      }
-      return null;
-    })();
+    // The Messages list can contain rooms for both the logged-in Human and the
+    // selected Agent. Subscribe to both anchors so ordinary room updates keep
+    // working even when the viewer mode and visible room owner differ.
+    const anchorMap = new Map<string, { kind: "agent" | "human"; id: string }>();
+    if (sessionStore.authResolved && sessionStore.human?.human_id) {
+      anchorMap.set(`human:${sessionStore.human.human_id}`, {
+        kind: "human",
+        id: sessionStore.human.human_id,
+      });
+    }
+    if (sessionStore.authResolved && sessionStore.activeAgentId) {
+      anchorMap.set(`agent:${sessionStore.activeAgentId}`, {
+        kind: "agent",
+        id: sessionStore.activeAgentId,
+      });
+    }
+    const anchors = Array.from(anchorMap.entries());
 
-    if (!anchor) {
+    if (anchors.length === 0) {
       realtimeStore.setRealtimeStatus("idle");
       return;
     }
 
-    const topic = `${anchor.kind}:${anchor.id}`;
-    const anchorId = anchor.id;
     let cancelled = false;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const channels: ReturnType<typeof supabase.channel>[] = [];
 
     const subscribeRealtime = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -492,7 +493,7 @@ export default function DashboardApp() {
 
       if (!accessToken) {
         console.warn("[BotCord][Realtime] missing access token before subscribe", {
-          topic,
+          topics: anchors.map(([topic]) => topic),
           activeAgentId: sessionStore.activeAgentId,
         });
         realtimeStore.setRealtimeStatus("error", "realtime missing access token");
@@ -504,14 +505,13 @@ export default function DashboardApp() {
 
       realtimeStore.setRealtimeStatus("connecting");
       console.info("[BotCord][Realtime] subscribing", {
-        topic,
-        anchorKind: anchor.kind,
-        anchorId,
+        topics: anchors.map(([topic]) => topic),
         sessionMode: sessionStore.sessionMode,
       });
 
-      channel = supabase
-        .channel(topic, { config: { private: true } })
+      anchors.forEach(([topic, anchor]) => {
+        const anchorId = anchor.id;
+        const channel = supabase.channel(topic, { config: { private: true } })
         .on("broadcast", { event: "*" }, ({ payload }) => {
           const realtimeEvent = payload as RealtimeMetaEvent;
           // Backend populates ``agent_id`` with the recipient participant id
@@ -548,6 +548,9 @@ export default function DashboardApp() {
             return;
           }
           chatStore.applyRealtimeEventHint(realtimeEvent);
+          if (anchor.kind === "human" && realtimeEvent.room_id) {
+            void useDashboardSessionStore.getState().refreshHumanRooms();
+          }
           if (!isOpenedRoomEvent) {
             unreadStore.applyRealtimeEvent(realtimeEvent);
           }
@@ -566,6 +569,8 @@ export default function DashboardApp() {
             realtimeStore.setRealtimeStatus("error", `realtime ${status.toLowerCase()}`);
           }
         });
+        channels.push(channel);
+      });
     };
 
     void subscribeRealtime();
@@ -573,9 +578,9 @@ export default function DashboardApp() {
     return () => {
       cancelled = true;
       console.info("[BotCord][Realtime] removing channel", {
-        topic,
+        topics: anchors.map(([topic]) => topic),
       });
-      if (channel) {
+      for (const channel of channels) {
         void supabase.removeChannel(channel);
       }
     };
