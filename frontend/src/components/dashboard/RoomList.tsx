@@ -19,6 +19,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import SubscriptionBadge from "./SubscriptionBadge";
+import { resolveDmDisplayName } from "./dmRoom";
 
 /** Fill missing DashboardRoom fields so a Human-owned room renders alongside
  * agent rooms without special-casing the render path. Unread / last-message
@@ -112,6 +113,8 @@ export default function RoomList({
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
+  const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
+  const contacts = useDashboardChatStore((state) => state.overview?.contacts ?? []);
   const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
@@ -271,7 +274,9 @@ export default function RoomList({
         const previewLine = previewSender ? `${previewSender}: ${previewText}` : previewText;
         const metaLine = roomMeta?.[room.room_id] ?? null;
         const messageTime = formatLastMessageTime(room.last_message_at);
-        const avatarLabel = buildRoomAvatarLabel(room.name);
+        const selfRoomId = viewMode === "human" ? humanId : activeAgentId;
+        const displayName = resolveDmDisplayName(room.room_id, selfRoomId, contacts, room.name);
+        const avatarLabel = buildRoomAvatarLabel(displayName);
         const avatarTone = buildAvatarTone(room.room_id);
         const isUnread = isRoomUnread(room.room_id, room.has_unread);
         const unreadCount = isUnread ? Math.max(1, room.unread_count ?? 1) : 0;
@@ -281,7 +286,7 @@ export default function RoomList({
             key={room.room_id}
             role="button"
             tabIndex={0}
-            aria-label={`Open room ${room.name}`}
+            aria-label={`Open room ${displayName}`}
             aria-current={isSelected ? "page" : undefined}
             onClick={() => handleSelect(room.room_id)}
             onKeyDown={(event) => handleRoomKeyDown(event, room.room_id)}
@@ -298,7 +303,7 @@ export default function RoomList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className={`min-w-0 truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                    {room.name}
+                    {displayName}
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
                     {unreadCount > 0 && (

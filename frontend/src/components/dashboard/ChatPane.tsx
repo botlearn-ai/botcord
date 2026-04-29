@@ -31,6 +31,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import RoomZeroState from "./RoomZeroState";
 import { initialsFromName } from "./roomVisualTheme";
+import { dmPeerId } from "./dmRoom";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
@@ -650,15 +651,9 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const isHumanView = viewMode === "human";
   // DM rooms are auto-created server-side on first send, so treat the user
   // as a member of an unseen rm_dm_* room when their own id is one of the
-  // two encoded parties. Substring matching would false-positive on ids that
-  // happen to share a prefix, so parse the id explicitly.
+  // two encoded parties.
   const selfId = (isHumanView || isAuthedHuman) ? humanId : activeAgentId;
-  const dmRoomMatch = openedRoomId
-    ? openedRoomId.match(/^rm_dm_((?:ag|hu)_[A-Za-z0-9]+)_((?:ag|hu)_[A-Za-z0-9]+)$/)
-    : null;
-  const isPendingDmForSelf = Boolean(
-    dmRoomMatch && selfId && (dmRoomMatch[1] === selfId || dmRoomMatch[2] === selfId),
-  );
+  const isPendingDmForSelf = dmPeerId(openedRoomId, selfId) !== null;
   const isJoinedRoom = ((isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom) : Boolean(joinedRoom))
     || isPendingDmForSelf;
   const humanSendAllowed = joinedRoom?.allow_human_send !== false;
