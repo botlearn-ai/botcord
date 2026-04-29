@@ -7,7 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bot,
@@ -89,6 +89,7 @@ export default function CreateAgentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingDevice, setAddingDevice] = useState(false);
+  const addDeviceExistingIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     void refresh();
@@ -151,12 +152,24 @@ export default function CreateAgentDialog({
 
   // Auto-detect daemon coming online while user stares at the install command.
   useEffect(() => {
-    if (!showEmptyState) return;
+    if (!showEmptyState && !addingDevice) return;
     const id = window.setInterval(() => {
       void refresh({ quiet: true });
     }, 3_000);
     return () => window.clearInterval(id);
-  }, [showEmptyState, refresh]);
+  }, [showEmptyState, addingDevice, refresh]);
+
+  // Adding a second device uses the same install panel as the empty state, so
+  // it needs its own "new daemon appeared" handoff back to the picker.
+  useEffect(() => {
+    if (!addingDevice) return;
+    const newOnlineDaemon = onlineDaemons.find(
+      (d) => !addDeviceExistingIdsRef.current.has(d.id),
+    );
+    if (!newOnlineDaemon) return;
+    setSelectedDaemonId(newOnlineDaemon.id);
+    setAddingDevice(false);
+  }, [addingDevice, onlineDaemons]);
 
   // Auto-detect OpenClaw gateways once the user picks the openclaw-acp runtime
   // but no reachable endpoint has been probed yet.
@@ -269,7 +282,7 @@ export default function CreateAgentDialog({
                 hint: t.addDeviceHint,
                 copy: t.copy,
                 copied: t.copied,
-                  refresh: t.refreshDaemons,
+                refresh: t.refreshDaemons,
               }}
             />
             <button
@@ -290,7 +303,12 @@ export default function CreateAgentDialog({
                 </label>
                 <button
                   type="button"
-                  onClick={() => setAddingDevice(true)}
+                  onClick={() => {
+                    addDeviceExistingIdsRef.current = new Set(
+                      daemons.map((d) => d.id),
+                    );
+                    setAddingDevice(true);
+                  }}
                   disabled={submitting}
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
                 >
