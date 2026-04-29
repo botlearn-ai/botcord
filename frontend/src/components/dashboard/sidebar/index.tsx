@@ -36,7 +36,7 @@ import MessagesPanel from "./MessagesPanel";
 import WalletPanel from "./WalletPanel";
 
 import { humansApi } from "@/lib/api";
-import { UserPlus, Users, LogIn, Bot, Plus, RefreshCw } from "lucide-react";
+import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus } from "lucide-react";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
 
@@ -441,7 +441,7 @@ export default function Sidebar() {
                 aria-label={tMsgHeader.createRoom}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
               >
-                <Users className="h-4 w-4" />
+                <MessageSquarePlus className="h-4 w-4" />
               </button>
             </div>
           )}
