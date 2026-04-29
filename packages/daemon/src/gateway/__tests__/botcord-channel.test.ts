@@ -182,6 +182,58 @@ describe("createBotCordChannel — inbox normalization", () => {
     return { emits, client, server };
   }
 
+  it("logs why an empty inbox drain ran", async () => {
+    const server = await startAuthOkServer();
+    const client = makeClient({
+      pollInbox: vi.fn().mockResolvedValue({ messages: [], count: 0, has_more: false }),
+      getHubUrl: vi.fn().mockReturnValue(server.url),
+    });
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      hubBaseUrl: server.url,
+    });
+    const abort = new AbortController();
+    const log: GatewayLogger = {
+      ...silentLog,
+      info: vi.fn(),
+    };
+    const startPromise = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: abort.signal,
+      log,
+      emit: async () => {},
+      setStatus: () => {},
+    });
+    try {
+      await vi.waitFor(() => {
+        expect(log.info).toHaveBeenCalledWith(
+          "botcord inbox drained",
+          expect.objectContaining({
+            trigger: "ws_auth_ok",
+            count: 0,
+            responseCount: 0,
+            hasMore: false,
+            limit: 50,
+            ack: false,
+            eligibleCount: 0,
+            duplicateCount: 0,
+            skippedCount: 0,
+            emittedGroups: 0,
+            durationMs: expect.any(Number),
+          }),
+        );
+      });
+    } finally {
+      abort.abort();
+      await startPromise;
+      await server.close();
+    }
+  });
+
   it("maps a group-room InboxMessage to a GatewayInboundMessage", async () => {
     const { emits, server } = await startWithInbox([
       makeInbox({
