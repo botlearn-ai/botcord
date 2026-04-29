@@ -585,6 +585,45 @@ describe("provision_agent seeds workspace + hot-adds managed route", () => {
     });
   });
 
+  it("binds OpenClaw default agent when provisioning only specifies a loopback gateway", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      mockState.cfg = {
+        defaultRoute: { adapter: "claude-code", cwd: "/tmp" },
+        routes: [],
+        streamBlocks: true,
+        openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }],
+      };
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 14).toString("base64");
+      const ack = await provisioner({
+        id: "req_openclaw_default",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "openclaw-acp",
+          openclaw: { gateway: "local" },
+          credentials: {
+            agentId: "ag_openclaw_default",
+            keyId: "k_ocd",
+            privateKey,
+            hubUrl: "https://hub.example",
+          },
+        },
+      });
+
+      expect(ack.ok).toBe(true);
+      const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_openclaw_default.json");
+      const saved = JSON.parse(fs.readFileSync(credFile, "utf8")) as Record<string, unknown>;
+      expect(saved.openclawGateway).toBe("local");
+      expect(saved.openclawAgent).toBe("default");
+      const route = gw.listManagedRoutes().find((r) => r.match?.accountId === "ag_openclaw_default");
+      expect(route?.gateway?.name).toBe("local");
+      expect(route?.gateway?.openclawAgent).toBe("default");
+    });
+  });
+
   it("defaults cwd to agentWorkspaceDir on the slow path (daemon register)", async () => {
     await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
       // Seed an existing credential so `inferHubUrl` finds a hubUrl.

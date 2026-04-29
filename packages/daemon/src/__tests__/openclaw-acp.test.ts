@@ -69,12 +69,26 @@ describe("OpenclawAcpAdapter.run", () => {
     expect(res.error).toMatch(/missing gateway/);
   });
 
-  it("fails when gateway has no openclawAgent resolved", async () => {
-    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(new FakeChild()) });
+  it("defaults to OpenClaw's default agent when gateway has no openclawAgent resolved", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
     const gateway: ResolvedOpenclawGateway = {
       name: "local",
       url: "ws://127.0.0.1:1",
     };
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          expect(frame.params._meta.sessionKey).toContain("agent:default:");
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-default" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "ok" } }) + "\n");
+        }
+      }
+    });
     const res = await adapter.run({
       text: "hi",
       sessionId: null,
@@ -84,7 +98,7 @@ describe("OpenclawAcpAdapter.run", () => {
       trustLevel: "owner",
       gateway,
     });
-    expect(res.error).toMatch(/openclawAgent/);
+    expect(res.text).toBe("ok");
   });
 
   it("performs initialize → newSession → prompt and returns final text", async () => {

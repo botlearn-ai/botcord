@@ -430,6 +430,18 @@ describe("Dispatcher", () => {
     expect(store.all().length).toBe(0);
   });
 
+  it("runtime empty text with error: sends owner-chat error reply", async () => {
+    const runtime = new FakeRuntime({ reply: "", newSessionId: "", errorText: "missing openclawAgent" });
+    const channel = new FakeChannel();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(makeEnvelope({ id: "msg_error" }));
+
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.text).toContain("Runtime error");
+    expect(channel.sends[0].message.text).toContain("missing openclawAgent");
+  });
+
   it("cancel-previous: prior turn is aborted and does not write session, new turn writes", async () => {
     const prior = new FakeRuntime({ hang: true, newSessionId: "prior-sid" });
     const newer = new FakeRuntime({ reply: "newer", newSessionId: "newer-sid" });
