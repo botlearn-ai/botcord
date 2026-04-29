@@ -98,6 +98,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
   const locale = useLanguage();
   const t = addFriendModal[locale];
   const contacts = useDashboardChatStore((s) => s.overview?.contacts) ?? EMPTY_CONTACTS;
+  const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
   // Identity signal: viewMode flips to "human" once /api/humans/me loads.
   const viewMode = useDashboardSessionStore((s) => s.viewMode);
@@ -194,11 +195,17 @@ function SearchPane({ onClose }: { onClose: () => void }) {
       } else {
         setStatus("sent");
       }
+      await refreshOverview();
     } catch (err) {
       const msg = err instanceof Error ? err.message : t.requestFailed;
-      if (/already.*contact/i.test(msg)) setStatus("exists");
-      else if (/already.*request|pending/i.test(msg)) setStatus("pending");
-      else setError(msg);
+      if (/already.*contact/i.test(msg)) {
+        setStatus("exists");
+        await refreshOverview();
+      } else if (/already.*request|pending/i.test(msg)) {
+        setStatus("pending");
+      } else {
+        setError(msg);
+      }
     } finally {
       setSending(false);
     }
