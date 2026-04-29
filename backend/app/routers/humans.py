@@ -1122,7 +1122,7 @@ async def invite_room_member_as_human(
     # before its owner had a chance to approve/reject via the queue).
 
     # --- W2: admission policy via the central helper ----------------------
-    if target_agent is not None:
+    if target_agent is not None and target_agent.user_id != ctx.user_id:
         try:
             await check_room_invite_admission(
                 db,
