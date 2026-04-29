@@ -9,14 +9,14 @@
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2 } from "lucide-react";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
-import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
@@ -68,7 +68,6 @@ function TypewriterText({
 export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const { activeAgentId, activeIdentity } = useDashboardSessionStore();
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
-  const overview = useDashboardChatStore((s) => s.overview);
   const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
   const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
   const { setUserChatRoomId } = useDashboardUIStore();
@@ -76,26 +75,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
 
-  const mentionCandidates = useMemo(() => {
-    const candidates: { agent_id: string; display_name: string; id: string }[] = [];
-    // own agents first
-    for (const a of ownedAgents) {
-      if (a.agent_id !== chatAgentId) {
-        candidates.push({ agent_id: a.agent_id, display_name: a.display_name, id: a.agent_id });
-      }
-    }
-    // contacts (people) before rooms
-    for (const c of overview?.contacts ?? []) {
-      candidates.push({ agent_id: c.contact_agent_id, display_name: c.alias || c.display_name, id: c.contact_agent_id });
-    }
-    // rooms last
-    for (const r of overview?.rooms ?? []) {
-      if (!r.room_id.startsWith("rm_oc_")) {
-        candidates.push({ agent_id: r.room_id, display_name: r.name, id: r.room_id });
-      }
-    }
-    return candidates;
-  }, [ownedAgents, overview, chatAgentId]);
+  const mentionCandidates = useMentionCandidates({ selfId: chatAgentId });
 
   // Owner-chat store
   const messages = useOwnerChatStore((s) => s.messages);

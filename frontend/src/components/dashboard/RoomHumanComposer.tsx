@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useLanguage, chatPane } from "@/lib/i18n";
 import type { DashboardMessage, PublicRoomMember } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useShallow } from "zustand/react/shallow";
-import MessageComposer, { type MentionCandidate } from "./MessageComposer";
+import MessageComposer from "./MessageComposer";
+import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 
 interface RoomHumanComposerProps {
   roomId: string;
@@ -71,24 +72,15 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
 
   const selfId = viewMode === "agent" ? activeAgentId : human?.human_id;
 
-  const mentionCandidates = useMemo<MentionCandidate[]>(() => {
-    if (!allowAllMention) return [];
-    const candidates: MentionCandidate[] = [{ agent_id: "@all", display_name: "all" }];
-    const seen = new Set(candidates.map((c) => c.agent_id));
-    for (const m of members) {
-      if (!seen.has(m.agent_id) && (m.agent_id.startsWith("ag_") || m.agent_id.startsWith("hu_"))) {
-        candidates.push({ agent_id: m.agent_id, display_name: m.display_name, id: m.agent_id });
-        seen.add(m.agent_id);
-      }
-    }
-    return candidates;
-  }, [allowAllMention, members]);
+  const mentionCandidates = useMentionCandidates({
+    currentRoomId: roomId,
+    includeAll: allowAllMention,
+    roomMembers: members,
+    selfId,
+  });
 
-  const sendDenied = useMemo(() => {
-    if (isOwnerChat || !selfId) return false;
-    const self = members.find((m) => m.agent_id === selfId);
-    return self?.can_send === false;
-  }, [members, selfId, isOwnerChat]);
+  const sendDenied = !isOwnerChat && !!selfId &&
+    members.find((m) => m.agent_id === selfId)?.can_send === false;
 
   const handleSend = useCallback(async (text: string, _files: File[], mentions?: string[]) => {
     if (!text) return;

@@ -34,19 +34,19 @@ function buildPattern(kind: (typeof PATTERN_KINDS)[number], seed: number, color:
   const size = 24 + (seed % 20);
   const stroke = (((seed >> 5) % 100) / 100) * 0.6 + 0.4;
   const rotate = (seed >> 11) % 360;
-  const enc = (s: string) => encodeURIComponent(s).replace(/'/g, "%27").replace(/"/g, "%22");
+
 
   let inner = "";
   switch (kind) {
     case "dots": {
-      const r = 1 + (seed % 3);
+      const r = 3 + (seed % 5);
+      // Place dots at quarter positions — all within the inscribed circle of the viewBox so they survive any rotation.
+      const q = size / 4;
       inner = [
-        `<circle cx='0' cy='0' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
-        `<circle cx='${size}' cy='0' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
-        `<circle cx='0' cy='${size}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
-        `<circle cx='${size}' cy='${size}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
-        `<circle cx='${size / 2}' cy='${size / 2}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`,
-      ].join("");
+        [q, q], [3 * q, q], [q, 3 * q], [3 * q, 3 * q],
+      ]
+        .map(([cx, cy]) => `<circle cx='${cx}' cy='${cy}' r='${r}' fill='${color}' fill-opacity='${stroke}'/>`)
+        .join("");
       break;
     }
     case "grid": {
@@ -84,7 +84,7 @@ function buildPattern(kind: (typeof PATTERN_KINDS)[number], seed: number, color:
     `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}' viewBox='0 0 ${size} ${size}'>` +
     `<g transform='rotate(${rotate} ${size / 2} ${size / 2})'>${inner}</g>` +
     `</svg>`;
-  return `url("data:image/svg+xml;utf8,${enc(svg)}")`;
+  return `url("data:image/svg+xml;base64,${btoa(svg)}")`;
 }
 
 export function themeFromRoomName(name: string): RoomVisualTheme {
