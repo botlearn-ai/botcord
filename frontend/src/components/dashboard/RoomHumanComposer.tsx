@@ -80,8 +80,16 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
         candidates.push({ agent_id: r.room_id, display_name: r.name, id: r.room_id });
       }
     }
+    // Include human members from this room that may not be in contacts
+    const seen = new Set(candidates.map((c) => c.agent_id));
+    for (const m of members) {
+      if (!seen.has(m.agent_id) && m.agent_id !== selfId &&
+          (m.agent_id.startsWith("ag_") || m.agent_id.startsWith("hu_"))) {
+        candidates.push({ agent_id: m.agent_id, display_name: m.display_name, id: m.agent_id });
+      }
+    }
     return candidates;
-  }, [allowAllMention, ownedAgents, overview, selfId, roomId]);
+  }, [allowAllMention, ownedAgents, overview, selfId, roomId, members]);
 
   const sendDenied = useMemo(() => {
     if (isOwnerChat || !selfId) return false;
