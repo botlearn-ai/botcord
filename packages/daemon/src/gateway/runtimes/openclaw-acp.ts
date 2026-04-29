@@ -140,9 +140,11 @@ interface SpawnDeps {
  *
  * Spawns `openclaw acp --url <gateway> [--token <token>]` per
  * `(accountId, gatewayName)` pair and reuses the process across turns. The
- * child speaks JSON-RPC over stdio; we send `initialize` once, then
- * `newSession` (with `_meta.sessionKey`) when the daemon has no persisted
- * runtime session id, and `prompt` for each turn. Streaming `session/update`
+ * child speaks JSON-RPC over stdio; we send `initialize` once, then derive a
+ * stable OpenClaw `sessionKey` for the BotCord conversation. The persisted
+ * `runtimeSessionId` is only an ACP transport handle cached from a previous
+ * turn, so every resume first goes through `session/load` with
+ * `_meta.sessionKey` before `prompt`. Streaming `session/update`
  * notifications are relayed to `onBlock`.
  *
  * Process-pool lifetime + abort/cancel semantics live at module scope; see
@@ -190,6 +192,8 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
     handle.inFlight += 1;
     if (handle.idleTimer) clearTimeout(handle.idleTimer);
 
+    // ACP session ids are process-local transport handles. They are useful as
+    // a cache, but the stable conversation identity is `sessionKey`.
     let acpSessionId = opts.sessionId ?? "";
     let seq = 0;
     let assistantText = "";
@@ -230,8 +234,27 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
 
     let abortListener: (() => void) | undefined;
     try {
-      // Ensure we have an ACP session id. When the dispatcher doesn't carry
-      // one, ask the child to create or rebind one for our sessionKey.
+      // Ensure we have a live ACP transport session. If the dispatcher passes a
+      // cached session id, ask OpenClaw to load/rebind it with the stable
+      // sessionKey. If that handle is gone, discard it and create a fresh one.
+      if (acpSessionId) {
+        try {
+          acpSessionId = await this.loadSession(handle, {
+            sessionId: acpSessionId,
+            cwd: opts.cwd,
+            sessionKey,
+          });
+        } catch (err) {
+          if (!isSessionNotFoundError(err)) throw err;
+          log.warn("openclaw-acp.session-load-not-found", {
+            accountId: opts.accountId,
+            oldSessionId: acpSessionId,
+            sessionKey,
+          });
+          acpSessionId = "";
+        }
+      }
+
       if (!acpSessionId) {
         try {
           acpSessionId = await this.newSession(handle, {
@@ -261,11 +284,16 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
           text: opts.text,
         });
       } catch (err) {
-        const msg = (err as Error).message ?? "prompt failed";
         // If the child says the session is gone (process restart, GC),
         // recreate it so the next turn doesn't hard-fail.
-        if (/session not found|unknown session/i.test(msg)) {
+        if (isSessionNotFoundError(err)) {
           try {
+            const oldSessionId = acpSessionId;
+            log.warn("openclaw-acp.prompt-session-not-found-retry", {
+              accountId: opts.accountId,
+              oldSessionId,
+              sessionKey,
+            });
             const fresh = await this.newSession(handle, {
               cwd: opts.cwd,
               sessionKey,
@@ -273,6 +301,12 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
             handle.subscribers.delete(acpSessionId);
             acpSessionId = fresh;
             handle.subscribers.set(acpSessionId, onNotification);
+            log.info("openclaw-acp.session-recreated", {
+              accountId: opts.accountId,
+              oldSessionId,
+              newSessionId: acpSessionId,
+              sessionKey,
+            });
             promptResult = await this.prompt(handle, {
               sessionId: acpSessionId,
               text: opts.text,
@@ -299,7 +333,11 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
         newSessionId: acpSessionId,
       };
     } catch (err) {
-      return failResult(acpSessionId, `openclaw-acp: ${(err as Error).message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      return failResult(
+        isSessionNotFoundError(err) ? "" : acpSessionId,
+        `openclaw-acp: ${message}`,
+      );
     } finally {
       if (abortListener && opts.signal) {
         try {
@@ -426,6 +464,22 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
     return result.sessionId;
   }
 
+  private async loadSession(
+    handle: AcpProcessHandle,
+    args: { sessionId: string; cwd: string; sessionKey: string },
+  ): Promise<string> {
+    const result = (await sendRequest(handle, "session/load", {
+      sessionId: args.sessionId,
+      cwd: args.cwd,
+      mcpServers: [],
+      _meta: { sessionKey: args.sessionKey },
+    })) as { sessionId?: string } | null;
+    if (result?.sessionId && typeof result.sessionId === "string") {
+      return result.sessionId;
+    }
+    return args.sessionId;
+  }
+
   private async prompt(
     handle: AcpProcessHandle,
     args: { sessionId: string; text: string },
@@ -469,7 +523,7 @@ function routeMessage(handle: AcpProcessHandle, msg: any): void {
     if (!pending) return;
     handle.pending.delete(id);
     if (msg.error) {
-      const message = typeof msg.error?.message === "string" ? msg.error.message : "rpc error";
+      const message = formatRpcError(msg.error);
       pending.reject(new Error(message));
     } else {
       pending.resolve(msg.result);
@@ -537,6 +591,25 @@ function failResult(sessionId: string, error: string): RuntimeRunResult {
     newSessionId: sessionId,
     error,
   };
+}
+
+function formatRpcError(error: unknown): string {
+  if (!error || typeof error !== "object") return "rpc error";
+  const e = error as Record<string, unknown>;
+  const message = typeof e.message === "string" ? e.message : "rpc error";
+  const data = e.data;
+  if (data && typeof data === "object") {
+    const details = (data as Record<string, unknown>).details;
+    if (typeof details === "string" && details.length > 0) {
+      return `${message}: ${details}`;
+    }
+  }
+  return message;
+}
+
+function isSessionNotFoundError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /session(?:\s+[\w-]+)?\s+not\s+found|unknown\s+session/i.test(msg);
 }
 
 function classifyAcpUpdate(note: AcpNotification): StreamBlock["kind"] {

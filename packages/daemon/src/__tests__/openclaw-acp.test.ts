@@ -224,6 +224,8 @@ describe("OpenclawAcpAdapter.run", () => {
         const frame = JSON.parse(line);
         if (frame.method === "initialize") {
           child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/load") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: frame.params.sessionId } }) + "\n");
         } else if (frame.method === "session/new") {
           child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "s1" } }) + "\n");
         } else if (frame.method === "session/prompt") {
@@ -244,5 +246,175 @@ describe("OpenclawAcpAdapter.run", () => {
     await adapter.run(opts);
     await adapter.run({ ...opts, sessionId: "s1" });
     expect(spawnFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads a cached ACP session id with the stable sessionKey before prompting", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "swe",
+    };
+    const seen: any[] = [];
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        seen.push(frame);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/load") {
+          expect(frame.params.sessionId).toBe("cached-id");
+          expect(frame.params._meta.sessionKey).toBe(
+            "agent:swe:ag_337518f31844:direct:rm_oc_owner",
+          );
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "cached-id" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          expect(frame.params.sessionId).toBe("cached-id");
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "loaded ok" } }) + "\n");
+        }
+      }
+    });
+
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: "cached-id",
+      cwd: "/tmp",
+      accountId: "ag_337518f31844",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+      context: { conversationKey: "direct:rm_oc_owner" },
+    });
+
+    expect(res.error).toBeUndefined();
+    expect(res.text).toBe("loaded ok");
+    expect(res.newSessionId).toBe("cached-id");
+    expect(seen.map((f) => f.method)).toEqual(["initialize", "session/load", "session/prompt"]);
+  });
+
+  it("discards a cached ACP session id when session/load reports not found", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "swe",
+    };
+    const seen: any[] = [];
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        seen.push(frame);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/load") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: frame.id,
+              error: {
+                code: -32603,
+                message: "Internal error",
+                data: { details: "Session cached-id not found" },
+              },
+            }) + "\n",
+          );
+        } else if (frame.method === "session/new") {
+          expect(frame.params._meta.sessionKey).toBe(
+            "agent:swe:ag_337518f31844:direct:rm_oc_owner",
+          );
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "fresh-id" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          expect(frame.params.sessionId).toBe("fresh-id");
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "fresh ok" } }) + "\n");
+        }
+      }
+    });
+
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: "cached-id",
+      cwd: "/tmp",
+      accountId: "ag_337518f31844",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+      context: { conversationKey: "direct:rm_oc_owner" },
+    });
+
+    expect(res.error).toBeUndefined();
+    expect(res.text).toBe("fresh ok");
+    expect(res.newSessionId).toBe("fresh-id");
+    expect(seen.map((f) => f.method)).toEqual([
+      "initialize",
+      "session/load",
+      "session/new",
+      "session/prompt",
+    ]);
+  });
+
+  it("recreates the ACP session and retries once when prompt reports not found", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "swe",
+    };
+    const seen: any[] = [];
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        seen.push(frame);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/load") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "cached-id" } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "fresh-id" } }) + "\n");
+        } else if (frame.method === "session/prompt" && frame.params.sessionId === "cached-id") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: frame.id,
+              error: {
+                code: -32603,
+                message: "Internal error",
+                data: { details: "Session cached-id not found" },
+              },
+            }) + "\n",
+          );
+        } else if (frame.method === "session/prompt") {
+          expect(frame.params.sessionId).toBe("fresh-id");
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "retry ok" } }) + "\n");
+        }
+      }
+    });
+
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: "cached-id",
+      cwd: "/tmp",
+      accountId: "ag_337518f31844",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+      context: { conversationKey: "direct:rm_oc_owner" },
+    });
+
+    expect(res.error).toBeUndefined();
+    expect(res.text).toBe("retry ok");
+    expect(res.newSessionId).toBe("fresh-id");
+    expect(seen.map((f) => f.method)).toEqual([
+      "initialize",
+      "session/load",
+      "session/prompt",
+      "session/new",
+      "session/prompt",
+    ]);
   });
 });
