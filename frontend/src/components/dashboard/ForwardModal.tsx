@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Loader2, MessageSquare, Search, Users, User, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useShallow } from "zustand/react/shallow";
 
 interface ForwardTarget {
@@ -25,6 +27,8 @@ export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) 
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const router = useRouter();
+  const { setOpenedRoomId } = useDashboardUIStore(useShallow((s) => ({ setOpenedRoomId: s.setOpenedRoomId })));
 
   const { ownedAgents, viewMode } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents, viewMode: s.viewMode }))
@@ -79,25 +83,40 @@ export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) 
     setSending(true);
     setError(null);
     try {
+      const openRoomIds: string[] = [];
       await Promise.all(
         [...selected].map(async (targetId) => {
           const [kind, id] = targetId.split(":") as ["agent" | "contact" | "room", string];
           if (kind === "agent") {
             await api.sendUserChatMessage(quoteText, undefined, id);
           } else if (kind === "contact") {
-            // find DM room for this contact
-            const dmRoom = overview?.rooms?.find(
-              (r) => r.room_id.startsWith("rm_dm_") && r.room_id.includes(id)
-            );
-            if (dmRoom) {
-              await api.sendRoomHumanMessage(dmRoom.room_id, quoteText);
+            if (id.startsWith("hu_")) {
+              // Human contact — use the owner-chat send endpoint; it resolves/creates the DM room
+              const resp = await api.sendUserChatMessage(quoteText, undefined, null);
+              openRoomIds.push(resp.room_id);
+            } else {
+              // Agent contact — find or fall back to the DM room in the overview
+              const dmRoom = overview?.rooms?.find(
+                (r) => r.room_id.startsWith("rm_dm_") && r.room_id.includes(id)
+              );
+              if (dmRoom) {
+                await api.sendRoomHumanMessage(dmRoom.room_id, quoteText);
+                openRoomIds.push(dmRoom.room_id);
+              }
             }
           } else {
             await api.sendRoomHumanMessage(id, quoteText);
+            openRoomIds.push(id);
           }
         })
       );
       setDone(true);
+      // Navigate to the forwarded conversation — if exactly one room target, open it directly
+      if (openRoomIds.length === 1) {
+        const roomId = openRoomIds[0];
+        setOpenedRoomId(roomId);
+        router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+      }
       setTimeout(onClose, 800);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "发送失败");
