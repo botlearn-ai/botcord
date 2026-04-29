@@ -310,12 +310,22 @@ export interface RuntimeEndpointProbe {
   name: string;
   /** Endpoint URL (e.g. `wss://gw.example:18789`). */
   url: string;
+  /**
+   * Coarse diagnostic state for dashboards. `reachable` is kept for backward
+   * compatibility; new clients should prefer `status` when present.
+   */
+  status?: "reachable" | "unreachable" | "acp_disabled";
   /** True when the gateway responded successfully within the timeout. */
   reachable: boolean;
   /** Gateway-reported version, when available. */
   version?: string;
   /** Failure reason when `reachable === false`. */
   error?: string;
+  /** Structured diagnostics for UI/tooling. */
+  diagnostics?: Array<{
+    code: "gateway_unreachable" | "probe_failed" | "acp_disabled";
+    message?: string;
+  }>;
   /**
    * Listing of agent profiles, only set when `reachable` and the listing RPC
    * (`agents.list`) succeeded. Shape mirrors OpenClaw's
