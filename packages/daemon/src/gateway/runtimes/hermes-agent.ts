@@ -1,4 +1,5 @@
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import {
   agentHermesHomeDir,
@@ -63,6 +64,139 @@ export function probeHermesAgent(deps: ProbeDeps = {}): RuntimeProbeResult {
     path: command,
     version: readCommandVersion(command, [], deps) ?? undefined,
   };
+}
+
+/**
+ * Discovered hermes profile entry (daemon-side shape; wire shape lives in
+ * protocol-core's `HermesProfileProbe`). Occupancy is filled in later by
+ * `provision.ts` from local credentials, not here.
+ */
+export interface HermesProfileInfo {
+  name: string;
+  home: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  modelName?: string;
+  sessionsCount?: number;
+  hasSoul?: boolean;
+}
+
+/**
+ * Resolve the hermes root (`~/.hermes`) — this is the location of the
+ * synthetic `default` profile per upstream's "default profile = HERMES_HOME
+ * itself" convention (`hermes_cli/profiles.py:8`).
+ */
+export function hermesRootDir(): string {
+  return path.join(homedir(), ".hermes");
+}
+
+/** Profile-name shape mirrors `hermes_cli/profiles.py:_PROFILE_ID_RE`. */
+const HERMES_PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+export function isValidHermesProfileName(name: string): boolean {
+  return name === "default" || HERMES_PROFILE_NAME_RE.test(name);
+}
+
+/**
+ * Resolve a hermes profile's HERMES_HOME directory. `default` maps to
+ * `~/.hermes`; all other names map to `~/.hermes/profiles/<name>`. Mirrors
+ * `hermes_cli/profiles.py:get_profile_dir`.
+ */
+export function hermesProfileHomeDir(name: string): string {
+  if (!isValidHermesProfileName(name)) {
+    throw new Error(`Invalid hermes profile name: ${name}`);
+  }
+  if (name === "default") return hermesRootDir();
+  return path.join(hermesRootDir(), "profiles", name);
+}
+
+function readActiveProfileName(): string {
+  try {
+    const raw = readFileSync(path.join(hermesRootDir(), "active_profile"), "utf8").trim();
+    return raw || "default";
+  } catch {
+    return "default";
+  }
+}
+
+function readProfileModelName(profileHome: string): string | undefined {
+  try {
+    const raw = readFileSync(path.join(profileHome, "config.yaml"), "utf8");
+    // Cheap surface-level YAML peek — config.yaml's first block is
+    // `model:\n  default: <name>`. Avoid pulling in a YAML dependency for
+    // a single optional field.
+    const match = raw.match(/^model:\s*\n(?:[ \t]+[^\n]*\n)*?[ \t]+default:\s*([^\n#]+)/m);
+    if (!match) return undefined;
+    return match[1].trim().replace(/^['"]|['"]$/g, "") || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function countSessions(profileHome: string): number | undefined {
+  try {
+    const dir = path.join(profileHome, "sessions");
+    if (!existsSync(dir)) return 0;
+    return readdirSync(dir).filter((f) => f.endsWith(".jsonl")).length;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasSoul(profileHome: string): boolean {
+  return existsSync(path.join(profileHome, "SOUL.md"));
+}
+
+/**
+ * Enumerate available hermes profiles on this device. Pure local filesystem
+ * scan — does not invoke any hermes binary. Returns the synthetic `default`
+ * entry first when `~/.hermes` exists (which it should, given that the probe
+ * already located `hermes-acp`); each `~/.hermes/profiles/<name>/` directory
+ * follows.
+ */
+export function listHermesProfiles(): HermesProfileInfo[] {
+  const out: HermesProfileInfo[] = [];
+  const root = hermesRootDir();
+  const active = readActiveProfileName();
+
+  if (existsSync(root)) {
+    out.push({
+      name: "default",
+      home: root,
+      isDefault: true,
+      isActive: active === "default",
+      modelName: readProfileModelName(root),
+      sessionsCount: countSessions(root),
+      hasSoul: hasSoul(root),
+    });
+  }
+
+  const profilesDir = path.join(root, "profiles");
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(profilesDir);
+  } catch {
+    return out;
+  }
+  for (const name of entries) {
+    if (!HERMES_PROFILE_NAME_RE.test(name)) continue;
+    const home = path.join(profilesDir, name);
+    try {
+      if (!statSync(home).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    out.push({
+      name,
+      home,
+      isActive: active === name,
+      modelName: readProfileModelName(home),
+      sessionsCount: countSessions(home),
+      hasSoul: hasSoul(home),
+    });
+  }
+
+  return out;
 }
 
 /**
@@ -141,7 +275,14 @@ export class HermesAgentAdapter extends AcpRuntimeAdapter {
       // Route dangerous tool calls through ACP request_permission.
       HERMES_INTERACTIVE: "1",
     };
-    if (opts.accountId) {
+    // Attach mode: BotCord agent shares a hermes profile (state.db /
+    // sessions / skills / .env) with the user's command-line `hermes`. In
+    // this mode we DO NOT seed a private home — the profile is wholly owned
+    // by the user, and AGENTS.md is written under the per-agent
+    // hermes-workspace cwd (NOT into the profile root) by `prepareTurn`.
+    if (opts.hermesProfile) {
+      env.HERMES_HOME = hermesProfileHomeDir(opts.hermesProfile);
+    } else if (opts.accountId) {
       env.HERMES_HOME = agentHermesHomeDir(opts.accountId);
     }
     return env;
@@ -160,7 +301,9 @@ export class HermesAgentAdapter extends AcpRuntimeAdapter {
    */
   protected prepareTurn(opts: RuntimeRunOptions): void {
     if (!opts.accountId) return;
-    const { hermesWorkspace } = ensureAgentHermesWorkspace(opts.accountId);
+    const { hermesWorkspace } = ensureAgentHermesWorkspace(opts.accountId, {
+      attached: !!opts.hermesProfile,
+    });
     const target = path.join(hermesWorkspace, "AGENTS.md");
     const tmp = path.join(hermesWorkspace, `.AGENTS.md.${process.pid}.tmp`);
     mkdirSync(hermesWorkspace, { recursive: true, mode: 0o700 });

@@ -4,7 +4,7 @@
  * side effects (register agent, write credentials, load route, add/remove
  * gateway channel) and return an ack payload.
  */
-import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import {
@@ -22,6 +22,7 @@ import {
   type ProvisionAgentParams,
   type RevokeAgentParams,
   type RevokeAgentResult,
+  type HermesProfileProbe,
   type RuntimeProbeResult,
   type StoredBotCordCredentials,
   type UpdateAgentParams,
@@ -54,6 +55,11 @@ import {
   ensureAgentWorkspace,
 } from "./agent-workspace.js";
 import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
+import {
+  hermesProfileHomeDir,
+  isValidHermesProfileName,
+  listHermesProfiles,
+} from "./gateway/runtimes/hermes-agent.js";
 import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
 
@@ -171,7 +177,32 @@ export function createProvisioner(opts: ProvisionerOptions): (
           runtime: pickRuntime(params) ?? null,
           name: params.name ?? null,
         });
-        const agent = await provisionAgent(params, { gateway, register, onAgentInstalled });
+        let agent: ProvisionedAgent;
+        try {
+          agent = await provisionAgent(params, {
+            gateway,
+            register,
+            onAgentInstalled,
+          });
+        } catch (err) {
+          if (err instanceof HermesProfileError) {
+            daemonLog.warn("provision_agent: hermes profile rejected", {
+              code: err.code,
+              profile: err.profile,
+              occupiedBy: err.occupiedBy ?? null,
+            });
+            return {
+              ok: false,
+              error: {
+                code: err.code,
+                message: err.message,
+                ...(err.occupiedBy ? { occupiedBy: err.occupiedBy } : {}),
+                profile: err.profile,
+              },
+            };
+          }
+          throw err;
+        }
         // Seed the policy resolver from the optional `defaultAttention` /
         // `attentionKeywords` fields (PR3, control-frame.ts). Hub builds that
         // don't yet emit these stay backwards-compatible — the resolver just
@@ -330,6 +361,24 @@ async function provisionAgent(
         });
         return installExistingOpenclawBinding(existing.agentId, ctx);
       }
+      const cfg = loadConfig();
+      const credentials = await materializeCredentials(resolvedParams, cfg, ctx, explicitCwd);
+      return installLocalAgent(credentials, {
+        ...ctx,
+        cfg,
+        bio: params.bio,
+        source: params.credentials ? "hub-supplied" : "registered",
+      });
+    });
+  }
+
+  const hermesSel = pickHermesSelection(resolvedParams);
+  if (hermesSel) {
+    return withHermesProvisionLock(hermesSel, async () => {
+      // Race-safe re-check inside the per-profile lock so two concurrent
+      // provisions for the same profile (e.g. two dashboard tabs) cannot
+      // both succeed.
+      validateHermesProfileForProvision(hermesSel, params.credentials?.agentId);
       const cfg = loadConfig();
       const credentials = await materializeCredentials(resolvedParams, cfg, ctx, explicitCwd);
       return installLocalAgent(credentials, {
@@ -530,6 +579,9 @@ function upsertManagedRouteForCredentials(
       };
     }
   }
+  if (synthRoute.runtime === "hermes-agent" && credentials.hermesProfile) {
+    synthRoute.hermesProfile = credentials.hermesProfile;
+  }
   gateway.upsertManagedRoute(credentials.agentId, synthRoute);
 }
 
@@ -625,6 +677,8 @@ async function materializeCredentials(
     const openclawSel = pickOpenclawSelection(params);
     if (openclawSel.gateway) record.openclawGateway = openclawSel.gateway;
     if (openclawSel.agent) record.openclawAgent = openclawSel.agent;
+    const hermesSel = pickHermesSelection(params);
+    if (hermesSel) record.hermesProfile = hermesSel;
     return record;
   }
 
@@ -657,6 +711,8 @@ async function materializeCredentials(
   const openclawSel = pickOpenclawSelection(params);
   if (openclawSel.gateway) record.openclawGateway = openclawSel.gateway;
   if (openclawSel.agent) record.openclawAgent = openclawSel.agent;
+  const hermesSel = pickHermesSelection(params);
+  if (hermesSel) record.hermesProfile = hermesSel;
   return record;
 }
 
@@ -748,6 +804,94 @@ function withResolvedOpenclawSelection(
       ...(selection.agent ? { agent: selection.agent } : {}),
     },
   };
+}
+
+/**
+ * Resolve hermes profile selection from a `provision_agent` frame. Top-level
+ * `params.hermes.profile` (nested) wins over the flat
+ * `credentials.hermesProfile` mirror. Returning `undefined` is fine — the
+ * adapter falls back to the BotCord-isolated HERMES_HOME under
+ * `~/.botcord/agents/<id>/` when the agent is not attached to a profile.
+ */
+function pickHermesSelection(params: ProvisionAgentParams): string | undefined {
+  const top = params.hermes;
+  if (top && typeof top.profile === "string" && top.profile.length > 0) {
+    return top.profile;
+  }
+  const flat = params.credentials;
+  if (flat && typeof flat.hermesProfile === "string" && flat.hermesProfile.length > 0) {
+    return flat.hermesProfile;
+  }
+  return undefined;
+}
+
+const hermesProvisionLocks = new Map<string, Promise<unknown>>();
+
+async function withHermesProvisionLock<T>(
+  profile: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prev = hermesProvisionLocks.get(profile) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  hermesProvisionLocks.set(profile, next);
+  try {
+    return (await next) as T;
+  } finally {
+    if (hermesProvisionLocks.get(profile) === next) {
+      hermesProvisionLocks.delete(profile);
+    }
+  }
+}
+
+class HermesProfileError extends Error {
+  constructor(
+    public readonly code:
+      | "hermes_profile_invalid"
+      | "hermes_profile_not_found"
+      | "hermes_profile_occupied",
+    message: string,
+    public readonly profile: string,
+    public readonly occupiedBy?: string,
+  ) {
+    super(message);
+    this.name = "HermesProfileError";
+  }
+}
+
+/**
+ * Validate that `profile` exists on disk and is not already bound to another
+ * BotCord agent. Throws {@link HermesProfileError} on failure so the caller
+ * can surface the structured error code via the control-frame ack.
+ */
+function validateHermesProfileForProvision(
+  profile: string,
+  selfAgentId: string | undefined,
+): void {
+  if (!isValidHermesProfileName(profile)) {
+    throw new HermesProfileError(
+      "hermes_profile_invalid",
+      `Hermes profile "${profile}" is not a valid profile name.`,
+      profile,
+    );
+  }
+  const home = hermesProfileHomeDir(profile);
+  if (!existsSync(home)) {
+    throw new HermesProfileError(
+      "hermes_profile_not_found",
+      `Hermes profile "${profile}" does not exist at ${home}. Create it via "hermes profile create ${profile}" and retry.`,
+      profile,
+    );
+  }
+  const occupancy = profileOccupancyMap();
+  const owner = occupancy.get(profile);
+  if (owner && owner.agentId !== selfAgentId) {
+    throw new HermesProfileError(
+      "hermes_profile_occupied",
+      `Hermes profile "${profile}" is already bound to BotCord agent ${owner.agentId}.`,
+      profile,
+      owner.agentId,
+    );
+  }
 }
 
 async function withOpenclawProvisionLock<T>(
@@ -1100,6 +1244,30 @@ export function clearRuntimeProbeCache(): void {
  * Cached for {@link RUNTIME_PROBE_CACHE_TTL_MS}; pass `{ force: true }` to
  * bypass the cache.
  */
+/**
+ * Build the wire-shape `HermesProfileProbe[]` for the runtime snapshot,
+ * joining the on-disk profile listing with the BotCord-side occupancy map
+ * so dashboards can render disabled rows without a second round trip.
+ */
+function listHermesProfilesForSnapshot(
+  occupancy: Map<string, { agentId: string; agentName?: string }>,
+): HermesProfileProbe[] {
+  return listHermesProfiles().map((p) => {
+    const out: HermesProfileProbe = { name: p.name, home: p.home };
+    if (p.isDefault) out.isDefault = true;
+    if (p.isActive) out.isActive = true;
+    if (p.modelName) out.modelName = p.modelName;
+    if (typeof p.sessionsCount === "number") out.sessionsCount = p.sessionsCount;
+    if (p.hasSoul) out.hasSoul = true;
+    const owner = occupancy.get(p.name);
+    if (owner) {
+      out.occupiedBy = owner.agentId;
+      if (owner.agentName) out.occupiedByName = owner.agentName;
+    }
+    return out;
+  });
+}
+
 export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRuntimesResult {
   if (
     !opts.force &&
@@ -1109,6 +1277,7 @@ export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRunt
     return _runtimeProbeCache.value;
   }
   const entries = detectRuntimes();
+  const occupancy = profileOccupancyMap();
   const runtimes: RuntimeProbeResult[] = entries.map((entry) => {
     const record: RuntimeProbeResult = {
       id: entry.id,
@@ -1123,6 +1292,9 @@ export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRunt
     // already swallows throws into `{available: false}`. We leave the wire
     // field blank in that case and let callers treat `!available` as reason
     // enough; filling a synthetic message would be misleading.
+    if (entry.id === "hermes-agent" && entry.result.available) {
+      record.profiles = listHermesProfilesForSnapshot(occupancy);
+    }
     return record;
   });
   const value: ListRuntimesResult = { runtimes, probedAt: Date.now() };
@@ -1695,21 +1867,60 @@ export async function reloadConfig(ctx: { gateway: Gateway }): Promise<ReloadRes
  */
 function readAgentRuntimesFromCredentials(
   agentIds: string[],
-): Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string }> {
-  const out: Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string }> = {};
+): Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }> {
+  const out: Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }> = {};
   for (const id of agentIds) {
     const file = defaultCredentialsFile(id);
     try {
       if (!existsSync(file)) continue;
       const creds = loadStoredCredentials(file);
-      const entry: { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string } = {};
+      const entry: { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string } = {};
       if (creds.runtime) entry.runtime = creds.runtime;
       if (creds.cwd) entry.cwd = creds.cwd;
       if (creds.openclawGateway) entry.openclawGateway = creds.openclawGateway;
       if (creds.openclawAgent) entry.openclawAgent = creds.openclawAgent;
-      if (entry.runtime || entry.cwd || entry.openclawGateway || entry.openclawAgent) out[id] = entry;
+      if (creds.hermesProfile) entry.hermesProfile = creds.hermesProfile;
+      if (entry.runtime || entry.cwd || entry.openclawGateway || entry.openclawAgent || entry.hermesProfile) out[id] = entry;
     } catch {
       // best-effort — skip agents with unreadable credentials
+    }
+  }
+  return out;
+}
+
+/**
+ * Scan `~/.botcord/credentials/*.json` and return a mapping from hermes
+ * profile name to the BotCord agent currently bound to it. Used by the
+ * runtime snapshot path to mark profiles as occupied in the picker, and by
+ * the provision path to enforce the 1 BotCord agent : 1 hermes profile
+ * invariant. The scan is cheap and authoritative — running daemon state may
+ * lag (e.g. between provision and reconcile), so we always read disk.
+ */
+export function profileOccupancyMap(): Map<string, { agentId: string; agentName?: string }> {
+  const out = new Map<string, { agentId: string; agentName?: string }>();
+  const dir = path.join(homedir(), ".botcord", "credentials");
+  let names: string[] = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const file of names) {
+    if (!file.endsWith(".json")) continue;
+    try {
+      const creds = loadStoredCredentials(path.join(dir, file));
+      if (creds.runtime !== "hermes-agent") continue;
+      if (!creds.hermesProfile) continue;
+      // First write wins — ties shouldn't happen, but if they do, the
+      // provision path's race check will surface it.
+      if (!out.has(creds.hermesProfile)) {
+        out.set(creds.hermesProfile, {
+          agentId: creds.agentId,
+          agentName: creds.displayName,
+        });
+      }
+    } catch {
+      // skip unreadable
     }
   }
   return out;

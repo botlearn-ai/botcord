@@ -45,6 +45,14 @@ export interface GatewayRoute {
   trustLevel?: TrustLevel;
   /** Required when `runtime === "openclaw-acp"`. Resolved at config-load time. */
   gateway?: ResolvedOpenclawGateway;
+  /**
+   * Hermes profile name to attach to. Set when `runtime === "hermes-agent"`
+   * and the agent is bound to a specific `~/.hermes/profiles/<name>/`. The
+   * dispatcher forwards this to the adapter as
+   * {@link RuntimeRunOptions.hermesProfile}, which is what the adapter uses
+   * to switch `HERMES_HOME` at spawn time.
+   */
+  hermesProfile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +370,15 @@ export interface RuntimeRunOptions {
    * lifting service URLs out of `extraArgs` into typed first-class fields.
    */
   gateway?: ResolvedOpenclawGateway;
+  /**
+   * Hermes profile to attach to. Only meaningful when `runtime ===
+   * "hermes-agent"`. When set, the adapter switches
+   * `HERMES_HOME=~/.hermes/profiles/<name>/` (or `~/.hermes` for `default`)
+   * so the BotCord agent shares state.db / sessions / skills with the
+   * user's command-line `hermes`. Mirrors how `gateway` is lifted out of
+   * `extraArgs` for the openclaw-acp runtime.
+   */
+  hermesProfile?: string;
 }
 
 /** Result returned by a runtime adapter after a turn completes. */

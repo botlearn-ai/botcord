@@ -1421,3 +1421,162 @@ describe("update_agent handler", () => {
     expect(ack.error?.code).toBe("bad_params");
   });
 });
+
+describe("provision_agent hermes profile attach", () => {
+  it("rejects invalid hermes profile names before resolving HERMES_HOME", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      fs.mkdirSync(nodePath.join(tmp, ".hermes", "profiles"), {
+        recursive: true,
+      });
+      fs.mkdirSync(nodePath.join(tmp, "outside"), { recursive: true });
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 23).toString("base64");
+      const ack = await provisioner({
+        id: "req_hp_invalid",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "hermes-agent",
+          hermes: { profile: "../../outside" },
+          credentials: {
+            agentId: "ag_hp_invalid",
+            keyId: "k_hp_invalid",
+            privateKey,
+            hubUrl: "https://hub.example",
+            runtime: "hermes-agent",
+          },
+        },
+      });
+      expect(ack.ok).toBe(false);
+      expect(ack.error?.code).toBe("hermes_profile_invalid");
+      expect(gw.addChannel).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects with hermes_profile_not_found when the profile does not exist", async () => {
+    await withSandboxHome(async ({ tmp: _tmp }) => {
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 11).toString("base64");
+      const ack = await provisioner({
+        id: "req_hp_missing",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "hermes-agent",
+          hermes: { profile: "ghost" },
+          credentials: {
+            agentId: "ag_hp_missing",
+            keyId: "k_hp",
+            privateKey,
+            hubUrl: "https://hub.example",
+            runtime: "hermes-agent",
+          },
+        },
+      });
+      expect(ack.ok).toBe(false);
+      expect(ack.error?.code).toBe("hermes_profile_not_found");
+      expect(ack.error?.profile).toBe("ghost");
+      expect(gw.addChannel).not.toHaveBeenCalled();
+    });
+  });
+
+  it("persists hermesProfile to credentials when the profile exists and is free", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      // Lay down ~/.hermes/profiles/coder so validateHermesProfileForProvision
+      // sees it.
+      fs.mkdirSync(nodePath.join(tmp, ".hermes", "profiles", "coder"), {
+        recursive: true,
+      });
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 13).toString("base64");
+      const ack = await provisioner({
+        id: "req_hp_ok",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "hermes-agent",
+          hermes: { profile: "coder" },
+          credentials: {
+            agentId: "ag_hp_ok",
+            keyId: "k_hp",
+            privateKey,
+            hubUrl: "https://hub.example",
+            displayName: "coder agent",
+            runtime: "hermes-agent",
+          },
+        },
+      });
+      expect(ack.ok).toBe(true);
+      expect(gw.addChannel).toHaveBeenCalledOnce();
+
+      const credFile = nodePath.join(
+        tmp,
+        ".botcord",
+        "credentials",
+        "ag_hp_ok.json",
+      );
+      const saved = JSON.parse(fs.readFileSync(credFile, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      expect(saved.hermesProfile).toBe("coder");
+      expect(saved.runtime).toBe("hermes-agent");
+    });
+  });
+
+  it("rejects with hermes_profile_occupied when another agent already binds the profile", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      fs.mkdirSync(nodePath.join(tmp, ".hermes", "profiles", "coder"), {
+        recursive: true,
+      });
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+
+      const privateKey = Buffer.alloc(32, 17).toString("base64");
+      const okAck = await provisioner({
+        id: "req_first",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "hermes-agent",
+          hermes: { profile: "coder" },
+          credentials: {
+            agentId: "ag_first",
+            keyId: "k_first",
+            privateKey,
+            hubUrl: "https://hub.example",
+            runtime: "hermes-agent",
+          },
+        },
+      });
+      expect(okAck.ok).toBe(true);
+
+      const privateKey2 = Buffer.alloc(32, 19).toString("base64");
+      const ack = await provisioner({
+        id: "req_second",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "hermes-agent",
+          hermes: { profile: "coder" },
+          credentials: {
+            agentId: "ag_second",
+            keyId: "k_second",
+            privateKey: privateKey2,
+            hubUrl: "https://hub.example",
+            runtime: "hermes-agent",
+          },
+        },
+      });
+      expect(ack.ok).toBe(false);
+      expect(ack.error?.code).toBe("hermes_profile_occupied");
+      expect(ack.error?.occupiedBy).toBe("ag_first");
+    });
+  });
+});

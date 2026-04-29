@@ -27,6 +27,8 @@ export interface AgentRuntimeMeta {
   openclawGateway?: string;
   /** Optional override of the OpenClaw agent profile within the gateway. */
   openclawAgent?: string;
+  /** Hermes profile name to attach to (`runtime === "hermes-agent"` only). */
+  hermesProfile?: string;
 }
 
 /** Profile + tokenFile-resolved bearer token. Exported so other module-boundary
@@ -338,6 +340,9 @@ export function buildManagedRoutes(
         continue;
       }
       route.gateway = resolved;
+    }
+    if (runtime === "hermes-agent" && meta.hermesProfile) {
+      route.hermesProfile = meta.hermesProfile;
     }
     out.set(agentId, route);
   }

@@ -37,6 +37,14 @@ export interface StoredBotCordCredentials {
    * falling back to `OpenclawGatewayProfile.defaultAgent` when absent.
    */
   openclawAgent?: string;
+  /**
+   * Hermes profile this agent is attached to (`~/.hermes/profiles/<name>/`,
+   * or `~/.hermes` when the value is `"default"`). Only meaningful when
+   * `runtime === "hermes-agent"`. Read by the daemon's hermes adapter to
+   * route `HERMES_HOME` at spawn time so the BotCord agent shares state
+   * with the user's command-line `hermes`.
+   */
+  hermesProfile?: string;
 }
 
 function normalizeCredentialValue(raw: any, keys: string[]): string | undefined {
@@ -111,6 +119,7 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
   const cwd = normalizeCredentialValue(raw, ["cwd"]);
   const openclawGateway = normalizeCredentialValue(raw, ["openclawGateway", "openclaw_gateway"]);
   const openclawAgent = normalizeCredentialValue(raw, ["openclawAgent", "openclaw_agent"]);
+  const hermesProfile = normalizeCredentialValue(raw, ["hermesProfile", "hermes_profile"]);
 
   return {
     version: 1,
@@ -128,6 +137,7 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     cwd,
     openclawGateway,
     openclawAgent,
+    hermesProfile,
   };
 }
 

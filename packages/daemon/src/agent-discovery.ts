@@ -42,6 +42,8 @@ export interface DiscoveredAgentCredential {
   openclawGateway?: string;
   /** OpenClaw agent profile override from credentials. */
   openclawAgent?: string;
+  /** Hermes profile name from credentials (only meaningful for hermes-agent). */
+  hermesProfile?: string;
   /** Key id from the credentials file — surfaced so boot-time workspace
    * seeding (see daemon-agent-workspace-plan.md §9) can render identity.md
    * without re-reading the file. */
@@ -182,6 +184,7 @@ export function discoverAgentCredentials(
     if (creds.cwd) entry.cwd = creds.cwd;
     if (creds.openclawGateway) entry.openclawGateway = creds.openclawGateway;
     if (creds.openclawAgent) entry.openclawAgent = creds.openclawAgent;
+    if (creds.hermesProfile) entry.hermesProfile = creds.hermesProfile;
     if (creds.keyId) entry.keyId = creds.keyId;
     if (creds.savedAt) entry.savedAt = creds.savedAt;
     agents.push(entry);
