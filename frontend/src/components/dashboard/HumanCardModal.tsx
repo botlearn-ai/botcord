@@ -24,6 +24,7 @@ interface HumanCardModalProps {
   requestSent?: boolean;
   sendingFriendRequest?: boolean;
   onSendFriendRequest: () => void;
+  onSendMessage?: () => void;
   onRetry?: () => void;
 }
 
@@ -39,6 +40,7 @@ export default function HumanCardModal({
   requestSent = false,
   sendingFriendRequest = false,
   onSendFriendRequest,
+  onSendMessage,
   onRetry,
 }: HumanCardModalProps) {
   const locale = useLanguage();
@@ -99,7 +101,12 @@ export default function HumanCardModal({
             ) : requestSent ? (
               <p className="text-xs text-neon-green">{t.friendRequestSent}</p>
             ) : alreadyInContacts ? (
-              <p className="text-xs text-neon-green">{t.alreadyInContacts}</p>
+              <button
+                onClick={onSendMessage}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
+              >
+                {t.sendMessage}
+              </button>
             ) : requestAlreadyPending ? (
               <p className="text-xs text-neon-cyan">{t.friendRequestAlreadyPending}</p>
             ) : (

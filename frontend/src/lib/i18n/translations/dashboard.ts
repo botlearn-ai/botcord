@@ -746,6 +746,7 @@ export const exploreUi: TranslationMap<{
   friendRequestSent: string
   sendFriendRequest: string
   sendingFriendRequest: string
+  sendMessage: string
 }> = {
   en: {
     publicRooms: 'Public Rooms',
@@ -794,6 +795,7 @@ export const exploreUi: TranslationMap<{
     friendRequestSent: 'Friend request sent.',
     sendFriendRequest: 'Send Friend Request',
     sendingFriendRequest: 'Sending request...',
+    sendMessage: 'Send Message',
   },
   zh: {
     publicRooms: '公开社区',
@@ -842,6 +844,7 @@ export const exploreUi: TranslationMap<{
     friendRequestSent: '好友申请已发送。',
     sendFriendRequest: '发送好友请求',
     sendingFriendRequest: '发送请求中...',
+    sendMessage: '发送消息',
   },
 }
 

@@ -668,12 +668,16 @@ export default function DashboardApp() {
     });
     try {
       const human = await api.getPublicHuman(owner.humanId);
+      const status =
+        human.contact_status === "contact" ? "exists"
+        : human.contact_status === "pending" ? "pending"
+        : "idle";
       setOwnerHumanCard({
         human,
         loading: false,
         error: null,
         sending: false,
-        status: "idle",
+        status,
       });
     } catch (error) {
       setOwnerHumanCard((prev) => prev && {
@@ -719,6 +723,43 @@ export default function DashboardApp() {
       return;
     }
     void contactStore.sendContactRequest(selectedAgentForCard.agent_id);
+  };
+
+  const navigateToDmWith = (peerId: string, onClose: () => void) => {
+    const activeId = sessionStore.activeAgentId;
+    const dmRoomId = activeId
+      ? `rm_dm_${[activeId, peerId].sort().join("_")}`
+      : null;
+    const dmRoom = dmRoomId
+      ? chatStore.overview?.rooms.find((r) => r.room_id === dmRoomId)
+      : null;
+    onClose();
+    uiStore.setSidebarTab("messages");
+    if (dmRoom) {
+      uiStore.setFocusedRoomId(dmRoom.room_id);
+      uiStore.setOpenedRoomId(dmRoom.room_id);
+      router.push(`/chats/messages/${encodeURIComponent(dmRoom.room_id)}`);
+    } else if (dmRoomId) {
+      uiStore.setFocusedRoomId(dmRoomId);
+      uiStore.setOpenedRoomId(dmRoomId);
+      router.push(`/chats/messages/${encodeURIComponent(dmRoomId)}`);
+    } else {
+      router.push("/chats/messages");
+    }
+  };
+
+  const handleSendMessageFromAgentCard = () => {
+    if (!selectedAgentForCard) return;
+    navigateToDmWith(selectedAgentForCard.agent_id, () => {
+      uiStore.closeAgentCard();
+      chatStore.closeAgentCardState();
+    });
+  };
+
+  const handleSendMessageFromHumanCard = () => {
+    const human = ownerHumanCard?.human;
+    if (!human) return;
+    navigateToDmWith(human.human_id, () => setOwnerHumanCard(null));
   };
 
   const handleRetryOwnerHumanCard = () => {
@@ -886,6 +927,7 @@ export default function DashboardApp() {
         requestAlreadyPending={requestAlreadyPending}
         sendingFriendRequest={isSendingFriendRequest}
         onSendFriendRequest={handleSendFriendRequestFromCard}
+        onSendMessage={handleSendMessageFromAgentCard}
         onRetry={() => {
           if (!chatStore.selectedAgentId) return;
           void chatStore.selectAgent(chatStore.selectedAgentId);
@@ -903,6 +945,7 @@ export default function DashboardApp() {
         requestSent={ownerHumanCard?.status === "sent"}
         sendingFriendRequest={ownerHumanCard?.sending ?? false}
         onSendFriendRequest={handleSendOwnerHumanFriendRequest}
+        onSendMessage={handleSendMessageFromHumanCard}
         onRetry={handleRetryOwnerHumanCard}
       />
       {chatStore.error && (

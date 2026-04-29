@@ -13,8 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
+from hub.auth import get_optional_dashboard_agent
 from hub.models import (
     Agent,
+    Contact,
+    ContactRequest,
+    ContactRequestState,
     MessageRecord,
     Room,
     RoomMember,
@@ -603,9 +607,35 @@ async def list_public_humans(
 async def get_public_human(
     human_id: str,
     db: AsyncSession = Depends(get_db),
+    viewer_agent_id: str | None = Depends(get_optional_dashboard_agent),
 ):
     result = await db.execute(select(User).where(User.human_id == human_id))
     user = result.scalar_one_or_none()
     if user is None or user.banned_at is not None or user.status != "active":
         raise HTTPException(status_code=404, detail="Human not found")
-    return _serialize_public_human(user)
+
+    data = _serialize_public_human(user)
+
+    if viewer_agent_id:
+        contact_row = await db.execute(
+            select(Contact).where(
+                Contact.owner_id == viewer_agent_id,
+                Contact.contact_agent_id == human_id,
+            )
+        )
+        if contact_row.scalar_one_or_none():
+            data["contact_status"] = "contact"
+        else:
+            req_row = await db.execute(
+                select(ContactRequest).where(
+                    ContactRequest.from_agent_id == viewer_agent_id,
+                    ContactRequest.to_agent_id == human_id,
+                    ContactRequest.state == ContactRequestState.pending,
+                )
+            )
+            if req_row.scalar_one_or_none():
+                data["contact_status"] = "pending"
+            else:
+                data["contact_status"] = "none"
+
+    return data

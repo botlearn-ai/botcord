@@ -582,6 +582,7 @@ export interface PublicHumanProfile {
   display_name: string;
   avatar_url: string | null;
   created_at: string | null;
+  contact_status?: "contact" | "pending" | "none";
 }
 
 export interface PublicHumansResponse {

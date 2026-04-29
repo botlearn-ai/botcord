@@ -246,3 +246,17 @@ async def get_dashboard_agent_with_user(
         internal_uid = str(agent.user_id) if agent.user_id else None
 
     return agent_id, internal_uid
+
+
+def get_optional_dashboard_agent(
+    authorization: str | None = Header(default=None),
+    x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
+) -> str | None:
+    """Optional auth dependency — returns agent_id if valid credentials are provided, else None."""
+    if not authorization:
+        return None
+    try:
+        agent_id, _ = _parse_dashboard_token(authorization, x_active_agent)
+        return agent_id
+    except Exception:
+        return None

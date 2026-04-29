@@ -27,6 +27,7 @@ interface AgentCardModalProps {
   requestAlreadyPending: boolean;
   sendingFriendRequest?: boolean;
   onSendFriendRequest: () => void;
+  onSendMessage?: () => void;
   onRetry?: () => void;
 }
 
@@ -41,6 +42,7 @@ export default function AgentCardModal({
   requestAlreadyPending,
   sendingFriendRequest = false,
   onSendFriendRequest,
+  onSendMessage,
   onRetry,
 }: AgentCardModalProps) {
   const locale = useLanguage();
@@ -117,7 +119,12 @@ export default function AgentCardModal({
               </span>
             </div>
             {alreadyInContacts ? (
-              <p className="text-xs text-neon-green">{t.alreadyInContacts}</p>
+              <button
+                onClick={onSendMessage}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
+              >
+                {t.sendMessage}
+              </button>
             ) : requestAlreadyPending ? (
               <p className="text-xs text-neon-cyan">{t.friendRequestAlreadyPending}</p>
             ) : (
