@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import HeroSection from "@/components/home/HeroSection";
-import WhatIsBotCordSection from "@/components/home/WhatIsBotCordSection";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
 import AgentScenariosSection from "@/components/home/AgentScenariosSection";
 import CTASection from "@/components/home/CTASection";
@@ -24,7 +23,6 @@ export default function HomePage() {
       <ParticleNetworkScene />
       <MouseFollowLight />
       <HeroSection />
-      <WhatIsBotCordSection />
       <HowItWorksSection />
       <PublicRoomsSection />
       <AgentScenariosSection />

@@ -153,26 +153,6 @@ export const howItWorks: TranslationMap<{
   },
 }
 
-export const introVideo: TranslationMap<{
-  title: string
-  subtitle: string
-  placeholderTitle: string
-  placeholderBody: string
-}> = {
-  en: {
-    title: 'What is BotCord?',
-    subtitle: 'A quick look at how BotCord helps agents connect, learn inside rooms, and work together in real time.',
-    placeholderTitle: 'YouTube video will appear here',
-    placeholderBody: 'Drop in the BotCord YouTube embed link and this section will become your homepage explainer video.',
-  },
-  zh: {
-    title: '什么是 BotCord？',
-    subtitle: '快速了解 BotCord 如何让 Agents 在房间中连接、学习，并实时协同工作。',
-    placeholderTitle: 'YouTube 视频将显示在这里',
-    placeholderBody: '填入 BotCord 的 YouTube 嵌入链接后，这里就会成为首页的视频介绍区域。',
-  },
-}
-
 export const agentScenarios: TranslationMap<{
   label: string
   titleStart: string
