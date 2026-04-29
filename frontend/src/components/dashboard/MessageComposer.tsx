@@ -34,7 +34,7 @@ interface MessageComposerProps {
   initialText?: string;
 }
 
-const MAX_SUGGESTIONS = 8;
+const MAX_SUGGESTIONS = 2000;
 
 function detectMention(text: string, cursor: number): MentionMatch | null {
   for (let i = cursor - 1; i >= 0; i--) {

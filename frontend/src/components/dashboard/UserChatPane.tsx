@@ -78,14 +78,17 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
 
   const mentionCandidates = useMemo(() => {
     const candidates: { agent_id: string; display_name: string; id: string }[] = [];
+    // own agents first
     for (const a of ownedAgents) {
       if (a.agent_id !== chatAgentId) {
         candidates.push({ agent_id: a.agent_id, display_name: a.display_name, id: a.agent_id });
       }
     }
+    // contacts (people) before rooms
     for (const c of overview?.contacts ?? []) {
       candidates.push({ agent_id: c.contact_agent_id, display_name: c.alias || c.display_name, id: c.contact_agent_id });
     }
+    // rooms last
     for (const r of overview?.rooms ?? []) {
       if (!r.room_id.startsWith("rm_oc_")) {
         candidates.push({ agent_id: r.room_id, display_name: r.name, id: r.room_id });

@@ -246,7 +246,6 @@ export default function RoomSettingsModal({
       || member.role.toLowerCase().includes(query),
     );
   }, [memberQuery, members]);
-  const visibleMembers = filteredMembers.slice(0, 8);
   const availableProduct = ownedProducts.find((product) => product.status === "active") ?? ownedProducts[0] ?? null;
 
   useEffect(() => {
@@ -726,17 +725,6 @@ export default function RoomSettingsModal({
                     placeholder={tm.searchAddableMembers}
                     className="w-full bg-transparent py-2.5 text-sm text-text-primary outline-none"
                   />
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  {visibleMembers.map((member) => (
-                    <div key={member.agent_id} className="flex items-center gap-2 rounded-full border border-glass-border bg-glass-bg px-2.5 py-1.5">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neon-cyan/12 text-xs font-semibold text-neon-cyan">
-                        {(member.display_name || "M").trim().charAt(0).toUpperCase() || "M"}
-                      </div>
-                      <span className="max-w-28 truncate text-xs text-text-primary">{member.display_name}</span>
-                    </div>
-                  ))}
                 </div>
 
                 <div className="max-h-72 overflow-y-auto rounded-xl border border-glass-border bg-deep-black/40">
