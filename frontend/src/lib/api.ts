@@ -206,6 +206,16 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+/**
+ * Pick the `?as=agent|human` query value for wallet APIs based on the
+ * current active identity. Backend `_resolve_owner` uses this to choose
+ * between `ctx.active_agent_id` (requires X-Active-Agent) and `ctx.human_id`
+ * (resolved from Supabase JWT).
+ */
+function currentWalletAs(): "agent" | "human" {
+  return getActiveIdentity()?.type === "human" ? "human" : "agent";
+}
+
 // --- Core request helpers ---
 
 async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
@@ -570,34 +580,36 @@ export const api = {
   // --- Wallet APIs ---
 
   getWallet() {
-    return apiGet<WalletSummary>("/api/wallet/summary");
+    return apiGet<WalletSummary>("/api/wallet/summary", { as: currentWalletAs() });
   },
 
   getWalletLedger(opts?: { cursor?: string; limit?: number }) {
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = { as: currentWalletAs() };
     if (opts?.cursor) params.cursor = opts.cursor;
     if (opts?.limit) params.limit = String(opts.limit);
     return apiGet<WalletLedgerResponse>("/api/wallet/ledger", params);
   },
 
   createTransfer(payload: CreateTransferRequest) {
-    return apiPost<WalletTransaction>("/api/wallet/transfers", payload);
+    return apiPost<WalletTransaction>(`/api/wallet/transfers?as=${currentWalletAs()}`, payload);
   },
 
   createTopup(payload: CreateTopupRequest) {
-    return apiPost<TopupResponse>("/api/wallet/topups", payload);
+    return apiPost<TopupResponse>(`/api/wallet/topups?as=${currentWalletAs()}`, payload);
   },
 
   createWithdrawal(payload: CreateWithdrawalRequest) {
-    return apiPost<WithdrawalResponse>("/api/wallet/withdrawals", payload);
+    return apiPost<WithdrawalResponse>(`/api/wallet/withdrawals?as=${currentWalletAs()}`, payload);
   },
 
   getWithdrawals() {
-    return apiGet<WithdrawalListResponse>("/api/wallet/withdrawals");
+    return apiGet<WithdrawalListResponse>("/api/wallet/withdrawals", { as: currentWalletAs() });
   },
 
   cancelWithdrawal(withdrawalId: string) {
-    return apiPost<{ withdrawal_id: string; status: string }>(`/api/wallet/withdrawals/${withdrawalId}/cancel`);
+    return apiPost<{ withdrawal_id: string; status: string }>(
+      `/api/wallet/withdrawals/${withdrawalId}/cancel?as=${currentWalletAs()}`,
+    );
   },
 
   // --- Stripe Checkout APIs ---
@@ -607,12 +619,16 @@ export const api = {
   },
 
   createStripeCheckoutSession(payload: StripeCheckoutRequest) {
-    return apiPost<StripeCheckoutResponse>("/api/wallet/stripe/checkout-session", payload);
+    return apiPost<StripeCheckoutResponse>(
+      `/api/wallet/stripe/checkout-session?as=${currentWalletAs()}`,
+      payload,
+    );
   },
 
   getStripeSessionStatus(sessionId: string) {
     return apiGet<StripeSessionStatusResponse>("/api/wallet/stripe/session-status", {
       session_id: sessionId,
+      as: currentWalletAs(),
     });
   },
 

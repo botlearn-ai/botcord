@@ -85,7 +85,9 @@ export default function DashboardApp() {
   const locale = useLanguage();
   const tSidebar = sidebarI18n[locale];
   const recoveredAgentRef = useRef<string | null>(null);
-  const walletBoundAgentRef = useRef<string | null>(null);
+  // Wallet is keyed on the active identity (agent OR human), since both
+  // can own a wallet (`backend/app/routers/wallet.py:_resolve_owner`).
+  const walletBoundIdentityRef = useRef<string | null>(null);
   const contactBoundAgentRef = useRef<string | null>(null);
   const subscriptionBoundAgentRef = useRef<string | null>(null);
   const initResolvedRef = useRef(false);
@@ -335,10 +337,17 @@ export default function DashboardApp() {
     // (Human viewer mode), skip the agent-specific binding/reset cycle and
     // let refreshOverview() run on the Human anchor. Only drop back into the
     // full reset branch for truly pre-auth states.
+    const walletIdentityKey = sessionStore.activeIdentity
+      ? `${sessionStore.activeIdentity.type}:${sessionStore.activeIdentity.id}`
+      : null;
+
     if (sessionStore.sessionMode === "authed-no-agent") {
-      walletBoundAgentRef.current = null;
       contactBoundAgentRef.current = null;
       subscriptionBoundAgentRef.current = null;
+      if (walletBoundIdentityRef.current !== walletIdentityKey) {
+        walletBoundIdentityRef.current = walletIdentityKey;
+        walletStore.resetWalletState();
+      }
       if (
         !chatStore.overview
         && !chatStore.overviewRefreshing
@@ -351,7 +360,7 @@ export default function DashboardApp() {
     }
 
     if (sessionStore.sessionMode !== "authed-ready" || !sessionStore.activeAgentId) {
-      walletBoundAgentRef.current = null;
+      walletBoundIdentityRef.current = null;
       contactBoundAgentRef.current = null;
       subscriptionBoundAgentRef.current = null;
       uiStore.resetUIState();
@@ -368,8 +377,8 @@ export default function DashboardApp() {
       chatStore.bindToActiveAgent(sessionStore.activeAgentId);
     }
 
-    if (walletBoundAgentRef.current !== sessionStore.activeAgentId) {
-      walletBoundAgentRef.current = sessionStore.activeAgentId;
+    if (walletBoundIdentityRef.current !== walletIdentityKey) {
+      walletBoundIdentityRef.current = walletIdentityKey;
       walletStore.resetWalletState();
     }
     if (contactBoundAgentRef.current !== sessionStore.activeAgentId) {
@@ -391,6 +400,7 @@ export default function DashboardApp() {
   }, [
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
+    sessionStore.activeIdentity,
     uiStore.sidebarTab,
     chatStore.boundAgentId,
     chatStore.bindToActiveAgent,
@@ -609,11 +619,14 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
+    // Both Agent viewer (authed-ready) and Human viewer (authed-no-agent OR
+    // authed-ready with viewMode=human) own a wallet — backend resolves
+    // owner from activeIdentity.type via the `?as=` query param.
     if (
       sessionStore.sessionMode !== "authed-ready"
-      || !sessionStore.activeAgentId
-      || sessionStore.activeIdentity?.type !== "agent"
+      && sessionStore.sessionMode !== "authed-no-agent"
     ) return;
+    if (!sessionStore.activeIdentity) return;
 
     if (!walletStore.wallet && !walletStore.walletLoading && !walletStore.walletError) {
       void walletStore.loadWallet();
@@ -627,8 +640,7 @@ export default function DashboardApp() {
     }
   }, [
     sessionStore.sessionMode,
-    sessionStore.activeAgentId,
-    sessionStore.activeIdentity?.type,
+    sessionStore.activeIdentity,
     walletStore.wallet,
     walletStore.walletLoading,
     walletStore.walletError,
