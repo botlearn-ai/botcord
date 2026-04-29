@@ -21,8 +21,10 @@ export interface DaemonRuntimeEndpoint {
   name: string;
   url: string;
   reachable: boolean;
+  status?: "reachable" | "unreachable" | "acp_disabled";
   version?: string;
   error?: string;
+  diagnostics?: Array<{ code: string; message?: string }>;
   agents?: Array<{
     id: string;
     name?: string;
@@ -167,8 +169,29 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
               name: epName,
               url: epUrl,
               reachable: ep.reachable === true,
+              status:
+                ep.status === "reachable" ||
+                ep.status === "unreachable" ||
+                ep.status === "acp_disabled"
+                  ? ep.status
+                  : undefined,
               version: typeof ep.version === "string" ? ep.version : undefined,
               error: typeof ep.error === "string" ? ep.error : undefined,
+              diagnostics: Array.isArray(ep.diagnostics)
+                ? (ep.diagnostics as unknown[])
+                    .map((d) => {
+                      if (!d || typeof d !== "object") return null;
+                      const dx = d as Record<string, unknown>;
+                      const code = typeof dx.code === "string" ? dx.code : null;
+                      if (!code) return null;
+                      return {
+                        code,
+                        message:
+                          typeof dx.message === "string" ? dx.message : undefined,
+                      };
+                    })
+                    .filter(Boolean) as DaemonRuntimeEndpoint["diagnostics"]
+                : undefined,
               agents: Array.isArray(ep.agents)
                 ? ((ep.agents as unknown[])
                     .map((a) => {
