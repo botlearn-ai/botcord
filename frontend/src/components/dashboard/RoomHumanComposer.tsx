@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { useLanguage } from "@/lib/i18n";
+import { useLanguage, chatPane } from "@/lib/i18n";
 import type { DashboardMessage, PublicRoomMember } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -30,6 +30,8 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
 
   const displayName = user?.display_name || "You";
   const isOwnerChat = roomId.startsWith("rm_oc_");
+  const isDirectMessage = roomId.startsWith("rm_dm_");
+  const allowAllMention = !isOwnerChat && !isDirectMessage;
   const activeAgent = activeAgentId
     ? ownedAgents.find((a) => a.agent_id === activeAgentId) ?? null
     : null;
@@ -57,13 +59,21 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     return () => { cancelled = true; };
   }, [roomId, isOwnerChat]);
 
+  const selfId = viewMode === "agent" ? activeAgentId : human?.human_id;
+
   const mentionCandidates = useMemo<MentionCandidate[]>(() => {
-    if (isOwnerChat) return [];
-    const selfId = viewMode === "agent" ? activeAgentId : human?.human_id;
-    return members
-      .filter((m) => m.agent_id !== selfId)
+    if (!allowAllMention) return [];
+    const roomCandidates = members
+      .filter((m) => m.agent_id !== selfId && m.agent_id.startsWith("ag_"))
       .map((m) => ({ agent_id: m.agent_id, display_name: m.display_name }));
-  }, [members, activeAgentId, human?.human_id, viewMode, isOwnerChat]);
+    return [{ agent_id: "@all", display_name: "all" }, ...roomCandidates];
+  }, [members, selfId, allowAllMention]);
+
+  const sendDenied = useMemo(() => {
+    if (isOwnerChat || !selfId) return false;
+    const self = members.find((m) => m.agent_id === selfId);
+    return self?.can_send === false;
+  }, [members, selfId, isOwnerChat]);
 
   const handleSend = useCallback(async (text: string, _files: File[], mentions?: string[]) => {
     if (!text) return;
@@ -103,6 +113,14 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
       setError(err instanceof Error ? err.message : "Failed to send");
     }
   }, [senderId, displayName, user?.id, roomId, insertMessage, loadRoomMessages]);
+
+  if (sendDenied) {
+    return (
+      <p className="text-center text-xs text-text-secondary/50">
+        {chatPane[locale].memberSendDenied}
+      </p>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-1">

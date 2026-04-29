@@ -2336,8 +2336,8 @@ async def human_room_send(
     _record_slow_mode_send(room_id, sender_id)
 
     # Normalize mentions. Owner-chat rooms (rm_oc_) ignore mentions entirely.
-    # Human sends may only mention specific agent_ids — "@all" is not allowed
-    # here; any non-"ag_" string is dropped. Cap at 20 to avoid abuse.
+    # Human sends may mention specific agent_ids or the special "@all" token;
+    # any other non-"ag_" string is dropped. Cap at 20 to avoid abuse.
     raw_mentions = body.mentions or []
     if room_id.startswith("rm_oc_"):
         raw_mentions = []
@@ -2346,7 +2346,13 @@ async def human_room_send(
     normalized_mentions: list[str] = []
     seen_mentions: set[str] = set()
     for m in raw_mentions:
-        if not isinstance(m, str) or not m.startswith("ag_") or m in seen_mentions:
+        if not isinstance(m, str) or m in seen_mentions:
+            continue
+        if m == "@all":
+            normalized_mentions = ["@all"]
+            seen_mentions.add(m)
+            break
+        if not m.startswith("ag_"):
             continue
         seen_mentions.add(m)
         normalized_mentions.append(m)
@@ -2359,7 +2365,9 @@ async def human_room_send(
 
     # Drop mentions that aren't actually room members
     member_ids = {m.agent_id for m in all_members}
-    normalized_mentions = [m for m in normalized_mentions if m in member_ids]
+    mention_all = "@all" in normalized_mentions
+    if not mention_all:
+        normalized_mentions = [m for m in normalized_mentions if m in member_ids]
     mentioned_set: set[str] = set(normalized_mentions)
 
     # Block check anchored on sender_id
@@ -2438,7 +2446,7 @@ async def human_room_send(
             state=MessageState.queued,
             envelope_json=envelope_json,
             ttl_sec=3600,
-            mentioned=receiver_id in mentioned_set,
+            mentioned=mention_all or receiver_id in mentioned_set,
             source_type="dashboard_human_room",
             source_user_id=source_user_id_str,
             source_session_kind="room_human",

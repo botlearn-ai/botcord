@@ -171,7 +171,6 @@ export default function MessageComposer({
   }, [mentionMatch, text]);
 
   const activeMentions = useMemo(() => {
-    if (!pickedMentions.length) return [] as string[];
     const seen = new Set<string>();
     const out: string[] = [];
     for (const m of pickedMentions) {
@@ -180,8 +179,12 @@ export default function MessageComposer({
       seen.add(m.agent_id);
       out.push(m.agent_id);
     }
+    const allMention = mentionCandidates?.find((m) => m.agent_id === "@all");
+    if (allMention && !seen.has(allMention.agent_id) && textHasMention(text, allMention.display_name)) {
+      out.push(allMention.agent_id);
+    }
     return out;
-  }, [pickedMentions, text]);
+  }, [pickedMentions, text, mentionCandidates]);
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
