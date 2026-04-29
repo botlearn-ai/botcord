@@ -22,10 +22,18 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const { insertMessage, loadRoomMessages } = useDashboardChatStore(useShallow((s) => ({
+  const { insertMessage, loadRoomMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
     insertMessage: s.insertMessage,
     loadRoomMessages: s.loadRoomMessages,
+    refreshOverview: s.refreshOverview,
   })));
+  const hasRoomInOverview = useDashboardChatStore(
+    (s) => Boolean(s.overview?.rooms.some((r) => r.room_id === roomId)),
+  );
+  const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
+  const hasRoomInHumanRooms = useDashboardSessionStore(
+    (s) => s.humanRooms.some((r) => r.room_id === roomId),
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
@@ -116,10 +124,19 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     try {
       await api.sendRoomHumanMessage(roomId, text, mentions);
       await loadRoomMessages(roomId);
+      // First send into a brand-new DM room (auto-created server-side) won't
+      // show up in the sidebar until overview/humanRooms is re-fetched.
+      if (roomId.startsWith("rm_dm_")) {
+        if (viewMode === "human") {
+          if (!hasRoomInHumanRooms) void refreshHumanRooms();
+        } else if (!hasRoomInOverview) {
+          void refreshOverview();
+        }
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send");
     }
-  }, [senderId, displayName, user?.id, roomId, insertMessage, loadRoomMessages]);
+  }, [senderId, displayName, user?.id, roomId, viewMode, insertMessage, loadRoomMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
 
   if (sendDenied) {
     return (
