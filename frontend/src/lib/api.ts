@@ -201,7 +201,9 @@ async function buildAuthHeaders(identityOverride?: ActiveIdentity | null): Promi
   // For type='human', the backend resolves human_id from the Supabase JWT.
   // `identityOverride` lets per-call code (e.g. wallet viewer switcher)
   // address a different owned identity without mutating global session state.
-  const identity = identityOverride !== undefined ? identityOverride : getActiveIdentity();
+  // ``null`` and ``undefined`` both mean "no override — follow global active
+  // identity"; only a concrete ``ActiveIdentity`` overrides.
+  const identity = identityOverride ?? getActiveIdentity();
   if (identity?.type === "agent") {
     headers["X-Active-Agent"] = identity.id;
   }
@@ -212,10 +214,11 @@ async function buildAuthHeaders(identityOverride?: ActiveIdentity | null): Promi
  * Pick the `?as=agent|human` query value for wallet APIs based on a
  * (possibly overridden) identity. Backend `_resolve_owner` uses this to
  * choose between `ctx.active_agent_id` (requires X-Active-Agent) and
- * `ctx.human_id` (resolved from Supabase JWT).
+ * `ctx.human_id` (resolved from Supabase JWT). ``null``/``undefined``
+ * fall back to the global active identity (matching ``buildAuthHeaders``).
  */
 function walletAsParam(identityOverride?: ActiveIdentity | null): "agent" | "human" {
-  const id = identityOverride !== undefined ? identityOverride : getActiveIdentity();
+  const id = identityOverride ?? getActiveIdentity();
   return id?.type === "human" ? "human" : "agent";
 }
 
