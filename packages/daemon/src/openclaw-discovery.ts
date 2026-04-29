@@ -5,7 +5,11 @@ import type { DaemonConfig, OpenclawGatewayProfile } from "./config.js";
 import { log as daemonLog } from "./log.js";
 import { probeOpenclawAgents, type WsEndpointProbeFn } from "./provision.js";
 
-export type DiscoveredOpenclawGatewaySource = "config-file" | "env" | "default-port";
+export type DiscoveredOpenclawGatewaySource =
+  | "config-file"
+  | "env"
+  | "systemd-unit"
+  | "default-port";
 
 export interface DiscoveredOpenclawGateway {
   name: string;
@@ -21,6 +25,7 @@ export interface OpenclawGatewayDiscoveryOptions {
   probe?: WsEndpointProbeFn;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  systemdUnitPaths?: string[];
 }
 
 export interface MergeOpenclawGatewayResult {
@@ -36,6 +41,14 @@ const DEFAULT_TOKEN_FILE_PATHS = [
   "/var/run/openclaw/gateway-token",
   "~/.openclaw/gateway-token",
 ];
+const DEFAULT_SYSTEMD_UNIT_PATHS = [
+  "/etc/systemd/system/openclaw.service",
+  "/etc/systemd/system/openclaw-gateway.service",
+  "/lib/systemd/system/openclaw.service",
+  "/lib/systemd/system/openclaw-gateway.service",
+  "/usr/lib/systemd/system/openclaw.service",
+  "/usr/lib/systemd/system/openclaw-gateway.service",
+];
 
 export async function discoverLocalOpenclawGateways(
   opts: OpenclawGatewayDiscoveryOptions = {},
@@ -47,6 +60,7 @@ export async function discoverLocalOpenclawGateways(
 
   const env = opts.env ?? process.env;
   found.push(...discoverFromEnv(env));
+  found.push(...discoverFromSystemdUnits(opts.systemdUnitPaths ?? DEFAULT_SYSTEMD_UNIT_PATHS));
   const envAuth = pickOpenclawEnvAuth(env) ?? pickDefaultTokenFile();
 
   const ports = opts.defaultPorts ?? DEFAULT_PORTS;
@@ -73,6 +87,164 @@ export async function discoverLocalOpenclawGateways(
   }
 
   return dedupeDiscovered(found);
+}
+
+function discoverFromSystemdUnits(paths: string[]): DiscoveredOpenclawGateway[] {
+  const out: DiscoveredOpenclawGateway[] = [];
+  for (const unitPath of paths) {
+    try {
+      if (!existsSync(unitPath)) continue;
+      const parsed = parseSystemdUnit(readFileSync(unitPath, "utf8"), path.dirname(unitPath));
+      const url = parsed.url ?? urlFromGatewayPort(parsed.env);
+      if (!url) continue;
+      const auth = pickOpenclawEnvAuth(parsed.env);
+      out.push({
+        name: nameFromUrl(url),
+        url,
+        source: "systemd-unit",
+        ...auth,
+      });
+    } catch (err) {
+      daemonLog.debug("openclaw discovery systemd unit skipped", {
+        file: unitPath,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return out;
+}
+
+function parseSystemdUnit(
+  raw: string,
+  unitDir: string,
+): { env: NodeJS.ProcessEnv; url?: string } {
+  const env: NodeJS.ProcessEnv = {};
+  let url: string | undefined;
+  for (const line of joinedSystemdLines(raw)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq);
+    const value = trimmed.slice(eq + 1).trim();
+    if (key === "Environment") {
+      Object.assign(env, parseSystemdEnvironment(value));
+    } else if (key === "EnvironmentFile") {
+      for (const file of splitSystemdWords(value)) {
+        const optional = file.startsWith("-");
+        const resolved = path.resolve(unitDir, expandHome(optional ? file.slice(1) : file));
+        try {
+          Object.assign(env, parseEnvFile(readFileSync(resolved, "utf8")));
+        } catch (err) {
+          if (!optional) {
+            daemonLog.debug("openclaw discovery environment file skipped", {
+              file: resolved,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+    } else if (key === "ExecStart") {
+      url = urlFromExecStart(value) ?? url;
+    }
+  }
+  return { env, url };
+}
+
+function joinedSystemdLines(raw: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmedEnd = line.replace(/\s+$/, "");
+    if (trimmedEnd.endsWith("\\")) {
+      cur += trimmedEnd.slice(0, -1) + " ";
+      continue;
+    }
+    out.push(cur + line);
+    cur = "";
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+function parseSystemdEnvironment(raw: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const word of splitSystemdWords(raw)) {
+    const eq = word.indexOf("=");
+    if (eq <= 0) continue;
+    env[word.slice(0, eq)] = word.slice(eq + 1);
+  }
+  return env;
+}
+
+function parseEnvFile(raw: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    env[trimmed.slice(0, eq)] = unquote(trimmed.slice(eq + 1).trim());
+  }
+  return env;
+}
+
+function urlFromExecStart(raw: string): string | undefined {
+  const words = splitSystemdWords(raw);
+  const portIdx = words.indexOf("--port");
+  const rawPort =
+    portIdx >= 0 ? words[portIdx + 1] : words.find((w) => w.startsWith("--port="))?.slice(7);
+  if (!rawPort) return undefined;
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return undefined;
+  return `ws://127.0.0.1:${port}`;
+}
+
+function splitSystemdWords(raw: string): string[] {
+  const words: string[] = [];
+  let cur = "";
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+  for (const ch of raw) {
+    if (escaped) {
+      cur += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (cur) {
+        words.push(cur);
+        cur = "";
+      }
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur) words.push(cur);
+  return words.map(unquote);
+}
+
+function unquote(raw: string): string {
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    return raw.slice(1, -1);
+  }
+  return raw;
 }
 
 function discoverFromEnv(env: NodeJS.ProcessEnv): DiscoveredOpenclawGateway[] {
@@ -275,8 +447,9 @@ function pickString(obj: Record<string, unknown>, keys: string[]): string | unde
 
 function dedupeDiscovered(items: DiscoveredOpenclawGateway[]): DiscoveredOpenclawGateway[] {
   const priority: Record<DiscoveredOpenclawGatewaySource, number> = {
-    "config-file": 3,
-    env: 2,
+    "config-file": 4,
+    env: 3,
+    "systemd-unit": 2,
     "default-port": 1,
   };
   const byUrl = new Map<string, DiscoveredOpenclawGateway>();
@@ -341,6 +514,10 @@ export function defaultOpenclawDiscoveryPorts(): number[] {
 
 export function defaultOpenclawDiscoveryTokenFilePaths(): string[] {
   return DEFAULT_TOKEN_FILE_PATHS.slice();
+}
+
+export function defaultOpenclawDiscoverySystemdUnitPaths(): string[] {
+  return DEFAULT_SYSTEMD_UNIT_PATHS.slice();
 }
 
 export function openclawDiscoveryConfigEnabled(cfg: DaemonConfig): boolean {
