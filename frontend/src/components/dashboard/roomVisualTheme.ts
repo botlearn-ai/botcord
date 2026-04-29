@@ -32,8 +32,8 @@ function hashString(input: string): number {
 
 function buildPattern(kind: (typeof PATTERN_KINDS)[number], seed: number, color: string): string {
   const size = 24 + (seed % 20);
-  const stroke = (((seed >> 5) % 100) / 100) * 0.6 + 0.4;
-  const rotate = (seed >> 11) % 360;
+  const stroke = (((seed >>> 5) % 100) / 100) * 0.6 + 0.4;
+  const rotate = (seed >>> 11) % 360;
 
 
   let inner = "";
@@ -90,7 +90,7 @@ function buildPattern(kind: (typeof PATTERN_KINDS)[number], seed: number, color:
 export function themeFromRoomName(name: string): RoomVisualTheme {
   const seed = hashString(name || "room");
   const hue = seed % 360;
-  const kind = PATTERN_KINDS[(seed >> 3) % PATTERN_KINDS.length];
+  const kind = PATTERN_KINDS[(seed >>> 3) % PATTERN_KINDS.length];
 
   return {
     patternUrl: buildPattern(kind, seed, `hsl(${hue} 90% 80%)`),
