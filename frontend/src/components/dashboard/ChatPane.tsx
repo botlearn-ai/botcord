@@ -31,6 +31,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import RoomZeroState from "./RoomZeroState";
 import { initialsFromName } from "./roomVisualTheme";
+import { dmPeerId } from "./dmRoom";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
@@ -580,11 +581,13 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const { sessionMode, token, humanRooms, viewMode } = useDashboardSessionStore(useShallow((state) => ({
+  const { sessionMode, token, humanRooms, viewMode, activeAgentId, humanId } = useDashboardSessionStore(useShallow((state) => ({
     sessionMode: state.sessionMode,
     token: state.token,
     humanRooms: state.humanRooms,
     viewMode: state.viewMode,
+    activeAgentId: state.activeAgentId,
+    humanId: state.human?.human_id ?? null,
   })));
   const { sidebarTab, focusedRoomId, openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     sidebarTab: state.sidebarTab,
@@ -646,7 +649,13 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const joinedRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const joinedHumanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
   const isHumanView = viewMode === "human";
-  const isJoinedRoom = (isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom) : Boolean(joinedRoom);
+  // DM rooms are auto-created server-side on first send, so treat the user
+  // as a member of an unseen rm_dm_* room when their own id is one of the
+  // two encoded parties.
+  const selfId = (isHumanView || isAuthedHuman) ? humanId : activeAgentId;
+  const isPendingDmForSelf = dmPeerId(openedRoomId, selfId) !== null;
+  const isJoinedRoom = ((isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom) : Boolean(joinedRoom))
+    || isPendingDmForSelf;
   const humanSendAllowed = joinedRoom?.allow_human_send !== false;
   const isPaidRoom = Boolean(openedRoom?.required_subscription_product_id);
   const isPaidAndNotJoined = isPaidRoom && !isJoinedRoom;

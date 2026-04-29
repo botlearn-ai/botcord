@@ -6,6 +6,7 @@ import { topupDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import type { StripePackageItem } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { saveStripeTopupContext } from "@/lib/stripe-topup-context";
 import { Loader2 } from "lucide-react";
 
 function formatCoin(minorStr: string): string {
@@ -76,6 +77,10 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
         idempotency_key: crypto.randomUUID(),
         quantity,
       }, viewer);
+      // Stash the viewer so StripeReturnBanner can poll status against the
+      // same owner after Stripe redirects back (the URL only carries the
+      // session_id; backend get_checkout_status requires a matching owner).
+      saveStripeTopupContext(res.checkout_session_id, viewer ?? null);
       window.location.assign(res.checkout_url);
     } catch (err) {
       if (err instanceof ApiError) {

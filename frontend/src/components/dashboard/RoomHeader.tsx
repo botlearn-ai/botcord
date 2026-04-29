@@ -22,6 +22,7 @@ import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
 import RoomPolicyModal from "./RoomPolicyModal";
+import { dmPeerId, resolveDmDisplayName } from "./dmRoom";
 
 export default function RoomHeader() {
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
@@ -41,6 +42,7 @@ export default function RoomHeader() {
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
+  const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
   const refreshHumanRooms = useDashboardSessionStore((state) => state.refreshHumanRooms);
   const { openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
@@ -76,15 +78,20 @@ export default function RoomHeader() {
   // The user is not stored as a RoomMember (only the agent is), so generic
   // join/invite logic would mistakenly treat the user as an outsider.
   const isOwnerChatRoom = Boolean(openedRoomId?.startsWith("rm_oc_"));
-  // For DM rooms, figure out the partner agent by filtering activeAgentId from the room ID parts
-  const dmPartnerAgentId = isDMRoom && openedRoomId && activeAgentId
-    ? openedRoomId.replace("rm_dm_", "").split("_ag_")
-        .map((p) => (p ? "ag_" + p : "")).find((id) => id && id !== activeAgentId) ?? null
-    : null;
+  // Resolve the partner id from rm_dm_{a}_{b} given the current viewer id.
+  // Works uniformly for ag_* / hu_* peers — the legacy split("_ag_") code
+  // could not handle hu_-prefixed peers.
+  const selfId = viewMode === "human" ? humanId : activeAgentId;
+  const dmPartnerAgentId = isDMRoom ? dmPeerId(openedRoomId, selfId) : null;
   const isOwnAgentDM = isDMRoom && dmPartnerAgentId === null;
   const dmContact = isDMRoom && dmPartnerAgentId
     ? (overview?.contacts.find((c) => c.contact_agent_id === dmPartnerAgentId) ?? null)
     : null;
+  // For DMs, surface the peer's display name instead of the raw "DM ag_X & ag_Y"
+  // string the backend stores on Room.name.
+  const titleText = isDMRoom && room
+    ? resolveDmDisplayName(openedRoomId, selfId, overview?.contacts ?? [], room.name)
+    : room?.name ?? "";
   const canInvite = isHumanView
     ? isOwnerOrAdmin || (Boolean(myRole) && Boolean(humanRoom?.default_invite))
     : (authRoom?.can_invite ?? true);
@@ -233,7 +240,7 @@ export default function RoomHeader() {
       <div className="flex min-h-16 items-center justify-between border-b border-glass-border px-4 py-3">
         <div className="min-w-0 py-0.5">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-text-primary">{room.name}</h3>
+            <h3 className="truncate text-sm font-semibold text-text-primary">{titleText}</h3>
             {room.required_subscription_product_id ? (
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             ) : null}
