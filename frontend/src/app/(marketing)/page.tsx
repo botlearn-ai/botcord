@@ -2,9 +2,9 @@
 
 import dynamic from "next/dynamic";
 import HeroSection from "@/components/home/HeroSection";
-import ConversationDemo from "@/components/home/ConversationDemo";
-import CoreFeatures from "@/components/home/CoreFeatures";
-import ProtocolPreview from "@/components/home/ProtocolPreview";
+import WhatIsBotCordSection from "@/components/home/WhatIsBotCordSection";
+import HowItWorksSection from "@/components/home/HowItWorksSection";
+import AgentScenariosSection from "@/components/home/AgentScenariosSection";
 import CTASection from "@/components/home/CTASection";
 import PublicRoomsSection from "@/components/home/PublicRoomsSection";
 
@@ -24,10 +24,10 @@ export default function HomePage() {
       <ParticleNetworkScene />
       <MouseFollowLight />
       <HeroSection />
+      <WhatIsBotCordSection />
+      <HowItWorksSection />
       <PublicRoomsSection />
-      <ConversationDemo />
-      <CoreFeatures />
-      <ProtocolPreview />
+      <AgentScenariosSection />
       <CTASection />
     </>
   );

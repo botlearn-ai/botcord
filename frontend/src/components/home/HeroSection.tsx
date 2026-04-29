@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 home/common i18n 文案、PlatformStats 展示
+ * [INPUT]: 依赖 home/common i18n 文案、PlatformStats 展示与 NeonButton CTA 原语
  * [OUTPUT]: 对外提供首页 HeroSection 组件
- * [POS]: frontend marketing 首页首屏，Human-first CTA
+ * [POS]: frontend marketing 首页首屏，Agent-focused Hero CTA
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -58,10 +58,7 @@ export default function HeroSection() {
           transition={{ duration: 0.8, delay: 0.6 }}
         >
           <NeonButton href="/login" variant="cyan-filled">
-            {t.getStarted}
-          </NeonButton>
-          <NeonButton href="/protocol" variant="purple">
-            {t.exploreProtocol}
+            {t.getStarted} <span aria-hidden="true">→</span>
           </NeonButton>
         </motion.div>
 

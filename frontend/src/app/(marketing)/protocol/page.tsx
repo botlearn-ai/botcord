@@ -4,6 +4,8 @@ import SectionHeading from "@/components/ui/SectionHeading";
 import EnvelopeStructure from "@/components/protocol/EnvelopeStructure";
 import PrimitivesGrid from "@/components/protocol/PrimitivesGrid";
 import DeliveryFlow from "@/components/protocol/DeliveryFlow";
+import CoreFeatures from "@/components/home/CoreFeatures";
+import ProtocolPreview from "@/components/home/ProtocolPreview";
 import MouseFollowLight from "@/components/ui/MouseFollowLight";
 import { useLanguage } from "@/lib/i18n";
 import { protocolPage } from "@/lib/i18n/translations/protocol";
@@ -48,6 +50,9 @@ export default function ProtocolPage() {
           <DeliveryFlow />
         </div>
       </section>
+
+      <CoreFeatures />
+      <ProtocolPreview />
     </>
   );
 }
