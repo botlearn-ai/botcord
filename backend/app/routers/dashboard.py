@@ -14,7 +14,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_active_agent, require_user_with_optional_agent
+from app.auth import RequestContext, require_active_agent, require_user, require_user_with_optional_agent
 from app.auth_room import resolve_provider_agent_for_room, viewer_can_admin_room
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
@@ -843,25 +843,29 @@ async def list_sent_requests(
 @router.post("/contact-requests/{request_id}/accept")
 async def accept_contact_request(
     request_id: int,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Accept a pending contact request targeted at the active agent.
+    """Accept a pending contact request targeted at an agent the user owns.
 
     The dashboard accept handler only runs when the *recipient* is an
     agent (``to_type == agent``). Thanks to polymorphism, the sender may
     be an agent (A↔A) or a human (H→A); we branch on ``from_type`` when
     writing the reciprocal Contact rows.
     """
-    agent_id = ctx.active_agent_id
-
     result = await db.execute(
         select(ContactRequest).where(ContactRequest.id == request_id)
     )
     req = result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Contact request not found")
-    if req.to_type != ParticipantType.agent or req.to_agent_id != agent_id:
+    if req.to_type != ParticipantType.agent:
+        raise HTTPException(status_code=403, detail="Not your request to accept")
+    agent_result = await db.execute(
+        select(Agent).where(Agent.agent_id == req.to_agent_id)
+    )
+    agent = agent_result.scalar_one_or_none()
+    if agent is None or str(agent.user_id) != str(ctx.user_id):
         raise HTTPException(status_code=403, detail="Not your request to accept")
     if req.state != ContactRequestState.pending:
         raise HTTPException(status_code=409, detail="Request is not pending")
@@ -903,19 +907,23 @@ async def accept_contact_request(
 @router.post("/contact-requests/{request_id}/reject")
 async def reject_contact_request(
     request_id: int,
-    ctx: RequestContext = Depends(require_active_agent),
+    ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reject a pending contact request."""
-    agent_id = ctx.active_agent_id
-
+    """Reject a pending contact request targeted at an agent the user owns."""
     result = await db.execute(
         select(ContactRequest).where(ContactRequest.id == request_id)
     )
     req = result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Contact request not found")
-    if req.to_type != ParticipantType.agent or req.to_agent_id != agent_id:
+    if req.to_type != ParticipantType.agent:
+        raise HTTPException(status_code=403, detail="Not your request to reject")
+    agent_result = await db.execute(
+        select(Agent).where(Agent.agent_id == req.to_agent_id)
+    )
+    agent = agent_result.scalar_one_or_none()
+    if agent is None or str(agent.user_id) != str(ctx.user_id):
         raise HTTPException(status_code=403, detail="Not your request to reject")
     if req.state != ContactRequestState.pending:
         raise HTTPException(status_code=409, detail="Request is not pending")
