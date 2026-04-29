@@ -324,6 +324,18 @@ export class Dispatcher {
     // grounded turnId for any downstream attention_skipped / dropped / etc.
     this.emitInbound(turnId, msg);
 
+    this.log.info("dispatcher: inbound received", {
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+      turnId,
+      messageId: msg.id,
+      senderId: msg.sender.id,
+      senderKind: msg.sender.kind,
+      mode,
+      textPreview: logPreview(rawText),
+    });
+
     // Notify the optional observer (activity tracking, metrics, etc.) as soon
     // as the dispatcher owns the message. Errors must not abort the turn.
     if (this.onInbound) {
@@ -448,7 +460,14 @@ export class Dispatcher {
     const myGen = q.cancelGen;
     const prev = q.current;
     if (prev) {
-      this.log.info("dispatcher: cancelling previous turn", { queueKey });
+      this.log.info("dispatcher: cancelling previous turn", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        turnId,
+        prevTurnId: prev.turnId,
+        queueKey,
+      });
       // Record the supersede BEFORE aborting so the prev turn's finalize sees
       // the abort reason (TurnSupersededError) and skips writing turn_error.
       this.transcript.write({
@@ -469,7 +488,13 @@ export class Dispatcher {
     // already fired its own abort + runTurn, or be mid-await itself. If so,
     // drop out silently — the newest turn is the only one that should run.
     if (myGen !== q.cancelGen) {
-      this.log.info("dispatcher: cancel-previous superseded", { queueKey });
+      this.log.info("dispatcher: cancel-previous superseded", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        turnId,
+        queueKey,
+      });
       // We didn't run the turn; emit dropped so the caller's inbound has a
       // matching path record. supersededBy is unknown at this layer (newer
       // arrival owns its own bump) — leave null.
@@ -738,10 +763,25 @@ export class Dispatcher {
       this.transcript.write(dispatched);
     }
 
+    this.log.info("dispatcher: dispatched to runtime", {
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+      turnId,
+      runtime: route.runtime,
+      cwd: route.cwd,
+      ...(mergedFromTurnIds.length > 0 ? { mergedFromTurns: mergedFromTurnIds.length } : {}),
+      composedPreview: logPreview(text),
+    });
+
     // Hard-cap turn with a timeout.
     const timer = setTimeout(() => {
       slot.timedOut = true;
       this.log.warn("dispatcher: turn timed out", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        turnId,
         queueKey,
         timeoutMs: this.turnTimeoutMs,
       });
@@ -1072,11 +1112,14 @@ export class Dispatcher {
             text: `⚠️ Runtime timeout after ${Math.round(this.turnTimeoutMs / 60000)} minute(s); aborted`,
             replyTo: msg.id,
             traceId: msg.trace?.id ?? null,
-          });
+          }, turnId);
         } else {
           this.log.warn("dispatcher: timeout in non-owner-chat room — error reply suppressed", {
+            agentId: msg.accountId,
+            roomId: msg.conversation.id,
+            topicId: msg.conversation.threadId ?? null,
+            turnId,
             queueKey,
-            conversationId: msg.conversation.id,
             timeoutMs: this.turnTimeoutMs,
           });
         }
@@ -1086,6 +1129,10 @@ export class Dispatcher {
       if (threw) {
         const errMsg = threw instanceof Error ? threw.message : String(threw);
         this.log.error("dispatcher: runtime threw", {
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          turnId,
           queueKey,
           runtime: route.runtime,
           error: errMsg,
@@ -1110,11 +1157,14 @@ export class Dispatcher {
             text: `⚠️ Runtime error: ${truncate(errMsg, 500)}`,
             replyTo: msg.id,
             traceId: msg.trace?.id ?? null,
-          });
+          }, turnId);
         } else {
           this.log.warn("dispatcher: runtime error in non-owner-chat room — error reply suppressed", {
+            agentId: msg.accountId,
+            roomId: msg.conversation.id,
+            topicId: msg.conversation.threadId ?? null,
+            turnId,
             queueKey,
-            conversationId: msg.conversation.id,
           });
         }
         return;
@@ -1201,8 +1251,11 @@ export class Dispatcher {
         this.log.debug(
           "dispatcher: non-owner-chat — discarding result.text (agent must use botcord_send)",
           {
+            agentId: msg.accountId,
+            roomId: msg.conversation.id,
+            topicId: msg.conversation.threadId ?? null,
+            turnId,
             queueKey,
-            conversationId: msg.conversation.id,
             replyTextLen: replyText.length,
           },
         );
@@ -1236,7 +1289,7 @@ export class Dispatcher {
         text: replyText,
         replyTo: msg.id,
         traceId: msg.trace?.id ?? null,
-      });
+      }, turnId);
       this.emitOutbound({
         turnId,
         msg,
@@ -1268,14 +1321,18 @@ export class Dispatcher {
   private async sendReply(
     channel: ChannelAdapter,
     outbound: GatewayOutboundMessage,
+    turnId?: string,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     try {
       await channel.send({ message: outbound, log: this.log });
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       this.log.warn("dispatcher: channel.send failed", {
+        agentId: outbound.accountId,
+        roomId: outbound.conversationId,
+        topicId: outbound.threadId ?? null,
+        ...(turnId ? { turnId } : {}),
         channel: outbound.channel,
-        conversationId: outbound.conversationId,
         error,
       });
       return { ok: false, error };
@@ -1285,7 +1342,10 @@ export class Dispatcher {
         await this.onOutbound(outbound);
       } catch (err) {
         this.log.warn("dispatcher: onOutbound threw — continuing", {
-          conversationId: outbound.conversationId,
+          agentId: outbound.accountId,
+          roomId: outbound.conversationId,
+          topicId: outbound.threadId ?? null,
+          ...(turnId ? { turnId } : {}),
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -1333,6 +1393,19 @@ export class Dispatcher {
     deliveryReason: string | null;
     blocks: TranscriptBlockSummary[];
   }): void {
+    const durationMs = Date.now() - args.startedAt;
+    this.log.info("dispatcher: outbound emitted", {
+      agentId: args.msg.accountId,
+      roomId: args.msg.conversation.id,
+      topicId: args.msg.conversation.threadId ?? null,
+      turnId: args.turnId,
+      runtime: args.runtime,
+      deliveryStatus: args.deliveryStatus,
+      ...(args.deliveryReason ? { deliveryReason: args.deliveryReason } : {}),
+      durationMs,
+      replyPreview: logPreview(args.finalText.text),
+      ...(typeof args.costUsd === "number" ? { costUsd: args.costUsd } : {}),
+    });
     if (!this.transcript.enabled) return;
     const rec: import("./transcript.js").OutboundTranscriptRecord = {
       ts: nowIso(),
@@ -1343,7 +1416,7 @@ export class Dispatcher {
       topicId: args.msg.conversation.threadId ?? null,
       runtime: args.runtime,
       runtimeSessionId: args.runtimeSessionId,
-      durationMs: Date.now() - args.startedAt,
+      durationMs,
       finalText: args.finalText.text,
       deliveryStatus: args.deliveryStatus,
       deliveryReason: args.deliveryReason,
@@ -1396,4 +1469,14 @@ function resolveQueueMode(
 
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max) + "…";
+}
+
+/**
+ * Single-line preview of a multi-line user/agent text, capped at `max` chars.
+ * Used to embed message/reply previews in daemon.log lines without bloating
+ * each line into multi-line JSON. Full text lives in transcripts.
+ */
+function logPreview(s: string, max: number = 120): string {
+  const flat = s.replace(/\s+/g, " ").trim();
+  return flat.length <= max ? flat : flat.slice(0, max) + "…";
 }
