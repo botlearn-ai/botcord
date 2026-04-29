@@ -821,6 +821,118 @@ async def test_invite_members_endpoint_rejects_bad_prefix(client, seed):
 
 
 @pytest.mark.asyncio
+async def test_invite_members_endpoint_transitive_owner_can_invite(
+    client, seed, db_session: AsyncSession
+):
+    """A Human who owns the agent that owns the room can invite even when
+    default_invite=False and their RoomMember.role is plain 'member'.
+
+    Regression: previously the handler checked raw ``inviter.role`` and
+    refused with "You don't have permission to invite members".
+    """
+    db_session.add_all([
+        Agent(
+            agent_id="ag_owner00001",
+            display_name="Owner Bot",
+            message_policy=MessagePolicy.open,
+            user_id=seed["user_id"],
+        ),
+        Room(
+            room_id="rm_transitive",
+            name="Transitive owner room",
+            description="",
+            owner_id="ag_owner00001",
+            owner_type=ParticipantType.agent,
+            visibility=RoomVisibility.private,
+            join_policy=RoomJoinPolicy.invite_only,
+            default_invite=False,
+        ),
+        Agent(
+            agent_id="ag_invitee0001",
+            display_name="Invitee",
+            message_policy=MessagePolicy.open,
+            user_id=None,
+        ),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id="rm_transitive",
+            agent_id="ag_owner00001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id="rm_transitive",
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/humans/me/rooms/rm_transitive/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": "ag_invitee0001"},
+    )
+    assert resp.status_code == 201, resp.text
+
+
+@pytest.mark.asyncio
+async def test_invite_link_endpoint_transitive_owner_can_create(
+    client, seed, db_session: AsyncSession
+):
+    """Same regression for the invite-link path:
+    POST /api/humans/me/rooms/{room_id}/invite must accept the human
+    when their owned agent is the room owner.
+    """
+    db_session.add_all([
+        Agent(
+            agent_id="ag_owner00002",
+            display_name="Owner Bot 2",
+            message_policy=MessagePolicy.open,
+            user_id=seed["user_id"],
+        ),
+        Room(
+            room_id="rm_transitive_link",
+            name="Transitive link room",
+            description="",
+            owner_id="ag_owner00002",
+            owner_type=ParticipantType.agent,
+            visibility=RoomVisibility.private,
+            join_policy=RoomJoinPolicy.invite_only,
+            default_invite=False,
+        ),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id="rm_transitive_link",
+            agent_id="ag_owner00002",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id="rm_transitive_link",
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/humans/me/rooms/rm_transitive_link/invite",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["code"].startswith("iv_")
+
+
+@pytest.mark.asyncio
 async def test_invite_members_endpoint_409_on_duplicate(
     client, seed, db_session: AsyncSession
 ):
