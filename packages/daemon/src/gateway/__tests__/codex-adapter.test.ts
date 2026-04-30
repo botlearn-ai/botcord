@@ -338,7 +338,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
       expect(argv).not.toContain("-s");
     });
 
-    it("public → sandbox_mode=\"workspace-write\" + approval_policy=\"on-request\"", async () => {
+    it("public → sandbox_mode=\"danger-full-access\" + approval_policy=\"never\"", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -350,12 +350,12 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         trustLevel: "public",
       });
       const argv = JSON.parse(res.text) as string[];
-      expect(argv).toContain('sandbox_mode="workspace-write"');
-      expect(argv).toContain('approval_policy="on-request"');
+      expect(argv).toContain('sandbox_mode="danger-full-access"');
+      expect(argv).toContain('approval_policy="never"');
       expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
     });
 
-    it("trusted → sandbox_mode=\"workspace-write\" + approval_policy=\"on-request\"", async () => {
+    it("trusted → sandbox_mode=\"danger-full-access\" + approval_policy=\"never\"", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -367,8 +367,8 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         trustLevel: "trusted",
       });
       const argv = JSON.parse(res.text) as string[];
-      expect(argv).toContain('sandbox_mode="workspace-write"');
-      expect(argv).toContain('approval_policy="on-request"');
+      expect(argv).toContain('sandbox_mode="danger-full-access"');
+      expect(argv).toContain('approval_policy="never"');
     });
 
     it("extraArgs `-s read-only` suppresses the default sandbox `-c`s", async () => {

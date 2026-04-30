@@ -107,21 +107,13 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
       args.push("--resume", opts.sessionId);
     }
     // Permission-mode policy:
-    //  - owner: bypassPermissions (owner fully trusts their own agent; daemon
-    //    has no authorization-relay UI yet, so any other mode causes Bash /
-    //    WebFetch / MCP tool calls to deadlock waiting for a prompt that
-    //    never reaches the user — see issue #332 for the planned MCP-bridge
-    //    relay that will let us tighten this back up).
-    //  - non-owner (trusted/public): default (let Claude Code prompt / reject
-    //    per its own rules — we must NOT auto-bypass for agents the operator
-    //    doesn't own).
-    // `extraArgs` still wins — operators who know what they're doing can override either.
+    // Daemon-driven Claude Code runs are non-interactive. Any mode that waits
+    // for a local permission prompt can deadlock tool use (Bash / WebFetch /
+    // MCP) because there is no prompt relay back to the user yet. Default to
+    // bypassPermissions for every trust tier; operators who need a stricter
+    // posture can still override with route/defaultRoute extraArgs.
     if (!opts.extraArgs?.some((a) => a.startsWith("--permission-mode"))) {
-      if (opts.trustLevel === "owner") {
-        args.push("--permission-mode", "bypassPermissions");
-      } else {
-        args.push("--permission-mode", "default");
-      }
+      args.push("--permission-mode", "bypassPermissions");
     }
     // Claude Code's `--append-system-prompt` is applied per invocation and NOT
     // persisted in the resumed session transcript — ideal for memory / digest

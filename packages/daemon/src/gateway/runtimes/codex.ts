@@ -171,8 +171,12 @@ export class CodexAdapter extends NdjsonStreamAdapter {
     // Sandbox / approval policy. Expressed as `-c` overrides because
     // `codex exec resume` rejects `-s` / `--full-auto`. `-c` works on both
     // the fresh `exec` and `exec resume` paths.
-    //  - owner turn: bypass approvals + sandbox (owner trusts their agent)
-    //  - non-owner turn: `workspace-write` sandbox + on-request approvals
+    //
+    // Daemon-driven Codex runs are non-interactive. Any mode that waits for a
+    // local approval prompt can deadlock tool use because there is no prompt
+    // relay back to the user yet. Default to bypassing both approvals and the
+    // sandbox for every trust tier; operators who need a stricter posture can
+    // still override with route/defaultRoute extraArgs.
     const hasSandboxOverride =
       opts.extraArgs?.some(
         (a) =>
@@ -184,21 +188,12 @@ export class CodexAdapter extends NdjsonStreamAdapter {
           a.startsWith("-csandbox_mode="),
       ) ?? false;
     if (!hasSandboxOverride) {
-      if (opts.trustLevel === "owner") {
-        tail.push(
-          "-c",
-          'sandbox_mode="danger-full-access"',
-          "-c",
-          'approval_policy="never"',
-        );
-      } else {
-        tail.push(
-          "-c",
-          'sandbox_mode="workspace-write"',
-          "-c",
-          'approval_policy="on-request"',
-        );
-      }
+      tail.push(
+        "-c",
+        'sandbox_mode="danger-full-access"',
+        "-c",
+        'approval_policy="never"',
+      );
     }
     tail.push("--skip-git-repo-check", "--json");
     if (opts.extraArgs?.length) tail.push(...opts.extraArgs);

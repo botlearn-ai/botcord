@@ -263,7 +263,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       expect(argv[modeIdx + 1]).toBe("bypassPermissions");
     });
 
-    it("public → --permission-mode default", async () => {
+    it("public → --permission-mode bypassPermissions", async () => {
       const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -277,10 +277,10 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const argv = JSON.parse(res.text) as string[];
       const modeIdx = argv.indexOf("--permission-mode");
       expect(modeIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[modeIdx + 1]).toBe("default");
+      expect(argv[modeIdx + 1]).toBe("bypassPermissions");
     });
 
-    it("trusted → --permission-mode default", async () => {
+    it("trusted → --permission-mode bypassPermissions", async () => {
       const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -294,7 +294,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const argv = JSON.parse(res.text) as string[];
       const modeIdx = argv.indexOf("--permission-mode");
       expect(modeIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[modeIdx + 1]).toBe("default");
+      expect(argv[modeIdx + 1]).toBe("bypassPermissions");
     });
 
     it("systemContext → --append-system-prompt <text>", async () => {
