@@ -337,6 +337,15 @@ export interface RuntimeEndpointProbe {
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    /**
+     * Present when this OpenClaw agent profile is already bound to a local
+     * BotCord identity on the daemon. Dashboards should treat these profiles
+     * as unavailable for "create new BotCord agent" flows and link to the
+     * existing identity instead.
+     */
+    botcordBinding?: {
+      agentId: string;
+    };
   }>;
 }
 

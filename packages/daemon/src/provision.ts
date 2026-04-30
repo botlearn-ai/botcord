@@ -1150,6 +1150,7 @@ export type WsEndpointProbeFn = (args: {
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    botcordBinding?: { agentId: string };
   }>;
   error?: string;
 }>;
@@ -1205,6 +1206,7 @@ async function defaultWsProbe(args: {
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    botcordBinding?: { agentId: string };
   }>;
   error?: string;
 }> {
@@ -1539,7 +1541,7 @@ export async function collectRuntimeSnapshotAsync(opts: {
           entry.error = res.error;
           entry.diagnostics = [{ code: "gateway_unreachable", message: res.error }];
         }
-        if (res.agents) entry.agents = res.agents;
+        if (res.agents) entry.agents = annotateOpenclawAgentsWithBotcordBindings(g.name, res.agents);
         return entry;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1558,6 +1560,41 @@ export async function collectRuntimeSnapshotAsync(opts: {
   out.runtimes = base.runtimes.map((r) =>
     r.id === "openclaw-acp" ? { ...r, endpoints } : r,
   );
+  return out;
+}
+
+function annotateOpenclawAgentsWithBotcordBindings(
+  gateway: string,
+  agents: Array<{
+    id: string;
+    name?: string;
+    workspace?: string;
+    model?: { name?: string; provider?: string };
+  }>,
+): Array<{
+  id: string;
+  name?: string;
+  workspace?: string;
+  model?: { name?: string; provider?: string };
+  botcordBinding?: { agentId: string };
+}> {
+  const bindings = openclawBindingIndex();
+  return agents.map((agent) => {
+    const botcordAgentId = bindings.get(`${gateway}\0${agent.id}`);
+    if (!botcordAgentId) return agent;
+    return { ...agent, botcordBinding: { agentId: botcordAgentId } };
+  });
+}
+
+function openclawBindingIndex(): Map<string, string> {
+  const out = new Map<string, string>();
+  const discovered = discoverAgentCredentials({
+    credentialsDir: path.join(homedir(), ".botcord", "credentials"),
+  });
+  for (const agent of discovered.agents) {
+    if (!agent.openclawGateway || !agent.openclawAgent) continue;
+    out.set(`${agent.openclawGateway}\0${agent.openclawAgent}`, agent.agentId);
+  }
   return out;
 }
 
