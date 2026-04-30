@@ -18,6 +18,7 @@ from hub.config import DATABASE_SCHEMA
 from hub.database import async_session, engine
 from hub.models import Agent, Base, MessagePolicy
 from hub.cleanup import file_cleanup_loop
+from hub.presence_cleanup import presence_cleanup_loop
 from hub import config as hub_config
 from hub.database import get_db
 from hub.expiry import message_expiry_loop
@@ -52,6 +53,7 @@ from hub.storage import storage_requires_local_disk
 from app.routers.humans import router as app_humans_router
 from app.routers.users import router as app_users_router
 from app.routers.dashboard import router as app_dashboard_router
+from app.routers.presence import router as app_presence_router, status_router as app_presence_status_router
 from app.routers.invites import router as app_invites_router
 from app.routers.public import router as app_public_router
 from app.routers.share import router as app_share_router
@@ -109,6 +111,7 @@ async def lifespan(app: FastAPI):
     cleanup_task = None
     subscription_billing_task = None
     version_poll_task = None
+    presence_task = None
     if not test_db_override:
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
@@ -118,11 +121,13 @@ async def lifespan(app: FastAPI):
         subscription_billing_task = asyncio.create_task(subscription_billing_loop())
         # Background npm version polling loop
         version_poll_task = asyncio.create_task(version_poll_loop())
+        # Background presence cleanup loop
+        presence_task = asyncio.create_task(presence_cleanup_loop())
 
     yield
 
     # Shutdown
-    for task in (version_poll_task, subscription_billing_task, cleanup_task, expiry_task):
+    for task in (presence_task, version_poll_task, subscription_billing_task, cleanup_task, expiry_task):
         if task is None:
             continue
         task.cancel()
@@ -289,5 +294,7 @@ app.include_router(app_beta_router)
 app.include_router(app_admin_beta_router)
 app.include_router(app_policy_router, dependencies=_beta_gate)
 app.include_router(app_prompts_router)
+app.include_router(app_presence_router, dependencies=_beta_gate)
+app.include_router(app_presence_status_router, dependencies=_beta_gate)
 app.include_router(daemon_control_router)
 app.include_router(openclaw_control_router)

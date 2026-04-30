@@ -78,6 +78,7 @@ import type {
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
+import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
 
 /**
  * [INPUT]: Supabase client-side SDK for auth tokens, browser fetch, local active-agent state
@@ -473,6 +474,29 @@ export const api = {
 
   getPlatformStats() {
     return apiGet<PlatformStats>("/api/stats");
+  },
+
+  // --- Presence ---
+
+  getPresenceSnapshots(agentIds: string[]) {
+    return apiPost<{ agents: AgentPresenceSnapshotPayload[] }>(
+      "/api/presence/agents/snapshot",
+      { agent_ids: agentIds },
+    );
+  },
+
+  setManualStatus(
+    agentId: string,
+    body: {
+      manual_status: "available" | "busy" | "away" | "invisible";
+      status_message?: string | null;
+      manual_expires_at?: string | null;
+    },
+  ) {
+    return apiPatch<AgentPresenceSnapshotPayload>(
+      `/api/agents/${agentId}/status`,
+      body,
+    );
   },
 
   // --- Public (guest) APIs ---

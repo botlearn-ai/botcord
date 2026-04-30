@@ -340,7 +340,7 @@ export type RealtimeMetaEventType =
   | "error"
   | "system"
   | "typing"
-  | "presence";
+  | "agent_status_changed";
 
 export interface RealtimeMetaEvent {
   type: RealtimeMetaEventType;

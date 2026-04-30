@@ -537,13 +537,11 @@ export default function DashboardApp() {
             roomId: realtimeEvent.room_id,
             hubMsgId: realtimeEvent.hub_msg_id,
           });
-          if (realtimeEvent.type === "presence") {
-            const ext = realtimeEvent.ext || {};
-            const subject = typeof ext.subject_agent_id === "string" ? ext.subject_agent_id : null;
-            const online = Boolean(ext.online);
-            if (subject) {
-              const ts = realtimeEvent.created_at ? new Date(realtimeEvent.created_at).getTime() : Date.now();
-              usePresenceStore.getState().setOnline(subject, online, Number.isFinite(ts) ? ts : Date.now());
+          if (realtimeEvent.type === "agent_status_changed") {
+            const ext = (realtimeEvent.ext || {}) as Record<string, unknown>;
+            const status = ext.status as Record<string, unknown> | undefined;
+            if (status && typeof status.agent_id === "string") {
+              usePresenceStore.getState().upsertStatus(status as never);
             }
             return;
           }
@@ -563,6 +561,17 @@ export default function DashboardApp() {
           });
           if (status === "SUBSCRIBED") {
             realtimeStore.setRealtimeStatus("connected");
+            // Refresh presence snapshots for any agents we're already tracking,
+            // so we recover from events missed during the disconnect window.
+            try {
+              const tracked = Object.keys(usePresenceStore.getState().entries);
+              if (tracked.length > 0) {
+                void api
+                  .getPresenceSnapshots(tracked)
+                  .then((res) => usePresenceStore.getState().upsertMany(res.agents))
+                  .catch(() => {});
+              }
+            } catch {}
             return;
           }
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -596,6 +605,21 @@ export default function DashboardApp() {
     realtimeStore.syncRealtimeEvent,
     supabase,
   ]);
+
+  useEffect(() => {
+    if (!sessionStore.authResolved) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const tracked = Object.keys(usePresenceStore.getState().entries);
+      if (tracked.length === 0) return;
+      void api
+        .getPresenceSnapshots(tracked)
+        .then((res) => usePresenceStore.getState().upsertMany(res.agents))
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [sessionStore.authResolved]);
 
   useEffect(() => {
     if (!sessionStore.authResolved || !sessionStore.token || uiStore.sidebarTab !== "messages") {
