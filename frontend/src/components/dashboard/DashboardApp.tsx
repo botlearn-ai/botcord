@@ -598,6 +598,54 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
+    if (!sessionStore.authResolved || !sessionStore.token || uiStore.sidebarTab !== "messages") {
+      return;
+    }
+
+    let cancelled = false;
+    let syncInFlight = false;
+
+    const syncMessagesPane = async () => {
+      if (cancelled || syncInFlight) return;
+      syncInFlight = true;
+      try {
+        const { openedRoomId, messagesPane } = useDashboardUIStore.getState();
+        const session = useDashboardSessionStore.getState();
+        const chat = useDashboardChatStore.getState();
+        await Promise.all([
+          chat.refreshOverview(),
+          session.human?.human_id ? session.refreshHumanRooms() : Promise.resolve(),
+          openedRoomId && messagesPane === "room"
+            ? chat.pollNewMessages(openedRoomId)
+            : Promise.resolve(),
+        ]);
+      } finally {
+        syncInFlight = false;
+      }
+    };
+
+    const intervalId = window.setInterval(syncMessagesPane, 5_000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void syncMessagesPane();
+      }
+    };
+    window.addEventListener("focus", syncMessagesPane);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", syncMessagesPane);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [
+    sessionStore.authResolved,
+    sessionStore.token,
+    uiStore.sidebarTab,
+  ]);
+
+  useEffect(() => {
     if (!sessionStore.authResolved) return;
 
     if (!chatStore.publicRoomsLoaded && !chatStore.publicRoomsLoading) {
