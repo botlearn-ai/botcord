@@ -983,7 +983,7 @@ export default function RoomSettingsModal({
                           onChange={(e) => setPriceInput(e.target.value)}
                           className="w-28 rounded-lg border border-glass-border bg-deep-black px-2 py-1 text-sm text-text-primary"
                         />
-                        <span className="text-xs text-text-secondary/80">USDC</span>
+                        <span className="text-xs text-text-secondary/80">Coin</span>
                       </div>
                       <div className="flex items-center gap-4">
                         <label className="text-sm text-text-primary">
@@ -1194,10 +1194,10 @@ export default function RoomSettingsModal({
         <PlanChangeConfirmDialog
           fromLabel={
             subscriptionProduct
-              ? `${(Number(subscriptionProduct.amount_minor) / 100).toFixed(2)} USDC / ${subscriptionProduct.billing_interval}`
+              ? `${(Number(subscriptionProduct.amount_minor) / 100).toFixed(2)} Coin / ${subscriptionProduct.billing_interval}`
               : "—"
           }
-          toLabel={`${Number(priceInput).toFixed(2)} USDC / ${billingInterval}`}
+          toLabel={`${Number(priceInput).toFixed(2)} Coin / ${billingInterval}`}
           affectedCount={planChangeAffected}
           loading={planChangeBusy}
           onClose={() => {
