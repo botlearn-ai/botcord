@@ -84,6 +84,8 @@ export default function MessageComposer({
   const [pickedMentions, setPickedMentions] = useState<MentionCandidate[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mentionListRef = useRef<HTMLDivElement>(null);
+  const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const mentionEnabled = !!mentionCandidates && mentionCandidates.length > 0;
 
@@ -125,6 +127,28 @@ export default function MessageComposer({
   useEffect(() => {
     if (mentionIndex >= suggestions.length) setMentionIndex(0);
   }, [suggestions.length, mentionIndex]);
+
+  useEffect(() => {
+    mentionOptionRefs.current = mentionOptionRefs.current.slice(0, suggestions.length);
+  }, [suggestions.length]);
+
+  useEffect(() => {
+    if (!mentionMatch || suggestions.length === 0) return;
+    const list = mentionListRef.current;
+    const option = mentionOptionRefs.current[mentionIndex];
+    if (!list || !option) return;
+
+    const listTop = list.scrollTop;
+    const listBottom = listTop + list.clientHeight;
+    const optionTop = option.offsetTop;
+    const optionBottom = optionTop + option.offsetHeight;
+
+    if (optionTop < listTop) {
+      list.scrollTop = optionTop;
+    } else if (optionBottom > listBottom) {
+      list.scrollTop = optionBottom - list.clientHeight;
+    }
+  }, [mentionMatch, mentionIndex, suggestions.length]);
 
   const autoResize = useCallback(() => {
     const el = inputRef.current;
@@ -237,6 +261,16 @@ export default function MessageComposer({
         setMentionIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
         return;
       }
+      if (e.key === "PageDown") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.min(i + 8, suggestions.length - 1));
+        return;
+      }
+      if (e.key === "PageUp") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.max(i - 8, 0));
+        return;
+      }
       if (e.key === "Enter" || e.key === "Tab") {
         if (!e.nativeEvent.isComposing) {
           e.preventDefault();
@@ -344,11 +378,13 @@ export default function MessageComposer({
         />
         {mentionMatch && suggestions.length > 0 && (
           <div
+            ref={mentionListRef}
             className="absolute left-0 right-12 bottom-full mb-1 z-20 max-h-56 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
             role="listbox"
           >
             {suggestions.map((s, i) => (
               <button
+                ref={(node) => { mentionOptionRefs.current[i] = node; }}
                 type="button"
                 key={s.agent_id}
                 role="option"
