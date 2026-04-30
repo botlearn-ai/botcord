@@ -284,6 +284,84 @@ async def test_unbind_agent_binding(client: AsyncClient, db_session: AsyncSessio
 
 
 @pytest.mark.asyncio
+async def test_unbind_agent_revokes_bound_daemon_agent(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict, monkeypatch
+):
+    """Unbinding a daemon-managed agent asks the daemon to remove local state."""
+    seed_user["agent1"].daemon_instance_id = "di_test"
+    await db_session.commit()
+
+    import asyncio as _asyncio
+    import app.routers.users as users_mod
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: True)
+
+    captured: dict = {}
+    sent = _asyncio.Event()
+
+    async def fake_send(daemon_id, type_, params, timeout_ms=None):
+        captured["daemon_id"] = daemon_id
+        captured["type"] = type_
+        captured["params"] = params
+        sent.set()
+        return {"id": "x", "ok": True}
+
+    monkeypatch.setattr(users_mod, "send_control_frame", fake_send)
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["agent_id"] == "ag_agent001"
+    assert body["daemon_instance_id"] == "di_test"
+    await _asyncio.wait_for(sent.wait(), timeout=2.0)
+    assert captured["daemon_id"] == "di_test"
+    assert captured["type"] == "revoke_agent"
+    assert captured["params"] == {
+        "agentId": "ag_agent001",
+        "deleteCredentials": True,
+        "deleteState": True,
+        "deleteWorkspace": False,
+    }
+
+    agent = (
+        await db_session.execute(select(Agent).where(Agent.agent_id == "ag_agent001"))
+    ).scalar_one()
+    assert agent.user_id is None
+    assert agent.daemon_instance_id is None
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_skips_revoke_when_daemon_offline(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict, monkeypatch
+):
+    seed_user["agent1"].daemon_instance_id = "di_offline"
+    await db_session.commit()
+
+    import app.routers.users as users_mod
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: False)
+
+    async def boom(*_a, **_kw):  # pragma: no cover - should never run
+        raise HTTPException(409, detail="daemon_offline")
+
+    monkeypatch.setattr(users_mod, "send_control_frame", boom)
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["daemon_instance_id"] == "di_offline"
+
+
+@pytest.mark.asyncio
 async def test_legacy_delete_route_is_deprecated_unbind(client: AsyncClient, seed_user: dict):
     token = seed_user["token"]
     resp = await client.delete(

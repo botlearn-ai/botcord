@@ -372,6 +372,7 @@ async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID
 
     now = _utc_now()
     was_default = agent.is_default
+    daemon_instance_id = agent.daemon_instance_id
 
     await _cancel_agent_subscriptions(db, agent_id, now)
 
@@ -380,6 +381,7 @@ async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID
     agent.is_default = False
     agent.agent_token = None
     agent.token_expires_at = None
+    agent.daemon_instance_id = None
     agent.claim_code = f"clm_{uuid4().hex}"
 
     if was_default:
@@ -387,7 +389,11 @@ async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID
 
     await _maybe_remove_agent_owner_role(db, user_id)
     await db.flush()
-    return {"agent_id": agent_id, "unbound_at": now.isoformat()}
+    return {
+        "agent_id": agent_id,
+        "unbound_at": now.isoformat(),
+        "daemon_instance_id": daemon_instance_id,
+    }
 
 
 async def _maybe_grant_claim_gift(
@@ -995,6 +1001,7 @@ async def unbind_agent_binding(
     """Unbind an active agent from the current user."""
     payload = await _unbind_agent_from_user(db, agent_id, ctx.user_id)
     await db.commit()
+    _schedule_daemon_revoke(payload)
     return payload
 
 
@@ -1008,6 +1015,7 @@ async def delete_agent(
     """Deprecated alias for unbinding an agent from the current user."""
     payload = await _unbind_agent_from_user(db, agent_id, ctx.user_id)
     await db.commit()
+    _schedule_daemon_revoke(payload)
     response.headers["Deprecation"] = "true"
     response.headers["Link"] = f'</api/users/me/agents/{agent_id}/binding>; rel="successor-version"'
     return {"ok": True, "deprecated": True, **payload}
@@ -1095,6 +1103,26 @@ async def patch_agent(
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
+def _schedule_daemon_revoke(payload: dict) -> None:
+    agent_id = payload.get("agent_id")
+    daemon_instance_id = payload.get("daemon_instance_id")
+    if not agent_id or not daemon_instance_id:
+        return
+    if not is_daemon_online(str(daemon_instance_id)):
+        _logger.info(
+            "revoke_agent push skipped: agent=%s daemon=%s offline",
+            agent_id,
+            daemon_instance_id,
+        )
+        return
+
+    task = asyncio.create_task(
+        _push_revoke_agent_frame(str(daemon_instance_id), str(agent_id))
+    )
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
 async def _push_update_agent_frame(
     daemon_instance_id: str, agent_id: str, params: dict[str, object | None]
 ) -> None:
@@ -1111,6 +1139,29 @@ async def _push_update_agent_frame(
     except Exception as exc:  # noqa: BLE001
         _logger.warning(
             "update_agent push failed: agent=%s err=%s", agent_id, exc
+        )
+
+
+async def _push_revoke_agent_frame(daemon_instance_id: str, agent_id: str) -> None:
+    """Best-effort `revoke_agent` dispatch — never raises, only logs."""
+    params: dict[str, object] = {
+        "agentId": agent_id,
+        "deleteCredentials": True,
+        "deleteState": True,
+        "deleteWorkspace": False,
+    }
+    try:
+        await send_control_frame(daemon_instance_id, "revoke_agent", params)
+    except HTTPException as exc:
+        _logger.info(
+            "revoke_agent push skipped: agent=%s status=%s detail=%s",
+            agent_id,
+            exc.status_code,
+            exc.detail,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning(
+            "revoke_agent push failed: agent=%s err=%s", agent_id, exc
         )
 
 
@@ -2683,4 +2734,3 @@ async def openclaw_provision(
         config_patched=bool(config_patched_raw) if config_patched_raw is not None else True,
         config_skip_reason=config_skip_reason if isinstance(config_skip_reason, str) else None,
     )
-
