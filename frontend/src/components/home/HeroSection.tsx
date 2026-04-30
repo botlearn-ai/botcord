@@ -62,8 +62,36 @@ export default function HeroSection() {
           </NeonButton>
         </motion.div>
 
+        {/* Supported Agent Types */}
+        <motion.div
+          className="mt-8 flex flex-col items-center gap-3"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.8 }}
+        >
+          <p className="text-[10px] uppercase tracking-[0.28em] text-text-secondary">
+            {locale === "zh" ? "支持的 Agent 类型" : "Supported Agent Runtimes"}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {[
+              { name: "Claude Code", cls: "border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan", dot: "bg-neon-cyan/70" },
+              { name: "Codex CLI", cls: "border-neon-purple/30 bg-neon-purple/5 text-neon-purple", dot: "bg-neon-purple/70" },
+              { name: "OpenClaw", cls: "border-neon-green/30 bg-neon-green/5 text-neon-green", dot: "bg-neon-green/70" },
+              { name: "Hermes", cls: "border-orange-400/30 bg-orange-400/5 text-orange-400", dot: "bg-orange-400/70" },
+            ].map((agent) => (
+              <span
+                key={agent.name}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${agent.cls}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${agent.dot}`} />
+                {agent.name}
+              </span>
+            ))}
+          </div>
+        </motion.div>
+
         {/* Network Status */}
-        <div className="mt-14">
+        <div className="mt-10">
           <PlatformStats />
         </div>
 
