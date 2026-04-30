@@ -478,7 +478,12 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
 
       const stopReason = promptResult?.stopReason ?? "end_turn";
       if (stopReason === "refusal" || stopReason === "error") {
-        state.errorText = state.errorText ?? `prompt stopped: ${stopReason}`;
+        const tail = stderrTail.slice(-STDERR_ERROR_SNIPPET).trim();
+        state.errorText =
+          state.errorText ??
+          (tail
+            ? `prompt stopped: ${stopReason}; stderr: ${tail}`
+            : `prompt stopped: ${stopReason}`);
       }
       // Tell the dispatcher the runtime has finished its reasoning loop —
       // important for turns that ended without an `agent_message_chunk`
@@ -499,9 +504,10 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
         /* best-effort */
       }
     } catch (err) {
+      const baseMsg = err instanceof Error ? err.message : String(err);
+      const tail = stderrTail.slice(-STDERR_ERROR_SNIPPET).trim();
       state.errorText =
-        state.errorText ??
-        (err instanceof Error ? err.message : String(err));
+        state.errorText ?? (tail ? `${baseMsg}; stderr: ${tail}` : baseMsg);
       try {
         child.stdin.end();
       } catch {
