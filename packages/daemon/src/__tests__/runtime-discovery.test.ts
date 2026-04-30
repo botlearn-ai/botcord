@@ -146,6 +146,54 @@ describe("collectRuntimeSnapshotAsync", () => {
     ]);
   });
 
+  it("marks OpenClaw agent profiles that already have a BotCord binding", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "daemon-runtime-binding-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      mkdirSync(path.join(tmp, ".botcord", "credentials"), { recursive: true });
+      writeFileSync(
+        path.join(tmp, ".botcord", "credentials", "ag_bound.json"),
+        JSON.stringify({
+          hubUrl: "https://api.preview.botcord.chat",
+          agentId: "ag_bound",
+          keyId: "kid_bound",
+          privateKey: Buffer.alloc(32, 1).toString("base64"),
+          runtime: "openclaw-acp",
+          openclawGateway: "local",
+          openclawAgent: "swe",
+        }),
+      );
+      setRuntimes([
+        {
+          id: "openclaw-acp",
+          displayName: "OpenClaw",
+          binary: "openclaw",
+          supportsRun: true,
+          result: { available: true },
+        },
+      ]);
+
+      const snap = await collectRuntimeSnapshotAsync({
+        cfg: { openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }] },
+        wsProbe: async () => ({
+          ok: true,
+          agents: [{ id: "default" }, { id: "swe", name: "SWE" }],
+        }),
+      });
+
+      const runtime = snap.runtimes.find((r) => r.id === "openclaw-acp");
+      expect(runtime?.endpoints?.[0]?.agents).toEqual([
+        { id: "default" },
+        { id: "swe", name: "SWE", botcordBinding: { agentId: "ag_bound" } },
+      ]);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("reports acp_disabled without probing the gateway", async () => {
     const tmp = mkdtempSync(path.join(tmpdir(), "daemon-runtime-openclaw-"));
     const prevHome = process.env.HOME;
