@@ -63,7 +63,13 @@ from hub.id_generators import (
     generate_daemon_instance_id,
     generate_daemon_user_code,
 )
-from hub.models import Agent, DaemonDeviceCode, DaemonInstallTicket, DaemonInstance
+from hub.models import (
+    Agent,
+    DaemonAgentCleanup,
+    DaemonDeviceCode,
+    DaemonInstallTicket,
+    DaemonInstance,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +254,7 @@ class _DaemonRegistry:
 
 
 _REGISTRY = _DaemonRegistry()
+_BACKGROUND_CLEANUPS: set[asyncio.Task] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -689,6 +696,97 @@ def is_daemon_online(daemon_instance_id: str) -> bool:
     return _REGISTRY.is_online(daemon_instance_id)
 
 
+def _cleanup_error_message(ack: dict[str, Any]) -> str:
+    err = ack.get("error")
+    if isinstance(err, dict):
+        message = err.get("message") or err.get("code")
+        if isinstance(message, str) and message:
+            return message[:1000]
+    return "daemon cleanup failed"
+
+
+async def _cleanup_still_applies(
+    db: AsyncSession,
+    cleanup: DaemonAgentCleanup,
+) -> bool:
+    agent = await db.scalar(select(Agent).where(Agent.agent_id == cleanup.agent_id))
+    if agent is None:
+        return True
+    return agent.user_id is None and agent.daemon_instance_id is None
+
+
+async def process_pending_daemon_cleanups(daemon_instance_id: str) -> None:
+    """Best-effort drain of pending local cleanup jobs for one daemon."""
+    async with async_session() as db:
+        rows = (
+            await db.execute(
+                select(DaemonAgentCleanup)
+                .where(
+                    DaemonAgentCleanup.daemon_instance_id == daemon_instance_id,
+                    DaemonAgentCleanup.status == "pending",
+                )
+                .order_by(DaemonAgentCleanup.created_at, DaemonAgentCleanup.id)
+                .limit(50)
+            )
+        ).scalars().all()
+
+    for row in rows:
+        async with async_session() as db:
+            current = await db.get(DaemonAgentCleanup, row.id)
+            if current is None or current.status != "pending":
+                continue
+            if not await _cleanup_still_applies(db, current):
+                current.status = "cancelled"
+                current.completed_at = _now()
+                current.last_error = "agent rebound before cleanup"
+                await db.commit()
+                continue
+
+        try:
+            ack = await send_control_frame(
+                daemon_instance_id,
+                "revoke_agent",
+                {
+                    "agentId": row.agent_id,
+                    "deleteCredentials": row.delete_credentials,
+                    "deleteState": row.delete_state,
+                    "deleteWorkspace": row.delete_workspace,
+                },
+                timeout_ms=10000,
+            )
+        except HTTPException as exc:
+            if exc.status_code == 409:
+                return
+            async with async_session() as db:
+                current = await db.get(DaemonAgentCleanup, row.id)
+                if current is not None and current.status == "pending":
+                    current.attempts += 1
+                    current.last_error = str(exc.detail)[:1000]
+                    await db.commit()
+            continue
+
+        async with async_session() as db:
+            current = await db.get(DaemonAgentCleanup, row.id)
+            if current is None or current.status != "pending":
+                continue
+            current.attempts += 1
+            if isinstance(ack, dict) and ack.get("ok"):
+                current.status = "succeeded"
+                current.completed_at = _now()
+                current.last_error = None
+            else:
+                current.last_error = _cleanup_error_message(ack if isinstance(ack, dict) else {})
+            await db.commit()
+
+
+def schedule_pending_daemon_cleanups(daemon_instance_id: str) -> None:
+    if not is_daemon_online(daemon_instance_id):
+        return
+    task = asyncio.create_task(process_pending_daemon_cleanups(daemon_instance_id))
+    _BACKGROUND_CLEANUPS.add(task)
+    task.add_done_callback(_BACKGROUND_CLEANUPS.discard)
+
+
 @router.post("/daemon/instances/{daemon_instance_id}/dispatch")
 async def dispatch_to_instance(
     daemon_instance_id: str,
@@ -871,6 +969,8 @@ async def daemon_control_ws(ws: WebSocket) -> None:
         await ws.send_text(json.dumps(hello))
     except Exception as exc:  # noqa: BLE001
         logger.warning("daemon hello send failed: %s", exc)
+
+    schedule_pending_daemon_cleanups(daemon_instance_id)
 
     try:
         while True:
