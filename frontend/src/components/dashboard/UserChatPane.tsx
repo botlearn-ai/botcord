@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2 } from "lucide-react";
+import { Bot, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2, User } from "lucide-react";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
@@ -383,6 +383,18 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
             return (
               <div key={msg.clientId} className="flex justify-end">
                 <div className="max-w-[75%] rounded-lg px-3 py-2 text-sm bg-cyan-500/20 text-cyan-100 border border-cyan-500/30">
+                  <div className="mb-1 flex items-center justify-end gap-1.5">
+                    <span className="text-xs font-medium text-cyan-100/90">
+                      {msg.senderName}
+                    </span>
+                    <span
+                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
+                      title="Human"
+                      aria-label="Human sender"
+                    >
+                      <User className="h-2.5 w-2.5" />
+                    </span>
+                  </div>
                   <MarkdownContent content={msg.text} />
                   <div className="flex items-center justify-end gap-1.5 mt-1">
                     {msg.status === "optimistic" && (
@@ -431,16 +443,38 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                       : "bg-zinc-800 text-zinc-200 border border-zinc-700"
                   }`}
                 >
-                  {!isUser && (
-                    <div className="mb-1 flex items-center gap-1.5">
+                  <div className={`mb-1 flex items-center gap-1.5 ${isUser ? "justify-end" : ""}`}>
+                    {isUser ? (
+                      <>
+                        <span className="text-xs font-medium text-cyan-100/90">
+                          {msg.senderName}
+                        </span>
+                        <span
+                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
+                          title="Human"
+                          aria-label="Human sender"
+                        >
+                          <User className="h-2.5 w-2.5" />
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300"
+                          title="Bot"
+                          aria-label="Bot sender"
+                        >
+                          <Bot className="h-2.5 w-2.5" />
+                        </span>
                       <span className="text-xs font-medium text-zinc-300">
                         {msg.senderName}
                       </span>
                       {chatAgentId && (
                         <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
                       )}
-                    </div>
-                  )}
+                      </>
+                    )}
+                  </div>
                   {/* Typewriter for new agent messages; skip if already animated or was streamed */}
                   {(() => {
                     const wasStreamed = msg.traceId && streamedTraceIds.current?.has(msg.traceId);
