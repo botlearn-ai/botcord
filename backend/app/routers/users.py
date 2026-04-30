@@ -26,14 +26,18 @@ from hub import config as hub_config
 from hub.auth import create_agent_token, verify_agent_token
 from hub.config import BIND_PROOF_SECRET, HUB_PUBLIC_BASE_URL, JWT_SECRET
 from hub.routers.hub import is_agent_ws_online
-from hub.routers.daemon_control import is_daemon_online, send_control_frame
+from hub.routers.daemon_control import (
+    is_daemon_online,
+    schedule_pending_daemon_cleanups,
+    send_control_frame,
+)
 from hub.crypto import verify_challenge_sig
 from hub.database import async_session as _default_session_factory, get_db
 from hub.models import (
     Agent,
     AgentSubscription,
+    DaemonAgentCleanup,
     DaemonInstance,
-    OpenclawAgentCleanup,
     OpenclawHostInstance,
     Role,
     ShortCode,
@@ -357,20 +361,20 @@ async def _promote_next_default_agent(db: AsyncSession, user_id: UUID, agent_id:
         next_agent.is_default = True
 
 
-async def _enqueue_openclaw_agent_cleanup(
+async def _enqueue_daemon_agent_cleanup(
     db: AsyncSession,
     *,
-    host_id: str | None,
+    daemon_instance_id: str | None,
     agent_id: str,
     delete_credentials: bool = True,
     delete_state: bool = True,
     delete_workspace: bool = False,
 ) -> bool:
-    if not host_id:
+    if not daemon_instance_id:
         return False
     db.add(
-        OpenclawAgentCleanup(
-            host_id=host_id,
+        DaemonAgentCleanup(
+            daemon_instance_id=daemon_instance_id,
             agent_id=agent_id,
             delete_credentials=delete_credentials,
             delete_state=delete_state,
@@ -396,12 +400,12 @@ async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID
 
     now = _utc_now()
     was_default = agent.is_default
-    openclaw_host_id = agent.openclaw_host_id
+    daemon_instance_id = agent.daemon_instance_id
 
     await _cancel_agent_subscriptions(db, agent_id, now)
-    cleanup_queued = await _enqueue_openclaw_agent_cleanup(
+    cleanup_queued = await _enqueue_daemon_agent_cleanup(
         db,
-        host_id=openclaw_host_id,
+        daemon_instance_id=daemon_instance_id,
         agent_id=agent_id,
     )
 
@@ -410,7 +414,7 @@ async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID
     agent.is_default = False
     agent.agent_token = None
     agent.token_expires_at = None
-    agent.openclaw_host_id = None
+    agent.daemon_instance_id = None
     agent.claim_code = f"clm_{uuid4().hex}"
 
     if was_default:
@@ -421,8 +425,8 @@ async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID
     return {
         "agent_id": agent_id,
         "unbound_at": now.isoformat(),
-        "openclaw_host_id": openclaw_host_id,
-        "local_cleanup_queued": cleanup_queued,
+        "daemon_instance_id": daemon_instance_id,
+        "daemon_cleanup_queued": cleanup_queued,
     }
 
 
@@ -1031,15 +1035,7 @@ async def unbind_agent_binding(
     """Unbind an active agent from the current user."""
     payload = await _unbind_agent_from_user(db, agent_id, ctx.user_id)
     await db.commit()
-    if payload.get("local_cleanup_queued") and payload.get("openclaw_host_id"):
-        from hub.routers.openclaw_control import (
-            is_openclaw_host_online,
-            process_pending_openclaw_cleanups,
-        )
-
-        host_id = str(payload["openclaw_host_id"])
-        if is_openclaw_host_online(host_id):
-            asyncio.create_task(process_pending_openclaw_cleanups(host_id))
+    _schedule_daemon_revoke(payload)
     return payload
 
 
@@ -1053,15 +1049,7 @@ async def delete_agent(
     """Deprecated alias for unbinding an agent from the current user."""
     payload = await _unbind_agent_from_user(db, agent_id, ctx.user_id)
     await db.commit()
-    if payload.get("local_cleanup_queued") and payload.get("openclaw_host_id"):
-        from hub.routers.openclaw_control import (
-            is_openclaw_host_online,
-            process_pending_openclaw_cleanups,
-        )
-
-        host_id = str(payload["openclaw_host_id"])
-        if is_openclaw_host_online(host_id):
-            asyncio.create_task(process_pending_openclaw_cleanups(host_id))
+    _schedule_daemon_revoke(payload)
     response.headers["Deprecation"] = "true"
     response.headers["Link"] = f'</api/users/me/agents/{agent_id}/binding>; rel="successor-version"'
     return {"ok": True, "deprecated": True, **payload}
@@ -1147,6 +1135,22 @@ async def patch_agent(
 # Strong-reference set keeping fire-and-forget background tasks alive until
 # they complete. See the matching `add` / `discard` calls in `patch_agent`.
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _schedule_daemon_revoke(payload: dict) -> None:
+    if not payload.get("daemon_cleanup_queued"):
+        return
+    daemon_instance_id = payload.get("daemon_instance_id")
+    if not daemon_instance_id:
+        return
+    if not is_daemon_online(str(daemon_instance_id)):
+        _logger.info(
+            "revoke_agent cleanup queued: daemon=%s offline",
+            daemon_instance_id,
+        )
+        return
+
+    schedule_pending_daemon_cleanups(str(daemon_instance_id))
 
 
 async def _push_update_agent_frame(
@@ -2482,6 +2486,8 @@ async def delete_openclaw_host(
     now = _utc_now()
     if instance.revoked_at is None:
         instance.revoked_at = now
+    instance.refresh_token_hash = None
+    instance.refresh_token_expires_at = None
 
     rows = (
         await db.execute(
@@ -2503,11 +2509,6 @@ async def delete_openclaw_host(
         if agent.is_default:
             any_was_default = True
         await _cancel_agent_subscriptions(db, agent.agent_id, now)
-        await _enqueue_openclaw_agent_cleanup(
-            db,
-            host_id=host_id,
-            agent_id=agent.agent_id,
-        )
         agent.user_id = None
         agent.claimed_at = None
         agent.is_default = False
@@ -2515,10 +2516,6 @@ async def delete_openclaw_host(
         agent.token_expires_at = None
         agent.openclaw_host_id = None
         agent.claim_code = f"clm_{uuid4().hex}"
-
-    if not rows:
-        instance.refresh_token_hash = None
-        instance.refresh_token_expires_at = None
 
     # Promote a single replacement default *after* every host agent has been
     # detached, so the helper can't pick another agent that is still in
@@ -2542,14 +2539,6 @@ async def delete_openclaw_host(
         await _maybe_remove_agent_owner_role(db, ctx.user_id)
 
     await db.commit()
-
-    from hub.routers.openclaw_control import (
-        is_openclaw_host_online,
-        process_pending_openclaw_cleanups,
-    )
-
-    if is_openclaw_host_online(host_id):
-        await process_pending_openclaw_cleanups(host_id)
 
     conn = _HOST_REGISTRY.get(host_id)
     if conn is not None:
