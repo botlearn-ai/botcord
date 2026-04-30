@@ -588,7 +588,7 @@ class Share(Base):
         String(64), ForeignKey("rooms.room_id"), nullable=False, index=True
     )
     shared_by_agent_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("agents.agent_id"), nullable=False
+        String(32), nullable=False
     )
     shared_by_name: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(

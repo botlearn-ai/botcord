@@ -44,6 +44,7 @@ from hub.models import (
     Room,
     RoomMember,
     RoomRole,
+    Share,
     User,
     UserRole,
 )
@@ -185,6 +186,35 @@ async def test_human_creates_and_lists_room(client, seed, db_session: AsyncSessi
     assert listing.status_code == 200
     names = [r["name"] for r in listing.json()["rooms"]]
     assert "Human HQ" in names
+
+
+@pytest.mark.asyncio
+async def test_human_creates_room_share(client, seed, db_session: AsyncSession):
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    room_resp = await client.post(
+        "/api/humans/me/rooms",
+        headers=headers,
+        json={"name": "Human Share Room", "description": "shareable"},
+    )
+    assert room_resp.status_code == 201, room_resp.text
+    room_id = room_resp.json()["room_id"]
+
+    share_resp = await client.post(
+        f"/api/humans/me/rooms/{room_id}/share",
+        headers=headers,
+    )
+    assert share_resp.status_code == 201, share_resp.text
+    data = share_resp.json()
+    assert data["share_id"].startswith("sh_")
+    assert data["share_url"] == f"/share/{data['share_id']}"
+    assert data["link_url"].endswith(data["share_url"])
+
+    share_row = await db_session.execute(
+        select(Share).where(Share.share_id == data["share_id"])
+    )
+    share = share_row.scalar_one()
+    assert share.room_id == room_id
+    assert share.shared_by_agent_id == seed["human_id"]
 
 
 @pytest.mark.asyncio
