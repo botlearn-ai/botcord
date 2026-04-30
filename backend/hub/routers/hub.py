@@ -856,8 +856,10 @@ async def _send_room_message(
     # Slow mode check (owner/admin exempt)
     _check_slow_mode(room, sender_member)
 
-    # Duplicate content check
-    _check_duplicate_content(room_id, envelope.from_, envelope.payload)
+    # Duplicate content check. Owner-chat rooms are a private dashboard control
+    # surface; repeated runtime error fallbacks should still be visible there.
+    if not room_id.startswith("rm_oc_"):
+        _check_duplicate_content(room_id, envelope.from_, envelope.payload)
 
     # All anti-spam checks passed — record timestamp for slow mode
     _record_slow_mode_send(room_id, envelope.from_)

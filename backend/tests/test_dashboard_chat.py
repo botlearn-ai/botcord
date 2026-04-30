@@ -353,3 +353,49 @@ async def test_agent_reply_to_owner_chat_creates_record(
     inbox_msgs = inbox_resp.json()["messages"]
     self_reply_ids = [m["hub_msg_id"] for m in inbox_msgs if m["hub_msg_id"] == send_data["hub_msg_id"]]
     assert len(self_reply_ids) == 0, "Self-delivery record must not appear in inbox"
+
+
+@pytest.mark.asyncio
+async def test_owner_chat_allows_duplicate_agent_replies(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    """Owner-chat should show repeated runtime error fallbacks instead of 429ing."""
+    from hub.routers.hub import _last_msg_hash, _pair_rate_windows, _rate_windows, _slow_mode_last_send
+    from sqlalchemy import update
+
+    agent_id, token, sk, key_id = await _register_and_verify(client, "DupReplyAgent")
+
+    user_id = str(uuid.uuid4())
+    await db_session.execute(
+        update(Agent)
+        .where(Agent.agent_id == agent_id)
+        .values(
+            user_id=uuid.UUID(user_id),
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    headers = _auth_header(token)
+    resp = await client.get("/dashboard/chat/room", headers=headers)
+    assert resp.status_code == 200
+    room_id = resp.json()["room_id"]
+    assert room_id.startswith("rm_oc_")
+
+    _rate_windows.clear()
+    _pair_rate_windows.clear()
+    _slow_mode_last_send.clear()
+    _last_msg_hash.clear()
+
+    payload = {"text": "Runtime error: acp error -32603: Internal error"}
+    for _ in range(2):
+        envelope = _build_envelope(
+            sk=sk,
+            key_id=key_id,
+            from_id=agent_id,
+            to_id=room_id,
+            payload=payload,
+        )
+        resp = await client.post("/hub/send", json=envelope, headers=headers)
+        assert resp.status_code == 202
