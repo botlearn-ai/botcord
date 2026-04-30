@@ -13,8 +13,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import type { CreateShareResponse, InvitePreviewResponse, PublicRoomMember } from "@/lib/types";
-import { buildSharePrompt } from "@/lib/onboarding";
-import { Copy, Globe2, Link2, Loader2, Lock, Sparkles, X } from "lucide-react";
+import { Globe2, Link2, Loader2, Lock, Sparkles, X } from "lucide-react";
 import { initialsFromName, themeFromRoomName } from "./roomVisualTheme";
 
 interface ShareModalProps {
@@ -33,7 +32,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   const [shareData, setShareData] = useState<(CreateShareResponse | InvitePreviewResponse) | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedField, setCopiedField] = useState<"plain-link" | "share-link" | "prompt" | null>(null);
+  const [copiedField, setCopiedField] = useState<"plain-link" | null>(null);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [memberTotal, setMemberTotal] = useState(0);
   const [membersLoading, setMembersLoading] = useState(true);
@@ -76,30 +75,8 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
     }
   };
 
-  const resolveProductId = (sd: typeof shareData): string | undefined => {
-    if (!sd) return undefined;
-    if ("required_subscription_product_id" in sd && sd.required_subscription_product_id) {
-      return sd.required_subscription_product_id as string;
-    }
-    if ("room" in sd && sd.room && "required_subscription_product_id" in sd.room) {
-      return sd.room.required_subscription_product_id ?? undefined;
-    }
-    return undefined;
-  };
-
   const plainLinkUrl = shareData ? ("link_url" in shareData ? shareData.link_url : shareData.invite_url) : "";
-  const internalSharePath = shareData && "share_url" in shareData ? shareData.share_url : "";
   const entryType = shareData?.entry_type;
-  const promptText = useMemo(() => buildSharePrompt({
-    shareId: shareData && "share_id" in shareData ? shareData.share_id : undefined,
-    inviteCode: shareData && "code" in shareData ? shareData.code : undefined,
-    roomId,
-    roomName,
-    requiresPayment: entryType === "paid_room",
-    productId: resolveProductId(shareData),
-    isReadOnly: entryType === "private_room",
-    locale,
-  }), [entryType, locale, roomId, roomName, shareData]);
   const roomVisualTheme = useMemo(() => themeFromRoomName(roomName || roomId), [roomId, roomName]);
   const roomInitials = useMemo(() => initialsFromName(roomName || "Room"), [roomName]);
   const accessLabel = entryType === "private_invite"
@@ -127,12 +104,12 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   ] as const;
   const memberSkeletonCount = 4;
 
-  const flashCopiedField = (field: "plain-link" | "share-link" | "prompt") => {
+  const flashCopiedField = (field: "plain-link") => {
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleCopyText = async (value: string, field: "plain-link" | "share-link" | "prompt") => {
+  const handleCopyText = async (value: string, field: "plain-link") => {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
@@ -145,16 +122,6 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   const handleCopyPlainLink = async () => {
     if (!shareData) return;
     await handleCopyText(plainLinkUrl, "plain-link");
-  };
-
-  const handleCopyShareLink = async () => {
-    if (!shareData || !internalSharePath) return;
-    await handleCopyText(internalSharePath, "share-link");
-  };
-
-  const handleCopyPrompt = async () => {
-    if (!shareData) return;
-    await handleCopyText(promptText, "prompt");
   };
 
   return (
@@ -275,10 +242,10 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                       </button>
                     </div>
                   ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-3">
                       <button
                         onClick={() => void handleCopyPlainLink()}
-                        className="flex items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
+                        className="flex w-full items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 rounded-xl bg-neon-cyan/12 p-2 text-neon-cyan">
@@ -294,47 +261,6 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                         </div>
                         <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
                           {copiedField === "plain-link" ? tc.copied : tc.copy}
-                        </span>
-                      </button>
-
-                      {"share_url" in shareData ? (
-                        <button
-                          onClick={() => void handleCopyShareLink()}
-                          className="flex items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="mt-0.5 rounded-xl bg-sky-400/12 p-2 text-sky-300">
-                              <Copy className="h-4 w-4" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-text-primary">{t.copyShareLinkChannelTitle}</p>
-                              <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyShareLinkChannelDescription}</p>
-                              {internalSharePath ? (
-                                <p className="mt-2 max-w-[18rem] truncate text-[11px] leading-5 text-text-secondary/80">{internalSharePath}</p>
-                              ) : null}
-                            </div>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
-                            {copiedField === "share-link" ? tc.copied : tc.copy}
-                          </span>
-                        </button>
-                      ) : null}
-
-                      <button
-                        onClick={() => void handleCopyPrompt()}
-                        className="flex items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 rounded-xl bg-fuchsia-400/12 p-2 text-fuchsia-300">
-                            <Copy className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-text-primary">{t.copyPromptChannelTitle}</p>
-                            <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyPromptChannelDescription}</p>
-                          </div>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
-                          {copiedField === "prompt" ? tc.copied : t.copyPrompt}
                         </span>
                       </button>
                     </div>
