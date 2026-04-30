@@ -52,6 +52,7 @@ import {
   agentStateDir,
   agentWorkspaceDir,
   applyAgentIdentity,
+  ensureAttachedHermesProfileSkills,
   ensureAgentWorkspace,
 } from "./agent-workspace.js";
 import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
@@ -431,6 +432,9 @@ async function installLocalAgent(
       keyId: credentials.keyId,
       savedAt: credentials.savedAt,
     });
+    if (credentials.runtime === "hermes-agent" && credentials.hermesProfile) {
+      ensureAttachedHermesProfileSkills(hermesProfileHomeDir(credentials.hermesProfile));
+    }
   } catch (err) {
     try {
       unlinkSync(credentialsFile);

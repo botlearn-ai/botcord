@@ -18,6 +18,7 @@ import {
   agentStateDir,
   agentWorkspaceDir,
   applyAgentIdentity,
+  ensureAttachedHermesProfileSkills,
   ensureAgentCodexHome,
   ensureAgentHermesWorkspace,
   ensureAgentWorkspace,
@@ -148,6 +149,23 @@ describe("ensureAgentWorkspace", () => {
     const reseeded = readFileSync(skillFile, "utf8");
     expect(reseeded).not.toBe("stale content from a prior daemon version\n");
     expect(reseeded).toContain("name: botcord");
+  });
+
+  it("seeds bundled skills into an attached Hermes profile without creating private home state", () => {
+    const profileHome = path.join(tmpHome, ".hermes", "profiles", "coder");
+    mkdirSync(profileHome, { recursive: true });
+
+    const { hermesHome, hermesWorkspace } = ensureAgentHermesWorkspace("ag_hermes_attach", {
+      attached: true,
+    });
+    ensureAttachedHermesProfileSkills(profileHome);
+
+    expect(existsSync(path.join(profileHome, "skills", "botcord", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(profileHome, "skills", "botcord-user-guide", "SKILL.md"))).toBe(
+      true,
+    );
+    expect(existsSync(hermesWorkspace)).toBe(true);
+    expect(existsSync(hermesHome)).toBe(false);
   });
 
   it("does not overwrite a user-modified memory.md on a second call", () => {
