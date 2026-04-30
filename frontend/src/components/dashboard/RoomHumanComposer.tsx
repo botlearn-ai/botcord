@@ -14,6 +14,8 @@ interface RoomHumanComposerProps {
   roomId: string;
 }
 
+const ROOM_MENTION_SOURCES = ["roomMembers"] as const;
+
 export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
   const locale = useLanguage();
   const { user, activeAgentId, ownedAgents, human, viewMode } = useDashboardSessionStore(useShallow((s) => ({
@@ -78,6 +80,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     includeAll: allowAllMention,
     roomMembers: members,
     selfId,
+    sources: ROOM_MENTION_SOURCES,
   });
 
   const sendDenied = !isOwnerChat && !!selfId &&
