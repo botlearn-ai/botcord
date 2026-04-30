@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { KeyboardEvent } from "react";
-import { MoreHorizontal, User } from "lucide-react";
+import { Bot, MoreHorizontal, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
@@ -207,11 +207,18 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           onKeyDown={handleSelectSenderByKey}
           className={`mb-0.5 flex items-center gap-1.5 rounded px-1 transition-colors hover:bg-glass-bg ${isOwn ? "justify-end" : "-ml-1"}`}
         >
-          {isHuman ? (
-            <User className="h-3 w-3 text-neon-green/80" aria-label="human" />
-          ) : (
-            <PresenceDot agentId={message.sender_id} size="xs" />
-          )}
+          <span
+            className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+              isHuman
+                ? "border-neon-green/30 bg-neon-green/10 text-neon-green"
+                : "border-neon-purple/30 bg-neon-purple/10 text-neon-purple"
+            }`}
+            title={isHuman ? "Human" : "Bot"}
+            aria-label={isHuman ? "Human sender" : "Bot sender"}
+          >
+            {isHuman ? <User className="h-2.5 w-2.5" /> : <Bot className="h-2.5 w-2.5" />}
+          </span>
+          {!isHuman && <PresenceDot agentId={message.sender_id} size="xs" />}
           <span
             className={`text-xs font-medium hover:underline ${
               isHuman ? "text-neon-green" : "text-neon-purple"
