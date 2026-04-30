@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   agentHermesHomeDir,
   agentHermesWorkspaceDir,
+  ensureAttachedHermesProfileSkills,
   ensureAgentHermesWorkspace,
 } from "../../agent-workspace.js";
 import { buildCliEnv } from "../cli-resolver.js";
@@ -277,9 +278,10 @@ export class HermesAgentAdapter extends AcpRuntimeAdapter {
     };
     // Attach mode: BotCord agent shares a hermes profile (state.db /
     // sessions / skills / .env) with the user's command-line `hermes`. In
-    // this mode we DO NOT seed a private home — the profile is wholly owned
-    // by the user, and AGENTS.md is written under the per-agent
-    // hermes-workspace cwd (NOT into the profile root) by `prepareTurn`.
+    // this mode we DO NOT seed a private home — AGENTS.md is written under
+    // the per-agent hermes-workspace cwd (NOT into the profile root) by
+    // `prepareTurn`, while bundled BotCord skills are installed into the
+    // attached profile's `skills/` directory so hermes can discover them.
     if (opts.hermesProfile) {
       env.HERMES_HOME = hermesProfileHomeDir(opts.hermesProfile);
     } else if (opts.accountId) {
@@ -304,6 +306,9 @@ export class HermesAgentAdapter extends AcpRuntimeAdapter {
     const { hermesWorkspace } = ensureAgentHermesWorkspace(opts.accountId, {
       attached: !!opts.hermesProfile,
     });
+    if (opts.hermesProfile) {
+      ensureAttachedHermesProfileSkills(hermesProfileHomeDir(opts.hermesProfile));
+    }
     const target = path.join(hermesWorkspace, "AGENTS.md");
     const tmp = path.join(hermesWorkspace, `.AGENTS.md.${process.pid}.tmp`);
     mkdirSync(hermesWorkspace, { recursive: true, mode: 0o700 });

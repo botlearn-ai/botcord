@@ -1527,6 +1527,11 @@ describe("provision_agent hermes profile attach", () => {
       >;
       expect(saved.hermesProfile).toBe("coder");
       expect(saved.runtime).toBe("hermes-agent");
+      expect(
+        fs.existsSync(
+          nodePath.join(tmp, ".hermes", "profiles", "coder", "skills", "botcord", "SKILL.md"),
+        ),
+      ).toBe(true);
     });
   });
 

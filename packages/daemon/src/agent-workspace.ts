@@ -370,8 +370,8 @@ export function ensureAgentHermesWorkspace(
   // Attach mode: HERMES_HOME points at the user's `~/.hermes/profiles/<n>/`
   // so we MUST NOT touch the per-agent isolated home. The cwd
   // (`hermesWorkspace`) is still ours and `prepareTurn` writes AGENTS.md
-  // there — that's the only thing the daemon is allowed to author when
-  // attached to a user-owned profile.
+  // there. Profile-owned skill seeding is handled separately by
+  // `ensureAttachedHermesProfileSkills`.
   if (opts.attached) {
     return { hermesHome, hermesWorkspace };
   }
@@ -460,6 +460,17 @@ function seedCodexSkills(codexHome: string): void {
  */
 function seedHermesAgentSkills(hermesHome: string): void {
   copyBundledSkills(path.join(hermesHome, "skills"));
+}
+
+/**
+ * Seed BotCord's bundled Hermes skills into a user-owned Hermes profile used
+ * by attach mode. Unlike `ensureAgentHermesWorkspace({ attached: true })`,
+ * this intentionally writes only the managed `botcord*` skill directories
+ * under the profile's `skills/` directory; it does not touch `.env`,
+ * `config.yaml`, sessions, or any user-authored skills.
+ */
+export function ensureAttachedHermesProfileSkills(profileHome: string): void {
+  seedHermesAgentSkills(profileHome);
 }
 
 /**
