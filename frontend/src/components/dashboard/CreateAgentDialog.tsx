@@ -137,6 +137,19 @@ export default function CreateAgentDialog({
     () => selectedDaemon?.runtimes?.find((r) => r.id === selectedRuntimeId) ?? null,
     [selectedDaemon, selectedRuntimeId],
   );
+  const selectedOpenclawEndpoint = useMemo(
+    () =>
+      selectedRuntime?.endpoints?.find((e) => e.name === selectedGateway) ??
+      null,
+    [selectedRuntime, selectedGateway],
+  );
+  const selectableOpenclawAgents = useMemo(
+    () =>
+      (selectedOpenclawEndpoint?.agents ?? []).filter(
+        (a) => !a.botcordBinding?.agentId,
+      ),
+    [selectedOpenclawEndpoint],
+  );
   useEffect(() => {
     if (selectedRuntimeId !== "openclaw-acp") {
       setSelectedGateway(null);
@@ -148,6 +161,22 @@ export default function CreateAgentDialog({
     setSelectedGateway(reachable[0]?.name ?? null);
     setSelectedOpenclawAgent(null);
   }, [selectedRuntime, selectedRuntimeId, selectedGateway]);
+
+  useEffect(() => {
+    if (selectedRuntimeId !== "openclaw-acp") return;
+    const agents = selectedOpenclawEndpoint?.agents ?? [];
+    if (agents.length === 0) return;
+    const stillSelectable =
+      selectedOpenclawAgent &&
+      selectableOpenclawAgents.some((a) => a.id === selectedOpenclawAgent);
+    if (stillSelectable) return;
+    setSelectedOpenclawAgent(selectableOpenclawAgents[0]?.id ?? null);
+  }, [
+    selectedRuntimeId,
+    selectedOpenclawEndpoint,
+    selectedOpenclawAgent,
+    selectableOpenclawAgents,
+  ]);
 
   // Auto-pick the first available hermes profile when the user lands on
   // hermes-agent. Prefer the active profile, falling back to the first
@@ -256,10 +285,13 @@ export default function CreateAgentDialog({
 
   const needsOpenclawGateway = selectedRuntimeId === "openclaw-acp";
   const needsHermesProfile = selectedRuntimeId === "hermes-agent";
+  const needsOpenclawAgent =
+    needsOpenclawGateway && (selectedOpenclawEndpoint?.agents?.length ?? 0) > 0;
   const canSubmit =
     !!selectedDaemonId &&
     !!selectedRuntimeId &&
     (!needsOpenclawGateway || !!selectedGateway) &&
+    (!needsOpenclawAgent || !!selectedOpenclawAgent) &&
     (!needsHermesProfile || !!selectedHermesProfile) &&
     !submitting;
 
@@ -615,6 +647,8 @@ function OpenclawGatewayPicker({
   const reachable = endpoints.filter((e) => e.reachable);
   const current = endpoints.find((e) => e.name === selectedGateway) ?? null;
   const agents = current?.agents ?? [];
+  const availableAgents = agents.filter((a) => !a.botcordBinding?.agentId);
+  const boundCount = agents.length - availableAgents.length;
   if (endpoints.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-3 text-xs text-text-secondary">
@@ -666,13 +700,17 @@ function OpenclawGatewayPicker({
           />
         ) : (
           <select
-            disabled={disabled || !selectedGateway}
+            disabled={disabled || !selectedGateway || availableAgents.length === 0}
             value={selectedAgent ?? ""}
             onChange={(e) => onSelectAgent(e.target.value || null)}
             className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
           >
-            <option value="">(use gateway defaultAgent)</option>
-            {agents.map((a) => {
+            <option value="" disabled>
+              {availableAgents.length === 0
+                ? "No unbound profiles available"
+                : "Select an agent profile"}
+            </option>
+            {availableAgents.map((a) => {
               const label =
                 (a.name && a.name !== a.id ? `${a.name} (${a.id})` : a.id) +
                 (a.model?.name ? ` — ${a.model.name}` : "");
@@ -683,6 +721,11 @@ function OpenclawGatewayPicker({
               );
             })}
           </select>
+        )}
+        {boundCount > 0 && (
+          <p className="mt-1 text-[11px] text-text-tertiary">
+            {boundCount} profile{boundCount === 1 ? "" : "s"} already bound to BotCord.
+          </p>
         )}
       </div>
     </div>
