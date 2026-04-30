@@ -43,6 +43,7 @@ const DEFAULT_INITIAL_BACKOFF = 1000;
 const DEFAULT_MAX_BACKOFF = 60_000;
 const DEFAULT_FACTOR = 2;
 const LONG_RUN_THRESHOLD_MS = 30_000;
+const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
 
 /** Supervises channel adapters: lifecycle, status tracking, and crash restart with backoff. */
 export class ChannelManager {
@@ -266,19 +267,30 @@ export class ChannelManager {
     const ranForMs = Date.now() - entry.currentStartAt;
     const channelId = entry.adapter.id;
     const crashed = err !== null && err !== undefined;
+    const permanentStop =
+      typeof err === "object" &&
+      err !== null &&
+      (err as { code?: unknown }).code === CHANNEL_PERMANENT_STOP;
 
     entry.snapshot = {
       ...entry.snapshot,
       running: false,
       lastStopAt: Date.now(),
-      lastError: crashed
+      lastError: crashed && !permanentStop
         ? err instanceof Error
           ? err.message
           : String(err)
         : entry.snapshot.lastError ?? null,
     };
 
-    if (crashed) {
+    if (permanentStop) {
+      this.log.info("channel stopped permanently", {
+        channel: channelId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      entry.state = "idle";
+      entry.stopRequested = true;
+    } else if (crashed) {
       this.log.warn("channel crashed", {
         channel: channelId,
         error: err instanceof Error ? err.message : String(err),

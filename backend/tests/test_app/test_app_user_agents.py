@@ -29,10 +29,9 @@ from hub.models import (
     Agent,
     AgentSubscription,
     Base,
+    DaemonAgentCleanup,
     KeyState,
     MessagePolicy,
-    OpenclawAgentCleanup,
-    OpenclawHostInstance,
     Role,
     SigningKey,
     SubscriptionProduct,
@@ -286,19 +285,40 @@ async def test_unbind_agent_binding(client: AsyncClient, db_session: AsyncSessio
 
 
 @pytest.mark.asyncio
-async def test_unbind_openclaw_agent_queues_local_cleanup(
-    client: AsyncClient, db_session: AsyncSession, seed_user: dict
+async def test_unbind_agent_revokes_bound_daemon_agent(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine,
+    seed_user: dict,
+    monkeypatch,
 ):
-    """OpenClaw-backed unbind detaches the host relation and queues local cleanup."""
-    host = OpenclawHostInstance(
-        id="oc_cleanup001",
-        owner_user_id=seed_user["user_id"],
-        host_pubkey="ed25519:test-cleanup",
-    )
-    db_session.add(host)
-    seed_user["agent1"].openclaw_host_id = host.id
-    seed_user["agent1"].hosting_kind = "plugin"
+    """Unbinding a daemon-managed agent asks the daemon to remove local state."""
+    seed_user["agent1"].daemon_instance_id = "di_test"
     await db_session.commit()
+
+    import asyncio as _asyncio
+    import app.routers.users as users_mod
+    import hub.routers.daemon_control as daemon_mod
+
+    cleanup_factory = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    monkeypatch.setattr(daemon_mod, "async_session", cleanup_factory)
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: True)
+    monkeypatch.setattr(daemon_mod, "is_daemon_online", lambda _id: True)
+
+    captured: dict = {}
+    sent = _asyncio.Event()
+
+    async def fake_send(daemon_id, type_, params, timeout_ms=None):
+        captured["daemon_id"] = daemon_id
+        captured["type"] = type_
+        captured["params"] = params
+        sent.set()
+        return {"id": "x", "ok": True}
+
+    monkeypatch.setattr(daemon_mod, "send_control_frame", fake_send)
 
     resp = await client.delete(
         "/api/users/me/agents/ag_agent001/binding",
@@ -307,27 +327,125 @@ async def test_unbind_openclaw_agent_queues_local_cleanup(
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["local_cleanup_queued"] is True
-    assert body["openclaw_host_id"] == host.id
+    assert body["agent_id"] == "ag_agent001"
+    assert body["daemon_instance_id"] == "di_test"
+    assert body["daemon_cleanup_queued"] is True
+    await _asyncio.wait_for(sent.wait(), timeout=2.0)
+    assert captured["daemon_id"] == "di_test"
+    assert captured["type"] == "revoke_agent"
+    assert captured["params"] == {
+        "agentId": "ag_agent001",
+        "deleteCredentials": True,
+        "deleteState": True,
+        "deleteWorkspace": False,
+    }
 
     agent = (
         await db_session.execute(select(Agent).where(Agent.agent_id == "ag_agent001"))
     ).scalar_one()
     assert agent.user_id is None
-    assert agent.openclaw_host_id is None
+    assert agent.daemon_instance_id is None
 
     cleanup = (
         await db_session.execute(
-            select(OpenclawAgentCleanup).where(
-                OpenclawAgentCleanup.host_id == host.id,
-                OpenclawAgentCleanup.agent_id == "ag_agent001",
+            select(DaemonAgentCleanup).where(
+                DaemonAgentCleanup.daemon_instance_id == "di_test",
+                DaemonAgentCleanup.agent_id == "ag_agent001",
+            )
+        )
+    ).scalar_one()
+    assert cleanup.status == "succeeded"
+    assert cleanup.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_skips_revoke_when_daemon_offline(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine,
+    seed_user: dict,
+    monkeypatch,
+):
+    seed_user["agent1"].daemon_instance_id = "di_offline"
+    await db_session.commit()
+
+    import asyncio as _asyncio
+    import app.routers.users as users_mod
+    import hub.routers.daemon_control as daemon_mod
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: False)
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["daemon_instance_id"] == "di_offline"
+    assert body["daemon_cleanup_queued"] is True
+
+    cleanup = (
+        await db_session.execute(
+            select(DaemonAgentCleanup).where(
+                DaemonAgentCleanup.daemon_instance_id == "di_offline",
+                DaemonAgentCleanup.agent_id == "ag_agent001",
             )
         )
     ).scalar_one()
     assert cleanup.status == "pending"
-    assert cleanup.delete_credentials is True
-    assert cleanup.delete_state is True
-    assert cleanup.delete_workspace is False
+    assert cleanup.attempts == 0
+
+    cleanup_factory = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    monkeypatch.setattr(daemon_mod, "async_session", cleanup_factory)
+    sent = _asyncio.Event()
+
+    async def fake_send(daemon_id, type_, params, timeout_ms=None):
+        assert daemon_id == "di_offline"
+        assert type_ == "revoke_agent"
+        assert params["agentId"] == "ag_agent001"
+        sent.set()
+        return {"id": "x", "ok": True}
+
+    monkeypatch.setattr(daemon_mod, "send_control_frame", fake_send)
+    await daemon_mod.process_pending_daemon_cleanups("di_offline")
+    await _asyncio.wait_for(sent.wait(), timeout=2.0)
+
+    await db_session.refresh(cleanup)
+    assert cleanup.status == "succeeded"
+    assert cleanup.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_pending_daemon_cleanup_cancelled_after_rebind(
+    db_session: AsyncSession, db_engine, seed_user: dict, monkeypatch
+):
+    cleanup = DaemonAgentCleanup(
+        daemon_instance_id="di_old",
+        agent_id="ag_agent001",
+    )
+    db_session.add(cleanup)
+    await db_session.commit()
+
+    import hub.routers.daemon_control as daemon_mod
+    from fastapi import HTTPException
+
+    cleanup_factory = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    monkeypatch.setattr(daemon_mod, "async_session", cleanup_factory)
+
+    async def boom(*_a, **_kw):  # pragma: no cover - should never run
+        raise HTTPException(500, detail="late cleanup should be cancelled")
+
+    monkeypatch.setattr(daemon_mod, "send_control_frame", boom)
+    await daemon_mod.process_pending_daemon_cleanups("di_old")
+
+    await db_session.refresh(cleanup)
+    assert cleanup.status == "cancelled"
+    assert cleanup.last_error == "agent rebound before cleanup"
 
 
 @pytest.mark.asyncio

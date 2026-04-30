@@ -60,7 +60,7 @@ from hub.id_generators import (
     generate_key_id,
     generate_openclaw_host_id_from_pubkey,
 )
-from hub.models import Agent, OpenclawAgentCleanup, OpenclawHostInstance, ShortCode, SigningKey
+from hub.models import Agent, OpenclawHostInstance, ShortCode, SigningKey
 from hub.enums import KeyState
 from hub.routers.daemon_control import _build_signed_frame
 from hub.validators import parse_pubkey
@@ -88,14 +88,8 @@ def _generate_refresh_token() -> str:
     return "ort_" + secrets.token_urlsafe(48)
 
 
-def _create_host_access_token(
-    host_instance_id: str,
-    owner_user_id: str,
-    *,
-    cleanup_only: bool = False,
-) -> tuple[str, int]:
-    expires_in = 600 if cleanup_only else OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS
-    expires_at = _now() + datetime.timedelta(seconds=expires_in)
+def _create_host_access_token(host_instance_id: str, owner_user_id: str) -> tuple[str, int]:
+    expires_at = _now() + datetime.timedelta(seconds=OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS)
     payload = {
         "sub": host_instance_id,
         "user_id": str(owner_user_id),
@@ -104,10 +98,8 @@ def _create_host_access_token(
         "exp": expires_at,
         "iss": "botcord-openclaw",
     }
-    if cleanup_only:
-        payload["cleanup_only"] = True
     token = pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    return token, expires_in
+    return token, OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS
 
 
 def _verify_host_access_token(token: str) -> dict[str, Any]:
@@ -142,35 +134,6 @@ def _issue_host_token_bundle(
         "refresh_expires_at": int(refresh_expires_at.timestamp()),
     }
     return bundle, refresh_token
-
-
-async def _has_pending_openclaw_cleanup(
-    db: AsyncSession,
-    host_instance_id: str,
-) -> bool:
-    pending = (
-        await db.execute(
-            select(OpenclawAgentCleanup.id)
-            .where(
-                OpenclawAgentCleanup.host_id == host_instance_id,
-                OpenclawAgentCleanup.status == "pending",
-            )
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    return pending is not None
-
-
-async def _clear_revoked_host_refresh_if_cleanup_done(host_instance_id: str) -> None:
-    async with async_session() as db:
-        instance = await db.get(OpenclawHostInstance, host_instance_id)
-        if instance is None or instance.revoked_at is None:
-            return
-        if await _has_pending_openclaw_cleanup(db, host_instance_id):
-            return
-        instance.refresh_token_hash = None
-        instance.refresh_token_expires_at = None
-        await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -259,72 +222,6 @@ async def send_host_control_frame(
             detail={"code": "host_disconnected", "host_message": str(exc)},
         )
     return ack
-
-
-def _cleanup_error_message(ack: dict[str, Any]) -> str:
-    err = ack.get("error")
-    if isinstance(err, dict):
-        message = err.get("message") or err.get("code")
-        if isinstance(message, str) and message:
-            return message[:1000]
-    return "host cleanup failed"
-
-
-async def process_pending_openclaw_cleanups(host_instance_id: str) -> None:
-    """Best-effort drain of pending local cleanup jobs for one OpenClaw host."""
-    async with async_session() as db:
-        rows = (
-            await db.execute(
-                select(OpenclawAgentCleanup)
-                .where(
-                    OpenclawAgentCleanup.host_id == host_instance_id,
-                    OpenclawAgentCleanup.status == "pending",
-                )
-                .order_by(OpenclawAgentCleanup.created_at, OpenclawAgentCleanup.id)
-                .limit(50)
-            )
-        ).scalars().all()
-
-    for row in rows:
-        now = _now()
-        try:
-            ack = await send_host_control_frame(
-                host_instance_id,
-                "revoke_agent",
-                {
-                    "agentId": row.agent_id,
-                    "deleteCredentials": row.delete_credentials,
-                    "deleteState": row.delete_state,
-                    "deleteWorkspace": row.delete_workspace,
-                },
-                timeout_ms=10000,
-            )
-        except HTTPException as exc:
-            # Offline hosts keep the job pending for the next reconnect.
-            if exc.status_code == 409:
-                return
-            async with async_session() as db:
-                current = await db.get(OpenclawAgentCleanup, row.id)
-                if current is not None and current.status == "pending":
-                    current.attempts += 1
-                    current.last_error = str(exc.detail)[:1000]
-                    await db.commit()
-            continue
-
-        async with async_session() as db:
-            current = await db.get(OpenclawAgentCleanup, row.id)
-            if current is None or current.status != "pending":
-                continue
-            current.attempts += 1
-            if isinstance(ack, dict) and ack.get("ok"):
-                current.status = "succeeded"
-                current.completed_at = now
-                current.last_error = None
-            else:
-                current.last_error = _cleanup_error_message(ack if isinstance(ack, dict) else {})
-            await db.commit()
-
-    await _clear_revoked_host_refresh_if_cleanup_done(host_instance_id)
 
 
 # ---------------------------------------------------------------------------
@@ -590,29 +487,13 @@ async def openclaw_refresh_token(
     instance = result.scalar_one_or_none()
     if instance is None:
         raise HTTPException(status_code=401, detail="invalid_refresh_token")
+    if instance.revoked_at is not None:
+        raise HTTPException(status_code=401, detail="host_revoked")
     expires_at = instance.refresh_token_expires_at
     if expires_at is not None and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
     if expires_at is not None and expires_at < _now():
         raise HTTPException(status_code=401, detail="invalid_refresh_token")
-
-    if instance.revoked_at is not None:
-        if not await _has_pending_openclaw_cleanup(db, instance.id):
-            raise HTTPException(status_code=401, detail="host_revoked")
-        access_token, expires_in = _create_host_access_token(
-            instance.id,
-            str(instance.owner_user_id),
-            cleanup_only=True,
-        )
-        access_expires_at = _now() + datetime.timedelta(seconds=expires_in)
-        instance.last_seen_at = _now()
-        await db.commit()
-        return {
-            "host_instance_id": instance.id,
-            "access_token": access_token,
-            "access_expires_at": int(access_expires_at.timestamp()),
-            "cleanup_only": True,
-        }
 
     bundle, new_refresh = _issue_host_token_bundle(instance)
     instance.refresh_token_hash = _hash_refresh_token(new_refresh)
@@ -872,12 +753,9 @@ async def openclaw_control_ws(ws: WebSocket) -> None:
         if instance is None:
             await ws.close(code=4401, reason="instance not found")
             return
-        cleanup_only = bool(claims.get("cleanup_only"))
         if instance.revoked_at is not None:
-            if not await _has_pending_openclaw_cleanup(db, host_instance_id):
-                await ws.close(code=4403, reason="instance revoked")
-                return
-            cleanup_only = True
+            await ws.close(code=4403, reason="instance revoked")
+            return
         instance.last_seen_at = _now()
         await db.commit()
 
@@ -904,16 +782,6 @@ async def openclaw_control_ws(ws: WebSocket) -> None:
         await ws.send_text(json.dumps(hello))
     except Exception as exc:  # noqa: BLE001
         logger.warning("openclaw hello send failed: %s", exc)
-
-    async def _drain_pending_cleanup() -> None:
-        await process_pending_openclaw_cleanups(host_instance_id)
-        if cleanup_only:
-            try:
-                await ws.close(code=4403, reason="host revoked")
-            except Exception:
-                pass
-
-    asyncio.create_task(_drain_pending_cleanup())
 
     try:
         while True:

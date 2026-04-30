@@ -25,7 +25,6 @@ from sqlalchemy.pool import StaticPool
 from hub.models import (
     Agent,
     Base,
-    OpenclawAgentCleanup,
     OpenclawHostInstance,
     Role,
     User,
@@ -286,7 +285,6 @@ async def test_openclaw_host_revoke_unbinds_all_agents_and_promotes_one_default(
     issued = await _issue_install(client, fresh_user["token"], name="A")
     claim_a = (await _claim(client, issued["bind_code"], issued["nonce"])).json()
     host_id = claim_a["host"]["host_instance_id"]
-    host_refresh_token = claim_a["host"]["refresh_token"]
     agent_a_id = claim_a["agent"]["id"]
 
     # Manually attach a second agent (B) to the same host so we can verify
@@ -348,26 +346,7 @@ async def test_openclaw_host_revoke_unbinds_all_agents_and_promotes_one_default(
         )
     ).scalar_one()
     assert instance.revoked_at is not None
-    assert instance.refresh_token_hash is not None
-
-    cleanup_rows = (
-        await db_session.execute(
-            select(OpenclawAgentCleanup).where(OpenclawAgentCleanup.host_id == host_id)
-        )
-    ).scalars().all()
-    assert {row.agent_id for row in cleanup_rows} == {agent_a_id, agent_b.agent_id}
-    assert all(row.status == "pending" for row in cleanup_rows)
-
-    refresh_resp = await client.post(
-        "/openclaw/auth/refresh",
-        json={"refresh_token": host_refresh_token},
-    )
-    assert refresh_resp.status_code == 200
-    refresh_body = refresh_resp.json()
-    assert refresh_body["host_instance_id"] == host_id
-    assert refresh_body["cleanup_only"] is True
-    assert "access_token" in refresh_body
-    assert "refresh_token" not in refresh_body
+    assert instance.refresh_token_hash is None
 
 
 @pytest.mark.asyncio

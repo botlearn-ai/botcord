@@ -6,8 +6,6 @@ import {
   handleControlFrame,
   patchOpenclawConfigForAgent,
   provisionAgentLocal,
-  removeOpenclawConfigForAgent,
-  revokeAgentLocal,
 } from "../host-control.js";
 
 const fakeHost = {
@@ -194,71 +192,6 @@ describe("patchOpenclawConfigForAgent", () => {
   });
 });
 
-describe("revokeAgentLocal", () => {
-  it("removes the OpenClaw account plus credentials and state, preserving workspace", () => {
-    const agentId = "ag_cleanup";
-    const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
-    const credPath = join(tmpHome, ".botcord", "credentials", `${agentId}.json`);
-    const stateDir = join(tmpHome, ".botcord", "agents", agentId, "state");
-    const workspaceDir = join(tmpHome, ".botcord", "agents", agentId, "workspace");
-    mkdirSync(join(tmpHome, ".openclaw"), { recursive: true });
-    mkdirSync(join(tmpHome, ".botcord", "credentials"), { recursive: true });
-    mkdirSync(stateDir, { recursive: true });
-    mkdirSync(workspaceDir, { recursive: true });
-    writeFileSync(credPath, "{}");
-    writeFileSync(join(stateDir, "runtime.json"), "{}");
-    writeFileSync(join(workspaceDir, "memory.md"), "# keep\n");
-    writeFileSync(
-      cfgPath,
-      JSON.stringify({
-        channels: {
-          botcord: {
-            enabled: true,
-            accounts: {
-              [agentId]: { enabled: true, credentialsFile: credPath },
-            },
-          },
-        },
-      }),
-    );
-
-    const result = revokeAgentLocal({ agentId });
-
-    expect(result.config_removed).toBe(true);
-    expect(result.credentials_deleted).toBe(true);
-    expect(result.state_deleted).toBe(true);
-    expect(result.workspace_deleted).toBe(false);
-    expect(() => readFileSync(credPath, "utf8")).toThrow();
-    expect(() => readFileSync(join(stateDir, "runtime.json"), "utf8")).toThrow();
-    expect(readFileSync(join(workspaceDir, "memory.md"), "utf8")).toContain("# keep");
-    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
-    expect(cfg.channels.botcord.accounts).toBeUndefined();
-  });
-
-  it("can remove a legacy single-account config entry", () => {
-    const agentId = "ag_legacy";
-    const cfgPath = join(tmpHome, ".openclaw", "openclaw.json");
-    const credPath = join(tmpHome, ".botcord", "credentials", `${agentId}.json`);
-    mkdirSync(join(tmpHome, ".openclaw"), { recursive: true });
-    writeFileSync(
-      cfgPath,
-      JSON.stringify({
-        channels: { botcord: { enabled: true, credentialsFile: credPath } },
-      }),
-    );
-
-    const result = removeOpenclawConfigForAgent({
-      agentId,
-      credentialsFile: credPath,
-      configPath: cfgPath,
-    });
-
-    expect(result).toEqual({ removed: true, reason: "legacy_credentials" });
-    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
-    expect(cfg.channels.botcord.credentialsFile).toBeUndefined();
-  });
-});
-
 describe("handleControlFrame", () => {
   const baseCtx = {
     host: fakeHost,
@@ -282,32 +215,6 @@ describe("handleControlFrame", () => {
       ok: false,
       error: { code: "bad_params", message: "provision_id and nonce required" },
     });
-  });
-
-  it("handles revoke_agent by cleaning local files", async () => {
-    const agentId = "ag_frame";
-    const credPath = join(tmpHome, ".botcord", "credentials", `${agentId}.json`);
-    mkdirSync(join(tmpHome, ".botcord", "credentials"), { recursive: true });
-    mkdirSync(join(tmpHome, ".openclaw"), { recursive: true });
-    writeFileSync(credPath, "{}");
-    writeFileSync(
-      join(tmpHome, ".openclaw", "openclaw.json"),
-      JSON.stringify({
-        channels: {
-          botcord: {
-            accounts: { [agentId]: { credentialsFile: credPath } },
-          },
-        },
-      }),
-    );
-
-    const ack = await handleControlFrame(
-      { id: "5", type: "revoke_agent", params: { agentId } },
-      baseCtx,
-    );
-
-    expect(ack?.ok).toBe(true);
-    expect(() => readFileSync(credPath, "utf8")).toThrow();
   });
 
   it("returns unknown_type for unrecognised frames", async () => {

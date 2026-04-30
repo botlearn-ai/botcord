@@ -270,6 +270,32 @@ describe("ChannelManager", () => {
     await mgr.stopAll();
   });
 
+  it("does not restart after permanent channel stop", async () => {
+    const c1 = new FakeChannel("c1");
+    const log = makeLogger();
+    const mgr = new ChannelManager({
+      config: makeConfig(["c1"]),
+      channels: [c1],
+      log,
+      emit: async () => {},
+      backoffMs: { initial: 1000, max: 60_000, factor: 2 },
+    });
+    await mgr.startAll();
+    await flush();
+    const err = new Error("agent not claimed; local binding revoked") as Error & {
+      code?: string;
+    };
+    err.code = "channel_permanent_stop";
+    c1.latest().reject(err);
+    await flush();
+    expect(mgr.status()["c1"].restartPending).toBeFalsy();
+    expect(c1.starts).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    await flush();
+    expect(c1.starts).toHaveLength(1);
+    expect(log.infos.some((entry) => entry[0] === "channel stopped permanently")).toBe(true);
+  });
+
   it("restarts when channel resolves (graceful) without stopAll", async () => {
     const c1 = new FakeChannel("c1");
     const mgr = new ChannelManager({
