@@ -31,6 +31,8 @@ from hub.models import (
     Base,
     KeyState,
     MessagePolicy,
+    OpenclawAgentCleanup,
+    OpenclawHostInstance,
     Role,
     SigningKey,
     SubscriptionProduct,
@@ -281,6 +283,51 @@ async def test_unbind_agent_binding(client: AsyncClient, db_session: AsyncSessio
         )
     )
     assert role_result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_unbind_openclaw_agent_queues_local_cleanup(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict
+):
+    """OpenClaw-backed unbind detaches the host relation and queues local cleanup."""
+    host = OpenclawHostInstance(
+        id="oc_cleanup001",
+        owner_user_id=seed_user["user_id"],
+        host_pubkey="ed25519:test-cleanup",
+    )
+    db_session.add(host)
+    seed_user["agent1"].openclaw_host_id = host.id
+    seed_user["agent1"].hosting_kind = "plugin"
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["local_cleanup_queued"] is True
+    assert body["openclaw_host_id"] == host.id
+
+    agent = (
+        await db_session.execute(select(Agent).where(Agent.agent_id == "ag_agent001"))
+    ).scalar_one()
+    assert agent.user_id is None
+    assert agent.openclaw_host_id is None
+
+    cleanup = (
+        await db_session.execute(
+            select(OpenclawAgentCleanup).where(
+                OpenclawAgentCleanup.host_id == host.id,
+                OpenclawAgentCleanup.agent_id == "ag_agent001",
+            )
+        )
+    ).scalar_one()
+    assert cleanup.status == "pending"
+    assert cleanup.delete_credentials is True
+    assert cleanup.delete_state is True
+    assert cleanup.delete_workspace is False
 
 
 @pytest.mark.asyncio

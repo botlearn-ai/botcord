@@ -21,7 +21,15 @@
  * a follow-up; see TODO at bottom of the file).
  */
 import WebSocket from "ws";
-import { writeFileSync, mkdirSync, readFileSync, chmodSync, existsSync } from "node:fs";
+import {
+  writeFileSync,
+  mkdirSync,
+  readFileSync,
+  chmodSync,
+  existsSync,
+  rmSync,
+  unlinkSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createPublicKey, verify as nodeVerify } from "node:crypto";
@@ -87,6 +95,15 @@ function hostFile(): string {
 }
 function credDir(): string {
   return join(botcordHome(), ".botcord", "credentials");
+}
+function defaultCredentialsFile(agentId: string): string {
+  return join(credDir(), `${agentId}.json`);
+}
+function agentHomeDir(agentId: string): string {
+  return join(botcordHome(), ".botcord", "agents", agentId);
+}
+function agentStateDir(agentId: string): string {
+  return join(agentHomeDir(agentId), "state");
 }
 
 interface HostFile {
@@ -297,6 +314,128 @@ export function patchOpenclawConfigForAgent(args: {
   }
 }
 
+export type ConfigRemoveResult =
+  | { removed: true; reason: "account" | "legacy_credentials" }
+  | { removed: false; reason: "not_found" | "io_error"; error?: string };
+
+export function removeOpenclawConfigForAgent(args: {
+  agentId: string;
+  credentialsFile?: string;
+  configPath?: string;
+}): ConfigRemoveResult {
+  const path =
+    args.configPath ??
+    process.env.OPENCLAW_CONFIG_PATH ??
+    join(botcordHome(), ".openclaw", "openclaw.json");
+  if (!existsSync(path)) return { removed: false, reason: "not_found" };
+
+  let cfg: Record<string, any>;
+  try {
+    cfg = JSON.parse(readFileSync(path, "utf8"));
+  } catch (err) {
+    return {
+      removed: false,
+      reason: "io_error",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const botcord = cfg?.channels?.botcord;
+  if (!botcord || typeof botcord !== "object") {
+    return { removed: false, reason: "not_found" };
+  }
+
+  const credentialsFile = args.credentialsFile ?? defaultCredentialsFile(args.agentId);
+  let removed: ConfigRemoveResult | null = null;
+  if (botcord.accounts && typeof botcord.accounts === "object") {
+    const accounts = botcord.accounts as Record<string, any>;
+    if (accounts[args.agentId]) {
+      delete accounts[args.agentId];
+      removed = { removed: true, reason: "account" };
+      if (Object.keys(accounts).length === 0) {
+        delete botcord.accounts;
+      }
+    }
+  }
+
+  if (
+    !removed &&
+    typeof botcord.credentialsFile === "string" &&
+    botcord.credentialsFile === credentialsFile
+  ) {
+    delete botcord.credentialsFile;
+    removed = { removed: true, reason: "legacy_credentials" };
+  }
+
+  if (!removed) return { removed: false, reason: "not_found" };
+
+  try {
+    writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n", { encoding: "utf8" });
+    return removed;
+  } catch (err) {
+    return {
+      removed: false,
+      reason: "io_error",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export function revokeAgentLocal(params: {
+  agentId: string;
+  deleteCredentials?: boolean;
+  deleteState?: boolean;
+  deleteWorkspace?: boolean;
+}): {
+  agent_id: string;
+  config_removed: boolean;
+  config_reason: string;
+  credentials_deleted: boolean;
+  state_deleted: boolean;
+  workspace_deleted: boolean;
+} {
+  const deleteCredentials = params.deleteCredentials !== false;
+  const deleteState = params.deleteState ?? deleteCredentials;
+  const deleteWorkspace = params.deleteWorkspace === true;
+  const credentialsFile = defaultCredentialsFile(params.agentId);
+  const config = removeOpenclawConfigForAgent({
+    agentId: params.agentId,
+    credentialsFile,
+  });
+
+  let credentialsDeleted = false;
+  if (deleteCredentials && existsSync(credentialsFile)) {
+    unlinkSync(credentialsFile);
+    credentialsDeleted = true;
+  }
+
+  let stateDeleted = false;
+  let workspaceDeleted = false;
+  if (deleteWorkspace) {
+    const home = agentHomeDir(params.agentId);
+    if (existsSync(home)) {
+      rmSync(home, { recursive: true, force: true });
+      stateDeleted = true;
+      workspaceDeleted = true;
+    }
+  } else if (deleteState) {
+    const state = agentStateDir(params.agentId);
+    if (existsSync(state)) {
+      rmSync(state, { recursive: true, force: true });
+      stateDeleted = true;
+    }
+  }
+
+  return {
+    agent_id: params.agentId,
+    config_removed: config.removed,
+    config_reason: config.reason,
+    credentials_deleted: credentialsDeleted,
+    state_deleted: stateDeleted,
+    workspace_deleted: workspaceDeleted,
+  };
+}
+
 // ── Frame signature verification ────────────────────────────────────────────
 
 function controlSigningInput(frame: ControlFrame): string {
@@ -332,16 +471,17 @@ async function refreshHostToken(host: HostFile): Promise<HostFile> {
   const body = (await resp.json()) as {
     host_instance_id: string;
     access_token: string;
-    refresh_token: string;
+    refresh_token?: string;
     access_expires_at: number;
-    refresh_expires_at: number;
+    refresh_expires_at?: number;
+    cleanup_only?: boolean;
   };
   const next: HostFile = {
     ...host,
     accessToken: body.access_token,
-    refreshToken: body.refresh_token,
+    refreshToken: body.refresh_token ?? host.refreshToken,
     accessExpiresAt: body.access_expires_at,
-    refreshExpiresAt: body.refresh_expires_at,
+    refreshExpiresAt: body.refresh_expires_at ?? host.refreshExpiresAt,
     savedAt: new Date().toISOString(),
   };
   writeHostFile(next);
@@ -494,9 +634,32 @@ export async function handleControlFrame(
       }
     }
     case "revoke_agent": {
-      // Best-effort: agent credentials cleanup is left to the user /
-      // dashboard for now; the host just acks so Hub doesn't retry.
-      return { ok: true };
+      const params = (frame.params ?? {}) as {
+        agentId?: string;
+        deleteCredentials?: boolean;
+        deleteState?: boolean;
+        deleteWorkspace?: boolean;
+      };
+      if (!params.agentId) {
+        return {
+          ok: false,
+          error: { code: "bad_params", message: "agentId required" },
+        };
+      }
+      try {
+        const result = revokeAgentLocal({
+          agentId: params.agentId,
+          deleteCredentials: params.deleteCredentials,
+          deleteState: params.deleteState,
+          deleteWorkspace: params.deleteWorkspace,
+        });
+        ctx.log("info", `revoked local agent ${params.agentId}`);
+        return { ok: true, result };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.log("warn", `revoke_agent failed: ${message}`);
+        return { ok: false, error: { code: "revoke_failed", message } };
+      }
     }
     case "set_route":
       return { ok: true };
