@@ -30,6 +30,9 @@ export interface DaemonRuntimeEndpoint {
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    botcordBinding?: {
+      agentId: string;
+    };
   }>;
 }
 
@@ -235,6 +238,12 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
                         workspace:
                           typeof ax.workspace === "string" ? ax.workspace : undefined,
                         model,
+                        botcordBinding:
+                          ax.botcordBinding &&
+                          typeof ax.botcordBinding === "object" &&
+                          typeof (ax.botcordBinding as any).agentId === "string"
+                            ? { agentId: (ax.botcordBinding as any).agentId }
+                            : undefined,
                       };
                     })
                     .filter(Boolean) as DaemonRuntimeEndpoint["agents"])
