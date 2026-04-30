@@ -97,6 +97,30 @@ FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "/tmp/botcord/uploads")
 FILE_MAX_SIZE_BYTES: int = int(os.getenv("FILE_MAX_SIZE_BYTES", str(10 * 1024 * 1024)))  # 10 MB
 FILE_TTL_HOURS: int = int(os.getenv("FILE_TTL_HOURS", "1"))  # 1 hour
 FILE_CLEANUP_INTERVAL_SECONDS: float = float(os.getenv("FILE_CLEANUP_INTERVAL_SECONDS", "300"))  # 5 min
+
+# ---------------------------------------------------------------------------
+# Agent Presence & Status V1
+#   See docs/agent-presence-status-v1-supabase.md
+# ---------------------------------------------------------------------------
+
+PRESENCE_ONLINE_TIMEOUT_SECONDS: float = float(
+    os.getenv("PRESENCE_ONLINE_TIMEOUT_SECONDS", "45")
+)
+PRESENCE_IDLE_TIMEOUT_SECONDS: float = float(
+    os.getenv("PRESENCE_IDLE_TIMEOUT_SECONDS", "300")
+)
+PRESENCE_TYPING_TIMEOUT_SECONDS: float = float(
+    os.getenv("PRESENCE_TYPING_TIMEOUT_SECONDS", "8")
+)
+PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS: float = float(
+    os.getenv("PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS", "600")
+)
+PRESENCE_CLEANUP_INTERVAL_SECONDS: float = float(
+    os.getenv("PRESENCE_CLEANUP_INTERVAL_SECONDS", "30")
+)
+PRESENCE_NODE_ID: str = os.getenv(
+    "PRESENCE_NODE_ID", os.getenv("HOSTNAME", "hub")
+)[:64]
 SUPABASE_URL: str | None = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY: str | None = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 SUPABASE_STORAGE_BUCKET: str | None = os.getenv("SUPABASE_STORAGE_BUCKET")

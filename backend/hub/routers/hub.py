@@ -25,7 +25,8 @@ from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_
 from hub.constants import MIN_PLUGIN_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
-from hub.database import get_db
+from hub.database import async_session, get_db
+from hub.services import presence as presence_service
 from hub.enums import TopicStatus
 from hub.id_generators import generate_hub_msg_id, generate_topic_id
 from hub.models import (
@@ -289,27 +290,54 @@ async def _collect_presence_observers(
     return observers
 
 
-async def broadcast_presence(agent_id: str, online: bool) -> None:
-    """Fan out a presence event to the subject + all observers.
+async def _resolve_owner_human_id(
+    db: AsyncSession, agent_id: str
+) -> str | None:
+    """Return the ``hu_*`` id of the user owning this agent, if any.
 
-    ``agent_id`` is polymorphic (``ag_*`` or ``hu_*``). Each target receives the
-    event on their own realtime topic — routing (``agent:`` vs ``human:``) is
-    handled by ``build_agent_realtime_topic`` which dispatches by id prefix.
+    Used by ``broadcast_status_changed`` to decide whether a target is the
+    owner (and therefore allowed to see ``invisible`` status).
+    """
+    if not agent_id.startswith("ag_"):
+        return None
+    row = await db.execute(
+        select(User.human_id)
+        .join(Agent, Agent.user_id == User.id)
+        .where(Agent.agent_id == agent_id)
+    )
+    return row.scalar_one_or_none()
+
+
+async def broadcast_status_changed(snapshot) -> None:
+    """Fan out an ``agent_status_changed`` event to subject + observers.
+
+    Observer projection: non-owners never see ``invisible``; the agent
+    appears as ``offline`` to them. The owning Human (if claimed) is
+    treated as owner.
     """
     from hub.database import async_session
 
     event_time = datetime.datetime.now(datetime.timezone.utc)
+    subject = snapshot.agent_id
     try:
         async with async_session() as db:
-            observers = await _collect_presence_observers(db, agent_id)
-            targets = observers | {agent_id}
+            observers = await _collect_presence_observers(db, subject)
+            owner_hu_id = await _resolve_owner_human_id(db, subject)
+            targets = observers | {subject}
+            if owner_hu_id:
+                targets.add(owner_hu_id)
             for target in targets:
+                is_owner = target == subject or (
+                    owner_hu_id is not None and target == owner_hu_id
+                )
+                payload = snapshot.for_observer(is_owner=is_owner)
                 event = build_agent_realtime_event(
-                    type="presence",
+                    type="agent_status_changed",
                     agent_id=target,
                     ext={
-                        "subject_agent_id": agent_id,
-                        "online": online,
+                        "subject_agent_id": subject,
+                        "version": snapshot.version,
+                        "status": payload,
                     },
                     created_at=event_time,
                 )
@@ -318,10 +346,13 @@ async def broadcast_presence(agent_id: str, online: bool) -> None:
                 except Exception as exc:
                     logger.warning(
                         "presence publish failed subject=%s target=%s err=%s",
-                        agent_id, target, exc,
+                        subject, target, exc,
                     )
     except Exception as exc:
-        logger.error("broadcast_presence failed subject=%s err=%s", agent_id, exc, exc_info=True)
+        logger.error(
+            "broadcast_status_changed failed subject=%s err=%s",
+            subject, exc, exc_info=True,
+        )
 
 
 async def notify_inbox(
@@ -751,6 +782,19 @@ async def _send_direct_message(
             envelope.to, envelope.msg_id, exc, exc_info=True,
         )
 
+    # Narrow processing signal: a DM addressed to a specific agent is the
+    # canonical "agent has work to do" trigger. Room fan-out is intentionally
+    # excluded — see the doc's "task/dispatch" guidance. Skip non-message
+    # types (contact_request / result / error) which don't represent a turn.
+    if (
+        envelope.to.startswith("ag_")
+        and envelope.from_ != envelope.to
+        and envelope.type == MessageType.message
+    ):
+        presence_service.emit_processing_signal_async(
+            envelope.to, True, current_task="replying"
+        )
+
     return SendResponse(
         queued=True,
         hub_msg_id=record.hub_msg_id,
@@ -1102,6 +1146,15 @@ async def send_message(
                 envelope.msg_id,
                 patterns,
             )
+
+    # Outbound message produced by an agent — clear its processing flag so
+    # the "working" badge drops back. Approximate (a single-turn assumption);
+    # mismatches recover via the failsafe timeout in set_processing.
+    # NOTE: a chatty agent that emits N messages in one turn will toggle
+    # processing 2N times, each of which is a realtime broadcast. Acceptable
+    # for V1; tighten when task/dispatch lifecycle wires explicit signals.
+    if current_agent.startswith("ag_") and envelope.type == MessageType.message:
+        presence_service.emit_processing_signal_async(current_agent, False)
 
     # Branch: room / direct message
     if envelope.to.startswith("rm_"):
@@ -1789,7 +1842,8 @@ async def send_typing(
 # WebSocket /hub/ws — real-time inbox push
 # ---------------------------------------------------------------------------
 
-_WS_HEARTBEAT_INTERVAL = 30  # seconds
+_WS_HEARTBEAT_INTERVAL = 15  # seconds — presence online_timeout is 45s
+_WS_MAX_SILENT_HEARTBEATS = 2  # close after ~30s of no client response
 
 
 @router.websocket("/ws")
@@ -1807,6 +1861,7 @@ async def websocket_inbox(ws: WebSocket):
     """
     await ws.accept()
     agent_id: str | None = None
+    connection_id: str | None = None
 
     try:
         # --- Auth phase: expect {"type": "auth", "token": "..."} ---
@@ -1848,19 +1903,34 @@ async def websocket_inbox(ws: WebSocket):
         logger.info("WebSocket connected: agent=%s plugin_version=%s", agent_id, plugin_version)
 
         # --- Register this connection ---
-        was_offline = agent_id not in _ws_connections or not _ws_connections[agent_id]
+        connection_id = f"ws_{uuid.uuid4().hex[:24]}"
         if agent_id not in _ws_connections:
             _ws_connections[agent_id] = set()
         _ws_connections[agent_id].add(ws)
-        # Edge: offline -> online, fan out presence
-        if was_offline:
-            asyncio.create_task(broadcast_presence(agent_id, True))
+
+        async def _presence_call(fn, *args, **kwargs):
+            """Run a presence_service call in its own session and broadcast on change."""
+            try:
+                async with async_session() as pdb:
+                    snapshot, changed = await fn(pdb, *args, **kwargs)
+                    await pdb.commit()
+                if changed:
+                    try:
+                        asyncio.create_task(broadcast_status_changed(snapshot))
+                    except RuntimeError:
+                        pass
+            except Exception as exc:
+                logger.warning(
+                    "presence_call failed agent=%s fn=%s err=%s",
+                    agent_id, getattr(fn, "__name__", str(fn)), exc,
+                )
+
+        await _presence_call(
+            presence_service.mark_connected, agent_id, connection_id
+        )
 
         # --- Main loop: heartbeat + listen for client messages ---
-        # Track consecutive heartbeats without any client response to detect
-        # ghost connections (e.g. Nginx h2 proxy silently dropping frames).
         _silent_heartbeats = 0
-        _MAX_SILENT_HEARTBEATS = 3  # kick after 3 unanswered heartbeats (~90s)
 
         while True:
             try:
@@ -1869,13 +1939,17 @@ async def websocket_inbox(ws: WebSocket):
                     ws.receive_json(), timeout=_WS_HEARTBEAT_INTERVAL
                 )
                 _silent_heartbeats = 0  # client is alive
+                # Refresh connection lease + last_seen on any client message
+                await _presence_call(
+                    presence_service.mark_heartbeat, agent_id, connection_id
+                )
                 # Handle client messages (ping/pong, future extensions)
                 if msg.get("type") == "ping":
                     await ws.send_json({"type": "pong"})
             except asyncio.TimeoutError:
                 # No client message within interval — send heartbeat
                 _silent_heartbeats += 1
-                if _silent_heartbeats >= _MAX_SILENT_HEARTBEATS:
+                if _silent_heartbeats >= _WS_MAX_SILENT_HEARTBEATS:
                     logger.warning(
                         "WebSocket ghost detected: agent=%s silent_heartbeats=%d, closing",
                         agent_id, _silent_heartbeats,
@@ -1892,11 +1966,25 @@ async def websocket_inbox(ws: WebSocket):
         # --- Cleanup ---
         if agent_id:
             ws_set = _ws_connections.get(agent_id)
-            went_offline = False
             if ws_set:
                 ws_set.discard(ws)
                 if not ws_set:
                     _ws_connections.pop(agent_id, None)
-                    went_offline = True
-            if went_offline:
-                asyncio.create_task(broadcast_presence(agent_id, False))
+            if connection_id is not None:
+                try:
+                    async with async_session() as pdb:
+                        snapshot, changed = await presence_service.mark_disconnected(
+                            pdb, agent_id, connection_id
+                        )
+                        await pdb.commit()
+                    if changed:
+                        try:
+                            asyncio.create_task(broadcast_status_changed(snapshot))
+                        except RuntimeError:
+                            # Event loop is shutting down — drop the broadcast.
+                            pass
+                except Exception as exc:
+                    logger.warning(
+                        "mark_disconnected failed agent=%s err=%s",
+                        agent_id, exc,
+                    )

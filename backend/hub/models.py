@@ -26,6 +26,7 @@ from sqlalchemy import (
     func,
     text as sa_text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from hub.id_generators import generate_human_id
@@ -1400,4 +1401,122 @@ class AgentApprovalQueue(Base):
     )
     resolved_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent Presence & Status V1
+#   See docs/agent-presence-status-v1-supabase.md
+# ---------------------------------------------------------------------------
+
+
+class AgentStatusSettings(Base):
+    """Owner-driven manual status (available/busy/away/invisible)."""
+
+    __tablename__ = "agent_status_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "manual_status IN ('available', 'busy', 'away', 'invisible')",
+            name="ck_agent_status_settings_manual_status",
+        ),
+    )
+
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    manual_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="available", server_default="available"
+    )
+    status_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    manual_expires_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_by_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    updated_by_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AgentPresence(Base):
+    """Composed effective status + activity/attribute projection."""
+
+    __tablename__ = "agent_presence"
+    __table_args__ = (
+        CheckConstraint(
+            "effective_status IN ('offline', 'online', 'busy', 'away', 'working')",
+            name="ck_agent_presence_effective_status",
+        ),
+        Index("ix_agent_presence_status_updated", "effective_status", "updated_at"),
+        Index("ix_agent_presence_last_seen", "last_seen_at"),
+    )
+
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    effective_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="offline", server_default="offline"
+    )
+    connected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa_text("FALSE")
+    )
+    connection_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    version: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    last_seen_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    activity_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    attributes_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AgentPresenceConnection(Base):
+    """Per-WebSocket connection lease. Multi-Hub safe."""
+
+    __tablename__ = "agent_presence_connections"
+    __table_args__ = (
+        Index(
+            "ix_agent_presence_connections_agent_seen",
+            "agent_id",
+            "last_seen_at",
+        ),
+        Index(
+            "ix_agent_presence_connections_node",
+            "node_id",
+            "last_seen_at",
+        ),
+    )
+
+    connection_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

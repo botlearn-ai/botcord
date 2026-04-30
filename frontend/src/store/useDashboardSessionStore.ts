@@ -366,6 +366,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     authInitRequestId += 1;
     setActiveAgentId(null);
     setStoredActiveIdentity(null);
+    usePresenceStore.getState().reset();
     set({
       ...initialSessionState,
       authResolved: true,
