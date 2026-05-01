@@ -614,6 +614,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
 
     async function connect() {
       if (!running) return;
+      const agentId = options.agentId;
       markStatus({ connected: false, restartPending: false });
       if (pendingRefresh) {
         try {
@@ -628,19 +629,19 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       try {
         token = await client.ensureToken();
       } catch (err) {
-        log.error("botcord ws token refresh failed", { err: String(err) });
+        log.error("botcord ws token refresh failed", { agentId, err: String(err) });
         markStatus({ lastError: String(err) });
         scheduleReconnect();
         return;
       }
 
       const url = buildHubWebSocketUrl(hubUrl);
-      log.info("botcord ws connecting", { url, agentId: options.agentId });
+      log.info("botcord ws connecting", { url, agentId });
 
       try {
         ws = new wsCtor(url);
       } catch (err) {
-        log.error("botcord ws construct failed", { err: String(err) });
+        log.error("botcord ws construct failed", { agentId, err: String(err) });
         markStatus({ lastError: String(err) });
         scheduleReconnect();
         return;
@@ -685,13 +686,13 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         } else if (msg.type === "heartbeat" || msg.type === "pong") {
           // no-op
         } else if (msg.type === "error" || msg.type === "auth_failed") {
-          log.warn("botcord ws server error", { msg });
+          log.warn("botcord ws server error", { agentId, msg });
         }
       });
 
       ws.on("close", (code: number, reason: Buffer) => {
         const reasonStr = reason?.toString() || "";
-        log.info("botcord ws closed", { code, reason: reasonStr });
+        log.info("botcord ws closed", { agentId, code, reason: reasonStr });
         clearTimers();
         markStatus({ connected: false });
         if (!running) {
@@ -708,6 +709,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           consecutiveAuthFailures += 1;
           if (consecutiveAuthFailures >= MAX_AUTH_FAILURES) {
             log.error("botcord ws auth failing persistently — giving up reconnects", {
+              agentId,
               failures: consecutiveAuthFailures,
             });
             running = false;
@@ -727,13 +729,13 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           }
           pendingRefresh = client
             .refreshToken()
-            .catch((err) => log.error("botcord ws forced refresh failed", { err: String(err) }));
+            .catch((err) => log.error("botcord ws forced refresh failed", { agentId, err: String(err) }));
         }
         scheduleReconnect();
       });
 
       ws.on("error", (err: Error) => {
-        log.warn("botcord ws error", { err: String(err) });
+        log.warn("botcord ws error", { agentId, err: String(err) });
         markStatus({ lastError: String(err) });
       });
     }

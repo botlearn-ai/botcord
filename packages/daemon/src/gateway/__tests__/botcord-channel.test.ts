@@ -716,6 +716,52 @@ describe("createBotCordChannel — typing()", () => {
   });
 });
 
+describe("createBotCordChannel — websocket logging", () => {
+  it("includes the agent id on websocket server errors", async () => {
+    const server = await startAuthOkServer();
+    const client = makeClient({
+      getHubUrl: vi.fn().mockReturnValue(server.url),
+    });
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      hubBaseUrl: server.url,
+    });
+    const abort = new AbortController();
+    const log: GatewayLogger = {
+      ...silentLog,
+      warn: vi.fn(),
+    };
+    const startPromise = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: abort.signal,
+      log,
+      emit: async () => {},
+      setStatus: () => {},
+    });
+    try {
+      await vi.waitFor(() => expect(server.connections.length).toBe(1));
+      server.connections[0].send(JSON.stringify({ type: "error", code: 503 }));
+      await vi.waitFor(() => {
+        expect(log.warn).toHaveBeenCalledWith(
+          "botcord ws server error",
+          expect.objectContaining({
+            agentId: "ag_self",
+            msg: expect.objectContaining({ type: "error", code: 503 }),
+          }),
+        );
+      });
+    } finally {
+      abort.abort();
+      await startPromise;
+      await server.close();
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Shared: a tiny WS server that acks every `auth` with `auth_ok`.
 // ---------------------------------------------------------------------------

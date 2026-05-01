@@ -1,3 +1,5 @@
+import { formatLogLine } from "../log.js";
+
 /** Structured logger interface used across the gateway core and adapters. */
 export interface GatewayLogger {
   info(msg: string, meta?: Record<string, unknown>): void;
@@ -9,17 +11,12 @@ export interface GatewayLogger {
 type Level = "info" | "warn" | "error" | "debug";
 
 function write(level: Level, msg: string, meta?: Record<string, unknown>): void {
-  const line = JSON.stringify({
-    ts: new Date().toISOString(),
-    level,
-    msg,
-    ...(meta ?? {}),
-  });
+  const line = formatLogLine(level, msg, meta);
   // Always write to stderr so stdout stays clean for NDJSON-style channel output.
   process.stderr.write(line + "\n");
 }
 
-/** Default logger that writes JSON lines to stderr; debug lines gated by BOTCORD_GATEWAY_DEBUG. */
+/** Default logger that writes compact text lines to stderr; debug lines gated by BOTCORD_GATEWAY_DEBUG. */
 export const consoleLogger: GatewayLogger = {
   info: (msg, meta) => write("info", msg, meta),
   warn: (msg, meta) => write("warn", msg, meta),

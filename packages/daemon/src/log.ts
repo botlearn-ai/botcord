@@ -18,14 +18,35 @@ function ensureDir(): void {
 
 type Level = "info" | "warn" | "error" | "debug";
 
+function formatValue(value: unknown): string {
+  if (value instanceof Error) return JSON.stringify(value.stack ?? value.message);
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean" || value === null) return String(value);
+  if (value === undefined) return "undefined";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return JSON.stringify(String(value));
+  }
+}
+
+export function formatLogLine(
+  level: Level,
+  msg: string,
+  fields: Record<string, unknown> | undefined,
+  date = new Date(),
+): string {
+  const detail = Object.entries(fields ?? {})
+    .map(([key, value]) => `${key}=${formatValue(value)}`)
+    .join(" ");
+  const prefix = `[${level.toUpperCase()}] ${msg}`;
+  const suffix = `ts=${date.toISOString()}`;
+  return detail ? `${prefix} ${detail} ${suffix}` : `${prefix} ${suffix}`;
+}
+
 function write(level: Level, msg: string, fields?: Record<string, unknown>): void {
   ensureDir();
-  const line = JSON.stringify({
-    ts: new Date().toISOString(),
-    level,
-    msg,
-    ...(fields ?? {}),
-  });
+  const line = formatLogLine(level, msg, fields);
   try {
     appendFileSync(LOG_FILE, line + "\n", { mode: 0o600 });
   } catch {
