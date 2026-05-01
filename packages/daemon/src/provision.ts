@@ -1061,7 +1061,7 @@ function localOpenclawAcpDisabled(rawUrl: string): boolean {
   }
 }
 
-async function revokeAgent(
+export async function revokeAgent(
   params: RevokeAgentParams,
   ctx: { gateway: Gateway },
 ): Promise<RevokeAgentResult> {
