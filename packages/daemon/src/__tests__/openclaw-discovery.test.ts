@@ -8,6 +8,8 @@ import {
   defaultOpenclawDiscoveryTokenFilePaths,
   discoverLocalOpenclawGateways,
   mergeOpenclawGateways,
+  openclawAutoProvisionEnabled,
+  openclawDiscoveryConfigEnabled,
 } from "../openclaw-discovery.js";
 import type { DaemonConfig } from "../config.js";
 import type { WsEndpointProbeFn } from "../provision.js";
@@ -31,6 +33,40 @@ function baseConfig(): DaemonConfig {
     streamBlocks: true,
   };
 }
+
+describe("openclaw discovery config flags", () => {
+  it("keeps gateway discovery enabled by default", () => {
+    expect(openclawDiscoveryConfigEnabled(baseConfig())).toBe(true);
+    expect(
+      openclawDiscoveryConfigEnabled({
+        ...baseConfig(),
+        openclawDiscovery: { enabled: false },
+      }),
+    ).toBe(false);
+  });
+
+  it("requires explicit opt-in for OpenClaw auto-provision", () => {
+    expect(openclawAutoProvisionEnabled(baseConfig())).toBe(false);
+    expect(
+      openclawAutoProvisionEnabled({
+        ...baseConfig(),
+        openclawDiscovery: {},
+      }),
+    ).toBe(false);
+    expect(
+      openclawAutoProvisionEnabled({
+        ...baseConfig(),
+        openclawDiscovery: { autoProvision: true },
+      }),
+    ).toBe(true);
+    expect(
+      openclawAutoProvisionEnabled({
+        ...baseConfig(),
+        openclawDiscovery: { autoProvision: false },
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("discoverLocalOpenclawGateways", () => {
   it("discovers JSON and TOML acp config files", async () => {
