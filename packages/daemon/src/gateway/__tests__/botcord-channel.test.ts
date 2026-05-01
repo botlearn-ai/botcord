@@ -510,6 +510,61 @@ describe("createBotCordChannel — ack + dedup", () => {
       await server.close();
     }
   });
+
+  it("locally revokes the channel when Hub reports the agent is unclaimed", async () => {
+    const server = await startAuthOkServer();
+    try {
+      const err = new Error(
+        'BotCord /hub/inbox?limit=50 failed: 403 {"code":"agent_not_claimed_generic","retryable":false}',
+      ) as Error & { status?: number };
+      err.status = 403;
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue(server.url),
+        pollInbox: vi.fn().mockRejectedValue(err),
+      });
+      const localRevokeAgent = vi.fn().mockResolvedValue({
+        agentId: "ag_self",
+        credentialsDeleted: true,
+        stateDeleted: true,
+        workspaceDeleted: false,
+      });
+      const statuses: Record<string, unknown>[] = [];
+      const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+      const log: GatewayLogger = {
+        ...silentLog,
+        warn: (msg, meta) => logs.push({ msg, meta }),
+      };
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: server.url,
+        localRevokeAgent,
+      });
+      const startP = channel.start({
+        config: stubConfig,
+        accountId: "ag_self",
+        abortSignal: new AbortController().signal,
+        log,
+        emit: async () => undefined,
+        setStatus: (patch) => statuses.push(patch),
+      });
+
+      await expect(startP).rejects.toMatchObject({ code: "channel_permanent_stop" });
+      expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+      expect(logs.some((entry) => entry.msg === "botcord agent unclaimed; revoked local binding"))
+        .toBe(true);
+      expect(statuses.at(-1)).toMatchObject({
+        running: false,
+        connected: false,
+        restartPending: false,
+        lastError: "agent not claimed; local binding revoked",
+      });
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

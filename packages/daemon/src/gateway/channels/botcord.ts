@@ -20,7 +20,9 @@ import type {
   GatewayInboundMessage,
   GatewayLogger,
 } from "../index.js";
+import type { Gateway } from "../gateway.js";
 import { sanitizeUntrustedContent } from "./sanitize.js";
+import { revokeAgent } from "../../provision.js";
 
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
 const KEEPALIVE_INTERVAL = 20_000;
@@ -29,6 +31,7 @@ const SEEN_MESSAGES_CAP = 500;
 const OWNER_CHAT_PREFIX = "rm_oc_";
 const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
+const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
 
 type InboxDrainTrigger =
   | "ws_auth_ok"
@@ -86,6 +89,20 @@ export interface BotCordChannelOptions {
    * can't spin up a real WS server.
    */
   webSocketCtor?: typeof WebSocket;
+  /** Test hook: override local cleanup after Hub says the agent is unclaimed. */
+  localRevokeAgent?: (agentId: string, log: GatewayLogger) => Promise<unknown>;
+}
+
+function isUnclaimedAgentError(err: unknown): boolean {
+  const status = (err as { status?: unknown } | null)?.status;
+  if (status !== 403) return false;
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes('"code":"agent_not_claimed_generic"') ||
+    message.includes('"code":"agent_not_claimed"') ||
+    message.includes("agent_not_claimed_generic") ||
+    message.includes("agent_not_claimed")
+  );
 }
 
 /** Default factory: wrap `loadStoredCredentials` + `new BotCordClient`. */
@@ -456,13 +473,16 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     let reconnectAttempt = 0;
     let consecutiveAuthFailures = 0;
     let running = true;
+    let permanentStopping = false;
     let processing = false;
     let pendingUpdate = false;
     let pendingRefresh: Promise<unknown> | null = null;
     let resolveLoop: (() => void) | null = null;
+    let rejectLoop: ((err: Error) => void) | null = null;
 
-    const done = new Promise<void>((resolve) => {
+    const done = new Promise<void>((resolve, reject) => {
       resolveLoop = resolve;
+      rejectLoop = reject;
     });
 
     function clearTimers() {
@@ -479,6 +499,71 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     function markStatus(patch: Partial<ChannelStatusSnapshot>) {
       statusSnapshot = { ...statusSnapshot, ...patch };
       setStatus(patch);
+    }
+
+    async function revokeLocalUnclaimedAgent(err: unknown) {
+      if (!isUnclaimedAgentError(err)) return false;
+      running = false;
+      permanentStopping = true;
+      clearTimers();
+      try {
+        ws?.close();
+      } catch {
+        // ignore
+      }
+      try {
+        const result = options.localRevokeAgent
+          ? await options.localRevokeAgent(options.agentId, log)
+          : await revokeAgent(
+              {
+                agentId: options.agentId,
+                deleteCredentials: true,
+                deleteState: true,
+                deleteWorkspace: false,
+              },
+              {
+                gateway: {
+                  removeChannel: async () => undefined,
+                  removeManagedRoute: () => undefined,
+                } as unknown as Gateway,
+              },
+            );
+        log.warn("botcord agent unclaimed; revoked local binding", {
+          agentId: options.agentId,
+          result,
+        });
+        markStatus({
+          running: false,
+          connected: false,
+          restartPending: false,
+          lastStopAt: Date.now(),
+          lastError: "agent not claimed; local binding revoked",
+        });
+      } catch (cleanupErr) {
+        log.error("botcord unclaimed local revoke failed", {
+          agentId: options.agentId,
+          err: String(cleanupErr),
+        });
+        markStatus({
+          running: false,
+          connected: false,
+          restartPending: false,
+          lastStopAt: Date.now(),
+          lastError: String(cleanupErr),
+        });
+      }
+      permanentStopping = false;
+      if (rejectLoop) {
+        const r = rejectLoop;
+        rejectLoop = null;
+        resolveLoop = null;
+        const stopErr = new Error("agent not claimed; local binding revoked") as Error & {
+          code?: string;
+        };
+        stopErr.code = CHANNEL_PERMANENT_STOP;
+        r(stopErr);
+      }
+      return true;
     }
 
     async function fireInbox(trigger: InboxDrainTrigger) {
@@ -501,6 +586,9 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           currentTrigger = hasMore ? "has_more_continue" : "coalesced_inbox_update";
         } while ((pendingUpdate || hasMore) && running);
       } catch (err) {
+        if (await revokeLocalUnclaimedAgent(err)) {
+          return;
+        }
         log.error("botcord inbox drain failed", { err: String(err) });
       } finally {
         processing = false;
@@ -607,9 +695,11 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         clearTimers();
         markStatus({ connected: false });
         if (!running) {
+          if (permanentStopping) return;
           if (resolveLoop) {
             const r = resolveLoop;
             resolveLoop = null;
+            rejectLoop = null;
             r();
           }
           return;
@@ -630,6 +720,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
             if (resolveLoop) {
               const r = resolveLoop;
               resolveLoop = null;
+              rejectLoop = null;
               r();
             }
             return;
@@ -667,6 +758,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       if (resolveLoop) {
         const r = resolveLoop;
         resolveLoop = null;
+        rejectLoop = null;
         r();
       }
     }
