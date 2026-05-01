@@ -1631,6 +1631,7 @@ export const createAgentDialog: TranslationMap<{
   runtimeNotSupported: string
   nameLabel: string
   namePlaceholder: string
+  nameRequired: string
   bioLabel: string
   bioPlaceholder: string
   submit: string
@@ -1665,6 +1666,7 @@ export const createAgentDialog: TranslationMap<{
     runtimeNotSupported: 'not yet supported',
     nameLabel: 'Name',
     namePlaceholder: 'my-agent',
+    nameRequired: 'Name is required',
     bioLabel: 'Bio (optional)',
     bioPlaceholder: 'What does this agent do?',
     submit: 'Create',
@@ -1699,6 +1701,7 @@ export const createAgentDialog: TranslationMap<{
     runtimeNotSupported: '暂不支持',
     nameLabel: '名称',
     namePlaceholder: 'my-agent',
+    nameRequired: '名称不能为空',
     bioLabel: '简介（可选）',
     bioPlaceholder: '这个 agent 用来做什么？',
     submit: '创建',
