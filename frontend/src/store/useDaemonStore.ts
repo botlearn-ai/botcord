@@ -322,6 +322,61 @@ function normalizeDaemon(raw: Record<string, unknown>): DaemonInstance {
   };
 }
 
+function markRuntimeSelectionBound(
+  daemons: DaemonInstance[],
+  daemonId: string,
+  input: ProvisionAgentInput,
+  agentId: string,
+): DaemonInstance[] {
+  if (input.runtime !== "openclaw-acp" && input.runtime !== "hermes-agent") {
+    return daemons;
+  }
+
+  return daemons.map((daemon) => {
+    if (daemon.id !== daemonId || !daemon.runtimes) return daemon;
+    let changed = false;
+    const runtimes = daemon.runtimes.map((runtime) => {
+      if (runtime.id !== input.runtime) return runtime;
+
+      if (
+        input.runtime === "openclaw-acp" &&
+        input.openclawGateway &&
+        input.openclawAgent &&
+        runtime.endpoints
+      ) {
+        const endpoints = runtime.endpoints.map((endpoint) => {
+          if (endpoint.name !== input.openclawGateway || !endpoint.agents) {
+            return endpoint;
+          }
+          const agents = endpoint.agents.map((profile) => {
+            if (profile.id !== input.openclawAgent) return profile;
+            changed = true;
+            return { ...profile, botcordBinding: { agentId } };
+          });
+          return { ...endpoint, agents };
+        });
+        return { ...runtime, endpoints };
+      }
+
+      if (input.runtime === "hermes-agent" && input.hermesProfile && runtime.profiles) {
+        const profiles = runtime.profiles.map((profile) => {
+          if (profile.name !== input.hermesProfile) return profile;
+          changed = true;
+          return {
+            ...profile,
+            occupiedBy: agentId,
+            occupiedByName: input.name.trim() || agentId,
+          };
+        });
+        return { ...runtime, profiles };
+      }
+
+      return runtime;
+    });
+    return changed ? { ...daemon, runtimes } : daemon;
+  });
+}
+
 export const useDaemonStore = create<DaemonState>()((set, get) => ({
   ...initialState,
 
@@ -548,6 +603,9 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
     if (!agentId) {
       throw new ProvisionAgentError("missing_agent_id");
     }
+    set((state) => ({
+      daemons: markRuntimeSelectionBound(state.daemons, daemonId, input, agentId),
+    }));
     return { agentId };
   },
 

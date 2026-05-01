@@ -7,6 +7,7 @@
 
 import asyncio
 import base64
+import copy
 import datetime
 import hashlib
 import hmac
@@ -18,6 +19,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, case, func as sa_func, select, update
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -2043,6 +2045,69 @@ def _daemon_lists_runtime(
     return False
 
 
+def _mark_daemon_runtime_snapshot_bound(
+    instance: DaemonInstance,
+    *,
+    runtime: str,
+    agent_id: str,
+    display_name: str,
+    openclaw_gateway: str | None = None,
+    openclaw_agent: str | None = None,
+    hermes_profile: str | None = None,
+) -> None:
+    """Patch the cached runtime snapshot after a successful provision.
+
+    The daemon only pushes runtime snapshots on connect or explicit
+    refresh-runtimes. Without this patch, the dashboard can immediately reopen
+    the create dialog and still see a just-bound OpenClaw/Hermes profile as
+    selectable until the user manually refreshes runtime discovery.
+    """
+    snap = copy.deepcopy(instance.runtimes_json)
+    if not isinstance(snap, list) or not snap:
+        return
+
+    changed = False
+    for entry in snap:
+        if not isinstance(entry, dict) or entry.get("id") != runtime:
+            continue
+
+        if runtime == "openclaw-acp" and openclaw_gateway and openclaw_agent:
+            endpoints = entry.get("endpoints")
+            if not isinstance(endpoints, list):
+                return
+            for ep in endpoints:
+                if not isinstance(ep, dict) or ep.get("name") != openclaw_gateway:
+                    continue
+                agents = ep.get("agents")
+                if not isinstance(agents, list):
+                    return
+                for profile in agents:
+                    if not isinstance(profile, dict) or profile.get("id") != openclaw_agent:
+                        continue
+                    profile["botcordBinding"] = {"agentId": agent_id}
+                    changed = True
+                    break
+                break
+
+        if runtime == "hermes-agent" and hermes_profile:
+            profiles = entry.get("profiles")
+            if not isinstance(profiles, list):
+                return
+            for profile in profiles:
+                if not isinstance(profile, dict) or profile.get("name") != hermes_profile:
+                    continue
+                profile["occupiedBy"] = agent_id
+                profile["occupiedByName"] = display_name
+                changed = True
+                break
+
+        break
+
+    if changed:
+        instance.runtimes_json = snap
+        flag_modified(instance, "runtimes_json")
+
+
 @router.post(
     "/me/agents/provision",
     status_code=201,
@@ -2231,6 +2296,16 @@ async def provision_agent(
                 "daemon_message": message,
             },
         )
+
+    _mark_daemon_runtime_snapshot_bound(
+        instance,
+        runtime=runtime,
+        agent_id=agent.agent_id,
+        display_name=agent.display_name,
+        openclaw_gateway=body.openclaw_gateway,
+        openclaw_agent=body.openclaw_agent,
+        hermes_profile=body.hermes_profile,
+    )
 
     await db.commit()
     await db.refresh(agent)
