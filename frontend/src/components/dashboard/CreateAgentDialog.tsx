@@ -199,6 +199,7 @@ export default function CreateAgentDialog({
   }, [selectedRuntime, selectedRuntimeId, selectedHermesProfile]);
 
   const showEmptyState = loaded && onlineDaemons.length === 0;
+  const trimmedName = name.trim();
 
   // Auto-detect daemon coming online while user stares at the install command.
   useEffect(() => {
@@ -246,6 +247,8 @@ export default function CreateAgentDialog({
           return err.detail
             ? `${t.errorDaemonFailed}: ${err.detail}`
             : t.errorDaemonFailed;
+        case "missing_name":
+          return t.nameRequired;
         case "missing_agent_id":
           return t.errorMissingAgentId;
         case "http_error":
@@ -257,11 +260,15 @@ export default function CreateAgentDialog({
 
   async function handleSubmit(): Promise<void> {
     if (!selectedDaemonId || !selectedRuntimeId) return;
+    if (!trimmedName) {
+      setError(t.nameRequired);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const res = await provisionAgent(selectedDaemonId, {
-        name: name.trim() || undefined,
+        name: trimmedName,
         bio: bio.trim() || undefined,
         runtime: selectedRuntimeId,
         ...(selectedRuntimeId === "openclaw-acp" && selectedGateway
@@ -290,6 +297,7 @@ export default function CreateAgentDialog({
   const canSubmit =
     !!selectedDaemonId &&
     !!selectedRuntimeId &&
+    !!trimmedName &&
     (!needsOpenclawGateway || !!selectedGateway) &&
     (!needsOpenclawAgent || !!selectedOpenclawAgent) &&
     (!needsHermesProfile || !!selectedHermesProfile) &&
@@ -448,7 +456,12 @@ export default function CreateAgentDialog({
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (error === t.nameRequired && e.target.value.trim()) {
+                    setError(null);
+                  }
+                }}
                 placeholder={t.namePlaceholder}
                 disabled={submitting}
                 className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"

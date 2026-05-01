@@ -73,7 +73,7 @@ export interface DaemonInstance {
 }
 
 export interface ProvisionAgentInput {
-  name?: string;
+  name: string;
   bio?: string;
   runtime?: string;
   cwd?: string;
@@ -93,6 +93,7 @@ export type ProvisionAgentErrorCode =
   | "daemon_offline"
   | "daemon_timeout"
   | "daemon_failed"
+  | "missing_name"
   | "missing_agent_id"
   | "http_error";
 
@@ -501,7 +502,10 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
     // frame. The raw /dispatch path cannot be used here because it
     // bypasses the Agent/SigningKey insert and leaves the new identity
     // unclaimed in the registry.
-    const label = (input.name ?? "").trim() || `agent-${Date.now()}`;
+    const label = input.name.trim();
+    if (!label) {
+      throw new ProvisionAgentError("missing_name");
+    }
     const body: Record<string, unknown> = {
       daemon_instance_id: daemonId,
       label,
