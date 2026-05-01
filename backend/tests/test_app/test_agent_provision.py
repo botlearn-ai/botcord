@@ -267,6 +267,125 @@ async def test_provision_happy_path_writes_runtime_and_dispatches_frame(
         await registry.unregister(conn)
 
 
+@pytest.mark.asyncio
+async def test_provision_marks_openclaw_profile_bound_in_cached_snapshot(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    instance_id = await _provision_instance(client, seed_user)
+    conn, fake_ws, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[
+            {
+                "id": "openclaw-acp",
+                "available": True,
+                "endpoints": [
+                    {
+                        "name": "local",
+                        "url": "ws://127.0.0.1:18789",
+                        "reachable": True,
+                        "agents": [{"id": "pm"}, {"id": "swe", "name": "SWE"}],
+                    }
+                ],
+            }
+        ],
+        db_session=db_session,
+    )
+    try:
+        ack_task = asyncio.create_task(_auto_ack(conn, fake_ws))
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "openclaw-acp",
+                "openclaw_gateway": "local",
+                "openclaw_agent": "swe",
+            },
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        await ack_task
+        assert r.status_code == 201, r.text
+        agent_id = r.json()["agent_id"]
+
+        await db_session.commit()
+        res = await db_session.execute(
+            select(DaemonInstance).where(DaemonInstance.id == instance_id)
+        )
+        inst = res.scalar_one()
+        runtimes = inst.runtimes_json
+        if isinstance(runtimes, str):
+            runtimes = json.loads(runtimes)
+        agents = runtimes[0]["endpoints"][0]["agents"]
+        assert agents == [
+            {"id": "pm"},
+            {
+                "id": "swe",
+                "name": "SWE",
+                "botcordBinding": {"agentId": agent_id},
+            },
+        ]
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_provision_marks_hermes_profile_occupied_in_cached_snapshot(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    instance_id = await _provision_instance(client, seed_user)
+    conn, fake_ws, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[
+            {
+                "id": "hermes-agent",
+                "available": True,
+                "profiles": [
+                    {"name": "coder", "home": "/tmp/hermes/coder"},
+                    {"name": "reviewer", "home": "/tmp/hermes/reviewer"},
+                ],
+            }
+        ],
+        db_session=db_session,
+    )
+    try:
+        ack_task = asyncio.create_task(_auto_ack(conn, fake_ws))
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "hermes-agent",
+                "hermes_profile": "coder",
+            },
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        await ack_task
+        assert r.status_code == 201, r.text
+        agent_id = r.json()["agent_id"]
+
+        await db_session.commit()
+        res = await db_session.execute(
+            select(DaemonInstance).where(DaemonInstance.id == instance_id)
+        )
+        inst = res.scalar_one()
+        runtimes = inst.runtimes_json
+        if isinstance(runtimes, str):
+            runtimes = json.loads(runtimes)
+        assert runtimes[0]["profiles"] == [
+            {
+                "name": "coder",
+                "home": "/tmp/hermes/coder",
+                "occupiedBy": agent_id,
+                "occupiedByName": "writer",
+            },
+            {"name": "reviewer", "home": "/tmp/hermes/reviewer"},
+        ]
+    finally:
+        await registry.unregister(conn)
+
+
 # ---------------------------------------------------------------------------
 # Failure cases
 # ---------------------------------------------------------------------------
