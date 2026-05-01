@@ -95,7 +95,7 @@ export interface OpenclawDiscoveryConfig {
   searchPaths?: string[];
   /** Overrides the local loopback ports to probe. */
   defaultPorts?: number[];
-  /** Defaults to true. When false, discovery only persists gateways. */
+  /** Defaults to false. When false, discovery only persists gateways. */
   autoProvision?: boolean;
 }
 

@@ -525,5 +525,5 @@ export function openclawDiscoveryConfigEnabled(cfg: DaemonConfig): boolean {
 }
 
 export function openclawAutoProvisionEnabled(cfg: DaemonConfig): boolean {
-  return cfg.openclawDiscovery?.autoProvision !== false;
+  return cfg.openclawDiscovery?.autoProvision === true;
 }

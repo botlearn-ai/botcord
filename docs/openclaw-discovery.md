@@ -160,7 +160,7 @@ openclawDiscovery?: {
   enabled?: boolean;        // 默认 true
   searchPaths?: string[];   // 覆盖默认搜索路径
   defaultPorts?: number[];  // 覆盖默认探测端口
-  autoProvision?: boolean;  // 默认 true；false 时仅写入 gateway，不自动接入 agent
+  autoProvision?: boolean;  // 默认 false；true 时才自动接入 agent
 };
 ```
 
