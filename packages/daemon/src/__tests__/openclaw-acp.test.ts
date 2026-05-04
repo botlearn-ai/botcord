@@ -162,6 +162,69 @@ describe("OpenclawAcpAdapter.run", () => {
     expect(spawnFn.mock.calls[0][1]).toEqual(["acp", "--url", "ws://127.0.0.1:1"]);
   });
 
+  it("streams only final text when OpenClaw sends reasoning before a final block", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-final" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          for (const text of [
+            "The user is asking for my location. I need to check it. ",
+            "<fin",
+            "al>The answer is Council Bluffs.",
+            "</final>",
+          ]) {
+            child.stdout.write(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                method: "session/update",
+                params: {
+                  sessionId: "sid-final",
+                  update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+                },
+              }) + "\n",
+            );
+          }
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: frame.id,
+              result: { text: "The user is asking for my location. I need to check it." },
+            }) + "\n",
+          );
+        }
+      }
+    });
+
+    const blocks: any[] = [];
+    const res = await adapter.run({
+      text: "what's your current location",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+      onBlock: (b) => blocks.push(b),
+    });
+
+    expect(res.text).toBe("The answer is Council Bluffs.");
+    expect(blocks.filter((b) => b.kind === "assistant_text").map((b) => b.raw.params.update.content[0].text).join("")).toBe(
+      "The answer is Council Bluffs.",
+    );
+  });
+
   it("respawns the pooled child when gateway.url or gateway.token changes under the same name", async () => {
     function newChild(): FakeChild {
       const c = new FakeChild();

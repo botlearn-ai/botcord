@@ -648,7 +648,7 @@ describe("createBotCordChannel — streamBlock()", () => {
       expect(body.block).toEqual({
         kind: "thinking",
         seq: 7,
-        payload: { phase: "updated", label: "Searching web", source: "runtime" },
+        payload: { phase: "updated", label: "Searching web", source: "runtime", details: "Searching web" },
       });
     } finally {
       globalThis.fetch = realFetch;

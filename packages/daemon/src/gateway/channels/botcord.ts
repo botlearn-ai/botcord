@@ -955,6 +955,7 @@ function normalizeBlockForHub(
     if (typeof raw?.subtype === "string") payload.subtype = raw.subtype;
     if (typeof raw?.session_id === "string") payload.session_id = raw.session_id;
     if (typeof raw?.model === "string") payload.model = raw.model;
+    payload.details = formatBlockDetails(raw);
     return { kind: "system", seq, payload };
   }
 
@@ -966,6 +967,7 @@ function normalizeBlockForHub(
     if (typeof raw?.phase === "string") payload.phase = raw.phase;
     if (typeof raw?.label === "string") payload.label = raw.label;
     if (typeof raw?.source === "string") payload.source = raw.source;
+    payload.details = formatBlockDetails(raw);
     return { kind: "thinking", seq, payload };
   }
 
@@ -976,4 +978,41 @@ function normalizeBlockForHub(
     if (typeof raw.total_cost_usd === "number") payload.total_cost_usd = raw.total_cost_usd;
   }
   return { kind: "other", seq, payload };
+}
+
+function formatBlockDetails(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "";
+  const r = raw as any;
+  const direct =
+    typeof r.text === "string" ? r.text
+    : typeof r.message === "string" ? r.message
+    : typeof r.summary === "string" ? r.summary
+    : typeof r.label === "string" ? r.label
+    : "";
+  if (direct) return direct;
+
+  const contentText = extractContentText(r.content ?? r.message?.content ?? r.params?.update?.content);
+  if (contentText) return contentText;
+
+  try {
+    return JSON.stringify(raw, null, 2);
+  } catch {
+    return String(raw);
+  }
+}
+
+function extractContentText(content: unknown): string {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map(extractContentText).filter(Boolean).join("\n");
+  }
+  if (typeof content === "object") {
+    const c = content as any;
+    if (typeof c.text === "string") return c.text;
+    if (typeof c.thinking === "string") return c.thinking;
+    if (typeof c.content === "string") return c.content;
+    if (Array.isArray(c.content)) return extractContentText(c.content);
+  }
+  return "";
 }

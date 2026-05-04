@@ -1759,10 +1759,15 @@ function readLocalOpenclawAgents(): Array<{
 }> | null {
   try {
     const file = path.join(homedir(), ".openclaw", "openclaw.json");
-    if (!existsSync(file)) return [{ id: "default" }];
+    if (!existsSync(file)) return readLocalOpenclawAgentDirs() ?? [{ id: "default" }];
     const cfg = JSON.parse(readFileSync(file, "utf8")) as any;
     const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
-    const defaultId = typeof cfg?.agents?.defaults?.id === "string" ? cfg.agents.defaults.id : "default";
+    const explicitDefaultId =
+      typeof cfg?.agents?.defaults?.id === "string" && cfg.agents.defaults.id
+        ? cfg.agents.defaults.id
+        : null;
+    const dirAgents = readLocalOpenclawAgentDirs();
+    const defaultId = explicitDefaultId ?? (list.length === 0 && !dirAgents ? "default" : null);
     const seen = new Set<string>();
     const out: Array<{ id: string; name?: string; workspace?: string; model?: { name?: string; provider?: string } }> = [];
     const push = (raw: any, fallbackId?: string): void => {
@@ -1784,10 +1789,36 @@ function readLocalOpenclawAgents(): Array<{
       }
       out.push(row);
     };
-    // Default agent first so it surfaces at the top of the dropdown.
-    push({ id: defaultId, workspace: cfg?.agents?.defaults?.workspace, model: cfg?.agents?.defaults?.model }, defaultId);
+    // Explicit default agent first so it surfaces at the top of the dropdown.
+    if (defaultId) push({ id: defaultId, workspace: cfg?.agents?.defaults?.workspace, model: cfg?.agents?.defaults?.model }, defaultId);
     for (const entry of list) push(entry);
+    for (const entry of dirAgents ?? []) push(entry);
     return out;
+  } catch {
+    return null;
+  }
+}
+
+function readLocalOpenclawAgentDirs(): Array<{
+  id: string;
+  workspace?: string;
+}> | null {
+  try {
+    const dir = path.join(homedir(), ".openclaw", "agents");
+    if (!existsSync(dir)) return null;
+    const agents = readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.length > 0)
+      .map((entry) => ({
+        id: entry.name,
+        workspace: path.join(dir, entry.name),
+      }));
+    if (agents.length === 0) return null;
+    agents.sort((a, b) => {
+      if (a.id === "main") return -1;
+      if (b.id === "main") return 1;
+      return a.id.localeCompare(b.id);
+    });
+    return agents;
   } catch {
     return null;
   }

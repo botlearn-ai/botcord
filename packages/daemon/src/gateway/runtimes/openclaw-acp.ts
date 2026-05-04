@@ -200,6 +200,7 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
     let assistantBytes = 0;
     let capped = false;
     let finalText = "";
+    const assistantTextFilter = createAssistantTextFilter();
 
     const emitBlock = (block: StreamBlock): void => {
       try {
@@ -212,14 +213,9 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
     };
 
     const onNotification = (note: AcpNotification): void => {
-      seq += 1;
-      // Forward raw notification as a stream block for downstream visibility.
-      const kind = classifyAcpUpdate(note);
-      emitBlock({ raw: note, kind, seq });
-
       const update = note.params?.update;
       if (update?.sessionUpdate === "agent_message_chunk") {
-        const text = extractText(update.content);
+        const text = assistantTextFilter.push(extractText(update.content));
         if (text && !capped) {
           const bytes = Buffer.byteLength(text, "utf8");
           if (assistantBytes + bytes > ASSISTANT_TEXT_CAP) {
@@ -229,7 +225,16 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
             assistantBytes += bytes;
           }
         }
+        if (!text) return;
+        seq += 1;
+        emitBlock({ raw: sanitizeAssistantChunk(note, text), kind: "assistant_text", seq });
+        return;
       }
+
+      seq += 1;
+      // Forward raw non-assistant notifications as stream blocks for downstream visibility.
+      const kind = classifyAcpUpdate(note);
+      emitBlock({ raw: note, kind, seq });
     };
 
     let abortListener: (() => void) | undefined;
@@ -322,7 +327,29 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       // OpenClaw's prompt response shape isn't strictly fixed; pull a final
       // text out of common locations and otherwise fall back to the streamed
       // chunks accumulated above.
-      finalText = pickFinalText(promptResult) ?? assistantText;
+      const tailText = assistantTextFilter.flush();
+      if (tailText && !capped) {
+        const bytes = Buffer.byteLength(tailText, "utf8");
+        if (assistantBytes + bytes <= ASSISTANT_TEXT_CAP) {
+          assistantText += tailText;
+          assistantBytes += bytes;
+          seq += 1;
+          emitBlock({
+            raw: {
+              method: "session/update",
+              params: {
+                sessionId: acpSessionId,
+                update: { sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: tailText }] },
+              },
+            },
+            kind: "assistant_text",
+            seq,
+          });
+        }
+      }
+      const pickedText = normalizeAssistantText(pickFinalText(promptResult));
+      const streamedText = normalizeAssistantText(assistantText);
+      finalText = pickedText && !looksLikeReasoningLeak(pickedText) ? pickedText : streamedText;
 
       if (capped) {
         log.warn("openclaw-acp.assistant-text-capped", { sessionId: acpSessionId });
@@ -639,6 +666,8 @@ function extractText(content: unknown): string {
   }
   if (typeof content === "object") {
     const c = content as Record<string, unknown>;
+    const type = typeof c.type === "string" ? c.type.toLowerCase() : "";
+    if (type === "thinking" || type === "reasoning" || type === "thought") return "";
     if (typeof c.text === "string") return c.text;
     if (typeof c.content === "string") return c.content;
     if (Array.isArray(c.content)) return extractText(c.content);
@@ -646,12 +675,187 @@ function extractText(content: unknown): string {
   return "";
 }
 
+function sanitizeAssistantChunk(note: AcpNotification, text: string): AcpNotification {
+  return {
+    ...note,
+    params: {
+      ...note.params,
+      update: {
+        ...note.params?.update,
+        content: [{ type: "text", text }],
+      },
+    },
+  };
+}
+
+function normalizeAssistantText(text: string | undefined): string {
+  if (!text) return "";
+  const finalMatch = text.match(/<final>([\s\S]*?)<\/final>/i);
+  const selected = finalMatch ? finalMatch[1] : text;
+  if (!finalMatch && selected.trimStart().toLowerCase().startsWith("<think")) {
+    return "";
+  }
+  return selected
+    .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\/?final>/gi, "")
+    .trim();
+}
+
+function createAssistantTextFilter(): {
+  push(text: string): string;
+  flush(): string;
+} {
+  let pending = "";
+  let inThink = false;
+  let inFinal = false;
+  let seenFinal = false;
+  let fallback = "";
+
+  const consume = (flush: boolean): string => {
+    let out = "";
+    while (pending.length > 0) {
+      if (inThink) {
+        const close = pending.search(/<\/think>/i);
+        if (close === -1) {
+          if (flush) pending = "";
+          return out;
+        }
+        pending = pending.slice(close).replace(/^<\/think>/i, "");
+        inThink = false;
+        continue;
+      }
+      if (inFinal) {
+        const close = pending.search(/<\/final>/i);
+        if (close === -1) {
+          out += pending;
+          pending = "";
+          return out;
+        }
+        out += pending.slice(0, close);
+        pending = pending.slice(close).replace(/^<\/final>/i, "");
+        inFinal = false;
+        continue;
+      }
+
+      const lt = pending.indexOf("<");
+      if (lt === -1) {
+        if (seenFinal) {
+          out += pending;
+        } else {
+          fallback += pending;
+        }
+        pending = "";
+        return out;
+      }
+
+      if (lt > 0) {
+        if (seenFinal) {
+          out += pending.slice(0, lt);
+        } else {
+          fallback += pending.slice(0, lt);
+        }
+        pending = pending.slice(lt);
+        continue;
+      }
+
+      const lower = pending.toLowerCase();
+      if (lower.startsWith("<think")) {
+        const end = pending.indexOf(">");
+        if (end === -1) {
+          if (flush) pending = "";
+          return out;
+        }
+        pending = pending.slice(end + 1);
+        inThink = true;
+        continue;
+      }
+      if (lower.startsWith("</think")) {
+        const end = pending.indexOf(">");
+        if (end === -1) {
+          if (flush) pending = "";
+          return out;
+        }
+        pending = pending.slice(end + 1);
+        continue;
+      }
+      if (lower.startsWith("<final")) {
+        const end = pending.indexOf(">");
+        if (end === -1) {
+          if (flush) pending = "";
+          return out;
+        }
+        pending = pending.slice(end + 1);
+        seenFinal = true;
+        fallback = "";
+        inFinal = true;
+        continue;
+      }
+      if (lower.startsWith("</final")) {
+        const end = pending.indexOf(">");
+        if (end === -1) {
+          if (flush) pending = "";
+          return out;
+        }
+        pending = pending.slice(end + 1);
+        inFinal = false;
+        continue;
+      }
+
+      const knownPrefixes = ["<think", "</think", "<final", "</final"];
+      if (!flush && knownPrefixes.some((prefix) => prefix.startsWith(lower))) {
+        return out;
+      }
+
+      out += "<";
+      pending = pending.slice(1);
+    }
+    if (flush && !seenFinal && fallback) {
+      const text = normalizeAssistantText(fallback);
+      fallback = "";
+      if (!looksLikeReasoningLeak(text)) return text;
+    }
+    return out;
+  };
+
+  return {
+    push(text: string): string {
+      if (!text) return "";
+      pending += text;
+      return consume(false);
+    },
+    flush(): string {
+      return consume(true);
+    },
+  };
+}
+
 function pickFinalText(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const r = result as Record<string, unknown>;
+  if (Array.isArray(r.assistantTexts)) {
+    const text = r.assistantTexts.filter((x): x is string => typeof x === "string").join("\n");
+    if (text.length > 0) return text;
+  }
+  const contentText = extractText(r.content);
+  if (contentText.length > 0) return contentText;
+  const outputText = extractText(r.output);
+  if (outputText.length > 0) return outputText;
+  const responseText = extractText(r.response);
+  if (responseText.length > 0) return responseText;
   if (typeof r.text === "string" && r.text.length > 0) return r.text;
   if (typeof r.message === "string" && r.message.length > 0) return r.message;
   return undefined;
+}
+
+function looksLikeReasoningLeak(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return (
+    /^the user (said|asked|wants|is asking)\b/i.test(t) ||
+    /^i('|’)m .*\b(i('|’)ll|i will|need to|should|going to)\b/i.test(t) ||
+    /\bi('|’)ll respond\b/i.test(t) ||
+    /\bi need to\b/i.test(t)
+  );
 }
 
 function stringField(bag: Record<string, unknown> | undefined, key: string): string | undefined {
