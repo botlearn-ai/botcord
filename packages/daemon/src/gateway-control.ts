@@ -197,12 +197,16 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       return badParams(`upsert_gateway: unknown provider "${(params as { type: string }).type}"`);
     }
 
-    // W3: remember whether a profile already exists for this id BEFORE we
-    // write the secret. If addChannel later fails on a fresh install, we
-    // delete the orphan secret on the way out.
-    const hadExistingProfile = (cfg.thirdPartyGateways ?? []).some(
-      (g) => g.id === params.id,
-    );
+    // W3/W6: remember whether a profile already exists for this id BEFORE we
+    // write the secret/config. For UPDATE path, capture previous profile +
+    // previous secret so addChannel failure can restore prior state.
+    const existingProfiles = cfg.thirdPartyGateways ?? [];
+    const hadExistingProfile = existingProfiles.some((g) => g.id === params.id);
+    const prevProfile = existingProfiles.find((g) => g.id === params.id);
+    // W6: load the previous secret for UPDATE rollback BEFORE overwriting.
+    const prevSecret = hadExistingProfile
+      ? loadGatewaySecret<{ botToken?: string }>(params.id)
+      : null;
 
     // Persist secret first (so a config write that succeeds is never
     // followed by a missing-secret crash). Atomic rename inside saveSecret.
@@ -236,14 +240,57 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       } catch (addErr) {
         const message = addErr instanceof Error ? addErr.message : String(addErr);
         daemonLog.warn("upsert_gateway.addChannel failed", { id: params.id, error: message });
-        // W3: if this was a fresh install (no prior profile) and addChannel
-        // failed, delete the just-written secret so we don't leave an
-        // orphan on disk that nothing references.
         if (!hadExistingProfile) {
+          // W3: fresh install — delete the orphan secret so nothing references it.
           try {
             deleteGatewaySecret(params.id);
           } catch {
-            // best-effort — orphan secret is logged below
+            // best-effort
+          }
+        } else {
+          // W6: UPDATE path — restore previous secret + profile + try to re-add
+          // the channel with the old config.
+          try {
+            if (prevSecret) saveGatewaySecret(params.id, prevSecret);
+          } catch {
+            // best-effort
+          }
+          try {
+            if (prevProfile) {
+              cfgIO.save(upsertProfileInConfig(cfgIO.load(), prevProfile));
+            }
+          } catch {
+            // best-effort
+          }
+          try {
+            if (prevProfile && prevSecret?.botToken) {
+              await ctx.gateway.addChannel(
+                buildChannelConfig(
+                  {
+                    ...params,
+                    type: prevProfile.type as typeof params.type,
+                    enabled: prevProfile.enabled !== false,
+                    secret: { botToken: prevSecret.botToken },
+                    settings: {
+                      baseUrl: prevProfile.baseUrl,
+                      allowedSenderIds: prevProfile.allowedSenderIds,
+                      allowedChatIds: prevProfile.allowedChatIds,
+                      splitAt: prevProfile.splitAt,
+                    },
+                  },
+                  secretFile,
+                ),
+              );
+            }
+          } catch {
+            // Restore also failed — surface structured error.
+            return {
+              ok: false,
+              error: {
+                code: "addChannel_failed",
+                message: "channel down, manual recovery needed",
+              },
+            };
           }
         }
         return {

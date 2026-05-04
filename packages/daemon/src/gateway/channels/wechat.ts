@@ -26,6 +26,8 @@ const WECHAT_PROVIDER = "wechat" as const;
 /** Trace -> context_token cache TTL. Doc recommends 30 minutes. */
 const TRACE_CONTEXT_TTL_MS = 30 * 60 * 1000;
 const TRACE_CONTEXT_SWEEP_MS = 5 * 60 * 1000;
+/** W1: hard cap on the traceContexts map to prevent unbounded growth. */
+const TRACE_CONTEXT_MAX = 5000;
 
 /** Options accepted by {@link createWechatChannel}. */
 export interface WechatChannelOptions {
@@ -118,6 +120,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
   let stateStore: GatewayStateStore | null = null;
   let stopCallback: (() => void) | null = null;
   let sweepTimer: NodeJS.Timeout | null = null;
+  let started = false;
   // W11: captured during start() so send() can push lastSendAt to the
   // gateway-tracked snapshot, not just the local statusSnapshot.
   let liveSetStatus:
@@ -168,6 +171,18 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
   }
 
   function rememberTrace(traceId: string, ctx: TraceContext): void {
+    // W1: prune oldest entry by updatedAt when cap is reached.
+    if (traceContexts.size >= TRACE_CONTEXT_MAX) {
+      let oldestKey: string | undefined;
+      let oldestAt = Infinity;
+      for (const [k, v] of traceContexts) {
+        if (v.updatedAt < oldestAt) {
+          oldestAt = v.updatedAt;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey !== undefined) traceContexts.delete(oldestKey);
+    }
     traceContexts.set(traceId, ctx);
   }
 
@@ -191,13 +206,12 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     const url = `${baseUrl}/${path.replace(/^\/+/, "")}`;
     const payload = { ...body, base_info: { ...WECHAT_BASE_INFO } };
     // C2: enforce per-call timeout via AbortSignal.timeout — matches telegram.ts.
-    // FetchLike's typed init doesn't expose `signal`; cast at the call site only.
     const init = {
       method: "POST",
       headers: wechatHeaders(botToken),
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(timeoutMs),
-    } as Parameters<FetchLike>[1] & { signal: AbortSignal };
+    };
     const resp = await fetchImpl(url, init);
     const raw = await resp.text();
     if (!raw) return {} as T;
@@ -408,8 +422,8 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     });
     try {
       state.flush();
-    } catch {
-      // best-effort
+    } catch (e) {
+      log.warn("state-flush-on-stop failed", { error: String(e) });
     }
   }
 
@@ -435,6 +449,8 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     type: channelType,
 
     async start(ctx: ChannelStartContext): Promise<void> {
+      if (started) throw new Error("already started");
+      started = true;
       await pollLoop(ctx);
     },
 
@@ -449,8 +465,10 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
       }
       try {
         stateStore?.flush();
-      } catch {
-        // best-effort
+      } catch (e) {
+        // W7: log flush failures at stop — previously swallowed silently.
+        // No ctx.log here; use console to avoid import cycle.
+        console.warn("[wechat] state-flush-on-stop failed", String(e));
       }
     },
 

@@ -17,8 +17,9 @@
 from __future__ import annotations
 
 import datetime
-import ipaddress
 import logging
+import os
+import time
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -253,15 +254,24 @@ def _ack_or_raise(ack: Any) -> dict[str, Any]:
     return result if isinstance(result, dict) else {}
 
 
-def _validate_base_url(value: str | None) -> None:
-    """W1: SSRF guard for user-supplied baseUrl.
+def _allowed_base_hosts() -> set[str]:
+    """W9: explicit allowlist of acceptable baseUrl hosts.
 
-    Rejects empty/non-https URLs and any host that resolves (literally) to a
-    private, loopback, link-local, multicast, or otherwise reserved IP. We
-    deliberately do NOT resolve DNS — that is the daemon's job at fetch time,
-    and re-resolving here would only widen the TOCTOU window. The literal-IP
-    check still blocks the most common SSRF payloads (``https://127.0.0.1``,
-    ``https://10.0.0.5``, ``https://169.254.169.254``).
+    Blocklists miss internal hostnames (``metadata.google.internal``, ``*.svc
+    .cluster.local``); switching to allowlist closes that pivot. The test host
+    is added only when running under pytest / NODE_ENV=test.
+    """
+    hosts = {"api.telegram.org", "ilinkai.weixin.qq.com"}
+    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("NODE_ENV") == "test":
+        hosts.add("botcord-test.local")
+    return hosts
+
+
+def _validate_base_url(value: str | None) -> None:
+    """W9: allowlist-based SSRF guard for user-supplied baseUrl.
+
+    Only well-known third-party API hosts are accepted. Anything else — including
+    GCP/AWS metadata hosts, internal cluster DNS, RFC1918 IPs — is rejected.
     """
     if value is None:
         return
@@ -273,29 +283,28 @@ def _validate_base_url(value: str | None) -> None:
         raise HTTPException(status_code=400, detail="invalid_base_url") from exc
     if parsed.scheme != "https":
         raise HTTPException(status_code=400, detail="invalid_base_url_scheme")
-    host = parsed.hostname or ""
+    host = (parsed.hostname or "").lower()
     if not host:
         raise HTTPException(status_code=400, detail="invalid_base_url_host")
-    # Reject literal-IP forms pointing at private / loopback / link-local space.
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        ip = None
-    if ip is not None:
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            raise HTTPException(status_code=400, detail="forbidden_base_url_host")
-    else:
-        # Hostname forms — block well-known loopback names too.
-        lowered = host.lower()
-        if lowered in {"localhost", "ip6-localhost", "ip6-loopback"}:
-            raise HTTPException(status_code=400, detail="forbidden_base_url_host")
+    if host not in _allowed_base_hosts():
+        raise HTTPException(status_code=400, detail="forbidden_base_url_host")
+
+
+# W4: per-(user, action) token bucket rate limiter. 1 req/s sustained, burst 5.
+_RATE_BUCKETS: dict[tuple[str, str], tuple[float, float]] = {}
+_RATE_RATE = 1.0  # tokens per second
+_RATE_BURST = 5.0
+
+
+def _rate_limit(user_id: Any, action: str) -> None:
+    key = (str(user_id), action)
+    now = time.monotonic()
+    tokens, last = _RATE_BUCKETS.get(key, (_RATE_BURST, now))
+    tokens = min(_RATE_BURST, tokens + (now - last) * _RATE_RATE)
+    if tokens < 1.0:
+        _RATE_BUCKETS[key] = (tokens, now)
+        raise HTTPException(status_code=429, detail="rate_limited")
+    _RATE_BUCKETS[key] = (tokens - 1.0, now)
 
 
 def _filter_config(patch: _ConfigPatch | None) -> dict[str, Any]:
@@ -487,6 +496,7 @@ async def patch_gateway(
         row.status = "active" if row.enabled else "disabled"
 
     try:
+        # trade-off: rare commit failure leaves Hub stale; daemon hot-plug already applied. list_gateways will reconcile on next refresh.
         await db.commit()
     except Exception:
         await db.rollback()
@@ -499,15 +509,24 @@ async def patch_gateway(
 async def delete_gateway(
     agent_id: str,
     gateway_id: str,
+    force: bool = False,
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     _, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     daemon_id = row.daemon_instance_id
-    _require_online(daemon_id)
+    if force:
+        # C1: operator opt-in escape hatch — daemon is permanently dead and the
+        # row would otherwise be orphaned. Skip the daemon round-trip entirely.
+        logger.warning(
+            "delete_gateway force=true: deleting Hub row without daemon ack",
+            extra={"daemon_instance_id": daemon_id, "gateway_id": row.id},
+        )
+    else:
+        _require_online(daemon_id)
 
-    ack = await send_control_frame(daemon_id, "remove_gateway", {"id": row.id})
-    _ack_or_raise(ack)
+        ack = await send_control_frame(daemon_id, "remove_gateway", {"id": row.id})
+        _ack_or_raise(ack)
 
     await db.delete(row)
     await db.commit()
@@ -548,6 +567,7 @@ async def wechat_login_start(
     anything — the bot token never leaves the daemon's process memory until
     the user calls ``POST /gateways`` with the matching ``loginId``.
     """
+    _rate_limit(ctx.user_id, "wechat-login")
     agent = await _load_daemon_agent_or_422(db, ctx, agent_id)
     daemon_id = agent.daemon_instance_id
     assert daemon_id is not None
@@ -582,6 +602,7 @@ async def wechat_login_status(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
+    _rate_limit(ctx.user_id, "wechat-login")
     agent = await _load_daemon_agent_or_422(db, ctx, agent_id)
     daemon_id = agent.daemon_instance_id
     assert daemon_id is not None

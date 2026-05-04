@@ -354,6 +354,70 @@ describe("W6: remove_gateway keeps secret when stop fails", () => {
   });
 });
 
+describe("W6: UPDATE rollback on addChannel failure", () => {
+  it("restores previous secret and config and re-adds old channel when addChannel fails on UPDATE", async () => {
+    const gw = makeFakeGateway();
+    const { state, io } = makeConfigIO(baseCfg());
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+    const gwId = uniqId("w6");
+    trackSecret(gwId);
+
+    // Install successfully with initial token.
+    const firstAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "telegram",
+      accountId: "ag_alice",
+      enabled: true,
+      secret: { botToken: "old-token:123456789012345" },
+    });
+    expect(firstAck.ok).toBe(true);
+    expect(gw.addChannel).toHaveBeenCalledTimes(1);
+
+    // Capture current config before UPDATE.
+    const prevProfile = state.cfg.thirdPartyGateways?.find((g) => g.id === gwId);
+    expect(prevProfile).toBeDefined();
+
+    // Make addChannel fail on the next call (the UPDATE attempt).
+    let addCallCount = 0;
+    gw.addChannel = vi.fn(async (cfg: { id: string; accountId: string }) => {
+      addCallCount += 1;
+      if (addCallCount === 1) {
+        // First call after UPDATE: fail.
+        throw new Error("simulated update failure");
+      }
+      // Second call: the rollback re-add — succeed.
+      gw.channels.set(cfg.id, {
+        id: cfg.id,
+        status: { channel: cfg.id, accountId: cfg.accountId, running: true, connected: true, authorized: true, lastPollAt: Date.now() },
+      });
+    });
+
+    // Attempt UPDATE with a new token.
+    const updateAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "telegram",
+      accountId: "ag_alice",
+      enabled: true,
+      secret: { botToken: "new-token:AAAAAAAAAAAAAAAAA" },
+    });
+    // The outer result is still a failure (addChannel failed).
+    expect(updateAck.ok).toBe(false);
+    expect(updateAck.error?.code).toBe("addChannel_failed");
+
+    // Rollback: addChannel was called twice (fail + restore).
+    expect(addCallCount).toBe(2);
+
+    // Secret on disk must be restored to the old token.
+    const secretPath = trackSecret(gwId);
+    const { existsSync: ex, readFileSync: rf } = await import("node:fs");
+    if (ex(secretPath)) {
+      const onDisk = JSON.parse(rf(secretPath, "utf8")) as { botToken?: string };
+      // Restored secret should be the old token, not the new one.
+      expect(onDisk.botToken).toBe("old-token:123456789012345");
+    }
+  });
+});
+
 describe("list_gateways", () => {
   it("returns config entries annotated with live channel status", async () => {
     const gw = makeFakeGateway();

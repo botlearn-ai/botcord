@@ -3,8 +3,9 @@ import {
   assertSafeBaseUrl,
   UnsafeBaseUrlError,
 } from "../gateway/channels/url-guard.js";
+import { mintLoginId } from "../gateway/channels/login-session.js";
 
-describe("assertSafeBaseUrl (W1)", () => {
+describe("assertSafeBaseUrl (W9 allowlist)", () => {
   it("accepts undefined / empty (caller falls back to default)", () => {
     expect(() => assertSafeBaseUrl(undefined)).not.toThrow();
     expect(() => assertSafeBaseUrl(null)).not.toThrow();
@@ -20,7 +21,7 @@ describe("assertSafeBaseUrl (W1)", () => {
     expect(() => assertSafeBaseUrl("http://api.telegram.org")).toThrow(UnsafeBaseUrlError);
   });
 
-  it("rejects loopback hostname", () => {
+  it("rejects loopback hostname (allowlist miss)", () => {
     expect(() => assertSafeBaseUrl("https://localhost")).toThrow(UnsafeBaseUrlError);
     expect(() => assertSafeBaseUrl("https://localhost:9999")).toThrow(UnsafeBaseUrlError);
   });
@@ -46,5 +47,39 @@ describe("assertSafeBaseUrl (W1)", () => {
 
   it("rejects malformed URLs", () => {
     expect(() => assertSafeBaseUrl("not-a-url")).toThrow(UnsafeBaseUrlError);
+  });
+
+  it("W9: rejects GCP metadata hostnames not in allowlist", () => {
+    expect(() => assertSafeBaseUrl("https://metadata.google.internal")).toThrow(UnsafeBaseUrlError);
+    expect(() => assertSafeBaseUrl("https://metadata")).toThrow(UnsafeBaseUrlError);
+  });
+
+  it("W9: rejects *.internal and *.svc.cluster.local hostnames", () => {
+    expect(() => assertSafeBaseUrl("https://evil.internal")).toThrow(UnsafeBaseUrlError);
+    expect(() => assertSafeBaseUrl("https://my-service.svc.cluster.local")).toThrow(UnsafeBaseUrlError);
+  });
+
+  it("W9: rejects any arbitrary hostname not in allowlist", () => {
+    expect(() => assertSafeBaseUrl("https://attacker.com")).toThrow(UnsafeBaseUrlError);
+    expect(() => assertSafeBaseUrl("https://evil.api.telegram.org")).toThrow(UnsafeBaseUrlError);
+  });
+});
+
+describe("W5: mintLoginId uses 128-bit entropy", () => {
+  it("generates a wechat loginId with 32 hex chars in the random segment", () => {
+    const id = mintLoginId("wechat");
+    expect(id).toMatch(/^wxl_/);
+    const rand = id.split("_")[2]!;
+    // randomBytes(16).toString("hex") = 32 hex chars
+    expect(rand).toHaveLength(32);
+    expect(rand).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("generates a telegram loginId with 32 hex chars in the random segment", () => {
+    const id = mintLoginId("telegram");
+    expect(id).toMatch(/^tgl_/);
+    const rand = id.split("_")[2]!;
+    expect(rand).toHaveLength(32);
+    expect(rand).toMatch(/^[0-9a-f]{32}$/);
   });
 });

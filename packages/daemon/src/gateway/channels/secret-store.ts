@@ -10,6 +10,9 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 
+// W3: logger for corrupt-file warnings. Using console so no circular dep on log.ts.
+const _warn = (msg: string) => console.warn(`[secret-store] ${msg}`);
+
 const DEFAULT_GATEWAYS_DIR = path.join(
   homedir(),
   ".botcord",
@@ -41,7 +44,13 @@ export function loadGatewaySecret<T = Record<string, unknown>>(
   const file = defaultGatewaySecretPath(gatewayId, override);
   if (!existsSync(file)) return null;
   const raw = readFileSync(file, "utf8");
-  return JSON.parse(raw) as T;
+  // W3: guard against corrupt files — JSON.parse throws on malformed input.
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    _warn(`corrupt secret file at ${file} — ignoring`);
+    return null;
+  }
 }
 
 /**

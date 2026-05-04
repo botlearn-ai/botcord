@@ -495,6 +495,40 @@ async def test_delete_removes_row_after_daemon_ack(client, seed, db_session, mon
 
 
 @pytest.mark.asyncio
+async def test_delete_force_removes_row_even_when_daemon_offline(
+    client, seed, db_session, monkeypatch
+):
+    """C1: ?force=1 must skip the daemon round-trip and delete the DB row even
+    when the daemon is offline (which would otherwise return 409)."""
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    send_called = {"n": 0}
+
+    async def fake_send(*a, **kw):
+        send_called["n"] += 1
+        return {"ok": True, "result": {}}
+
+    # Daemon is OFFLINE — without force this would 409.
+    _patch_daemon(monkeypatch, online=False, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.delete(
+        f"/api/agents/ag_daemon/gateways/{gw_id}?force=1", headers=headers
+    )
+    assert r.status_code == 204, r.text
+
+    # Row must be gone.
+    rows = (
+        await db_session.execute(
+            select(AgentGatewayConnection).where(AgentGatewayConnection.id == gw_id)
+        )
+    ).scalars().all()
+    assert rows == []
+
+    # Daemon was NOT contacted.
+    assert send_called["n"] == 0
+
+
+@pytest.mark.asyncio
 async def test_test_endpoint_returns_daemon_result(client, seed, db_session, monkeypatch):
     gw_id = await _seed_one_connection(db_session, seed)
 
@@ -729,10 +763,10 @@ async def test_wechat_login_start_accepts_camelCase_baseUrl(client, seed, monkey
     r = await client.post(
         "/api/agents/ag_daemon/gateways/wechat/login/start",
         headers=headers,
-        json={"baseUrl": "https://example.test", "gatewayId": "gw_x"},
+        json={"baseUrl": "https://botcord-test.local", "gatewayId": "gw_x"},
     )
     assert r.status_code == 200, r.text
-    assert captured["params"]["baseUrl"] == "https://example.test"
+    assert captured["params"]["baseUrl"] == "https://botcord-test.local"
     assert captured["params"]["gatewayId"] == "gw_x"
 
 
@@ -852,6 +886,11 @@ async def test_send_control_frame_raises_504_on_ack_timeout(monkeypatch):
         "https://10.0.0.5",
         "https://192.168.1.1",
         "https://172.16.5.5",
+        # W9: allowlist — hostname-based SSRF vectors
+        "https://metadata.google.internal",
+        "https://metadata",
+        "https://evil.internal",
+        "https://my-service.svc.cluster.local",
     ],
 )
 @pytest.mark.asyncio
@@ -881,6 +920,11 @@ async def test_create_rejects_unsafe_base_url(client, seed, monkeypatch, bad_url
         "https://127.0.0.1",
         "https://169.254.169.254",
         "https://10.0.0.5",
+        # W9: allowlist — hostname-based SSRF vectors must be rejected
+        "https://metadata.google.internal",
+        "https://metadata",
+        "https://evil.internal",
+        "https://my-service.svc.cluster.local",
     ],
 )
 @pytest.mark.asyncio

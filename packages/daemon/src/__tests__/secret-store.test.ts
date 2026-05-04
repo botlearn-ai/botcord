@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -57,5 +57,14 @@ describe("secret-store", () => {
     expect(existsSync(override)).toBe(false);
     // Second call must not throw.
     deleteGatewaySecret("gw1", override);
+  });
+
+  it("W3: returns null and does not throw when the secret file contains invalid JSON", () => {
+    const override = path.join(tmp, "corrupt.json");
+    // Write intentionally corrupt JSON.
+    writeFileSync(override, "{ broken json }}}");
+    // Must not throw; must return null.
+    expect(() => loadGatewaySecret("gw_corrupt", override)).not.toThrow();
+    expect(loadGatewaySecret("gw_corrupt", override)).toBeNull();
   });
 });

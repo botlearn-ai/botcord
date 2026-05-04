@@ -97,6 +97,17 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
   const fetchImpl: typeof fetch = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
 
   let botToken: string | undefined = opts.botToken;
+  let started = false;
+
+  /**
+   * C3: Redact the bot token from any log/error string. Telegram's Bot API
+   * embeds the token in the URL path, so fetch errors and JSON.parse failures
+   * routinely include it. Replace before any log.* call.
+   */
+  function redactToken(input: string): string {
+    if (!botToken || !input) return input;
+    return input.split(botToken).join("***");
+  }
   let stateStore: GatewayStateStore | null = null;
   let stopCallback: (() => void) | null = null;
   // W11: captured during start() so send() can push lastSendAt to the
@@ -144,12 +155,23 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
   ): Promise<TelegramApiResult<T>> {
     if (!botToken) throw new Error("telegram bot token not loaded");
     const url = `${baseUrl}/bot${botToken}/${method}`;
-    const resp = await fetchImpl(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    let resp: Response;
+    try {
+      resp = await fetchImpl(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      // C3: fetch errors often stringify the URL (which embeds the token).
+      // Re-raise with the token replaced.
+      const e = err as Error;
+      const redacted = redactToken(e.message ?? String(err));
+      const next = new Error(redacted);
+      next.name = e.name ?? "Error";
+      throw next;
+    }
     const json = (await resp.json()) as TelegramApiResult<T>;
     return json;
   }
@@ -280,9 +302,9 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
         markStatus({ lastPollAt: Date.now() });
         if (!resp.ok) {
           log.warn("telegram getUpdates non-ok", {
-            description: resp.description,
+            description: redactToken(resp.description ?? ""),
           });
-          markStatus({ lastError: resp.description ?? "getUpdates failed" });
+          markStatus({ lastError: redactToken(resp.description ?? "getUpdates failed") });
           await sleep(POLL_BACKOFF_MS, abortSignal);
           continue;
         }
@@ -308,7 +330,7 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
           } catch (err) {
             emitFailed = true;
             log.error("telegram emit threw — leaving cursor unchanged", {
-              err: String(err),
+              err: redactToken(String(err)),
             });
             break;
           }
@@ -325,8 +347,8 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
           await sleep(TRANSIENT_BACKOFF_MS, abortSignal);
           continue;
         }
-        log.error("telegram poll failed", { err: String(err) });
-        markStatus({ lastError: String(err) });
+        log.error("telegram poll failed", { err: redactToken(String(err)) });
+        markStatus({ lastError: redactToken(String(err)) });
         await sleep(POLL_BACKOFF_MS, abortSignal);
       }
     }
@@ -338,8 +360,8 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
     });
     try {
       state.flush();
-    } catch {
-      // best-effort
+    } catch (e) {
+      log.warn("state-flush-on-stop failed", { error: String(e) });
     }
   }
 
@@ -348,6 +370,8 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
     type: channelType,
 
     async start(ctx: ChannelStartContext): Promise<void> {
+      if (started) throw new Error("already started");
+      started = true;
       await pollLoop(ctx);
     },
 
@@ -358,8 +382,9 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
       }
       try {
         stateStore?.flush();
-      } catch {
-        // best-effort
+      } catch (e) {
+        // W7: log flush failures at stop — previously swallowed silently.
+        console.warn("[telegram] state-flush-on-stop failed", String(e));
       }
     },
 
@@ -388,9 +413,11 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
         );
         if (!resp.ok) {
           log.warn("telegram sendMessage non-ok", {
-            description: resp.description,
+            description: redactToken(resp.description ?? ""),
           });
-          throw new Error(`telegram sendMessage failed: ${resp.description ?? "unknown"}`);
+          throw new Error(
+            `telegram sendMessage failed: ${redactToken(resp.description ?? "unknown")}`,
+          );
         }
         if (resp.result?.message_id !== undefined) {
           lastMessageId = `telegram:${chatId}:${resp.result.message_id}`;
@@ -410,7 +437,7 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
       try {
         await callApi("sendChatAction", { chat_id: chatId, action: "typing" }, 10_000);
       } catch (err) {
-        ctx.log.warn("telegram typing failed", { err: String(err) });
+        ctx.log.warn("telegram typing failed", { err: redactToken(String(err)) });
       }
     },
 

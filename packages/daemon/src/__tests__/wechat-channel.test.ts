@@ -952,3 +952,117 @@ describe("W3: authorized stays false until first ret===0 poll", () => {
 
 // vi import kept available for future per-test mocking; nothing to do here.
 void vi;
+
+describe("W1: traceContexts hard cap", () => {
+  let tmpCap: string;
+  beforeEach(() => {
+    tmpCap = mkdtempSync(path.join(tmpdir(), "wechat-ch-cap-"));
+  });
+  afterEach(() => {
+    rmSync(tmpCap, { recursive: true, force: true });
+  });
+
+  it("inserting 5001 entries keeps the map at <= 5000 (oldest pruned)", async () => {
+    // Build an adapter with a fake clock so we can control updatedAt order.
+    let nowMs = 1_000_000;
+    const fetchImpl = buildFetchStub(
+      [
+        {
+          match: "getupdates",
+          respond: (idx) => {
+            if (idx < 5001) {
+              // Each poll returns one message so we get 5001 trace entries.
+              nowMs += 1;
+              return {
+                body: {
+                  ret: 0,
+                  get_updates_buf: `buf-${idx}`,
+                  msgs: [
+                    {
+                      message_type: 1,
+                      from_user_id: "alice@im.wechat",
+                      context_token: `ctx-${idx}`,
+                      item_list: [{ type: 1, text_item: { text: `msg-${idx}` } }],
+                    },
+                  ],
+                },
+              };
+            }
+            return { body: { ret: 0, get_updates_buf: `buf-5001`, msgs: [] } };
+          },
+        },
+      ],
+      [],
+    );
+    const adapter = createWechatChannel({
+      id: "gw_wx_cap",
+      accountId: "ag_test",
+      botToken: "tok",
+      stateFile: path.join(tmpCap, "state.json"),
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: ["alice@im.wechat"],
+      now: () => nowMs,
+    });
+    const h = startAdapter(adapter, { stopAfterEnvelopes: 5001 });
+    await h.pollDone;
+    // 5001 messages were accepted; the cap should have kept the map <= 5000.
+    expect(h.envelopes.length).toBe(5001);
+    // We can't read traceContexts directly, but we verify that the send() for
+    // the very first trace ID now fails (it was evicted as the oldest entry).
+    const firstTraceId = h.envelopes[0]!.message.trace!.id;
+    await expect(
+      adapter.send({
+        log: SILENT_LOG,
+        message: {
+          channel: "gw_wx_cap",
+          accountId: "ag_test",
+          conversationId: "wechat:user:alice@im.wechat",
+          text: "evicted",
+          traceId: firstTraceId,
+        },
+      }),
+    ).rejects.toThrow(/no context_token/);
+  });
+});
+
+describe("W2: started guard", () => {
+  let tmpG: string;
+  beforeEach(() => {
+    tmpG = mkdtempSync(path.join(tmpdir(), "wechat-ch-guard-"));
+  });
+  afterEach(() => {
+    rmSync(tmpG, { recursive: true, force: true });
+  });
+
+  it("calling start() a second time throws 'already started'", async () => {
+    const fetchImpl = buildFetchStub(
+      [
+        { match: "getupdates", respond: () => ({ body: { ret: 0, get_updates_buf: "c", msgs: [] } }) },
+      ],
+      [],
+    );
+    const adapter = createWechatChannel({
+      id: "gw_wx_guard",
+      accountId: "ag_test",
+      botToken: "tok",
+      stateFile: path.join(tmpG, "state.json"),
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: [],
+    });
+    const h = startAdapter(adapter, { stopAfterMs: 30 });
+    // Second start() before the first finishes must throw.
+    await expect(
+      adapter.start({
+        config: { channels: [], defaultRoute: { runtime: "claude-code", cwd: "/tmp" } },
+        accountId: "ag_test",
+        abortSignal: new AbortController().signal,
+        log: SILENT_LOG,
+        emit: async () => {},
+        setStatus: () => {},
+      }),
+    ).rejects.toThrow("already started");
+    await h.pollDone;
+  });
+});

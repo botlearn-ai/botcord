@@ -163,7 +163,7 @@ interface AgentGatewayState {
   ) => Promise<AgentGatewayConnection>;
   enable: (agentId: string, gatewayId: string) => Promise<AgentGatewayConnection>;
   disable: (agentId: string, gatewayId: string) => Promise<AgentGatewayConnection>;
-  remove: (agentId: string, gatewayId: string) => Promise<void>;
+  remove: (agentId: string, gatewayId: string, opts?: { force?: boolean }) => Promise<void>;
   test: (agentId: string, gatewayId: string) => Promise<GatewayTestResult>;
   startWechatLogin: (
     agentId: string,
@@ -284,8 +284,9 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
     return get().patch(agentId, gatewayId, { enabled: false });
   },
 
-  async remove(agentId, gatewayId) {
-    const res = await fetch(`${base(agentId)}/${encodeURIComponent(gatewayId)}`, {
+  async remove(agentId, gatewayId, opts) {
+    const qs = opts?.force ? "?force=1" : "";
+    const res = await fetch(`${base(agentId)}/${encodeURIComponent(gatewayId)}${qs}`, {
       method: "DELETE",
     });
     if (!res.ok && res.status !== 204) {
@@ -313,7 +314,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
     );
     if (!res.ok) {
       const err = await readErr(res);
-      if (err.status === 409) {
+      if (err.status === 409 || err.status === 502 || err.status === 504) {
         set((s) => ({ daemonOffline: { ...s.daemonOffline, [agentId]: true } }));
       }
       // Surface as a value, not a throw — UI shows error inline per row.

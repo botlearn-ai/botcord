@@ -129,8 +129,7 @@ export function maskTokenPreview(token: string | undefined | null): string {
 export function mintLoginId(provider: LoginProvider): string {
   const prefix = provider === "wechat" ? "wxl" : "tgl";
   const ts = Date.now().toString(36);
-  // 8 hex chars = 32 bits of entropy — comfortably above what we need to
-  // resist a 5-minute online guessing window against the in-memory store.
-  const rand = randomBytes(4).toString("hex");
+  // 32 hex chars = 128 bits of entropy — W5 regression fix from round 2.
+  const rand = randomBytes(16).toString("hex");
   return `${prefix}_${ts}_${rand}`;
 }

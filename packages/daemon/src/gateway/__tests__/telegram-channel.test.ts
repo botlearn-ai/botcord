@@ -460,6 +460,75 @@ describe("W1: cursor unchanged when emit throws", () => {
   });
 });
 
+describe("W2: started guard", () => {
+  it("calling start() a second time throws 'already started'", async () => {
+    const calls: FetchCall[] = [];
+    const abort = new AbortController();
+    const channel = createTelegramChannel({
+      id: "gw_tg_guard",
+      accountId: "ag_self",
+      botToken: "tok",
+      stateFile: path.join(tmp, "state.json"),
+      stateDebounceMs: 0,
+      allowedChatIds: ["1"],
+      allowedSenderIds: ["1"],
+      fetchImpl: makeFetchScript([{ ok: true, result: [] }], calls),
+    });
+    const { ctx } = makeStartCtx({ abort });
+    // First start — runs async; don't await yet.
+    const first = channel.start(ctx);
+    // Second start while first is in-flight.
+    const secondAbort = new AbortController();
+    const { ctx: ctx2 } = makeStartCtx({ abort: secondAbort });
+    await expect(channel.start(ctx2)).rejects.toThrow("already started");
+    abort.abort();
+    await first;
+  });
+});
+
+describe("C3: bot token redacted in error logs", () => {
+  it("fetch error that includes the bot token is re-thrown with token replaced by ***", async () => {
+    const SECRET_TOKEN = "1234567890:ABCDEFGHIJKLMNabcdefghijklmn";
+    let caughtMessage = "";
+    const fetchImpl = (async () => {
+      const e = new Error(`network error: https://api.telegram.org/bot${SECRET_TOKEN}/getUpdates failed`);
+      throw e;
+    }) as unknown as typeof fetch;
+    const abort = new AbortController();
+    const channel = createTelegramChannel({
+      id: "gw_tg_c3",
+      accountId: "ag_self",
+      botToken: SECRET_TOKEN,
+      allowedChatIds: ["1"],
+      allowedSenderIds: ["1"],
+      stateFile: path.join(tmp, "state-c3.json"),
+      stateDebounceMs: 0,
+      fetchImpl,
+    });
+    const { ctx } = makeStartCtx({
+      abort,
+      emit: async () => {},
+    });
+    // Override log to capture warn/error output as JSON strings for inspection.
+    const logged: string[] = [];
+    const captureLog = (...args: unknown[]) => {
+      logged.push(JSON.stringify(args));
+    };
+    (ctx.log as Record<string, unknown>).error = captureLog;
+    (ctx.log as Record<string, unknown>).warn = captureLog;
+    // The poll loop will catch the fetch error and log it, then back-off.
+    // Abort after a short time.
+    setTimeout(() => abort.abort(), 200);
+    await channel.start(ctx);
+    // All logged output must NOT contain the raw token.
+    for (const line of logged) {
+      expect(line).not.toContain(SECRET_TOKEN);
+    }
+    // At least one log line must reference *** (token redacted).
+    expect(logged.some((l) => l.includes("***"))).toBe(true);
+  });
+});
+
 describe("createTelegramChannel — typing()", () => {
   it("posts to /sendChatAction with action: typing", async () => {
     const calls: FetchCall[] = [];
