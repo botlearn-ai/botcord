@@ -66,6 +66,7 @@ from app.routers.activity import router as app_activity_router
 from app.routers.policy import router as app_policy_router
 from app.routers.gateways import router as app_gateways_router
 from app.routers.prompts import router as app_prompts_router
+from app.routers.runtime_files import router as app_runtime_files_router
 from app.auth import require_beta_user
 
 logging.basicConfig(level=logging.INFO)
@@ -295,6 +296,7 @@ app.include_router(app_beta_router)
 app.include_router(app_admin_beta_router)
 app.include_router(app_policy_router, dependencies=_beta_gate)
 app.include_router(app_gateways_router, dependencies=_beta_gate)
+app.include_router(app_runtime_files_router, dependencies=_beta_gate)
 app.include_router(app_prompts_router)
 app.include_router(app_presence_router, dependencies=_beta_gate)
 app.include_router(app_presence_status_router, dependencies=_beta_gate)

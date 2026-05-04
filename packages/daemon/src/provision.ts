@@ -4,7 +4,7 @@
  * side effects (register agent, write credentials, load route, add/remove
  * gateway channel) and return an ack payload.
  */
-import { existsSync, readdirSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import {
@@ -371,6 +371,23 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
       }
 
+      case "list_agent_files": {
+        const params = (frame.params ?? {}) as unknown as ListAgentFilesParams;
+        if (!params.agentId) {
+          return {
+            ok: false,
+            error: { code: "bad_params", message: "list_agent_files requires params.agentId" },
+          };
+        }
+        const result = listAgentRuntimeFiles(params);
+        daemonLog.debug("list_agent_files", {
+          agentId: params.agentId,
+          fileId: params.fileId ?? null,
+          count: result.files.length,
+        });
+        return { ok: true, result };
+      }
+
       default:
         daemonLog.warn("provision.dispatch: unknown frame type", {
           type: frame.type,
@@ -433,6 +450,192 @@ interface ProvisionCtx {
 }
 
 const openclawProvisionLocks = new Map<string, Promise<unknown>>();
+
+const RUNTIME_FILE_READ_CAP_BYTES = 128 * 1024;
+
+interface ListAgentFilesParams {
+  agentId: string;
+  fileId?: string;
+}
+
+interface AgentRuntimeFile {
+  id: string;
+  name: string;
+  scope: "workspace" | "hermes" | "openclaw";
+  runtime?: string;
+  profile?: string;
+  size?: number;
+  mtimeMs?: number;
+  content?: string;
+  truncated?: boolean;
+  error?: string;
+}
+
+interface ListAgentFilesResult {
+  agentId: string;
+  runtime?: string;
+  files: AgentRuntimeFile[];
+}
+
+interface RuntimeFileCandidate {
+  id: string;
+  name: string;
+  scope: AgentRuntimeFile["scope"];
+  root: string;
+  relativePath: string;
+  runtime?: string;
+  profile?: string;
+}
+
+function listAgentRuntimeFiles(params: ListAgentFilesParams): ListAgentFilesResult {
+  const agentId = params.agentId;
+  const credentials = loadStoredCredentials(defaultCredentialsFile(agentId));
+  const candidates = runtimeFileCandidates(credentials);
+  const selected = params.fileId
+    ? candidates.filter((candidate) => candidate.id === params.fileId)
+    : candidates;
+  return {
+    agentId,
+    ...(credentials.runtime ? { runtime: credentials.runtime } : {}),
+    files: selected.map(readRuntimeFileCandidate).filter(Boolean) as AgentRuntimeFile[],
+  };
+}
+
+function runtimeFileCandidates(credentials: StoredBotCordCredentials): RuntimeFileCandidate[] {
+  const agentId = credentials.agentId;
+  const runtime = credentials.runtime;
+  const out: RuntimeFileCandidate[] = [];
+
+  addWorkspaceFiles(out, agentId, runtime);
+
+  if (runtime === "hermes-agent") {
+    addHermesFiles(out, credentials);
+  }
+  if (runtime === "openclaw-acp") {
+    addOpenclawFiles(out, credentials);
+  }
+
+  return out;
+}
+
+function addWorkspaceFiles(
+  out: RuntimeFileCandidate[],
+  agentId: string,
+  runtime?: string,
+): void {
+  const root = agentWorkspaceDir(agentId);
+  for (const file of ["AGENTS.md", "CLAUDE.md", "identity.md", "memory.md", "task.md"]) {
+    out.push({
+      id: `workspace:${file}`,
+      name: `workspace/${file}`,
+      scope: "workspace",
+      root,
+      relativePath: file,
+      ...(runtime ? { runtime } : {}),
+    });
+  }
+}
+
+function addHermesFiles(
+  out: RuntimeFileCandidate[],
+  credentials: StoredBotCordCredentials,
+): void {
+  if (credentials.hermesProfile) {
+    const profile = credentials.hermesProfile;
+    const root = hermesProfileHomeDir(profile);
+    for (const file of ["SOUL.md", "AGENTS.md", "memories/MEMORY.md"]) {
+      out.push({
+        id: `hermes-profile:${profile}:${file}`,
+        name: `hermes/${profile}/${file}`,
+        scope: "hermes",
+        root,
+        relativePath: file,
+        runtime: "hermes-agent",
+        profile,
+      });
+    }
+  } else {
+    const root = path.join(agentHomeDir(credentials.agentId), "hermes-home");
+    for (const file of ["SOUL.md", "AGENTS.md", "memories/MEMORY.md"]) {
+      out.push({
+        id: `hermes-home:${file}`,
+        name: `hermes-home/${file}`,
+        scope: "hermes",
+        root,
+        relativePath: file,
+        runtime: "hermes-agent",
+      });
+    }
+  }
+
+  out.push({
+    id: "hermes-workspace:AGENTS.md",
+    name: "hermes-workspace/AGENTS.md",
+    scope: "hermes",
+    root: path.join(agentHomeDir(credentials.agentId), "hermes-workspace"),
+    relativePath: "AGENTS.md",
+    runtime: "hermes-agent",
+    ...(credentials.hermesProfile ? { profile: credentials.hermesProfile } : {}),
+  });
+}
+
+function addOpenclawFiles(
+  out: RuntimeFileCandidate[],
+  credentials: StoredBotCordCredentials,
+): void {
+  if (!credentials.openclawAgent) return;
+  const local = readLocalOpenclawAgents();
+  if (!local) return;
+  const profile = local.find((entry) => entry.id === credentials.openclawAgent);
+  if (!profile?.workspace) return;
+  for (const file of ["SOUL.md", "MEMORY.md", "AGENTS.md"]) {
+    out.push({
+      id: `openclaw:${credentials.openclawAgent}:${file}`,
+      name: `openclaw/${credentials.openclawAgent}/${file}`,
+      scope: "openclaw",
+      root: profile.workspace,
+      relativePath: file,
+      runtime: "openclaw-acp",
+      profile: credentials.openclawAgent,
+    });
+  }
+}
+
+function readRuntimeFileCandidate(candidate: RuntimeFileCandidate): AgentRuntimeFile | null {
+  const resolved = path.resolve(candidate.root, candidate.relativePath);
+  const root = path.resolve(candidate.root);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return null;
+  }
+
+  const base: AgentRuntimeFile = {
+    id: candidate.id,
+    name: candidate.name,
+    scope: candidate.scope,
+    ...(candidate.runtime ? { runtime: candidate.runtime } : {}),
+    ...(candidate.profile ? { profile: candidate.profile } : {}),
+  };
+
+  try {
+    const lst = lstatSync(resolved);
+    if (lst.isSymbolicLink() || !lst.isFile()) return null;
+    const st = statSync(resolved);
+    base.size = st.size;
+    base.mtimeMs = st.mtimeMs;
+    if (st.size > RUNTIME_FILE_READ_CAP_BYTES) {
+      base.truncated = true;
+      return base;
+    }
+    base.content = readFileSync(resolved, "utf8");
+    return base;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    return {
+      ...base,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
 
 async function provisionAgent(
   params: ProvisionAgentParams,

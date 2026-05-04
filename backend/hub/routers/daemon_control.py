@@ -633,6 +633,7 @@ _ALLOWED_DISPATCH_TYPES = {
     "revoke_agent",
     "reload_config",
     "list_agents",
+    "list_agent_files",
     "set_route",
     "ping",
     "list_runtimes",
