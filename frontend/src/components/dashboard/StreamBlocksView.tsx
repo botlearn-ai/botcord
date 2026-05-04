@@ -50,9 +50,51 @@ interface BlockView {
   resultStr?: string;
   reasoningText?: string;
   systemLabel?: string;
+  systemDetails?: string;
   errorText?: string;
   todoItems?: Array<{ text: string; status?: string }>;
   rawKind: string;
+}
+
+function stringifyDetails(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function extractContentText(content: unknown): string {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map(extractContentText).filter(Boolean).join("\n");
+  }
+  if (typeof content === "object") {
+    const c = content as any;
+    if (typeof c.text === "string") return c.text;
+    if (typeof c.thinking === "string") return c.thinking;
+    if (typeof c.content === "string") return c.content;
+    if (Array.isArray(c.content)) return extractContentText(c.content);
+  }
+  return "";
+}
+
+function blockDetails(raw: unknown, payload?: Record<string, unknown>): string {
+  const payloadDetails = stringifyDetails(payload?.details);
+  if (payloadDetails) return payloadDetails;
+  const rawAny = raw as any;
+  const direct =
+    typeof rawAny?.text === "string" ? rawAny.text
+    : typeof rawAny?.message === "string" ? rawAny.message
+    : typeof rawAny?.summary === "string" ? rawAny.summary
+    : "";
+  if (direct) return direct;
+  const contentText = extractContentText(rawAny?.content ?? rawAny?.message?.content ?? rawAny?.params?.update?.content);
+  if (contentText) return contentText;
+  return raw ? stringifyDetails(raw) : payload ? stringifyDetails(payload) : "";
 }
 
 /** Build a `tool_use_id → name` map by walking all blocks. Claude-code's
@@ -99,8 +141,17 @@ function normalizeBlock(
   if (kind === "reasoning") {
     return {
       kind: "reasoning",
-      reasoningText: (payload?.text as string) || "",
+      reasoningText: (payload?.text as string) || blockDetails(raw, payload),
       rawKind: kind,
+    };
+  }
+  if (kind === "thinking") {
+    const phase = typeof payload?.phase === "string" ? payload.phase : undefined;
+    const label = typeof payload?.label === "string" ? payload.label : undefined;
+    return {
+      kind: "reasoning",
+      reasoningText: blockDetails(raw, payload),
+      rawKind: label || (phase ? `thinking: ${phase}` : "thinking"),
     };
   }
 
@@ -168,11 +219,13 @@ function normalizeBlock(
     // Codex thread.started / turn.started / turn.completed; Claude-code system init.
     const type = rawAny?.type as string | undefined;
     const subtype = rawAny?.subtype as string | undefined;
+    const payloadSubtype = payload?.subtype as string | undefined;
     const turnStatus = rawAny?.turn?.status as string | undefined;
     let label = type || "system";
     if (type === "system" && subtype) label = `system: ${subtype}`;
+    else if (!type && payloadSubtype) label = `system: ${payloadSubtype}`;
     else if (type === "turn.completed" && turnStatus) label = `turn ${turnStatus}`;
-    return { kind: "system", systemLabel: label, rawKind: label };
+    return { kind: "system", systemLabel: label, systemDetails: blockDetails(raw, payload), rawKind: label };
   }
 
   // `other` — try to extract something useful from the raw event so users
@@ -286,12 +339,29 @@ function StreamBlockItem({
   }
 
   if (view.kind === "reasoning") {
+    const text = view.reasoningText || "";
     return (
-      <div className="flex items-start gap-2 py-1">
-        <Brain className="w-3 h-3 text-purple-400 shrink-0 mt-0.5" />
-        <p className="text-xs text-purple-300/70 italic leading-relaxed line-clamp-3">
-          {view.reasoningText || ""}
-        </p>
+      <div className="py-1">
+        <button
+          onClick={() => text && setResultExpanded(!resultExpanded)}
+          className="flex items-center gap-2 group"
+        >
+          <Brain className="w-3 h-3 text-purple-400 shrink-0" />
+          <span className="text-xs font-mono text-purple-300/80">{view.rawKind || "thinking"}</span>
+          {text && (
+            resultExpanded
+              ? <ChevronDown className="w-2.5 h-2.5 text-zinc-500" />
+              : <ChevronRight className="w-2.5 h-2.5 text-zinc-500" />
+          )}
+        </button>
+        {text && !resultExpanded && (
+          <p className="mt-0.5 ml-5 text-[10px] text-purple-300/60 italic leading-relaxed line-clamp-2">
+            {summarizeResult(text)}
+          </p>
+        )}
+        {text && resultExpanded && (
+          <ToolResultContent result={text} toolName={view.rawKind || "thinking"} />
+        )}
       </div>
     );
   }
@@ -338,10 +408,29 @@ function StreamBlockItem({
   }
 
   if (view.kind === "system") {
+    const details = view.systemDetails || "";
     return (
-      <div className="flex items-center gap-2 py-1">
-        <Info className="w-3 h-3 text-zinc-500 shrink-0" />
-        <span className="text-xs text-zinc-500 font-mono">{view.systemLabel || view.rawKind}</span>
+      <div className="py-1">
+        <button
+          onClick={() => details && setResultExpanded(!resultExpanded)}
+          className="flex items-center gap-2 group"
+        >
+          <Info className="w-3 h-3 text-zinc-500 shrink-0" />
+          <span className="text-xs text-zinc-500 font-mono">{view.systemLabel || view.rawKind}</span>
+          {details && (
+            resultExpanded
+              ? <ChevronDown className="w-2.5 h-2.5 text-zinc-500" />
+              : <ChevronRight className="w-2.5 h-2.5 text-zinc-500" />
+          )}
+        </button>
+        {details && !resultExpanded && (
+          <p className="mt-0.5 ml-5 text-[10px] text-zinc-500 truncate max-w-[400px]">
+            {summarizeResult(details)}
+          </p>
+        )}
+        {details && resultExpanded && (
+          <ToolResultContent result={details} toolName={view.systemLabel || view.rawKind} />
+        )}
       </div>
     );
   }
