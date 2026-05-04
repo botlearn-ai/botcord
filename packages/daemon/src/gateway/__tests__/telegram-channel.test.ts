@@ -144,6 +144,7 @@ describe("createTelegramChannel — start()", () => {
     expect(msg.text).toBe("hello world");
     expect(msg.accountId).toBe("ag_self");
     expect(msg.channel).toBe("gw_tg_a");
+    expect(msg.trace).toEqual({ id: "telegram:42:7", streamable: true });
   });
 
   it("uses telegram:group:<id> for non-private chats", async () => {
