@@ -14,9 +14,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Loader2,
   MessageCircle,
   Plus,
+  Search,
   Send,
   Trash2,
   X,
@@ -382,6 +384,13 @@ function TelegramAddForm({
   const [senderIds, setSenderIds] = useState("");
   const [enableNow, setEnableNow] = useState(true);
   const [acceptEmpty, setAcceptEmpty] = useState(false);
+  const [discoveringChats, setDiscoveringChats] = useState(false);
+  const [discoveredChats, setDiscoveredChats] = useState<
+    { id: string; type: string | null; label: string | null }[]
+  >([]);
+  const [discoverHint, setDiscoverHint] = useState<string | null>(null);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -415,6 +424,71 @@ function TelegramAddForm({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDiscoverChats() {
+    const botToken = token.trim();
+    if (!botToken || discoveringChats) return;
+    setDiscoveringChats(true);
+    setDiscoverHint("等待 Telegram 最近消息...");
+    setDiscoverError(null);
+    setDiscoveredChats([]);
+    try {
+      let chats: { id: string; type: string | null; label: string | null }[] = [];
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        setDiscoverHint(
+          attempt === 1
+            ? "等待 Telegram 最近消息..."
+            : `还没发现消息，继续等待 ${attempt}/3...`,
+        );
+        const res = await fetch("/api/telegram/chat-ids", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botToken, timeoutSeconds: 8 }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          chats?: { id: string; type: string | null; label: string | null }[];
+          message?: string;
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(json.message || json.error || `HTTP ${res.status}`);
+        }
+        chats = Array.isArray(json.chats) ? json.chats : [];
+        if (chats.length > 0) break;
+      }
+      setDiscoveredChats(chats);
+      if (chats.length === 1) {
+        setChatIds(chats[0].id);
+        setDiscoverHint("已自动填入发现的 chat id。");
+      } else if (chats.length === 0) {
+        setDiscoverHint(null);
+        setDiscoverError("还没有发现会话。请先在目标私聊或群聊里给 bot 发一条消息，然后再读取。");
+      } else {
+        setDiscoverHint("发现多个会话，请选择要允许的 chat id。");
+      }
+    } catch (err) {
+      setDiscoverHint(null);
+      setDiscoverError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiscoveringChats(false);
+    }
+  }
+
+  function appendChatId(id: string) {
+    const existing = new Set(csvToList(chatIds));
+    existing.add(id);
+    setChatIds(Array.from(existing).join("\n"));
+  }
+
+  async function copyChatId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedChatId(id);
+      window.setTimeout(() => setCopiedChatId(null), 1600);
+    } catch {
+      setDiscoverError("复制失败，请手动复制 chat id。");
     }
   }
 
@@ -453,6 +527,91 @@ function TelegramAddForm({
           placeholder="-1001234567890, 987654321"
           className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDiscoverChats}
+            disabled={!token.trim() || saving || discoveringChats}
+            className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+          >
+            {discoveringChats ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Search className="h-3 w-3" />
+            )}
+            读取最近 chat id
+          </button>
+          <span className="text-[10px] text-text-tertiary">
+            先在目标私聊或群聊里给 bot 发一条消息。
+          </span>
+        </div>
+        {discoveredChats.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {discoveredChats.map((chat) => (
+              <div
+                key={chat.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                      {chat.label || "未命名会话"}
+                    </span>
+                    {chat.type ? (
+                      <span className="rounded border border-glass-border px-1.5 py-0.5 text-[9px] uppercase text-text-tertiary">
+                        {chat.type}
+                      </span>
+                    ) : null}
+                  </div>
+                  <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                    {chat.id}
+                  </code>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setChatIds(chat.id)}
+                    disabled={saving}
+                    className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                  >
+                    填入
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => appendChatId(chat.id)}
+                    disabled={saving}
+                    className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                  >
+                    追加
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => copyChatId(chat.id)}
+                    disabled={saving}
+                    title={copiedChatId === chat.id ? "已复制" : "复制 chat id"}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                  >
+                    {copiedChatId === chat.id ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {discoverHint && (
+          <p className="mt-1 text-[10px] leading-relaxed text-text-tertiary">
+            {discoverHint}
+          </p>
+        )}
+        {discoverError && (
+          <p className="mt-1 text-[10px] leading-relaxed text-amber-200">
+            {discoverError}
+          </p>
+        )}
       </Field>
       <Field label="允许的发送者 user id（逗号或换行分隔）">
         <textarea
