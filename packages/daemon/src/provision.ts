@@ -56,6 +56,8 @@ import {
   ensureAgentWorkspace,
 } from "./agent-workspace.js";
 import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
+import { createGatewayControl } from "./gateway-control.js";
+import type { LoginSessionStore } from "./gateway/channels/login-session.js";
 import {
   hermesProfileHomeDir,
   isValidHermesProfileName,
@@ -114,6 +116,12 @@ export interface ProvisionerOptions {
    * the next restart.
    */
   onAgentInstalled?: OnAgentInstalledHook;
+  /**
+   * Optional shared login-session store for the third-party gateway login
+   * frames. Tests inject a stub clock; production lets `createGatewayControl`
+   * spin up a default in-memory store.
+   */
+  loginSessions?: LoginSessionStore;
 }
 
 /** The value a frame handler returns (minus the `id` which the channel fills in). */
@@ -131,6 +139,10 @@ export function createProvisioner(opts: ProvisionerOptions): (
   const register = opts.register ?? BotCordClient.register;
   const policyResolver = opts.policyResolver;
   const onAgentInstalled = opts.onAgentInstalled;
+  const gatewayControl = createGatewayControl({
+    gateway,
+    ...(opts.loginSessions ? { loginSessions: opts.loginSessions } : {}),
+  });
 
   return async (frame: ControlFrame): Promise<AckBody> => {
     daemonLog.debug("provision.dispatch", { type: frame.type, id: frame.id });
@@ -310,6 +322,55 @@ export function createProvisioner(opts: ProvisionerOptions): (
         return { ok: true, result: snapshot };
       }
 
+      case CONTROL_FRAME_TYPES.LIST_GATEWAYS:
+        return gatewayControl.handleList();
+
+      case CONTROL_FRAME_TYPES.UPSERT_GATEWAY: {
+        const v = validateGatewayParams(frame.params, {
+          required: ["id", "type", "accountId"],
+        });
+        if (!v.ok) return v.ack;
+        return gatewayControl.handleUpsert(
+          v.params as unknown as Parameters<typeof gatewayControl.handleUpsert>[0],
+        );
+      }
+
+      case CONTROL_FRAME_TYPES.REMOVE_GATEWAY: {
+        const v = validateGatewayParams(frame.params, { required: ["id"] });
+        if (!v.ok) return v.ack;
+        return gatewayControl.handleRemove(
+          v.params as unknown as Parameters<typeof gatewayControl.handleRemove>[0],
+        );
+      }
+
+      case CONTROL_FRAME_TYPES.TEST_GATEWAY: {
+        const v = validateGatewayParams(frame.params, { required: ["id"] });
+        if (!v.ok) return v.ack;
+        return gatewayControl.handleTest(
+          v.params as unknown as Parameters<typeof gatewayControl.handleTest>[0],
+        );
+      }
+
+      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_START: {
+        const v = validateGatewayParams(frame.params, {
+          required: ["provider", "accountId"],
+        });
+        if (!v.ok) return v.ack;
+        return gatewayControl.handleLoginStart(
+          v.params as unknown as Parameters<typeof gatewayControl.handleLoginStart>[0],
+        );
+      }
+
+      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_STATUS: {
+        const v = validateGatewayParams(frame.params, {
+          required: ["provider", "loginId"],
+        });
+        if (!v.ok) return v.ack;
+        return gatewayControl.handleLoginStatus(
+          v.params as unknown as Parameters<typeof gatewayControl.handleLoginStatus>[0],
+        );
+      }
+
       case "list_agent_files": {
         const params = (frame.params ?? {}) as unknown as ListAgentFilesParams;
         if (!params.agentId) {
@@ -338,6 +399,42 @@ export function createProvisioner(opts: ProvisionerOptions): (
         };
     }
   };
+}
+
+// W8: hand-written runtime validator for the third-party gateway frame
+// params. Rejects malformed payloads with a structured `bad_params` ack
+// before they hit the per-handler logic, so an attacker can't smuggle a
+// non-object `params` (e.g. `null`, an array, a string) through the type
+// cast and trigger a downstream `TypeError` we don't surface.
+type GatewayParamAck = { ok: false; error: { code: string; message: string } };
+type ValidateResult =
+  | { ok: true; params: Record<string, unknown> }
+  | { ok: false; ack: GatewayParamAck };
+
+function validateGatewayParams(
+  raw: unknown,
+  spec: { required: ReadonlyArray<string> },
+): ValidateResult {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      ok: false,
+      ack: { ok: false, error: { code: "bad_params", message: "params must be an object" } },
+    };
+  }
+  const params = raw as Record<string, unknown>;
+  for (const key of spec.required) {
+    const v = params[key];
+    if (typeof v !== "string" || v.length === 0) {
+      return {
+        ok: false,
+        ack: {
+          ok: false,
+          error: { code: "bad_params", message: `params.${key} must be a non-empty string` },
+        },
+      };
+    }
+  }
+  return { ok: true, params };
 }
 
 interface ProvisionedAgent {

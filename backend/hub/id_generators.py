@@ -103,6 +103,16 @@ def generate_daemon_instance_id() -> str:
     return "dm_" + secrets.token_hex(6)
 
 
+def generate_gateway_connection_id(provider: str) -> str:
+    """Generate third-party gateway connection ID: 'gw_<provider>_<12 hex>'.
+
+    Provider tag is embedded so logs/dashboards can identify the channel
+    type from the id alone (matches the daemon's on-disk secret filename).
+    """
+    safe = provider.lower().replace("-", "").replace("_", "")[:16] or "x"
+    return f"gw_{safe}_" + secrets.token_hex(6)
+
+
 def generate_openclaw_host_id_from_pubkey(pubkey_b64: str) -> str:
     """Derive openclaw host id deterministically from the host pubkey.
 

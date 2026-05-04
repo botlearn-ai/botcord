@@ -99,6 +99,31 @@ export interface OpenclawDiscoveryConfig {
   autoProvision?: boolean;
 }
 
+/** Third-party messaging provider supported by the daemon's channel factory. */
+export type ThirdPartyGatewayType = "telegram" | "wechat";
+
+/**
+ * One third-party gateway profile bound to a BotCord agent. `id` is the
+ * channel id (typically `gw_...` minted by the Hub); `accountId` is the
+ * BotCord agent the inbound traffic should be attributed to. Secrets and
+ * provider cursors live outside this struct — see `secretFile` and
+ * `stateFile`. When omitted, the daemon derives them as
+ * `~/.botcord/daemon/gateways/{id}.json` and `{id}.state.json`.
+ */
+export interface ThirdPartyGatewayProfile {
+  id: string;
+  type: ThirdPartyGatewayType;
+  accountId: string;
+  label?: string;
+  enabled?: boolean;
+  secretFile?: string;
+  stateFile?: string;
+  allowedSenderIds?: string[];
+  allowedChatIds?: string[];
+  splitAt?: number;
+  baseUrl?: string;
+}
+
 export interface DaemonConfig {
   /**
    * @deprecated Kept for backward compatibility with pre-multi-agent configs.
@@ -148,6 +173,13 @@ export interface DaemonConfig {
    * search paths/ports and automatic adoption of discovered agents.
    */
   openclawDiscovery?: OpenclawDiscoveryConfig;
+
+  /**
+   * Third-party messaging gateways (Telegram, WeChat, …) bound to BotCord
+   * agents on this daemon. Each entry becomes one channel in the gateway
+   * runtime; `enabled === false` entries are filtered out at boot.
+   */
+  thirdPartyGateways?: ThirdPartyGatewayProfile[];
 }
 
 /**
@@ -392,6 +424,45 @@ export function loadConfig(): DaemonConfig {
       copy.autoProvision = openclawDiscovery.autoProvision;
     }
     out.openclawDiscovery = copy;
+  }
+  const tpg = (parsed as Partial<DaemonConfig>).thirdPartyGateways;
+  if (tpg !== undefined) {
+    if (!Array.isArray(tpg)) {
+      throw new Error(
+        `daemon config "thirdPartyGateways" must be an array (${CONFIG_PATH})`,
+      );
+    }
+    const seen = new Set<string>();
+    for (const [i, g] of tpg.entries()) {
+      if (!g || typeof g !== "object") {
+        throw new Error(
+          `daemon config thirdPartyGateways[${i}] is not an object (${CONFIG_PATH})`,
+        );
+      }
+      const gg = g as Partial<ThirdPartyGatewayProfile>;
+      if (typeof gg.id !== "string" || gg.id.length === 0) {
+        throw new Error(
+          `daemon config thirdPartyGateways[${i}].id must be a non-empty string (${CONFIG_PATH})`,
+        );
+      }
+      if (gg.type !== "telegram" && gg.type !== "wechat") {
+        throw new Error(
+          `daemon config thirdPartyGateways[${i}].type must be "telegram" or "wechat" (${CONFIG_PATH})`,
+        );
+      }
+      if (typeof gg.accountId !== "string" || gg.accountId.length === 0) {
+        throw new Error(
+          `daemon config thirdPartyGateways[${i}].accountId must be a non-empty string (${CONFIG_PATH})`,
+        );
+      }
+      if (seen.has(gg.id)) {
+        throw new Error(
+          `daemon config thirdPartyGateways[${i}].id "${gg.id}" duplicated (${CONFIG_PATH})`,
+        );
+      }
+      seen.add(gg.id);
+    }
+    out.thirdPartyGateways = (tpg as ThirdPartyGatewayProfile[]).map((g) => ({ ...g }));
   }
   return out;
 }

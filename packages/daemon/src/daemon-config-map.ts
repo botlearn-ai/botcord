@@ -135,6 +135,10 @@ export const DEFAULT_BOTCORD_CHANNEL_ID = "botcord-main";
 /** Channel `type` tag used by `createBotCordChannel`. */
 export const BOTCORD_CHANNEL_TYPE = "botcord";
 
+/** Channel `type` tags for built-in third-party providers. */
+export const TELEGRAM_CHANNEL_TYPE = "telegram";
+export const WECHAT_CHANNEL_TYPE = "wechat";
+
 /**
  * Map daemon's historical narrower TrustLevel ("owner" | "untrusted") onto
  * gateway's ("owner" | "trusted" | "public"). Matches the adapter-level
@@ -240,6 +244,26 @@ export function toGatewayConfig(
     accountId: agentId,
     agentId,
   }));
+
+  // Append one channel per enabled third-party gateway. Disabled entries are
+  // dropped here so the gateway runtime never sees them; re-enabling requires
+  // an `upsert_gateway` (Phase B) or a config reload.
+  for (const g of cfg.thirdPartyGateways ?? []) {
+    if (g.enabled === false) continue;
+    const ch: GatewayChannelConfig = {
+      id: g.id,
+      type: g.type,
+      accountId: g.accountId,
+    };
+    if (g.label !== undefined) ch.label = g.label;
+    if (g.secretFile !== undefined) ch.secretFile = g.secretFile;
+    if (g.stateFile !== undefined) ch.stateFile = g.stateFile;
+    if (g.allowedSenderIds !== undefined) ch.allowedSenderIds = g.allowedSenderIds;
+    if (g.allowedChatIds !== undefined) ch.allowedChatIds = g.allowedChatIds;
+    if (g.splitAt !== undefined) ch.splitAt = g.splitAt;
+    if (g.baseUrl !== undefined) ch.baseUrl = g.baseUrl;
+    channels.push(ch);
+  }
 
   // DaemonConfig's typed surface doesn't carry `trustLevel`, but we read it
   // defensively so future config extensions can propagate without a shape bump.

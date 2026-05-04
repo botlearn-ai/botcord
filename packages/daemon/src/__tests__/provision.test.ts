@@ -1689,3 +1689,78 @@ describe("provision_agent hermes profile attach", () => {
     });
   });
 });
+
+describe("W8: gateway frame param validation in provision dispatch", () => {
+  it("rejects malformed UPSERT_GATEWAY (missing accountId) with bad_params", async () => {
+    const gw = makeFakeGateway(["ag_a"]);
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_w8a",
+      type: CONTROL_FRAME_TYPES.UPSERT_GATEWAY,
+      params: { id: "gw_x", type: "telegram" } as unknown as Record<string, unknown>,
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
+    expect(ack.error?.message).toContain("accountId");
+    expect(gw.addChannel).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed REMOVE_GATEWAY (params is not an object)", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_w8b",
+      type: CONTROL_FRAME_TYPES.REMOVE_GATEWAY,
+      // @ts-expect-error — exercising the runtime guard
+      params: "not-an-object",
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
+  });
+
+  it("rejects malformed TEST_GATEWAY (id missing)", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_w8c",
+      type: CONTROL_FRAME_TYPES.TEST_GATEWAY,
+      params: {},
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
+  });
+
+  it("rejects malformed GATEWAY_LOGIN_START (missing provider)", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_w8d",
+      type: CONTROL_FRAME_TYPES.GATEWAY_LOGIN_START,
+      params: { accountId: "ag_a" },
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
+  });
+
+  it("rejects malformed GATEWAY_LOGIN_STATUS (missing loginId)", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_w8e",
+      type: CONTROL_FRAME_TYPES.GATEWAY_LOGIN_STATUS,
+      params: { provider: "wechat" },
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
+  });
+});

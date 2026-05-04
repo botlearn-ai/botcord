@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Loader2, MessageSquare, RefreshCw, Trash2, User, X } from "lucide-react";
+import { FileText, Loader2, MessageSquare, Plug, RefreshCw, Settings, Trash2, User, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -14,6 +14,7 @@ import {
   type RoomInvitePolicy,
 } from "@/store/usePolicyStore";
 import UnbindAgentDialog from "./UnbindAgentDialog";
+import AgentChannelsTab from "./AgentChannelsTab";
 
 interface AgentSettingsDrawerProps {
   agentId: string;
@@ -43,7 +44,7 @@ const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[]
   { value: "muted", label: "静音", hint: "群聊不主动回复" },
 ];
 
-type Tab = "profile" | "policy" | "files";
+type Tab = "profile" | "policy" | "gateways" | "files";
 
 interface AgentRuntimeFile {
   id: string;
@@ -343,7 +344,7 @@ export default function AgentSettingsDrawer({
 
         {/* Tabs */}
         <div className="flex border-b border-glass-border/60 px-4">
-          {(["profile", "policy", "files"] as Tab[]).map((t) => (
+          {(["profile", "policy", "gateways", "files"] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -358,10 +359,18 @@ export default function AgentSettingsDrawer({
                 <User className="h-3.5 w-3.5" />
               ) : t === "policy" ? (
                 <MessageSquare className="h-3.5 w-3.5" />
+              ) : t === "gateways" ? (
+                <Plug className="h-3.5 w-3.5" />
               ) : (
                 <FileText className="h-3.5 w-3.5" />
               )}
-              {t === "profile" ? "资料" : t === "policy" ? "对话与回复" : "文件/记忆"}
+              {t === "profile"
+                ? "资料"
+                : t === "policy"
+                  ? "对话与回复"
+                  : t === "gateways"
+                    ? "接入"
+                    : "文件/记忆"}
             </button>
           ))}
         </div>
@@ -549,6 +558,8 @@ export default function AgentSettingsDrawer({
               )}
             </div>
           )}
+
+          {tab === "gateways" && <AgentChannelsTab agentId={agentId} />}
 
           {tab === "files" && (
             <div className="space-y-4">

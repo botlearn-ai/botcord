@@ -197,6 +197,16 @@ export interface ChannelStatusSnapshot {
   lastStartAt?: number;
   lastStopAt?: number;
   lastError?: string | null;
+  /** Third-party provider id when this channel is not the built-in BotCord. */
+  provider?: "wechat" | "telegram";
+  /** Last time the adapter polled the upstream provider (ms epoch). */
+  lastPollAt?: number;
+  /** Last time the adapter accepted an inbound message (ms epoch). */
+  lastInboundAt?: number;
+  /** Last time the adapter successfully sent a reply (ms epoch). */
+  lastSendAt?: number;
+  /** Whether the adapter currently holds a usable provider credential. */
+  authorized?: boolean;
 }
 
 /** Per-turn status snapshot describing a currently-executing runtime invocation. */

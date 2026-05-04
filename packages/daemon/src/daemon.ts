@@ -6,6 +6,8 @@ import {
 import {
   Gateway,
   createBotCordChannel,
+  createTelegramChannel,
+  createWechatChannel,
   resolveTranscriptEnabled,
   sanitizeUntrustedContent,
   type ChannelAdapter,
@@ -114,6 +116,69 @@ export function createActivityRecorder(opts: {
       lastSender: label,
     });
   };
+}
+
+/** Per-call dependencies for {@link createDaemonChannel}. */
+export interface CreateDaemonChannelDeps {
+  credentialPathByAgentId: Map<string, string>;
+  defaultCredentialsPath?: string;
+  hubBaseUrl?: string;
+}
+
+/**
+ * Dispatch a `GatewayChannelConfig` to the right adapter constructor based on
+ * `chCfg.type`. Phase A wires up the BotCord adapter and stub constructors
+ * for telegram/wechat (which throw "not implemented"); Phase B will fill the
+ * latter in. Unknown types throw so misconfigured channels fail loudly at
+ * boot rather than silently dropping inbound traffic.
+ */
+export function createDaemonChannel(
+  chCfg: GatewayChannelConfig,
+  deps: CreateDaemonChannelDeps,
+): ChannelAdapter {
+  switch (chCfg.type) {
+    case "botcord": {
+      const agentId =
+        typeof chCfg.agentId === "string" ? chCfg.agentId : chCfg.accountId;
+      return createBotCordChannel({
+        id: chCfg.id,
+        accountId: chCfg.accountId,
+        agentId,
+        credentialsPath:
+          deps.credentialPathByAgentId.get(agentId) ?? deps.defaultCredentialsPath,
+        hubBaseUrl: deps.hubBaseUrl,
+      });
+    }
+    case "telegram":
+      return createTelegramChannel({
+        id: chCfg.id,
+        accountId: chCfg.accountId,
+        ...(typeof chCfg.baseUrl === "string" ? { baseUrl: chCfg.baseUrl } : {}),
+        ...(Array.isArray(chCfg.allowedSenderIds)
+          ? { allowedSenderIds: chCfg.allowedSenderIds as string[] }
+          : {}),
+        ...(Array.isArray(chCfg.allowedChatIds)
+          ? { allowedChatIds: chCfg.allowedChatIds as string[] }
+          : {}),
+        ...(typeof chCfg.splitAt === "number" ? { splitAt: chCfg.splitAt } : {}),
+        ...(typeof chCfg.secretFile === "string" ? { secretFile: chCfg.secretFile } : {}),
+        ...(typeof chCfg.stateFile === "string" ? { stateFile: chCfg.stateFile } : {}),
+      });
+    case "wechat":
+      return createWechatChannel({
+        id: chCfg.id,
+        accountId: chCfg.accountId,
+        ...(typeof chCfg.baseUrl === "string" ? { baseUrl: chCfg.baseUrl } : {}),
+        ...(Array.isArray(chCfg.allowedSenderIds)
+          ? { allowedSenderIds: chCfg.allowedSenderIds as string[] }
+          : {}),
+        ...(typeof chCfg.splitAt === "number" ? { splitAt: chCfg.splitAt } : {}),
+        ...(typeof chCfg.secretFile === "string" ? { secretFile: chCfg.secretFile } : {}),
+        ...(typeof chCfg.stateFile === "string" ? { stateFile: chCfg.stateFile } : {}),
+      });
+    default:
+      throw new Error(`unknown channel type "${chCfg.type}"`);
+  }
 }
 
 /**
@@ -414,18 +479,12 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   const gateway = new Gateway({
     config: gwConfig,
     sessionStorePath: opts.sessionStorePath ?? SESSIONS_PATH,
-    createChannel: (chCfg: GatewayChannelConfig): ChannelAdapter => {
-      const agentId =
-        typeof chCfg.agentId === "string" ? chCfg.agentId : chCfg.accountId;
-      return createBotCordChannel({
-        id: chCfg.id,
-        accountId: chCfg.accountId,
-        agentId,
-        credentialsPath:
-          credentialPathByAgentId.get(agentId) ?? opts.credentialsPath,
+    createChannel: (chCfg: GatewayChannelConfig): ChannelAdapter =>
+      createDaemonChannel(chCfg, {
+        credentialPathByAgentId,
+        defaultCredentialsPath: opts.credentialsPath,
         hubBaseUrl: opts.hubBaseUrl,
-      });
-    },
+      }),
     log: logger,
     turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
     buildSystemContext,
