@@ -670,5 +670,161 @@ describe("wechat channel adapter", () => {
   });
 });
 
+describe("W2: state.update is gated on cursor change", () => {
+  let tmpW2: string;
+  beforeEach(() => {
+    tmpW2 = mkdtempSync(path.join(tmpdir(), "wechat-ch-w2-"));
+  });
+  afterEach(() => {
+    rmSync(tmpW2, { recursive: true, force: true });
+  });
+
+  it("3 polls returning the same get_updates_buf cause exactly 1 state write", async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    let pollCount = 0;
+    const fetchImpl = buildFetchStub(
+      [
+        {
+          match: "getupdates",
+          respond: () => {
+            pollCount += 1;
+            return { body: { ret: 0, get_updates_buf: "same-cursor", msgs: [] } };
+          },
+        },
+      ],
+      calls,
+    );
+    // Spy on GatewayStateStore.update via the prototype.
+    const stateMod = await import("../gateway/channels/state-store.js");
+    const updateSpy = vi.spyOn(stateMod.GatewayStateStore.prototype, "update");
+    const adapter = createWechatChannel({
+      id: "gw_wx_w2",
+      accountId: "ag_test",
+      botToken: "tok",
+      stateFile: path.join(tmpW2, "state.json"),
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: ["alice@im.wechat"],
+    });
+    const h = startAdapter(adapter, { stopAfterMs: 80 });
+    await h.pollDone;
+    expect(pollCount).toBeGreaterThanOrEqual(3);
+    // Cursor never changed -> at most one update call (the first poll
+    // observes "" -> "same-cursor"; subsequent polls observe no change).
+    expect(updateSpy.mock.calls.length).toBe(1);
+    updateSpy.mockRestore();
+  });
+});
+
+describe("C2: callApi enforces timeoutMs via AbortSignal", () => {
+  let tmp2: string;
+  beforeEach(() => {
+    tmp2 = mkdtempSync(path.join(tmpdir(), "wechat-ch-c2-"));
+  });
+  afterEach(() => {
+    rmSync(tmp2, { recursive: true, force: true });
+  });
+
+  it("send() rejects with AbortError shape when fetch hangs past timeout", async () => {
+    // Build a fetch stub for the inbound side (fast) plus a hanging
+    // sendmessage that respects the AbortSignal so we can assert the timeout.
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      let parsed: Record<string, unknown> | null = null;
+      if (init?.body) {
+        try {
+          parsed = JSON.parse(init.body as string) as Record<string, unknown>;
+        } catch {
+          parsed = null;
+        }
+      }
+      calls.push({ url, body: parsed });
+      if (url.includes("getupdates")) {
+        const idx = calls.filter((c) => c.url.includes("getupdates")).length - 1;
+        if (idx === 0) {
+          return {
+            status: 200,
+            ok: true,
+            text: async () =>
+              JSON.stringify({
+                ret: 0,
+                get_updates_buf: "c-c2",
+                msgs: [
+                  {
+                    message_type: 1,
+                    from_user_id: "alice@im.wechat",
+                    context_token: "ctx-c2",
+                    item_list: [{ type: 1, text_item: { text: "ping" } }],
+                  },
+                ],
+              }),
+          };
+        }
+        return { status: 200, ok: true, text: async () => JSON.stringify({ ret: 0, get_updates_buf: "c-c2", msgs: [] }) };
+      }
+      // sendmessage: hang until the AbortSignal fires.
+      const signal = (init as unknown as { signal?: AbortSignal }).signal;
+      return await new Promise((_resolve, reject) => {
+        if (signal?.aborted) {
+          const e = new Error("aborted");
+          e.name = "AbortError";
+          reject(e);
+          return;
+        }
+        signal?.addEventListener("abort", () => {
+          const e = new Error("aborted");
+          // AbortSignal.timeout produces a TimeoutError; either name is acceptable.
+          e.name = signal.reason instanceof Error ? signal.reason.name : "AbortError";
+          reject(e);
+        });
+        // Never resolve otherwise.
+      });
+    };
+
+    const adapter = createWechatChannel({
+      id: "gw_wx_c2",
+      accountId: "ag_test",
+      botToken: "tok",
+      stateFile: path.join(tmp2, "state.json"),
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: ["alice@im.wechat"],
+    });
+    const h = startAdapter(adapter, { stopAfterEnvelopes: 1 });
+    await h.pollDone;
+    const traceId = h.envelopes[0]!.message.trace!.id;
+
+    // Patch the adapter to use a tiny timeout so we don't wait 15s. We do
+    // this by re-creating it with the same fetch — but since `splitAt` and
+    // friends are constants in callApi, the only handle we have is to wait
+    // for the real timeout. Instead, force an early abort using
+    // AbortSignal.timeout(50ms) by monkey-patching the global once.
+    const realTimeout = AbortSignal.timeout;
+    let observed = 0;
+    AbortSignal.timeout = ((ms: number) => {
+      observed = ms;
+      // Always return a 50ms timeout so the test runs fast.
+      return realTimeout(50);
+    }) as typeof AbortSignal.timeout;
+    try {
+      await expect(
+        adapter.send({
+          log: SILENT_LOG,
+          message: {
+            channel: "gw_wx_c2",
+            accountId: "ag_test",
+            conversationId: "wechat:user:alice@im.wechat",
+            text: "pong",
+            traceId,
+          },
+        }),
+      ).rejects.toMatchObject({ name: expect.stringMatching(/AbortError|TimeoutError/) });
+      expect(observed).toBeGreaterThan(0);
+    } finally {
+      AbortSignal.timeout = realTimeout;
+    }
+  });
+});
+
 // vi import kept available for future per-test mocking; nothing to do here.
 void vi;

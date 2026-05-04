@@ -273,6 +273,87 @@ describe("frame schema validation", () => {
   });
 });
 
+describe("C3: empty agent set rejects upsert", () => {
+  it("upsert against a daemon with no provisioned agents is rejected with unknown_account", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO({
+      // No `agents`, no legacy `agentId` -> resolveConfiguredAgentIds returns null.
+      defaultRoute: { adapter: "claude-code", cwd: "/tmp" },
+      routes: [],
+      streamBlocks: false,
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleUpsert({
+      id: "gw_should_fail",
+      type: "telegram",
+      accountId: "ag_unprovisioned",
+      enabled: true,
+      secret: { botToken: "111:abcdefghijklmnop" },
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("unknown_account");
+    expect(gw.addChannel).not.toHaveBeenCalled();
+  });
+});
+
+describe("W3: orphan secret cleanup on addChannel failure", () => {
+  it("deletes the secret on the way out when addChannel fails for a fresh install", async () => {
+    const gw = makeFakeGateway();
+    gw.addChannel = vi.fn(async () => {
+      throw new Error("simulated boom");
+    });
+    const { io } = makeConfigIO(baseCfg());
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+    const gwId = uniqId("orphan");
+
+    const ack = await ctrl.handleUpsert({
+      id: gwId,
+      type: "telegram",
+      accountId: "ag_alice",
+      enabled: true,
+      secret: { botToken: "111:abcdefghijklmnop" },
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("addChannel_failed");
+    // Secret file must NOT linger on disk.
+    const secretPath = trackSecret(gwId);
+    expect(existsSync(secretPath)).toBe(false);
+  });
+});
+
+describe("W6: remove_gateway keeps secret when stop fails", () => {
+  it("re-throws on removeChannel failure and does NOT delete the secret", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+    const gwId = uniqId("rmkeep");
+
+    // First, install successfully.
+    await ctrl.handleUpsert({
+      id: gwId,
+      type: "telegram",
+      accountId: "ag_alice",
+      enabled: true,
+      secret: { botToken: "111:abcdefghijklmnop" },
+    });
+    const secretPath = trackSecret(gwId);
+    expect(existsSync(secretPath)).toBe(true);
+
+    // Now make removeChannel throw.
+    gw.removeChannel = vi.fn(async () => {
+      throw new Error("stop failed");
+    });
+
+    const ack = await ctrl.handleRemove({ id: gwId });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("removeChannel_failed");
+    // Secret survives — operator can retry without re-issuing the token.
+    expect(existsSync(secretPath)).toBe(true);
+  });
+});
+
 describe("list_gateways", () => {
   it("returns config entries annotated with live channel status", async () => {
     const gw = makeFakeGateway();

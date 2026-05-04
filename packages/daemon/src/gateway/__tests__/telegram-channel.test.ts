@@ -395,6 +395,71 @@ describe("createTelegramChannel — send()", () => {
   });
 });
 
+describe("W1: cursor unchanged when emit throws", () => {
+  it("leaves the on-disk cursor untouched when emit() throws on the first batch", { timeout: 5000 }, async () => {
+    const stateFile = path.join(tmp, "state.json");
+    const update = {
+      update_id: 999,
+      message: {
+        message_id: 1,
+        from: { id: 42, username: "alice" },
+        chat: { id: 42, type: "private" as const },
+        text: "boom",
+      },
+    };
+    const calls: FetchCall[] = [];
+    const abort = new AbortController();
+    // Custom fetch: deliver the update once, then block on AbortSignal so
+    // the poll loop doesn't hot-spin while we wait for the abort to fire.
+    let delivered = false;
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push({ url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+      if (!delivered) {
+        delivered = true;
+        return new Response(JSON.stringify({ ok: true, result: [update] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // Second + later polls: abort and throw immediately so the loop exits.
+      abort.abort();
+      const e = new Error("aborted");
+      e.name = "AbortError";
+      throw e;
+    }) as unknown as typeof fetch;
+    const channel = createTelegramChannel({
+      id: "gw_tg_w1",
+      accountId: "ag_self",
+      botToken: "tok",
+      stateFile,
+      stateDebounceMs: 0,
+      fetchImpl,
+      allowedChatIds: ["42"],
+      allowedSenderIds: ["42"],
+    });
+    let emitCalls = 0;
+    const { ctx } = makeStartCtx({
+      abort,
+      emit: async () => {
+        emitCalls += 1;
+        throw new Error("emit boom");
+      },
+    });
+    await channel.start(ctx);
+    expect(emitCalls).toBeGreaterThanOrEqual(1);
+    // No state file written (cursor never advanced) OR if written, cursor
+    // must NOT be 1000 — proving the failed batch will retry.
+    let cursor: string | undefined;
+    try {
+      cursor = JSON.parse(readFileSync(stateFile, "utf8")).cursor;
+    } catch {
+      cursor = undefined;
+    }
+    expect(cursor).not.toBe("1000");
+  });
+});
+
 describe("createTelegramChannel — typing()", () => {
   it("posts to /sendChatAction with action: typing", async () => {
     const calls: FetchCall[] = [];

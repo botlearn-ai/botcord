@@ -21,7 +21,7 @@ import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,7 +42,9 @@ StatusLit = Literal["pending", "active", "disabled", "error"]
 _ALLOWED_PROVIDERS: set[str] = {"telegram", "wechat"}
 # config_json keys we accept from the dashboard. Anything else is dropped to
 # avoid arbitrary blob storage / leaking secrets.
-_CONFIG_KEYS = {"baseUrl", "allowedSenderIds", "allowedChatIds", "splitAt", "tokenPreview"}
+# W4: tokenPreview is server-managed (overwritten with the daemon-returned
+# value on create/patch); never accept it from the caller.
+_CONFIG_KEYS = {"baseUrl", "allowedSenderIds", "allowedChatIds", "splitAt"}
 
 
 # ---------------------------------------------------------------------------
@@ -75,14 +77,27 @@ class _ConfigPatch(BaseModel):
     splitAt: int | None = Field(default=None, ge=64, le=8192)
 
 
+class _SecretIn(BaseModel):
+    """Nested ``secret: {botToken}`` envelope — what the dashboard posts."""
+
+    model_config = ConfigDict(populate_by_name=True)
+    bot_token: str | None = Field(default=None, alias="botToken", max_length=512)
+
+
 class GatewayCreate(BaseModel):
+    # Accept camelCase aliases (dashboard) AND snake_case (existing tests/CLI).
+    model_config = ConfigDict(populate_by_name=True)
+
     provider: ProviderLit
     label: str | None = Field(default=None, max_length=128)
     enabled: bool = True
     # Telegram only — fresh bot token. Forwarded once to the daemon, never stored.
-    bot_token: str | None = Field(default=None, max_length=512)
+    # The frontend posts ``secret: {botToken}``; older callers used flat
+    # ``bot_token`` / ``botToken``. ``_normalize_secret`` collapses both.
+    bot_token: str | None = Field(default=None, alias="botToken", max_length=512)
+    secret: _SecretIn | None = None
     # WeChat only — references a previously-confirmed daemon login session.
-    login_id: str | None = Field(default=None, max_length=128)
+    login_id: str | None = Field(default=None, alias="loginId", max_length=128)
     config: _ConfigPatch | None = None
 
     @field_validator("label")
@@ -92,12 +107,21 @@ class GatewayCreate(BaseModel):
             return v
         v = v.strip()
         return v or None
+
+    @model_validator(mode="after")
+    def _normalize_secret(self) -> "GatewayCreate":
+        if not self.bot_token and self.secret and self.secret.bot_token:
+            self.bot_token = self.secret.bot_token
+        return self
 
 
 class GatewayPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     label: str | None = None
     enabled: bool | None = None
-    bot_token: str | None = Field(default=None, max_length=512)
+    bot_token: str | None = Field(default=None, alias="botToken", max_length=512)
+    secret: _SecretIn | None = None
     config: _ConfigPatch | None = None
 
     @field_validator("label")
@@ -108,14 +132,22 @@ class GatewayPatch(BaseModel):
         v = v.strip()
         return v or None
 
+    @model_validator(mode="after")
+    def _normalize_secret(self) -> "GatewayPatch":
+        if not self.bot_token and self.secret and self.secret.bot_token:
+            self.bot_token = self.secret.bot_token
+        return self
+
 
 class WechatLoginStartIn(BaseModel):
-    base_url: str | None = Field(default=None, max_length=256)
-    gateway_id: str | None = Field(default=None, max_length=128)
+    model_config = ConfigDict(populate_by_name=True)
+    base_url: str | None = Field(default=None, alias="baseUrl", max_length=256)
+    gateway_id: str | None = Field(default=None, alias="gatewayId", max_length=128)
 
 
 class WechatLoginStatusIn(BaseModel):
-    login_id: str = Field(..., min_length=4, max_length=128)
+    model_config = ConfigDict(populate_by_name=True)
+    login_id: str = Field(..., alias="loginId", min_length=4, max_length=128)
 
 
 # ---------------------------------------------------------------------------

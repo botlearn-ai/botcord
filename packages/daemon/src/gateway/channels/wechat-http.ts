@@ -9,19 +9,9 @@
 
 import { randomBytes } from "node:crypto";
 
-/** Subset of the global `fetch` API we depend on. Lets tests inject a stub. */
-export type FetchLike = (
-  input: string,
-  init?: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: string;
-  },
-) => Promise<{
-  status: number;
-  ok?: boolean;
-  text(): Promise<string>;
-}>;
+// W7: canonical FetchLike now lives in http-types.ts; re-export for callers
+// that historically imported it from this module.
+export type { FetchLike } from "./http-types.js";
 
 /** `X-WECHAT-UIN: base64(str(random uint32))` — fresh per request, anti-replay. */
 export function wechatUinHeader(): string {

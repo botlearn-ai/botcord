@@ -49,18 +49,13 @@ import {
   getQrcodeStatus,
 } from "./gateway/channels/wechat-login.js";
 import { log as daemonLog } from "./log.js";
+// W7: canonical FetchLike lives in gateway/channels/http-types.ts so the
+// daemon and the WeChat adapter can't drift on the shape.
+import type { FetchLike } from "./gateway/channels/http-types.js";
 
 type AckBody = Omit<ControlAck, "id">;
 
-/**
- * Minimal `fetch`-compatible signature — exists so tests can inject a stub
- * without depending on undici's full type surface.
- */
-export type FetchLike = (input: string, init?: { method?: string; headers?: Record<string, string> }) => Promise<{
-  ok?: boolean;
-  status?: number;
-  text(): Promise<string>;
-}>;
+export type { FetchLike };
 
 export interface GatewayControlContext {
   gateway: Gateway;
@@ -114,11 +109,12 @@ export function createGatewayControl(ctx: GatewayControlContext) {
 
     const cfg = cfgIO.load();
 
-    // accountId must belong to a daemon-bound agent. Fall back to a
-    // discovery-friendly check: the synthesized agent list is what
-    // `toGatewayConfig` would emit channels for.
+    // accountId must belong to a daemon-bound agent. An empty agent set
+    // (no agents provisioned yet) is itself a hard reject — otherwise we
+    // would silently accept upserts against a daemon that has nowhere to
+    // route their inbound messages.
     const agentIds = new Set(resolveConfiguredAgentIds(cfg) ?? []);
-    if (agentIds.size > 0 && !agentIds.has(params.accountId)) {
+    if (!agentIds.has(params.accountId)) {
       return {
         ok: false,
         error: {
@@ -178,6 +174,13 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       return badParams(`upsert_gateway: unknown provider "${(params as { type: string }).type}"`);
     }
 
+    // W3: remember whether a profile already exists for this id BEFORE we
+    // write the secret. If addChannel later fails on a fresh install, we
+    // delete the orphan secret on the way out.
+    const hadExistingProfile = (cfg.thirdPartyGateways ?? []).some(
+      (g) => g.id === params.id,
+    );
+
     // Persist secret first (so a config write that succeeds is never
     // followed by a missing-secret crash). Atomic rename inside saveSecret.
     const secretFile = saveGatewaySecret(params.id, { botToken });
@@ -210,6 +213,16 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       } catch (addErr) {
         const message = addErr instanceof Error ? addErr.message : String(addErr);
         daemonLog.warn("upsert_gateway.addChannel failed", { id: params.id, error: message });
+        // W3: if this was a fresh install (no prior profile) and addChannel
+        // failed, delete the just-written secret so we don't leave an
+        // orphan on disk that nothing references.
+        if (!hadExistingProfile) {
+          try {
+            deleteGatewaySecret(params.id);
+          } catch {
+            // best-effort — orphan secret is logged below
+          }
+        }
         return {
           ok: false,
           error: { code: "addChannel_failed", message },
@@ -246,13 +259,22 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     if (!params.id || typeof params.id !== "string") {
       return badParams("remove_gateway: id is required");
     }
+    // W6: stop the channel BEFORE deleting the secret. An orphaned secret on
+    // disk is recoverable; a running poll loop holding a live token after the
+    // operator clicked "remove" is not. Re-throw on stop failure so the Hub
+    // surfaces the error and the operator can retry.
     try {
       await ctx.gateway.removeChannel(params.id, "remove_gateway");
     } catch (err) {
-      daemonLog.warn("remove_gateway.removeChannel failed", {
+      const message = err instanceof Error ? err.message : String(err);
+      daemonLog.warn("remove_gateway.removeChannel failed — keeping secret", {
         id: params.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
       });
+      return {
+        ok: false,
+        error: { code: "removeChannel_failed", message },
+      };
     }
 
     const cfg = cfgIO.load();

@@ -597,3 +597,241 @@ async def test_wechat_login_start_offline_returns_409(client, seed, monkeypatch)
     )
     assert r.status_code == 409
     assert r.json()["detail"] == "daemon_offline"
+
+
+# ---------------------------------------------------------------------------
+# C1 — camelCase contract compatibility (frontend dashboard shape)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_accepts_nested_secret_botToken_camelCase(
+    client, seed, db_session, monkeypatch
+):
+    """Dashboard posts ``secret: {botToken}`` + ``loginId`` / ``baseUrl`` —
+    the BFF must accept that shape, not just snake_case."""
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["params"] = params
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "telegram",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "1234...wxyz",
+                "status": {"running": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "secret": {"botToken": "1234:abcd"},
+            "config": {"allowedSenderIds": ["111"]},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert captured["params"]["secret"] == {"botToken": "1234:abcd"}
+
+
+@pytest.mark.asyncio
+async def test_create_wechat_accepts_loginId_camelCase(client, seed, monkeypatch):
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["params"] = params
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "wechat",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "wxab...mnop",
+                "status": {"running": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={"provider": "wechat", "loginId": "wxl_camel"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["params"]["loginId"] == "wxl_camel"
+
+
+@pytest.mark.asyncio
+async def test_patch_accepts_nested_secret_camelCase(
+    client, seed, db_session, monkeypatch
+):
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["params"] = params
+        return {"ok": True, "result": {"status": {"running": True}}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        f"/api/agents/ag_daemon/gateways/{gw_id}",
+        headers=headers,
+        json={"secret": {"botToken": "rotated:new"}},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["params"].get("secret") == {"botToken": "rotated:new"}
+
+
+@pytest.mark.asyncio
+async def test_wechat_login_status_accepts_camelCase_loginId(client, seed, monkeypatch):
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        assert params == {"provider": "wechat", "loginId": "wxl_camel"}
+        return {"ok": True, "result": {"status": "pending"}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/wechat/login/status",
+        headers=headers,
+        json={"loginId": "wxl_camel"},  # camelCase, not login_id
+    )
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_wechat_login_start_accepts_camelCase_baseUrl(client, seed, monkeypatch):
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["params"] = params
+        return {
+            "ok": True,
+            "result": {
+                "loginId": "wxl_x",
+                "qrcode": "QR",
+                "expiresAt": 0,
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/wechat/login/start",
+        headers=headers,
+        json={"baseUrl": "https://example.test", "gatewayId": "gw_x"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["params"]["baseUrl"] == "https://example.test"
+    assert captured["params"]["gatewayId"] == "gw_x"
+
+
+# ---------------------------------------------------------------------------
+# W4 — caller-supplied tokenPreview in config is dropped
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_drops_caller_supplied_tokenPreview_in_config(
+    client, seed, monkeypatch
+):
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        # Daemon DOES NOT echo a tokenPreview here.
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "telegram",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "status": {"running": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "bot_token": "1234:abcd",
+            "config": {"tokenPreview": "ATTACKER...EVIL"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Caller-supplied preview must be dropped; daemon returned none.
+    assert "tokenPreview" not in body["config"]
+
+
+@pytest.mark.asyncio
+async def test_patch_preserves_existing_tokenPreview_when_daemon_returns_none(
+    client, seed, db_session, monkeypatch
+):
+    """W4: a PATCH whose daemon ack lacks tokenPreview must keep the stored one."""
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        return {"ok": True, "result": {"status": {"running": True}}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        f"/api/agents/ag_daemon/gateways/{gw_id}",
+        headers=headers,
+        # Caller tries to overwrite tokenPreview via config — should be dropped.
+        json={"config": {"tokenPreview": "INJECTED"}},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Stored preview survives; injected one is ignored.
+    assert body["config"].get("tokenPreview") == "1234...wxyz"
+
+
+# ---------------------------------------------------------------------------
+# W9 — daemon_control timeout maps to 504
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_control_frame_raises_504_on_ack_timeout(monkeypatch):
+    """When the daemon never acks within timeout_ms, send_control_frame must
+    raise an HTTP 504 (so the BFF surfaces the right code to the dashboard)."""
+    import asyncio
+    from hub.routers import daemon_control as dc
+
+    class _FakeWS:
+        async def send_text(self, _payload: str) -> None:
+            return None
+
+    class _FakeConn:
+        def __init__(self) -> None:
+            self.ws = _FakeWS()
+            self.pending_acks: dict[str, asyncio.Future] = {}
+
+    fake_conn = _FakeConn()
+
+    class _FakeRegistry:
+        def get(self, _instance_id):
+            return fake_conn
+
+        def is_online(self, _instance_id):
+            return True
+
+    monkeypatch.setattr(dc, "_REGISTRY", _FakeRegistry())
+
+    with pytest.raises(HTTPException) as ei:
+        await dc.send_control_frame("dm_x", "list_runtimes", {}, timeout_ms=100)
+    assert ei.value.status_code == 504
+    assert ei.value.detail == "daemon_ack_timeout"

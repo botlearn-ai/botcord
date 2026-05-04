@@ -118,6 +118,11 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
   let stateStore: GatewayStateStore | null = null;
   let stopCallback: (() => void) | null = null;
   let sweepTimer: NodeJS.Timeout | null = null;
+  // W11: captured during start() so send() can push lastSendAt to the
+  // gateway-tracked snapshot, not just the local statusSnapshot.
+  let liveSetStatus:
+    | ((patch: Partial<ChannelStatusSnapshot>) => void)
+    | null = null;
 
   const traceContexts = new Map<string, TraceContext>();
   /** typing_ticket cache keyed by ilink user id. */
@@ -185,13 +190,15 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     if (!botToken) throw new Error("wechat bot token not loaded");
     const url = `${baseUrl}/${path.replace(/^\/+/, "")}`;
     const payload = { ...body, base_info: { ...WECHAT_BASE_INFO } };
-    const resp = await fetchImpl(url, {
+    // C2: enforce per-call timeout via AbortSignal.timeout — matches telegram.ts.
+    // FetchLike's typed init doesn't expose `signal`; cast at the call site only.
+    const init = {
       method: "POST",
       headers: wechatHeaders(botToken),
       body: JSON.stringify(payload),
-      // FetchLike does not require AbortSignal support; rely on adapter timeouts.
-    } as Parameters<FetchLike>[1] & { signal?: AbortSignal });
-    void timeoutMs; // documented; timeout is enforced by upstream poll loop / fetchImpl test stub
+      signal: AbortSignal.timeout(timeoutMs),
+    } as Parameters<FetchLike>[1] & { signal: AbortSignal };
+    const resp = await fetchImpl(url, init);
     const raw = await resp.text();
     if (!raw) return {} as T;
     try {
@@ -223,10 +230,12 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
 
     const sanitized = sanitizeUntrustedContent(text);
     const receivedAt = now();
+    // W10: append randomUUID() to the fallback so two messages received in
+    // the same millisecond can't collide. Trace id below already does this.
     const messageId =
       typeof msg.client_id === "string" && msg.client_id.length > 0
         ? msg.client_id
-        : `wechat:${fromUid}:${receivedAt}`;
+        : `wechat:${fromUid}:${receivedAt}:${randomUUID()}`;
     // Trace id MUST be unique per inbound so the per-trace context cache
     // does not collide when the same user sends two messages back-to-back.
     const traceId = `wechat:${fromUid}:${receivedAt}:${randomUUID()}`;
@@ -261,6 +270,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
 
   async function pollLoop(ctx: ChannelStartContext): Promise<void> {
     const { abortSignal, log, emit, setStatus } = ctx;
+    liveSetStatus = setStatus;
     const state = ensureState();
 
     function markStatus(patch: Partial<ChannelStatusSnapshot>) {
@@ -321,8 +331,12 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
         );
         markStatus({ lastPollAt: Date.now() });
         if (typeof resp.get_updates_buf === "string") {
-          updatesBuf = resp.get_updates_buf;
-          state.update({ cursor: updatesBuf });
+          // W2: only persist when the cursor actually changed — avoids a
+          // state-store write on every empty long-poll.
+          if (resp.get_updates_buf !== updatesBuf) {
+            updatesBuf = resp.get_updates_buf;
+            state.update({ cursor: updatesBuf });
+          }
         }
         const msgs = Array.isArray(resp.msgs) ? resp.msgs : [];
         if (msgs.length === 0) {
@@ -449,7 +463,10 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
         }
         lastClientId = clientId;
       }
-      statusSnapshot = { ...statusSnapshot, lastSendAt: Date.now() };
+      const sendAt = Date.now();
+      statusSnapshot = { ...statusSnapshot, lastSendAt: sendAt };
+      // W11: push to the gateway snapshot too — the dashboard reads this.
+      if (liveSetStatus) liveSetStatus({ lastSendAt: sendAt });
       return { providerMessageId: lastClientId };
     },
 

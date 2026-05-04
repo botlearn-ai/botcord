@@ -325,30 +325,51 @@ export function createProvisioner(opts: ProvisionerOptions): (
       case CONTROL_FRAME_TYPES.LIST_GATEWAYS:
         return gatewayControl.handleList();
 
-      case CONTROL_FRAME_TYPES.UPSERT_GATEWAY:
+      case CONTROL_FRAME_TYPES.UPSERT_GATEWAY: {
+        const v = validateGatewayParams(frame.params, {
+          required: ["id", "type", "accountId"],
+        });
+        if (!v.ok) return v.ack;
         return gatewayControl.handleUpsert(
-          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleUpsert>[0],
+          v.params as unknown as Parameters<typeof gatewayControl.handleUpsert>[0],
         );
+      }
 
-      case CONTROL_FRAME_TYPES.REMOVE_GATEWAY:
+      case CONTROL_FRAME_TYPES.REMOVE_GATEWAY: {
+        const v = validateGatewayParams(frame.params, { required: ["id"] });
+        if (!v.ok) return v.ack;
         return gatewayControl.handleRemove(
-          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleRemove>[0],
+          v.params as unknown as Parameters<typeof gatewayControl.handleRemove>[0],
         );
+      }
 
-      case CONTROL_FRAME_TYPES.TEST_GATEWAY:
+      case CONTROL_FRAME_TYPES.TEST_GATEWAY: {
+        const v = validateGatewayParams(frame.params, { required: ["id"] });
+        if (!v.ok) return v.ack;
         return gatewayControl.handleTest(
-          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleTest>[0],
+          v.params as unknown as Parameters<typeof gatewayControl.handleTest>[0],
         );
+      }
 
-      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_START:
+      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_START: {
+        const v = validateGatewayParams(frame.params, {
+          required: ["provider", "accountId"],
+        });
+        if (!v.ok) return v.ack;
         return gatewayControl.handleLoginStart(
-          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleLoginStart>[0],
+          v.params as unknown as Parameters<typeof gatewayControl.handleLoginStart>[0],
         );
+      }
 
-      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_STATUS:
+      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_STATUS: {
+        const v = validateGatewayParams(frame.params, {
+          required: ["provider", "loginId"],
+        });
+        if (!v.ok) return v.ack;
         return gatewayControl.handleLoginStatus(
-          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleLoginStatus>[0],
+          v.params as unknown as Parameters<typeof gatewayControl.handleLoginStatus>[0],
         );
+      }
 
       default:
         daemonLog.warn("provision.dispatch: unknown frame type", {
@@ -361,6 +382,42 @@ export function createProvisioner(opts: ProvisionerOptions): (
         };
     }
   };
+}
+
+// W8: hand-written runtime validator for the third-party gateway frame
+// params. Rejects malformed payloads with a structured `bad_params` ack
+// before they hit the per-handler logic, so an attacker can't smuggle a
+// non-object `params` (e.g. `null`, an array, a string) through the type
+// cast and trigger a downstream `TypeError` we don't surface.
+type GatewayParamAck = { ok: false; error: { code: string; message: string } };
+type ValidateResult =
+  | { ok: true; params: Record<string, unknown> }
+  | { ok: false; ack: GatewayParamAck };
+
+function validateGatewayParams(
+  raw: unknown,
+  spec: { required: ReadonlyArray<string> },
+): ValidateResult {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      ok: false,
+      ack: { ok: false, error: { code: "bad_params", message: "params must be an object" } },
+    };
+  }
+  const params = raw as Record<string, unknown>;
+  for (const key of spec.required) {
+    const v = params[key];
+    if (typeof v !== "string" || v.length === 0) {
+      return {
+        ok: false,
+        ack: {
+          ok: false,
+          error: { code: "bad_params", message: `params.${key} must be a non-empty string` },
+        },
+      };
+    }
+  }
+  return { ok: true, params };
 }
 
 interface ProvisionedAgent {

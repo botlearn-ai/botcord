@@ -99,6 +99,11 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
   let botToken: string | undefined = opts.botToken;
   let stateStore: GatewayStateStore | null = null;
   let stopCallback: (() => void) | null = null;
+  // W11: captured during start() so send() can push lastSendAt to the
+  // gateway-tracked snapshot, not just the local statusSnapshot.
+  let liveSetStatus:
+    | ((patch: Partial<ChannelStatusSnapshot>) => void)
+    | null = null;
 
   let statusSnapshot: ChannelStatusSnapshot = {
     channel: opts.id,
@@ -172,6 +177,9 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
     const fromUserId = String(from.id);
     const chatId = String(chat.id);
 
+    // W5: default-deny is the INTERSECTION — both chatId AND senderId must
+    // appear in their respective allowlists. An empty list rejects everyone.
+    // TODO: surface this rule in the dashboard help text (frontend).
     if (!allowedChatIds.has(chatId)) return null;
     if (!allowedSenderIds.has(fromUserId)) return null;
 
@@ -213,6 +221,7 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
 
   async function pollLoop(ctx: ChannelStartContext): Promise<void> {
     const { abortSignal, log, emit, setStatus } = ctx;
+    liveSetStatus = setStatus;
     const state = ensureState();
 
     function markStatus(patch: Partial<ChannelStatusSnapshot>) {
@@ -280,15 +289,15 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
         const updates = resp.result ?? [];
         if (updates.length === 0) continue;
 
-        // Advance offset BEFORE emit so a daemon restart in the middle of
-        // emit() never replays the same batch.
+        // W1: persist cursor only AFTER all emits return cleanly. If emit
+        // throws, leave the cursor untouched so the same batch retries on
+        // the next poll instead of being silently dropped.
         let maxId = offset - 1;
         for (const u of updates) {
           if (u.update_id > maxId) maxId = u.update_id;
         }
-        offset = maxId + 1;
-        state.update({ cursor: String(offset) });
 
+        let emitFailed = false;
         for (const update of updates) {
           const normalized = normalizeUpdate(update);
           if (!normalized) continue;
@@ -297,8 +306,16 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
           try {
             await emit(envelope);
           } catch (err) {
-            log.error("telegram emit threw", { err: String(err) });
+            emitFailed = true;
+            log.error("telegram emit threw — leaving cursor unchanged", {
+              err: String(err),
+            });
+            break;
           }
+        }
+        if (!emitFailed) {
+          offset = maxId + 1;
+          state.update({ cursor: String(offset) });
         }
       } catch (err) {
         if (stopped || abortSignal.aborted) break;
@@ -379,7 +396,10 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
           lastMessageId = `telegram:${chatId}:${resp.result.message_id}`;
         }
       }
-      statusSnapshot = { ...statusSnapshot, lastSendAt: Date.now() };
+      const sendAt = Date.now();
+      statusSnapshot = { ...statusSnapshot, lastSendAt: sendAt };
+      // W11: push to the gateway snapshot too — the dashboard reads this.
+      if (liveSetStatus) liveSetStatus({ lastSendAt: sendAt });
       return { providerMessageId: lastMessageId };
     },
 
