@@ -1,20 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Loader2, Check } from "lucide-react";
+import { RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 
 interface DeviceSettingsModalProps {
   daemonId: string;
   label: string;
-  status: "online" | "offline" | "revoked";
+  status: "online" | "offline" | "revoked" | "removal_pending";
   lastSeen: string | null;
+  hostedAgentCount: number;
   isRenaming: boolean;
   isRefreshing: boolean;
+  isRemoving: boolean;
   locale: string;
   onClose: () => void;
   onRename: (label: string) => Promise<void>;
   onRefreshDaemons: () => void;
+  onRemove: (forgetIfOffline: boolean) => Promise<void>;
 }
 
 export default function DeviceSettingsModal({
@@ -22,16 +25,21 @@ export default function DeviceSettingsModal({
   label,
   status,
   lastSeen,
+  hostedAgentCount,
   isRenaming,
   isRefreshing,
+  isRemoving,
   locale,
   onClose,
   onRename,
   onRefreshDaemons,
+  onRemove,
 }: DeviceSettingsModalProps) {
   const [editingName, setEditingName] = useState(label);
   const [nameSaved, setNameSaved] = useState(false);
   const [showInstall, setShowInstall] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   async function handleRename() {
     if (editingName.trim() === label) return;
@@ -40,12 +48,34 @@ export default function DeviceSettingsModal({
     setTimeout(() => setNameSaved(false), 2000);
   }
 
-  const statusColor = status === "online" ? "text-neon-green" : status === "revoked" ? "text-red-400" : "text-text-secondary/50";
-  const statusLabel = status === "online"
-    ? (locale === "zh" ? "在线" : "Online")
-    : status === "revoked"
-    ? (locale === "zh" ? "已撤销" : "Revoked")
-    : (locale === "zh" ? "离线" : "Offline");
+  async function handleRemove(forgetIfOffline: boolean) {
+    setRemoveError(null);
+    try {
+      await onRemove(forgetIfOffline);
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const statusColor =
+    status === "online"
+      ? "text-neon-green"
+      : status === "revoked"
+        ? "text-red-400"
+        : status === "removal_pending"
+          ? "text-yellow-400"
+          : "text-text-secondary/50";
+  const statusLabel =
+    status === "online"
+      ? locale === "zh" ? "在线" : "Online"
+      : status === "revoked"
+        ? locale === "zh" ? "已撤销" : "Revoked"
+        : status === "removal_pending"
+          ? locale === "zh" ? "待清理" : "Cleanup pending"
+          : locale === "zh" ? "离线" : "Offline";
+
+  const isOffline = status === "offline";
+  const removeDisabled = isRemoving || status === "revoked" || status === "removal_pending";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -110,6 +140,95 @@ export default function DeviceSettingsModal({
                 {isRenaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : nameSaved ? <Check className="h-3.5 w-3.5 text-neon-green" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
               </button>
             </div>
+          </div>
+
+          {/* Danger zone — Remove Device */}
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+            {!confirmRemove ? (
+              <button
+                type="button"
+                disabled={removeDisabled}
+                onClick={() => setConfirmRemove(true)}
+                className="flex w-full items-center justify-between text-left text-xs text-red-300/80 transition-colors hover:text-red-300 disabled:opacity-40"
+              >
+                <span className="flex items-center gap-2">
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {locale === "zh" ? "移除此设备" : "Remove device"}
+                </span>
+                <span className="text-text-secondary/50">
+                  {hostedAgentCount > 0
+                    ? locale === "zh"
+                      ? `${hostedAgentCount} 个 Agent`
+                      : `${hostedAgentCount} agent${hostedAgentCount === 1 ? "" : "s"}`
+                    : ""}
+                </span>
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-red-300">
+                  {locale === "zh"
+                    ? "确认移除此设备？"
+                    : "Remove this device?"}
+                </p>
+                <p className="text-[11px] leading-relaxed text-text-secondary/70">
+                  {hostedAgentCount > 0
+                    ? locale === "zh"
+                      ? `${hostedAgentCount} 个 Agent 将移到「未关联设备」分组，云端身份和聊天记录都会保留。`
+                      : `${hostedAgentCount} agent${hostedAgentCount === 1 ? "" : "s"} will move to "No Device". Cloud identities, rooms, and history are kept.`
+                    : locale === "zh"
+                      ? "此设备没有托管的 Agent。移除后云端记录会保留。"
+                      : "No agents are hosted on this device. Cloud records will be kept."}
+                </p>
+                {isOffline ? (
+                  <p className="text-[11px] leading-relaxed text-yellow-400/80">
+                    {locale === "zh"
+                      ? "设备当前离线。本地凭据/状态需等设备重新启动后才能清理。"
+                      : "Device is offline. Local credentials and state can't be cleaned until the daemon starts again."}
+                  </p>
+                ) : (
+                  <p className="text-[11px] leading-relaxed text-text-secondary/60">
+                    {locale === "zh"
+                      ? "设备在线，本地凭据将立即清理。"
+                      : "Device is online — local credentials will be cleaned now."}
+                  </p>
+                )}
+                {removeError && (
+                  <p className="text-[11px] text-red-400">{removeError}</p>
+                )}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={isRemoving}
+                    onClick={() => {
+                      setConfirmRemove(false);
+                      setRemoveError(null);
+                    }}
+                    className="rounded-lg border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg disabled:opacity-40"
+                  >
+                    {locale === "zh" ? "取消" : "Cancel"}
+                  </button>
+                  {isOffline && (
+                    <button
+                      type="button"
+                      disabled={isRemoving}
+                      onClick={() => void handleRemove(true)}
+                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-[11px] text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                    >
+                      {locale === "zh" ? "强制移除" : "Forget anyway"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isRemoving}
+                    onClick={() => void handleRemove(false)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/25 disabled:opacity-40"
+                  >
+                    {isRemoving && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {locale === "zh" ? "移除设备" : "Remove device"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Restart command toggle */}

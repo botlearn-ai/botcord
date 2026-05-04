@@ -48,6 +48,7 @@ function StatusBadge({ status }: { status: DaemonInstance["status"] }) {
     online: "bg-neon-green/10 text-neon-green",
     offline: "bg-glass-bg text-text-secondary",
     revoked: "bg-red-400/10 text-red-300",
+    removal_pending: "bg-yellow-400/10 text-yellow-300",
   };
   return (
     <span
@@ -317,7 +318,8 @@ export default function DaemonsSettingsPage() {
       const order: Record<DaemonInstance["status"], number> = {
         online: 0,
         offline: 1,
-        revoked: 2,
+        removal_pending: 2,
+        revoked: 3,
       };
       const oa = order[a.status] ?? 3;
       const ob = order[b.status] ?? 3;
