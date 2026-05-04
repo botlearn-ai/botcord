@@ -66,12 +66,15 @@ export interface GatewayStateStoreOptions {
  * even before they are flushed to disk. `flush()` is exposed for shutdown
  * paths and tests; `close()` flushes and clears the timer.
  */
+const MAX_FLUSH_RETRIES = 10;
+
 export class GatewayStateStore {
   private readonly file: string;
   private readonly debounceMs: number;
   private state: ThirdPartyGatewayState;
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
+  private flushRetryCount = 0;
   /** W9: most recent write error surfaced for diagnostics. Cleared on success. */
   lastError: Error | null = null;
 
@@ -126,6 +129,7 @@ export class GatewayStateStore {
       writeStateSync(this.file, this.state);
       this.dirty = false;
       this.lastError = null;
+      this.flushRetryCount = 0;
     } catch (err) {
       this.lastError = err instanceof Error ? err : new Error(String(err));
       // Keep dirty=true so the next update() re-arms a flush. We also
@@ -161,6 +165,7 @@ export class GatewayStateStore {
         writeStateSync(this.file, this.state);
         this.dirty = false;
         this.lastError = null;
+        this.flushRetryCount = 0;
       } catch (err) {
         // W9: keep dirty=true and re-arm so the failed write retries.
         this.lastError = err instanceof Error ? err : new Error(String(err));
@@ -173,10 +178,22 @@ export class GatewayStateStore {
   /**
    * Re-arm the debounce timer after a write failure. Bounded delay (capped
    * at 5s) so transient failures do not become a hot-spin retry loop.
+   * After MAX_FLUSH_RETRIES consecutive failures, log and stop retrying so
+   * a permanently broken write path cannot loop indefinitely. `lastError` is
+   * left set so callers can detect persistent failure.
    */
   private scheduleFlushRetry(): void {
     if (this.debounceMs <= 0) return; // sync mode: caller decides
     if (this.timer) return;
+    this.flushRetryCount += 1;
+    if (this.flushRetryCount > MAX_FLUSH_RETRIES) {
+      // Persistent failure — give up. lastError remains set for diagnostics.
+      console.error(
+        `[state-store] flush failed ${MAX_FLUSH_RETRIES} times; giving up on ${this.file}`,
+        this.lastError,
+      );
+      return;
+    }
     const retryMs = Math.min(Math.max(this.debounceMs, 250), 5000);
     this.timer = setTimeout(() => {
       this.timer = null;
@@ -185,6 +202,7 @@ export class GatewayStateStore {
         writeStateSync(this.file, this.state);
         this.dirty = false;
         this.lastError = null;
+        this.flushRetryCount = 0;
       } catch (err) {
         this.lastError = err instanceof Error ? err : new Error(String(err));
         this.scheduleFlushRetry();

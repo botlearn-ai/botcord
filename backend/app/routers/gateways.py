@@ -304,21 +304,26 @@ _RATE_BURST: dict[str, float] = {
 }
 _RATE_BURST_DEFAULT = 5.0
 
-# W1: stale-entry sweep — drop entries older than 10 minutes inline.
+# W2: stale-entry sweep — drop entries older than 10 minutes.
+# Trade-off: running the O(n) dict scan on every call wastes cycles under
+# steady load. Instead, use a call counter and sweep only every 256th call —
+# memory stays bounded (at most 256 stale entries linger) while the per-call
+# overhead is zero 255 out of 256 times.
 _RATE_SWEEP_THRESHOLD = 600.0  # seconds
+_rate_check_count = 0
 
 
 def _rate_limit(user_id: Any, action: str) -> None:
+    global _rate_check_count
     key = (str(user_id), action)
     now = time.monotonic()
     burst = _RATE_BURST.get(action, _RATE_BURST_DEFAULT)
     tokens, last = _RATE_BUCKETS.get(key, (burst, now))
-    # W1: sweep stale entries while we have the dict open — cheap, O(n) but n
-    # is bounded by the number of distinct (user, action) pairs that were active
-    # in the last 10 min.
-    stale_keys = [k for k, (_, t) in _RATE_BUCKETS.items() if now - t > _RATE_SWEEP_THRESHOLD]
-    for sk in stale_keys:
-        _RATE_BUCKETS.pop(sk, None)
+    _rate_check_count += 1
+    if _rate_check_count % 256 == 0:
+        stale_keys = [k for k, (_, t) in _RATE_BUCKETS.items() if now - t > _RATE_SWEEP_THRESHOLD]
+        for sk in stale_keys:
+            _RATE_BUCKETS.pop(sk, None)
     tokens = min(burst, tokens + (now - last) * _RATE_RATE)
     if tokens < 1.0:
         _RATE_BUCKETS[key] = (tokens, now)

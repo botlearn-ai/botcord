@@ -541,7 +541,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
           10_000,
         );
       } catch (err) {
-        ctx.log.warn("wechat typing failed", { err: String(err) });
+        ctx.log.warn("wechat typing failed", { err: redactSecret(String(err), botToken) });
       }
     },
 

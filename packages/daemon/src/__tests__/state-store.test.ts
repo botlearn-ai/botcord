@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GatewayStateStore,
   defaultGatewayStatePath,
@@ -70,6 +70,40 @@ describe("state-store", () => {
     expect(JSON.parse(readFileSync(file, "utf8")).cursor).toBe("v2");
     expect(store.lastError).toBeNull();
     store.close();
+  });
+
+  it("W3: scheduleFlushRetry stops after MAX_FLUSH_RETRIES and sets lastError", async () => {
+    // Use an unwritable path by making parent a regular file — persistent failure.
+    const blockerFile = path.join(tmp, "blocker2");
+    writeFileSync(blockerFile, "x");
+    const file = path.join(blockerFile, "child.state.json");
+
+    vi.useFakeTimers();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const store = new GatewayStateStore("gw-retry", {
+      override: file,
+      // debounceMs > 0 so scheduleFlushRetry arms timers (not sync mode).
+      // The retry clamps to 250ms but with fake timers we advance manually.
+      debounceMs: 10,
+    });
+
+    store.update({ cursor: "fail" });
+
+    // Advance through 11 timer ticks (debounce + 10 retries); each retry is
+    // 250ms (the clamped minimum). The 11th tick should trigger "giving up".
+    for (let i = 0; i < 12; i++) {
+      await vi.advanceTimersByTimeAsync(300);
+    }
+
+    // lastError must be set (persistent failure)
+    expect(store.lastError).not.toBeNull();
+    // "giving up" log emitted exactly once
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(errSpy.mock.calls[0][0]).toMatch(/giving up/);
+
+    vi.useRealTimers();
+    errSpy.mockRestore();
   });
 
   it("flush() forces an immediate synchronous write", () => {
