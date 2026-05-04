@@ -412,10 +412,12 @@ export function createGatewayControl(ctx: GatewayControlContext) {
         const result: TestGatewayResult = { id: profile.id, ok: true, info: body.result ?? {} };
         return { ok: true, result };
       } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        const redacted = raw.split(token).join("***");
         const result: TestGatewayResult = {
           id: profile.id,
           ok: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: redacted,
         };
         return { ok: true, result };
       }
