@@ -237,7 +237,7 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
       replyTo: null,
       mentioned: false,
       receivedAt: Date.now(),
-      trace: { id: messageId, streamable: false },
+      trace: { id: messageId, streamable: true },
     };
   }
 
@@ -466,4 +466,3 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
-

@@ -803,6 +803,8 @@ export class Dispatcher {
 
     const streamable = msg.trace?.streamable === true;
     const traceId = msg.trace?.id;
+    const canType =
+      streamable && typeof traceId === "string" && typeof channel.typing === "function";
     const canStream =
       streamable && typeof traceId === "string" && typeof channel.streamBlock === "function";
     const recordBlock = (block: StreamBlock): void => {
@@ -886,7 +888,7 @@ export class Dispatcher {
     };
 
     const fireTypingIfNeeded = (): void => {
-      if (!canStream || typingFired || typeof channel.typing !== "function") return;
+      if (!canType || typingFired) return;
       typingFired = true;
       const key = `${msg.accountId}:${msg.conversation.id}`;
       const now = Date.now();

@@ -619,7 +619,7 @@ describe("Dispatcher", () => {
   // typing / thinking lifecycle (design: runtime-typing-thinking-status-design.md)
   // ---------------------------------------------------------------------------
 
-  it("typing: fires channel.typing once before runtime.run when canStream", async () => {
+  it("typing: fires channel.typing once before runtime.run when trace is streamable", async () => {
     const observed: Array<{ typings: number; calls: number }> = [];
     const runtime = new FakeRuntime({
       observeRun: () => {
@@ -642,6 +642,21 @@ describe("Dispatcher", () => {
     expect(channel.typings[0].traceId).toBe("trace_t");
     expect(channel.typings[0].conversationId).toBe("rm_oc_1");
     expect(observed[0]?.typings).toBe(1);
+  });
+
+  it("typing: does not require channel streamBlock support", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel({ withStream: false });
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "trace_t", streamable: true } }),
+    );
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(channel.typings.length).toBe(1);
+    expect(channel.streams.length).toBe(0);
+    expect(channel.sends.length).toBe(1);
   });
 
   it("typing: not fired when streamable is false", async () => {
