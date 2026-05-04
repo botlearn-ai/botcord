@@ -621,6 +621,37 @@ async def test_wechat_login_status_proxies(client, seed, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_wechat_recent_senders_proxies(client, seed, monkeypatch):
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        assert type_ == "gateway_recent_senders"
+        assert params == {
+            "provider": "wechat",
+            "loginId": "wxl_xyz",
+            "accountId": "ag_daemon",
+            "timeoutSeconds": 8,
+        }
+        return {
+            "ok": True,
+            "result": {
+                "senders": [
+                    {"id": "alice@im.wechat", "label": "Alice"},
+                ],
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/wechat/senders",
+        headers=headers,
+        json={"loginId": "wxl_xyz", "timeoutSeconds": 8},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["senders"] == [{"id": "alice@im.wechat", "label": "Alice"}]
+
+
+@pytest.mark.asyncio
 async def test_wechat_login_start_offline_returns_409(client, seed, monkeypatch):
     _patch_daemon(monkeypatch, online=False)
     headers = {"Authorization": f"Bearer {seed['token']}"}

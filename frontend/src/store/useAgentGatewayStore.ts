@@ -83,6 +83,15 @@ export interface WechatLoginStatusResponse {
   tokenPreview?: string | null;
 }
 
+export interface WechatSenderDiscoveryItem {
+  id: string;
+  label?: string | null;
+}
+
+export interface WechatSenderDiscoveryResponse {
+  senders: WechatSenderDiscoveryItem[];
+}
+
 export interface GatewayTestResult {
   ok: boolean;
   message?: string | null;
@@ -174,6 +183,11 @@ interface AgentGatewayState {
     agentId: string,
     loginId: string,
   ) => Promise<WechatLoginStatusResponse>;
+  discoverWechatSenders: (
+    agentId: string,
+    loginId: string,
+    opts?: { timeoutSeconds?: number },
+  ) => Promise<WechatSenderDiscoveryResponse>;
 }
 
 function base(agentId: string): string {
@@ -379,5 +393,54 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
       baseUrl: json.baseUrl ?? null,
       tokenPreview: json.tokenPreview ?? null,
     };
+  },
+
+  async discoverWechatSenders(agentId, loginId, opts) {
+    const res = await fetch(`${base(agentId)}/wechat/senders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        loginId,
+        timeoutSeconds: opts?.timeoutSeconds ?? 0,
+      }),
+    });
+    if (!res.ok) {
+      const err = await readErr(res);
+      if (err.status === 409) {
+        set((s) => ({ daemonOffline: { ...s.daemonOffline, [agentId]: true } }));
+      }
+      throw err;
+    }
+    const json = (await res.json()) as { senders?: unknown[] };
+    const senders: WechatSenderDiscoveryItem[] = [];
+    if (Array.isArray(json.senders)) {
+      for (const item of json.senders) {
+        if (typeof item === "string") {
+          senders.push({ id: item, label: null });
+          continue;
+        }
+        if (!item || typeof item !== "object") continue;
+        const raw = item as Record<string, unknown>;
+        const id =
+          typeof raw.id === "string"
+            ? raw.id
+            : typeof raw.userId === "string"
+              ? raw.userId
+              : typeof raw.senderId === "string"
+                ? raw.senderId
+                : "";
+        if (!id) continue;
+        const label =
+          typeof raw.label === "string"
+            ? raw.label
+            : typeof raw.name === "string"
+              ? raw.name
+              : typeof raw.remark === "string"
+                ? raw.remark
+                : null;
+        senders.push({ id, label });
+      }
+    }
+    return { senders };
   },
 }));
