@@ -320,6 +320,55 @@ describe("createTelegramChannel — start()", () => {
     expect(calls).toHaveLength(1);
     expect((calls[0]!.body as Record<string, unknown>).offset).toBe(999);
   });
+
+  it("aborts an in-flight getUpdates request when stopped", async () => {
+    const calls: FetchCall[] = [];
+    let requestSignal: AbortSignal | undefined;
+    let fetchStarted!: () => void;
+    const fetchStartedPromise = new Promise<void>((resolve) => {
+      fetchStarted = resolve;
+    });
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      calls.push({ url, body });
+      requestSignal = init?.signal ?? undefined;
+      fetchStarted();
+      return await new Promise<Response>((_resolve, reject) => {
+        requestSignal?.addEventListener(
+          "abort",
+          () => {
+            const err = new Error("aborted");
+            err.name = "AbortError";
+            reject(err);
+          },
+          { once: true },
+        );
+      });
+    }) as typeof fetch;
+
+    const channel = createTelegramChannel({
+      id: "gw_tg_stop",
+      accountId: "ag_self",
+      botToken: "tok",
+      allowedChatIds: ["42"],
+      allowedSenderIds: ["42"],
+      stateFile: path.join(tmp, "state.json"),
+      stateDebounceMs: 0,
+      fetchImpl,
+    });
+    const abort = new AbortController();
+    const { ctx } = makeStartCtx({ abort });
+    const startPromise = channel.start(ctx);
+
+    await fetchStartedPromise;
+    expect(requestSignal?.aborted).toBe(false);
+    await channel.stop!({ reason: "remove_gateway" });
+    await startPromise;
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(calls[0]!.url).toContain("/getUpdates");
+  });
 });
 
 describe("createTelegramChannel — send()", () => {
