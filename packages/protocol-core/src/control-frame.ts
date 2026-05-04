@@ -134,6 +134,12 @@ export const CONTROL_FRAME_TYPES = {
    * the user scans + confirms; bot token never leaves the daemon.
    */
   GATEWAY_LOGIN_STATUS: "gateway_login_status",
+  /**
+   * Hub→daemon: discover recent provider sender ids for setup UX. WeChat
+   * uses the confirmed login session's bot token to inspect recent updates
+   * before the gateway row is saved.
+   */
+  GATEWAY_RECENT_SENDERS: "gateway_recent_senders",
 } as const;
 
 export type ControlFrameType = (typeof CONTROL_FRAME_TYPES)[keyof typeof CONTROL_FRAME_TYPES];
@@ -688,4 +694,23 @@ export interface GatewayLoginStatusResult {
   baseUrl?: string;
   /** Masked token preview, e.g. `"abcd...wxyz"`. Only present on `confirmed`. */
   tokenPreview?: string;
+}
+
+/** Payload shape for `gateway_recent_senders`. */
+export interface GatewayRecentSendersParams {
+  provider: GatewayProvider;
+  loginId: string;
+  /** W4: accountId ownership check — must match the login session's accountId. */
+  accountId: string;
+  /** Optional long-poll timeout. Daemon clamps to 0..10 seconds. */
+  timeoutSeconds?: number;
+}
+
+export interface GatewayRecentSender {
+  id: string;
+  label?: string | null;
+}
+
+export interface GatewayRecentSendersResult {
+  senders: GatewayRecentSender[];
 }
