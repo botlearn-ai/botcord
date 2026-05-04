@@ -153,6 +153,12 @@ class WechatLoginStatusIn(BaseModel):
     login_id: str = Field(..., alias="loginId", min_length=4, max_length=128)
 
 
+class WechatSenderDiscoveryIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    login_id: str = Field(..., alias="loginId", min_length=4, max_length=128)
+    timeout_seconds: int = Field(default=0, alias="timeoutSeconds", ge=0, le=10)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -646,3 +652,38 @@ async def wechat_login_status(
         "baseUrl": result.get("baseUrl"),
         "tokenPreview": result.get("tokenPreview"),
     }
+
+
+@router.post("/{agent_id}/gateways/wechat/senders")
+async def wechat_recent_senders(
+    agent_id: str,
+    body: WechatSenderDiscoveryIn,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Proxy recent WeChat sender discovery to the daemon login session.
+
+    The dashboard calls this after scan confirmation, before the gateway row is
+    saved, so users can whitelist a sender without knowing ``xxx@im.wechat``.
+    """
+    _rate_limit(ctx.user_id, "wechat-login")
+    agent = await _load_daemon_agent_or_422(db, ctx, agent_id)
+    daemon_id = agent.daemon_instance_id
+    assert daemon_id is not None
+    _require_online(daemon_id)
+
+    ack = await send_control_frame(
+        daemon_id,
+        "gateway_recent_senders",
+        {
+            "provider": "wechat",
+            "loginId": body.login_id,
+            "accountId": agent_id,
+            "timeoutSeconds": body.timeout_seconds,
+        },
+    )
+    result = _ack_or_raise(ack)
+    senders = result.get("senders")
+    if not isinstance(senders, list):
+        senders = result.get("users")
+    return {"senders": senders if isinstance(senders, list) else []}

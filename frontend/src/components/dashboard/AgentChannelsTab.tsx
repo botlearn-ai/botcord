@@ -689,6 +689,7 @@ function WechatAddForm({
 }) {
   const startWechatLogin = useAgentGatewayStore((s) => s.startWechatLogin);
   const pollWechatLogin = useAgentGatewayStore((s) => s.pollWechatLogin);
+  const discoverWechatSenders = useAgentGatewayStore((s) => s.discoverWechatSenders);
   const create = useAgentGatewayStore((s) => s.create);
 
   const [phase, setPhase] = useState<"idle" | "scanning" | "ready">("idle");
@@ -707,6 +708,13 @@ function WechatAddForm({
   const [enableNow, setEnableNow] = useState(true);
   const [acceptEmpty, setAcceptEmpty] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [discoveringSenders, setDiscoveringSenders] = useState(false);
+  const [discoveredSenders, setDiscoveredSenders] = useState<
+    { id: string; label?: string | null }[]
+  >([]);
+  const [senderDiscoverHint, setSenderDiscoverHint] = useState<string | null>(null);
+  const [senderDiscoverError, setSenderDiscoverError] = useState<string | null>(null);
+  const [copiedSenderId, setCopiedSenderId] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -794,6 +802,60 @@ function WechatAddForm({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleDiscoverSenders() {
+    if (!loginId || discoveringSenders) return;
+    setDiscoveringSenders(true);
+    setSenderDiscoverHint("等待最近微信消息...");
+    setSenderDiscoverError(null);
+    setDiscoveredSenders([]);
+    try {
+      let senders: { id: string; label?: string | null }[] = [];
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        setSenderDiscoverHint(
+          attempt === 1
+            ? "等待最近微信消息..."
+            : `还没发现消息，继续等待 ${attempt}/3...`,
+        );
+        const result = await discoverWechatSenders(agentId, loginId, {
+          timeoutSeconds: 8,
+        });
+        senders = result.senders;
+        if (senders.length > 0) break;
+      }
+      setDiscoveredSenders(senders);
+      if (senders.length === 1) {
+        setSenderIds(senders[0].id);
+        setSenderDiscoverHint("已自动填入发现的微信用户 ID。");
+      } else if (senders.length === 0) {
+        setSenderDiscoverHint(null);
+        setSenderDiscoverError("还没有发现用户。请先用要授权的微信账号发一条消息，再读取。");
+      } else {
+        setSenderDiscoverHint("发现多个用户，请选择要允许的微信用户 ID。");
+      }
+    } catch (err) {
+      setSenderDiscoverHint(null);
+      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiscoveringSenders(false);
+    }
+  }
+
+  function appendSenderId(id: string) {
+    const existing = new Set(csvToList(senderIds));
+    existing.add(id);
+    setSenderIds(Array.from(existing).join("\n"));
+  }
+
+  async function copySenderId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedSenderId(id);
+      window.setTimeout(() => setCopiedSenderId(null), 1600);
+    } catch {
+      setSenderDiscoverError("复制失败，请手动复制微信用户 ID。");
     }
   }
 
@@ -894,6 +956,84 @@ function WechatAddForm({
               placeholder="xxx@im.wechat"
               className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
             />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDiscoverSenders}
+                disabled={!loginId || busy || discoveringSenders}
+                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+              >
+                {discoveringSenders ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Search className="h-3 w-3" />
+                )}
+                读取最近微信用户 ID
+              </button>
+              <span className="text-[10px] text-text-tertiary">
+                先用要授权的微信账号发一条消息。
+              </span>
+            </div>
+            {discoveredSenders.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {discoveredSenders.map((sender) => (
+                  <div
+                    key={sender.id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="block max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                        {sender.label || "未命名用户"}
+                      </span>
+                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                        {sender.id}
+                      </code>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSenderIds(sender.id)}
+                        disabled={busy}
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                      >
+                        填入
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => appendSenderId(sender.id)}
+                        disabled={busy}
+                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        追加
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copySenderId(sender.id)}
+                        disabled={busy}
+                        title={copiedSenderId === sender.id ? "已复制" : "复制微信用户 ID"}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        {copiedSenderId === sender.id ? (
+                          <CheckCircle2 className="h-3 w-3" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {senderDiscoverHint && (
+              <p className="mt-1 text-[10px] leading-relaxed text-text-tertiary">
+                {senderDiscoverHint}
+              </p>
+            )}
+            {senderDiscoverError && (
+              <p className="mt-1 text-[10px] leading-relaxed text-amber-200">
+                {senderDiscoverError}
+              </p>
+            )}
           </Field>
           <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
             <input
