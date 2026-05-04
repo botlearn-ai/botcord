@@ -23,6 +23,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   useAgentGatewayStore,
   type AgentGatewayConnection,
@@ -822,12 +823,15 @@ function WechatAddForm({
         <div className="space-y-2 rounded-lg border border-glass-border bg-deep-black/40 p-3">
           <div className="text-xs text-text-secondary">{statusText[status]}</div>
           {qrcodeUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={qrcodeUrl}
-              alt="WeChat 二维码"
-              className="h-44 w-44 rounded-md border border-glass-border bg-white p-1"
-            />
+            <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-white p-2">
+              <QRCodeSVG
+                value={qrcodeUrl}
+                size={160}
+                marginSize={1}
+                level="M"
+                title="WeChat 二维码"
+              />
+            </div>
           ) : qrcode ? (
             <div className="space-y-1.5">
               <div className="break-all rounded-md border border-glass-border bg-glass-bg/40 p-2 font-mono text-[10px] text-text-secondary">
