@@ -9,22 +9,7 @@
  * wires the production defaults.
  */
 
-import type {
-  ControlAck,
-  GatewayLoginStartParams,
-  GatewayLoginStartResult,
-  GatewayLoginStatusParams,
-  GatewayLoginStatusResult,
-  GatewayProfileSummary,
-  GatewayProvider,
-  ListGatewaysResult,
-  RemoveGatewayParams,
-  RemoveGatewayResult,
-  TestGatewayParams,
-  TestGatewayResult,
-  UpsertGatewayParams,
-  UpsertGatewayResult,
-} from "@botcord/protocol-core";
+import type { ControlAck } from "@botcord/protocol-core";
 import type { Gateway, GatewayChannelConfig } from "./gateway/index.js";
 import {
   loadConfig,
@@ -55,6 +40,108 @@ import { log as daemonLog } from "./log.js";
 import type { FetchLike } from "./gateway/channels/http-types.js";
 
 type AckBody = Omit<ControlAck, "id">;
+
+type GatewayProvider = "telegram" | "wechat";
+
+interface GatewayProfileSummary {
+  id: string;
+  type: GatewayProvider;
+  accountId: string;
+  label?: string;
+  enabled: boolean;
+  baseUrl?: string;
+  allowedSenderIds?: string[];
+  allowedChatIds?: string[];
+  splitAt?: number;
+  status?: {
+    running: boolean;
+    connected?: boolean;
+    authorized?: boolean;
+    lastPollAt?: number;
+    lastInboundAt?: number;
+    lastSendAt?: number;
+    lastError?: string | null;
+  };
+}
+
+interface ListGatewaysResult {
+  gateways: GatewayProfileSummary[];
+}
+
+interface UpsertGatewayParams {
+  id: string;
+  type: GatewayProvider;
+  accountId: string;
+  label?: string;
+  enabled?: boolean;
+  loginId?: string;
+  secret?: {
+    botToken?: string;
+  };
+  settings?: {
+    baseUrl?: string;
+    allowedSenderIds?: string[];
+    allowedChatIds?: string[];
+    splitAt?: number;
+  };
+}
+
+interface UpsertGatewayResult {
+  id: string;
+  type: GatewayProvider;
+  accountId: string;
+  enabled: boolean;
+  tokenPreview?: string;
+  status?: GatewayProfileSummary["status"];
+}
+
+interface RemoveGatewayParams {
+  id: string;
+  deleteSecret?: boolean;
+}
+
+interface RemoveGatewayResult {
+  id: string;
+  removed: boolean;
+  secretDeleted: boolean;
+}
+
+interface TestGatewayParams {
+  id: string;
+}
+
+interface TestGatewayResult {
+  id: string;
+  ok: boolean;
+  info?: Record<string, unknown>;
+  error?: string;
+}
+
+interface GatewayLoginStartParams {
+  provider: GatewayProvider;
+  accountId: string;
+  gatewayId?: string;
+  baseUrl?: string;
+}
+
+interface GatewayLoginStartResult {
+  loginId: string;
+  qrcode?: string;
+  qrcodeUrl?: string;
+  expiresAt: number;
+}
+
+interface GatewayLoginStatusParams {
+  provider: GatewayProvider;
+  loginId: string;
+  accountId: string;
+}
+
+interface GatewayLoginStatusResult {
+  status: "pending" | "scanned" | "confirmed" | "expired" | "failed";
+  baseUrl?: string;
+  tokenPreview?: string;
+}
 
 export type { FetchLike };
 

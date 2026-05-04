@@ -322,10 +322,10 @@ export function createProvisioner(opts: ProvisionerOptions): (
         return { ok: true, result: snapshot };
       }
 
-      case CONTROL_FRAME_TYPES.LIST_GATEWAYS:
+      case "list_gateways":
         return gatewayControl.handleList();
 
-      case CONTROL_FRAME_TYPES.UPSERT_GATEWAY: {
+      case "upsert_gateway": {
         const v = validateGatewayParams(frame.params, {
           required: ["id", "type", "accountId"],
         });
@@ -335,7 +335,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
       }
 
-      case CONTROL_FRAME_TYPES.REMOVE_GATEWAY: {
+      case "remove_gateway": {
         const v = validateGatewayParams(frame.params, { required: ["id"] });
         if (!v.ok) return v.ack;
         return gatewayControl.handleRemove(
@@ -343,7 +343,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
       }
 
-      case CONTROL_FRAME_TYPES.TEST_GATEWAY: {
+      case "test_gateway": {
         const v = validateGatewayParams(frame.params, { required: ["id"] });
         if (!v.ok) return v.ack;
         return gatewayControl.handleTest(
@@ -351,7 +351,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
       }
 
-      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_START: {
+      case "gateway_login_start": {
         const v = validateGatewayParams(frame.params, {
           required: ["provider", "accountId"],
         });
@@ -361,7 +361,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
       }
 
-      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_STATUS: {
+      case "gateway_login_status": {
         const v = validateGatewayParams(frame.params, {
           required: ["provider", "loginId"],
         });

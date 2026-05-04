@@ -1698,7 +1698,7 @@ describe("W8: gateway frame param validation in provision dispatch", () => {
     });
     const ack = await provisioner({
       id: "req_w8a",
-      type: CONTROL_FRAME_TYPES.UPSERT_GATEWAY,
+      type: "upsert_gateway",
       params: { id: "gw_x", type: "telegram" } as unknown as Record<string, unknown>,
     });
     expect(ack.ok).toBe(false);
@@ -1714,7 +1714,7 @@ describe("W8: gateway frame param validation in provision dispatch", () => {
     });
     const ack = await provisioner({
       id: "req_w8b",
-      type: CONTROL_FRAME_TYPES.REMOVE_GATEWAY,
+      type: "remove_gateway",
       // @ts-expect-error — exercising the runtime guard
       params: "not-an-object",
     });
@@ -1729,7 +1729,7 @@ describe("W8: gateway frame param validation in provision dispatch", () => {
     });
     const ack = await provisioner({
       id: "req_w8c",
-      type: CONTROL_FRAME_TYPES.TEST_GATEWAY,
+      type: "test_gateway",
       params: {},
     });
     expect(ack.ok).toBe(false);
@@ -1743,7 +1743,7 @@ describe("W8: gateway frame param validation in provision dispatch", () => {
     });
     const ack = await provisioner({
       id: "req_w8d",
-      type: CONTROL_FRAME_TYPES.GATEWAY_LOGIN_START,
+      type: "gateway_login_start",
       params: { accountId: "ag_a" },
     });
     expect(ack.ok).toBe(false);
@@ -1757,7 +1757,7 @@ describe("W8: gateway frame param validation in provision dispatch", () => {
     });
     const ack = await provisioner({
       id: "req_w8e",
-      type: CONTROL_FRAME_TYPES.GATEWAY_LOGIN_STATUS,
+      type: "gateway_login_status",
       params: { provider: "wechat" },
     });
     expect(ack.ok).toBe(false);
