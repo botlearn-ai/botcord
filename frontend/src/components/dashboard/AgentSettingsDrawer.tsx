@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, MessageSquare, Settings, Trash2, User, X } from "lucide-react";
+import { FileText, Loader2, MessageSquare, RefreshCw, Trash2, User, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -43,7 +43,26 @@ const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[]
   { value: "muted", label: "静音", hint: "群聊不主动回复" },
 ];
 
-type Tab = "profile" | "policy";
+type Tab = "profile" | "policy" | "files";
+
+interface AgentRuntimeFile {
+  id: string;
+  name: string;
+  scope: "workspace" | "hermes" | "openclaw";
+  runtime?: string;
+  profile?: string;
+  size?: number;
+  mtimeMs?: number;
+  content?: string;
+  truncated?: boolean;
+  error?: string;
+}
+
+interface AgentRuntimeFilesResponse {
+  agentId: string;
+  runtime?: string;
+  files: AgentRuntimeFile[];
+}
 
 function RadioGroup<T extends string>({
   name,
@@ -162,6 +181,19 @@ function KeywordChips({
   );
 }
 
+function formatBytes(value?: number): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function scopeLabel(scope: AgentRuntimeFile["scope"]): string {
+  if (scope === "hermes") return "Hermes";
+  if (scope === "openclaw") return "OpenClaw";
+  return "Workspace";
+}
+
 export default function AgentSettingsDrawer({
   agentId,
   displayName,
@@ -174,6 +206,12 @@ export default function AgentSettingsDrawer({
 
   const [tab, setTab] = useState<Tab>("profile");
   const [showUnbind, setShowUnbind] = useState(false);
+  const [runtimeFiles, setRuntimeFiles] = useState<AgentRuntimeFile[]>([]);
+  const [runtimeLabel, setRuntimeLabel] = useState<string | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesLoaded, setFilesLoaded] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
 
   // --- Profile state ---
   const [nameVal, setNameVal] = useState(displayName);
@@ -233,6 +271,53 @@ export default function AgentSettingsDrawer({
     [agentId, patchGlobal],
   );
 
+  const loadRuntimeFiles = useCallback(async () => {
+    setFilesLoading(true);
+    setFilesError(null);
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/runtime-files`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const detail = data?.detail;
+        const msg =
+          typeof data?.error === "string"
+            ? data.error
+            : typeof detail === "string"
+              ? detail
+              : typeof detail?.code === "string"
+                ? detail.code
+                : res.status === 409
+                  ? "Daemon 未在线或此 Agent 未由 daemon 托管"
+                  : "读取文件失败";
+        throw new Error(msg);
+      }
+      const data = (await res.json()) as AgentRuntimeFilesResponse;
+      const files = Array.isArray(data.files) ? data.files : [];
+      setRuntimeFiles(files);
+      setRuntimeLabel(data.runtime ?? null);
+      setSelectedFileId((prev) =>
+        prev && files.some((file) => file.id === prev) ? prev : files[0]?.id ?? null,
+      );
+      setFilesLoaded(true);
+    } catch (err) {
+      setFilesError(err instanceof Error ? err.message : "读取文件失败");
+      setFilesLoaded(true);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [agentId]);
+
+  useEffect(() => {
+    if (tab === "files" && !filesLoaded && !filesLoading) {
+      void loadRuntimeFiles();
+    }
+  }, [filesLoaded, filesLoading, loadRuntimeFiles, tab]);
+
+  const selectedFile = runtimeFiles.find((file) => file.id === selectedFileId) ?? null;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose}>
       <div
@@ -258,7 +343,7 @@ export default function AgentSettingsDrawer({
 
         {/* Tabs */}
         <div className="flex border-b border-glass-border/60 px-4">
-          {(["profile", "policy"] as Tab[]).map((t) => (
+          {(["profile", "policy", "files"] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -269,8 +354,14 @@ export default function AgentSettingsDrawer({
                   : "text-text-secondary hover:text-text-primary"
               }`}
             >
-              {t === "profile" ? <User className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
-              {t === "profile" ? "资料" : "对话与回复"}
+              {t === "profile" ? (
+                <User className="h-3.5 w-3.5" />
+              ) : t === "policy" ? (
+                <MessageSquare className="h-3.5 w-3.5" />
+              ) : (
+                <FileText className="h-3.5 w-3.5" />
+              )}
+              {t === "profile" ? "资料" : t === "policy" ? "对话与回复" : "文件/记忆"}
             </button>
           ))}
         </div>
@@ -455,6 +546,102 @@ export default function AgentSettingsDrawer({
                     </div>
                   )}
                 </>
+              )}
+            </div>
+          )}
+
+          {tab === "files" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-text-primary">运行时文件</h3>
+                  <p className="truncate text-xs text-text-secondary">
+                    {runtimeLabel ? runtimeLabel : "当前 Agent 的本地文件"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadRuntimeFiles()}
+                  disabled={filesLoading}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border bg-glass-bg text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+                  title="刷新"
+                >
+                  {filesLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+
+              {filesError && (
+                <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+                  {filesError}
+                </div>
+              )}
+
+              {filesLoading && runtimeFiles.length === 0 ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-14 animate-pulse rounded-xl bg-glass-bg/60" />
+                  ))}
+                </div>
+              ) : runtimeFiles.length === 0 ? (
+                <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
+                  没有可显示的文件
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-2">
+                    {runtimeFiles.map((file) => {
+                      const selected = file.id === selectedFileId;
+                      const size = formatBytes(file.size);
+                      return (
+                        <button
+                          key={file.id}
+                          type="button"
+                          onClick={() => setSelectedFileId(file.id)}
+                          className={`flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+                            selected
+                              ? "border-neon-cyan/40 bg-neon-cyan/5"
+                              : "border-glass-border bg-glass-bg/40 hover:bg-glass-bg/70"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-sm text-text-primary">{file.name}</div>
+                            <div className="mt-0.5 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-normal text-text-secondary">
+                              <span>{scopeLabel(file.scope)}</span>
+                              {file.profile ? <span>{file.profile}</span> : null}
+                              {size ? <span>{size}</span> : null}
+                            </div>
+                          </div>
+                          {file.truncated ? (
+                            <span className="shrink-0 rounded border border-yellow-400/30 px-1.5 py-0.5 text-[10px] text-yellow-300">
+                              过大
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {selectedFile && (
+                    <section className="rounded-xl border border-glass-border bg-glass-bg/30">
+                      <div className="border-b border-glass-border px-3 py-2">
+                        <div className="truncate text-xs font-medium text-text-primary">
+                          {selectedFile.name}
+                        </div>
+                      </div>
+                      <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-text-secondary">
+                        {selectedFile.error
+                          ? selectedFile.error
+                          : selectedFile.truncated
+                            ? "文件超过预览大小限制"
+                            : selectedFile.content ?? ""}
+                      </pre>
+                    </section>
+                  )}
+                </div>
               )}
             </div>
           )}
