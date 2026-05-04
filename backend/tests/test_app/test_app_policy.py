@@ -7,6 +7,7 @@ import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock
@@ -174,7 +175,6 @@ async def test_patch_policy_updates_fields_and_dual_writes_message_policy(
     assert body["allow_agent_sender"] is False
 
     # Legacy `message_policy` is dual-written to keep older readers consistent.
-    from sqlalchemy import select
     row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
     agent = row.scalar_one()
     assert agent.message_policy == MessagePolicy.open
@@ -202,6 +202,84 @@ async def test_policy_404_for_other_users_agent(client, seed):
         json={"contact_policy": "open"},
     )
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_runtime_files_for_owned_daemon_agent_dispatches_control_frame(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_files as runtime_files_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "dm_files"
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_files_mod, "is_daemon_online", lambda _id: True)
+
+    calls = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append({
+            "daemon_instance_id": daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        return {
+            "ok": True,
+            "result": {
+                "agentId": "ag_owned",
+                "runtime": "hermes-agent",
+                "files": [
+                    {
+                        "id": "workspace:memory.md",
+                        "name": "workspace/memory.md",
+                        "scope": "workspace",
+                        "content": "# Memory\n",
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(runtime_files_mod, "send_control_frame", fake_send)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get(
+        "/api/agents/ag_owned/runtime-files?file_id=workspace%3Amemory.md",
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["files"][0]["content"] == "# Memory\n"
+    assert calls == [
+        {
+            "daemon_instance_id": "dm_files",
+            "type": "list_agent_files",
+            "params": {"agentId": "ag_owned", "fileId": "workspace:memory.md"},
+            "timeout_ms": 5000,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_files_rejects_unowned_or_offline_agent(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_files as runtime_files_mod
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get("/api/agents/ag_other/runtime-files", headers=headers)
+    assert r.status_code == 404
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "dm_offline"
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_files_mod, "is_daemon_online", lambda _id: False)
+    r = await client.get("/api/agents/ag_owned/runtime-files", headers=headers)
+    assert r.status_code == 409
+    assert r.json()["detail"] == "daemon_offline"
 
 
 # ---------------------------------------------------------------------------
