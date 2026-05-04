@@ -135,6 +135,7 @@ async function readErr(res: Response): Promise<GatewayApiError> {
   // Map status codes to friendly defaults.
   if (!detail) {
     if (res.status === 409) detail = "daemon offline";
+    else if (res.status === 429) detail = "too many requests, please wait";
     else if (res.status === 400) detail = code === "provider_auth_failed"
       ? "provider auth failed"
       : "bad request";

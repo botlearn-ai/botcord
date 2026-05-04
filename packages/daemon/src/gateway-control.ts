@@ -503,6 +503,9 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     if (!params.loginId) {
       return badParams("gateway_login_status: loginId is required");
     }
+    if (!params.accountId || typeof params.accountId !== "string") {
+      return badParams("gateway_login_status: accountId is required");
+    }
     const session = sessions.get(params.loginId);
     if (!session) {
       const result: GatewayLoginStatusResult = { status: "expired" };
@@ -510,6 +513,16 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     }
     if (session.provider !== params.provider) {
       return badParams("gateway_login_status: provider does not match login session");
+    }
+    // W4: accountId ownership check — prevent one user from polling another's login session.
+    if (session.accountId !== params.accountId) {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: "gateway_login_status: accountId does not match login session",
+        },
+      };
     }
     // If we already saw `confirmed`, return cached result so re-polling
     // doesn't keep hitting iLink.

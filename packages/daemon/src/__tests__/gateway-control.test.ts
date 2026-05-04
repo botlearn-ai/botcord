@@ -229,6 +229,7 @@ describe("gateway_login_start / status", () => {
     const statusAck = await ctrl.handleLoginStatus({
       provider: "wechat",
       loginId: startResult.loginId,
+      accountId: "ag_alice",
     });
     expect(statusAck.ok).toBe(true);
     const statusResult = statusAck.result as { status: string; tokenPreview?: string; baseUrl?: string };
@@ -448,5 +449,51 @@ describe("list_gateways", () => {
     expect(g.enabled).toBe(true);
     expect(g.status?.running).toBe(true);
     expect(g.status?.authorized).toBe(true);
+  });
+});
+
+describe("W4: handleLoginStatus accountId ownership check", () => {
+  it("returns forbidden when accountId does not match the login session", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    const wechatLogin = {
+      getBotQrcode: vi.fn(async () => ({ qrcode: "QR", qrcodeUrl: undefined, raw: {} })),
+      getQrcodeStatus: vi.fn(async () => ({ status: "pending", raw: {} })),
+    };
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+      wechatLoginClient: wechatLogin,
+    });
+
+    const startAck = await ctrl.handleLoginStart({ provider: "wechat", accountId: "ag_alice" });
+    expect(startAck.ok).toBe(true);
+    const loginId = (startAck.result as { loginId: string }).loginId;
+
+    // Poll with a different accountId — must be rejected.
+    const ack = await ctrl.handleLoginStatus({
+      provider: "wechat",
+      loginId,
+      accountId: "ag_eve",
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("forbidden");
+  });
+
+  it("missing accountId returns bad_params", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleLoginStatus({
+      provider: "wechat",
+      loginId: "wxl_fake",
+      // @ts-expect-error — exercising the runtime guard
+      accountId: undefined,
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
   });
 });

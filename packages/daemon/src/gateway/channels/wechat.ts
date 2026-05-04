@@ -17,6 +17,15 @@ import { wechatHeaders, WECHAT_BASE_INFO, type FetchLike } from "./wechat-http.j
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
+
+/**
+ * Replace every occurrence of `token` in `input` with `"[REDACTED]"`.
+ * No-ops when token is falsy (not yet loaded).
+ */
+function redactSecret(input: string, token: string | undefined): string {
+  if (!token || !input) return input;
+  return input.split(token).join("[REDACTED]");
+}
 const DEFAULT_SPLIT_AT = 1800;
 /** iLink server holds getupdates ≤35s; allow slack on the client timeout. */
 const POLL_TIMEOUT_S = 60;
@@ -388,7 +397,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
           } catch (err) {
             emitFailed = true;
             log.error("wechat emit threw — leaving cursor unchanged", {
-              err: String(err),
+              err: redactSecret(String(err), botToken),
             });
             break;
           }
@@ -405,8 +414,9 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
           await sleep(TRANSIENT_BACKOFF_MS, abortSignal);
           continue;
         }
-        log.error("wechat poll failed", { err: String(err) });
-        markStatus({ lastError: String(err) });
+        const errStr = redactSecret(String(err), botToken);
+        log.error("wechat poll failed", { err: errStr });
+        markStatus({ lastError: errStr });
         await sleep(POLL_BACKOFF_MS, abortSignal);
       }
     }
@@ -503,7 +513,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
         const resp = await callApi<WechatGenericResp>("ilink/bot/sendmessage", body, 15_000);
         if (resp.ret !== 0 && resp.ret !== undefined) {
           log.warn("wechat sendmessage non-zero ret", { ret: resp.ret });
-          throw new Error(`wechat sendmessage failed: ret=${resp.ret}`);
+          throw new Error(redactSecret(`wechat sendmessage failed: ret=${resp.ret}`, botToken));
         }
         lastClientId = clientId;
       }

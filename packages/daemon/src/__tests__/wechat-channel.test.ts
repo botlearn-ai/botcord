@@ -1066,3 +1066,69 @@ describe("W2: started guard", () => {
     await h.pollDone;
   });
 });
+
+describe("W3: bot token redaction in lastError and logs", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(path.join(tmpdir(), "wechat-redact-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("does not expose the bot token in lastError or log.error when poll fails", async () => {
+    const SECRET_TOKEN = "SUPER_SECRET_BOT_TOKEN_12345";
+    const capturedLogs: string[] = [];
+    const log = {
+      info: () => {},
+      warn: () => {},
+      error: (_msg: string, meta?: Record<string, unknown>) => {
+        capturedLogs.push(JSON.stringify(meta ?? {}));
+      },
+      debug: () => {},
+    };
+
+    const fetchImpl: typeof globalThis.fetch = async () => {
+      // Simulate an error that includes the bot token in its message.
+      throw new Error(`fetch failed: auth=${SECRET_TOKEN}`);
+    };
+
+    const adapter = createWechatChannel({
+      id: "gw_wx_redact",
+      accountId: "ag_test",
+      botToken: SECRET_TOKEN,
+      stateFile: path.join(tmp, "state.json"),
+      fetchImpl: fetchImpl as unknown as Parameters<typeof createWechatChannel>[0]["fetchImpl"],
+      stateDebounceMs: 0,
+      allowedSenderIds: ["user1"],
+    });
+
+    const statusPatches: Array<Record<string, unknown>> = [];
+    const ctrl = new AbortController();
+    const pollDone = adapter.start({
+      config: { channels: [], defaultRoute: { runtime: "claude-code", cwd: "/tmp" } },
+      accountId: "ag_test",
+      abortSignal: ctrl.signal,
+      log,
+      emit: async () => {},
+      setStatus: (patch) => {
+        statusPatches.push({ ...patch });
+        // Stop after first error patch so test doesn't loop.
+        if (patch.lastError) ctrl.abort();
+      },
+    });
+    await pollDone;
+
+    // lastError in status patches must not contain the token.
+    const errorPatch = statusPatches.find((p) => typeof p.lastError === "string");
+    expect(errorPatch).toBeDefined();
+    expect(errorPatch!.lastError).not.toContain(SECRET_TOKEN);
+    expect(errorPatch!.lastError).toContain("[REDACTED]");
+
+    // log.error output must not contain the token.
+    const allLogs = capturedLogs.join("\n");
+    expect(allLogs).not.toContain(SECRET_TOKEN);
+  });
+});

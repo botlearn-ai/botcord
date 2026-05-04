@@ -290,17 +290,36 @@ def _validate_base_url(value: str | None) -> None:
         raise HTTPException(status_code=400, detail="forbidden_base_url_host")
 
 
-# W4: per-(user, action) token bucket rate limiter. 1 req/s sustained, burst 5.
+# W4: per-(user, action) token bucket rate limiter.
+# Action-specific burst caps:
+#   wechat-login: 1 req/s, burst 5
+#   gateway-write: 1 req/s, burst 10
+#   gateway-test:  1 req/s, burst 5
 _RATE_BUCKETS: dict[tuple[str, str], tuple[float, float]] = {}
-_RATE_RATE = 1.0  # tokens per second
-_RATE_BURST = 5.0
+_RATE_RATE = 1.0  # tokens per second (all actions)
+_RATE_BURST: dict[str, float] = {
+    "wechat-login": 5.0,
+    "gateway-write": 10.0,
+    "gateway-test": 5.0,
+}
+_RATE_BURST_DEFAULT = 5.0
+
+# W1: stale-entry sweep — drop entries older than 10 minutes inline.
+_RATE_SWEEP_THRESHOLD = 600.0  # seconds
 
 
 def _rate_limit(user_id: Any, action: str) -> None:
     key = (str(user_id), action)
     now = time.monotonic()
-    tokens, last = _RATE_BUCKETS.get(key, (_RATE_BURST, now))
-    tokens = min(_RATE_BURST, tokens + (now - last) * _RATE_RATE)
+    burst = _RATE_BURST.get(action, _RATE_BURST_DEFAULT)
+    tokens, last = _RATE_BUCKETS.get(key, (burst, now))
+    # W1: sweep stale entries while we have the dict open — cheap, O(n) but n
+    # is bounded by the number of distinct (user, action) pairs that were active
+    # in the last 10 min.
+    stale_keys = [k for k, (_, t) in _RATE_BUCKETS.items() if now - t > _RATE_SWEEP_THRESHOLD]
+    for sk in stale_keys:
+        _RATE_BUCKETS.pop(sk, None)
+    tokens = min(burst, tokens + (now - last) * _RATE_RATE)
     if tokens < 1.0:
         _RATE_BUCKETS[key] = (tokens, now)
         raise HTTPException(status_code=429, detail="rate_limited")
@@ -360,6 +379,7 @@ async def create_gateway(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> GatewayOut:
+    _rate_limit(ctx.user_id, "gateway-write")
     if body.provider not in _ALLOWED_PROVIDERS:
         raise HTTPException(status_code=422, detail="unsupported_provider")
 
@@ -431,6 +451,7 @@ async def patch_gateway(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> GatewayOut:
+    _rate_limit(ctx.user_id, "gateway-write")
     agent, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     daemon_id = row.daemon_instance_id
     _require_online(daemon_id)
@@ -540,6 +561,7 @@ async def test_gateway(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
+    _rate_limit(ctx.user_id, "gateway-test")
     _, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     daemon_id = row.daemon_instance_id
     _require_online(daemon_id)
@@ -611,7 +633,7 @@ async def wechat_login_status(
     ack = await send_control_frame(
         daemon_id,
         "gateway_login_status",
-        {"provider": "wechat", "loginId": body.login_id},
+        {"provider": "wechat", "loginId": body.login_id, "accountId": agent_id},
     )
     result = _ack_or_raise(ack)
     return {

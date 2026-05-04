@@ -597,7 +597,7 @@ async def test_wechat_login_start_proxies_without_writing_db(
 async def test_wechat_login_status_proxies(client, seed, monkeypatch):
     async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
         assert type_ == "gateway_login_status"
-        assert params == {"provider": "wechat", "loginId": "wxl_xyz"}
+        assert params == {"provider": "wechat", "loginId": "wxl_xyz", "accountId": "ag_daemon"}
         return {
             "ok": True,
             "result": {
@@ -730,7 +730,7 @@ async def test_patch_accepts_nested_secret_camelCase(
 @pytest.mark.asyncio
 async def test_wechat_login_status_accepts_camelCase_loginId(client, seed, monkeypatch):
     async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
-        assert params == {"provider": "wechat", "loginId": "wxl_camel"}
+        assert params == {"provider": "wechat", "loginId": "wxl_camel", "accountId": "ag_daemon"}
         return {"ok": True, "result": {"status": "pending"}}
 
     _patch_daemon(monkeypatch, online=True, send=fake_send)
@@ -940,3 +940,62 @@ async def test_wechat_login_start_rejects_unsafe_base_url(client, seed, monkeypa
         json={"baseUrl": bad_url},
     )
     assert r.status_code == 400, r.text
+
+
+# ---------------------------------------------------------------------------
+# W1/W2: rate limiting on create_gateway and test_gateway
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_gateway_rate_limited_after_burst(client, seed, monkeypatch):
+    """11th rapid POST to create_gateway hits 429 (burst=10)."""
+    import app.routers.gateways as gw
+
+    # Reset the rate bucket so we start with a clean slate for this user/action.
+    gw._RATE_BUCKETS.clear()
+
+    async def fake_send(*a, **k):
+        return {"ok": True, "result": {"tokenPreview": "abcd...wxyz", "status": {"running": True}}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+
+    status_codes = []
+    for i in range(11):
+        r = await client.post(
+            "/api/agents/ag_daemon/gateways",
+            headers=headers,
+            json={"provider": "telegram", "bot_token": f"111:tok{i}"},
+        )
+        status_codes.append(r.status_code)
+
+    assert status_codes[-1] == 429, f"expected last to be 429, got {status_codes}"
+    assert status_codes[0] != 429, "first request should not be rate limited"
+
+
+@pytest.mark.asyncio
+async def test_test_gateway_rate_limited_after_burst(client, seed, db_session, monkeypatch):
+    """6th rapid POST to test_gateway hits 429 (burst=5)."""
+    import app.routers.gateways as gw
+
+    gw._RATE_BUCKETS.clear()
+
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    async def fake_send(*a, **k):
+        return {"ok": True, "result": {"ok": True}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+
+    status_codes = []
+    for _ in range(6):
+        r = await client.post(
+            f"/api/agents/ag_daemon/gateways/{gw_id}/test",
+            headers=headers,
+        )
+        status_codes.append(r.status_code)
+
+    assert status_codes[-1] == 429, f"expected last to be 429, got {status_codes}"
+    assert status_codes[0] != 429, "first request should not be rate limited"

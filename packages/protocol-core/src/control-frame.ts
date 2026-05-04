@@ -624,6 +624,8 @@ export interface GatewayLoginStartResult {
 export interface GatewayLoginStatusParams {
   provider: GatewayProvider;
   loginId: string;
+  /** W4: accountId ownership check — must match the login session's accountId. */
+  accountId: string;
 }
 
 /**
