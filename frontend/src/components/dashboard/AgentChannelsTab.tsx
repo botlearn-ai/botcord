@@ -60,13 +60,18 @@ function providerName(provider: GatewayProvider): string {
   return provider === "telegram" ? "Telegram" : "微信";
 }
 
+// Stable empty list reference — must live outside the component so selectors
+// don't return a fresh `[]` each render and trigger zustand's
+// useSyncExternalStore infinite-render guard (React #185).
+const EMPTY_LIST: AgentGatewayConnection[] = [];
+
 export default function AgentChannelsTab({ agentId }: Props) {
-  const list = useAgentGatewayStore((s) => s.byAgent[agentId] ?? []);
+  const list = useAgentGatewayStore((s) => s.byAgent[agentId]) ?? EMPTY_LIST;
   const loading = useAgentGatewayStore((s) => Boolean(s.loading[agentId]));
   const daemonOffline = useAgentGatewayStore((s) =>
     Boolean(s.daemonOffline[agentId]),
   );
-  const lastError = useAgentGatewayStore((s) => s.lastError[agentId] ?? null);
+  const lastError = useAgentGatewayStore((s) => s.lastError[agentId]) ?? null;
   const load = useAgentGatewayStore((s) => s.load);
   const enable = useAgentGatewayStore((s) => s.enable);
   const disable = useAgentGatewayStore((s) => s.disable);
