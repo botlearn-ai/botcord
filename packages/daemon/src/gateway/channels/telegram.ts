@@ -152,16 +152,18 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
     method: string,
     params: Record<string, unknown>,
     timeoutMs: number,
+    abortSignal?: AbortSignal,
   ): Promise<TelegramApiResult<T>> {
     if (!botToken) throw new Error("telegram bot token not loaded");
     const url = `${baseUrl}/bot${botToken}/${method}`;
+    const signalLease = createTimeoutSignal(timeoutMs, abortSignal);
     let resp: Response;
     try {
       resp = await fetchImpl(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: signalLease.signal,
       });
     } catch (err) {
       // C3: fetch errors often stringify the URL (which embeds the token).
@@ -171,6 +173,8 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
       const next = new Error(redacted);
       next.name = e.name ?? "Error";
       throw next;
+    } finally {
+      signalLease.cleanup();
     }
     const json = (await resp.json()) as TelegramApiResult<T>;
     return json;
@@ -280,13 +284,13 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
     log.info("telegram poll loop starting", { gatewayId: opts.id, offset });
 
     let stopped = false;
+    const stopController = new AbortController();
     const onAbort = () => {
       stopped = true;
+      stopController.abort();
     };
     abortSignal.addEventListener("abort", onAbort, { once: true });
-    stopCallback = () => {
-      stopped = true;
-    };
+    stopCallback = onAbort;
 
     while (!stopped && !abortSignal.aborted) {
       try {
@@ -298,6 +302,7 @@ export function createTelegramChannel(opts: TelegramChannelOptions): ChannelAdap
             allowed_updates: ["message"],
           },
           (POLL_TIMEOUT_S + 15) * 1000,
+          stopController.signal,
         );
         markStatus({ lastPollAt: Date.now() });
         if (!resp.ok) {
@@ -465,4 +470,43 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+function createTimeoutSignal(
+  timeoutMs: number,
+  parent?: AbortSignal,
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  let settled = false;
+
+  const abort = (reason?: unknown) => {
+    if (settled) return;
+    settled = true;
+    try {
+      controller.abort(reason);
+    } catch {
+      controller.abort();
+    }
+  };
+
+  const timer = setTimeout(() => {
+    abort(new DOMException("Timeout", "TimeoutError"));
+  }, timeoutMs);
+
+  const onParentAbort = () => abort(parent?.reason);
+  if (parent) {
+    if (parent.aborted) {
+      onParentAbort();
+    } else {
+      parent.addEventListener("abort", onParentAbort, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      if (parent) parent.removeEventListener("abort", onParentAbort);
+    },
+  };
 }
