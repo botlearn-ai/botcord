@@ -319,7 +319,26 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
       // Surface as a value, not a throw — UI shows error inline per row.
       return { ok: false, message: err.message };
     }
-    const json = (await res.json().catch(() => ({}))) as GatewayTestResult;
+    // W5: the BFF wraps the daemon ack as `{ok: true, result: {...}}`. A
+    // daemon-side test failure surfaces as `result.ok === false` with an
+    // `error` string, NOT as an outer 200/`ok: false`. Unwrap explicitly so
+    // the UI doesn't render a green check on a failed probe.
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      result?: { ok?: boolean; error?: string; info?: unknown };
+      message?: string;
+    } & GatewayTestResult;
+    const inner = json?.result;
+    if (inner && typeof inner === "object" && inner.ok === false) {
+      return {
+        ok: false,
+        message: typeof inner.error === "string" ? inner.error : "test failed",
+        detail: inner,
+      };
+    }
+    if (inner && typeof inner === "object") {
+      return { ok: inner.ok !== false, detail: inner };
+    }
     return { ...json, ok: json?.ok !== false };
   },
 

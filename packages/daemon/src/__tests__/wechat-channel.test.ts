@@ -826,5 +826,129 @@ describe("C2: callApi enforces timeoutMs via AbortSignal", () => {
   });
 });
 
+describe("W4: cursor unchanged when emit throws", () => {
+  let tmpW4: string;
+  beforeEach(() => {
+    tmpW4 = mkdtempSync(path.join(tmpdir(), "wechat-ch-w4-"));
+  });
+  afterEach(() => {
+    rmSync(tmpW4, { recursive: true, force: true });
+  });
+
+  it("leaves get_updates_buf untouched when emit() throws on the first batch", async () => {
+    const stateFile = path.join(tmpW4, "state.json");
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    let pollIdx = 0;
+    const fetchImpl = buildFetchStub(
+      [
+        {
+          match: "getupdates",
+          respond: () => {
+            const idx = pollIdx;
+            pollIdx += 1;
+            // First poll delivers the message; later polls return empty so
+            // the loop keeps spinning until the test aborts.
+            if (idx === 0) {
+              return {
+                body: {
+                  ret: 0,
+                  get_updates_buf: "after-emit-fail",
+                  msgs: [
+                    {
+                      message_type: 1,
+                      from_user_id: "alice@im.wechat",
+                      context_token: "ctx",
+                      item_list: [{ type: 1, text_item: { text: "hi" } }],
+                    },
+                  ],
+                },
+              };
+            }
+            return { body: { ret: 0, get_updates_buf: "after-emit-fail", msgs: [] } };
+          },
+        },
+      ],
+      calls,
+    );
+    const adapter = createWechatChannel({
+      id: "gw_wx_w4",
+      accountId: "ag_test",
+      botToken: "tok",
+      stateFile,
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: ["alice@im.wechat"],
+    });
+    const ctrl = new AbortController();
+    let emitCalls = 0;
+    const ctx: ChannelStartContext = {
+      config: { channels: [], defaultRoute: { runtime: "claude-code", cwd: "/tmp" } },
+      accountId: "ag_test",
+      abortSignal: ctrl.signal,
+      log: SILENT_LOG,
+      emit: async () => {
+        emitCalls += 1;
+        ctrl.abort(); // exit the loop after the first failed emit
+        throw new Error("emit boom");
+      },
+      setStatus: () => {},
+    };
+    await adapter.start(ctx);
+    expect(emitCalls).toBeGreaterThanOrEqual(1);
+    // Either the state file does not exist, or its cursor is NOT the
+    // post-emit value — proving the failed batch will retry.
+    let cursor: string | undefined;
+    try {
+      const raw = (await import("node:fs")).readFileSync(stateFile, "utf8");
+      cursor = JSON.parse(raw).cursor;
+    } catch {
+      cursor = undefined;
+    }
+    expect(cursor).not.toBe("after-emit-fail");
+  });
+});
+
+describe("W3: authorized stays false until first ret===0 poll", () => {
+  let tmpW3: string;
+  beforeEach(() => {
+    tmpW3 = mkdtempSync(path.join(tmpdir(), "wechat-ch-w3-"));
+  });
+  afterEach(() => {
+    rmSync(tmpW3, { recursive: true, force: true });
+  });
+
+  it("does NOT mark authorized=true before the first successful getupdates", async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    const fetchImpl = buildFetchStub(
+      [
+        {
+          match: "getupdates",
+          respond: () => ({ body: { ret: 0, get_updates_buf: "c", msgs: [] } }),
+        },
+      ],
+      calls,
+    );
+    const adapter = createWechatChannel({
+      id: "gw_wx_w3",
+      accountId: "ag_test",
+      botToken: "tok",
+      stateFile: path.join(tmpW3, "state.json"),
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: ["alice@im.wechat"],
+    });
+    const h = startAdapter(adapter, { stopAfterMs: 80 });
+    await h.pollDone;
+    // Find the very first patch that reported `running: true` — at that
+    // moment authorized must still be false.
+    const startupPatch = h.statusPatches.find((p) => p.running === true);
+    expect(startupPatch).toBeDefined();
+    expect(startupPatch!.authorized).toBe(false);
+    // After at least one successful poll, authorized should have flipped true.
+    const promotion = h.statusPatches.find((p) => p.authorized === true);
+    expect(promotion).toBeDefined();
+  });
+});
+
 // vi import kept available for future per-test mocking; nothing to do here.
 void vi;

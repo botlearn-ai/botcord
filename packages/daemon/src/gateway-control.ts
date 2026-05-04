@@ -48,6 +48,7 @@ import {
   getBotQrcode,
   getQrcodeStatus,
 } from "./gateway/channels/wechat-login.js";
+import { assertSafeBaseUrl, UnsafeBaseUrlError } from "./gateway/channels/url-guard.js";
 import { log as daemonLog } from "./log.js";
 // W7: canonical FetchLike lives in gateway/channels/http-types.ts so the
 // daemon and the WeChat adapter can't drift on the shape.
@@ -87,8 +88,22 @@ export function createGatewayControl(ctx: GatewayControlContext) {
   const cfgIO = ctx.configIO ?? { load: loadConfig, save: saveConfig };
   const sessions = ctx.loginSessions ?? new LoginSessionStore();
   const wechatLogin = ctx.wechatLoginClient ?? { getBotQrcode, getQrcodeStatus };
-  const fetchImpl: FetchLike =
-    ctx.fetchImpl ?? ((input, init) => (globalThis.fetch as unknown as FetchLike)(input, init));
+  // W7: validate fetch availability at construction so a missing global is
+  // diagnosed at startup, not during the first control frame. Tests inject
+  // `ctx.fetchImpl` explicitly and bypass the global lookup entirely.
+  let fetchImpl: FetchLike;
+  if (ctx.fetchImpl) {
+    fetchImpl = ctx.fetchImpl;
+  } else {
+    const globalFetch = (globalThis as { fetch?: unknown }).fetch;
+    if (typeof globalFetch !== "function") {
+      throw new Error(
+        "createGatewayControl: globalThis.fetch is not available (Node ≥18 required) and no ctx.fetchImpl was supplied",
+      );
+    }
+    const bound = (globalFetch as (...a: unknown[]) => unknown).bind(globalThis);
+    fetchImpl = ((input, init) => (bound as FetchLike)(input, init)) as FetchLike;
+  }
 
   // --- list_gateways ------------------------------------------------------
   function handleList(): AckBody {
@@ -106,6 +121,14 @@ export function createGatewayControl(ctx: GatewayControlContext) {
   async function handleUpsert(params: UpsertGatewayParams): Promise<AckBody> {
     const err = validateUpsertParams(params);
     if (err) return badParams(err);
+    // W1: defense-in-depth — Hub already screens baseUrl; reject again here
+    // so a compromised control plane cannot pivot the daemon to internal IPs.
+    try {
+      assertSafeBaseUrl(params.settings?.baseUrl);
+    } catch (urlErr) {
+      if (urlErr instanceof UnsafeBaseUrlError) return badParams(urlErr.message);
+      throw urlErr;
+    }
 
     const cfg = cfgIO.load();
 
@@ -382,6 +405,13 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       // Telegram has no qrcode flow; surface a clear error so the dashboard
       // can fall through to the token form.
       return badParams(`gateway_login_start: provider "${params.provider}" does not require login`);
+    }
+    // W1: SSRF guard — `baseUrl` flows directly into an authenticated fetch.
+    try {
+      assertSafeBaseUrl(params.baseUrl);
+    } catch (urlErr) {
+      if (urlErr instanceof UnsafeBaseUrlError) return badParams(urlErr.message);
+      throw urlErr;
     }
     const baseUrl = params.baseUrl ?? DEFAULT_WECHAT_BASE_URL;
     let qrcode: string;

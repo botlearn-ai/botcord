@@ -835,3 +835,64 @@ async def test_send_control_frame_raises_504_on_ack_timeout(monkeypatch):
         await dc.send_control_frame("dm_x", "list_runtimes", {}, timeout_ms=100)
     assert ei.value.status_code == 504
     assert ei.value.detail == "daemon_ack_timeout"
+
+
+# ---------------------------------------------------------------------------
+# W1 — SSRF guard rejects baseUrl pointing at private/loopback IPs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "http://api.telegram.org",         # not https
+        "https://localhost",
+        "https://127.0.0.1",
+        "https://169.254.169.254",         # AWS metadata
+        "https://10.0.0.5",
+        "https://192.168.1.1",
+        "https://172.16.5.5",
+    ],
+)
+@pytest.mark.asyncio
+async def test_create_rejects_unsafe_base_url(client, seed, monkeypatch, bad_url):
+    async def fake_send(*a, **k):  # should never be called — guard runs first
+        raise AssertionError("daemon contacted before SSRF guard")
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "bot_token": "1234:abcd",
+            "config": {"baseUrl": bad_url},
+        },
+    )
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "http://api.telegram.org",
+        "https://localhost",
+        "https://127.0.0.1",
+        "https://169.254.169.254",
+        "https://10.0.0.5",
+    ],
+)
+@pytest.mark.asyncio
+async def test_wechat_login_start_rejects_unsafe_base_url(client, seed, monkeypatch, bad_url):
+    async def fake_send(*a, **k):
+        raise AssertionError("daemon contacted before SSRF guard")
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/wechat/login/start",
+        headers=headers,
+        json={"baseUrl": bad_url},
+    )
+    assert r.status_code == 400, r.text

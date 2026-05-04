@@ -279,6 +279,11 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     }
 
     if (!loadTokenFromSecretIfNeeded()) {
+      // W2: ensure stop() is a clean no-op even though pollLoop never armed
+      // its inner stopCallback. The next `upsert_gateway` (which forwards
+      // the freshly-confirmed bot token via secret-store) will rebuild the
+      // channel — there is no in-process retry timer here on purpose.
+      stopCallback = () => {};
       markStatus({
         running: false,
         connected: false,
@@ -291,10 +296,13 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
 
     let updatesBuf: string = state.getCursor() ?? "";
 
+    // W3: do NOT report `authorized: true` until the first getupdates call
+    // returns ret === 0. Mark only the loop as starting so test_gateway and
+    // the dashboard see the in-progress state instead of a false positive.
     markStatus({
       running: true,
-      connected: true,
-      authorized: true,
+      connected: false,
+      authorized: false,
       reconnectAttempts: 0,
       lastError: null,
       lastStartAt: Date.now(),
@@ -322,6 +330,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     }, TRACE_CONTEXT_SWEEP_MS);
     if (typeof sweepTimer.unref === "function") sweepTimer.unref();
 
+    let firstPollOk = false;
     while (!stopped && !abortSignal.aborted) {
       try {
         const resp = await callApi<WechatGetUpdatesResp>(
@@ -330,22 +339,31 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
           (POLL_TIMEOUT_S + 10) * 1000,
         );
         markStatus({ lastPollAt: Date.now() });
-        if (typeof resp.get_updates_buf === "string") {
-          // W2: only persist when the cursor actually changed — avoids a
-          // state-store write on every empty long-poll.
-          if (resp.get_updates_buf !== updatesBuf) {
-            updatesBuf = resp.get_updates_buf;
-            state.update({ cursor: updatesBuf });
-          }
+        // W3: a successful response (`ret === 0`) is the only signal we
+        // have that the bot token actually authenticates. Promote the
+        // channel to authorized only on that boundary.
+        if (!firstPollOk && resp.ret === 0) {
+          firstPollOk = true;
+          markStatus({ connected: true, authorized: true });
         }
         const msgs = Array.isArray(resp.msgs) ? resp.msgs : [];
+        // W4: persist the cursor only AFTER all emits return cleanly. If
+        // any emit throws, leave updatesBuf and the on-disk cursor alone
+        // so the same batch retries on the next poll.
+        const nextBuf =
+          typeof resp.get_updates_buf === "string" ? resp.get_updates_buf : updatesBuf;
         if (msgs.length === 0) {
+          if (nextBuf !== updatesBuf) {
+            updatesBuf = nextBuf;
+            state.update({ cursor: updatesBuf });
+          }
           // Yield a macrotask so abort signals fire even when the test fetch
           // stub resolves synchronously (real iLink getupdates blocks ≤35s).
           await sleep(0, abortSignal);
           continue;
         }
 
+        let emitFailed = false;
         for (const msg of msgs) {
           const normalized = normalizeInbound(msg);
           if (!normalized) continue;
@@ -354,8 +372,16 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
           try {
             await emit(envelope);
           } catch (err) {
-            log.error("wechat emit threw", { err: String(err) });
+            emitFailed = true;
+            log.error("wechat emit threw — leaving cursor unchanged", {
+              err: String(err),
+            });
+            break;
           }
+        }
+        if (!emitFailed && nextBuf !== updatesBuf) {
+          updatesBuf = nextBuf;
+          state.update({ cursor: updatesBuf });
         }
       } catch (err) {
         if (stopped || abortSignal.aborted) break;

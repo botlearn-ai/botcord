@@ -11,6 +11,7 @@
  */
 
 import { wechatHeaders, type FetchLike } from "./wechat-http.js";
+import { assertSafeBaseUrl } from "./url-guard.js";
 
 export const DEFAULT_WECHAT_BASE_URL = "https://ilinkai.weixin.qq.com";
 
@@ -34,6 +35,8 @@ export interface WechatLoginOptions {
 
 /** `GET /ilink/bot/get_bot_qrcode?bot_type=3` — fetch a fresh login QR. */
 export async function getBotQrcode(opts: WechatLoginOptions = {}): Promise<WechatQrcode> {
+  // W1: defense-in-depth SSRF guard at the fetch boundary.
+  assertSafeBaseUrl(opts.baseUrl);
   const base = (opts.baseUrl ?? DEFAULT_WECHAT_BASE_URL).replace(/\/+$/, "");
   const fetcher = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
   const res = await fetcher(`${base}/ilink/bot/get_bot_qrcode?bot_type=3`, {
@@ -61,6 +64,8 @@ export async function getQrcodeStatus(
   qrcode: string,
   opts: WechatLoginOptions = {},
 ): Promise<WechatQrcodeStatus> {
+  // W1: defense-in-depth SSRF guard at the fetch boundary.
+  assertSafeBaseUrl(opts.baseUrl);
   const base = (opts.baseUrl ?? DEFAULT_WECHAT_BASE_URL).replace(/\/+$/, "");
   const fetcher = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
   const res = await fetcher(

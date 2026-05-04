@@ -9,6 +9,8 @@
  * restart drops in-flight logins; the user just rescans.
  */
 
+import { randomBytes } from "node:crypto";
+
 export type LoginProvider = "wechat" | "telegram";
 
 export interface LoginSession {
@@ -119,10 +121,16 @@ export function maskTokenPreview(token: string | undefined | null): string {
 /**
  * Allocate a new login id. Format `wxl_<base36ts>_<rand>` so it sorts by
  * creation time and is trivially distinguishable from BotCord agent ids.
+ *
+ * W8: the random tail uses `crypto.randomBytes` (cryptographically secure)
+ * instead of `Math.random()` so an attacker cannot predict in-flight login
+ * ids and racefully claim someone else's session.
  */
 export function mintLoginId(provider: LoginProvider): string {
   const prefix = provider === "wechat" ? "wxl" : "tgl";
   const ts = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
+  // 8 hex chars = 32 bits of entropy — comfortably above what we need to
+  // resist a 5-minute online guessing window against the in-memory store.
+  const rand = randomBytes(4).toString("hex");
   return `${prefix}_${ts}_${rand}`;
 }

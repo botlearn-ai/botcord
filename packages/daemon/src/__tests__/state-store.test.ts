@@ -53,6 +53,25 @@ describe("state-store", () => {
     store.close();
   });
 
+  it("W9: write failure leaves state dirty and surfaces lastError", () => {
+    // Point the file at a path whose parent path is a regular file — mkdirSync
+    // recursive cannot turn that into a directory, so writeStateSync throws.
+    const blockerFile = path.join(tmp, "blocker");
+    require("node:fs").writeFileSync(blockerFile, "x");
+    const file = path.join(blockerFile, "child.state.json");
+    const store = new GatewayStateStore("gw", { override: file, debounceMs: 0 });
+    expect(() => store.update({ cursor: "v1" })).toThrow();
+    expect(store.lastError).not.toBeNull();
+    // Repair: remove the blocker so the next write succeeds, and assert the
+    // pending state is still in memory and is written by the next update().
+    require("node:fs").rmSync(blockerFile, { force: true });
+    store.update({ cursor: "v2" });
+    expect(existsSync(file)).toBe(true);
+    expect(JSON.parse(readFileSync(file, "utf8")).cursor).toBe("v2");
+    expect(store.lastError).toBeNull();
+    store.close();
+  });
+
   it("flush() forces an immediate synchronous write", () => {
     const file = path.join(tmp, "gw.state.json");
     const store = new GatewayStateStore("gw", { override: file, debounceMs: 5_000 });

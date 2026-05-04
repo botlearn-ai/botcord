@@ -72,6 +72,8 @@ export class GatewayStateStore {
   private state: ThirdPartyGatewayState;
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
+  /** W9: most recent write error surfaced for diagnostics. Cleared on success. */
+  lastError: Error | null = null;
 
   constructor(gatewayId: string, opts: GatewayStateStoreOptions = {}) {
     this.file = defaultGatewayStatePath(gatewayId, opts.override);
@@ -106,15 +108,31 @@ export class GatewayStateStore {
     this.scheduleFlush();
   }
 
-  /** Force a synchronous write of the pending state, if any. */
+  /**
+   * Force a synchronous write of the pending state, if any.
+   *
+   * W9: on write failure, leave `dirty=true` and re-arm the debounce timer
+   * so a subsequent `update()` (or background timer fire) retries instead of
+   * silently dropping the pending state. The error is also re-thrown so
+   * callers that explicitly invoke `flush()` (shutdown paths, tests) see it.
+   */
   flush(): void {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
     if (!this.dirty) return;
-    writeStateSync(this.file, this.state);
-    this.dirty = false;
+    try {
+      writeStateSync(this.file, this.state);
+      this.dirty = false;
+      this.lastError = null;
+    } catch (err) {
+      this.lastError = err instanceof Error ? err : new Error(String(err));
+      // Keep dirty=true so the next update() re-arms a flush. We also
+      // schedule a retry now in case the caller has nothing else queued.
+      this.scheduleFlushRetry();
+      throw this.lastError;
+    }
   }
 
   /** Flush and stop accepting future debounced writes. */
@@ -130,21 +148,48 @@ export class GatewayStateStore {
   private scheduleFlush(): void {
     this.dirty = true;
     if (this.debounceMs <= 0) {
+      // W9: synchronous mode — re-throw on failure so the caller sees the
+      // problem instead of having the data silently disappear.
       this.flush();
       return;
     }
     if (this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
+      if (!this.dirty) return;
       try {
-        if (this.dirty) {
-          writeStateSync(this.file, this.state);
-          this.dirty = false;
-        }
-      } catch {
-        // best-effort; next update reschedules.
+        writeStateSync(this.file, this.state);
+        this.dirty = false;
+        this.lastError = null;
+      } catch (err) {
+        // W9: keep dirty=true and re-arm so the failed write retries.
+        this.lastError = err instanceof Error ? err : new Error(String(err));
+        this.scheduleFlushRetry();
       }
     }, this.debounceMs);
+    if (typeof this.timer.unref === "function") this.timer.unref();
+  }
+
+  /**
+   * Re-arm the debounce timer after a write failure. Bounded delay (capped
+   * at 5s) so transient failures do not become a hot-spin retry loop.
+   */
+  private scheduleFlushRetry(): void {
+    if (this.debounceMs <= 0) return; // sync mode: caller decides
+    if (this.timer) return;
+    const retryMs = Math.min(Math.max(this.debounceMs, 250), 5000);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (!this.dirty) return;
+      try {
+        writeStateSync(this.file, this.state);
+        this.dirty = false;
+        this.lastError = null;
+      } catch (err) {
+        this.lastError = err instanceof Error ? err : new Error(String(err));
+        this.scheduleFlushRetry();
+      }
+    }, retryMs);
     if (typeof this.timer.unref === "function") this.timer.unref();
   }
 }

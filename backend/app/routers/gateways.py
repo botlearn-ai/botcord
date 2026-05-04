@@ -17,8 +17,10 @@
 from __future__ import annotations
 
 import datetime
+import ipaddress
 import logging
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -156,13 +158,22 @@ class WechatLoginStatusIn(BaseModel):
 
 
 def _serialize(row: AgentGatewayConnection) -> GatewayOut:
+    # W10: explicit narrowing replaces the previous `# type: ignore` casts so a
+    # future schema drift surfaces as a clear 500 instead of silently emitting
+    # an out-of-spec literal.
+    if row.provider not in ("telegram", "wechat"):
+        raise ValueError(f"unexpected gateway provider in DB: {row.provider!r}")
+    if row.status not in ("pending", "active", "disabled", "error"):
+        raise ValueError(f"unexpected gateway status in DB: {row.status!r}")
+    provider: ProviderLit = row.provider  # type: checker now sees a literal
+    status: StatusLit = row.status
     return GatewayOut(
         id=row.id,
         agent_id=row.agent_id,
         daemon_instance_id=row.daemon_instance_id,
-        provider=row.provider,  # type: ignore[arg-type]
+        provider=provider,
         label=row.label,
-        status=row.status,  # type: ignore[arg-type]
+        status=status,
         enabled=row.enabled,
         config=dict(row.config_json or {}),
         last_error=row.last_error,
@@ -242,6 +253,51 @@ def _ack_or_raise(ack: Any) -> dict[str, Any]:
     return result if isinstance(result, dict) else {}
 
 
+def _validate_base_url(value: str | None) -> None:
+    """W1: SSRF guard for user-supplied baseUrl.
+
+    Rejects empty/non-https URLs and any host that resolves (literally) to a
+    private, loopback, link-local, multicast, or otherwise reserved IP. We
+    deliberately do NOT resolve DNS — that is the daemon's job at fetch time,
+    and re-resolving here would only widen the TOCTOU window. The literal-IP
+    check still blocks the most common SSRF payloads (``https://127.0.0.1``,
+    ``https://10.0.0.5``, ``https://169.254.169.254``).
+    """
+    if value is None:
+        return
+    if not value or not isinstance(value, str):
+        raise HTTPException(status_code=400, detail="invalid_base_url")
+    try:
+        parsed = urlparse(value)
+    except Exception as exc:  # pragma: no cover — urlparse rarely throws
+        raise HTTPException(status_code=400, detail="invalid_base_url") from exc
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=400, detail="invalid_base_url_scheme")
+    host = parsed.hostname or ""
+    if not host:
+        raise HTTPException(status_code=400, detail="invalid_base_url_host")
+    # Reject literal-IP forms pointing at private / loopback / link-local space.
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise HTTPException(status_code=400, detail="forbidden_base_url_host")
+    else:
+        # Hostname forms — block well-known loopback names too.
+        lowered = host.lower()
+        if lowered in {"localhost", "ip6-localhost", "ip6-loopback"}:
+            raise HTTPException(status_code=400, detail="forbidden_base_url_host")
+
+
 def _filter_config(patch: _ConfigPatch | None) -> dict[str, Any]:
     if patch is None:
         return {}
@@ -310,6 +366,7 @@ async def create_gateway(
 
     gateway_id = generate_gateway_connection_id(body.provider)
     config = _filter_config(body.config)
+    _validate_base_url(config.get("baseUrl"))
 
     params: dict[str, Any] = {
         "id": gateway_id,
@@ -381,6 +438,7 @@ async def patch_gateway(
         row.config_json = merged
 
     config = dict(row.config_json or {})
+    _validate_base_url(config.get("baseUrl"))
     params: dict[str, Any] = {
         "id": row.id,
         "type": row.provider,
@@ -394,8 +452,22 @@ async def patch_gateway(
     if row.provider == "telegram" and body.bot_token:
         params["secret"] = {"botToken": body.bot_token}
 
-    ack = await send_control_frame(daemon_id, "upsert_gateway", params)
-    result = _ack_or_raise(ack)
+    # W6: flush the pending row mutations to the DB BEFORE pushing to the
+    # daemon. If the flush fails (constraint, schema drift, etc.) we surface
+    # an HTTP error without the daemon having accepted the new metadata. We
+    # only commit AFTER the daemon ack — and roll back if the daemon rejects.
+    try:
+        await db.flush()
+    except Exception:
+        await db.rollback()
+        raise
+
+    try:
+        ack = await send_control_frame(daemon_id, "upsert_gateway", params)
+        result = _ack_or_raise(ack)
+    except Exception:
+        await db.rollback()
+        raise
 
     token_preview = result.get("tokenPreview")
     if isinstance(token_preview, str) and token_preview:
@@ -414,7 +486,11 @@ async def patch_gateway(
     else:
         row.status = "active" if row.enabled else "disabled"
 
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     await db.refresh(row)
     return _serialize(row)
 
@@ -484,6 +560,7 @@ async def wechat_login_start(
     if body.gateway_id:
         params["gatewayId"] = body.gateway_id
     if body.base_url:
+        _validate_base_url(body.base_url)
         params["baseUrl"] = body.base_url
 
     ack = await send_control_frame(daemon_id, "gateway_login_start", params)
