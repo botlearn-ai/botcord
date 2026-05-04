@@ -1,0 +1,599 @@
+"""Tests for /api/agents/{agent_id}/gateways (BFF — third-party gateways)."""
+
+import datetime
+import uuid
+
+import jwt
+import pytest
+import pytest_asyncio
+from fastapi import HTTPException
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+from unittest.mock import AsyncMock
+
+from hub.enums import MessagePolicy
+from hub.models import (
+    Agent,
+    AgentGatewayConnection,
+    Base,
+    DaemonInstance,
+    Role,
+    User,
+    UserRole,
+)
+
+TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
+
+
+def _token(sub: str) -> str:
+    payload = {
+        "sub": sub,
+        "aud": "authenticated",
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+        "iss": "supabase",
+    }
+    return jwt.encode(payload, TEST_SUPABASE_SECRET, algorithm="HS256")
+
+
+@pytest_asyncio.fixture
+async def db_engine():
+    engine = create_async_engine(
+        TEST_DB_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        execution_options={"schema_translate_map": {"public": None}},
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(db_engine):
+    factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as s:
+        yield s
+
+
+@pytest_asyncio.fixture
+async def client(db_session, monkeypatch):
+    import hub.config
+
+    monkeypatch.setattr(hub.config, "SUPABASE_JWT_SECRET", TEST_SUPABASE_SECRET)
+    monkeypatch.setattr(hub.config, "BETA_GATE_ENABLED", False)
+    import app.auth
+
+    monkeypatch.setattr(app.auth, "SUPABASE_JWT_SECRET", TEST_SUPABASE_SECRET)
+
+    from hub.main import app
+    from hub.database import get_db
+
+    async def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    app.state.http_client = AsyncMock()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def seed(db_session: AsyncSession):
+    """Owner with a daemon-hosted agent + a different user with a daemon agent.
+
+    Also seeds a non-daemon-hosted plugin agent owned by the same user so we
+    can assert the 422 ``agent_not_daemon_hosted`` branch.
+    """
+    supabase_uuid = uuid.uuid4()
+    user_id = uuid.uuid4()
+    user = User(
+        id=user_id,
+        display_name="U",
+        email="u@example.com",
+        status="active",
+        supabase_user_id=supabase_uuid,
+    )
+    role = Role(id=uuid.uuid4(), name="member", display_name="Member", is_system=True, priority=0)
+    db_session.add_all([user, role])
+    await db_session.flush()
+    db_session.add(UserRole(id=uuid.uuid4(), user_id=user_id, role_id=role.id))
+
+    daemon = DaemonInstance(
+        id="dm_abcdef123456",
+        user_id=user_id,
+        label="laptop",
+        refresh_token_hash="hash",
+    )
+    db_session.add(daemon)
+
+    other_user_id = uuid.uuid4()
+    other_user = User(
+        id=other_user_id,
+        display_name="Other",
+        email="o@example.com",
+        status="active",
+        supabase_user_id=uuid.uuid4(),
+    )
+    other_daemon = DaemonInstance(
+        id="dm_otherbeefcafe",
+        user_id=other_user_id,
+        label="other",
+        refresh_token_hash="hash2",
+    )
+    db_session.add_all([other_user, other_daemon])
+    await db_session.flush()
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    daemon_agent = Agent(
+        agent_id="ag_daemon",
+        display_name="Daemon Agent",
+        bio="b",
+        message_policy=MessagePolicy.contacts_only,
+        user_id=user_id,
+        claimed_at=now,
+        hosting_kind="daemon",
+        daemon_instance_id="dm_abcdef123456",
+    )
+    plugin_agent = Agent(
+        agent_id="ag_plugin",
+        display_name="Plugin Agent",
+        bio="b",
+        message_policy=MessagePolicy.contacts_only,
+        user_id=user_id,
+        claimed_at=now,
+        hosting_kind="plugin",
+    )
+    other_agent = Agent(
+        agent_id="ag_other",
+        display_name="Other Daemon",
+        bio="b",
+        message_policy=MessagePolicy.contacts_only,
+        user_id=other_user_id,
+        claimed_at=now,
+        hosting_kind="daemon",
+        daemon_instance_id="dm_otherbeefcafe",
+    )
+    db_session.add_all([daemon_agent, plugin_agent, other_agent])
+    await db_session.commit()
+    return {
+        "token": _token(str(supabase_uuid)),
+        "user_id": user_id,
+        "daemon_id": "dm_abcdef123456",
+    }
+
+
+def _patch_daemon(monkeypatch, *, online: bool, send=None):
+    """Stub the gateways router's daemon hooks."""
+    import app.routers.gateways as gw
+
+    monkeypatch.setattr(gw, "is_daemon_online", lambda _id: online)
+    if send is not None:
+        monkeypatch.setattr(gw, "send_control_frame", send)
+
+
+# ---------------------------------------------------------------------------
+# Auth / ownership / shape gates
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_empty_when_no_connections(client, seed):
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get("/api/agents/ag_daemon/gateways", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"gateways": []}
+
+
+@pytest.mark.asyncio
+async def test_list_404_for_other_users_agent(client, seed):
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get("/api/agents/ag_other/gateways", headers=headers)
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_non_daemon_agent(client, seed, monkeypatch):
+    _patch_daemon(monkeypatch, online=True)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_plugin/gateways",
+        headers=headers,
+        json={"provider": "telegram", "bot_token": "t"},
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"] == "agent_not_daemon_hosted"
+
+
+@pytest.mark.asyncio
+async def test_create_returns_409_when_daemon_offline(client, seed, monkeypatch):
+    _patch_daemon(monkeypatch, online=False)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={"provider": "telegram", "bot_token": "telegrambot:abc"},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"] == "daemon_offline"
+
+
+# ---------------------------------------------------------------------------
+# Create — Telegram happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_telegram_persists_metadata_and_token_preview(
+    client, seed, db_session, monkeypatch
+):
+    calls: list[dict] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append(
+            {
+                "daemon_instance_id": daemon_instance_id,
+                "type": type_,
+                "params": params,
+            }
+        )
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "telegram",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "1234...wxyz",
+                "status": {"running": True, "authorized": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "label": "my bot",
+            "bot_token": "1234:abcd",
+            "config": {"allowedSenderIds": ["111"], "splitAt": 1800},
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["provider"] == "telegram"
+    assert body["status"] == "active"
+    assert body["enabled"] is True
+    assert body["config"]["tokenPreview"] == "1234...wxyz"
+    assert body["config"]["allowedSenderIds"] == ["111"]
+    assert body["config"]["splitAt"] == 1800
+    assert body["daemon_instance_id"] == seed["daemon_id"]
+
+    # Daemon got upsert_gateway with the bot token in `secret`, not in DB.
+    assert len(calls) == 1
+    p = calls[0]["params"]
+    assert calls[0]["type"] == "upsert_gateway"
+    assert p["type"] == "telegram"
+    assert p["accountId"] == "ag_daemon"
+    assert p["secret"] == {"botToken": "1234:abcd"}
+    assert p["settings"]["allowedSenderIds"] == ["111"]
+
+    # DB row carries no botToken.
+    rows = (
+        await db_session.execute(
+            select(AgentGatewayConnection).where(
+                AgentGatewayConnection.agent_id == "ag_daemon"
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert "botToken" not in (rows[0].config_json or {})
+    assert rows[0].config_json.get("tokenPreview") == "1234...wxyz"
+
+
+@pytest.mark.asyncio
+async def test_create_telegram_requires_bot_token(client, seed, monkeypatch):
+    _patch_daemon(monkeypatch, online=True)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={"provider": "telegram"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "missing_bot_token"
+
+
+@pytest.mark.asyncio
+async def test_create_wechat_requires_login_id(client, seed, monkeypatch):
+    _patch_daemon(monkeypatch, online=True)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={"provider": "wechat"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "missing_login_id"
+
+
+@pytest.mark.asyncio
+async def test_create_wechat_forwards_login_id_no_token_in_db(
+    client, seed, db_session, monkeypatch
+):
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["params"] = params
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "wechat",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "wxab...mnop",
+                "status": {"running": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "wechat",
+            "label": "我的微信",
+            "login_id": "wxl_abc",
+            "config": {"allowedSenderIds": ["xxx@im.wechat"]},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert captured["params"]["loginId"] == "wxl_abc"
+    assert "secret" not in captured["params"]
+    body = r.json()
+    assert body["provider"] == "wechat"
+    assert "tokenPreview" in body["config"]
+
+
+# ---------------------------------------------------------------------------
+# Daemon failure mapping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_maps_daemon_provider_auth_failure_to_400(
+    client, seed, monkeypatch
+):
+    async def fake_send(*a, **kw):
+        return {
+            "ok": False,
+            "error": {"code": "provider_auth_failed", "message": "bad token"},
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={"provider": "telegram", "bot_token": "x"},
+    )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["code"] == "provider_auth_failed"
+
+
+@pytest.mark.asyncio
+async def test_create_maps_other_daemon_errors_to_502(client, seed, monkeypatch):
+    async def fake_send(*a, **kw):
+        return {"ok": False, "error": {"code": "boom", "message": "kaboom"}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={"provider": "telegram", "bot_token": "x"},
+    )
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "daemon_gateway_failed"
+
+
+@pytest.mark.asyncio
+async def test_create_propagates_504_timeout(client, seed, monkeypatch):
+    async def boom(*a, **kw):
+        raise HTTPException(status_code=504, detail="daemon_ack_timeout")
+
+    _patch_daemon(monkeypatch, online=True, send=boom)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={"provider": "telegram", "bot_token": "x"},
+    )
+    assert r.status_code == 504
+
+
+# ---------------------------------------------------------------------------
+# PATCH / DELETE / TEST
+# ---------------------------------------------------------------------------
+
+
+async def _seed_one_connection(db_session: AsyncSession, seed: dict) -> str:
+    gw_id = "gw_telegram_aaaaaa111111"
+    row = AgentGatewayConnection(
+        id=gw_id,
+        user_id=seed["user_id"],
+        agent_id="ag_daemon",
+        daemon_instance_id=seed["daemon_id"],
+        provider="telegram",
+        label="bot",
+        enabled=True,
+        status="active",
+        config_json={"allowedSenderIds": ["111"], "tokenPreview": "1234...wxyz"},
+    )
+    db_session.add(row)
+    await db_session.commit()
+    return gw_id
+
+
+@pytest.mark.asyncio
+async def test_patch_updates_settings_without_token(client, seed, db_session, monkeypatch):
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["params"] = params
+        return {"ok": True, "result": {"status": {"running": True}}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        f"/api/agents/ag_daemon/gateways/{gw_id}",
+        headers=headers,
+        json={"label": "renamed", "config": {"allowedSenderIds": ["222"]}},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["label"] == "renamed"
+    assert body["config"]["allowedSenderIds"] == ["222"]
+    # tokenPreview survives merge.
+    assert body["config"]["tokenPreview"] == "1234...wxyz"
+    # `secret` was NOT forwarded (no rotation requested).
+    assert "secret" not in captured["params"]
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_row_after_daemon_ack(client, seed, db_session, monkeypatch):
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    async def fake_send(*a, **kw):
+        return {"ok": True, "result": {"id": gw_id, "removed": True}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.delete(f"/api/agents/ag_daemon/gateways/{gw_id}", headers=headers)
+    assert r.status_code == 204
+    rows = (
+        await db_session.execute(
+            select(AgentGatewayConnection).where(AgentGatewayConnection.id == gw_id)
+        )
+    ).scalars().all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_test_endpoint_returns_daemon_result(client, seed, db_session, monkeypatch):
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        assert type_ == "test_gateway"
+        return {"ok": True, "result": {"id": gw_id, "ok": True, "info": {"username": "bot"}}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        f"/api/agents/ag_daemon/gateways/{gw_id}/test", headers=headers
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["result"]["info"]["username"] == "bot"
+
+
+# ---------------------------------------------------------------------------
+# WeChat login proxies
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wechat_login_start_proxies_without_writing_db(
+    client, seed, db_session, monkeypatch
+):
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["type"] = type_
+        captured["params"] = params
+        return {
+            "ok": True,
+            "result": {
+                "loginId": "wxl_xyz",
+                "qrcode": "QR",
+                "qrcodeUrl": "https://qr",
+                "expiresAt": 1700000000,
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/wechat/login/start",
+        headers=headers,
+        json={},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["loginId"] == "wxl_xyz"
+    assert body["qrcode"] == "QR"
+    assert captured["type"] == "gateway_login_start"
+    assert captured["params"]["provider"] == "wechat"
+    assert captured["params"]["accountId"] == "ag_daemon"
+
+    # No connection rows should have been written.
+    rows = (
+        await db_session.execute(select(AgentGatewayConnection))
+    ).scalars().all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_wechat_login_status_proxies(client, seed, monkeypatch):
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        assert type_ == "gateway_login_status"
+        assert params == {"provider": "wechat", "loginId": "wxl_xyz"}
+        return {
+            "ok": True,
+            "result": {
+                "status": "confirmed",
+                "baseUrl": "https://ilinkai.weixin.qq.com",
+                "tokenPreview": "abcd...wxyz",
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/wechat/login/status",
+        headers=headers,
+        json={"login_id": "wxl_xyz"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "confirmed"
+    assert body["tokenPreview"] == "abcd...wxyz"
+
+
+@pytest.mark.asyncio
+async def test_wechat_login_start_offline_returns_409(client, seed, monkeypatch):
+    _patch_daemon(monkeypatch, online=False)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/wechat/login/start",
+        headers=headers,
+        json={},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"] == "daemon_offline"

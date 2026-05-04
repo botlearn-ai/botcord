@@ -56,6 +56,8 @@ import {
   ensureAgentWorkspace,
 } from "./agent-workspace.js";
 import { detectRuntimes, getAdapterModule } from "./adapters/runtimes.js";
+import { createGatewayControl } from "./gateway-control.js";
+import type { LoginSessionStore } from "./gateway/channels/login-session.js";
 import {
   hermesProfileHomeDir,
   isValidHermesProfileName,
@@ -114,6 +116,12 @@ export interface ProvisionerOptions {
    * the next restart.
    */
   onAgentInstalled?: OnAgentInstalledHook;
+  /**
+   * Optional shared login-session store for the third-party gateway login
+   * frames. Tests inject a stub clock; production lets `createGatewayControl`
+   * spin up a default in-memory store.
+   */
+  loginSessions?: LoginSessionStore;
 }
 
 /** The value a frame handler returns (minus the `id` which the channel fills in). */
@@ -131,6 +139,10 @@ export function createProvisioner(opts: ProvisionerOptions): (
   const register = opts.register ?? BotCordClient.register;
   const policyResolver = opts.policyResolver;
   const onAgentInstalled = opts.onAgentInstalled;
+  const gatewayControl = createGatewayControl({
+    gateway,
+    ...(opts.loginSessions ? { loginSessions: opts.loginSessions } : {}),
+  });
 
   return async (frame: ControlFrame): Promise<AckBody> => {
     daemonLog.debug("provision.dispatch", { type: frame.type, id: frame.id });
@@ -309,6 +321,34 @@ export function createProvisioner(opts: ProvisionerOptions): (
         daemonLog.debug("list_runtimes", { count: snapshot.runtimes.length });
         return { ok: true, result: snapshot };
       }
+
+      case CONTROL_FRAME_TYPES.LIST_GATEWAYS:
+        return gatewayControl.handleList();
+
+      case CONTROL_FRAME_TYPES.UPSERT_GATEWAY:
+        return gatewayControl.handleUpsert(
+          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleUpsert>[0],
+        );
+
+      case CONTROL_FRAME_TYPES.REMOVE_GATEWAY:
+        return gatewayControl.handleRemove(
+          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleRemove>[0],
+        );
+
+      case CONTROL_FRAME_TYPES.TEST_GATEWAY:
+        return gatewayControl.handleTest(
+          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleTest>[0],
+        );
+
+      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_START:
+        return gatewayControl.handleLoginStart(
+          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleLoginStart>[0],
+        );
+
+      case CONTROL_FRAME_TYPES.GATEWAY_LOGIN_STATUS:
+        return gatewayControl.handleLoginStatus(
+          (frame.params ?? {}) as unknown as Parameters<typeof gatewayControl.handleLoginStatus>[0],
+        );
 
       default:
         daemonLog.warn("provision.dispatch: unknown frame type", {

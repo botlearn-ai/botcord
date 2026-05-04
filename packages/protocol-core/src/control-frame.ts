@@ -87,6 +87,45 @@ export const CONTROL_FRAME_TYPES = {
    * Payload shape: see {@link PolicyUpdatedParams}.
    */
   POLICY_UPDATED: "policy_updated",
+  /**
+   * Hub→daemon: list every third-party gateway profile this daemon currently
+   * holds, annotated with its live `ChannelStatusSnapshot`. Used by the
+   * dashboard "Channels" tab to render connection state.
+   */
+  LIST_GATEWAYS: "list_gateways",
+  /**
+   * Hub→daemon: create or update a third-party gateway connection. Provider-
+   * specific secret resolution is handled inside the daemon (Telegram from
+   * `secret.botToken`, WeChat from a previously-cached login session by
+   * `loginId`). Daemon writes the secret to `~/.botcord/daemon/gateways/{id}.json`
+   * with mode 0600, updates `config.thirdPartyGateways`, and hot-plugs the
+   * channel via `gateway.addChannel`.
+   */
+  UPSERT_GATEWAY: "upsert_gateway",
+  /**
+   * Hub→daemon: remove a third-party gateway. Daemon stops the channel,
+   * drops the entry from `config.thirdPartyGateways`, and deletes the
+   * local secret file.
+   */
+  REMOVE_GATEWAY: "remove_gateway",
+  /**
+   * Hub→daemon: provider-level health check that does NOT consume messages
+   * or advance cursors (Telegram → `getMe`, WeChat → token/config probe or
+   * cached snapshot fallback).
+   */
+  TEST_GATEWAY: "test_gateway",
+  /**
+   * Hub→daemon: provider-generic login start. WeChat is the only consumer
+   * today (returns iLink qrcode); LINE/Discord OAuth flows can plug in
+   * later under the same frame name.
+   */
+  GATEWAY_LOGIN_START: "gateway_login_start",
+  /**
+   * Hub→daemon: poll login status for a previously-allocated `loginId`.
+   * For WeChat returns `{status: "confirmed", baseUrl, tokenPreview}` once
+   * the user scans + confirms; bot token never leaves the daemon.
+   */
+  GATEWAY_LOGIN_STATUS: "gateway_login_status",
 } as const;
 
 export type ControlFrameType = (typeof CONTROL_FRAME_TYPES)[keyof typeof CONTROL_FRAME_TYPES];
@@ -442,4 +481,159 @@ export interface RuntimeSnapshotParams {
 export interface ListRuntimesResult {
   runtimes: RuntimeProbeResult[];
   probedAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Third-party gateway control frames (Phase B)
+//
+// Schemas mirror `docs/third-party-gateway-design.md` "Control Plane 设计".
+// Login frames are intentionally provider-generic so future providers
+// (LINE / Discord OAuth) can reuse the same frame names without a wire bump.
+// ---------------------------------------------------------------------------
+
+/** Provider tag used by every third-party gateway frame today. */
+export type GatewayProvider = "telegram" | "wechat";
+
+/**
+ * One annotated gateway entry returned by `list_gateways`. Mirrors the on-disk
+ * `ThirdPartyGatewayProfile` plus the live `ChannelStatusSnapshot` so the
+ * dashboard can render status without a follow-up snapshot fetch.
+ */
+export interface GatewayProfileSummary {
+  id: string;
+  type: GatewayProvider;
+  accountId: string;
+  label?: string;
+  enabled: boolean;
+  baseUrl?: string;
+  allowedSenderIds?: string[];
+  allowedChatIds?: string[];
+  splitAt?: number;
+  /**
+   * Live channel status, if the channel is currently registered with the
+   * gateway. Absent when the profile is on disk but disabled (or hot-plug
+   * has not yet happened).
+   */
+  status?: {
+    running: boolean;
+    connected?: boolean;
+    authorized?: boolean;
+    lastPollAt?: number;
+    lastInboundAt?: number;
+    lastSendAt?: number;
+    lastError?: string | null;
+  };
+}
+
+/** Result shape returned via `ControlAck.result` for `list_gateways`. */
+export interface ListGatewaysResult {
+  gateways: GatewayProfileSummary[];
+}
+
+/**
+ * Payload shape for `upsert_gateway`. Provider-specific secret resolution:
+ *
+ * - Telegram: `secret.botToken` carries the freshly-issued token; daemon
+ *   writes it verbatim. Subsequent updates that only flip `enabled` or
+ *   tweak whitelists may omit `secret`.
+ * - WeChat: `loginId` references a previously-confirmed daemon login
+ *   session; the daemon validates `accountId` + `provider` match before
+ *   pulling the bot token out and writing it locally. Bot token NEVER
+ *   travels on the wire.
+ */
+export interface UpsertGatewayParams {
+  id: string;
+  type: GatewayProvider;
+  accountId: string;
+  label?: string;
+  enabled?: boolean;
+  /** WeChat only — references a daemon login session created by `gateway_login_start`. */
+  loginId?: string;
+  /** Telegram only — fresh bot token (omit when only updating settings). */
+  secret?: {
+    botToken?: string;
+  };
+  settings?: {
+    baseUrl?: string;
+    allowedSenderIds?: string[];
+    allowedChatIds?: string[];
+    splitAt?: number;
+  };
+}
+
+/** Result envelope for `upsert_gateway`. */
+export interface UpsertGatewayResult {
+  id: string;
+  type: GatewayProvider;
+  accountId: string;
+  enabled: boolean;
+  /** Masked token preview for dashboard display, e.g. `"abcd...wxyz"`. */
+  tokenPreview?: string;
+  /** Live snapshot from the just-installed channel, when available. */
+  status?: GatewayProfileSummary["status"];
+}
+
+/** Payload shape for `remove_gateway`. */
+export interface RemoveGatewayParams {
+  id: string;
+  /** When false, retain the local secret file. Default true. */
+  deleteSecret?: boolean;
+}
+
+export interface RemoveGatewayResult {
+  id: string;
+  removed: boolean;
+  secretDeleted: boolean;
+}
+
+/** Payload shape for `test_gateway`. */
+export interface TestGatewayParams {
+  id: string;
+}
+
+export interface TestGatewayResult {
+  id: string;
+  ok: boolean;
+  /** Provider-reported identity / username when the probe succeeded. */
+  info?: Record<string, unknown>;
+  /** Failure reason; populated only when `ok === false`. */
+  error?: string;
+}
+
+/** Payload shape for `gateway_login_start`. */
+export interface GatewayLoginStartParams {
+  provider: GatewayProvider;
+  accountId: string;
+  /** Optional pre-allocated gateway id this login will eventually bind to. */
+  gatewayId?: string;
+  /** WeChat — override the iLink base URL. Defaults to `https://ilinkai.weixin.qq.com`. */
+  baseUrl?: string;
+}
+
+export interface GatewayLoginStartResult {
+  loginId: string;
+  /** WeChat: opaque qrcode string returned by iLink (`get_bot_qrcode`). */
+  qrcode?: string;
+  /** Optional renderable URL for the qrcode. */
+  qrcodeUrl?: string;
+  /** Unix millis when this login session expires (5-min TTL today). */
+  expiresAt: number;
+}
+
+/** Payload shape for `gateway_login_status`. */
+export interface GatewayLoginStatusParams {
+  provider: GatewayProvider;
+  loginId: string;
+}
+
+/**
+ * Result envelope for `gateway_login_status`. The bot token is never sent
+ * back to Hub; only a masked preview is exposed for confirmation.
+ */
+export interface GatewayLoginStatusResult {
+  status: "pending" | "scanned" | "confirmed" | "expired" | "failed";
+  /** Mirror of the daemon-resolved baseUrl (WeChat only). */
+  baseUrl?: string;
+  /** Masked token preview, e.g. `"abcd...wxyz"`. Only present on `confirmed`. */
+  tokenPreview?: string;
 }

@@ -1562,3 +1562,65 @@ class AgentPresenceConnection(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class AgentGatewayConnection(Base):
+    """Third-party gateway (Telegram / WeChat) connection metadata.
+
+    Hub stores metadata only — provider, label, whitelists, baseUrl, splitAt,
+    masked tokenPreview, status. Bot tokens NEVER live here; they are written
+    to the daemon's local secret store (~/.botcord/daemon/gateways/{id}.json,
+    mode 0600). See ``docs/third-party-gateway-design.md`` § Hub / Backend.
+    """
+
+    __tablename__ = "agent_gateway_connections"
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('telegram', 'wechat')",
+            name="ck_agent_gateway_connections_provider",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'active', 'disabled', 'error')",
+            name="ck_agent_gateway_connections_status",
+        ),
+        Index("ix_agent_gateway_connections_user", "user_id"),
+        Index("ix_agent_gateway_connections_agent", "agent_id"),
+        Index("ix_agent_gateway_connections_daemon", "daemon_instance_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    daemon_instance_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("daemon_instances.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa_text("TRUE")
+    )
+    config_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

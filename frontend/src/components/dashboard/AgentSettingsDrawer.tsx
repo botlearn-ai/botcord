@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, MessageSquare, Settings, Trash2, User, X } from "lucide-react";
+import { Loader2, MessageSquare, Plug, Settings, Trash2, User, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -14,6 +14,7 @@ import {
   type RoomInvitePolicy,
 } from "@/store/usePolicyStore";
 import UnbindAgentDialog from "./UnbindAgentDialog";
+import AgentChannelsTab from "./AgentChannelsTab";
 
 interface AgentSettingsDrawerProps {
   agentId: string;
@@ -43,7 +44,7 @@ const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[]
   { value: "muted", label: "静音", hint: "群聊不主动回复" },
 ];
 
-type Tab = "profile" | "policy";
+type Tab = "profile" | "policy" | "gateways";
 
 function RadioGroup<T extends string>({
   name,
@@ -258,7 +259,7 @@ export default function AgentSettingsDrawer({
 
         {/* Tabs */}
         <div className="flex border-b border-glass-border/60 px-4">
-          {(["profile", "policy"] as Tab[]).map((t) => (
+          {(["profile", "policy", "gateways"] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -269,8 +270,18 @@ export default function AgentSettingsDrawer({
                   : "text-text-secondary hover:text-text-primary"
               }`}
             >
-              {t === "profile" ? <User className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
-              {t === "profile" ? "资料" : "对话与回复"}
+              {t === "profile" ? (
+                <User className="h-3.5 w-3.5" />
+              ) : t === "policy" ? (
+                <MessageSquare className="h-3.5 w-3.5" />
+              ) : (
+                <Plug className="h-3.5 w-3.5" />
+              )}
+              {t === "profile"
+                ? "资料"
+                : t === "policy"
+                  ? "对话与回复"
+                  : "接入"}
             </button>
           ))}
         </div>
@@ -458,6 +469,8 @@ export default function AgentSettingsDrawer({
               )}
             </div>
           )}
+
+          {tab === "gateways" && <AgentChannelsTab agentId={agentId} />}
         </div>
       </div>
 
