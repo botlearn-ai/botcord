@@ -33,6 +33,7 @@ import {
   getBotQrcode,
   getQrcodeStatus,
 } from "./gateway/channels/wechat-login.js";
+import { WECHAT_BASE_INFO, wechatHeaders } from "./gateway/channels/wechat-http.js";
 import { assertSafeBaseUrl, UnsafeBaseUrlError } from "./gateway/channels/url-guard.js";
 import { log as daemonLog } from "./log.js";
 // W7: canonical FetchLike lives in gateway/channels/http-types.ts so the
@@ -141,6 +142,22 @@ interface GatewayLoginStatusResult {
   status: "pending" | "scanned" | "confirmed" | "expired" | "failed";
   baseUrl?: string;
   tokenPreview?: string;
+}
+
+interface GatewayRecentSendersParams {
+  provider: GatewayProvider;
+  loginId: string;
+  accountId: string;
+  timeoutSeconds?: number;
+}
+
+interface GatewayRecentSender {
+  id: string;
+  label?: string | null;
+}
+
+interface GatewayRecentSendersResult {
+  senders: GatewayRecentSender[];
 }
 
 export type { FetchLike };
@@ -664,6 +681,92 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     return { ok: true, result };
   }
 
+  // --- gateway_recent_senders --------------------------------------------
+  async function handleRecentSenders(params: GatewayRecentSendersParams): Promise<AckBody> {
+    if (!isProvider(params.provider)) {
+      return badParams(`gateway_recent_senders: unknown provider "${String(params.provider)}"`);
+    }
+    if (params.provider !== "wechat") {
+      return badParams(`gateway_recent_senders: provider "${params.provider}" not supported`);
+    }
+    if (!params.loginId) {
+      return badParams("gateway_recent_senders: loginId is required");
+    }
+    if (!params.accountId || typeof params.accountId !== "string") {
+      return badParams("gateway_recent_senders: accountId is required");
+    }
+    const session = sessions.get(params.loginId);
+    if (!session) {
+      return {
+        ok: false,
+        error: { code: "login_expired", message: `wechat login session "${params.loginId}" not found or expired` },
+      };
+    }
+    if (session.provider !== "wechat") {
+      return badParams("gateway_recent_senders: provider does not match login session");
+    }
+    if (session.accountId !== params.accountId) {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: "gateway_recent_senders: accountId does not match login session",
+        },
+      };
+    }
+    if (!session.botToken) {
+      return {
+        ok: false,
+        error: { code: "login_unconfirmed", message: "wechat login session has no bot token yet" },
+      };
+    }
+    try {
+      assertSafeBaseUrl(session.baseUrl);
+    } catch (urlErr) {
+      if (urlErr instanceof UnsafeBaseUrlError) return badParams(urlErr.message);
+      throw urlErr;
+    }
+
+    const baseUrl = (session.baseUrl ?? DEFAULT_WECHAT_BASE_URL).replace(/\/+$/, "");
+    const timeoutSeconds =
+      typeof params.timeoutSeconds === "number"
+        ? Math.min(Math.max(Math.floor(params.timeoutSeconds), 0), 10)
+        : 0;
+    try {
+      const res = await fetchImpl(`${baseUrl}/ilink/bot/getupdates`, {
+        method: "POST",
+        headers: wechatHeaders(session.botToken),
+        body: JSON.stringify({
+          get_updates_buf: "",
+          base_info: { ...WECHAT_BASE_INFO },
+        }),
+        signal: AbortSignal.timeout((timeoutSeconds + 10) * 1000),
+      });
+      const raw = await res.text();
+      const data = raw ? (JSON.parse(raw) as { msgs?: unknown[]; ret?: number }) : {};
+      if (data.ret !== undefined && data.ret !== 0) {
+        return {
+          ok: false,
+          error: {
+            code: "provider_auth_failed",
+            message: `wechat getupdates failed: ret=${data.ret}`,
+          },
+        };
+      }
+      const result: GatewayRecentSendersResult = {
+        senders: extractWechatSenders(data.msgs),
+      };
+      return { ok: true, result };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      daemonLog.warn("gateway_recent_senders.getupdates failed", { error: message });
+      return {
+        ok: false,
+        error: { code: "provider_unreachable", message },
+      };
+    }
+  }
+
   return {
     handleList,
     handleUpsert,
@@ -671,6 +774,7 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     handleTest,
     handleLoginStart,
     handleLoginStatus,
+    handleRecentSenders,
     /** Exposed for tests — direct access to the in-memory session map. */
     _sessions: sessions,
   };
@@ -793,4 +897,21 @@ function mapWechatStatus(raw: string): GatewayLoginStatusResult["status"] {
   if (v === "pending" || v === "waiting") return "pending";
   if (v === "expired" || v === "timeout") return "expired";
   return "failed";
+}
+
+function extractWechatSenders(msgs: unknown): GatewayRecentSender[] {
+  const out = new Map<string, GatewayRecentSender>();
+  if (!Array.isArray(msgs)) return [];
+  for (const msg of msgs) {
+    if (!msg || typeof msg !== "object") continue;
+    const raw = msg as Record<string, unknown>;
+    const id = typeof raw.from_user_id === "string" ? raw.from_user_id.trim() : "";
+    if (!id) continue;
+    const label =
+      (typeof raw.from_user_name === "string" && raw.from_user_name.trim()) ||
+      (typeof raw.sender_name === "string" && raw.sender_name.trim()) ||
+      null;
+    out.set(id, { id, label });
+  }
+  return Array.from(out.values());
 }

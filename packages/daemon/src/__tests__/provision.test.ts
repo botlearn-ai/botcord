@@ -1763,4 +1763,19 @@ describe("W8: gateway frame param validation in provision dispatch", () => {
     expect(ack.ok).toBe(false);
     expect(ack.error?.code).toBe("bad_params");
   });
+
+  it("rejects malformed GATEWAY_RECENT_SENDERS (missing accountId)", async () => {
+    const gw = makeFakeGateway();
+    const provisioner = createProvisioner({
+      gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+    });
+    const ack = await provisioner({
+      id: "req_w8f",
+      type: "gateway_recent_senders",
+      params: { provider: "wechat", loginId: "wxl_1" },
+    });
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("bad_params");
+    expect(ack.error?.message).toContain("accountId");
+  });
 });

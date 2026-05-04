@@ -371,6 +371,16 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
       }
 
+      case "gateway_recent_senders": {
+        const v = validateGatewayParams(frame.params, {
+          required: ["provider", "loginId", "accountId"],
+        });
+        if (!v.ok) return v.ack;
+        return gatewayControl.handleRecentSenders(
+          v.params as unknown as Parameters<typeof gatewayControl.handleRecentSenders>[0],
+        );
+      }
+
       case "list_agent_files": {
         const params = (frame.params ?? {}) as unknown as ListAgentFilesParams;
         if (!params.agentId) {

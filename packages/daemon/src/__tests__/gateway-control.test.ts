@@ -239,6 +239,87 @@ describe("gateway_login_start / status", () => {
     // Bot token never escapes the daemon.
     expect(JSON.stringify(statusResult)).not.toContain("wechat-bot-token-1234567890");
   });
+
+  it("discovers recent WeChat senders from a confirmed login session", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    sessions.create({
+      loginId: "wxl_discover",
+      accountId: "ag_alice",
+      provider: "wechat",
+      qrcode: "QR",
+      baseUrl: "https://ilinkai.weixin.qq.com",
+      botToken: "wechat-bot-token-1234567890",
+    });
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(String(_url)).toBe("https://ilinkai.weixin.qq.com/ilink/bot/getupdates");
+      expect(init?.method).toBe("POST");
+      expect((init?.headers as Record<string, string>).Authorization).toBe(
+        "Bearer wechat-bot-token-1234567890",
+      );
+      return {
+        text: async () =>
+          JSON.stringify({
+            ret: 0,
+            msgs: [
+              { from_user_id: "alice@im.wechat", from_user_name: "Alice" },
+              { from_user_id: "bob@im.wechat" },
+              { from_user_id: "alice@im.wechat", from_user_name: "Alice" },
+              { to_user_id: "ignored" },
+            ],
+          }),
+      };
+    });
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+      fetchImpl: fetchImpl as any,
+    });
+
+    const ack = await ctrl.handleRecentSenders({
+      provider: "wechat",
+      loginId: "wxl_discover",
+      accountId: "ag_alice",
+      timeoutSeconds: 8,
+    });
+
+    expect(ack.ok).toBe(true);
+    expect(ack.result).toEqual({
+      senders: [
+        { id: "alice@im.wechat", label: "Alice" },
+        { id: "bob@im.wechat", label: null },
+      ],
+    });
+  });
+
+  it("rejects sender discovery before WeChat login is confirmed", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    sessions.create({
+      loginId: "wxl_pending",
+      accountId: "ag_alice",
+      provider: "wechat",
+      qrcode: "QR",
+      baseUrl: "https://ilinkai.weixin.qq.com",
+    });
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+
+    const ack = await ctrl.handleRecentSenders({
+      provider: "wechat",
+      loginId: "wxl_pending",
+      accountId: "ag_alice",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("login_unconfirmed");
+  });
 });
 
 describe("frame schema validation", () => {
