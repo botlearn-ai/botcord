@@ -422,6 +422,17 @@ async def test_unbind_agent_skips_revoke_when_daemon_offline(
 async def test_pending_daemon_cleanup_cancelled_after_rebind(
     db_session: AsyncSession, db_engine, seed_user: dict, monkeypatch
 ):
+    """If the agent gets re-bound to the SAME daemon before its pending
+    cleanup drains, sending ``revoke_agent`` would wipe the live creds.
+    The drainer must cancel the row in that case.
+
+    Note: re-binding to a *different* daemon, or staying detached but
+    cloud-owned (the device-removal flow), still leaves the OLD machine's
+    local creds in place and the cleanup remains applicable — covered by
+    ``test_cleanup_still_applies_for_device_removal`` in test_daemon_control.
+    """
+    # Re-bind ag_agent001 to the same daemon the cleanup targets.
+    seed_user["agent1"].daemon_instance_id = "di_old"
     cleanup = DaemonAgentCleanup(
         daemon_instance_id="di_old",
         agent_id="ag_agent001",

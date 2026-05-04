@@ -64,12 +64,22 @@ export interface DaemonRuntime {
 export interface DaemonInstance {
   id: string;
   label: string | null;
-  status: "online" | "offline" | "revoked";
+  status: "online" | "offline" | "revoked" | "removal_pending";
   created_at: string | null;
   last_seen_at: string | null;
   revoked_at: string | null;
+  removal_requested_at: string | null;
+  cleanup_completed_at: string | null;
   runtimes?: DaemonRuntime[] | null;
   runtimes_probed_at?: string | null;
+}
+
+export interface RemoveDeviceResult {
+  ok: boolean;
+  status: "removal_pending" | "revoked";
+  was_online: boolean;
+  detached_agents: Array<{ agent_id: string; display_name: string | null }>;
+  cleanup_jobs_queued: number;
 }
 
 export interface ProvisionAgentInput {
@@ -114,6 +124,7 @@ interface DaemonState {
   loaded: boolean;
   error: string | null;
   revokingId: string | null;
+  removingId: string | null;
   renamingId: string | null;
   refreshingRuntimesId: string | null;
   runtimeErrors: Record<string, string>;
@@ -121,6 +132,10 @@ interface DaemonState {
 
   refresh: (opts?: { quiet?: boolean }) => Promise<void>;
   revoke: (id: string) => Promise<void>;
+  removeDevice: (
+    id: string,
+    opts?: { forgetIfOffline?: boolean; reason?: string },
+  ) => Promise<RemoveDeviceResult>;
   rename: (id: string, label: string | null) => Promise<boolean>;
   refreshRuntimes: (id: string, opts?: { quiet?: boolean }) => Promise<void>;
   provisionAgent: (
@@ -136,6 +151,7 @@ const initialState = {
   loaded: false,
   error: null as string | null,
   revokingId: null as string | null,
+  removingId: null as string | null,
   renamingId: null as string | null,
   refreshingRuntimesId: null as string | null,
   runtimeErrors: {} as Record<string, string>,
@@ -296,16 +312,16 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
 
 function normalizeDaemon(raw: Record<string, unknown>): DaemonInstance {
   const revokedAt = (raw.revoked_at as string | null) ?? null;
+  const removalRequestedAt = (raw.removal_requested_at as string | null) ?? null;
+  const cleanupCompletedAt = (raw.cleanup_completed_at as string | null) ?? null;
   const explicitStatus = (raw.status as string | undefined) ?? null;
   const online = raw.online === true;
   let status: DaemonInstance["status"];
-  if (revokedAt) {
+  if (revokedAt || explicitStatus === "revoked") {
     status = "revoked";
-  } else if (
-    explicitStatus === "online" ||
-    explicitStatus === "offline" ||
-    explicitStatus === "revoked"
-  ) {
+  } else if (removalRequestedAt || explicitStatus === "removal_pending") {
+    status = "removal_pending";
+  } else if (explicitStatus === "online" || explicitStatus === "offline") {
     status = explicitStatus;
   } else {
     status = online ? "online" : "offline";
@@ -317,6 +333,8 @@ function normalizeDaemon(raw: Record<string, unknown>): DaemonInstance {
     created_at: (raw.created_at as string | null) ?? null,
     last_seen_at: (raw.last_seen_at as string | null) ?? null,
     revoked_at: revokedAt,
+    removal_requested_at: removalRequestedAt,
+    cleanup_completed_at: cleanupCompletedAt,
     runtimes: normalizeRuntimes(raw.runtimes),
     runtimes_probed_at: (raw.runtimes_probed_at as string | null) ?? null,
   };
@@ -443,6 +461,63 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         revokingId: null,
         error: err instanceof Error ? err.message : "Failed to revoke",
       });
+    }
+  },
+
+  removeDevice: async (id, opts) => {
+    set({ removingId: id, error: null });
+    try {
+      const res = await fetch(
+        `/api/daemon/instances/${encodeURIComponent(id)}/remove`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            forget_if_offline: opts?.forgetIfOffline === true,
+            ...(opts?.reason ? { reason: opts.reason } : {}),
+          }),
+        },
+      );
+      if (!res.ok) {
+        const msg = await parseError(res);
+        set({ removingId: null, error: msg });
+        throw new Error(msg);
+      }
+      const data = (await res.json().catch(() => null)) as
+        | RemoveDeviceResult
+        | null;
+      // Optimistic local update: drop the device when fully revoked,
+      // mark it removal_pending otherwise. `refresh` reconciles after.
+      const finalStatus = data?.status ?? "removal_pending";
+      set({
+        daemons:
+          finalStatus === "revoked"
+            ? get().daemons.filter((d) => d.id !== id)
+            : get().daemons.map((d) =>
+                d.id === id ? { ...d, status: "removal_pending" } : d,
+              ),
+        removingId: null,
+      });
+      void get().refresh({ quiet: true });
+      return (
+        data ?? {
+          ok: true,
+          status: "removal_pending",
+          was_online: false,
+          detached_agents: [],
+          cleanup_jobs_queued: 0,
+        }
+      );
+    } catch (err) {
+      if (!(err instanceof Error)) {
+        set({ removingId: null });
+        throw new Error("Failed to remove device");
+      }
+      set((state) => ({
+        removingId: null,
+        error: state.error ?? err.message,
+      }));
+      throw err;
     }
   },
 

@@ -1057,3 +1057,405 @@ async def test_load_agent_identity_snapshot_returns_active_bound_agents(
     assert by_id["ag_keep2"]["bio"] is None
     # runtime is intentionally not on the wire — it's cached locally on the daemon.
     assert "runtime" not in by_id["ag_keep1"]
+
+
+# ---------------------------------------------------------------------------
+# Device removal — POST /daemon/instances/{id}/remove
+# ---------------------------------------------------------------------------
+
+
+async def _seed_hosted_agent(
+    db_session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    daemon_instance_id: str,
+    agent_id: str,
+    display_name: str = "Bot",
+) -> Agent:
+    agent = Agent(
+        agent_id=agent_id,
+        display_name=display_name,
+        runtime="claude-code",
+        user_id=user_id,
+        daemon_instance_id=daemon_instance_id,
+        message_policy=MessagePolicy.contacts_only,
+        status="active",
+    )
+    db_session.add(agent)
+    await db_session.commit()
+    return agent
+
+
+@pytest.mark.asyncio
+async def test_remove_device_offline_detaches_and_queues_cleanup(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    import hub.routers.daemon_control as dcm
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_one",
+        display_name="One",
+    )
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_two",
+        display_name="Two",
+    )
+
+    # Daemon is offline — registry has no conn for this instance.
+    assert dcm._REGISTRY.is_online(instance_id) is False
+
+    r = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={"forget_if_offline": False},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["status"] == "removal_pending"
+    assert body["was_online"] is False
+    assert body["cleanup_jobs_queued"] == 2
+    assert {a["agent_id"] for a in body["detached_agents"]} == {"ag_one", "ag_two"}
+
+    # Bots detached but still owned (cloud identity preserved).
+    from sqlalchemy import select
+
+    res = await db_session.execute(
+        select(Agent).where(Agent.user_id == seed_user["user_id"])
+    )
+    agents = res.scalars().all()
+    assert {a.agent_id for a in agents} == {"ag_one", "ag_two"}
+    assert all(a.daemon_instance_id is None for a in agents)
+    assert all(a.user_id is not None for a in agents)
+
+    # Daemon stays in pending-removal: revoked_at NULL but removal_requested_at set.
+    inst = await db_session.get(DaemonInstance, instance_id)
+    await db_session.refresh(inst)
+    assert inst.revoked_at is None
+    assert inst.removal_requested_at is not None
+
+    # Refresh token still works — daemon is allowed back online to drain.
+    r = await client.post(
+        "/daemon/auth/refresh", json={"refresh_token": bundle["refresh_token"]}
+    )
+    assert r.status_code == 200, r.text
+
+    # Cleanup rows queued in pending state.
+    from hub.models import DaemonAgentCleanup
+
+    res = await db_session.execute(
+        select(DaemonAgentCleanup).where(
+            DaemonAgentCleanup.daemon_instance_id == instance_id
+        )
+    )
+    rows = res.scalars().all()
+    assert {r.agent_id for r in rows} == {"ag_one", "ag_two"}
+    assert all(r.status == "pending" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_remove_device_forget_if_offline_revokes_immediately(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_solo",
+    )
+
+    r = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={"forget_if_offline": True},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "revoked"
+    assert body["was_online"] is False
+
+    inst = await db_session.get(DaemonInstance, instance_id)
+    await db_session.refresh(inst)
+    assert inst.revoked_at is not None
+    assert inst.cleanup_completed_at is not None
+
+    # Pending cleanup rows should be cancelled.
+    from sqlalchemy import select
+    from hub.models import DaemonAgentCleanup
+
+    rows = (
+        await db_session.execute(
+            select(DaemonAgentCleanup).where(
+                DaemonAgentCleanup.daemon_instance_id == instance_id
+            )
+        )
+    ).scalars().all()
+    assert all(r.status == "cancelled" for r in rows)
+    assert all(r.last_error and "forgotten" in r.last_error for r in rows)
+
+    # Refresh now blocked.
+    r = await client.post(
+        "/daemon/auth/refresh", json={"refresh_token": bundle["refresh_token"]}
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_remove_device_is_idempotent(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_idem",
+    )
+
+    r1 = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r1.status_code == 200
+    assert r1.json()["cleanup_jobs_queued"] == 1
+
+    # Second call: agents already detached, so no new cleanup row should be added.
+    r2 = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["status"] == "removal_pending"
+    assert body["cleanup_jobs_queued"] == 0
+    assert body["detached_agents"] == []
+
+    from sqlalchemy import select
+    from hub.models import DaemonAgentCleanup
+
+    rows = (
+        await db_session.execute(
+            select(DaemonAgentCleanup).where(
+                DaemonAgentCleanup.daemon_instance_id == instance_id
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_remove_device_does_not_touch_other_user_agents(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    other_user_id = uuid.uuid4()
+    db_session.add(
+        User(
+            id=other_user_id,
+            display_name="Other",
+            email="other@example.com",
+            status="active",
+            supabase_user_id=uuid.uuid4(),
+            max_agents=10,
+        )
+    )
+    await db_session.commit()
+
+    # Active agent owned by another user but somehow bound to this daemon (shouldn't happen
+    # in practice, but the endpoint must guard against it).
+    db_session.add(
+        Agent(
+            agent_id="ag_other",
+            display_name="Other's bot",
+            runtime="claude-code",
+            user_id=other_user_id,
+            daemon_instance_id=instance_id,
+            message_policy=MessagePolicy.contacts_only,
+            status="active",
+        )
+    )
+    await db_session.commit()
+
+    r = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200
+    assert r.json()["detached_agents"] == []
+
+    from sqlalchemy import select
+
+    other = (
+        await db_session.execute(select(Agent).where(Agent.agent_id == "ag_other"))
+    ).scalar_one()
+    await db_session.refresh(other)
+    assert other.daemon_instance_id == instance_id
+
+
+@pytest.mark.asyncio
+async def test_finalize_drains_then_revokes(
+    client: AsyncClient, seed_user, db_session: AsyncSession, monkeypatch
+):
+    """After all pending cleanup jobs succeed and the daemon is in
+    pending-removal, finalization must mark revoked_at and burn the token."""
+    import hub.routers.daemon_control as dcm
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_drain",
+    )
+
+    # Step 1: request removal (offline) so removal_requested_at is set and a
+    # pending cleanup row exists.
+    r = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200
+
+    # Step 2: pretend the daemon reconnected and the cleanup succeeded — mark
+    # the row succeeded directly and run the finalizer.
+    from sqlalchemy import select
+    from hub.models import DaemonAgentCleanup
+
+    row = (
+        await db_session.execute(
+            select(DaemonAgentCleanup).where(
+                DaemonAgentCleanup.daemon_instance_id == instance_id
+            )
+        )
+    ).scalar_one()
+    row.status = "succeeded"
+    row.completed_at = datetime.datetime.now(datetime.timezone.utc)
+    await db_session.commit()
+
+    # Suppress any websocket push (no daemon is actually connected).
+    async def _noop_push(*args, **kwargs):
+        return False
+
+    monkeypatch.setattr(dcm, "_push_daemon_revoke", _noop_push)
+
+    finalized = await dcm._finalize_removal_if_drained(instance_id)
+    assert finalized is True
+
+    inst = await db_session.get(DaemonInstance, instance_id)
+    await db_session.refresh(inst)
+    assert inst.revoked_at is not None
+    assert inst.cleanup_completed_at is not None
+
+    # Refresh now blocked.
+    r = await client.post(
+        "/daemon/auth/refresh", json={"refresh_token": bundle["refresh_token"]}
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_cleanup_still_applies_for_device_removal(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    """Regression: device removal detaches an agent but keeps `user_id`.
+    The cleanup applicability check must NOT cancel such rows — otherwise
+    the daemon-side `revoke_agent` frame is never sent and local
+    credentials linger on the machine forever."""
+    import hub.routers.daemon_control as dcm
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_keep_owned",
+    )
+
+    r = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200
+
+    from sqlalchemy import select
+    from hub.models import DaemonAgentCleanup
+
+    cleanup = (
+        await db_session.execute(
+            select(DaemonAgentCleanup).where(
+                DaemonAgentCleanup.daemon_instance_id == instance_id
+            )
+        )
+    ).scalar_one()
+
+    # Agent still owned by user (user_id != None) but unbound from the
+    # daemon — _cleanup_still_applies must return True so the drainer will
+    # actually send the revoke_agent frame.
+    applies = await dcm._cleanup_still_applies(db_session, cleanup)
+    assert applies is True, "device-removal cleanup must still apply on drain"
+
+    # And if the agent gets re-bound to the same daemon (rare, but possible
+    # if the user cancelled and re-provisioned), the cleanup must NOT fire.
+    agent = (
+        await db_session.execute(select(Agent).where(Agent.agent_id == "ag_keep_owned"))
+    ).scalar_one()
+    agent.daemon_instance_id = instance_id
+    await db_session.commit()
+    applies = await dcm._cleanup_still_applies(db_session, cleanup)
+    assert applies is False, "rebinding to same daemon should cancel cleanup"
+
+
+@pytest.mark.asyncio
+async def test_finalize_skips_when_pending_jobs_remain(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    import hub.routers.daemon_control as dcm
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_pending",
+    )
+
+    r = await client.post(
+        f"/daemon/instances/{instance_id}/remove",
+        json={},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200
+
+    finalized = await dcm._finalize_removal_if_drained(instance_id)
+    assert finalized is False
+
+    inst = await db_session.get(DaemonInstance, instance_id)
+    await db_session.refresh(inst)
+    assert inst.revoked_at is None

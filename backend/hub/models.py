@@ -1248,6 +1248,18 @@ class DaemonInstance(Base):
     revoked_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Device-removal lifecycle. When `removal_requested_at` is set but
+    # `revoked_at` is null, the daemon is in "pending removal": bots have
+    # been detached but local cleanup is still draining (the device may be
+    # offline). Once cleanup completes we stamp `cleanup_completed_at` and
+    # finalize via `revoked_at`.
+    removal_requested_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    removal_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cleanup_completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Latest runtime-discovery snapshot pushed by the daemon (or pulled via
     # list_runtimes). `runtimes_json` mirrors the protocol `runtimes` array;
     # `runtimes_probed_at` is the daemon-side probe wall-clock in UTC.

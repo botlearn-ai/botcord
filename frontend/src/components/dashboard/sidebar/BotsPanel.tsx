@@ -86,6 +86,9 @@ export default function BotsPanel({
   const daemons = useDaemonStore((s) => s.daemons);
   const renameDaemon = useDaemonStore((s) => s.rename);
   const renamingId = useDaemonStore((s) => s.renamingId);
+  const removeDevice = useDaemonStore((s) => s.removeDevice);
+  const removingId = useDaemonStore((s) => s.removingId);
+  const refreshDaemons = useDaemonStore((s) => s.refresh);
 
   const [showAddDevice, setShowAddDevice] = useState(false);
   const [deviceSettingsId, setDeviceSettingsId] = useState<string | null>(null);
@@ -111,8 +114,18 @@ export default function BotsPanel({
     }
   }
 
+  // Devices in `removal_pending` have already had their bots detached. Skip
+  // their device card so My Bots doesn't render an empty group; the bots
+  // surface under "No Device" via the unbound list instead. We still keep
+  // the device with hosted agents (i.e., the rare case where detach failed
+  // mid-flight) so the user can retry.
+  const removalPendingIds = new Set(
+    daemons.filter((d) => d.status === "removal_pending").map((d) => d.id),
+  );
   const allDaemonIds = new Set([
-    ...daemons.map((d) => d.id),
+    ...daemons
+      .filter((d) => !(removalPendingIds.has(d.id) && !byDaemon.has(d.id)))
+      .map((d) => d.id),
     ...byDaemon.keys(),
   ]);
 
@@ -265,14 +278,21 @@ export default function BotsPanel({
           label={settingsDaemon?.label ?? ""}
           status={settingsDaemon?.status ?? "offline"}
           lastSeen={settingsDaemon?.last_seen_at ?? null}
+          hostedAgentCount={(byDaemon.get(deviceSettingsId) ?? []).length}
           isRenaming={renamingId === deviceSettingsId}
           isRefreshing={refreshingBots}
+          isRemoving={removingId === deviceSettingsId}
           locale={locale}
           onClose={() => setDeviceSettingsId(null)}
           onRename={async (newLabel: string) => {
             await renameDaemon(deviceSettingsId, newLabel);
           }}
           onRefreshDaemons={onRefreshDaemons}
+          onRemove={async (forgetIfOffline) => {
+            await removeDevice(deviceSettingsId, { forgetIfOffline });
+            await refreshDaemons({ quiet: true });
+            setDeviceSettingsId(null);
+          }}
         />
       )}
 

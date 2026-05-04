@@ -38,7 +38,7 @@ from fastapi import (
 )
 from nacl.signing import SigningKey
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
@@ -519,9 +519,36 @@ class _InstanceView(BaseModel):
     created_at: datetime.datetime
     last_seen_at: datetime.datetime | None = None
     revoked_at: datetime.datetime | None = None
+    removal_requested_at: datetime.datetime | None = None
+    cleanup_completed_at: datetime.datetime | None = None
+    status: str
     online: bool
     runtimes: list[dict[str, Any]] | None = None
     runtimes_probed_at: datetime.datetime | None = None
+
+
+def _instance_status(instance: DaemonInstance) -> str:
+    if instance.revoked_at is not None:
+        return "revoked"
+    if instance.removal_requested_at is not None:
+        return "removal_pending"
+    return "active"
+
+
+def _instance_to_view(instance: DaemonInstance) -> _InstanceView:
+    return _InstanceView(
+        id=instance.id,
+        label=instance.label,
+        created_at=instance.created_at,
+        last_seen_at=instance.last_seen_at,
+        revoked_at=instance.revoked_at,
+        removal_requested_at=instance.removal_requested_at,
+        cleanup_completed_at=instance.cleanup_completed_at,
+        status=_instance_status(instance),
+        online=_REGISTRY.is_online(instance.id),
+        runtimes=instance.runtimes_json if instance.runtimes_json else None,
+        runtimes_probed_at=instance.runtimes_probed_at,
+    )
 
 
 class _InstancesResponse(BaseModel):
@@ -539,21 +566,7 @@ async def list_instances(
         .order_by(DaemonInstance.created_at.desc())
     )
     rows = result.scalars().all()
-    return _InstancesResponse(
-        instances=[
-            _InstanceView(
-                id=row.id,
-                label=row.label,
-                created_at=row.created_at,
-                last_seen_at=row.last_seen_at,
-                revoked_at=row.revoked_at,
-                online=_REGISTRY.is_online(row.id),
-                runtimes=row.runtimes_json if row.runtimes_json else None,
-                runtimes_probed_at=row.runtimes_probed_at,
-            )
-            for row in rows
-        ]
-    )
+    return _InstancesResponse(instances=[_instance_to_view(row) for row in rows])
 
 
 async def _load_owned_instance(
@@ -586,16 +599,34 @@ async def rename_instance(
     instance.label = new_label or None
     await db.commit()
     await db.refresh(instance)
-    return _InstanceView(
-        id=instance.id,
-        label=instance.label,
-        created_at=instance.created_at,
-        last_seen_at=instance.last_seen_at,
-        revoked_at=instance.revoked_at,
-        online=_REGISTRY.is_online(instance.id),
-        runtimes=instance.runtimes_json if instance.runtimes_json else None,
-        runtimes_probed_at=instance.runtimes_probed_at,
-    )
+    return _instance_to_view(instance)
+
+
+def _mark_instance_revoked(instance: DaemonInstance) -> None:
+    """Mutate ``instance`` to a terminal revoked state. Caller commits."""
+    if instance.revoked_at is None:
+        instance.revoked_at = _now()
+    # Burn the refresh hash so /refresh can never re-issue.
+    instance.refresh_token_hash = "revoked:" + secrets.token_hex(8)
+
+
+async def _push_daemon_revoke(daemon_instance_id: str, reason: str) -> bool:
+    """Send the daemon-level ``revoke`` frame and close the socket. Returns
+    True when a live websocket existed, False otherwise."""
+    conn = _REGISTRY.get(daemon_instance_id)
+    if conn is None:
+        return False
+    try:
+        frame = _build_signed_frame("revoke", {"reason": reason})
+        await conn.ws.send_text(json.dumps(frame))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("revoke push failed: %s", exc)
+    try:
+        await conn.ws.close(code=4403, reason="daemon revoked")
+    except Exception:
+        pass
+    await _REGISTRY.unregister(conn)
+    return True
 
 
 @router.post("/daemon/instances/{daemon_instance_id}/revoke")
@@ -606,26 +637,165 @@ async def revoke_instance(
 ) -> dict[str, Any]:
     instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
     if instance.revoked_at is None:
-        instance.revoked_at = _now()
-        # Burn the refresh hash so /refresh can never re-issue.
-        instance.refresh_token_hash = "revoked:" + secrets.token_hex(8)
+        _mark_instance_revoked(instance)
         await db.commit()
 
-    conn = _REGISTRY.get(daemon_instance_id)
-    was_online = conn is not None
-    if conn is not None:
-        try:
-            frame = _build_signed_frame("revoke", {"reason": "revoked_by_user"})
-            await conn.ws.send_text(json.dumps(frame))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("revoke push failed: %s", exc)
-        try:
-            await conn.ws.close(code=4403, reason="daemon revoked")
-        except Exception:
-            pass
-        await _REGISTRY.unregister(conn)
-
+    was_online = await _push_daemon_revoke(daemon_instance_id, "revoked_by_user")
     return {"ok": True, "was_online": was_online}
+
+
+# ---------------------------------------------------------------------------
+# Device removal — detach hosted bots, drain local cleanup, then revoke.
+# ---------------------------------------------------------------------------
+
+
+class _RemoveInstanceRequest(BaseModel):
+    forget_if_offline: bool = False
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class _RemovedAgentView(BaseModel):
+    agent_id: str
+    display_name: str | None = None
+
+
+class _RemoveInstanceResponse(BaseModel):
+    ok: bool
+    daemon_instance_id: str
+    status: str
+    was_online: bool
+    detached_agents: list[_RemovedAgentView]
+    cleanup_jobs_queued: int
+
+
+async def _detach_hosted_agents(
+    db: AsyncSession,
+    *,
+    daemon_instance_id: str,
+    user_id: _uuid.UUID,
+) -> tuple[list[Agent], int]:
+    """Detach all active user-owned agents from ``daemon_instance_id`` and
+    insert one pending ``DaemonAgentCleanup`` per agent (skipping any agent
+    that already has a pending cleanup row for this daemon)."""
+    result = await db.execute(
+        select(Agent).where(
+            Agent.user_id == user_id,
+            Agent.daemon_instance_id == daemon_instance_id,
+            Agent.status == "active",
+        )
+    )
+    agents = list(result.scalars().all())
+    if not agents:
+        return [], 0
+
+    existing = await db.execute(
+        select(DaemonAgentCleanup.agent_id).where(
+            DaemonAgentCleanup.daemon_instance_id == daemon_instance_id,
+            DaemonAgentCleanup.status == "pending",
+            DaemonAgentCleanup.agent_id.in_([a.agent_id for a in agents]),
+        )
+    )
+    pending_agent_ids = {row for row in existing.scalars().all()}
+
+    await db.execute(
+        update(Agent)
+        .where(Agent.agent_id.in_([a.agent_id for a in agents]))
+        .values(daemon_instance_id=None)
+    )
+    queued = 0
+    for agent in agents:
+        # Keep ORM state coherent with the bulk UPDATE so callers reading
+        # ``agent.daemon_instance_id`` see ``None`` without an extra refresh.
+        agent.daemon_instance_id = None
+        if agent.agent_id not in pending_agent_ids:
+            db.add(
+                DaemonAgentCleanup(
+                    daemon_instance_id=daemon_instance_id,
+                    agent_id=agent.agent_id,
+                    delete_credentials=True,
+                    delete_state=True,
+                    delete_workspace=False,
+                )
+            )
+            queued += 1
+    return agents, queued
+
+
+@router.post(
+    "/daemon/instances/{daemon_instance_id}/remove",
+    response_model=_RemoveInstanceResponse,
+)
+async def remove_instance(
+    daemon_instance_id: str,
+    body: _RemoveInstanceRequest,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> _RemoveInstanceResponse:
+    """Remove a device: detach hosted bots, queue local cleanup, optionally
+    revoke immediately when offline-forget is requested."""
+    instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
+    if instance.revoked_at is not None:
+        # Already terminal — surface idempotent success.
+        return _RemoveInstanceResponse(
+            ok=True,
+            daemon_instance_id=instance.id,
+            status="revoked",
+            was_online=False,
+            detached_agents=[],
+            cleanup_jobs_queued=0,
+        )
+
+    online = _REGISTRY.is_online(daemon_instance_id)
+    detached, queued = await _detach_hosted_agents(
+        db, daemon_instance_id=daemon_instance_id, user_id=ctx.user_id
+    )
+
+    if instance.removal_requested_at is None:
+        instance.removal_requested_at = _now()
+    if body.reason:
+        instance.removal_reason = body.reason
+
+    forget = bool(body.forget_if_offline) and not online
+
+    if forget:
+        # Cancel any pending cleanup rows — they cannot ever drain.
+        pending_rows = (
+            await db.execute(
+                select(DaemonAgentCleanup).where(
+                    DaemonAgentCleanup.daemon_instance_id == daemon_instance_id,
+                    DaemonAgentCleanup.status == "pending",
+                )
+            )
+        ).scalars().all()
+        now = _now()
+        for row in pending_rows:
+            row.status = "cancelled"
+            row.completed_at = now
+            row.last_error = "device forgotten before local cleanup"
+        instance.cleanup_completed_at = now
+        _mark_instance_revoked(instance)
+
+    await db.commit()
+    await db.refresh(instance)
+
+    if forget:
+        await _push_daemon_revoke(daemon_instance_id, "removed_by_user")
+    elif online:
+        # Drain pending cleanup jobs immediately. If the drain finishes them
+        # all, the worker will finalize revoke at the tail.
+        schedule_pending_daemon_cleanups(daemon_instance_id)
+
+    return _RemoveInstanceResponse(
+        ok=True,
+        daemon_instance_id=instance.id,
+        status=_instance_status(instance),
+        was_online=online,
+        detached_agents=[
+            _RemovedAgentView(agent_id=a.agent_id, display_name=a.display_name)
+            for a in detached
+        ],
+        cleanup_jobs_queued=queued,
+    )
 
 
 _ALLOWED_DISPATCH_TYPES = {
@@ -710,10 +880,48 @@ async def _cleanup_still_applies(
     db: AsyncSession,
     cleanup: DaemonAgentCleanup,
 ) -> bool:
+    """A pending cleanup is still applicable as long as the agent is no
+    longer bound to *this specific daemon*. Covers both:
+
+    - **Unbind**: agent fully released (``user_id is None``,
+      ``daemon_instance_id is None``).
+    - **Device removal**: agent retains cloud ownership but was detached
+      from this daemon (``user_id`` set, ``daemon_instance_id`` is None or
+      points elsewhere).
+
+    Only when the agent re-bound to *this same daemon* before we drained do
+    we cancel the cleanup (sending ``revoke_agent`` would wipe live creds).
+    """
     agent = await db.scalar(select(Agent).where(Agent.agent_id == cleanup.agent_id))
     if agent is None:
         return True
-    return agent.user_id is None and agent.daemon_instance_id is None
+    return agent.daemon_instance_id != cleanup.daemon_instance_id
+
+
+async def _finalize_removal_if_drained(daemon_instance_id: str) -> bool:
+    """If the daemon is in pending-removal and no pending cleanup jobs remain,
+    stamp ``cleanup_completed_at`` + ``revoked_at``, burn the refresh hash,
+    and push a ``revoke`` frame. Returns True when finalization happened."""
+    async with async_session() as db:
+        instance = await db.get(DaemonInstance, daemon_instance_id)
+        if instance is None:
+            return False
+        if instance.removal_requested_at is None or instance.revoked_at is not None:
+            return False
+        count = await db.scalar(
+            select(func.count(DaemonAgentCleanup.id)).where(
+                DaemonAgentCleanup.daemon_instance_id == daemon_instance_id,
+                DaemonAgentCleanup.status == "pending",
+            )
+        )
+        if count and count > 0:
+            return False
+        instance.cleanup_completed_at = _now()
+        _mark_instance_revoked(instance)
+        await db.commit()
+
+    await _push_daemon_revoke(daemon_instance_id, "cleanup_completed")
+    return True
 
 
 async def process_pending_daemon_cleanups(daemon_instance_id: str) -> None:
@@ -778,6 +986,10 @@ async def process_pending_daemon_cleanups(daemon_instance_id: str) -> None:
             else:
                 current.last_error = _cleanup_error_message(ack if isinstance(ack, dict) else {})
             await db.commit()
+
+    # Finalize the device removal if the queue is now drained and the daemon
+    # was scheduled for removal. Safe no-op for plain agent unbinds.
+    await _finalize_removal_if_drained(daemon_instance_id)
 
 
 def schedule_pending_daemon_cleanups(daemon_instance_id: str) -> None:
