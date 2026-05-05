@@ -43,6 +43,11 @@ class FakeChannel implements ChannelAdapter {
   }
 }
 
+class FakeTelegramChannel extends FakeChannel {
+  override readonly id = "gw_telegram_test";
+  override readonly type = "telegram";
+}
+
 interface FakeRuntimeOptions {
   reply?: string;
   newSessionId?: string;
@@ -284,6 +289,26 @@ describe("Dispatcher transcript integration", () => {
     const out = recs.find((r) => r.kind === "outbound") as Extract<TranscriptRecord, { kind: "outbound" }>;
     expect(out.deliveryStatus).toBe("gated_non_owner_chat");
     expect(s.channel.sends.length).toBe(0);
+  });
+
+  it("third-party direct chat: runtime text is delivered", async () => {
+    const channel = new FakeTelegramChannel();
+    const s = track(await scaffold({
+      runtimeFactory: () => new FakeRuntime({ reply: "ok" }),
+      channel,
+    }));
+    await s.dispatcher.handle(
+      makeEnvelope({
+        channel: "gw_telegram_test",
+        conversation: { id: "telegram:user:7904063707", kind: "direct" },
+        sender: { id: "telegram:user:7904063707", kind: "user", name: "danny_aaas" },
+      }),
+    );
+    const recs = await s.recordsForRoom("telegram:user:7904063707");
+    const out = recs.find((r) => r.kind === "outbound") as Extract<TranscriptRecord, { kind: "outbound" }>;
+    expect(out.deliveryStatus).toBe("delivered");
+    expect(channel.sends).toHaveLength(1);
+    expect(channel.sends[0].message.conversationId).toBe("telegram:user:7904063707");
   });
 
   it("dashboard_user_chat raw.source_type → delivered even outside rm_oc_", async () => {

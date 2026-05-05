@@ -1076,11 +1076,12 @@ export class Dispatcher {
         return;
       }
 
-      // Reply gating: only owner-chat rooms accept the runtime's plain text
-      // output as a delivered message. Every other room expects the agent to
+      // Reply gating: BotCord network rooms only accept the runtime's plain
+      // text output in owner-chat. Other BotCord rooms expect the agent to
       // call the `botcord_send` tool (or `botcord send` CLI via Bash)
-      // explicitly; runtime text in those rooms is logged and dropped,
-      // including timeout / error notifications.
+      // explicitly, so final assistant text is logged and dropped there.
+      // Third-party gateways (Telegram / WeChat) are themselves direct
+      // message transports; their final runtime text is the reply.
       //
       // Owner-chat is identified by either the `rm_oc_` room prefix OR
       // `source_type === "dashboard_user_chat"` on the raw envelope — the
@@ -1093,6 +1094,7 @@ export class Dispatcher {
       // expectation is that the agent's `botcord_send` tool calls do their
       // own loop-risk accounting downstream.
       const isOwnerChat = isOwnerChatRoom(msg);
+      const canDeliverRuntimeText = isOwnerChat || !isBotCordChannel(channel);
 
       if (slot.timedOut) {
         this.transcript.write({
@@ -1106,7 +1108,7 @@ export class Dispatcher {
           error: `runtime timeout after ${this.turnTimeoutMs}ms`,
           durationMs: Date.now() - slot.dispatchedAt,
         });
-        if (isOwnerChat) {
+        if (canDeliverRuntimeText) {
           await this.sendReply(channel, {
             channel: msg.channel,
             accountId: msg.accountId,
@@ -1151,7 +1153,7 @@ export class Dispatcher {
           error: errMsg,
           durationMs: Date.now() - slot.dispatchedAt,
         });
-        if (isOwnerChat) {
+        if (canDeliverRuntimeText) {
           await this.sendReply(channel, {
             channel: msg.channel,
             accountId: msg.accountId,
@@ -1240,7 +1242,7 @@ export class Dispatcher {
             runtime: route.runtime,
             error: result.error,
           });
-          if (isOwnerChat) {
+          if (canDeliverRuntimeText) {
             const sendResult = await this.sendReply(channel, {
               channel: msg.channel,
               accountId: msg.accountId,
@@ -1280,8 +1282,8 @@ export class Dispatcher {
         return;
       }
 
-      if (!isOwnerChat) {
-        // Non-owner-chat rooms: result.text never goes out. The agent is
+      if (!canDeliverRuntimeText) {
+        // Non-owner BotCord rooms: result.text never goes out. The agent is
         // expected to have used the `botcord_send` tool / `botcord send` CLI
         // already; whatever it left in the runtime's final assistant text is
         // discarded so it doesn't leak into the room.
@@ -1494,6 +1496,10 @@ function isOwnerChatRoom(msg: GatewayInboundEnvelope["message"]): boolean {
     if (sourceType === "dashboard_user_chat") return true;
   }
   return false;
+}
+
+function isBotCordChannel(channel: ChannelAdapter): boolean {
+  return channel.type === "botcord" || channel.id === "botcord";
 }
 
 function resolveQueueMode(
