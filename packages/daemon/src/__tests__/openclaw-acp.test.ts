@@ -162,6 +162,46 @@ describe("OpenclawAcpAdapter.run", () => {
     expect(spawnFn.mock.calls[0][1]).toEqual(["acp", "--url", "ws://127.0.0.1:1"]);
   });
 
+  it("returns an error instead of empty text when OpenClaw emits warnings and no assistant text", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write("◇  Config warnings ─────────────────────╮\n");
+          child.stdout.write("│  - models.providers.foo.apiKey: Missing env var FOO_API_KEY │\n");
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-warn" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { stopReason: "error" } }) + "\n");
+        }
+      }
+    });
+
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+    });
+
+    expect(res.text).toBe("");
+    expect(res.newSessionId).toBe("sid-warn");
+    expect(res.error).toContain("prompt stopped: error");
+    expect(res.error).toContain("Missing env var FOO_API_KEY");
+  });
+
   it("streams only final text when OpenClaw sends reasoning before a final block", async () => {
     const child = new FakeChild();
     const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
