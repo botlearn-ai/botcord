@@ -19,6 +19,7 @@
 - `pre-integration-test-strategy-zh.md`: 集成测试前自动化测试策略，定义分层测试方案。
 - `openclaw-e2e-verification-architecture-zh.md`: OpenClaw 真正端到端验证体系设计，定义多实例执行、环境矩阵、断言分层与场景扩展方式。
 - `gateway.md`: daemon 内部 gateway 模块（`packages/daemon/src/gateway/`）文档，描述模块边界、协议型、扩展点（channel/runtime 适配器）与 boot 方式。
+- `device-removal-agent-cleanup-design.md`: Remove Device 与 Agent 本地清理设计，定义离线设备 pending cleanup、bots detach、agent unbind/hard delete 的语义边界。
 
 设计约束
 
