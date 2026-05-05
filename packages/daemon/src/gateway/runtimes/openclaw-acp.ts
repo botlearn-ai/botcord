@@ -709,10 +709,20 @@ function normalizeAssistantText(text: string | undefined): string {
   if (!finalMatch && selected.trimStart().toLowerCase().startsWith("<think")) {
     return "";
   }
-  return selected
+  return stripLeadingBoundaryResidue(selected
     .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, "")
     .replace(/<\/?final>/gi, "")
-    .trim();
+    .trim());
+}
+
+function stripLeadingBoundaryResidue(text: string): string {
+  if (!text.startsWith("<")) return text;
+  // Keep real HTML/XML-ish tags and common comparison operators. A lone
+  // leading "<" before normal prose can be left behind when ACP streams a
+  // structural marker boundary separately from the final assistant text.
+  if (/^<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s|>|\/>)/.test(text)) return text;
+  if (/^<(?:\s|=|<)/.test(text)) return text;
+  return text.slice(1).trimStart();
 }
 
 function createAssistantTextFilter(): {
