@@ -37,6 +37,7 @@ interface AcpProcessHandle {
   subscribers: Map<string, (note: AcpNotification) => void>;
   nextId: number;
   buffer: string;
+  nonJsonStdoutTail: string[];
   initialized: boolean;
   initializePromise?: Promise<void>;
   idleTimer?: NodeJS.Timeout;
@@ -355,6 +356,14 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
         log.warn("openclaw-acp.assistant-text-capped", { sessionId: acpSessionId });
       }
 
+      if (!finalText) {
+        const stopReason = pickStopReason(promptResult);
+        const warningTail = handle.nonJsonStdoutTail.slice(-8).join("\n").trim();
+        const detail = warningTail ? `; stdout: ${truncateDetail(warningTail, 1000)}` : "";
+        const reason = stopReason ? `prompt stopped: ${stopReason}` : "empty assistant response";
+        return failResult(acpSessionId, `openclaw-acp: ${reason}${detail}`);
+      }
+
       return {
         text: finalText,
         newSessionId: acpSessionId,
@@ -447,6 +456,7 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       subscribers: new Map(),
       nextId: 1,
       buffer: "",
+      nonJsonStdoutTail: [],
       initialized: false,
       inFlight: 0,
       closed: false,
@@ -533,6 +543,10 @@ function onStdoutChunk(handle: AcpProcessHandle, chunk: string): void {
     try {
       msg = JSON.parse(line);
     } catch (err) {
+      handle.nonJsonStdoutTail.push(line.slice(0, 500));
+      if (handle.nonJsonStdoutTail.length > 20) {
+        handle.nonJsonStdoutTail.splice(0, handle.nonJsonStdoutTail.length - 20);
+      }
       log.warn("openclaw-acp.parse-error", {
         error: err instanceof Error ? err.message : String(err),
         line: line.slice(0, 200),
@@ -845,6 +859,16 @@ function pickFinalText(result: unknown): string | undefined {
   if (typeof r.text === "string" && r.text.length > 0) return r.text;
   if (typeof r.message === "string" && r.message.length > 0) return r.message;
   return undefined;
+}
+
+function pickStopReason(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const v = (result as Record<string, unknown>).stopReason;
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+function truncateDetail(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
 function looksLikeReasoningLeak(text: string): boolean {
