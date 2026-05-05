@@ -720,9 +720,15 @@ function stripLeadingBoundaryResidue(text: string): string {
   // Keep real HTML/XML-ish tags and common comparison operators. A lone
   // leading "<" before normal prose can be left behind when ACP streams a
   // structural marker boundary separately from the final assistant text.
-  if (/^<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s|>|\/>)/.test(text)) return text;
-  if (/^<(?:\s|=|<)/.test(text)) return text;
+  if (startsWithRealAngleSyntax(text)) return text;
   return text.slice(1).trimStart();
+}
+
+function startsWithRealAngleSyntax(text: string): boolean {
+  return (
+    /^<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s|>|\/>)/.test(text) ||
+    /^<(?:\s|=|<)/.test(text)
+  );
 }
 
 function createAssistantTextFilter(): {
@@ -830,7 +836,18 @@ function createAssistantTextFilter(): {
         return out;
       }
 
-      out += "<";
+      if (!flush && pending === "<") {
+        return out;
+      }
+      if (!startsWithRealAngleSyntax(pending)) {
+        pending = pending.slice(1).trimStart();
+        continue;
+      }
+      if (seenFinal) {
+        out += "<";
+      } else {
+        fallback += "<";
+      }
       pending = pending.slice(1);
     }
     if (flush && !seenFinal && fallback) {

@@ -334,6 +334,59 @@ describe("OpenclawAcpAdapter.run", () => {
       }
     });
 
+    const blocks: any[] = [];
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+      onBlock: (b) => blocks.push(b),
+    });
+
+    expect(res.text).toBe("好！终于可以正常交流了。");
+    const assistantChunks = blocks
+      .filter((b) => b.kind === "assistant_text")
+      .map((b) => b.raw.params.update.content[0].text);
+    expect(assistantChunks).toEqual(["好！终于可以正常交流了。"]);
+  });
+
+  it("preserves real leading angle syntax in streamed fallback text", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-angle" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          for (const text of ["<", "b>bold</b> and ", "<", " 5"]) {
+            child.stdout.write(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                method: "session/update",
+                params: {
+                  sessionId: "sid-angle",
+                  update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+                },
+              }) + "\n",
+            );
+          }
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { stopReason: "end_turn" } }) + "\n");
+        }
+      }
+    });
+
     const res = await adapter.run({
       text: "hi",
       sessionId: null,
@@ -344,7 +397,44 @@ describe("OpenclawAcpAdapter.run", () => {
       gateway,
     });
 
-    expect(res.text).toBe("好！终于可以正常交流了。");
+    expect(res.text).toBe("<b>bold</b> and < 5");
+  });
+
+  it("forwards slash-command user text to session/prompt unchanged", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+    let promptPayload: any = null;
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-slash" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          promptPayload = frame.params.prompt;
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "ok" } }) + "\n");
+        }
+      }
+    });
+
+    await adapter.run({
+      text: "/start",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+    });
+
+    expect(promptPayload).toEqual([{ type: "text", text: "/start" }]);
   });
 
   it("respawns the pooled child when gateway.url or gateway.token changes under the same name", async () => {
