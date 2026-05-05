@@ -194,6 +194,23 @@ function base(agentId: string): string {
   return `/api/agents/${encodeURIComponent(agentId)}/gateways`;
 }
 
+function parseGatewayList(json: unknown): AgentGatewayConnection[] {
+  if (Array.isArray(json)) return json as AgentGatewayConnection[];
+  if (!json || typeof json !== "object") return [];
+
+  const record = json as {
+    gateways?: unknown;
+    items?: unknown;
+  };
+  if (Array.isArray(record.gateways)) {
+    return record.gateways as AgentGatewayConnection[];
+  }
+  if (Array.isArray(record.items)) {
+    return record.items as AgentGatewayConnection[];
+  }
+  return [];
+}
+
 export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   byAgent: {},
   loading: {},
@@ -205,14 +222,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
     try {
       const res = await fetch(base(agentId), { cache: "no-store" });
       if (!res.ok) throw await readErr(res);
-      const json = (await res.json()) as
-        | AgentGatewayConnection[]
-        | { items?: AgentGatewayConnection[] };
-      const list: AgentGatewayConnection[] = Array.isArray(json)
-        ? json
-        : Array.isArray(json.items)
-          ? json.items
-          : [];
+      const list = parseGatewayList(await res.json());
       set((s) => ({
         byAgent: { ...s.byAgent, [agentId]: list },
         daemonOffline: { ...s.daemonOffline, [agentId]: false },
