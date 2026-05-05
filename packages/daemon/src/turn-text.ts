@@ -35,16 +35,20 @@ const DIRECT_HINT =
   'reply with exactly "NO_REPLY" and nothing else.]';
 
 /**
- * Reminder appended to every wrapped (non-owner-chat) inbound message. The
- * dispatcher discards `result.text` for any room that is not `rm_oc_*`, so
- * the agent must call the `botcord_send` tool (or the `botcord send` CLI
- * via Bash) to actually deliver a reply. Plain assistant text in those
- * rooms is logged and dropped.
+ * Reminder appended to wrapped BotCord network rooms that are not owner-chat.
+ * The dispatcher discards `result.text` for those rooms, so the agent must
+ * call the `botcord_send` tool (or the `botcord send` CLI via Bash) to
+ * actually deliver a reply. Plain assistant text in those rooms is logged
+ * and dropped.
  */
 const NON_OWNER_REPLY_HINT =
   "[This room is NOT owner-chat. Plain text output WILL NOT be sent. " +
   "To reply, call the `botcord_send` tool, or run " +
   '`botcord send --room <room_id> --text "..."` via Bash.]';
+const THIRD_PARTY_REPLY_HINT =
+  "[This is a third-party gateway chat. Reply normally in your final assistant " +
+  "message; BotCord daemon will deliver that text through the same channel. " +
+  "No extra send tool is required for this chat.]";
 
 /**
  * Read the BotCord envelope type from a raw inbound message. Returns
@@ -57,6 +61,19 @@ function readEnvelopeType(raw: unknown): string | undefined {
   if (!env || typeof env !== "object") return undefined;
   const t = (env as { type?: unknown }).type;
   return typeof t === "string" ? t : undefined;
+}
+
+function isThirdPartyConversation(conversationId: string): boolean {
+  return (
+    conversationId.startsWith("telegram:") ||
+    conversationId.startsWith("wechat:")
+  );
+}
+
+function replyDeliveryHint(msg: GatewayInboundMessage): string {
+  return isThirdPartyConversation(msg.conversation.id)
+    ? THIRD_PARTY_REPLY_HINT
+    : NON_OWNER_REPLY_HINT;
 }
 
 /** Minimal shape of one batched inbound entry. Matches the BotCord channel
@@ -182,7 +199,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
     "",
     hint,
     "",
-    NON_OWNER_REPLY_HINT,
+    replyDeliveryHint(msg),
   ];
   if (contactRequestHint) {
     lines.push("", contactRequestHint);
@@ -243,7 +260,7 @@ function composeBatchedTurn(
     "",
     hint,
     "",
-    NON_OWNER_REPLY_HINT,
+    replyDeliveryHint(msg),
   ];
 
   if (contactRequestSenders.length > 0) {
