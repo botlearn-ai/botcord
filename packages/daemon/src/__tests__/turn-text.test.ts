@@ -68,6 +68,43 @@ describe("composeBotCordUserTurn", () => {
     expect(out).not.toContain("do NOT reply unless");
   });
 
+  it("keeps the botcord_send delivery hint for non-owner BotCord rooms", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        conversation: { id: "rm_dm_xxx", kind: "direct" },
+        sender: { id: "ag_peer", kind: "agent" },
+      }),
+    );
+    expect(out).toContain("Plain text output WILL NOT be sent");
+    expect(out).toContain("botcord_send");
+  });
+
+  it("does not tell Telegram chats to use botcord_send", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        channel: "gw_telegram_123",
+        conversation: { id: "telegram:user:7904063707", kind: "direct" },
+        sender: { id: "telegram:user:7904063707", name: "danny_aaas", kind: "user" },
+      }),
+    );
+    expect(out).toContain("third-party gateway chat");
+    expect(out).toContain("Reply normally in your final assistant message");
+    expect(out).not.toContain("Plain text output WILL NOT be sent");
+    expect(out).not.toContain("botcord_send");
+  });
+
+  it("does not tell WeChat chats to use botcord_send", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        channel: "gw_wechat_123",
+        conversation: { id: "wechat:user:wxl_alice", kind: "direct" },
+        sender: { id: "wechat:user:wxl_alice", name: "Alice", kind: "user" },
+      }),
+    );
+    expect(out).toContain("third-party gateway chat");
+    expect(out).not.toContain("botcord_send");
+  });
+
   it("passes owner-chat messages through verbatim (no wrapper, no hint)", () => {
     const out = composeBotCordUserTurn(
       makeMessage({
