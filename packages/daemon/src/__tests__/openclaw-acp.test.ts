@@ -265,6 +265,88 @@ describe("OpenclawAcpAdapter.run", () => {
     );
   });
 
+  it("strips a lone leading ACP boundary marker from final prompt text", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-boundary" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { text: "<你好！终于可以正常交流了。" } }) + "\n");
+        }
+      }
+    });
+
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+    });
+
+    expect(res.text).toBe("你好！终于可以正常交流了。");
+  });
+
+  it("strips a lone leading ACP boundary marker from streamed fallback text", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-stream-boundary" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          for (const text of ["<", "好！终于可以正常交流了。"]) {
+            child.stdout.write(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                method: "session/update",
+                params: {
+                  sessionId: "sid-stream-boundary",
+                  update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+                },
+              }) + "\n",
+            );
+          }
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { stopReason: "end_turn" } }) + "\n");
+        }
+      }
+    });
+
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+    });
+
+    expect(res.text).toBe("好！终于可以正常交流了。");
+  });
+
   it("respawns the pooled child when gateway.url or gateway.token changes under the same name", async () => {
     function newChild(): FakeChild {
       const c = new FakeChild();
