@@ -362,7 +362,7 @@ def _list_has_value(config: dict[str, Any], key: str) -> bool:
 
 def _require_whitelist(provider: str, config: dict[str, Any]) -> None:
     if provider == "telegram":
-        if _list_has_value(config, "allowedChatIds") or _list_has_value(
+        if _list_has_value(config, "allowedChatIds") and _list_has_value(
             config, "allowedSenderIds"
         ):
             return

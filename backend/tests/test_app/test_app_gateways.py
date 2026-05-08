@@ -266,7 +266,11 @@ async def test_create_telegram_persists_metadata_and_token_preview(
             "provider": "telegram",
             "label": "my bot",
             "bot_token": "1234:abcd",
-            "config": {"allowedSenderIds": ["111"], "splitAt": 1800},
+            "config": {
+                "allowedChatIds": ["111"],
+                "allowedSenderIds": ["111"],
+                "splitAt": 1800,
+            },
         },
     )
     assert r.status_code == 200, r.text
@@ -275,6 +279,7 @@ async def test_create_telegram_persists_metadata_and_token_preview(
     assert body["status"] == "active"
     assert body["enabled"] is True
     assert body["config"]["tokenPreview"] == "1234...wxyz"
+    assert body["config"]["allowedChatIds"] == ["111"]
     assert body["config"]["allowedSenderIds"] == ["111"]
     assert body["config"]["splitAt"] == 1800
     assert body["daemon_instance_id"] == seed["daemon_id"]
@@ -286,6 +291,7 @@ async def test_create_telegram_persists_metadata_and_token_preview(
     assert p["type"] == "telegram"
     assert p["accountId"] == "ag_daemon"
     assert p["secret"] == {"botToken": "1234:abcd"}
+    assert p["settings"]["allowedChatIds"] == ["111"]
     assert p["settings"]["allowedSenderIds"] == ["111"]
 
     # DB row carries no botToken.
@@ -327,8 +333,18 @@ async def test_create_wechat_requires_login_id(client, seed, monkeypatch):
     assert r.json()["detail"] == "missing_login_id"
 
 
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"allowedChatIds": [], "allowedSenderIds": []},
+        {"allowedChatIds": ["111"], "allowedSenderIds": []},
+        {"allowedChatIds": [], "allowedSenderIds": ["111"]},
+    ],
+)
 @pytest.mark.asyncio
-async def test_create_telegram_requires_whitelist(client, seed, monkeypatch):
+async def test_create_telegram_requires_chat_and_sender_whitelists(
+    client, seed, monkeypatch, config
+):
     async def fake_send(*a, **kw):
         raise AssertionError("daemon contacted before whitelist validation")
 
@@ -340,7 +356,7 @@ async def test_create_telegram_requires_whitelist(client, seed, monkeypatch):
         json={
             "provider": "telegram",
             "bot_token": "1234:abcd",
-            "config": {"allowedChatIds": [], "allowedSenderIds": []},
+            "config": config,
         },
     )
     assert r.status_code == 400
@@ -430,7 +446,7 @@ async def test_create_maps_daemon_provider_auth_failure_to_400(
         json={
             "provider": "telegram",
             "bot_token": "x",
-            "config": {"allowedSenderIds": ["111"]},
+            "config": {"allowedChatIds": ["111"], "allowedSenderIds": ["111"]},
         },
     )
     assert r.status_code == 400
@@ -451,7 +467,7 @@ async def test_create_maps_other_daemon_errors_to_502(client, seed, monkeypatch)
         json={
             "provider": "telegram",
             "bot_token": "x",
-            "config": {"allowedSenderIds": ["111"]},
+            "config": {"allowedChatIds": ["111"], "allowedSenderIds": ["111"]},
         },
     )
     assert r.status_code == 502
@@ -471,7 +487,7 @@ async def test_create_propagates_504_timeout(client, seed, monkeypatch):
         json={
             "provider": "telegram",
             "bot_token": "x",
-            "config": {"allowedSenderIds": ["111"]},
+            "config": {"allowedChatIds": ["111"], "allowedSenderIds": ["111"]},
         },
     )
     assert r.status_code == 504
@@ -493,7 +509,11 @@ async def _seed_one_connection(db_session: AsyncSession, seed: dict) -> str:
         label="bot",
         enabled=True,
         status="active",
-        config_json={"allowedSenderIds": ["111"], "tokenPreview": "1234...wxyz"},
+        config_json={
+            "allowedChatIds": ["111"],
+            "allowedSenderIds": ["111"],
+            "tokenPreview": "1234...wxyz",
+        },
     )
     db_session.add(row)
     await db_session.commit()
@@ -520,6 +540,7 @@ async def test_patch_updates_settings_without_token(client, seed, db_session, mo
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["label"] == "renamed"
+    assert body["config"]["allowedChatIds"] == ["111"]
     assert body["config"]["allowedSenderIds"] == ["222"]
     # tokenPreview survives merge.
     assert body["config"]["tokenPreview"] == "1234...wxyz"
@@ -751,7 +772,7 @@ async def test_create_accepts_nested_secret_botToken_camelCase(
         json={
             "provider": "telegram",
             "secret": {"botToken": "1234:abcd"},
-            "config": {"allowedSenderIds": ["111"]},
+            "config": {"allowedChatIds": ["111"], "allowedSenderIds": ["111"]},
         },
     )
     assert r.status_code == 200, r.text
@@ -888,6 +909,7 @@ async def test_create_drops_caller_supplied_tokenPreview_in_config(
             "provider": "telegram",
             "bot_token": "1234:abcd",
             "config": {
+                "allowedChatIds": ["111"],
                 "allowedSenderIds": ["111"],
                 "tokenPreview": "ATTACKER...EVIL",
             },
@@ -1074,7 +1096,14 @@ async def test_create_gateway_rate_limited_after_burst(client, seed, monkeypatch
         r = await client.post(
             "/api/agents/ag_daemon/gateways",
             headers=headers,
-            json={"provider": "telegram", "bot_token": f"111:tok{i}"},
+            json={
+                "provider": "telegram",
+                "bot_token": f"111:tok{i}",
+                "config": {
+                    "allowedChatIds": ["111"],
+                    "allowedSenderIds": ["111"],
+                },
+            },
         )
         status_codes.append(r.status_code)
 

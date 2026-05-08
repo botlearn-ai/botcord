@@ -404,8 +404,9 @@ function TelegramAddForm({
 
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
-  const whitelistEmpty = allowedChatIds.length === 0 && allowedSenderIds.length === 0;
-  const canSave = !!token.trim() && !whitelistEmpty && !daemonOffline && !saving;
+  const whitelistIncomplete =
+    allowedChatIds.length === 0 || allowedSenderIds.length === 0;
+  const canSave = !!token.trim() && !whitelistIncomplete && !daemonOffline && !saving;
 
   async function handleSave() {
     if (!canSave) return;
@@ -627,7 +628,7 @@ function TelegramAddForm({
           className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
         <p className="mt-1 text-[10px] text-text-tertiary">
-          可选；如果不填发送者，必须填写允许的 chat id。
+          必填；Telegram 需要同时限制 chat id 和发送者 user id。
         </p>
       </Field>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
@@ -640,9 +641,9 @@ function TelegramAddForm({
         />
         立即启用
       </label>
-      {whitelistEmpty && (
+      {whitelistIncomplete && (
         <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
-          必须填写至少一个允许的 chat id 或发送者 user id，才能保存 Telegram 接入。
+          必须同时填写允许的 chat id 和发送者 user id，才能保存 Telegram 接入。
         </p>
       )}
       {error && (
@@ -1139,11 +1140,11 @@ function GatewayEditForm({
 
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
-  const whitelistEmpty =
+  const whitelistIncomplete =
     gateway.provider === "telegram"
-      ? allowedChatIds.length === 0 && allowedSenderIds.length === 0
+      ? allowedChatIds.length === 0 || allowedSenderIds.length === 0
       : allowedSenderIds.length === 0;
-  const canSave = !whitelistEmpty && !daemonOffline && !saving;
+  const canSave = !whitelistIncomplete && !daemonOffline && !saving;
 
   async function handleSave() {
     if (!canSave) return;
@@ -1610,9 +1611,11 @@ function GatewayEditForm({
           </div>
         )}
       </Field>
-      {whitelistEmpty && (
+      {whitelistIncomplete && (
         <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
-          必须保留至少一个允许的用户或会话，才能保存修改。
+          {gateway.provider === "telegram"
+            ? "必须同时保留允许的 chat id 和发送者 user id，才能保存修改。"
+            : "必须保留至少一个允许的微信用户 ID，才能保存修改。"}
         </p>
       )}
       <div className="flex justify-end gap-2">
