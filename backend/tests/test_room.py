@@ -1439,8 +1439,7 @@ async def test_inbox_includes_room_rule_and_text_hint(client: AsyncClient):
     message = inbox.json()["messages"][0]
     assert message["room_id"] == room_id
     assert message["room_rule"] == "Only post deploy status updates."
-    assert "[房间规则] Only post deploy status updates." in message["text"]
-    assert "[系统提示] 你在该群聊中的行为和回复必须遵循上述房间规则。" in message["text"]
+    assert message["text"] == "deploy started"
 
 
 @pytest.mark.asyncio

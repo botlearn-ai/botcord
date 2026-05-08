@@ -21,7 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent, verify_agent_token
-from hub.config import INBOX_POLL_MAX_TIMEOUT, PAIR_RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE
+from hub.config import (
+    HUB_PUBLIC_BASE_URL,
+    INBOX_POLL_MAX_TIMEOUT,
+    PAIR_RATE_LIMIT_PER_MINUTE,
+    RATE_LIMIT_PER_MINUTE,
+)
 from hub.constants import MIN_PLUGIN_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
@@ -50,10 +55,6 @@ from hub.models import (
 )
 from hub.enums import ApprovalKind, ApprovalState, ParticipantType
 from hub.policy import Principal, check_direct_admission
-from hub.forward import (
-    RoomContext as _RoomContext,
-    build_flat_text as _build_flat_text,
-)
 from hub.prompt_guard import scan_content, InjectionRisk
 from hub.schemas import (
     HistoryMessage,
@@ -149,6 +150,43 @@ def build_agent_realtime_event(
 
 def _message_preview(payload: dict[str, Any]) -> str:
     return (payload.get("text") or payload.get("message") or "")[:160]
+
+
+def _inbox_body_text(envelope: MessageEnvelope) -> str:
+    """Return only the sender-authored body for /hub/inbox `text`.
+
+    Room metadata, topic, goal, mentions, sender identity, and delivery
+    context are exposed as structured InboxMessage fields and should be
+    rendered by the runtime adapter outside the message body.
+    """
+    p = envelope.payload
+    if envelope.type == MessageType.message:
+        text_value = p.get("text") or p.get("body") or p.get("message")
+        body = (
+            text_value
+            if isinstance(text_value, str) and text_value
+            else json.dumps(p, ensure_ascii=False)
+        )
+        attachments = p.get("attachments", [])
+        if isinstance(attachments, list) and attachments:
+            att_lines = []
+            for att in attachments:
+                if not isinstance(att, dict):
+                    continue
+                name = att.get("filename", "file")
+                url = att.get("url", "")
+                if isinstance(url, str) and url.startswith("/"):
+                    url = f"{HUB_PUBLIC_BASE_URL}{url}"
+                size = att.get("size_bytes")
+                size_str = f", {size} bytes" if size else ""
+                att_lines.append(f"  📎 {name}{size_str}: {url}")
+            if att_lines:
+                body = (body or "") + "\n【Attachments】\n" + "\n".join(att_lines)
+        return body
+    if envelope.type == MessageType.contact_request:
+        msg = p.get("message")
+        return msg if isinstance(msg, str) and msg else "sent you a contact request."
+    return envelope.to_text(include_sender=False)
 
 
 def build_message_realtime_event(
@@ -1423,17 +1461,6 @@ async def poll_inbox(
                 "my_can_send": my_can_send,
             }
 
-    # Batch-load sender display names
-    sender_ids = {rec.sender_id for rec in rows if rec.sender_id}
-    sender_name_map: dict[str, str | None] = {}
-    if sender_ids:
-        sender_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name).where(
-                Agent.agent_id.in_(sender_ids)
-            )
-        )
-        sender_name_map = dict(sender_result.all())
-
     # Batch-load dashboard user display names (owner-chat + human-room rows
     # store an internal User.id in source_user_id — the shared helper falls
     # back to supabase_user_id for legacy rows).
@@ -1453,27 +1480,11 @@ async def poll_inbox(
         envelope = MessageEnvelope(**envelope_data)
         ri = room_info_map.get(rec.room_id) if rec.room_id else None
 
-        # Build RoomContext for build_flat_text
-        room_ctx = None
-        if ri:
-            room_ctx = _RoomContext(
-                room_id=rec.room_id,
-                name=ri["name"],
-                member_count=ri["member_count"],
-                rule=ri.get("rule"),
-                member_names=ri["member_names"],
-                my_role=ri.get("my_role"),
-                my_can_send=ri.get("my_can_send"),
-            )
-
-        flat_text = _build_flat_text(
-            envelope,
-            sender_display_name=sender_name_map.get(rec.sender_id),
-            room_context=room_ctx,
-            mentioned=rec.mentioned,
-            topic_id=rec.topic_id,
-            include_sender=rec.source_type != "dashboard_user_chat",
-        )
+        # Keep inbox `text` focused on the message body. Room metadata is
+        # returned below as structured fields (`room_name`, `room_rule`,
+        # `room_member_names`, `my_role`, ...), so local runtimes can place it
+        # outside sender message blocks instead of mixing context into content.
+        flat_text = _inbox_body_text(envelope)
 
         messages.append(
             InboxMessage(

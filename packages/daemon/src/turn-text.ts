@@ -88,6 +88,16 @@ interface BatchedEntry {
   mentioned?: unknown;
 }
 
+interface RoomContextRaw {
+  room_id?: unknown;
+  room_name?: unknown;
+  room_rule?: unknown;
+  room_member_count?: unknown;
+  room_member_names?: unknown;
+  my_role?: unknown;
+  my_can_send?: unknown;
+}
+
 /**
  * Read the `raw.batch` array emitted by the BotCord channel when inbox
  * drain groups multiple messages for the same `(room, topic)`. Returns the
@@ -123,6 +133,36 @@ function entryText(e: BatchedEntry): string {
   if (typeof e.text === "string") return e.text;
   if (typeof e.envelope?.payload?.text === "string") return e.envelope.payload.text;
   return "";
+}
+
+function formatRoomContext(raw: unknown, fallback: { id: string; title?: string }): string[] {
+  const r = raw && typeof raw === "object" ? (raw as RoomContextRaw) : {};
+  const roomId = typeof r.room_id === "string" && r.room_id ? r.room_id : fallback.id;
+  const roomName = typeof r.room_name === "string" && r.room_name ? r.room_name : fallback.title;
+  const memberCount =
+    typeof r.room_member_count === "number" && Number.isFinite(r.room_member_count)
+      ? r.room_member_count
+      : undefined;
+  const memberNames = Array.isArray(r.room_member_names)
+    ? r.room_member_names.filter((n): n is string => typeof n === "string" && n.length > 0)
+    : [];
+  const role = typeof r.my_role === "string" && r.my_role ? r.my_role : undefined;
+  const canSend = typeof r.my_can_send === "boolean" ? r.my_can_send : undefined;
+
+  const parts = [`id: ${sanitizeSenderName(roomId)}`];
+  if (roomName) parts.push(`name: ${sanitizeSenderName(roomName)}`);
+  if (memberCount !== undefined) {
+    const names = memberNames.slice(0, 10).map(sanitizeSenderName).join(", ");
+    parts.push(names ? `members: ${memberCount}: ${names}` : `members: ${memberCount}`);
+  }
+  if (role) parts.push(`role: ${sanitizeSenderName(role)}`);
+  if (canSend !== undefined) parts.push(`can_send: ${canSend ? "true" : "false"}`);
+
+  const lines = [`[BotCord Room] | ${parts.join(" | ")}`];
+  if (typeof r.room_rule === "string" && r.room_rule.trim()) {
+    lines.push(`[Room Rule] ${sanitizeUntrustedContent(r.room_rule.trim())}`);
+  }
+  return lines;
 }
 
 /**
@@ -193,6 +233,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
 
   const lines: string[] = [
     headerFields.join(" | "),
+    ...(isGroup ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle }) : []),
     `<${tag} sender="${sanitizedSenderLabel}" sender_kind="${senderKindAttr}">`,
     trimmed,
     `</${tag}>`,
@@ -256,6 +297,7 @@ function composeBatchedTurn(
   const hint = isGroup ? GROUP_HINT : DIRECT_HINT;
   const lines: string[] = [
     header.join(" | "),
+    ...(isGroup ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle }) : []),
     blocks.join("\n"),
     "",
     hint,
