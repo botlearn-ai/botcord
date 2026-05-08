@@ -34,6 +34,11 @@ let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
 
+function isFetchNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "TypeError" && error.message === "Failed to fetch";
+}
+
 function applyRealtimeRoomHint<T extends {
   room_id: string;
   last_message_at: string | null;
@@ -524,6 +529,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             void get().loadRoomMessages(openedRoomId);
           }
         } catch (error: any) {
+          if (get().overview && isFetchNetworkError(error)) {
+            console.warn("[ChatStore] Background overview refresh failed:", error);
+            set({ overviewRefreshing: false, overviewErrored: false });
+            return;
+          }
           set({ error: error?.message || "Failed to refresh", overviewRefreshing: false, overviewErrored: true });
         }
       },
