@@ -28,10 +28,16 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export function buildDaemonStartCommand(installToken?: string): string {
+type DaemonStartMode = "foreground" | "background";
+
+export function buildDaemonStartCommand(
+  installToken?: string,
+  mode: DaemonStartMode = "foreground",
+): string {
   const args = [`--hub ${shellQuote(HUB_BASE_URL)}`];
   if (installToken) args.push(`--install-token ${shellQuote(installToken)}`);
-  return `curl -fsSL ${HUB_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")}`;
+  const daemonArgs = mode === "background" ? " -- --background" : "";
+  return `curl -fsSL ${HUB_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")}${daemonArgs}`;
 }
 
 export interface DaemonInstallCommandLabels {
@@ -40,6 +46,12 @@ export interface DaemonInstallCommandLabels {
   copy: string;
   copied: string;
   refresh: string;
+  generating?: string;
+  copyDisabled?: string;
+  foregroundMode?: string;
+  foregroundHint?: string;
+  backgroundMode?: string;
+  backgroundHint?: string;
   installTokenError?: string;
 }
 
@@ -56,8 +68,9 @@ export default function DaemonInstallCommand({
   busy,
   onRefresh,
 }: DaemonInstallCommandProps) {
-  const [command, setCommand] = useState(() => buildDaemonStartCommand());
-  const [tokenLoading, setTokenLoading] = useState(false);
+  const [installToken, setInstallToken] = useState<string | undefined>();
+  const [mode, setMode] = useState<DaemonStartMode>("foreground");
+  const [tokenLoading, setTokenLoading] = useState(true);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
@@ -88,9 +101,9 @@ export default function DaemonInstallCommand({
       }
       const data = (await res.json()) as { install_token?: string };
       if (!data.install_token) throw new Error("install_token missing");
-      setCommand(buildDaemonStartCommand(data.install_token));
+      setInstallToken(data.install_token);
     } catch (err) {
-      setCommand(buildDaemonStartCommand());
+      setInstallToken(undefined);
       setTokenError(
         err instanceof Error ? err.message : "Failed to generate install token",
       );
@@ -100,6 +113,7 @@ export default function DaemonInstallCommand({
   }
 
   async function handleCopy(): Promise<void> {
+    if (copyDisabled) return;
     try {
       await navigator.clipboard.writeText(command);
       setCopied(true);
@@ -121,9 +135,28 @@ export default function DaemonInstallCommand({
   }
 
   const loading = !!busy || tokenLoading;
+  const command = buildDaemonStartCommand(installToken, mode);
+  const copyDisabled = tokenLoading;
+  const commandDisplay = tokenLoading
+    ? (labels.generating ?? "Generating secure install command...")
+    : command;
   const fallbackErrorMsg =
     labels.installTokenError ??
     "Install token unavailable; command will fall back to interactive auth.";
+  const zh = labels.copy === "复制";
+  const copyTitle = copyDisabled
+    ? labels.copyDisabled ??
+      (zh ? "安装令牌生成完成后才能复制" : "Wait until the install token is ready")
+    : labels.copy;
+  const foregroundModeLabel = labels.foregroundMode ?? (zh ? "前台运行" : "Foreground");
+  const foregroundHint =
+    labels.foregroundHint ??
+    (zh ? "在当前终端运行，日志会直接显示。" : "Runs in the current terminal so logs stay visible.");
+  const backgroundModeLabel = labels.backgroundMode ?? (zh ? "后台运行" : "Background");
+  const backgroundHint =
+    labels.backgroundHint ??
+    (zh ? "启动后自动脱离终端，命令执行完会回到 shell。" : "Starts the daemon detached and returns your shell.");
+  const activeModeHint = mode === "background" ? backgroundHint : foregroundHint;
 
   return (
     <div className="space-y-4">
@@ -136,16 +169,51 @@ export default function DaemonInstallCommand({
       </div>
 
       <div>
+        <div className="mb-2 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setMode("foreground")}
+            aria-pressed={mode === "foreground"}
+            className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+              mode === "foreground"
+                ? "border-neon-cyan/50 bg-neon-cyan/10 text-text-primary"
+                : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+            }`}
+          >
+            <span className="block font-medium">{foregroundModeLabel}</span>
+            <span className="mt-1 block leading-4 text-text-secondary">{foregroundHint}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("background")}
+            aria-pressed={mode === "background"}
+            className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+              mode === "background"
+                ? "border-neon-cyan/50 bg-neon-cyan/10 text-text-primary"
+                : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+            }`}
+          >
+            <span className="block font-medium">{backgroundModeLabel}</span>
+            <span className="mt-1 block leading-4 text-text-secondary">{backgroundHint}</span>
+          </button>
+        </div>
         <div className="flex items-stretch gap-2">
           <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xl border border-glass-border bg-deep-black px-3 py-2 font-mono text-xs text-text-primary">
-            {command}
+            {commandDisplay}
           </code>
           <button
             type="button"
             onClick={() => void handleCopy()}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-glass-border px-3 py-2 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            disabled={copyDisabled}
+            title={copyTitle}
+            className="inline-flex min-w-24 items-center justify-center gap-1.5 rounded-xl border border-glass-border px-3 py-2 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-text-secondary"
           >
-            {copied ? (
+            {tokenLoading ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {labels.copy}
+              </>
+            ) : copied ? (
               <>
                 <Check className="h-3.5 w-3.5 text-neon-green" />
                 {labels.copied}
@@ -158,6 +226,7 @@ export default function DaemonInstallCommand({
             )}
           </button>
         </div>
+        <p className="mt-2 text-xs text-text-secondary">{activeModeHint}</p>
         {tokenError && (
           <p className="mt-2 text-xs text-red-400">{fallbackErrorMsg}</p>
         )}
