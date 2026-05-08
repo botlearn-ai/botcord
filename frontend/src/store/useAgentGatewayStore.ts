@@ -149,7 +149,7 @@ async function readErr(res: Response): Promise<GatewayApiError> {
       ? "provider auth failed"
       : "bad request";
     else if (res.status === 502) detail = "daemon gateway failed";
-    else if (res.status === 504) detail = "daemon ack timeout";
+    else if (res.status === 504) detail = "操作已提交，daemon 响应较慢，请稍后刷新确认。";
     else detail = `HTTP ${res.status}`;
   }
   return new GatewayApiError(detail, res.status, code);
