@@ -9,6 +9,12 @@ import type { Components } from "react-markdown";
 interface MarkdownContentProps {
   content: string;
   renderMention?: (mention: { id: string; label: string }) => ReactNode;
+  mentionCandidates?: MentionTextCandidate[];
+}
+
+export interface MentionTextCandidate {
+  id: string;
+  label: string;
 }
 
 interface HastTextNode {
@@ -32,7 +38,70 @@ type HastNode = HastTextNode | HastElementNode | HastRootNode | { type?: string;
 
 const MENTION_WITH_ID_RE = /@([^\n@]*?)\(((?:ag|hu)_[^)]+)\)/g;
 
-function splitMentionText(value: string): HastNode[] {
+function isMentionStartBoundary(value: string, index: number): boolean {
+  if (index === 0) return true;
+  return /[\s([{'"“‘]/.test(value[index - 1]);
+}
+
+function isMentionEndBoundary(value: string, index: number): boolean {
+  const after = value[index];
+  return after === undefined || /[\s.,!?;:()[\]{}'"“”‘’]/.test(after);
+}
+
+export function splitPlainMentionText(value: string, candidates: MentionTextCandidate[] = []): HastNode[] {
+  const sortedCandidates = candidates
+    .filter((candidate) => candidate.id && candidate.label)
+    .sort((a, b) => b.label.length - a.label.length);
+
+  if (sortedCandidates.length === 0) {
+    return [{ type: "text", value }];
+  }
+
+  const nodes: HastNode[] = [];
+  let cursor = 0;
+  let textStart = 0;
+
+  while (cursor < value.length) {
+    if (value[cursor] !== "@" || !isMentionStartBoundary(value, cursor)) {
+      cursor += 1;
+      continue;
+    }
+
+    const restLower = value.slice(cursor + 1).toLowerCase();
+    const match = sortedCandidates.find((candidate) => {
+      if (!restLower.startsWith(candidate.label.toLowerCase())) return false;
+      return isMentionEndBoundary(value, cursor + 1 + candidate.label.length);
+    });
+
+    if (!match) {
+      cursor += 1;
+      continue;
+    }
+
+    if (cursor > textStart) {
+      nodes.push({ type: "text", value: value.slice(textStart, cursor) });
+    }
+    nodes.push({
+      type: "element",
+      tagName: "span",
+      properties: {
+        "data-mention-id": match.id,
+        "data-mention-label": match.label,
+      },
+      children: [{ type: "text", value: `@${match.label}` }],
+    });
+    cursor = cursor + 1 + match.label.length;
+    textStart = cursor;
+  }
+
+  if (textStart < value.length) {
+    nodes.push({ type: "text", value: value.slice(textStart) });
+  }
+
+  return nodes.length > 0 ? nodes : [{ type: "text", value }];
+}
+
+function splitMentionText(value: string, candidates: MentionTextCandidate[] = []): HastNode[] {
   const nodes: HastNode[] = [];
   let lastIndex = 0;
   MENTION_WITH_ID_RE.lastIndex = 0;
@@ -44,7 +113,7 @@ function splitMentionText(value: string): HastNode[] {
     if (!rawLabel || !id) continue;
 
     if (index > lastIndex) {
-      nodes.push({ type: "text", value: value.slice(lastIndex, index) });
+      nodes.push(...splitPlainMentionText(value.slice(lastIndex, index), candidates));
     }
     nodes.push({
       type: "element",
@@ -59,7 +128,7 @@ function splitMentionText(value: string): HastNode[] {
   }
 
   if (lastIndex < value.length) {
-    nodes.push({ type: "text", value: value.slice(lastIndex) });
+    nodes.push(...splitPlainMentionText(value.slice(lastIndex), candidates));
   }
 
   return nodes.length > 0 ? nodes : [{ type: "text", value }];
@@ -73,8 +142,9 @@ function isHastElement(node: HastNode): node is HastElementNode {
   return node.type === "element" && typeof (node as { tagName?: unknown }).tagName === "string";
 }
 
-function rehypeMentions() {
+function rehypeMentions(options?: { candidates?: MentionTextCandidate[] }) {
   const skipTags = new Set(["a", "code", "pre", "script", "style"]);
+  const candidates = options?.candidates ?? [];
 
   const visit = (node: HastNode, parentTag?: string) => {
     if (!("children" in node) || !Array.isArray(node.children)) return;
@@ -83,7 +153,7 @@ function rehypeMentions() {
 
     for (const child of node.children) {
       if (isHastText(child) && !skipTags.has(currentTag ?? "")) {
-        nextChildren.push(...splitMentionText(child.value));
+        nextChildren.push(...splitMentionText(child.value, candidates));
         continue;
       }
       visit(child, currentTag);
@@ -189,12 +259,12 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
   };
 }
 
-export default function MarkdownContent({ content, renderMention }: MarkdownContentProps) {
+export default function MarkdownContent({ content, renderMention, mentionCandidates }: MarkdownContentProps) {
   return (
     <div className="break-words text-sm text-text-primary [&>*:first-child]:mt-0">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
-        rehypePlugins={[rehypeMentions]}
+        rehypePlugins={[[rehypeMentions, { candidates: mentionCandidates ?? [] }]]}
         components={createComponents(renderMention)}
       >
         {content}

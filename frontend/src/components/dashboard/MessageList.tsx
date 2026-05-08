@@ -12,7 +12,9 @@ import { useLanguage } from '@/lib/i18n';
 import { messageList } from '@/lib/i18n/translations/dashboard';
 import { useShallow } from "zustand/react/shallow";
 import MessageBubble from "./MessageBubble";
-import type { DashboardMessage, TopicInfo } from "@/lib/types";
+import type { DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
+import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
+import { api } from "@/lib/api";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -101,12 +103,14 @@ function TopicCard({
   currentAgentId,
   sourceName,
   sourceId,
+  mentionCandidates,
   onOpen,
 }: {
   group: TopicGroup;
   currentAgentId: string | undefined;
   sourceName?: string;
   sourceId?: string;
+  mentionCandidates?: MentionTextCandidate[];
   onOpen: () => void;
 }) {
   const topicStatusConfig = useTopicStatusConfig();
@@ -152,6 +156,7 @@ function TopicCard({
           isOwn={firstMsg.sender_id === currentAgentId}
           sourceName={sourceName}
           sourceId={sourceId}
+          mentionCandidates={mentionCandidates}
         />
       )}
 
@@ -244,6 +249,7 @@ export default function MessageList() {
   const prevLengthRef = useRef(0);
   const isLoadingMore = useRef(false);
   const [showNewMessagesBanner, setShowNewMessagesBanner] = useState(false);
+  const [roomMembers, setRoomMembers] = useState<PublicRoomMember[]>([]);
   const showBannerRef = useRef(false);
   const wasNearBottomRef = useRef(true);
 
@@ -253,6 +259,42 @@ export default function MessageList() {
   const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
   const currentAgentId = overview?.agent?.agent_id;
   const currentRoomName = overview?.rooms?.find((r) => r.room_id === roomId)?.name ?? roomId ?? "";
+  const mentionCandidates = useMemo<MentionTextCandidate[]>(() => {
+    const candidates: MentionTextCandidate[] = [];
+    const seen = new Set<string>();
+    const add = (id: string | null | undefined, label: string | null | undefined) => {
+      if (!id || !label || seen.has(id)) return;
+      seen.add(id);
+      candidates.push({ id, label });
+    };
+
+    add("@all", "all");
+    for (const member of roomMembers) add(member.agent_id, member.display_name);
+    for (const agent of overview?.agent ? [overview.agent] : []) add(agent.agent_id, agent.display_name);
+    for (const contact of overview?.contacts ?? []) add(contact.contact_agent_id, contact.alias || contact.display_name);
+
+    return candidates;
+  }, [overview?.agent, overview?.contacts, roomMembers]);
+
+  useEffect(() => {
+    if (!roomId) {
+      setRoomMembers([]);
+      return;
+    }
+    let cancelled = false;
+    api.getRoomMembers(roomId)
+      .catch(() => api.getPublicRoomMembers(roomId))
+      .then((result) => {
+        if (!cancelled) setRoomMembers(result.members);
+      })
+      .catch(() => {
+        if (!cancelled) setRoomMembers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+
   const commitRoomSeen = useCallback((targetRoomId: string) => {
     const joinedRoom = overview?.rooms.find((room) => room.room_id === targetRoomId);
     if (!joinedRoom) {
@@ -426,6 +468,7 @@ export default function MessageList() {
                 isOwn={msg.sender_id === currentAgentId}
                 sourceName={currentRoomName}
                 sourceId={roomId}
+                mentionCandidates={mentionCandidates}
               />
             );
           }
@@ -439,6 +482,7 @@ export default function MessageList() {
               currentAgentId={currentAgentId}
               sourceName={currentRoomName}
               sourceId={roomId}
+              mentionCandidates={mentionCandidates}
               onOpen={() => group.topicId && setOpenedTopicId(group.topicId)}
             />
           );

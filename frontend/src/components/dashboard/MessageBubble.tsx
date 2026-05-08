@@ -11,6 +11,7 @@ import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -27,6 +28,8 @@ interface MessageBubbleProps {
   sourceName?: string;
   /** Source room_id or DM agent_id included in the forward quote for AI context. */
   sourceId?: string;
+  /** Known participants used to resolve plain-text @display-name mentions. */
+  mentionCandidates?: MentionTextCandidate[];
 }
 
 const stateColors: Record<string, { color: string; icon: string }> = {
@@ -130,7 +133,7 @@ function MentionChip({
   const publicAgent = publicAgents.find((agent) => agent.agent_id === id);
   const displayName = contact?.alias || ownAgent?.display_name || contact?.display_name || publicAgent?.display_name || label;
   const bio = ownAgent?.bio ?? publicAgent?.bio ?? null;
-  const role = isHuman ? "Human" : "Agent";
+  const role = isHuman ? "Human" : isAgent ? "Agent" : "Mention";
   const canOpen = isHuman || isAgent;
 
   const updateTooltipPosition = useCallback(() => {
@@ -195,7 +198,7 @@ function MentionChip({
         disabled={!canOpen}
         className="inline-flex max-w-full items-center gap-1 rounded border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-0.5 text-[0.85em] font-medium leading-none text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/20 disabled:cursor-default"
       >
-        {!isHuman && <PresenceDot agentId={id} size="xs" showOffline={false} />}
+        {isAgent && <PresenceDot agentId={id} size="xs" showOffline={false} />}
         <span className="truncate">@{displayName}</span>
       </button>
       {tooltipPosition && typeof document !== "undefined" && createPortal(
@@ -204,7 +207,7 @@ function MentionChip({
           style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
         >
           <span className="mb-1 flex items-center gap-2">
-            {!isHuman && <PresenceDot agentId={id} size="sm" />}
+            {isAgent && <PresenceDot agentId={id} size="sm" />}
             <span className={`truncate text-xs font-semibold ${isHuman ? "text-neon-green" : "text-neon-purple"}`}>
               {displayName}
             </span>
@@ -221,7 +224,7 @@ function MentionChip({
   );
 }
 
-export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId }: MessageBubbleProps) {
+export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId, mentionCandidates }: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
@@ -360,6 +363,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           displayText && (
             <MarkdownContent
               content={displayText}
+              mentionCandidates={mentionCandidates}
               renderMention={({ id, label }) => (
                 <MentionChip
                   id={id}
