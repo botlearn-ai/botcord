@@ -405,7 +405,7 @@ function TelegramAddForm({
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
   const whitelistEmpty = allowedChatIds.length === 0 && allowedSenderIds.length === 0;
-  const canSave = !!token.trim() && !daemonOffline && !saving;
+  const canSave = !!token.trim() && !whitelistEmpty && !daemonOffline && !saving;
 
   async function handleSave() {
     if (!canSave) return;
@@ -627,7 +627,7 @@ function TelegramAddForm({
           className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
         <p className="mt-1 text-[10px] text-text-tertiary">
-          留空则不限制发送者；也可以之后在已连接列表里编辑。
+          可选；如果不填发送者，必须填写允许的 chat id。
         </p>
       </Field>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
@@ -641,8 +641,8 @@ function TelegramAddForm({
         立即启用
       </label>
       {whitelistEmpty && (
-        <p className="rounded-lg border border-glass-border bg-glass-bg/35 px-3 py-2 text-[11px] text-text-tertiary">
-          当前未设置白名单，也可以先保存此 Telegram 接入，后续再编辑补充 chat 或发送者。
+        <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+          必须填写至少一个允许的 chat id 或发送者 user id，才能保存 Telegram 接入。
         </p>
       )}
       {error && (
@@ -770,7 +770,7 @@ function WechatAddForm({
 
   const allowedSenderIds = csvToList(senderIds);
   const whitelistEmpty = allowedSenderIds.length === 0;
-  const canSave = phase === "ready" && !!loginId && !daemonOffline && !busy;
+  const canSave = phase === "ready" && !!loginId && !whitelistEmpty && !daemonOffline && !busy;
 
   async function handleSave() {
     if (!canSave || !loginId) return;
@@ -1037,8 +1037,8 @@ function WechatAddForm({
             立即启用
           </label>
           {whitelistEmpty && (
-            <p className="rounded-lg border border-glass-border bg-glass-bg/35 px-3 py-2 text-[11px] text-text-tertiary">
-              当前未设置白名单，也可以先保存此微信接入，后续再编辑补充允许的用户。
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+              必须填写至少一个允许的微信用户 ID，才能保存微信接入。
             </p>
           )}
         </div>
@@ -1114,9 +1114,10 @@ function GatewayEditForm({
     gateway.provider === "telegram"
       ? allowedChatIds.length === 0 && allowedSenderIds.length === 0
       : allowedSenderIds.length === 0;
+  const canSave = !whitelistEmpty && !daemonOffline && !saving;
 
   async function handleSave() {
-    if (daemonOffline || saving) return;
+    if (!canSave) return;
     setSaving(true);
     onError(null);
     try {
@@ -1194,8 +1195,8 @@ function GatewayEditForm({
         />
       </Field>
       {whitelistEmpty && (
-        <p className="rounded-lg border border-glass-border bg-glass-bg/35 px-3 py-2 text-[11px] text-text-tertiary">
-          当前未设置白名单，也可以保存修改，稍后再补充允许的用户或会话。
+        <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+          必须保留至少一个允许的用户或会话，才能保存修改。
         </p>
       )}
       <div className="flex justify-end gap-2">
@@ -1210,7 +1211,7 @@ function GatewayEditForm({
         <button
           type="button"
           onClick={handleSave}
-          disabled={daemonOffline || saving}
+          disabled={!canSave}
           className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
         >
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}

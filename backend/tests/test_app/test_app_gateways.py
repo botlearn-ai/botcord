@@ -328,6 +328,46 @@ async def test_create_wechat_requires_login_id(client, seed, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_create_telegram_requires_whitelist(client, seed, monkeypatch):
+    async def fake_send(*a, **kw):
+        raise AssertionError("daemon contacted before whitelist validation")
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "bot_token": "1234:abcd",
+            "config": {"allowedChatIds": [], "allowedSenderIds": []},
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "missing_gateway_whitelist"
+
+
+@pytest.mark.asyncio
+async def test_create_wechat_requires_whitelist(client, seed, monkeypatch):
+    async def fake_send(*a, **kw):
+        raise AssertionError("daemon contacted before whitelist validation")
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "wechat",
+            "loginId": "wxl_camel",
+            "config": {"allowedSenderIds": []},
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "missing_gateway_whitelist"
+
+
+@pytest.mark.asyncio
 async def test_create_wechat_forwards_login_id_no_token_in_db(
     client, seed, db_session, monkeypatch
 ):
@@ -387,7 +427,11 @@ async def test_create_maps_daemon_provider_auth_failure_to_400(
     r = await client.post(
         "/api/agents/ag_daemon/gateways",
         headers=headers,
-        json={"provider": "telegram", "bot_token": "x"},
+        json={
+            "provider": "telegram",
+            "bot_token": "x",
+            "config": {"allowedSenderIds": ["111"]},
+        },
     )
     assert r.status_code == 400
     detail = r.json()["detail"]
@@ -404,7 +448,11 @@ async def test_create_maps_other_daemon_errors_to_502(client, seed, monkeypatch)
     r = await client.post(
         "/api/agents/ag_daemon/gateways",
         headers=headers,
-        json={"provider": "telegram", "bot_token": "x"},
+        json={
+            "provider": "telegram",
+            "bot_token": "x",
+            "config": {"allowedSenderIds": ["111"]},
+        },
     )
     assert r.status_code == 502
     assert r.json()["detail"]["code"] == "daemon_gateway_failed"
@@ -420,7 +468,11 @@ async def test_create_propagates_504_timeout(client, seed, monkeypatch):
     r = await client.post(
         "/api/agents/ag_daemon/gateways",
         headers=headers,
-        json={"provider": "telegram", "bot_token": "x"},
+        json={
+            "provider": "telegram",
+            "bot_token": "x",
+            "config": {"allowedSenderIds": ["111"]},
+        },
     )
     assert r.status_code == 504
 
@@ -729,7 +781,11 @@ async def test_create_wechat_accepts_loginId_camelCase(client, seed, monkeypatch
     r = await client.post(
         "/api/agents/ag_daemon/gateways",
         headers=headers,
-        json={"provider": "wechat", "loginId": "wxl_camel"},
+        json={
+            "provider": "wechat",
+            "loginId": "wxl_camel",
+            "config": {"allowedSenderIds": ["xxx@im.wechat"]},
+        },
     )
     assert r.status_code == 200, r.text
     assert captured["params"]["loginId"] == "wxl_camel"
@@ -831,7 +887,10 @@ async def test_create_drops_caller_supplied_tokenPreview_in_config(
         json={
             "provider": "telegram",
             "bot_token": "1234:abcd",
-            "config": {"tokenPreview": "ATTACKER...EVIL"},
+            "config": {
+                "allowedSenderIds": ["111"],
+                "tokenPreview": "ATTACKER...EVIL",
+            },
         },
     )
     assert r.status_code == 200, r.text
@@ -862,6 +921,24 @@ async def test_patch_preserves_existing_tokenPreview_when_daemon_returns_none(
     body = r.json()
     # Stored preview survives; injected one is ignored.
     assert body["config"].get("tokenPreview") == "1234...wxyz"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_empty_whitelist(client, seed, db_session, monkeypatch):
+    gw_id = await _seed_one_connection(db_session, seed)
+
+    async def fake_send(*a, **kw):
+        raise AssertionError("daemon contacted before whitelist validation")
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        f"/api/agents/ag_daemon/gateways/{gw_id}",
+        headers=headers,
+        json={"config": {"allowedSenderIds": [], "allowedChatIds": []}},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "missing_gateway_whitelist"
 
 
 # ---------------------------------------------------------------------------
