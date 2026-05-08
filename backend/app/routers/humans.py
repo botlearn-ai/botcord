@@ -848,12 +848,21 @@ async def join_room_as_human(
     await db.refresh(new_member)
 
     try:
-        from hub.routers.room import _notify_room_member_change
+        from hub.routers.room import (
+            _notify_room_member_change,
+            record_room_member_joined_system_message,
+        )
 
         members_row = await db.execute(
             select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
         )
         all_member_ids = [row[0] for row in members_row.all()]
+        await record_room_member_joined_system_message(
+            db,
+            room_id=room_id,
+            participant_id=me,
+            notify_participant_ids=all_member_ids,
+        )
         await _notify_room_member_change(
             db,
             event_type="room_member_added",
@@ -1285,12 +1294,21 @@ async def invite_room_member_as_human(
 
     # --- W4: realtime broadcast (mirror hub's add_member) -----------------
     try:
-        from hub.routers.room import _notify_room_member_change
+        from hub.routers.room import (
+            _notify_room_member_change,
+            record_room_member_joined_system_message,
+        )
 
         members_row = await db.execute(
             select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
         )
         all_member_ids = [row[0] for row in members_row.all()]
+        await record_room_member_joined_system_message(
+            db,
+            room_id=room_id,
+            participant_id=participant_id,
+            notify_participant_ids=all_member_ids,
+        )
         await _notify_room_member_change(
             db,
             event_type="room_member_added",
@@ -2308,6 +2326,7 @@ async def resolve_pending_approval(
         entry.state = ApprovalState.approved
         entry.resolved_by_user_id = ctx.user_id
         entry.resolved_at = now
+        joined_room_id: str | None = None
 
         if entry.kind == ApprovalKind.contact_request:
             try:
@@ -2359,6 +2378,7 @@ async def resolve_pending_approval(
                         can_invite=payload.get("can_invite"),
                     )
                 )
+                joined_room_id = room_id_for_invite
 
         # For payment and future kinds, approval is recorded; side-effects
         # are handled by their own downstream services.
@@ -2375,6 +2395,22 @@ async def resolve_pending_approval(
             entry.resolved_by_user_id = ctx.user_id
             entry.resolved_at = now
             await db.commit()
+            joined_room_id = None
+        if joined_room_id:
+            try:
+                from hub.routers.room import record_room_member_joined_system_message
+
+                members_row = await db.execute(
+                    select(RoomMember.agent_id).where(RoomMember.room_id == joined_room_id)
+                )
+                await record_room_member_joined_system_message(
+                    db,
+                    room_id=joined_room_id,
+                    participant_id=entry.agent_id,
+                    notify_participant_ids=[row[0] for row in members_row.all()],
+                )
+            except Exception:  # pragma: no cover — notification must not break approval
+                _logger.exception("room member joined system message failed for %s", joined_room_id)
         return ResolveApprovalResponse(id=str(entry.id), state="approved")
 
     # reject

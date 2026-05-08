@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import json
 import time
 import uuid
 
@@ -10,10 +11,11 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from nacl.signing import SigningKey
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock
 
-from hub.models import Base
+from hub.models import Base, MessageRecord, MessageState
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -214,6 +216,55 @@ async def test_create_room_with_initial_members(client: AsyncClient):
     assert data["member_count"] == 3
     member_ids = {m["agent_id"] for m in data["members"]}
     assert member_ids == {a_id, b_id, c_id}
+
+
+@pytest.mark.asyncio
+async def test_add_member_creates_room_join_system_message(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    """Adding a member records a WeChat-style system notice in room history."""
+    sk_a, a_id, a_key, a_token = await _create_agent(client, "Alice")
+    sk_b, b_id, b_key, b_token = await _create_agent(client, "Bob")
+
+    resp = await client.post(
+        "/hub/rooms",
+        json={"name": "Team Room"},
+        headers=_auth_header(a_token),
+    )
+    assert resp.status_code == 201
+    room_id = resp.json()["room_id"]
+
+    resp = await client.post(
+        f"/hub/rooms/{room_id}/members",
+        json={"agent_id": b_id},
+        headers=_auth_header(a_token),
+    )
+    assert resp.status_code == 201
+
+    resp = await client.get(
+        f"/dashboard/rooms/{room_id}/messages",
+        headers=_auth_header(a_token),
+    )
+    assert resp.status_code == 200
+    messages = resp.json()["messages"]
+    assert len(messages) == 1
+    assert messages[0]["type"] == "system"
+    assert messages[0]["text"] == "Bob joined the room"
+    assert messages[0]["payload"]["subtype"] == "room_member_joined"
+    assert messages[0]["payload"]["participant_id"] == b_id
+
+    result = await db_session.execute(
+        select(MessageRecord).where(
+            MessageRecord.room_id == room_id,
+            MessageRecord.sender_id == "hub",
+        )
+    )
+    records = list(result.scalars().all())
+    assert len(records) == 2
+    assert {rec.receiver_id for rec in records} == {a_id, b_id}
+    assert all(rec.state == MessageState.delivered for rec in records)
+    assert all(json.loads(rec.envelope_json)["type"] == "system" for rec in records)
 
 
 @pytest.mark.asyncio

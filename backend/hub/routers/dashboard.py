@@ -818,6 +818,18 @@ async def join_room(
 
     await db.commit()
 
+    from hub.routers.room import record_room_member_joined_system_message
+
+    members_row = await db.execute(
+        select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
+    )
+    await record_room_member_joined_system_message(
+        db,
+        room_id=room_id,
+        participant_id=current_agent,
+        notify_participant_ids=[row[0] for row in members_row.all()],
+    )
+
     # Get updated member count
     updated_count_result = await db.execute(
         select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)
