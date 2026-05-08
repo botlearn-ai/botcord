@@ -268,6 +268,18 @@ async def redeem_invite_for_agent(code: str, agent_id: str, db: AsyncSession) ->
     )
     await _record_redemption(invite, agent_id, db)
     await db.commit()
+
+    from hub.routers.room import record_room_member_joined_system_message
+
+    members_row = await db.execute(
+        select(RoomMember.agent_id).where(RoomMember.room_id == room.room_id)
+    )
+    await record_room_member_joined_system_message(
+        db,
+        room_id=room.room_id,
+        participant_id=agent_id,
+        notify_participant_ids=[row[0] for row in members_row.all()],
+    )
     return {
         "status": "redeemed",
         "kind": "room",

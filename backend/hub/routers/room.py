@@ -29,10 +29,15 @@ same room doesn't collide or grant the agent unintended privileges.
 from __future__ import annotations
 
 import asyncio
+import datetime
+import hashlib
+import json
 import logging
 import time
+import uuid
 from collections import defaultdict, deque
 
+import jcs
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from hub.i18n import I18nHTTPException
@@ -47,14 +52,16 @@ from hub import config as hub_config
 from hub.config import JOIN_RATE_LIMIT_PER_MINUTE
 from hub.share_payloads import frontend_url
 from hub.database import get_db
-from hub.id_generators import generate_room_id
-from hub.enums import SubscriptionProductStatus, SubscriptionStatus
+from hub.id_generators import generate_hub_msg_id, generate_room_id
+from hub.enums import MessageType, SubscriptionProductStatus, SubscriptionStatus
 from hub.models import (
     Agent,
     AgentApprovalQueue,
     AgentSubscription,
     Contact,
     MessagePolicy,
+    MessageRecord,
+    MessageState,
     Room,
     RoomJoinPolicy,
     RoomMember,
@@ -62,6 +69,7 @@ from hub.models import (
     RoomVisibility,
     SubscriptionRoomCreatorPolicy,
     SubscriptionProduct,
+    User,
 )
 from hub.enums import ApprovalKind, ApprovalState, ParticipantType
 from hub.policy import Principal, check_room_invite_admission
@@ -458,6 +466,113 @@ async def _notify_room_member_change(
         await notify_inbox(agent_id, db=db, realtime_event=event)
 
     await asyncio.gather(*[_send(aid) for aid in notify_agent_ids], return_exceptions=True)
+
+
+async def _participant_display_name(db: AsyncSession, participant_id: str) -> str:
+    if participant_id.startswith("hu_"):
+        result = await db.execute(
+            select(User.display_name).where(User.human_id == participant_id)
+        )
+    else:
+        result = await db.execute(
+            select(Agent.display_name).where(Agent.agent_id == participant_id)
+        )
+    return result.scalar_one_or_none() or participant_id
+
+
+def _build_room_member_joined_envelope(
+    *,
+    room_id: str,
+    participant_id: str,
+    participant_name: str,
+) -> dict:
+    text = f"{participant_name} joined the room"
+    payload = {
+        "text": text,
+        "subtype": "room_member_joined",
+        "room_id": room_id,
+        "participant_id": participant_id,
+        "participant_name": participant_name,
+    }
+    canonical = jcs.canonicalize(payload)
+    payload_hash = "sha256:" + hashlib.sha256(canonical).hexdigest()
+    return {
+        "v": "a2a/0.1",
+        "msg_id": str(uuid.uuid4()),
+        "ts": int(time.time()),
+        "from": "hub",
+        "to": room_id,
+        "type": MessageType.system.value,
+        "reply_to": None,
+        "ttl_sec": 3600,
+        "payload": payload,
+        "payload_hash": payload_hash,
+        "sig": {"alg": "ed25519", "key_id": "hub", "value": ""},
+    }
+
+
+async def record_room_member_joined_system_message(
+    db: AsyncSession,
+    *,
+    room_id: str,
+    participant_id: str,
+    notify_participant_ids: list[str] | None = None,
+) -> None:
+    """Persist a WeChat-style room timeline notice for a newly joined member.
+
+    Records are marked delivered so the notice appears in room history without
+    waking agent runtimes through /hub/inbox. Realtime events are still
+    published so dashboards refresh immediately.
+    """
+    from hub.routers.hub import build_message_realtime_event, _publish_agent_realtime_event
+
+    participant_name = await _participant_display_name(db, participant_id)
+    envelope = _build_room_member_joined_envelope(
+        room_id=room_id,
+        participant_id=participant_id,
+        participant_name=participant_name,
+    )
+    envelope_json = json.dumps(envelope)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    receiver_ids = list(dict.fromkeys(notify_participant_ids or [participant_id]))
+    first_hub_msg_id: str | None = None
+
+    for receiver_id in receiver_ids:
+        hub_msg_id = generate_hub_msg_id()
+        if first_hub_msg_id is None:
+            first_hub_msg_id = hub_msg_id
+        db.add(
+            MessageRecord(
+                hub_msg_id=hub_msg_id,
+                msg_id=envelope["msg_id"],
+                sender_id="hub",
+                receiver_id=receiver_id,
+                room_id=room_id,
+                state=MessageState.delivered,
+                envelope_json=envelope_json,
+                ttl_sec=3600,
+                created_at=now,
+                delivered_at=now,
+                source_type="system",
+            )
+        )
+
+    await db.commit()
+
+    for receiver_id in receiver_ids:
+        await _publish_agent_realtime_event(
+            db,
+            build_message_realtime_event(
+                type=MessageType.system.value,
+                agent_id=receiver_id,
+                sender_id="hub",
+                room_id=room_id,
+                hub_msg_id=first_hub_msg_id or "",
+                created_at=now,
+                payload=envelope["payload"],
+                sender_name="BotCord Hub",
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -952,6 +1067,12 @@ async def add_member(
 
     # Notify the new member and all existing members about the addition
     all_member_ids = [m.agent_id for m in room.members]
+    await record_room_member_joined_system_message(
+        db,
+        room_id=room.room_id,
+        participant_id=target_agent_id,
+        notify_participant_ids=all_member_ids,
+    )
     await _notify_room_member_change(
         db,
         event_type="room_member_added",
