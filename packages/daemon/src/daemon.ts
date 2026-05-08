@@ -48,10 +48,11 @@ import { PolicyResolver } from "./gateway/policy-resolver.js";
 import { scanMention } from "./mention-scan.js";
 
 /**
- * Matches the 10-minute turn timeout the legacy daemon dispatcher used, so
- * long-running CLI turns behave the same way under the gateway core.
+ * Default hard cap for a single runtime turn. Long-running coding/research
+ * tasks routinely exceed 10 minutes, so daemon-hosted agents get a larger
+ * window before the dispatcher aborts the runtime.
  */
-const DEFAULT_TURN_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Default cadence for writing `gateway.snapshot()` to disk. Override via

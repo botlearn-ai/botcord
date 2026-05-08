@@ -28,7 +28,7 @@ import type {
   UserTurnBuilder,
 } from "./types.js";
 
-const DEFAULT_TURN_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Owner-chat room prefix. Reply-text gating: only rooms with this prefix get
