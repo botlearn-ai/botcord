@@ -20,6 +20,7 @@ import {
   Plus,
   Search,
   Send,
+  SquarePen,
   Trash2,
   X,
 } from "lucide-react";
@@ -79,9 +80,9 @@ export default function AgentChannelsTab({ agentId }: Props) {
   const enable = useAgentGatewayStore((s) => s.enable);
   const disable = useAgentGatewayStore((s) => s.disable);
   const remove = useAgentGatewayStore((s) => s.remove);
-  const test = useAgentGatewayStore((s) => s.test);
 
   const [addMode, setAddMode] = useState<AddMode>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [rowOk, setRowOk] = useState<Record<string, string>>({});
@@ -126,17 +127,6 @@ export default function AgentChannelsTab({ agentId }: Props) {
     }
   }
 
-  async function handleTest(g: AgentGatewayConnection) {
-    if (daemonOffline) return;
-    setBusyId(g.id);
-    setErr(g.id, null);
-    setOk(g.id, null);
-    const r = await test(agentId, g.id);
-    setBusyId(null);
-    if (r.ok) setOk(g.id, r.message || "连接正常");
-    else setErr(g.id, r.message || "测试失败");
-  }
-
   async function handleConfirmDelete() {
     if (!pendingDelete) return;
     const g = pendingDelete;
@@ -160,7 +150,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
           <div>
             <div className="font-semibold">Daemon 离线</div>
             <div className="text-amber-200/80">
-              本地 daemon 当前不在线，已连接列表仍可读，但无法创建、扫码、启用、停用、测试或删除接入。
+              本地 daemon 当前不在线，已连接列表仍可读，但无法创建、扫码、编辑、启用、停用或删除接入。
             </div>
           </div>
         </div>
@@ -272,11 +262,16 @@ export default function AgentChannelsTab({ agentId }: Props) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleTest(g)}
+                        onClick={() => {
+                          setEditingId((cur) => (cur === g.id ? null : g.id));
+                          setErr(g.id, null);
+                          setOk(g.id, null);
+                        }}
                         disabled={daemonOffline || busyId === g.id}
-                        className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                       >
-                        测试
+                        <SquarePen className="h-3 w-3" />
+                        编辑
                       </button>
                       <button
                         type="button"
@@ -289,6 +284,19 @@ export default function AgentChannelsTab({ agentId }: Props) {
                       </button>
                     </div>
                   </div>
+                  {editingId === g.id && (
+                    <GatewayEditForm
+                      agentId={agentId}
+                      gateway={g}
+                      daemonOffline={daemonOffline}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={() => {
+                        setEditingId(null);
+                        setOk(g.id, "已保存");
+                      }}
+                      onError={(msg) => setErr(g.id, msg)}
+                    />
+                  )}
                 </li>
               );
             })}
@@ -384,7 +392,6 @@ function TelegramAddForm({
   const [chatIds, setChatIds] = useState("");
   const [senderIds, setSenderIds] = useState("");
   const [enableNow, setEnableNow] = useState(true);
-  const [acceptEmpty, setAcceptEmpty] = useState(false);
   const [discoveringChats, setDiscoveringChats] = useState(false);
   const [discoveredChats, setDiscoveredChats] = useState<
     { id: string; type: string | null; label: string | null }[]
@@ -398,11 +405,7 @@ function TelegramAddForm({
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
   const whitelistEmpty = allowedChatIds.length === 0 && allowedSenderIds.length === 0;
-  const canSave =
-    !!token.trim() &&
-    !daemonOffline &&
-    !saving &&
-    (!whitelistEmpty || acceptEmpty);
+  const canSave = !!token.trim() && !daemonOffline && !saving;
 
   async function handleSave() {
     if (!canSave) return;
@@ -623,6 +626,9 @@ function TelegramAddForm({
           placeholder="123456789"
           className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
+        <p className="mt-1 text-[10px] text-text-tertiary">
+          留空则不限制发送者；也可以之后在已连接列表里编辑。
+        </p>
       </Field>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
         <input
@@ -635,18 +641,9 @@ function TelegramAddForm({
         立即启用
       </label>
       {whitelistEmpty && (
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
-          <input
-            type="checkbox"
-            checked={acceptEmpty}
-            onChange={(e) => setAcceptEmpty(e.target.checked)}
-            disabled={saving}
-            className="mt-0.5 accent-amber-300"
-          />
-          <span>
-            白名单为空将拒绝所有第三方消息。我已确认仍然要创建。
-          </span>
-        </label>
+        <p className="rounded-lg border border-glass-border bg-glass-bg/35 px-3 py-2 text-[11px] text-text-tertiary">
+          当前未设置白名单，也可以先保存此 Telegram 接入，后续再编辑补充 chat 或发送者。
+        </p>
       )}
       {error && (
         <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-300">
@@ -706,7 +703,6 @@ function WechatAddForm({
   const [label, setLabel] = useState("");
   const [senderIds, setSenderIds] = useState("");
   const [enableNow, setEnableNow] = useState(true);
-  const [acceptEmpty, setAcceptEmpty] = useState(false);
   const [copied, setCopied] = useState(false);
   const [discoveringSenders, setDiscoveringSenders] = useState(false);
   const [discoveredSenders, setDiscoveredSenders] = useState<
@@ -774,12 +770,7 @@ function WechatAddForm({
 
   const allowedSenderIds = csvToList(senderIds);
   const whitelistEmpty = allowedSenderIds.length === 0;
-  const canSave =
-    phase === "ready" &&
-    !!loginId &&
-    !daemonOffline &&
-    !busy &&
-    (!whitelistEmpty || acceptEmpty);
+  const canSave = phase === "ready" && !!loginId && !daemonOffline && !busy;
 
   async function handleSave() {
     if (!canSave || !loginId) return;
@@ -1046,16 +1037,9 @@ function WechatAddForm({
             立即启用
           </label>
           {whitelistEmpty && (
-            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
-              <input
-                type="checkbox"
-                checked={acceptEmpty}
-                onChange={(e) => setAcceptEmpty(e.target.checked)}
-                disabled={busy}
-                className="mt-0.5 accent-amber-300"
-              />
-              <span>白名单为空将拒绝所有第三方消息。我已确认仍然要创建。</span>
-            </label>
+            <p className="rounded-lg border border-glass-border bg-glass-bg/35 px-3 py-2 text-[11px] text-text-tertiary">
+              当前未设置白名单，也可以先保存此微信接入，后续再编辑补充允许的用户。
+            </p>
           )}
         </div>
       )}
@@ -1086,6 +1070,152 @@ function WechatAddForm({
             保存
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function GatewayEditForm({
+  agentId,
+  gateway,
+  daemonOffline,
+  onCancel,
+  onSaved,
+  onError,
+}: {
+  agentId: string;
+  gateway: AgentGatewayConnection;
+  daemonOffline: boolean;
+  onCancel: () => void;
+  onSaved: () => void;
+  onError: (msg: string | null) => void;
+}) {
+  const patch = useAgentGatewayStore((s) => s.patch);
+  const cfg = (gateway.config ?? {}) as {
+    allowedChatIds?: unknown;
+    allowedSenderIds?: unknown;
+    baseUrl?: unknown;
+  };
+  const initialChatIds = Array.isArray(cfg.allowedChatIds)
+    ? cfg.allowedChatIds.filter((id): id is string => typeof id === "string").join("\n")
+    : "";
+  const initialSenderIds = Array.isArray(cfg.allowedSenderIds)
+    ? cfg.allowedSenderIds.filter((id): id is string => typeof id === "string").join("\n")
+    : "";
+  const [label, setLabel] = useState(gateway.label ?? "");
+  const [chatIds, setChatIds] = useState(initialChatIds);
+  const [senderIds, setSenderIds] = useState(initialSenderIds);
+  const [token, setToken] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const allowedChatIds = csvToList(chatIds);
+  const allowedSenderIds = csvToList(senderIds);
+  const whitelistEmpty =
+    gateway.provider === "telegram"
+      ? allowedChatIds.length === 0 && allowedSenderIds.length === 0
+      : allowedSenderIds.length === 0;
+
+  async function handleSave() {
+    if (daemonOffline || saving) return;
+    setSaving(true);
+    onError(null);
+    try {
+      await patch(agentId, gateway.id, {
+        label: label.trim() || null,
+        config: {
+          label: label.trim() || undefined,
+          ...(gateway.provider === "telegram" ? { allowedChatIds } : {}),
+          allowedSenderIds,
+          ...(typeof cfg.baseUrl === "string" ? { baseUrl: cfg.baseUrl } : {}),
+        },
+        ...(gateway.provider === "telegram" && token.trim()
+          ? { secret: { botToken: token.trim() } }
+          : {}),
+      });
+      onSaved();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-glass-border bg-deep-black/35 p-3">
+      <Field label="接入名称（可选）">
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          disabled={saving}
+          placeholder={gateway.provider === "wechat" ? "例如：我的微信" : "例如：客服 Bot"}
+          className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+        />
+      </Field>
+      {gateway.provider === "telegram" && (
+        <>
+          <Field label="允许的 chat id（逗号或换行分隔）">
+            <textarea
+              value={chatIds}
+              onChange={(e) => setChatIds(e.target.value)}
+              disabled={saving}
+              rows={2}
+              placeholder="-1001234567890, 987654321"
+              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+          </Field>
+          <Field label="替换 Bot token（可选）">
+            <input
+              type="password"
+              autoComplete="off"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              disabled={saving}
+              placeholder="不填写则保持当前 token"
+              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+          </Field>
+        </>
+      )}
+      <Field
+        label={
+          gateway.provider === "wechat"
+            ? "允许的微信用户 ID（逗号或换行分隔）"
+            : "允许的发送者 user id（逗号或换行分隔）"
+        }
+      >
+        <textarea
+          value={senderIds}
+          onChange={(e) => setSenderIds(e.target.value)}
+          disabled={saving}
+          rows={2}
+          placeholder={gateway.provider === "wechat" ? "xxx@im.wechat" : "123456789"}
+          className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+        />
+      </Field>
+      {whitelistEmpty && (
+        <p className="rounded-lg border border-glass-border bg-glass-bg/35 px-3 py-2 text-[11px] text-text-tertiary">
+          当前未设置白名单，也可以保存修改，稍后再补充允许的用户或会话。
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="rounded-md border border-glass-border bg-glass-bg/60 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={daemonOffline || saving}
+          className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+        >
+          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+          保存修改
+        </button>
       </div>
     </div>
   );
