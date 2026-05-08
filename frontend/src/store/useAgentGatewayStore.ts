@@ -177,7 +177,7 @@ interface AgentGatewayState {
   test: (agentId: string, gatewayId: string) => Promise<GatewayTestResult>;
   startWechatLogin: (
     agentId: string,
-    opts?: { baseUrl?: string },
+    opts?: { baseUrl?: string; gatewayId?: string },
   ) => Promise<WechatLoginStartResponse>;
   pollWechatLogin: (
     agentId: string,

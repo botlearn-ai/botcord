@@ -1091,6 +1091,9 @@ function GatewayEditForm({
   onError: (msg: string | null) => void;
 }) {
   const patch = useAgentGatewayStore((s) => s.patch);
+  const startWechatLogin = useAgentGatewayStore((s) => s.startWechatLogin);
+  const pollWechatLogin = useAgentGatewayStore((s) => s.pollWechatLogin);
+  const discoverWechatSenders = useAgentGatewayStore((s) => s.discoverWechatSenders);
   const cfg = (gateway.config ?? {}) as {
     allowedChatIds?: unknown;
     allowedSenderIds?: unknown;
@@ -1107,6 +1110,32 @@ function GatewayEditForm({
   const [senderIds, setSenderIds] = useState(initialSenderIds);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
+  const [discoveringChats, setDiscoveringChats] = useState(false);
+  const [discoveredChats, setDiscoveredChats] = useState<
+    { id: string; type: string | null; label: string | null }[]
+  >([]);
+  const [chatDiscoverHint, setChatDiscoverHint] = useState<string | null>(null);
+  const [chatDiscoverError, setChatDiscoverError] = useState<string | null>(null);
+  const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
+  const [wechatLoginId, setWechatLoginId] = useState<string | null>(null);
+  const [wechatQrcodeUrl, setWechatQrcodeUrl] = useState<string | null>(null);
+  const [wechatQrcode, setWechatQrcode] = useState<string | null>(null);
+  const [wechatStatus, setWechatStatus] = useState<WechatLoginStatus>("pending");
+  const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
+  const [discoveringSenders, setDiscoveringSenders] = useState(false);
+  const [discoveredSenders, setDiscoveredSenders] = useState<
+    { id: string; label?: string | null }[]
+  >([]);
+  const [senderDiscoverHint, setSenderDiscoverHint] = useState<string | null>(null);
+  const [senderDiscoverError, setSenderDiscoverError] = useState<string | null>(null);
+  const [copiedSenderId, setCopiedSenderId] = useState<string | null>(null);
+  const editPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (editPollTimer.current) clearInterval(editPollTimer.current);
+    };
+  }, []);
 
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
@@ -1141,6 +1170,184 @@ function GatewayEditForm({
     }
   }
 
+  async function handleDiscoverTelegramChats() {
+    const botToken = token.trim();
+    if (!botToken || discoveringChats || gateway.provider !== "telegram") {
+      if (!botToken) setChatDiscoverError("请先填写 Bot token，Telegram 不会在前端保存明文 token。");
+      return;
+    }
+    setDiscoveringChats(true);
+    setChatDiscoverHint("等待 Telegram 最近消息...");
+    setChatDiscoverError(null);
+    setDiscoveredChats([]);
+    try {
+      let chats: { id: string; type: string | null; label: string | null }[] = [];
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        setChatDiscoverHint(
+          attempt === 1
+            ? "等待 Telegram 最近消息..."
+            : `还没发现消息，继续等待 ${attempt}/3...`,
+        );
+        const res = await fetch("/api/telegram/chat-ids", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botToken, timeoutSeconds: 8 }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          chats?: { id: string; type: string | null; label: string | null }[];
+          message?: string;
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(json.message || json.error || `HTTP ${res.status}`);
+        }
+        chats = Array.isArray(json.chats) ? json.chats : [];
+        if (chats.length > 0) break;
+      }
+      setDiscoveredChats(chats);
+      if (chats.length === 1) {
+        setChatIds(chats[0].id);
+        setChatDiscoverHint("已自动填入发现的 chat id。");
+      } else if (chats.length === 0) {
+        setChatDiscoverHint(null);
+        setChatDiscoverError("还没有发现会话。请先在目标私聊或群聊里给 bot 发一条消息，然后再读取。");
+      } else {
+        setChatDiscoverHint("发现多个会话，请选择要允许的 chat id。");
+      }
+    } catch (err) {
+      setChatDiscoverHint(null);
+      setChatDiscoverError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiscoveringChats(false);
+    }
+  }
+
+  function appendChatId(id: string) {
+    const existing = new Set(csvToList(chatIds));
+    existing.add(id);
+    setChatIds(Array.from(existing).join("\n"));
+  }
+
+  async function copyChatId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedChatId(id);
+      window.setTimeout(() => setCopiedChatId(null), 1600);
+    } catch {
+      setChatDiscoverError("复制失败，请手动复制 chat id。");
+    }
+  }
+
+  async function handleStartWechatDiscoveryLogin() {
+    if (daemonOffline || saving || wechatLoginBusy || gateway.provider !== "wechat") return;
+    setWechatLoginBusy(true);
+    setSenderDiscoverError(null);
+    setSenderDiscoverHint(null);
+    setDiscoveredSenders([]);
+    try {
+      const r = await startWechatLogin(agentId, {
+        gatewayId: gateway.id,
+        ...(typeof cfg.baseUrl === "string" ? { baseUrl: cfg.baseUrl } : {}),
+      });
+      setWechatLoginId(r.loginId);
+      setWechatQrcodeUrl(r.qrcodeUrl ?? null);
+      setWechatQrcode(r.qrcode);
+      setWechatStatus("pending");
+      if (editPollTimer.current) clearInterval(editPollTimer.current);
+      editPollTimer.current = setInterval(() => {
+        void pollEditWechatLogin(r.loginId);
+      }, 2000);
+    } catch (err) {
+      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWechatLoginBusy(false);
+    }
+  }
+
+  async function pollEditWechatLogin(loginId: string) {
+    try {
+      const r = await pollWechatLogin(agentId, loginId);
+      setWechatStatus(r.status);
+      if (r.status === "confirmed" || r.status === "expired" || r.status === "failed") {
+        if (editPollTimer.current) {
+          clearInterval(editPollTimer.current);
+          editPollTimer.current = null;
+        }
+      }
+      if (r.status === "confirmed") {
+        setSenderDiscoverHint("已确认登录，可以读取最近微信用户 ID。");
+      }
+    } catch (err) {
+      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+      if (editPollTimer.current) {
+        clearInterval(editPollTimer.current);
+        editPollTimer.current = null;
+      }
+    }
+  }
+
+  async function handleDiscoverWechatSenders() {
+    if (!wechatLoginId || discoveringSenders || wechatStatus !== "confirmed") return;
+    setDiscoveringSenders(true);
+    setSenderDiscoverHint("等待最近微信消息...");
+    setSenderDiscoverError(null);
+    setDiscoveredSenders([]);
+    try {
+      let senders: { id: string; label?: string | null }[] = [];
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        setSenderDiscoverHint(
+          attempt === 1
+            ? "等待最近微信消息..."
+            : `还没发现消息，继续等待 ${attempt}/3...`,
+        );
+        const result = await discoverWechatSenders(agentId, wechatLoginId, {
+          timeoutSeconds: 8,
+        });
+        senders = result.senders;
+        if (senders.length > 0) break;
+      }
+      setDiscoveredSenders(senders);
+      if (senders.length === 1) {
+        setSenderIds(senders[0].id);
+        setSenderDiscoverHint("已自动填入发现的微信用户 ID。");
+      } else if (senders.length === 0) {
+        setSenderDiscoverHint(null);
+        setSenderDiscoverError("还没有发现用户。请先用要授权的微信账号发一条消息，再读取。");
+      } else {
+        setSenderDiscoverHint("发现多个用户，请选择要允许的微信用户 ID。");
+      }
+    } catch (err) {
+      setSenderDiscoverHint(null);
+      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiscoveringSenders(false);
+    }
+  }
+
+  function appendSenderId(id: string) {
+    const existing = new Set(csvToList(senderIds));
+    existing.add(id);
+    setSenderIds(Array.from(existing).join("\n"));
+  }
+
+  async function copySenderId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedSenderId(id);
+      window.setTimeout(() => setCopiedSenderId(null), 1600);
+    } catch {
+      setSenderDiscoverError("复制失败，请手动复制微信用户 ID。");
+    }
+  }
+
+  const wechatStatusText: Record<WechatLoginStatus, string> = {
+    pending: "等待扫码",
+    scanned: "等待手机确认",
+    confirmed: "已确认",
+    expired: "已过期",
+    failed: "登录失败",
+  };
+
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-glass-border bg-deep-black/35 p-3">
       <Field label="接入名称（可选）">
@@ -1164,6 +1371,93 @@ function GatewayEditForm({
               placeholder="-1001234567890, 987654321"
               className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
             />
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDiscoverTelegramChats}
+                  disabled={!token.trim() || saving || discoveringChats}
+                  className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                >
+                  {discoveringChats ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Search className="h-3 w-3" />
+                  )}
+                  读取最近 chat id
+                </button>
+                <span className="text-[10px] text-text-tertiary">
+                  先填写 Bot token，并在目标私聊或群聊里给 bot 发一条消息。
+                </span>
+              </div>
+              {discoveredChats.length > 0 && (
+                <div className="space-y-1.5">
+                  {discoveredChats.map((chat) => (
+                    <div
+                      key={chat.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                            {chat.label || "未命名会话"}
+                          </span>
+                          {chat.type ? (
+                            <span className="rounded border border-glass-border px-1.5 py-0.5 text-[9px] uppercase text-text-tertiary">
+                              {chat.type}
+                            </span>
+                          ) : null}
+                        </div>
+                        <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                          {chat.id}
+                        </code>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setChatIds(chat.id)}
+                          disabled={saving}
+                          className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                        >
+                          填入
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => appendChatId(chat.id)}
+                          disabled={saving}
+                          className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        >
+                          追加
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => copyChatId(chat.id)}
+                          disabled={saving}
+                          title={copiedChatId === chat.id ? "已复制" : "复制 chat id"}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        >
+                          {copiedChatId === chat.id ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {chatDiscoverHint && (
+                <p className="text-[10px] leading-relaxed text-text-tertiary">
+                  {chatDiscoverHint}
+                </p>
+              )}
+              {chatDiscoverError && (
+                <p className="text-[10px] leading-relaxed text-amber-200">
+                  {chatDiscoverError}
+                </p>
+              )}
+            </div>
           </Field>
           <Field label="替换 Bot token（可选）">
             <input
@@ -1193,6 +1487,128 @@ function GatewayEditForm({
           placeholder={gateway.provider === "wechat" ? "xxx@im.wechat" : "123456789"}
           className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
+        {gateway.provider === "wechat" && (
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleStartWechatDiscoveryLogin}
+                disabled={daemonOffline || saving || wechatLoginBusy}
+                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+              >
+                {wechatLoginBusy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Search className="h-3 w-3" />
+                )}
+                {wechatLoginId ? "重新扫码检测用户 ID" : "检测微信用户 ID"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscoverWechatSenders}
+                disabled={
+                  !wechatLoginId ||
+                  wechatStatus !== "confirmed" ||
+                  saving ||
+                  discoveringSenders
+                }
+                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+              >
+                {discoveringSenders ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Search className="h-3 w-3" />
+                )}
+                读取最近微信用户 ID
+              </button>
+              <span className="text-[10px] text-text-tertiary">
+                扫码确认后，用要授权的微信账号发一条消息。
+              </span>
+            </div>
+            {wechatLoginId && wechatStatus !== "confirmed" && (
+              <div className="space-y-2 rounded-lg border border-glass-border bg-glass-bg/35 p-2">
+                <div className="text-[11px] text-text-secondary">
+                  {wechatStatusText[wechatStatus]}
+                </div>
+                {wechatQrcodeUrl ? (
+                  <div className="inline-flex h-36 w-36 items-center justify-center rounded-md border border-glass-border bg-white p-2">
+                    <QRCodeSVG
+                      value={wechatQrcodeUrl}
+                      size={128}
+                      marginSize={1}
+                      level="M"
+                      title="WeChat 二维码"
+                    />
+                  </div>
+                ) : wechatQrcode ? (
+                  <div className="break-all rounded-md border border-glass-border bg-deep-black/40 p-2 font-mono text-[10px] text-text-secondary">
+                    {wechatQrcode}
+                  </div>
+                ) : null}
+              </div>
+            )}
+            {discoveredSenders.length > 0 && (
+              <div className="space-y-1.5">
+                {discoveredSenders.map((sender) => (
+                  <div
+                    key={sender.id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="block max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                        {sender.label || "未命名用户"}
+                      </span>
+                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                        {sender.id}
+                      </code>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSenderIds(sender.id)}
+                        disabled={saving}
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                      >
+                        填入
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => appendSenderId(sender.id)}
+                        disabled={saving}
+                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        追加
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copySenderId(sender.id)}
+                        disabled={saving}
+                        title={copiedSenderId === sender.id ? "已复制" : "复制微信用户 ID"}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        {copiedSenderId === sender.id ? (
+                          <CheckCircle2 className="h-3 w-3" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {senderDiscoverHint && (
+              <p className="text-[10px] leading-relaxed text-text-tertiary">
+                {senderDiscoverHint}
+              </p>
+            )}
+            {senderDiscoverError && (
+              <p className="text-[10px] leading-relaxed text-amber-200">
+                {senderDiscoverError}
+              </p>
+            )}
+          </div>
+        )}
       </Field>
       {whitelistEmpty && (
         <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
