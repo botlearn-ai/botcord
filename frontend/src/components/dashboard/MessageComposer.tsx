@@ -54,14 +54,14 @@ function detectMention(text: string, cursor: number): MentionMatch | null {
 // Boundary-aware check: returns true only when "@<displayName>" appears in text
 // followed by a word boundary (whitespace, punctuation, or end-of-string).
 // Without this, "@Alice" would be incorrectly detected inside "@AliceX".
-function textHasMention(text: string, displayName: string): boolean {
+export function textHasMention(text: string, displayName: string): boolean {
   const needle = `@${displayName}`;
   let idx = 0;
   while (true) {
     const found = text.indexOf(needle, idx);
     if (found === -1) return false;
     const after = text[found + needle.length];
-    if (after === undefined || /[\s.,!?;:)\]}'"]/.test(after)) return true;
+    if (after === undefined || /[\s.,!?;:()\]}'"]/.test(after)) return true;
     idx = found + needle.length;
   }
 }

@@ -24,8 +24,12 @@ export interface MentionTargets {
 export function scanMention(text: string | undefined, targets: MentionTargets): boolean {
   if (!text) return false;
   const lower = text.toLowerCase();
+  const normalizedAgentId = targets.agentId?.trim().toLowerCase();
+  if (normalizedAgentId && lower.includes("(" + normalizedAgentId + ")")) {
+    return true;
+  }
   const candidates: string[] = [];
-  if (targets.agentId) candidates.push(targets.agentId.toLowerCase());
+  if (normalizedAgentId) candidates.push(normalizedAgentId);
   if (targets.displayName) {
     const trimmed = targets.displayName.trim();
     if (trimmed) candidates.push(trimmed.toLowerCase());

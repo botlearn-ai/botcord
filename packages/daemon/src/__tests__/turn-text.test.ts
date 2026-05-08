@@ -57,6 +57,33 @@ describe("composeBotCordUserTurn", () => {
     expect(out).toContain("mentioned: true");
   });
 
+  it("renders structured room context outside the human message body", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        sender: { id: "hu_alice", name: "Alice", kind: "user" },
+        text: "@Harry(ag_973dfb9193eb) 今天的AI日报发一下呢",
+        conversation: { id: "rm_news", kind: "group", title: "AI News Daily Brief" },
+        raw: {
+          room_id: "rm_news",
+          room_name: "AI News Daily Brief",
+          room_member_count: 6,
+          room_member_names: ["Alice", "Harry"],
+          my_role: "member",
+          my_can_send: true,
+          room_rule: "Post concise daily summaries.",
+        },
+      }),
+    );
+    const roomIdx = out.indexOf("[BotCord Room]");
+    const tagIdx = out.indexOf('<human-message sender="Alice" sender_kind="human">');
+    const closeIdx = out.indexOf("</human-message>");
+    expect(roomIdx).toBeGreaterThan(-1);
+    expect(roomIdx).toBeLessThan(tagIdx);
+    expect(out).toContain("[Room Rule] Post concise daily summaries.");
+    expect(out.slice(tagIdx, closeIdx)).not.toContain("[BotCord Room]");
+    expect(out.slice(tagIdx, closeIdx)).toContain("@Harry(ag_973dfb9193eb)");
+  });
+
   it("emits the direct-chat hint (not the group hint) for DM conversations", () => {
     const out = composeBotCordUserTurn(
       makeMessage({
