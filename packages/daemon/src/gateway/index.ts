@@ -44,6 +44,7 @@ export {
   probeDeepseekTui,
   resolveDeepseekCommand,
 } from "./runtimes/deepseek-tui.js";
+export { KimiAdapter, probeKimi, resolveKimiCommand } from "./runtimes/kimi.js";
 export { GeminiAdapter, probeGemini, resolveGeminiCommand } from "./runtimes/gemini.js";
 export {
   NdjsonStreamAdapter,

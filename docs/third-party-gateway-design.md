@@ -9,7 +9,7 @@
 - `Dispatcher` 负责路由、session、runtime 调用、stream block、typing、attention gate。
 - `toGatewayConfig()` 当前为每个 BotCord agent 固定生成一个 `botcord` channel。
 
-因此微信、Telegram 的接入不应该作为新的 runtime 实现，而应该作为新的 **channel adapter** 实现。Agent 的 runtime 仍然是 `claude-code`、`codex`、`gemini`、`openclaw-acp`、`hermes-agent` 等；微信/Telegram 只是新的消息入口。
+因此微信、Telegram 的接入不应该作为新的 runtime 实现，而应该作为新的 **channel adapter** 实现。Agent 的 runtime 仍然是 `claude-code`、`codex`、`kimi-cli`、`gemini`、`openclaw-acp`、`hermes-agent` 等；微信/Telegram 只是新的消息入口。
 
 命名上建议避免继续扩大 `gateway` 的歧义：
 
