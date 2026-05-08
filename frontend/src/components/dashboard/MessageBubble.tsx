@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { Bot, MoreHorizontal, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import type { DashboardMessage, Attachment } from "@/lib/types";
@@ -116,6 +117,8 @@ function MentionChip({
   onSelectAgent: (agentId: string) => void;
   onSelectHuman: (humanId: string, displayName: string) => void;
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
   const isHuman = id.startsWith("hu_");
   const isAgent = id.startsWith("ag_");
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
@@ -130,6 +133,42 @@ function MentionChip({
   const role = isHuman ? "Human" : "Agent";
   const canOpen = isHuman || isAgent;
 
+  const updateTooltipPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const tooltipWidth = 256;
+    const estimatedTooltipHeight = bio ? 128 : 92;
+    const gap = 6;
+    const viewportPadding = 8;
+    const maxLeft = Math.max(viewportPadding, window.innerWidth - tooltipWidth - viewportPadding);
+    const left = Math.min(Math.max(rect.left, viewportPadding), maxLeft);
+    const spaceAbove = rect.top - viewportPadding;
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const shouldPlaceBelow = spaceAbove < estimatedTooltipHeight && spaceBelow >= spaceAbove;
+    const top = shouldPlaceBelow
+      ? Math.min(rect.bottom + gap, window.innerHeight - estimatedTooltipHeight - viewportPadding)
+      : Math.max(viewportPadding, rect.top - estimatedTooltipHeight - gap);
+
+    setTooltipPosition((prev) => (
+      prev && prev.left === left && prev.top === top ? prev : { left, top }
+    ));
+  }, [bio]);
+
+  useLayoutEffect(() => {
+    if (!tooltipPosition) return;
+
+    updateTooltipPosition();
+    window.addEventListener("resize", updateTooltipPosition);
+    window.addEventListener("scroll", updateTooltipPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateTooltipPosition);
+      window.removeEventListener("scroll", updateTooltipPosition, true);
+    };
+  }, [tooltipPosition, updateTooltipPosition]);
+
   const handleClick = () => {
     if (isHuman) {
       onSelectHuman(id, displayName);
@@ -141,9 +180,14 @@ function MentionChip({
   };
 
   return (
-    <span className="group/mention relative inline-flex align-baseline">
+    <span className="inline-flex align-baseline">
       <button
+        ref={triggerRef}
         type="button"
+        onMouseEnter={updateTooltipPosition}
+        onMouseLeave={() => setTooltipPosition(null)}
+        onFocus={updateTooltipPosition}
+        onBlur={() => setTooltipPosition(null)}
         onClick={(e) => {
           e.stopPropagation();
           handleClick();
@@ -154,19 +198,25 @@ function MentionChip({
         {!isHuman && <PresenceDot agentId={id} size="xs" showOffline={false} />}
         <span className="truncate">@{displayName}</span>
       </button>
-      <span className="pointer-events-none absolute bottom-full left-0 z-40 mb-1 hidden w-64 rounded-lg border border-glass-border bg-zinc-950/95 p-3 text-left shadow-xl shadow-black/30 group-hover/mention:block">
-        <span className="mb-1 flex items-center gap-2">
-          {!isHuman && <PresenceDot agentId={id} size="sm" />}
-          <span className={`truncate text-xs font-semibold ${isHuman ? "text-neon-green" : "text-neon-purple"}`}>
-            {displayName}
+      {tooltipPosition && typeof document !== "undefined" && createPortal(
+        <span
+          className="pointer-events-none fixed z-[9999] w-64 rounded-lg border border-glass-border bg-zinc-950/95 p-3 text-left shadow-xl shadow-black/30"
+          style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
+        >
+          <span className="mb-1 flex items-center gap-2">
+            {!isHuman && <PresenceDot agentId={id} size="sm" />}
+            <span className={`truncate text-xs font-semibold ${isHuman ? "text-neon-green" : "text-neon-purple"}`}>
+              {displayName}
+            </span>
+            <span className="ml-auto rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
+              {role}
+            </span>
           </span>
-          <span className="ml-auto rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
-            {role}
-          </span>
-        </span>
-        <span className="block truncate font-mono text-[10px] text-text-secondary/70">{id}</span>
-        {bio && <span className="mt-1.5 line-clamp-3 block text-xs leading-relaxed text-text-secondary">{bio}</span>}
-      </span>
+          <span className="block truncate font-mono text-[10px] text-text-secondary/70">{id}</span>
+          {bio && <span className="mt-1.5 line-clamp-3 block text-xs leading-relaxed text-text-secondary">{bio}</span>}
+        </span>,
+        document.body,
+      )}
     </span>
   );
 }
