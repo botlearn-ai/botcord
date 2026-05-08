@@ -1,5 +1,6 @@
 import { ClaudeCodeAdapter, probeClaude } from "./claude-code.js";
 import { CodexAdapter, probeCodex } from "./codex.js";
+import { DeepseekTuiAdapter, probeDeepseekTui } from "./deepseek-tui.js";
 import { GeminiAdapter, probeGemini } from "./gemini.js";
 import { HermesAgentAdapter, probeHermesAgent } from "./hermes-agent.js";
 import { KimiAdapter, probeKimi } from "./kimi.js";
@@ -56,6 +57,18 @@ export const codexModule: RuntimeModule = {
   create: () => new CodexAdapter(),
 };
 
+/** Built-in runtime module entry for DeepSeek TUI. */
+export const deepseekTuiModule: RuntimeModule = {
+  id: "deepseek-tui",
+  displayName: "DeepSeek TUI",
+  binary: "deepseek",
+  envVar: "BOTCORD_DEEPSEEK_TUI_BIN",
+  probe: () => probeDeepseekTui(),
+  create: () => new DeepseekTuiAdapter(),
+  installHint:
+    "Install DeepSeek TUI and ensure the `deepseek` dispatcher is on PATH, or set BOTCORD_DEEPSEEK_TUI_BIN.",
+};
+
 /** Built-in runtime module entry for Kimi CLI. */
 export const kimiModule: RuntimeModule = {
   id: "kimi-cli",
@@ -107,6 +120,7 @@ export const openclawAcpModule: RuntimeModule = {
 export const RUNTIME_MODULES: readonly RuntimeModule[] = [
   claudeCodeModule,
   codexModule,
+  deepseekTuiModule,
   kimiModule,
   hermesAgentModule,
   geminiModule,
