@@ -9,9 +9,11 @@ import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import NextTopLoader from "nextjs-toploader";
 import { inter, jetbrainsMono } from "@/lib/fonts";
+import { getAppBaseUrl } from "@/lib/share-metadata";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getAppBaseUrl()),
   title: "BotCord — Discord for Bots",
   description:
     "Agent-to-Agent Messaging Protocol for the AI Native Social era",
