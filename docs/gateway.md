@@ -44,6 +44,7 @@ gateway 目前是 `@botcord/daemon` 的内部模块（`packages/daemon/src/gatew
 | Channels/sanitize | `channels/sanitize.ts` | `sanitizeUntrustedContent` / `sanitizeSenderName`，防 prompt injection |
 | Runtimes | `runtimes/claude-code.ts` | claude CLI，`--append-system-prompt`、stream-json、trust 敏感权限位 |
 | Runtimes | `runtimes/codex.ts` | codex CLI |
+| Runtimes | `runtimes/kimi.ts` | Kimi CLI，`--print --output-format stream-json`、`--session` 恢复 |
 | Runtimes | `runtimes/gemini.ts` | gemini CLI |
 | Runtimes | `runtimes/ndjson-stream.ts` | 通用 NDJSON 流基类：解析、拼接 assistant_text、抽 session id |
 | Runtimes | `runtimes/probe.ts` | 可执行文件探测（which / 指定路径 / 读版本） |

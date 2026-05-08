@@ -39,6 +39,7 @@ export {
   resolveClaudeCommand,
 } from "./runtimes/claude-code.js";
 export { CodexAdapter, probeCodex, resolveCodexCommand } from "./runtimes/codex.js";
+export { KimiAdapter, probeKimi, resolveKimiCommand } from "./runtimes/kimi.js";
 export { GeminiAdapter, probeGemini, resolveGeminiCommand } from "./runtimes/gemini.js";
 export {
   NdjsonStreamAdapter,

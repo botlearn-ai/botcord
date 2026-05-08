@@ -2,6 +2,7 @@ import { ClaudeCodeAdapter, probeClaude } from "./claude-code.js";
 import { CodexAdapter, probeCodex } from "./codex.js";
 import { GeminiAdapter, probeGemini } from "./gemini.js";
 import { HermesAgentAdapter, probeHermesAgent } from "./hermes-agent.js";
+import { KimiAdapter, probeKimi } from "./kimi.js";
 import { OpenclawAcpAdapter, probeOpenclaw } from "./openclaw-acp.js";
 import type { RuntimeAdapter, RuntimeProbeResult } from "../types.js";
 
@@ -55,6 +56,16 @@ export const codexModule: RuntimeModule = {
   create: () => new CodexAdapter(),
 };
 
+/** Built-in runtime module entry for Kimi CLI. */
+export const kimiModule: RuntimeModule = {
+  id: "kimi-cli",
+  displayName: "Kimi CLI",
+  binary: "kimi",
+  envVar: "BOTCORD_KIMI_CLI_BIN",
+  probe: () => probeKimi(),
+  create: () => new KimiAdapter(),
+};
+
 /** Built-in runtime module entry for Hermes Agent (ACP stdio). */
 export const hermesAgentModule: RuntimeModule = {
   id: "hermes-agent",
@@ -96,6 +107,7 @@ export const openclawAcpModule: RuntimeModule = {
 export const RUNTIME_MODULES: readonly RuntimeModule[] = [
   claudeCodeModule,
   codexModule,
+  kimiModule,
   hermesAgentModule,
   geminiModule,
   openclawAcpModule,
