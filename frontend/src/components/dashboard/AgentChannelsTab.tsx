@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Copy,
+  Info,
   Loader2,
   MessageCircle,
   Plus,
@@ -401,12 +402,14 @@ function TelegramAddForm({
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tokenGuideOpen, setTokenGuideOpen] = useState(false);
 
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
+  const tokenReady = !!token.trim();
   const whitelistIncomplete =
     allowedChatIds.length === 0 || allowedSenderIds.length === 0;
-  const canSave = !!token.trim() && !whitelistIncomplete && !daemonOffline && !saving;
+  const canSave = tokenReady && !whitelistIncomplete && !daemonOffline && !saving;
 
   async function handleSave() {
     if (!canSave) return;
@@ -500,156 +503,170 @@ function TelegramAddForm({
   return (
     <div className="space-y-3">
       <Field label="Bot token">
-        <input
-          type="password"
-          autoComplete="off"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          disabled={saving}
-          placeholder="123456:ABC-..."
-          className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="password"
+            autoComplete="off"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            disabled={saving}
+            placeholder="123456:ABC-..."
+            className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={() => setTokenGuideOpen(true)}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/12 px-3 py-2 text-[11px] font-medium text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)] hover:bg-amber-300/20"
+          >
+            <Info className="h-3.5 w-3.5" />
+            如何获取 token
+          </button>
+        </div>
         <p className="mt-1 text-[10px] text-text-tertiary">
           Token 仅在创建/替换时填写，保存后只显示 token preview。
         </p>
       </Field>
-      <Field label="接入名称（可选）">
-        <input
-          type="text"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          disabled={saving}
-          placeholder="例如：客服 Bot"
-          className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-        />
-      </Field>
-      <Field label="允许的 chat id（逗号或换行分隔）">
-        <textarea
-          value={chatIds}
-          onChange={(e) => setChatIds(e.target.value)}
-          disabled={saving}
-          rows={2}
-          placeholder="-1001234567890, 987654321"
-          className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-        />
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleDiscoverChats}
-            disabled={!token.trim() || saving || discoveringChats}
-            className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
-          >
-            {discoveringChats ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Search className="h-3 w-3" />
-            )}
-            读取最近 chat id
-          </button>
-          <span className="text-[10px] text-text-tertiary">
-            先在目标私聊或群聊里给 bot 发一条消息。
-          </span>
-        </div>
-        {discoveredChats.length > 0 && (
-          <div className="mt-2 space-y-1.5">
-            {discoveredChats.map((chat) => (
-              <div
-                key={chat.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
+      {tokenReady && (
+        <>
+          <Field label="接入名称（可选）">
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              disabled={saving}
+              placeholder="例如：客服 Bot"
+              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+          </Field>
+          <Field label="允许的 chat id（逗号或换行分隔）">
+            <textarea
+              value={chatIds}
+              onChange={(e) => setChatIds(e.target.value)}
+              disabled={saving}
+              rows={2}
+              placeholder="-1001234567890, 987654321"
+              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDiscoverChats}
+                disabled={!token.trim() || saving || discoveringChats}
+                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="max-w-[180px] truncate text-[11px] font-medium text-text-primary">
-                      {chat.label || "未命名会话"}
-                    </span>
-                    {chat.type ? (
-                      <span className="rounded border border-glass-border px-1.5 py-0.5 text-[9px] uppercase text-text-tertiary">
-                        {chat.type}
-                      </span>
-                    ) : null}
+                {discoveringChats ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Search className="h-3 w-3" />
+                )}
+                读取最近 chat id
+              </button>
+              <span className="text-[10px] text-text-tertiary">
+                先在目标私聊或群聊里给 bot 发一条消息。
+              </span>
+            </div>
+            {discoveredChats.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {discoveredChats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                          {chat.label || "未命名会话"}
+                        </span>
+                        {chat.type ? (
+                          <span className="rounded border border-glass-border px-1.5 py-0.5 text-[9px] uppercase text-text-tertiary">
+                            {chat.type}
+                          </span>
+                        ) : null}
+                      </div>
+                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                        {chat.id}
+                      </code>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setChatIds(chat.id)}
+                        disabled={saving}
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                      >
+                        填入
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => appendChatId(chat.id)}
+                        disabled={saving}
+                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        追加
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyChatId(chat.id)}
+                        disabled={saving}
+                        title={copiedChatId === chat.id ? "已复制" : "复制 chat id"}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        {copiedChatId === chat.id ? (
+                          <CheckCircle2 className="h-3 w-3" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
-                    {chat.id}
-                  </code>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setChatIds(chat.id)}
-                    disabled={saving}
-                    className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
-                  >
-                    填入
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => appendChatId(chat.id)}
-                    disabled={saving}
-                    className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
-                  >
-                    追加
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => copyChatId(chat.id)}
-                    disabled={saving}
-                    title={copiedChatId === chat.id ? "已复制" : "复制 chat id"}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
-                  >
-                    {copiedChatId === chat.id ? (
-                      <CheckCircle2 className="h-3 w-3" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-        {discoverHint && (
-          <p className="mt-1 text-[10px] leading-relaxed text-text-tertiary">
-            {discoverHint}
-          </p>
-        )}
-        {discoverError && (
-          <p className="mt-1 text-[10px] leading-relaxed text-amber-200">
-            {discoverError}
-          </p>
-        )}
-      </Field>
-      <Field label="允许的发送者 user id（逗号或换行分隔）">
-        <textarea
-          value={senderIds}
-          onChange={(e) => setSenderIds(e.target.value)}
-          disabled={saving}
-          rows={2}
-          placeholder="123456789"
-          className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-        />
-        <p className="mt-1 text-[10px] text-text-tertiary">
-          必填；Telegram 需要同时限制 chat id 和发送者 user id。
-        </p>
-      </Field>
-      <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
-        <input
-          type="checkbox"
-          checked={enableNow}
-          onChange={(e) => setEnableNow(e.target.checked)}
-          disabled={saving}
-          className="accent-neon-cyan"
-        />
-        立即启用
-      </label>
-      {whitelistIncomplete && (
-        <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
-          必须同时填写允许的 chat id 和发送者 user id，才能保存 Telegram 接入。
-        </p>
-      )}
-      {error && (
-        <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-300">
-          {error}
-        </p>
+            )}
+            {discoverHint && (
+              <p className="mt-1 text-[10px] leading-relaxed text-text-tertiary">
+                {discoverHint}
+              </p>
+            )}
+            {discoverError && (
+              <p className="mt-1 text-[10px] leading-relaxed text-amber-200">
+                {discoverError}
+              </p>
+            )}
+          </Field>
+          <Field label="允许的发送者 user id（逗号或换行分隔）">
+            <textarea
+              value={senderIds}
+              onChange={(e) => setSenderIds(e.target.value)}
+              disabled={saving}
+              rows={2}
+              placeholder="123456789"
+              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+            <p className="mt-1 text-[10px] text-text-tertiary">
+              必填；Telegram 需要同时限制 chat id 和发送者 user id。
+            </p>
+          </Field>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
+            <input
+              type="checkbox"
+              checked={enableNow}
+              onChange={(e) => setEnableNow(e.target.checked)}
+              disabled={saving}
+              className="accent-neon-cyan"
+            />
+            立即启用
+          </label>
+          {whitelistIncomplete && (
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+              必须同时填写允许的 chat id 和发送者 user id，才能保存 Telegram 接入。
+            </p>
+          )}
+          {error && (
+            <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-300">
+              {error}
+            </p>
+          )}
+        </>
       )}
       <div className="flex justify-end gap-2 pt-1">
         <button
@@ -663,12 +680,85 @@ function TelegramAddForm({
         <button
           type="button"
           onClick={handleSave}
-          disabled={!canSave}
-          className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+          disabled={!tokenReady || !canSave}
+          className={`inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50 ${
+            tokenReady ? "" : "hidden"
+          }`}
         >
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}
           保存
         </button>
+      </div>
+      {tokenGuideOpen && (
+        <TelegramTokenGuideDialog onClose={() => setTokenGuideOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-text-primary">
+              从 BotFather 获取 Bot token
+            </h3>
+            <p className="mt-1 text-xs leading-relaxed text-text-secondary">
+              Token 来自 Telegram 官方 BotFather，创建后复制到这里即可继续配置接入。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <ol className="space-y-3 text-xs text-text-secondary">
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+              1
+            </span>
+            <span>打开 Telegram，搜索并进入官方账号 @BotFather。</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+              2
+            </span>
+            <span>发送 /newbot，按提示填写 bot 显示名称和以 bot 结尾的用户名。</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+              3
+            </span>
+            <span>BotFather 会返回一串 HTTP API token，格式通常类似 123456:ABC-...。</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+              4
+            </span>
+            <span>复制 token，粘贴到 Bot token 输入框；不要把 token 发到群聊或提交到代码仓库。</span>
+          </li>
+        </ol>
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20"
+          >
+            知道了
+          </button>
+        </div>
       </div>
     </div>
   );
