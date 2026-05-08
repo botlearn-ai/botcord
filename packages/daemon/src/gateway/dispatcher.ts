@@ -55,6 +55,14 @@ const MAX_BATCH_BUFFER_CHARS = 16000;
  */
 const TYPING_DEBOUNCE_MS = 2000;
 
+/**
+ * Most provider typing APIs are short-lived one-shots. Telegram's
+ * `sendChatAction(typing)`, for example, must be refreshed while the runtime
+ * is still working or the visible typing indicator disappears before the
+ * reply lands.
+ */
+const TYPING_REFRESH_MS = 4000;
+
 /** LRU cap on the typing-recency map so long-running daemons don't grow unbounded. */
 const TYPING_RECENCY_CAP = 1024;
 
@@ -804,7 +812,9 @@ export class Dispatcher {
     const streamable = msg.trace?.streamable === true;
     const traceId = msg.trace?.id;
     const canType =
-      streamable && typeof traceId === "string" && typeof channel.typing === "function";
+      typeof traceId === "string" &&
+      typeof channel.typing === "function" &&
+      (streamable || !isBotCordChannel(channel));
     const canStream =
       streamable && typeof traceId === "string" && typeof channel.streamBlock === "function";
     const recordBlock = (block: StreamBlock): void => {
@@ -824,7 +834,8 @@ export class Dispatcher {
     // arrival), and `thinking` is auto-synthesized on the first non-assistant
     // block so adapters that emit nothing-but-blocks still drive the
     // "Thinking..." UI.
-    let typingFired = false;
+    let typingLoopStarted = false;
+    let typingRefreshTimer: NodeJS.Timeout | null = null;
     let thinkingActive = false;
     /**
      * Sticky: once we've forwarded any assistant_text to the wire, we stop
@@ -887,9 +898,8 @@ export class Dispatcher {
       forwardBlockToChannel(synth);
     };
 
-    const fireTypingIfNeeded = (): void => {
-      if (!canType || typingFired) return;
-      typingFired = true;
+    const sendTypingPing = (): void => {
+      if (!canType) return;
       const key = `${msg.accountId}:${msg.conversation.id}`;
       const now = Date.now();
       const last = this.recentTypingPings.get(key);
@@ -934,7 +944,21 @@ export class Dispatcher {
       }
     };
 
-    const onStatus = canStream
+    const fireTypingIfNeeded = (): void => {
+      if (!canType || typingLoopStarted) return;
+      typingLoopStarted = true;
+      sendTypingPing();
+      typingRefreshTimer = setInterval(sendTypingPing, TYPING_REFRESH_MS);
+      if (typeof typingRefreshTimer.unref === "function") typingRefreshTimer.unref();
+    };
+
+    const stopTypingRefresh = (): void => {
+      if (!typingRefreshTimer) return;
+      clearInterval(typingRefreshTimer);
+      typingRefreshTimer = null;
+    };
+
+    const onStatus = canType || canStream
       ? (event: RuntimeStatusEvent) => {
           // Drop runtime callbacks after this turn's controller aborts —
           // NDJSON/ACP adapters keep parsing stdout until the child exits
@@ -1342,6 +1366,7 @@ export class Dispatcher {
         blocks: slot.blocks,
       });
     } finally {
+      stopTypingRefresh();
       // Emit a final thinking.stopped on terminal paths so the frontend
       // never sticks at "Thinking..." when no assistant_text ever landed
       // (timeout, error, gated reply). Skipped on cancel-previous: the

@@ -27,6 +27,7 @@ function silentLogger(): GatewayLogger {
 
 interface FakeChannelOptions {
   id?: string;
+  type?: string;
   withStream?: boolean;
   withTyping?: boolean;
   sendImpl?: (ctx: ChannelSendContext) => Promise<ChannelSendResult> | ChannelSendResult;
@@ -36,7 +37,7 @@ interface FakeChannelOptions {
 
 class FakeChannel implements ChannelAdapter {
   readonly id: string;
-  readonly type = "fake";
+  readonly type: string;
   readonly sends: ChannelSendContext[] = [];
   readonly streams: ChannelStreamBlockContext[] = [];
   readonly typings: ChannelTypingContext[] = [];
@@ -48,6 +49,7 @@ class FakeChannel implements ChannelAdapter {
 
   constructor(opts: FakeChannelOptions = {}) {
     this.id = opts.id ?? "botcord";
+    this.type = opts.type ?? "fake";
     this.sendImpl = opts.sendImpl;
     this.streamImpl = opts.streamImpl;
     this.typingImpl = opts.typingImpl;
@@ -659,8 +661,21 @@ describe("Dispatcher", () => {
     expect(channel.sends.length).toBe(1);
   });
 
-  it("typing: not fired when streamable is false", async () => {
-    const channel = new FakeChannel();
+  it("typing: fires for non-BotCord channels even when streamable is false", async () => {
+    const channel = new FakeChannel({ id: "gw_provider", type: "telegram" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ channel: "gw_provider", trace: { id: "t1", streamable: false } }),
+    );
+    expect(channel.typings.length).toBe(1);
+  });
+
+  it("typing: not fired for BotCord rooms when streamable is false", async () => {
+    const channel = new FakeChannel({ type: "botcord" });
     const { dispatcher } = await scaffold({
       channel,
       runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
@@ -670,6 +685,41 @@ describe("Dispatcher", () => {
       makeEnvelope({ trace: { id: "t1", streamable: false } }),
     );
     expect(channel.typings.length).toBe(0);
+  });
+
+  it("typing: refreshes while a provider turn is still running", async () => {
+    vi.useFakeTimers();
+    try {
+      const channel = new FakeChannel({ id: "gw_tg", type: "telegram" });
+      const runtime = new FakeRuntime({ delayMs: 8500, reply: "ok", newSessionId: "sid" });
+      const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+      const pending = dispatcher.handle(
+        makeEnvelope({
+          channel: "gw_tg",
+          conversation: { id: "telegram:user:42", kind: "direct" },
+          trace: { id: "telegram:42:1", streamable: true },
+        }),
+      );
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(channel.typings.length).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(channel.typings.length).toBe(2);
+
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(channel.typings.length).toBe(3);
+
+      await vi.advanceTimersByTimeAsync(500);
+      await pending;
+
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(channel.typings.length).toBe(3);
+      expect(channel.sends.length).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("typing: not fired when channel has no typing capability", async () => {
