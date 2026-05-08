@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { GatewayInboundMessage } from "../gateway/index.js";
@@ -131,7 +131,34 @@ describe("createDaemonSystemContextBuilder", () => {
     ensureAgentWorkspace("ag_me", { displayName: "X" });
     writeFileSync(path.join(agentWorkspaceDir("ag_me"), "identity.md"), "");
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const out = builder(makeMessage()) as string;
+    expect(out).not.toContain("[BotCord Identity]");
+    expect(out).toContain("[BotCord Daemon Skill Index]");
+  });
+
+  it("detects a newly added global Claude skill on the next turn", () => {
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
     expect(builder(makeMessage())).toBeUndefined();
+
+    const skillDir = path.join(tmpDir, ".claude", "skills", "digest-query");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      path.join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "name: digest-query",
+        "description: \"Search archived conversation digests with the local digest_query CLI.\"",
+        "---",
+        "",
+        "# Digest Query",
+      ].join("\n"),
+    );
+
+    const out = builder(makeMessage()) as string;
+    expect(out).toContain("[BotCord Daemon Skill Index]");
+    expect(out).toContain("digest-query (global-claude)");
+    expect(out).toContain(path.join(skillDir, "SKILL.md"));
+    expect(out).toContain("Search archived conversation digests");
   });
 
   it("emits the 'memory is currently empty' notice when the memory file exists but is blank", () => {

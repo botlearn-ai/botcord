@@ -11,6 +11,7 @@
  *   3. `[BotCord Working Memory]`
  *   4. `[BotCord Room Context]` (group rooms, via optional async fetcher)
  *   5. `[BotCord Cross-Room Awareness]` (optional activity tracker)
+ *   6. `[BotCord Daemon Skill Index]` (soft skill hot-reload index)
  *
  * Behavior:
  *   - Working memory is loaded fresh per turn, so a `memory set` from another
@@ -30,6 +31,7 @@ import { buildWorkingMemoryPrompt, readWorkingMemory } from "./working-memory.js
 import { readIdentity } from "./agent-workspace.js";
 import { classifyActivitySender } from "./sender-classify.js";
 import { log } from "./log.js";
+import { buildSoftSkillIndexPrompt } from "./skill-index.js";
 
 /**
  * Async per-turn room-context builder (see `room-context.ts`). Returns the
@@ -77,6 +79,11 @@ export interface SystemContextDeps {
    * + cheap — consulted every turn even when roomContextBuilder is absent.
    */
   loopRiskBuilder?: (message: GatewayInboundMessage) => string | null;
+  /**
+   * Optional soft skill index builder. Defaults to scanning daemon-known skill
+   * dirs each turn. Return null to suppress the block.
+   */
+  skillIndexBuilder?: (message: GatewayInboundMessage) => string | null;
 }
 
 function safeReadWorkingMemory(agentId: string) {
@@ -172,14 +179,29 @@ export function createDaemonSystemContextBuilder(
     }
   };
 
+  const buildSkillIndex = (message: GatewayInboundMessage): string | null => {
+    try {
+      if (deps.skillIndexBuilder) return deps.skillIndexBuilder(message);
+      return buildSoftSkillIndexPrompt(deps.agentId);
+    } catch (err) {
+      log.warn("system-context: skill index build failed — skipping skill block", {
+        agentId: deps.agentId,
+        roomId: message.conversation.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  };
+
   if (!deps.roomContextBuilder) {
     const syncBuilder = (message: GatewayInboundMessage): string | undefined => {
       const { identity, ownerScene, memory, digest } = gatherSyncBlocks(message);
       // Loop-risk sits at the end so its "reply NO_REPLY unless…" guidance
       // is the last thing the model sees before the user turn body.
       // Identity sits at the very front so it frames every other block.
+      const skillIndex = buildSkillIndex(message);
       const loopRisk = runLoopRisk(message);
-      return assemble([identity, ownerScene, memory, digest, loopRisk]);
+      return assemble([identity, ownerScene, memory, digest, skillIndex, loopRisk]);
     };
     // Compile-time witness that the narrower sync signature still satisfies
     // `SystemContextBuilder` (which allows async). Prevents the two contracts
@@ -209,8 +231,9 @@ export function createDaemonSystemContextBuilder(
         err: err instanceof Error ? err.message : String(err),
       });
     }
+    const skillIndex = buildSkillIndex(message);
     const loopRisk = runLoopRisk(message);
-    return assemble([identity, ownerScene, memory, roomBlock, digest, loopRisk]);
+    return assemble([identity, ownerScene, memory, roomBlock, digest, skillIndex, loopRisk]);
   };
   const _typecheck: SystemContextBuilder = asyncBuilder;
   void _typecheck;
