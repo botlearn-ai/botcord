@@ -13,6 +13,7 @@ import MarkdownContent from "@/components/ui/MarkdownContent";
 import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { PresenceDot } from "./PresenceDot";
 
@@ -102,6 +103,72 @@ function formatMessageTimestamp(isoTime: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function MentionChip({
+  id,
+  label,
+  onSelectAgent,
+  onSelectHuman,
+}: {
+  id: string;
+  label: string;
+  onSelectAgent: (agentId: string) => void;
+  onSelectHuman: (humanId: string, displayName: string) => void;
+}) {
+  const isHuman = id.startsWith("hu_");
+  const isAgent = id.startsWith("ag_");
+  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
+  const overview = useDashboardChatStore((state) => state.overview);
+  const publicAgents = useDashboardChatStore((state) => state.publicAgents);
+
+  const ownAgent = ownedAgents.find((agent) => agent.agent_id === id);
+  const contact = overview?.contacts.find((item) => item.contact_agent_id === id);
+  const publicAgent = publicAgents.find((agent) => agent.agent_id === id);
+  const displayName = contact?.alias || ownAgent?.display_name || contact?.display_name || publicAgent?.display_name || label;
+  const bio = ownAgent?.bio ?? publicAgent?.bio ?? null;
+  const role = isHuman ? "Human" : "Agent";
+  const canOpen = isHuman || isAgent;
+
+  const handleClick = () => {
+    if (isHuman) {
+      onSelectHuman(id, displayName);
+      return;
+    }
+    if (isAgent) {
+      onSelectAgent(id);
+    }
+  };
+
+  return (
+    <span className="group/mention relative inline-flex align-baseline">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleClick();
+        }}
+        disabled={!canOpen}
+        className="inline-flex max-w-full items-center gap-1 rounded border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-0.5 text-[0.85em] font-medium leading-none text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/20 disabled:cursor-default"
+      >
+        {!isHuman && <PresenceDot agentId={id} size="xs" showOffline={false} />}
+        <span className="truncate">@{displayName}</span>
+      </button>
+      <span className="pointer-events-none absolute bottom-full left-0 z-40 mb-1 hidden w-64 rounded-lg border border-glass-border bg-zinc-950/95 p-3 text-left shadow-xl shadow-black/30 group-hover/mention:block">
+        <span className="mb-1 flex items-center gap-2">
+          {!isHuman && <PresenceDot agentId={id} size="sm" />}
+          <span className={`truncate text-xs font-semibold ${isHuman ? "text-neon-green" : "text-neon-purple"}`}>
+            {displayName}
+          </span>
+          <span className="ml-auto rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
+            {role}
+          </span>
+        </span>
+        <span className="block truncate font-mono text-[10px] text-text-secondary/70">{id}</span>
+        {bio && <span className="mt-1.5 line-clamp-3 block text-xs leading-relaxed text-text-secondary">{bio}</span>}
+      </span>
+    </span>
+  );
 }
 
 export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId }: MessageBubbleProps) {
@@ -240,7 +307,19 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
         {transferInfo ? (
           <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
         ) : (
-          displayText && <MarkdownContent content={displayText} />
+          displayText && (
+            <MarkdownContent
+              content={displayText}
+              renderMention={({ id, label }) => (
+                <MentionChip
+                  id={id}
+                  label={label}
+                  onSelectAgent={selectAgent}
+                  onSelectHuman={requestOpenHuman}
+                />
+              )}
+            />
+          )
         )}
 
         {attachments.length > 0 && (
