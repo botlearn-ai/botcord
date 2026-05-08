@@ -353,6 +353,24 @@ def _build_settings(config: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _list_has_value(config: dict[str, Any], key: str) -> bool:
+    value = config.get(key)
+    return isinstance(value, list) and any(
+        isinstance(item, str) and item.strip() for item in value
+    )
+
+
+def _require_whitelist(provider: str, config: dict[str, Any]) -> None:
+    if provider == "telegram":
+        if _list_has_value(config, "allowedChatIds") or _list_has_value(
+            config, "allowedSenderIds"
+        ):
+            return
+        raise HTTPException(status_code=400, detail="missing_gateway_whitelist")
+    if provider == "wechat" and not _list_has_value(config, "allowedSenderIds"):
+        raise HTTPException(status_code=400, detail="missing_gateway_whitelist")
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -407,6 +425,7 @@ async def create_gateway(
     gateway_id = generate_gateway_connection_id(body.provider)
     config = _filter_config(body.config)
     _validate_base_url(config.get("baseUrl"))
+    _require_whitelist(body.provider, config)
 
     params: dict[str, Any] = {
         "id": gateway_id,
@@ -480,6 +499,7 @@ async def patch_gateway(
 
     config = dict(row.config_json or {})
     _validate_base_url(config.get("baseUrl"))
+    _require_whitelist(row.provider, config)
     params: dict[str, Any] = {
         "id": row.id,
         "type": row.provider,
