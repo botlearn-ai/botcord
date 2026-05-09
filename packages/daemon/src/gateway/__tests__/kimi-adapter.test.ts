@@ -18,7 +18,7 @@ afterAll(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-function runAdapter(script: string, sessionId: string | null = null) {
+function runAdapter(script: string, sessionId: string | null = null, extraArgs?: string[]) {
   const adapter = new KimiAdapter({ binary: script });
   const ctrl = new AbortController();
   return adapter.run({
@@ -28,6 +28,7 @@ function runAdapter(script: string, sessionId: string | null = null) {
     cwd: tmpRoot,
     signal: ctrl.signal,
     trustLevel: "owner",
+    extraArgs,
   });
 }
 
@@ -67,6 +68,89 @@ process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(ar
     expect(argv).toContain("--print");
     expect(argv).toContain("stream-json");
     expect(argv).toContain("--afk");
+  });
+
+  it("drops non-Kimi inherited extraArgs and their values", async () => {
+    const script = makeScript(
+      "filter-foreign-argv.js",
+      `
+const argv = process.argv.slice(2);
+process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(argv)}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "sid-123", [
+      "--permission-mode",
+      "bypassPermissions",
+      "--model",
+      "kimi-k2",
+    ]);
+    const argv = JSON.parse(res.text) as string[];
+    expect(argv).not.toContain("--permission-mode");
+    expect(argv).not.toContain("bypassPermissions");
+    expect(argv).toContain("--model");
+    expect(argv[argv.indexOf("--model") + 1]).toBe("kimi-k2");
+  });
+
+  it("preserves Kimi value flags with negative numeric values", async () => {
+    const script = makeScript(
+      "negative-value-argv.js",
+      `
+const argv = process.argv.slice(2);
+process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(argv)}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "sid-123", [
+      "--max-ralph-iterations",
+      "-1",
+      "--max-steps-per-turn=3",
+    ]);
+    const argv = JSON.parse(res.text) as string[];
+    expect(argv).toContain("--max-ralph-iterations");
+    expect(argv[argv.indexOf("--max-ralph-iterations") + 1]).toBe("-1");
+    expect(argv).toContain("--max-steps-per-turn=3");
+  });
+
+  it("drops incomplete Kimi value flags instead of passing invalid argv", async () => {
+    const script = makeScript(
+      "incomplete-value-argv.js",
+      `
+const argv = process.argv.slice(2);
+process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(argv)}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "sid-123", ["--model", "--plan"]);
+    const argv = JSON.parse(res.text) as string[];
+    expect(argv).not.toContain("--model");
+    expect(argv).toContain("--plan");
+  });
+
+  it("does not let extraArgs override adapter-owned stream/session/prompt flags", async () => {
+    const script = makeScript(
+      "filter-owned-argv.js",
+      `
+const argv = process.argv.slice(2);
+process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(argv)}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "real-session", [
+      "--output-format",
+      "text",
+      "--session",
+      "evil-session",
+      "--prompt",
+      "evil prompt",
+      "--plan",
+    ]);
+    const argv = JSON.parse(res.text) as string[];
+    expect(argv.filter((a) => a === "--output-format")).toHaveLength(1);
+    expect(argv[argv.indexOf("--output-format") + 1]).toBe("stream-json");
+    expect(argv.filter((a) => a === "--session")).toHaveLength(1);
+    expect(argv[argv.indexOf("--session") + 1]).toBe("real-session");
+    expect(argv.filter((a) => a === "--prompt")).toHaveLength(1);
+    expect(argv[argv.indexOf("--prompt") + 1]).toBe("hi");
+    expect(argv).toContain("--plan");
+    expect(argv).not.toContain("evil-session");
+    expect(argv).not.toContain("evil prompt");
   });
 
   it("rejects session ids that could be parsed as flags", async () => {

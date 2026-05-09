@@ -22,6 +22,113 @@ function invalidKimiSessionIdError(): string {
   return "kimi-cli: invalid sessionId (expected non-control text not starting with '-')";
 }
 
+const KIMI_EXTRA_FLAGS_WITH_VALUE = new Set([
+  "--add-dir",
+  "--agent",
+  "--agent-file",
+  "--config",
+  "--config-file",
+  "--max-ralph-iterations",
+  "--max-retries-per-step",
+  "--max-steps-per-turn",
+  "--mcp-config",
+  "--mcp-config-file",
+  "--model",
+  "--skills-dir",
+  "-m",
+]);
+
+const KIMI_EXTRA_BOOLEAN_FLAGS = new Set([
+  "--afk",
+  "--auto-approve",
+  "--debug",
+  "--no-thinking",
+  "--plan",
+  "--thinking",
+  "--verbose",
+  "--yes",
+  "--yolo",
+  "-y",
+]);
+
+// Flags owned by the adapter because BotCord depends on Kimi's non-interactive
+// stream-json contract, cwd isolation, prompt placement, and session routing.
+const KIMI_ADAPTER_OWNED_FLAGS = new Set([
+  "--acp",
+  "--command",
+  "--continue",
+  "--final-message-only",
+  "--help",
+  "--input-format",
+  "--output-format",
+  "--print",
+  "--prompt",
+  "--quiet",
+  "--resume",
+  "--session",
+  "--version",
+  "--wire",
+  "--work-dir",
+  "-C",
+  "-S",
+  "-V",
+  "-c",
+  "-h",
+  "-p",
+  "-r",
+  "-w",
+]);
+
+function flagName(arg: string): string {
+  if (!arg.startsWith("-")) return arg;
+  const eq = arg.indexOf("=");
+  return eq === -1 ? arg : arg.slice(0, eq);
+}
+
+function nextValue(args: string[], index: number): string | undefined {
+  const next = args[index + 1];
+  if (typeof next !== "string") return undefined;
+  if (!next.startsWith("-")) return next;
+  return /^-\d/.test(next) ? next : undefined;
+}
+
+function sanitizeKimiExtraArgs(extraArgs: string[] | undefined): string[] {
+  if (!extraArgs?.length) return [];
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i += 1) {
+    const arg = extraArgs[i];
+    const name = flagName(arg);
+
+    if (KIMI_ADAPTER_OWNED_FLAGS.has(name)) {
+      if (!arg.includes("=") && nextValue(extraArgs, i) !== undefined) i += 1;
+      continue;
+    }
+
+    if (KIMI_EXTRA_FLAGS_WITH_VALUE.has(name)) {
+      if (arg.includes("=")) {
+        out.push(arg);
+        continue;
+      }
+      const value = nextValue(extraArgs, i);
+      if (value !== undefined) {
+        out.push(arg, value);
+        i += 1;
+      }
+      continue;
+    }
+
+    if (KIMI_EXTRA_BOOLEAN_FLAGS.has(name)) {
+      out.push(arg);
+      continue;
+    }
+
+    if (arg.startsWith("-") && !arg.includes("=") && nextValue(extraArgs, i) !== undefined) {
+      i += 1;
+    }
+  }
+  return out;
+}
+
 /** Resolve the Kimi CLI executable on PATH. */
 export function resolveKimiCommand(deps: ProbeDeps = {}): string | null {
   return resolveCommandOnPath("kimi", deps);
@@ -41,7 +148,7 @@ export function probeKimi(deps: ProbeDeps = {}): RuntimeProbeResult {
 /**
  * Kimi CLI adapter — spawns:
  *
- *   kimi --work-dir <cwd> --print --output-format stream-json --session <sid> --prompt <text>
+ *   kimi --work-dir <cwd> --print --output-format stream-json --session <sid> --afk --prompt <text>
  *
  * `--session <sid>` resumes an existing session or creates a new session with
  * that id, so the adapter generates a UUID on first turn and persists it for
@@ -93,7 +200,7 @@ export class KimiAdapter extends NdjsonStreamAdapter {
       sessionId,
       "--afk",
     ];
-    if (opts.extraArgs?.length) args.push(...opts.extraArgs);
+    args.push(...sanitizeKimiExtraArgs(opts.extraArgs));
     args.push("--prompt", promptWithSystemContext(opts.text, opts.systemContext));
     return args;
   }
