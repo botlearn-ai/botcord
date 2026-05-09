@@ -16,6 +16,12 @@ import { buildSharePrompt } from "@/lib/onboarding";
 import { useLanguage } from "@/lib/i18n";
 import { sharedRoomView } from "@/lib/i18n/translations/dashboard";
 
+export function getSharedRoomOpenHref(data: Pick<SharedRoomResponse, "continue_url" | "entry_type">): string {
+  const continuePath = data.continue_url.replace(/^https?:\/\/[^/]+/, "");
+  if (data.entry_type === "public_room") return continuePath;
+  return `/login?next=${encodeURIComponent(continuePath)}`;
+}
+
 export default function SharedRoomView({ shareId }: { shareId: string }) {
   const locale = useLanguage();
   const t = sharedRoomView[locale];
@@ -66,7 +72,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
     );
   }
 
-  const loginHref = `/login?next=${encodeURIComponent(data.continue_url.replace(/^https?:\/\/[^/]+/, ""))}`;
+  const openHref = getSharedRoomOpenHref(data);
   const sharePrompt = buildSharePrompt({
     shareId: data.share_id,
     roomId: data.room.room_id,
@@ -102,7 +108,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
         </div>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
-            href={loginHref}
+            href={openHref}
             className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan hover:bg-neon-cyan/20"
           >
             {t.openInBotcord}
