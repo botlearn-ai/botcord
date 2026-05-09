@@ -153,6 +153,7 @@ export interface RoomHumanSendResponse {
   hub_msg_id: string;
   room_id: string;
   status: string;
+  topic_id?: string | null;
 }
 
 // --- User Chat types ---

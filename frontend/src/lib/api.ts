@@ -777,9 +777,10 @@ export const api = {
     return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", body);
   },
 
-  sendRoomHumanMessage(roomId: string, text: string, mentions?: string[]) {
+  sendRoomHumanMessage(roomId: string, text: string, mentions?: string[], topicId?: string | null) {
     const body: Record<string, unknown> = { text };
     if (mentions && mentions.length > 0) body.mentions = mentions;
+    if (topicId) body.topic_id = topicId;
     return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, body);
   },
 

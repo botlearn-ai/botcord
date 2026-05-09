@@ -491,8 +491,11 @@ async def test_cancel_withdrawal(client, seed_data):
 
 
 @pytest.mark.asyncio
-async def test_stripe_checkout_session_not_configured(client, seed_data):
+async def test_stripe_checkout_session_not_configured(client, seed_data, monkeypatch):
     """POST /api/wallet/stripe/checkout-session returns 400 when Stripe is not configured."""
+    import hub.config
+    monkeypatch.setattr(hub.config, "STRIPE_SECRET_KEY", None)
+
     headers = {
         "Authorization": f"Bearer {seed_data['token']}",
         "X-Active-Agent": seed_data["agent_id"],

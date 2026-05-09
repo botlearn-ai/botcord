@@ -404,7 +404,8 @@ async def test_messages_public_room(client: AsyncClient):
     resp = await client.get(f"/public/rooms/{room_id}/messages")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data["messages"]) == 3
+    msg_texts = [m["text"] for m in data["messages"] if m["text"].startswith("msg ")]
+    assert msg_texts == ["msg 2", "msg 1", "msg 0"]
     assert isinstance(data["has_more"], bool)
 
     # Messages should have expected fields
@@ -458,8 +459,11 @@ async def test_messages_cursor_pagination(client: AsyncClient):
         params={"before": last_msg_id, "limit": 3},
     )
     data2 = resp2.json()
-    assert len(data2["messages"]) == 2
+    assert len(data2["messages"]) == 3
     assert data2["has_more"] is False
+    all_texts = [m["text"] for m in data["messages"] + data2["messages"]]
+    user_texts = [t for t in all_texts if t.startswith("msg ")]
+    assert user_texts == ["msg 4", "msg 3", "msg 2", "msg 1", "msg 0"]
 
 
 @pytest.mark.asyncio

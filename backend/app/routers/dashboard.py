@@ -2417,6 +2417,7 @@ class HumanRoomSendBody(BaseModel):
     text: str = Field(..., min_length=1, max_length=8000)
     mentions: list[str] | None = None
     topic: str | None = None
+    topic_id: str | None = None
 
 
 @router.post("/rooms/{room_id}/send", status_code=202)
@@ -2500,6 +2501,23 @@ async def human_room_send(
     # _can_send (step 6)
     if not _room_can_send(room, active_member):
         raise HTTPException(status_code=403, detail="Sender cannot send in this room")
+
+    topic_id: str | None = None
+    topic_title: str | None = None
+    if body.topic_id:
+        topic_result = await db.execute(
+            select(Topic).where(
+                Topic.room_id == room_id,
+                Topic.topic_id == body.topic_id,
+            )
+        )
+        topic_row = topic_result.scalar_one_or_none()
+        if topic_row is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        topic_id = topic_row.topic_id
+        topic_title = topic_row.title
+        topic_row.message_count = (topic_row.message_count or 0) + 1
+        topic_row.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
     # Slow mode + duplicate content (step 7) keyed by (room_id, sender_id)
     payload_for_checks = {"text": body.text}
@@ -2596,6 +2614,7 @@ async def human_room_send(
         "to": room_id,
         "type": "message",
         "reply_to": None,
+        "topic": topic_title,
         "ttl_sec": 3600,
         "payload": payload,
         "payload_hash": "",
@@ -2618,6 +2637,8 @@ async def human_room_send(
             sender_id=sender_id,
             receiver_id=receiver_id,
             room_id=room_id,
+            topic=topic_title,
+            topic_id=topic_id,
             state=MessageState.queued,
             envelope_json=envelope_json,
             ttl_sec=3600,
@@ -2660,6 +2681,7 @@ async def human_room_send(
                 sender_id=sender_id,
                 room_id=room_id,
                 hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
+                topic_id=topic_id,
                 payload=payload,
                 sender_name=user_display_name,
                 source_type="dashboard_human_room",
@@ -2677,6 +2699,7 @@ async def human_room_send(
         "hub_msg_id": first_hub_msg_id,
         "room_id": room_id,
         "status": "queued",
+        "topic_id": topic_id,
     }
 
 

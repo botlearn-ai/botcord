@@ -131,7 +131,7 @@ export default function TopicDrawer() {
         </div>
 
         <div className="border-t border-glass-border/60 px-3 py-3">
-          <RoomHumanComposer roomId={openedRoomId} />
+          <RoomHumanComposer roomId={openedRoomId} topicId={openedTopicId} />
         </div>
       </aside>
     </>

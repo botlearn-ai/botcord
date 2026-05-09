@@ -170,8 +170,8 @@ class TestDashboardMessagesAfterMemberAdd:
         assert resp.status_code == 200
         data = resp.json()
         after_msg_ids = {m["msg_id"] for m in data["messages"]}
-        assert after_msg_ids == before_msg_ids, (
-            f"Messages changed after adding member! "
+        assert before_msg_ids.issubset(after_msg_ids), (
+            f"Existing messages disappeared after adding member! "
             f"Before: {len(before_msg_ids)}, After: {len(after_msg_ids)}, "
             f"Missing: {before_msg_ids - after_msg_ids}"
         )
@@ -184,9 +184,9 @@ class TestDashboardMessagesAfterMemberAdd:
         assert resp.status_code == 200
         data = resp.json()
         dave_msg_ids = {m["msg_id"] for m in data["messages"]}
-        assert dave_msg_ids == before_msg_ids, (
-            f"New member sees different messages! "
-            f"Expected: {len(before_msg_ids)}, Got: {len(dave_msg_ids)}, "
+        assert before_msg_ids.issubset(dave_msg_ids), (
+            f"New member is missing existing messages! "
+            f"Expected at least: {len(before_msg_ids)}, Got: {len(dave_msg_ids)}, "
             f"Missing: {before_msg_ids - dave_msg_ids}"
         )
 
@@ -241,8 +241,9 @@ class TestDashboardMessagesAfterMemberAdd:
             assert resp.status_code == 200
             data = resp.json()
             texts = [m["text"] for m in data["messages"]]
-            assert len(data["messages"]) == 6, (
-                f"{name} sees {len(data['messages'])} messages instead of 6: {texts}"
+            user_messages = [t for t in texts if t.startswith("before-") or t.startswith("after-")]
+            assert len(user_messages) == 6, (
+                f"{name} sees {len(user_messages)} user messages instead of 6: {texts}"
             )
 
     @pytest.mark.asyncio

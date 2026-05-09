@@ -12,11 +12,12 @@ import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 
 interface RoomHumanComposerProps {
   roomId: string;
+  topicId?: string | null;
 }
 
 const ROOM_MENTION_SOURCES = ["roomMembers"] as const;
 
-export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
+export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanComposerProps) {
   const locale = useLanguage();
   const { user, activeAgentId, ownedAgents, human, viewMode } = useDashboardSessionStore(useShallow((s) => ({
     user: s.user,
@@ -101,7 +102,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
       payload: { text },
       room_id: roomId,
       topic: null,
-      topic_id: null,
+      topic_id: topicId,
       goal: null,
       state: "queued",
       state_counts: null,
@@ -118,7 +119,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     setError(null);
 
     try {
-      const result = await api.sendRoomHumanMessage(roomId, text, mentions);
+      const result = await api.sendRoomHumanMessage(roomId, text, mentions, topicId);
       patchRoom(roomId, {
         last_message_preview: text,
         last_message_at: now,
@@ -137,7 +138,7 @@ export default function RoomHumanComposer({ roomId }: RoomHumanComposerProps) {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send");
     }
-  }, [senderId, displayName, user?.id, roomId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
+  }, [senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
 
   if (sendDenied) {
     return (

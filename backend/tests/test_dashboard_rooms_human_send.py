@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from unittest.mock import AsyncMock
 
-from hub.enums import ParticipantType
+from hub.enums import ParticipantType, TopicStatus
 from hub.models import (
     Agent,
     Base,
@@ -25,6 +25,7 @@ from hub.models import (
     RoomMember,
     RoomRole,
     RoomVisibility,
+    Topic,
     User,
     UserRole,
 )
@@ -242,6 +243,77 @@ async def test_happy_path_fanout(client: AsyncClient, seed: dict, db_session: As
         assert rec.source_session_kind == "room_human"
         assert rec.source_user_id == seed["uid1"]
         assert rec.sender_id == "ag_user1___"
+
+
+@pytest.mark.asyncio
+async def test_topic_reply_keeps_message_in_topic(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    topic = Topic(
+        topic_id="tp_replytopic",
+        room_id="rm_humanroom",
+        title="Support thread",
+        status=TopicStatus.open,
+        creator_id=seed["agent1"],
+        message_count=1,
+    )
+    db_session.add(topic)
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "thread reply", "topic_id": "tp_replytopic"},
+    )
+    assert r.status_code == 202, r.text
+    assert r.json()["topic_id"] == "tp_replytopic"
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
+    )).scalars().all()
+    assert rows
+    for rec in rows:
+        assert rec.topic_id == "tp_replytopic"
+        assert rec.topic == "Support thread"
+        env = json.loads(rec.envelope_json)
+        assert env["topic"] == "Support thread"
+
+    refreshed = (await db_session.execute(
+        select(Topic).where(Topic.topic_id == "tp_replytopic")
+    )).scalar_one()
+    assert refreshed.message_count == 2
+
+
+@pytest.mark.asyncio
+async def test_topic_reply_rejects_topic_from_other_room(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    other_room = Room(
+        room_id="rm_other_topic",
+        name="Other",
+        description="",
+        owner_id=seed["agent1"],
+        visibility=RoomVisibility.public,
+        join_policy=RoomJoinPolicy.open,
+        default_send=True,
+    )
+    db_session.add(other_room)
+    db_session.add(Topic(
+        topic_id="tp_otherroom",
+        room_id="rm_other_topic",
+        title="Other thread",
+        status=TopicStatus.open,
+        creator_id=seed["agent1"],
+        message_count=1,
+    ))
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "wrong thread", "topic_id": "tp_otherroom"},
+    )
+    assert r.status_code == 404
 
 
 @pytest.mark.asyncio
