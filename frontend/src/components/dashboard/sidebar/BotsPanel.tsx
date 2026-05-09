@@ -17,16 +17,19 @@ import type { UserAgent } from "@/lib/types";
 interface AgentRowProps {
   bot: UserAgent;
   isSelected: boolean;
+  locale: "en" | "zh";
   onSelect: (agentId: string) => void;
   onOpenSettings: (bot: UserAgent) => void;
 }
 
-function AgentRow({ bot, isSelected, onSelect, onOpenSettings }: AgentRowProps) {
+function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRowProps) {
+  const settingsLabel = locale === "zh" ? "设置" : "Settings";
+
   return (
     <div className="group relative">
       <button
         onClick={() => onSelect(bot.agent_id)}
-        className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-8 text-left transition-colors ${
+        className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-[82px] text-left transition-colors ${
           isSelected
             ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
             : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
@@ -49,11 +52,17 @@ function AgentRow({ bot, isSelected, onSelect, onOpenSettings }: AgentRowProps) 
       </button>
       <button
         type="button"
-        title="Agent 设置"
+        title={settingsLabel}
+        aria-label={`${bot.display_name || bot.agent_id} ${settingsLabel}`}
         onClick={(e) => { e.stopPropagation(); onOpenSettings(bot); }}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded opacity-0 text-text-secondary/40 transition-all group-hover:opacity-100 hover:bg-glass-bg hover:text-text-secondary"
+        className={`absolute right-1.5 top-1/2 inline-flex h-7 -translate-y-1/2 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors ${
+          isSelected
+            ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20"
+            : "border-glass-border/70 bg-deep-black/60 text-text-secondary hover:border-neon-cyan/30 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+        }`}
       >
         <Settings2 className="h-3 w-3" />
+        <span>{settingsLabel}</span>
       </button>
     </div>
   );
@@ -179,6 +188,7 @@ export default function BotsPanel({
                     key={bot.agent_id}
                     bot={bot}
                     isSelected={selectedBotAgentId === bot.agent_id}
+                    locale={locale}
                     onSelect={handleSelectAgent}
                     onOpenSettings={setAgentSettingsBot}
                   />
@@ -208,6 +218,7 @@ export default function BotsPanel({
                 key={bot.agent_id}
                 bot={bot}
                 isSelected={selectedBotAgentId === bot.agent_id}
+                locale={locale}
                 onSelect={handleSelectAgent}
                 onOpenSettings={setAgentSettingsBot}
               />
