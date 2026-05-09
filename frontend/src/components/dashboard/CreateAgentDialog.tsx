@@ -450,9 +450,14 @@ export default function CreateAgentDialog({
             )}
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                {t.nameLabel}
-              </label>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                  {t.nameLabel}
+                </label>
+                <span className="text-[11px] font-medium text-neon-cyan">
+                  {t.nameRequired}
+                </span>
+              </div>
               <input
                 type="text"
                 value={name}
@@ -467,6 +472,9 @@ export default function CreateAgentDialog({
                 className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
                 maxLength={64}
               />
+              <p className="mt-1.5 text-xs leading-5 text-text-secondary">
+                {t.nameHint}
+              </p>
             </div>
 
             <div>
