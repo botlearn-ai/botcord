@@ -112,11 +112,13 @@ function formatMessageTimestamp(isoTime: string): string {
 function MentionChip({
   id,
   label,
+  prefix = "@",
   onSelectAgent,
   onSelectHuman,
 }: {
   id: string;
   label: string;
+  prefix?: string;
   onSelectAgent: (agentId: string) => void;
   onSelectHuman: (humanId: string, displayName: string) => void;
 }) {
@@ -205,7 +207,7 @@ function MentionChip({
             <User className="h-2.5 w-2.5" />
           ) : null}
         </span>
-        <span className="truncate">@{displayName}</span>
+        <span className="truncate">{prefix}{displayName}</span>
       </button>
       {tooltipPosition && typeof document !== "undefined" && createPortal(
         <span
@@ -230,6 +232,12 @@ function MentionChip({
   );
 }
 
+function getSystemJoinParticipant(payload: Record<string, unknown>): { id: string; name: string } | null {
+  if (payload.subtype !== "room_member_joined") return null;
+  if (typeof payload.participant_id !== "string" || typeof payload.participant_name !== "string") return null;
+  return { id: payload.participant_id, name: payload.participant_name };
+}
+
 export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId, mentionCandidates }: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -245,6 +253,29 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const senderDisplayName = message.display_sender_name || message.sender_name || message.sender_id;
 
   if (message.type === "system") {
+    const joinParticipant = getSystemJoinParticipant(message.payload);
+    if (displayText && joinParticipant) {
+      const nameIndex = displayText.indexOf(joinParticipant.name);
+      if (nameIndex >= 0) {
+        const before = displayText.slice(0, nameIndex);
+        const after = displayText.slice(nameIndex + joinParticipant.name.length);
+
+        return (
+          <SystemMessageNotice timestamp={timestampLabel}>
+            {before}
+            <MentionChip
+              id={joinParticipant.id}
+              label={joinParticipant.name}
+              prefix=""
+              onSelectAgent={selectAgent}
+              onSelectHuman={requestOpenHuman}
+            />
+            {after}
+          </SystemMessageNotice>
+        );
+      }
+    }
+
     return <SystemMessageNotice text={displayText || "System update"} timestamp={timestampLabel} />;
   }
 
