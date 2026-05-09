@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Bot, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2, User } from "lucide-react";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -66,6 +67,7 @@ function TypewriterText({
 // ---------------------------------------------------------------------------
 
 export default function UserChatPane({ agentId }: { agentId?: string | null }) {
+  const locale = useLanguage();
   const { activeAgentId, activeIdentity } = useDashboardSessionStore();
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
@@ -90,6 +92,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [chatRoomName, setChatRoomName] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
+  const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const animatedRef = useRef<Set<string>>(new Set());
@@ -318,10 +321,12 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
             <button
               type="button"
               onClick={() => setAgentSettingsOpen(true)}
-              title="Agent 设置"
-              className="rounded-md border border-transparent p-1 text-text-secondary transition-colors hover:border-glass-border hover:text-neon-cyan"
+              title={settingsLabel}
+              aria-label={settingsLabel}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               <Settings2 className="h-3.5 w-3.5" />
+              <span>{settingsLabel}</span>
             </button>
           )}
         </div>
