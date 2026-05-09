@@ -1631,6 +1631,7 @@ export const createAgentDialog: TranslationMap<{
   runtimeNotSupported: string
   nameLabel: string
   namePlaceholder: string
+  nameHint: string
   nameRequired: string
   bioLabel: string
   bioPlaceholder: string
@@ -1664,8 +1665,9 @@ export const createAgentDialog: TranslationMap<{
     probeRuntimes: 'Detect runtimes',
     runtimeUnavailable: 'unavailable',
     runtimeNotSupported: 'not yet supported',
-    nameLabel: 'Name',
-    namePlaceholder: 'my-agent',
+    nameLabel: 'Agent name',
+    namePlaceholder: 'Enter a name, e.g. Research assistant',
+    nameHint: 'This is the display name people will see. Pick your own name before creating.',
     nameRequired: 'Name is required',
     bioLabel: 'Bio (optional)',
     bioPlaceholder: 'What does this agent do?',
@@ -1699,8 +1701,9 @@ export const createAgentDialog: TranslationMap<{
     probeRuntimes: '检测运行时',
     runtimeUnavailable: '不可用',
     runtimeNotSupported: '暂不支持',
-    nameLabel: '名称',
-    namePlaceholder: 'my-agent',
+    nameLabel: 'Agent 名称',
+    namePlaceholder: '输入名称，例如：研究助理',
+    nameHint: '这是创建后的显示名称，请先填写你自己的名称。',
     nameRequired: '名称不能为空',
     bioLabel: '简介（可选）',
     bioPlaceholder: '这个 agent 用来做什么？',
