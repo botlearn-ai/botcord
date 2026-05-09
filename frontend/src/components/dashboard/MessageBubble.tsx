@@ -198,7 +198,13 @@ function MentionChip({
         disabled={!canOpen}
         className="inline-flex max-w-full items-center gap-1 rounded border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-0.5 text-[0.85em] font-medium leading-none text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/20 disabled:cursor-default"
       >
-        {isAgent && <PresenceDot agentId={id} size="xs" showOffline={false} />}
+        <span className="inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+          {isAgent ? (
+            <PresenceDot agentId={id} size="xs" showOffline={false} />
+          ) : isHuman ? (
+            <User className="h-2.5 w-2.5" />
+          ) : null}
+        </span>
         <span className="truncate">@{displayName}</span>
       </button>
       {tooltipPosition && typeof document !== "undefined" && createPortal(
