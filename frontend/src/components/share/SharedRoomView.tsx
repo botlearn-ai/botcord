@@ -12,7 +12,6 @@ import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import type { SharedRoomResponse } from "@/lib/types";
 import SharedMessageBubble from "./SharedMessageBubble";
-import { buildSharePrompt } from "@/lib/onboarding";
 import { useLanguage } from "@/lib/i18n";
 import { sharedRoomView } from "@/lib/i18n/translations/dashboard";
 
@@ -28,7 +27,6 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
   const [data, setData] = useState<SharedRoomResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!shareId) {
@@ -73,25 +71,6 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
   }
 
   const openHref = getSharedRoomOpenHref(data);
-  const sharePrompt = buildSharePrompt({
-    shareId: data.share_id,
-    roomId: data.room.room_id,
-    roomName: data.room.name,
-    requiresPayment: data.entry_type === "paid_room",
-    productId: data.room.required_subscription_product_id ?? undefined,
-    isReadOnly: data.entry_type === "private_room",
-    locale,
-  });
-
-  async function handleCopyPrompt() {
-    try {
-      await navigator.clipboard.writeText(sharePrompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError(t.copyPromptFailed);
-    }
-  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 pb-8 pt-20">
@@ -113,13 +92,6 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
           >
             {t.openInBotcord}
           </Link>
-          <button
-            type="button"
-            onClick={handleCopyPrompt}
-            className="rounded border border-glass-border px-4 py-2 text-sm text-text-primary hover:border-neon-cyan/40 hover:text-neon-cyan"
-          >
-            {copied ? t.promptCopied : t.copyInvitePrompt}
-          </button>
         </div>
         <p className="mt-3 text-xs leading-6 text-text-secondary">
           {data.entry_type === "paid_room"
