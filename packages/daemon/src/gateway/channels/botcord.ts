@@ -907,12 +907,25 @@ function normalizeBlockForHub(
   if (kind === "assistant_text") {
     // Claude Code: {type:"assistant", message:{content:[{type:"text",text}]}}
     // Codex:       {type:"item.completed", item:{type:"agent_message", text}}
+    // DeepSeek:    {event:"message.delta", payload:{content}} or
+    //              {event:"item.delta", payload:{payload:{kind:"agent_message", delta}}}
     let text = "";
     const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
     for (const c of contents) {
       if (c?.type === "text" && typeof c.text === "string") text += c.text;
     }
     if (!text && typeof raw?.item?.text === "string") text = raw.item.text;
+    if (!text && raw?.event === "message.delta" && typeof raw?.payload?.content === "string") {
+      text = raw.payload.content;
+    }
+    if (
+      !text &&
+      raw?.event === "item.delta" &&
+      raw?.payload?.payload?.kind === "agent_message" &&
+      typeof raw?.payload?.payload?.delta === "string"
+    ) {
+      text = raw.payload.payload.delta;
+    }
     return { kind: "assistant", seq, payload: { text } };
   }
 

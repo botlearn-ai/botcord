@@ -618,6 +618,92 @@ describe("createBotCordChannel — streamBlock()", () => {
     }
   });
 
+  it("normalizes DeepSeek message.delta assistant text", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await channel.streamBlock!({
+        traceId: "m_trace",
+        accountId: "ag_self",
+        conversationId: "rm_oc_1",
+        block: {
+          kind: "assistant_text",
+          seq: 4,
+          raw: {
+            event: "message.delta",
+            payload: { thread_id: "thr_1", turn_id: "turn_1", content: "hello " },
+          },
+        },
+        log: silentLog,
+      });
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.block).toEqual({
+        kind: "assistant",
+        seq: 4,
+        payload: { text: "hello " },
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("normalizes DeepSeek item.delta assistant text", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await channel.streamBlock!({
+        traceId: "m_trace",
+        accountId: "ag_self",
+        conversationId: "rm_oc_1",
+        block: {
+          kind: "assistant_text",
+          seq: 5,
+          raw: {
+            event: "item.delta",
+            payload: {
+              thread_id: "thr_1",
+              turn_id: "turn_1",
+              payload: { kind: "agent_message", delta: "deepseek" },
+            },
+          },
+        },
+        log: silentLog,
+      });
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.block).toEqual({
+        kind: "assistant",
+        seq: 5,
+        payload: { text: "deepseek" },
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("normalizes a thinking block with phase/label/source payload", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const realFetch = globalThis.fetch;
