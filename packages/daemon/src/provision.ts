@@ -1362,9 +1362,9 @@ export async function adoptDiscoveredOpenclawAgents(ctx: {
 function localOpenclawAcpDisabled(rawUrl: string): boolean {
   if (!isLoopbackUrl(rawUrl)) return false;
   try {
-    const file = path.join(homedir(), ".openclaw", "openclaw.json");
-    if (!existsSync(file)) return false;
-    const cfg = JSON.parse(readFileSync(file, "utf8")) as any;
+    const source = pickLocalOpenclawConfig(rawUrl);
+    if (!source) return false;
+    const cfg = JSON.parse(readFileSync(source.file, "utf8")) as any;
     return cfg?.acp?.enabled === false;
   } catch {
     return false;
@@ -1838,12 +1838,13 @@ export async function probeOpenclawAgents(
     token: prepared.resolvedToken,
     timeoutMs: opts.timeoutMs ?? 3000,
   });
-  // For loopback gateways the agent roster lives in `~/.openclaw/openclaw.json`
+  // For loopback gateways the agent roster lives in local OpenClaw config
+  // (`~/.openclaw/openclaw.json`, or QClaw's `~/.qclaw/openclaw.json`)
   // and is the source of truth — listing it over the wire would require a
   // paired device identity (operator.read scope). When the WS probe is the
   // default (i.e. no test injection) we enrich the result from disk.
   if (result.ok && !result.agents && !opts.probe && isLoopbackUrl(profile.url)) {
-    const local = readLocalOpenclawAgents();
+    const local = readLocalOpenclawAgents(profile.url);
     if (local && local.length > 0) result.agents = local;
   }
   return result;
@@ -1858,22 +1859,23 @@ function isLoopbackUrl(raw: string): boolean {
   }
 }
 
-function readLocalOpenclawAgents(): Array<{
+function readLocalOpenclawAgents(rawUrl?: string): Array<{
   id: string;
   name?: string;
   workspace?: string;
   model?: { name?: string; provider?: string };
 }> | null {
   try {
-    const file = path.join(homedir(), ".openclaw", "openclaw.json");
-    if (!existsSync(file)) return readLocalOpenclawAgentDirs() ?? [{ id: "default" }];
+    const source = pickLocalOpenclawConfig(rawUrl);
+    if (!source) return readLocalOpenclawAgentDirs(path.join(homedir(), ".openclaw")) ?? [{ id: "default" }];
+    const { file, stateDir } = source;
     const cfg = JSON.parse(readFileSync(file, "utf8")) as any;
     const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
     const explicitDefaultId =
       typeof cfg?.agents?.defaults?.id === "string" && cfg.agents.defaults.id
         ? cfg.agents.defaults.id
         : null;
-    const dirAgents = readLocalOpenclawAgentDirs();
+    const dirAgents = readLocalOpenclawAgentDirs(stateDir);
     const defaultId = explicitDefaultId ?? (list.length === 0 && !dirAgents ? "default" : null);
     const seen = new Set<string>();
     const out: Array<{ id: string; name?: string; workspace?: string; model?: { name?: string; provider?: string } }> = [];
@@ -1906,18 +1908,50 @@ function readLocalOpenclawAgents(): Array<{
   }
 }
 
-function readLocalOpenclawAgentDirs(): Array<{
+function pickLocalOpenclawConfig(rawUrl?: string): { file: string; stateDir: string } | null {
+  const candidates = [
+    { file: path.join(homedir(), ".openclaw", "openclaw.json"), stateDir: path.join(homedir(), ".openclaw") },
+    { file: path.join(homedir(), ".qclaw", "openclaw.json"), stateDir: path.join(homedir(), ".qclaw") },
+  ];
+  const targetPort = urlPort(rawUrl);
+  let firstExisting: { file: string; stateDir: string } | null = null;
+  for (const candidate of candidates) {
+    if (!existsSync(candidate.file)) continue;
+    firstExisting ??= candidate;
+    if (!targetPort) continue;
+    try {
+      const cfg = JSON.parse(readFileSync(candidate.file, "utf8")) as any;
+      if (Number(cfg?.gateway?.port) === targetPort) return candidate;
+    } catch {
+      // Try the next local config.
+    }
+  }
+  return firstExisting;
+}
+
+function urlPort(rawUrl?: string): number | null {
+  if (!rawUrl) return null;
+  try {
+    const u = new URL(rawUrl);
+    const port = Number(u.port || (u.protocol === "wss:" ? 443 : 80));
+    return Number.isInteger(port) && port > 0 ? port : null;
+  } catch {
+    return null;
+  }
+}
+
+function readLocalOpenclawAgentDirs(stateDir: string): Array<{
   id: string;
   workspace?: string;
 }> | null {
   try {
-    const dir = path.join(homedir(), ".openclaw", "agents");
+    const dir = path.join(stateDir, "agents");
     if (!existsSync(dir)) return null;
     const agents = readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && entry.name.length > 0)
       .map((entry) => ({
         id: entry.name,
-        workspace: path.join(dir, entry.name),
+        workspace: resolveAgentDirWorkspace(dir, entry.name),
       }));
     if (agents.length === 0) return null;
     agents.sort((a, b) => {
@@ -1929,6 +1963,11 @@ function readLocalOpenclawAgentDirs(): Array<{
   } catch {
     return null;
   }
+}
+
+function resolveAgentDirWorkspace(agentsDir: string, agentId: string): string {
+  const nested = path.join(agentsDir, agentId, "agent");
+  return existsSync(nested) ? nested : path.join(agentsDir, agentId);
 }
 
 function resolveOpenclawIdentityName(

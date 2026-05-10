@@ -27,6 +27,7 @@ vi.mock("../config.js", async () => {
 const {
   addAgentToConfig,
   adoptDiscoveredOpenclawAgents,
+  probeOpenclawAgents,
   removeAgentFromConfig,
   reloadConfig,
   setRoute,
@@ -34,6 +35,7 @@ const {
 } = await import("../provision.js");
 const { CONTROL_FRAME_TYPES } = await import("@botcord/protocol-core");
 import type { DaemonConfig } from "../config.js";
+import type { WsEndpointProbeFn } from "../provision.js";
 import type {
   GatewayChannelConfig,
   GatewayRoute,
@@ -1139,7 +1141,7 @@ describe("adoptDiscoveredOpenclawAgents", () => {
         openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }],
       };
       const register = vi.fn();
-      const probe = vi.fn<Parameters<typeof adoptDiscoveredOpenclawAgents>[0]["probe"]>(
+      const probe = vi.fn<WsEndpointProbeFn>(
         async () => ({ ok: true, agents: [{ id: "main" }] }),
       );
 
@@ -1220,6 +1222,70 @@ describe("adoptDiscoveredOpenclawAgents", () => {
         "Danny",
         "OpenClaw agent swe adopted from gateway local.",
       );
+    });
+  });
+});
+
+describe("probeOpenclawAgents local profiles", () => {
+  it("enriches loopback QClaw gateways from ~/.qclaw/openclaw.json", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      const { WebSocketServer } = await import("ws");
+      const qclawDir = nodePath.join(tmp, ".qclaw");
+      fs.mkdirSync(qclawDir, { recursive: true });
+
+      const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+      await new Promise<void>((resolve) => wss.once("listening", resolve));
+      const address = wss.address();
+      if (typeof address === "string" || address === null) {
+        throw new Error("expected tcp websocket address");
+      }
+
+      fs.writeFileSync(
+        nodePath.join(qclawDir, "openclaw.json"),
+        JSON.stringify({
+          agents: {
+            defaults: {
+              workspace: nodePath.join(qclawDir, "workspace"),
+              model: { primary: "qclaw/modelroute" },
+            },
+            list: [{ id: "main", name: "QClaw" }],
+          },
+          gateway: {
+            port: address.port,
+            auth: { mode: "token", token: "qclaw-token" },
+          },
+        }),
+      );
+
+      wss.on("connection", (ws) => {
+        ws.send(JSON.stringify({ type: "event", event: "connect.challenge", payload: { nonce: "n" } }));
+        ws.on("message", (raw) => {
+          const msg = JSON.parse(raw.toString("utf8"));
+          if (msg.method === "connect") {
+            ws.send(
+              JSON.stringify({
+                type: "res",
+                id: msg.id,
+                ok: true,
+                payload: { type: "hello-ok", server: { version: "2026.4.21" } },
+              }),
+            );
+          }
+        });
+      });
+
+      try {
+        const res = await probeOpenclawAgents({
+          url: `ws://127.0.0.1:${address.port}`,
+          token: "qclaw-token",
+        });
+
+        expect(res.ok).toBe(true);
+        expect(res.version).toBe("2026.4.21");
+        expect(res.agents).toEqual([{ id: "main", name: "QClaw" }]);
+      } finally {
+        await new Promise<void>((resolve) => wss.close(() => resolve()));
+      }
     });
   });
 });
