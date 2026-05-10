@@ -29,7 +29,7 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
     <div className="group relative">
       <button
         onClick={() => onSelect(bot.agent_id)}
-        className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-[82px] text-left transition-colors ${
+        className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-11 text-left transition-colors ${
           isSelected
             ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
             : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
@@ -55,14 +55,13 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
         title={settingsLabel}
         aria-label={`${bot.display_name || bot.agent_id} ${settingsLabel}`}
         onClick={(e) => { e.stopPropagation(); onOpenSettings(bot); }}
-        className={`absolute right-1.5 top-1/2 inline-flex h-7 -translate-y-1/2 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors ${
+        className={`absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border transition-colors ${
           isSelected
-            ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20"
-            : "border-glass-border/70 bg-deep-black/60 text-text-secondary hover:border-neon-cyan/30 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+            ? "border-neon-cyan/30 bg-deep-black/30 text-neon-cyan hover:bg-neon-cyan/10"
+            : "border-transparent text-text-secondary/60 hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
         }`}
       >
-        <Settings2 className="h-3 w-3" />
-        <span>{settingsLabel}</span>
+        <Settings2 className="h-3.5 w-3.5" />
       </button>
     </div>
   );
