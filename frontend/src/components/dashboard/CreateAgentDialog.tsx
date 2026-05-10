@@ -46,17 +46,63 @@ function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
 }
 
 const UNSUPPORTED_RUNTIME_IDS = new Set(["gemini"]);
+const OPENCLAW_RUNTIME_ID = "openclaw-acp";
+const QCLAW_RUNTIME_ID = "qclaw";
+
+type DaemonRuntimeEndpoint = NonNullable<DaemonRuntime["endpoints"]>[number];
+
+function isOpenclawFamilyRuntime(id: string | null): boolean {
+  return id === OPENCLAW_RUNTIME_ID || id === QCLAW_RUNTIME_ID;
+}
+
+function daemonRuntimeId(id: string): string {
+  return id === QCLAW_RUNTIME_ID ? OPENCLAW_RUNTIME_ID : id;
+}
+
+function isQclawEndpoint(endpoint: DaemonRuntimeEndpoint): boolean {
+  try {
+    const url = new URL(endpoint.url);
+    if (url.port === "28789") return true;
+  } catch {
+    // Fall through to name/profile heuristics.
+  }
+  if (endpoint.name.toLowerCase().includes("qclaw")) return true;
+  return (endpoint.agents ?? []).some((agent) => {
+    const label = `${agent.id} ${agent.name ?? ""}`.toLowerCase();
+    return label.includes("qclaw");
+  });
+}
 
 function applyRuntimeSupport(
   runtimes: DaemonRuntime[] | null | undefined,
   notSupportedLabel: string,
 ): DaemonRuntime[] {
   if (!runtimes) return [];
-  return runtimes.map((r) =>
-    UNSUPPORTED_RUNTIME_IDS.has(r.id)
-      ? { ...r, available: false, error: notSupportedLabel }
-      : r,
-  );
+  const out: DaemonRuntime[] = [];
+  for (const runtime of runtimes) {
+    const r = UNSUPPORTED_RUNTIME_IDS.has(runtime.id)
+      ? { ...runtime, available: false, error: notSupportedLabel }
+      : runtime;
+    if (r.id !== OPENCLAW_RUNTIME_ID || !r.endpoints?.length) {
+      out.push(r);
+      continue;
+    }
+
+    const qclawEndpoints = r.endpoints.filter(isQclawEndpoint);
+    const openclawEndpoints = r.endpoints.filter((endpoint) => !isQclawEndpoint(endpoint));
+    if (qclawEndpoints.length > 0) {
+      out.push({
+        ...r,
+        id: QCLAW_RUNTIME_ID,
+        endpoints: qclawEndpoints,
+      });
+    }
+    out.push({
+      ...r,
+      endpoints: openclawEndpoints,
+    });
+  }
+  return out;
 }
 
 export default function CreateAgentDialog({
@@ -132,7 +178,7 @@ export default function CreateAgentDialog({
     setSelectedRuntimeId(firstAvailable?.id ?? null);
   }, [selectedDaemon, selectedRuntimeId]);
 
-  // Reset OpenClaw selections when leaving the openclaw-acp runtime.
+  // Reset OpenClaw selections when leaving the OpenClaw/QClaw runtime family.
   const selectedRuntime = useMemo(
     () => selectedDaemon?.runtimes?.find((r) => r.id === selectedRuntimeId) ?? null,
     [selectedDaemon, selectedRuntimeId],
@@ -151,7 +197,7 @@ export default function CreateAgentDialog({
     [selectedOpenclawEndpoint],
   );
   useEffect(() => {
-    if (selectedRuntimeId !== "openclaw-acp") {
+    if (!isOpenclawFamilyRuntime(selectedRuntimeId)) {
       setSelectedGateway(null);
       setSelectedOpenclawAgent(null);
       return;
@@ -163,7 +209,7 @@ export default function CreateAgentDialog({
   }, [selectedRuntime, selectedRuntimeId, selectedGateway]);
 
   useEffect(() => {
-    if (selectedRuntimeId !== "openclaw-acp") return;
+    if (!isOpenclawFamilyRuntime(selectedRuntimeId)) return;
     const agents = selectedOpenclawEndpoint?.agents ?? [];
     if (agents.length === 0) return;
     const stillSelectable =
@@ -222,10 +268,10 @@ export default function CreateAgentDialog({
     setAddingDevice(false);
   }, [addingDevice, onlineDaemons]);
 
-  // Auto-detect OpenClaw gateways once the user picks the openclaw-acp runtime
+  // Auto-detect OpenClaw gateways once the user picks the OpenClaw/QClaw runtime
   // but no reachable endpoint has been probed yet.
   useEffect(() => {
-    if (selectedRuntimeId !== "openclaw-acp") return;
+    if (!isOpenclawFamilyRuntime(selectedRuntimeId)) return;
     if (!selectedDaemon) return;
     const reachable = (selectedRuntime?.endpoints ?? []).filter((e) => e.reachable);
     if (reachable.length > 0) return;
@@ -270,8 +316,8 @@ export default function CreateAgentDialog({
       const res = await provisionAgent(selectedDaemonId, {
         name: trimmedName,
         bio: bio.trim() || undefined,
-        runtime: selectedRuntimeId,
-        ...(selectedRuntimeId === "openclaw-acp" && selectedGateway
+        runtime: daemonRuntimeId(selectedRuntimeId),
+        ...(isOpenclawFamilyRuntime(selectedRuntimeId) && selectedGateway
           ? {
               openclawGateway: selectedGateway,
               ...(selectedOpenclawAgent ? { openclawAgent: selectedOpenclawAgent } : {}),
@@ -290,7 +336,7 @@ export default function CreateAgentDialog({
     }
   }
 
-  const needsOpenclawGateway = selectedRuntimeId === "openclaw-acp";
+  const needsOpenclawGateway = isOpenclawFamilyRuntime(selectedRuntimeId);
   const needsHermesProfile = selectedRuntimeId === "hermes-agent";
   const needsOpenclawAgent =
     needsOpenclawGateway && (selectedOpenclawEndpoint?.agents?.length ?? 0) > 0;
