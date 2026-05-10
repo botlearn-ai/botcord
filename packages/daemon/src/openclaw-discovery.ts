@@ -34,8 +34,8 @@ export interface MergeOpenclawGatewayResult {
   added: OpenclawGatewayProfile[];
 }
 
-const DEFAULT_SEARCH_PATHS = ["~/.openclaw/", "/etc/openclaw/"];
-const DEFAULT_PORTS = [18789, 16200];
+const DEFAULT_SEARCH_PATHS = ["~/.openclaw/", "~/.qclaw/", "/etc/openclaw/"];
+const DEFAULT_PORTS = [18789, 16200, 28789];
 const DEFAULT_TOKEN_FILE_PATHS = [
   "/run/openclaw/gateway-token",
   "/var/run/openclaw/gateway-token",
@@ -382,12 +382,43 @@ function discoverFromConfigDir(root: string): DiscoveredOpenclawGateway[] {
 
 function parseJsonConfig(raw: string): { url?: string; token?: string; tokenFile?: string } | null {
   const obj = JSON.parse(raw) as any;
+  const qclaw = pickQclawGatewayValues(obj);
+  if (qclaw) return qclaw;
   // Prefer OpenClaw's native shape: `gateway.port` + `gateway.auth.token`.
   // The legacy `acp.url` shape is also supported for explicit user-authored configs.
   const native = pickOpenclawGatewayValues(obj?.gateway);
   if (native) return native;
   const acp = obj?.acp ?? obj?.gateway?.acp ?? obj?.gateway ?? obj;
   return pickConfigValues(acp);
+}
+
+function pickQclawGatewayValues(
+  obj: any,
+): { url?: string; token?: string; tokenFile?: string } | null {
+  if (!obj || typeof obj !== "object") return null;
+  const port = typeof obj.port === "number" ? obj.port : undefined;
+  const configPath = typeof obj.configPath === "string" && obj.configPath.trim()
+    ? obj.configPath.trim()
+    : undefined;
+  if (!port && !configPath) return null;
+
+  const fromConfig = configPath ? readGatewayValuesFromConfigPath(configPath) : null;
+  if (fromConfig) return fromConfig;
+  if (!port) return null;
+  return { url: `ws://127.0.0.1:${port}` };
+}
+
+function readGatewayValuesFromConfigPath(
+  configPath: string,
+): { url?: string; token?: string; tokenFile?: string } | null {
+  try {
+    const raw = readFileSync(expandHome(configPath), "utf8");
+    const parsed = parseJsonConfig(raw);
+    if (parsed?.url) return parsed;
+  } catch {
+    // qclaw.json may be copied without its referenced openclaw.json.
+  }
+  return null;
 }
 
 function pickOpenclawGatewayValues(

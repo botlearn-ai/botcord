@@ -128,6 +128,41 @@ describe("discoverLocalOpenclawGateways", () => {
     ]);
   });
 
+  it("discovers QClaw's state config and referenced OpenClaw config", async () => {
+    const dir = tempDir();
+    const openclawConfig = path.join(dir, "openclaw.json");
+    writeFileSync(
+      openclawConfig,
+      JSON.stringify({
+        gateway: {
+          port: 28789,
+          bind: "loopback",
+          auth: { mode: "token", token: "qclaw-token" },
+        },
+      }),
+    );
+    writeFileSync(
+      path.join(dir, "qclaw.json"),
+      JSON.stringify({
+        configPath: openclawConfig,
+        port: 28789,
+      }),
+    );
+
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: [dir],
+      defaultPorts: [],
+    });
+
+    expect(found).toEqual([
+      expect.objectContaining({
+        url: "ws://127.0.0.1:28789",
+        token: "qclaw-token",
+        source: "config-file",
+      }),
+    ]);
+  });
+
   it("uses OPENCLAW_ACP_URL and token env vars", async () => {
     const found = await discoverLocalOpenclawGateways({
       searchPaths: [],
@@ -269,8 +304,8 @@ describe("discoverLocalOpenclawGateways", () => {
     ]);
   });
 
-  it("includes 16200 in default discovery ports", () => {
-    expect(defaultOpenclawDiscoveryPorts()).toEqual(expect.arrayContaining([18789, 16200]));
+  it("includes OpenClaw and QClaw ports in default discovery ports", () => {
+    expect(defaultOpenclawDiscoveryPorts()).toEqual(expect.arrayContaining([18789, 16200, 28789]));
   });
 
   it("adds default-port candidates only when the probe succeeds", async () => {
