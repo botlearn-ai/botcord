@@ -8,6 +8,7 @@ import logging
 import os
 import socket
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException
 from sqlalchemy import or_, select, update
@@ -23,6 +24,7 @@ MIN_EVERY_MS = 5 * 60 * 1000
 MAX_EVERY_MS = 30 * 24 * 60 * 60 * 1000
 DEFAULT_PROACTIVE_MESSAGE = "【BotCord 自主任务】执行本轮工作目标。"
 _BACKGROUND_RUNS: set[asyncio.Task] = set()
+WEEKDAYS = set(range(7))
 
 
 def now_utc() -> datetime.datetime:
@@ -39,16 +41,58 @@ def aware(dt: datetime.datetime | None) -> datetime.datetime | None:
 
 def validate_schedule_json(value: dict[str, Any]) -> dict[str, Any]:
     kind = value.get("kind")
-    if kind != "every":
-        raise HTTPException(status_code=400, detail="unsupported_schedule_kind")
-    every_ms = value.get("every_ms", value.get("everyMs"))
-    if not isinstance(every_ms, int):
-        raise HTTPException(status_code=400, detail="every_ms_required")
-    if every_ms < MIN_EVERY_MS:
-        raise HTTPException(status_code=400, detail="schedule_interval_too_short")
-    if every_ms > MAX_EVERY_MS:
-        raise HTTPException(status_code=400, detail="schedule_interval_too_long")
-    return {"kind": "every", "every_ms": every_ms}
+    if kind == "every":
+        every_ms = value.get("every_ms", value.get("everyMs"))
+        if not isinstance(every_ms, int):
+            raise HTTPException(status_code=400, detail="every_ms_required")
+        if every_ms < MIN_EVERY_MS:
+            raise HTTPException(status_code=400, detail="schedule_interval_too_short")
+        if every_ms > MAX_EVERY_MS:
+            raise HTTPException(status_code=400, detail="schedule_interval_too_long")
+        return {"kind": "every", "every_ms": every_ms}
+
+    if kind == "calendar":
+        frequency = value.get("frequency")
+        if frequency not in {"daily", "weekly"}:
+            raise HTTPException(status_code=400, detail="calendar_frequency_invalid")
+        time_value = value.get("time")
+        if not isinstance(time_value, str):
+            raise HTTPException(status_code=400, detail="calendar_time_required")
+        try:
+            hour_raw, minute_raw = time_value.split(":", 1)
+            hour = int(hour_raw)
+            minute = int(minute_raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="calendar_time_invalid") from None
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            raise HTTPException(status_code=400, detail="calendar_time_invalid")
+        timezone = value.get("timezone", "UTC")
+        if not isinstance(timezone, str) or not timezone:
+            raise HTTPException(status_code=400, detail="calendar_timezone_invalid")
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError:
+            raise HTTPException(status_code=400, detail="calendar_timezone_invalid") from None
+
+        schedule: dict[str, Any] = {
+            "kind": "calendar",
+            "frequency": frequency,
+            "time": f"{hour:02d}:{minute:02d}",
+            "timezone": timezone,
+        }
+        if frequency == "weekly":
+            weekdays = value.get("weekdays")
+            if not isinstance(weekdays, list) or not weekdays:
+                raise HTTPException(status_code=400, detail="calendar_weekdays_required")
+            if any(not isinstance(day, int) or isinstance(day, bool) or day not in WEEKDAYS for day in weekdays):
+                raise HTTPException(status_code=400, detail="calendar_weekdays_invalid")
+            clean_weekdays = sorted(set(weekdays))
+            if len(clean_weekdays) != len(weekdays):
+                raise HTTPException(status_code=400, detail="calendar_weekdays_invalid")
+            schedule["weekdays"] = clean_weekdays
+        return schedule
+
+    raise HTTPException(status_code=400, detail="unsupported_schedule_kind")
 
 
 def validate_payload_json(value: dict[str, Any] | None) -> dict[str, Any]:
@@ -70,7 +114,30 @@ def compute_next_fire_at(
     base: datetime.datetime | None = None,
 ) -> datetime.datetime:
     schedule = validate_schedule_json(schedule_json)
-    return (base or now_utc()) + datetime.timedelta(milliseconds=schedule["every_ms"])
+    base_utc = aware(base or now_utc())
+    assert base_utc is not None
+    if schedule["kind"] == "every":
+        return base_utc + datetime.timedelta(milliseconds=schedule["every_ms"])
+
+    tz = ZoneInfo(schedule["timezone"])
+    local_base = base_utc.astimezone(tz)
+    hour, minute = (int(part) for part in schedule["time"].split(":", 1))
+    allowed_weekdays = set(schedule.get("weekdays", WEEKDAYS))
+    for offset in range(8):
+        day = local_base.date() + datetime.timedelta(days=offset)
+        if day.weekday() not in allowed_weekdays:
+            continue
+        candidate = datetime.datetime(
+            day.year,
+            day.month,
+            day.day,
+            hour,
+            minute,
+            tzinfo=tz,
+        )
+        if candidate > local_base:
+            return candidate.astimezone(datetime.timezone.utc)
+    raise HTTPException(status_code=400, detail="calendar_next_fire_unavailable")
 
 
 def serialize_schedule(row: AgentSchedule) -> dict[str, Any]:

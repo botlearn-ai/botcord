@@ -12,7 +12,10 @@ interface AgentSchedule {
   id: string;
   name: string;
   enabled: boolean;
-  schedule: { kind: "every"; every_ms: number };
+  schedule:
+    | { kind: "every"; every_ms: number }
+    | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
+    | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
   payload: { kind: "agent_turn"; message: string };
   created_by: string;
   next_fire_at?: string | null;
@@ -28,6 +31,16 @@ interface AgentScheduleRun {
 }
 
 const DEFAULT_MESSAGE = "【BotCord 自主任务】执行本轮工作目标。";
+const WEEKDAYS = [
+  { value: 0, label: "周一" },
+  { value: 1, label: "周二" },
+  { value: 2, label: "周三" },
+  { value: 3, label: "周四" },
+  { value: 4, label: "周五" },
+  { value: 5, label: "周六" },
+  { value: 6, label: "周日" },
+];
+const TIME_PATTERN = /^\d{2}:\d{2}$/;
 
 function formatTime(value?: string | null): string {
   if (!value) return "未安排";
@@ -47,6 +60,20 @@ function intervalLabel(ms: number): string {
   return `${hours.toFixed(1)} 小时`;
 }
 
+function timezoneValue(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function scheduleLabel(schedule: AgentSchedule["schedule"]): string {
+  if (schedule.kind === "every") return `每 ${intervalLabel(schedule.every_ms)}`;
+  if (schedule.frequency === "daily") return `每天 ${schedule.time}`;
+  const labels = schedule.weekdays
+    .map((day) => WEEKDAYS.find((item) => item.value === day)?.label)
+    .filter(Boolean)
+    .join("、");
+  return `${labels || "每周"} ${schedule.time}`;
+}
+
 function statusClass(status?: string): string {
   if (status === "dispatched") return "border-green-400/20 bg-green-400/10 text-green-300";
   if (status === "offline") return "border-yellow-400/20 bg-yellow-400/10 text-yellow-300";
@@ -61,12 +88,21 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("botcord-auto");
+  const [scheduleMode, setScheduleMode] = useState<"every" | "daily" | "weekly">("every");
   const [everyMinutes, setEveryMinutes] = useState(30);
+  const [time, setTime] = useState("09:00");
+  const [weekdays, setWeekdays] = useState<number[]>([0]);
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
 
   const canCreate = useMemo(
-    () => name.trim().length > 0 && everyMinutes >= 5 && message.trim().length > 0 && !saving,
-    [everyMinutes, message, name, saving],
+    () =>
+      name.trim().length > 0 &&
+      message.trim().length > 0 &&
+      !saving &&
+      ((scheduleMode === "every" && everyMinutes >= 5) ||
+        (scheduleMode === "daily" && TIME_PATTERN.test(time)) ||
+        (scheduleMode === "weekly" && TIME_PATTERN.test(time) && weekdays.length > 0)),
+    [everyMinutes, message, name, saving, scheduleMode, time, weekdays.length],
   );
 
   async function load() {
@@ -104,10 +140,16 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
     setSaving(true);
     setError(null);
     try {
+      const timezone = timezoneValue();
       await userApi.createAgentSchedule(agentId, {
         name: name.trim(),
         enabled: true,
-        schedule: { kind: "every", every_ms: everyMinutes * 60 * 1000 },
+        schedule:
+          scheduleMode === "every"
+            ? { kind: "every", every_ms: everyMinutes * 60 * 1000 }
+            : scheduleMode === "daily"
+              ? { kind: "calendar", frequency: "daily", time, timezone }
+              : { kind: "calendar", frequency: "weekly", time, timezone, weekdays },
         payload: { kind: "agent_turn", message: message.trim() },
       });
       await load();
@@ -157,6 +199,12 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
     }
   }
 
+  function toggleWeekday(day: number) {
+    setWeekdays((current) =>
+      current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort((a, b) => a - b),
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -193,17 +241,65 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
             className="rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
             placeholder="名称"
           />
-          <label className="grid gap-1 text-xs text-text-secondary">
-            间隔分钟
-            <input
-              type="number"
-              min={5}
-              step={5}
-              value={everyMinutes}
-              onChange={(e) => setEveryMinutes(Number(e.target.value))}
-              className="rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
-            />
-          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {(["every", "daily", "weekly"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setScheduleMode(mode)}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  scheduleMode === mode
+                    ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
+                    : "border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {mode === "every" ? "间隔" : mode === "daily" ? "每天" : "每周"}
+              </button>
+            ))}
+          </div>
+          {scheduleMode === "every" ? (
+            <label className="grid gap-1 text-xs text-text-secondary">
+              间隔分钟
+              <input
+                type="number"
+                min={5}
+                step={5}
+                value={everyMinutes}
+                onChange={(e) => setEveryMinutes(Number(e.target.value))}
+                className="rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+              />
+            </label>
+          ) : (
+            <div className="grid gap-3">
+              <label className="grid gap-1 text-xs text-text-secondary">
+                时间
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+                />
+              </label>
+              {scheduleMode === "weekly" ? (
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                  {WEEKDAYS.map((day) => (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => toggleWeekday(day.value)}
+                      className={`rounded-lg border px-2 py-2 text-xs ${
+                        weekdays.includes(day.value)
+                          ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
+                          : "border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary"
+                      }`}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -242,7 +338,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-text-secondary">
-                      每 {intervalLabel(schedule.schedule.every_ms)} · 下次 {formatTime(schedule.next_fire_at)}
+                      {scheduleLabel(schedule.schedule)} · 下次 {formatTime(schedule.next_fire_at)}
                     </p>
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{schedule.payload.message}</p>
                   </div>

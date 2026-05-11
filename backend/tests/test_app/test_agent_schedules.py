@@ -1,9 +1,12 @@
+import datetime
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.models import AgentSchedule
+from hub.services.agent_schedules import compute_next_fire_at
 
 from .test_app_user_agents import client, db_engine, db_session, seed_user  # noqa: F401
 
@@ -91,6 +94,66 @@ async def test_schedule_rejects_too_short_interval(
     )
     assert resp.status_code == 400
     assert resp.json()["detail"] == "schedule_interval_too_short"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_can_create_daily_calendar_schedule(
+    client: AsyncClient,
+    seed_user: dict,
+):
+    resp = await client.post(
+        "/api/agents/ag_agent001/schedules",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+        json={
+            "name": "daily-brief",
+            "enabled": True,
+            "schedule": {
+                "kind": "calendar",
+                "frequency": "daily",
+                "time": "09:30",
+                "timezone": "Asia/Shanghai",
+            },
+            "payload": {"kind": "agent_turn", "message": "brief"},
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["schedule"] == {
+        "kind": "calendar",
+        "frequency": "daily",
+        "time": "09:30",
+        "timezone": "Asia/Shanghai",
+    }
+    assert body["next_fire_at"]
+
+
+def test_compute_next_fire_at_for_daily_calendar_schedule():
+    base = datetime.datetime(2026, 5, 11, 0, 0, tzinfo=datetime.timezone.utc)
+    next_fire = compute_next_fire_at(
+        {
+            "kind": "calendar",
+            "frequency": "daily",
+            "time": "09:30",
+            "timezone": "Asia/Shanghai",
+        },
+        base=base,
+    )
+    assert next_fire == datetime.datetime(2026, 5, 11, 1, 30, tzinfo=datetime.timezone.utc)
+
+
+def test_compute_next_fire_at_for_weekly_calendar_schedule():
+    base = datetime.datetime(2026, 5, 11, 2, 0, tzinfo=datetime.timezone.utc)
+    next_fire = compute_next_fire_at(
+        {
+            "kind": "calendar",
+            "frequency": "weekly",
+            "time": "09:30",
+            "timezone": "Asia/Shanghai",
+            "weekdays": [0, 2],
+        },
+        base=base,
+    )
+    assert next_fire == datetime.datetime(2026, 5, 13, 1, 30, tzinfo=datetime.timezone.utc)
 
 
 @pytest.mark.asyncio
