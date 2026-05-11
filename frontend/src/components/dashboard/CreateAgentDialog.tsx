@@ -138,6 +138,7 @@ export default function CreateAgentDialog({
   const [error, setError] = useState<string | null>(null);
   const [addingDevice, setAddingDevice] = useState(false);
   const addDeviceExistingIdsRef = useRef<Set<string>>(new Set());
+  const autoFilledNameRef = useRef<string | null>(null);
 
   useEffect(() => {
     void refresh();
@@ -197,6 +198,12 @@ export default function CreateAgentDialog({
       ),
     [selectedOpenclawEndpoint],
   );
+  const selectedOpenclawAgentProfile = useMemo(
+    () =>
+      selectableOpenclawAgents.find((a) => a.id === selectedOpenclawAgent) ??
+      null,
+    [selectableOpenclawAgents, selectedOpenclawAgent],
+  );
   useEffect(() => {
     if (!isOpenclawFamilyRuntime(selectedRuntimeId)) {
       setSelectedGateway(null);
@@ -224,6 +231,21 @@ export default function CreateAgentDialog({
     selectedOpenclawAgent,
     selectableOpenclawAgents,
   ]);
+
+  useEffect(() => {
+    const profileName = selectedOpenclawAgentProfile?.name?.trim();
+    if (!profileName) {
+      autoFilledNameRef.current = null;
+      return;
+    }
+    setName((currentName) => {
+      if (currentName.trim() && currentName !== autoFilledNameRef.current) {
+        return currentName;
+      }
+      autoFilledNameRef.current = profileName;
+      return profileName;
+    });
+  }, [selectedOpenclawAgentProfile?.id, selectedOpenclawAgentProfile?.name]);
 
   // Auto-pick the first available hermes profile when the user lands on
   // hermes-agent. Prefer the active profile, falling back to the first
@@ -517,8 +539,12 @@ export default function CreateAgentDialog({
                 type="text"
                 value={name}
                 onChange={(e) => {
-                  setName(e.target.value);
-                  if (error === t.nameRequired && e.target.value.trim()) {
+                  const nextName = e.target.value;
+                  setName(nextName);
+                  if (nextName !== autoFilledNameRef.current) {
+                    autoFilledNameRef.current = null;
+                  }
+                  if (error === t.nameRequired && nextName.trim()) {
                     setError(null);
                   }
                 }}
