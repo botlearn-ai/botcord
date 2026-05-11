@@ -599,6 +599,10 @@ function RuntimePicker({
   };
 }) {
   const runtimes = daemon?.runtimes ?? [];
+  const sortedRuntimes = [...runtimes].sort((a, b) => {
+    if (a.available === b.available) return 0;
+    return a.available ? -1 : 1;
+  });
   const hasAny = runtimes.length > 0;
 
   return (
@@ -627,8 +631,8 @@ function RuntimePicker({
           {labels.noRuntimesDetected}
         </div>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {runtimes.map((r) => (
+        <div className="grid gap-2">
+          {sortedRuntimes.map((r) => (
             <RuntimeCard
               key={r.id}
               runtime={r}
