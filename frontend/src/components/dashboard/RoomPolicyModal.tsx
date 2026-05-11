@@ -192,7 +192,7 @@ export default function RoomPolicyModal({
                   onClick={() => setExpanded((v) => !v)}
                   className="text-sm text-neon-cyan transition-colors hover:text-neon-cyan/80"
                 >
-                  {expanded ? "▾ 改为本群专属" : "▸ 改为本群专属"}
+                  {expanded ? "▾ 改为本房间专属" : "▸ 改为本房间专属"}
                 </button>
 
                 {expanded ? (
@@ -256,7 +256,7 @@ function EffectiveBadge({
     effective.source === "dm_forced"
       ? "私聊（强制）"
       : effective.source === "override" || hasOverride
-        ? "本群专属"
+        ? "本房间专属"
         : "继承全局";
   return (
     <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-3">
@@ -401,7 +401,7 @@ function OverrideForm({
           className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          应用到本群
+          应用到本房间
         </button>
       </div>
     </div>

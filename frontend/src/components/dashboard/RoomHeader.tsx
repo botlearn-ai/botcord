@@ -396,11 +396,11 @@ export default function RoomHeader() {
                 onClick={() => void handleOpenAddMemberModal()}
                 disabled={addMemberLoading}
                 className={iconBtn}
-                aria-label={locale === "zh" ? "添加群成员" : "Add members"}
+                aria-label={locale === "zh" ? "添加房间成员" : "Add members"}
               >
                 {addMemberLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               </button>
-              <span className={tooltipCls}>{locale === "zh" ? "添加群成员" : "Add members"}</span>
+              <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
             </span>
           )}
           {isAuthedReady && activeAgentId && !isHumanView && isJoined && !isOwnerChatRoom && (

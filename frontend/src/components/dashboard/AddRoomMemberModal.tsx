@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 session/chat store 的 ownedAgents 与 contacts，依赖 humansApi.addRoomMember 执行人类侧邀请入群
- * [OUTPUT]: 对外提供 AddRoomMemberModal 组件，支持手动选择好友或自己的 Agent 批量加入当前群
+ * [INPUT]: 依赖 session/chat store 的 ownedAgents 与 contacts，依赖 humansApi.addRoomMember 执行人类侧邀请加入房间
+ * [OUTPUT]: 对外提供 AddRoomMemberModal 组件，支持手动选择好友或自己的 Agent 批量加入当前房间
  * [POS]: dashboard 成员面板的邀请入口，把已有房间邀请 API 接到可搜索、可选择的前端弹窗
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */

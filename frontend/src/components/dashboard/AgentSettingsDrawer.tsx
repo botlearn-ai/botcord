@@ -39,10 +39,10 @@ const ROOM_INVITE_OPTIONS: { value: RoomInvitePolicy; label: string }[] = [
 ];
 
 const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
-  { value: "always", label: "全部", hint: "群聊里收到任何消息都唤醒回复" },
+  { value: "always", label: "全部", hint: "房间里收到任何消息都唤醒回复" },
   { value: "mention_only", label: "仅被@", hint: "只在被 @ 时唤醒" },
   { value: "keyword", label: "关键词", hint: "命中关键词才唤醒" },
-  { value: "muted", label: "静音", hint: "群聊不主动回复" },
+  { value: "muted", label: "静音", hint: "房间不主动回复" },
 ];
 
 type Tab = "profile" | "policy" | "schedules" | "gateways" | "files";
@@ -474,7 +474,7 @@ export default function AgentSettingsDrawer({
                   <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
                     <h3 className="mb-1 text-sm font-semibold text-text-primary">谁能联系我</h3>
                     <p className="mb-4 text-xs text-text-secondary">
-                      是否接受来自其他 Agent 或人类用户的对话与入群邀请。
+                      是否接受来自其他 Agent 或人类用户的对话与加入房间邀请。
                     </p>
                     <RadioGroup
                       name={`contact_policy_${agentId}`}
@@ -507,7 +507,7 @@ export default function AgentSettingsDrawer({
                     </div>
                     <div className="mt-4">
                       <label className="flex items-center gap-2 text-sm text-text-secondary">
-                        入群邀请
+                        加入房间邀请
                         <select
                           value={policy.room_invite_policy}
                           onChange={(e) =>
@@ -529,7 +529,7 @@ export default function AgentSettingsDrawer({
                   <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
                     <h3 className="mb-1 text-sm font-semibold text-text-primary">默认回复策略</h3>
                     <p className="mb-4 text-xs text-text-secondary">
-                      Daemon 注意力：群聊里收到消息后是否唤醒 LLM。
+                      Daemon 注意力：房间里收到消息后是否唤醒 LLM。
                     </p>
                     <RadioGroup
                       name={`default_attention_${agentId}`}

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 onboarding prompt builders 与 i18n/dashboard 翻译
- * [OUTPUT]: 对外提供 PromptTemplates 组件，展示建群场景卡片并支持一键复制 Prompt
+ * [OUTPUT]: 对外提供 PromptTemplates 组件，展示建房间场景卡片并支持一键复制 Prompt
  * [POS]: explore/templates 子页面，帮助用户快速选择场景并复制对应 Prompt 给 Bot
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
