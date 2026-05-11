@@ -98,6 +98,10 @@ export default function BotsPanel({
   const removeDevice = useDaemonStore((s) => s.removeDevice);
   const removingId = useDaemonStore((s) => s.removingId);
   const refreshDaemons = useDaemonStore((s) => s.refresh);
+  const collectingDiagnosticsId = useDaemonStore((s) => s.collectingDiagnosticsId);
+  const diagnosticResults = useDaemonStore((s) => s.diagnosticResults);
+  const diagnosticErrors = useDaemonStore((s) => s.diagnosticErrors);
+  const collectDiagnostics = useDaemonStore((s) => s.collectDiagnostics);
 
   const [showAddDevice, setShowAddDevice] = useState(false);
   const [deviceSettingsId, setDeviceSettingsId] = useState<string | null>(null);
@@ -294,12 +298,18 @@ export default function BotsPanel({
           isRenaming={renamingId === deviceSettingsId}
           isRefreshing={refreshingBots}
           isRemoving={removingId === deviceSettingsId}
+          isCollectingDiagnostics={collectingDiagnosticsId === deviceSettingsId}
+          diagnosticResult={diagnosticResults[deviceSettingsId]}
+          diagnosticError={diagnosticErrors[deviceSettingsId]}
           locale={locale}
           onClose={() => setDeviceSettingsId(null)}
           onRename={async (newLabel: string) => {
             await renameDaemon(deviceSettingsId, newLabel);
           }}
           onRefreshDaemons={onRefreshDaemons}
+          onCollectDiagnostics={async () => {
+            await collectDiagnostics(deviceSettingsId);
+          }}
           onRemove={async (forgetIfOffline) => {
             await removeDevice(deviceSettingsId, { forgetIfOffline });
             await refreshDaemons({ quiet: true });

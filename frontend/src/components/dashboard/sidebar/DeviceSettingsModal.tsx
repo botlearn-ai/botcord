@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
+import { RefreshCw, Loader2, Check, Trash2, FileArchive } from "lucide-react";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
+import type { DiagnosticBundleResult } from "@/store/useDaemonStore";
 
 interface DeviceSettingsModalProps {
   daemonId: string;
@@ -13,10 +14,14 @@ interface DeviceSettingsModalProps {
   isRenaming: boolean;
   isRefreshing: boolean;
   isRemoving: boolean;
+  isCollectingDiagnostics: boolean;
+  diagnosticResult?: DiagnosticBundleResult;
+  diagnosticError?: string;
   locale: string;
   onClose: () => void;
   onRename: (label: string) => Promise<void>;
   onRefreshDaemons: () => void;
+  onCollectDiagnostics: () => Promise<void>;
   onRemove: (forgetIfOffline: boolean) => Promise<void>;
 }
 
@@ -29,10 +34,14 @@ export default function DeviceSettingsModal({
   isRenaming,
   isRefreshing,
   isRemoving,
+  isCollectingDiagnostics,
+  diagnosticResult,
+  diagnosticError,
   locale,
   onClose,
   onRename,
   onRefreshDaemons,
+  onCollectDiagnostics,
   onRemove,
 }: DeviceSettingsModalProps) {
   const [editingName, setEditingName] = useState(label);
@@ -76,6 +85,7 @@ export default function DeviceSettingsModal({
 
   const isOffline = status === "offline";
   const removeDisabled = isRemoving || status === "revoked" || status === "removal_pending";
+  const diagnosticsDisabled = isCollectingDiagnostics || status !== "online";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -140,6 +150,57 @@ export default function DeviceSettingsModal({
                 {isRenaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : nameSaved ? <Check className="h-3.5 w-3.5 text-neon-green" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>}
               </button>
             </div>
+          </div>
+
+          {/* Diagnostics */}
+          <div className="rounded-lg border border-glass-border/50 bg-glass-bg/20 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-text-primary">
+                  {locale === "zh" ? "诊断日志" : "Diagnostics"}
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-text-secondary/60">
+                  {locale === "zh"
+                    ? "打包本机 daemon 日志和 doctor 输出。"
+                    : "Bundle local daemon logs and doctor output."}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={diagnosticsDisabled}
+                onClick={() => void onCollectDiagnostics()}
+                title={
+                  status === "online"
+                    ? locale === "zh" ? "收集诊断日志" : "Collect diagnostics"
+                    : locale === "zh" ? "设备在线后才能收集诊断日志" : "Device must be online to collect diagnostics"
+                }
+                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/30 px-2.5 py-1.5 text-[11px] text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-40"
+              >
+                {isCollectingDiagnostics ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <FileArchive className="h-3 w-3" />
+                )}
+                {locale === "zh" ? "打包" : "Bundle"}
+              </button>
+            </div>
+            {diagnosticResult && (
+              <p className="mt-2 rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-1 text-[11px] text-neon-green">
+                {locale === "zh" ? "已生成" : "Ready"} {diagnosticResult.filename} ({diagnosticResult.size_bytes} bytes)
+                {" · "}
+                <a
+                  href={`/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`}
+                  className="underline underline-offset-2"
+                >
+                  {locale === "zh" ? "下载" : "Download"}
+                </a>
+              </p>
+            )}
+            {diagnosticError && (
+              <p className="mt-2 rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">
+                {diagnosticError}
+              </p>
+            )}
           </div>
 
           {/* Danger zone — Remove Device */}
