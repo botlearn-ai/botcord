@@ -11,7 +11,7 @@ import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { Bell, Info, Loader2, Settings, Share2 } from "lucide-react";
+import { Bell, Info, Loader2, Plus, Settings, Share2 } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -22,6 +22,7 @@ import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
 import RoomPolicyModal from "./RoomPolicyModal";
+import AddRoomMemberModal from "./AddRoomMemberModal";
 import { dmPeerId, resolveDmDisplayName } from "./dmRoom";
 
 export default function RoomHeader() {
@@ -30,6 +31,9 @@ export default function RoomHeader() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [addMemberExistingIds, setAddMemberExistingIds] = useState<string[]>([]);
+  const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [humanJoining, setHumanJoining] = useState(false);
   const rulePopoverRef = useRef<HTMLDivElement>(null);
   const locale = useLanguage();
@@ -40,6 +44,7 @@ export default function RoomHeader() {
   const ruleRef = useRef<HTMLParagraphElement | null>(null);
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
+  const activeIdentity = useDashboardSessionStore((state) => state.activeIdentity);
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
@@ -95,6 +100,7 @@ export default function RoomHeader() {
   const canInvite = isHumanView
     ? isOwnerOrAdmin || (Boolean(myRole) && Boolean(humanRoom?.default_invite))
     : (authRoom?.can_invite ?? true);
+  const canAddMembers = activeIdentity?.type === "human" && isOwnerOrAdmin && isJoined && !isDMRoom && !isOwnerChatRoom;
   const roleLabel = myRole
     ? locale === "zh"
       ? `你是 ${myRole}`
@@ -172,6 +178,20 @@ export default function RoomHeader() {
       setJoinRequestStatus("idle");
     }
   }, [room?.room_id, isAuthedReady]);
+
+  const handleOpenAddMemberModal = useCallback(async () => {
+    if (!room?.room_id || addMemberLoading) return;
+    setAddMemberLoading(true);
+    try {
+      const result = await api.getRoomMembers(room.room_id).catch(() => api.getPublicRoomMembers(room.room_id));
+      setAddMemberExistingIds(result.members.map((member) => member.agent_id));
+    } catch {
+      setAddMemberExistingIds([humanId, activeAgentId].filter(Boolean) as string[]);
+    } finally {
+      setAddMemberLoading(false);
+      setShowAddMemberModal(true);
+    }
+  }, [activeAgentId, addMemberLoading, humanId, room?.room_id]);
 
   if (!room) return null;
 
@@ -337,6 +357,19 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{t.shareRoom}</span>
             </span>
           )}
+          {canAddMembers && (
+            <span className="group relative">
+              <button
+                onClick={() => void handleOpenAddMemberModal()}
+                disabled={addMemberLoading}
+                className={iconBtn}
+                aria-label={locale === "zh" ? "添加群成员" : "Add members"}
+              >
+                {addMemberLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              </button>
+              <span className={tooltipCls}>{locale === "zh" ? "添加群成员" : "Add members"}</span>
+            </span>
+          )}
           {isAuthedReady && activeAgentId && !isHumanView && isJoined && !isOwnerChatRoom && (
             <span className="group relative">
               <button
@@ -413,6 +446,20 @@ export default function RoomHeader() {
           agentId={activeAgentId}
           roomId={openedRoomId}
           onClose={() => setShowPolicyModal(false)}
+        />
+      )}
+
+      {showAddMemberModal && room?.room_id && (
+        <AddRoomMemberModal
+          roomId={room.room_id}
+          existingMemberIds={addMemberExistingIds}
+          onClose={() => setShowAddMemberModal(false)}
+          onAdded={async () => {
+            await Promise.all([
+              refreshOverview().catch(() => {}),
+              refreshHumanRooms().catch(() => {}),
+            ]);
+          }}
         />
       )}
 
