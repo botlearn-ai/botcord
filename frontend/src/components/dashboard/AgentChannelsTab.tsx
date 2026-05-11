@@ -627,7 +627,7 @@ function TelegramAddForm({
             complete={chatReady}
           >
           <Field label="允许的 chat id（逗号或换行分隔）">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
               <textarea
                 value={chatIds}
                 onChange={(e) => setChatIds(e.target.value)}
@@ -640,12 +640,12 @@ function TelegramAddForm({
                 type="button"
                 onClick={handleDiscoverChats}
                 disabled={!token.trim() || saving || discoveringChats}
-                className="inline-flex min-h-16 items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-4 py-2 text-sm font-semibold text-neon-cyan shadow-[0_0_22px_rgba(0,229,255,0.12)] hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-32"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-auto"
               >
                 {discoveringChats ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <Search className="h-4 w-4" />
+                  <Search className="h-3.5 w-3.5" />
                 )}
                 我已发送
               </button>
@@ -1197,7 +1197,7 @@ function WechatAddForm({
           complete={senderReady}
         >
           <Field label="允许的微信用户 ID（逗号或换行分隔）">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
               <textarea
                 value={senderIds}
                 onChange={(e) => setSenderIds(e.target.value)}
@@ -1210,12 +1210,12 @@ function WechatAddForm({
                 type="button"
                 onClick={handleDiscoverSenders}
                 disabled={!loginId || busy || discoveringSenders}
-                className="inline-flex min-h-16 items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-4 py-2 text-sm font-semibold text-neon-cyan shadow-[0_0_22px_rgba(0,229,255,0.12)] hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-32"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-auto"
               >
                 {discoveringSenders ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <Search className="h-4 w-4" />
+                  <Search className="h-3.5 w-3.5" />
                 )}
                 我已发送
               </button>
