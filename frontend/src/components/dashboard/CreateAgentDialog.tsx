@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   Bot,
   Check,
+  Info,
   Loader2,
   Plus,
   RefreshCcw,
@@ -482,6 +483,14 @@ export default function CreateAgentDialog({
                 }}
                 selectedAgent={selectedOpenclawAgent}
                 onSelectAgent={setSelectedOpenclawAgent}
+                labels={{
+                  subagentLabel: t.openclawSubagentLabel,
+                  subagentInfo: t.openclawSubagentInfo,
+                  subagentPlaceholder: t.openclawSubagentPlaceholder,
+                  noProfiles: t.openclawNoProfiles,
+                  selectProfile: t.openclawSelectProfile,
+                  boundProfiles: t.openclawBoundProfiles,
+                }}
                 disabled={submitting}
               />
             )}
@@ -536,6 +545,9 @@ export default function CreateAgentDialog({
                 className="w-full resize-none rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
                 maxLength={240}
               />
+              <p className="mt-1.5 text-xs leading-5 text-text-secondary">
+                {t.bioHint}
+              </p>
             </div>
           </div>
         )}
@@ -615,12 +627,12 @@ function RuntimePicker({
           type="button"
           onClick={onRefresh}
           disabled={refreshing || disabled || !daemon}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
         >
           {refreshing ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <RefreshCcw className="h-3 w-3" />
+            <RefreshCcw className="h-3.5 w-3.5" />
           )}
           {labels.probeRuntimes}
         </button>
@@ -705,6 +717,7 @@ function OpenclawGatewayPicker({
   onSelectGateway,
   selectedAgent,
   onSelectAgent,
+  labels,
   disabled,
 }: {
   runtime: DaemonRuntime | null;
@@ -712,6 +725,14 @@ function OpenclawGatewayPicker({
   onSelectGateway: (name: string | null) => void;
   selectedAgent: string | null;
   onSelectAgent: (name: string | null) => void;
+  labels: {
+    subagentLabel: string;
+    subagentInfo: string;
+    subagentPlaceholder: string;
+    noProfiles: string;
+    selectProfile: string;
+    boundProfiles: (count: number) => string;
+  };
   disabled: boolean;
 }) {
   const endpoints = runtime?.endpoints ?? [];
@@ -757,15 +778,24 @@ function OpenclawGatewayPicker({
         )}
       </div>
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
-          Agent profile (optional)
-        </label>
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+            {labels.subagentLabel}
+          </label>
+          <span
+            title={labels.subagentInfo}
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-glass-border text-text-tertiary"
+            aria-label={labels.subagentInfo}
+          >
+            <Info className="h-3 w-3" />
+          </span>
+        </div>
         {agents.length === 0 ? (
           <input
             disabled={disabled || !selectedGateway}
             type="text"
             value={selectedAgent ?? ""}
-            placeholder="leave blank to use the gateway's defaultAgent"
+            placeholder={labels.subagentPlaceholder}
             onChange={(e) => onSelectAgent(e.target.value.trim() || null)}
             className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
           />
@@ -777,9 +807,7 @@ function OpenclawGatewayPicker({
             className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
           >
             <option value="" disabled>
-              {availableAgents.length === 0
-                ? "No unbound profiles available"
-                : "Select an agent profile"}
+              {availableAgents.length === 0 ? labels.noProfiles : labels.selectProfile}
             </option>
             {availableAgents.map((a) => {
               const label =
@@ -795,7 +823,7 @@ function OpenclawGatewayPicker({
         )}
         {boundCount > 0 && (
           <p className="mt-1 text-[11px] text-text-tertiary">
-            {boundCount} profile{boundCount === 1 ? "" : "s"} already bound to BotCord.
+            {labels.boundProfiles(boundCount)}
           </p>
         )}
       </div>

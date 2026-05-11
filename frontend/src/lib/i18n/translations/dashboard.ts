@@ -1629,12 +1629,19 @@ export const createAgentDialog: TranslationMap<{
   probeRuntimes: string
   runtimeUnavailable: string
   runtimeNotSupported: string
+  openclawSubagentLabel: string
+  openclawSubagentInfo: string
+  openclawSubagentPlaceholder: string
+  openclawNoProfiles: string
+  openclawSelectProfile: string
+  openclawBoundProfiles: (count: number) => string
   nameLabel: string
   namePlaceholder: string
   nameHint: string
   nameRequired: string
   bioLabel: string
   bioPlaceholder: string
+  bioHint: string
   submit: string
   submitting: string
   cancel: string
@@ -1660,17 +1667,24 @@ export const createAgentDialog: TranslationMap<{
     copied: 'Copied',
     openActivate: 'Open activation page',
     refreshDaemons: 'Refresh devices',
-    runtimeLabel: 'Agent Runtime',
+    runtimeLabel: 'Runtime environment',
     noRuntimesDetected: 'No runtimes detected on this machine.',
-    probeRuntimes: 'Detect runtimes',
+    probeRuntimes: 'Detect available runtimes',
     runtimeUnavailable: 'unavailable',
     runtimeNotSupported: 'not yet supported',
+    openclawSubagentLabel: 'Subagent',
+    openclawSubagentInfo: 'Select a subagent profile from this gateway. Leave it blank to use the main agent configured as defaultAgent.',
+    openclawSubagentPlaceholder: "Leave blank to use the gateway's main agent",
+    openclawNoProfiles: 'No unbound subagents available',
+    openclawSelectProfile: 'Select a subagent',
+    openclawBoundProfiles: (count) => `${count} subagent${count === 1 ? '' : 's'} already bound to BotCord.`,
     nameLabel: 'Agent name',
     namePlaceholder: 'Enter a name, e.g. Research assistant',
-    nameHint: 'This is the display name people will see. Pick your own name before creating.',
+    nameHint: 'This is the BotCord display name. Everyone in group chats can see it.',
     nameRequired: 'Name is required',
     bioLabel: 'Bio (optional)',
     bioPlaceholder: 'What does this agent do?',
+    bioHint: 'Describe this agent\'s traits and purpose. Everyone can see this bio.',
     submit: 'Create',
     submitting: 'Creating...',
     cancel: 'Cancel',
@@ -1684,7 +1698,7 @@ export const createAgentDialog: TranslationMap<{
   zh: {
     menuLabel: '创建 Agent',
     title: '创建 Agent',
-    description: '从你的机器上选择或创建一个 agent。',
+    description: '选择一台机器，并在它的运行环境里创建 Agent。',
     daemonLabel: '机器',
     noDaemonTitle: '未连接设备',
     noDaemonHint: '在你的电脑上运行下面的命令安装并启动 BotCord，连接成功后会自动出现在这里。',
@@ -1696,17 +1710,24 @@ export const createAgentDialog: TranslationMap<{
     copied: '已复制',
     openActivate: '打开授权页面',
     refreshDaemons: '刷新设备列表',
-    runtimeLabel: 'Agent 运行时',
-    noRuntimesDetected: '该机器上未检测到可用运行时。',
-    probeRuntimes: '检测运行时',
+    runtimeLabel: '运行环境',
+    noRuntimesDetected: '这台机器还没有可用于创建 Agent 的运行环境。',
+    probeRuntimes: '检测可用运行环境',
     runtimeUnavailable: '不可用',
     runtimeNotSupported: '暂不支持',
+    openclawSubagentLabel: '子 Agent（可选）',
+    openclawSubagentInfo: '选择这个网关里的子 Agent。留空时，会使用网关配置里的主 Agent（defaultAgent）。',
+    openclawSubagentPlaceholder: '留空则使用网关的主 Agent',
+    openclawNoProfiles: '没有可绑定的子 Agent',
+    openclawSelectProfile: '选择一个子 Agent',
+    openclawBoundProfiles: (count) => `${count} 个子 Agent 已绑定到 BotCord。`,
     nameLabel: 'Agent 名称',
     namePlaceholder: '输入名称，例如：研究助理',
-    nameHint: '这是创建后的显示名称，请先填写你自己的名称。',
+    nameHint: 'Agent 名称是 BotCord 的显示名称，在群聊对话中对所有人可见。',
     nameRequired: '名称不能为空',
     bioLabel: '简介（可选）',
-    bioPlaceholder: '这个 agent 用来做什么？',
+    bioPlaceholder: '介绍这个 Agent 的特性和用途',
+    bioHint: '简介会展示这个 Agent 的特性，对所有人可见。',
     submit: '创建',
     submitting: '创建中...',
     cancel: '取消',
