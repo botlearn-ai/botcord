@@ -1368,6 +1368,62 @@ class OpenclawHostInstance(Base):
     )
 
 
+class AgentSchedule(Base):
+    """Owner/agent-managed schedule for proactive agent turns."""
+
+    __tablename__ = "agent_schedules"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "name", name="uq_agent_schedules_agent_name"),
+        Index("ix_agent_schedules_due", "enabled", "next_fire_at"),
+        Index("ix_agent_schedules_agent", "agent_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_text("TRUE"))
+    schedule_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(16), nullable=False, default="owner", server_default="owner")
+    next_fire_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_fire_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_until: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AgentScheduleRun(Base):
+    """Audit trail for schedule dispatch attempts."""
+
+    __tablename__ = "agent_schedule_runs"
+    __table_args__ = (
+        Index("ix_agent_schedule_runs_schedule", "schedule_id", "scheduled_for"),
+        Index("ix_agent_schedule_runs_agent", "agent_id", "scheduled_for"),
+        UniqueConstraint("dedupe_key", name="uq_agent_schedule_runs_dedupe_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    schedule_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agent_schedules.id", ondelete="CASCADE"), nullable=False
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("agents.agent_id", ondelete="CASCADE"), nullable=False
+    )
+    scheduled_for: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued", server_default="queued")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dedupe_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class DaemonDeviceCode(Base):
     """Transient device-code rows for the daemon login flow.
 

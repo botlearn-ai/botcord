@@ -924,6 +924,56 @@ const userApi = {
     }
     return result;
   },
+
+  listAgentSchedules(agentId: string): Promise<{ schedules: any[] }> {
+    return apiGet<{ schedules: any[] }>(`/api/agents/${encodeURIComponent(agentId)}/schedules`);
+  },
+
+  createAgentSchedule(
+    agentId: string,
+    body: {
+      name: string;
+      enabled: boolean;
+      schedule: { kind: "every"; every_ms: number };
+      payload: { kind: "agent_turn"; message: string };
+    },
+  ): Promise<any> {
+    return apiPost<any>(`/api/agents/${encodeURIComponent(agentId)}/schedules`, body);
+  },
+
+  updateAgentSchedule(
+    agentId: string,
+    scheduleId: string,
+    body: {
+      name?: string;
+      enabled?: boolean;
+      schedule?: { kind: "every"; every_ms: number };
+      payload?: { kind: "agent_turn"; message: string };
+    },
+  ): Promise<any> {
+    return apiPatch<any>(
+      `/api/agents/${encodeURIComponent(agentId)}/schedules/${encodeURIComponent(scheduleId)}`,
+      body,
+    );
+  },
+
+  deleteAgentSchedule(agentId: string, scheduleId: string): Promise<void> {
+    return apiDelete<void>(
+      `/api/agents/${encodeURIComponent(agentId)}/schedules/${encodeURIComponent(scheduleId)}`,
+    );
+  },
+
+  runAgentSchedule(agentId: string, scheduleId: string): Promise<any> {
+    return apiPost<any>(
+      `/api/agents/${encodeURIComponent(agentId)}/schedules/${encodeURIComponent(scheduleId)}/run`,
+    );
+  },
+
+  listAgentScheduleRuns(agentId: string, scheduleId: string): Promise<{ runs: any[] }> {
+    return apiGet<{ runs: any[] }>(
+      `/api/agents/${encodeURIComponent(agentId)}/schedules/${encodeURIComponent(scheduleId)}/runs`,
+    );
+  },
 };
 
 // ---------------------------------------------------------------------------

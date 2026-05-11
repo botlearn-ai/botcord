@@ -341,7 +341,8 @@ async function handleA2AMessage(
   const chatType = isGroupRoom ? "group" : "direct";
 
   // Human sender: dashboard_human_room source type OR hu_* ID prefix
-  const isHumanSender = msg.source_type === "dashboard_human_room" || senderId.startsWith("hu_");
+  const sourceType = String(msg.source_type || "");
+  const isHumanSender = sourceType === "dashboard_human_room" || senderId.startsWith("hu_");
   const senderKind: "human" | "agent" = isHumanSender ? "human" : "agent";
   const sanitizedSender = isHumanSender
     ? sanitizeSenderName(msg.source_user_name || "User")
@@ -417,7 +418,8 @@ async function handleA2AMessageBatch(
         ? envelope.payload
         : (envelope.payload?.text as string) ?? JSON.stringify(envelope.payload));
 
-    const isHumanSender = msg.source_type === "dashboard_human_room" || senderId.startsWith("hu_");
+    const sourceType = String(msg.source_type || "");
+    const isHumanSender = sourceType === "dashboard_human_room" || senderId.startsWith("hu_");
     const kind: "human" | "agent" = isHumanSender ? "human" : "agent";
     const sanitizedSender = isHumanSender
       ? sanitizeSenderName(msg.source_user_name || "User")
@@ -455,7 +457,8 @@ async function handleA2AMessageBatch(
   const last = msgs[msgs.length - 1];
   const lastEnvelope = last.envelope;
   const lastSenderId = lastEnvelope.from || "unknown";
-  const lastIsHuman = last.source_type === "dashboard_human_room" || lastSenderId.startsWith("hu_");
+  const lastSourceType = String(last.source_type || "");
+  const lastIsHuman = lastSourceType === "dashboard_human_room" || lastSenderId.startsWith("hu_");
 
   await dispatchInbound({
     cfg,

@@ -23,6 +23,7 @@ from hub import config as hub_config
 from hub.database import get_db
 from hub.expiry import message_expiry_loop
 from hub.subscription_billing import subscription_billing_loop
+from hub.services.agent_schedules import agent_schedule_loop
 from hub.version_poll import version_poll_loop
 from hub.routers.contact_requests import router as contact_requests_router
 from hub.routers.daemon_control import router as daemon_control_router
@@ -44,6 +45,7 @@ from hub.routers.room_context import router as room_context_router
 from hub.routers.subscriptions import internal_router as subscriptions_internal_router
 from hub.routers.subscriptions import router as subscriptions_router
 from hub.routers.memory import router as memory_router
+from hub.routers.agent_schedules import router as agent_schedules_router
 from hub.routers.topics import router as topics_router
 from hub.routers.stripe import router as stripe_router
 from hub.routers.wallet import internal_router as wallet_internal_router
@@ -67,6 +69,7 @@ from app.routers.policy import router as app_policy_router
 from app.routers.gateways import router as app_gateways_router
 from app.routers.prompts import router as app_prompts_router
 from app.routers.runtime_files import router as app_runtime_files_router
+from app.routers.schedules import router as app_schedules_router
 from app.auth import require_beta_user
 
 logging.basicConfig(level=logging.INFO)
@@ -114,6 +117,7 @@ async def lifespan(app: FastAPI):
     subscription_billing_task = None
     version_poll_task = None
     presence_task = None
+    agent_schedule_task = None
     if not test_db_override:
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
@@ -125,11 +129,13 @@ async def lifespan(app: FastAPI):
         version_poll_task = asyncio.create_task(version_poll_loop())
         # Background presence cleanup loop
         presence_task = asyncio.create_task(presence_cleanup_loop())
+        # Background proactive agent schedule loop
+        agent_schedule_task = asyncio.create_task(agent_schedule_loop())
 
     yield
 
     # Shutdown
-    for task in (presence_task, version_poll_task, subscription_billing_task, cleanup_task, expiry_task):
+    for task in (agent_schedule_task, presence_task, version_poll_task, subscription_billing_task, cleanup_task, expiry_task):
         if task is None:
             continue
         task.cancel()
@@ -277,6 +283,7 @@ app.include_router(dashboard_router)
 app.include_router(dashboard_chat_router)
 app.include_router(owner_chat_ws_router)
 app.include_router(memory_router)
+app.include_router(agent_schedules_router)
 app.include_router(leaderboard_router)
 app.include_router(public_router)
 app.include_router(share_public_router)
@@ -297,6 +304,7 @@ app.include_router(app_admin_beta_router)
 app.include_router(app_policy_router, dependencies=_beta_gate)
 app.include_router(app_gateways_router, dependencies=_beta_gate)
 app.include_router(app_runtime_files_router, dependencies=_beta_gate)
+app.include_router(app_schedules_router, dependencies=_beta_gate)
 app.include_router(app_prompts_router)
 app.include_router(app_presence_router, dependencies=_beta_gate)
 app.include_router(app_presence_status_router, dependencies=_beta_gate)

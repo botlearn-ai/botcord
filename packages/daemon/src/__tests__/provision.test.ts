@@ -104,6 +104,7 @@ interface FakeGateway {
   upsertManagedRoute: ReturnType<typeof vi.fn>;
   removeManagedRoute: ReturnType<typeof vi.fn>;
   replaceManagedRoutes: ReturnType<typeof vi.fn>;
+  injectInbound: ReturnType<typeof vi.fn>;
   listManagedRoutes: () => GatewayRoute[];
   snapshot: () => GatewayRuntimeSnapshot;
 }
@@ -128,6 +129,7 @@ function makeFakeGateway(initialChannelIds: string[] = []): FakeGateway {
       managed.clear();
       for (const [id, route] of routes) managed.set(id, route);
     }),
+    injectInbound: vi.fn(async () => {}),
     listManagedRoutes: (): GatewayRoute[] => Array.from(managed.values()),
     snapshot: (): GatewayRuntimeSnapshot => ({
       channels: Object.fromEntries(
@@ -248,6 +250,49 @@ describe("list_agent_files handler", () => {
       if (prevHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevHome;
     }
+  });
+});
+
+describe("wake_agent handler", () => {
+  it("injects a scheduled turn into the gateway dispatcher", async () => {
+    const gw = makeFakeGateway(["ag_wake"]);
+    const handler = createProvisioner({ gateway: gw as any });
+    const res = await handler({
+      id: "req_wake",
+      type: "wake_agent",
+      params: {
+        agent_id: "ag_wake",
+        message: "【BotCord 自主任务】执行本轮工作目标。",
+        run_id: "sr_test",
+        schedule_id: "sch_test",
+        dedupe_key: "sch_test:1:auto",
+      },
+    });
+
+    expect(res.ok).toBe(true);
+    expect(gw.injectInbound).toHaveBeenCalledTimes(1);
+    const msg = gw.injectInbound.mock.calls[0][0];
+    expect(msg.id).toBe("sr_test");
+    expect(msg.channel).toBe("ag_wake");
+    expect(msg.accountId).toBe("ag_wake");
+    expect(msg.sender.id).toBe("hub");
+    expect(msg.sender.kind).toBe("system");
+    expect(msg.text).toContain("BotCord 自主任务");
+    expect(msg.conversation.threadId).toBe("sch_test");
+  });
+
+  it("rejects wake_agent for an unloaded agent", async () => {
+    const gw = makeFakeGateway(["ag_loaded"]);
+    const handler = createProvisioner({ gateway: gw as any });
+    const res = await handler({
+      id: "req_wake_missing",
+      type: "wake_agent",
+      params: { agent_id: "ag_missing", message: "tick" },
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.error?.code).toBe("agent_not_loaded");
+    expect(gw.injectInbound).not.toHaveBeenCalled();
   });
 });
 

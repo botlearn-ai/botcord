@@ -30,6 +30,9 @@ import {
   jcsCanonicalize,
   signChallenge,
 } from "@botcord/protocol-core";
+import { getConfig } from "./runtime.js";
+import { resolveAccounts } from "./config.js";
+import { dispatchInbound } from "./inbound.js";
 
 // Inline minimal types + helpers — the published `@botcord/protocol-core`
 // (v0.1.x) doesn't yet ship the control-frame schemas; this duplicates
@@ -497,6 +500,53 @@ export async function handleControlFrame(
       // Best-effort: agent credentials cleanup is left to the user /
       // dashboard for now; the host just acks so Hub doesn't retry.
       return { ok: true };
+    }
+    case "wake_agent": {
+      const params = (frame.params ?? {}) as {
+        agent_id?: string;
+        message?: string;
+        run_id?: string;
+        schedule_id?: string;
+      };
+      if (!params.agent_id || !params.message) {
+        return {
+          ok: false,
+          error: { code: "bad_params", message: "agent_id and message required" },
+        };
+      }
+      try {
+        const cfg = getConfig();
+        const accounts = resolveAccounts((cfg?.channels?.botcord ?? {}) as any);
+        const entry = Object.entries(accounts).find(([, account]) => account.agentId === params.agent_id)
+          ?? Object.entries(accounts).find(([accountId]) => accountId === params.agent_id);
+        if (!cfg || !entry) {
+          return {
+            ok: false,
+            error: { code: "agent_not_loaded", message: "BotCord account is not loaded in OpenClaw config" },
+          };
+        }
+        const [accountId] = entry;
+        await dispatchInbound({
+          cfg,
+          accountId,
+          senderName: "BotCord Scheduler",
+          senderId: "hub",
+          senderKind: "agent",
+          content: params.message,
+          messageId: params.run_id || `schedule-${Date.now()}`,
+          messageType: "message" as any,
+          chatType: "direct",
+          replyTarget: "hub",
+          roomId: `rm_schedule_${params.agent_id}`,
+          topic: params.schedule_id,
+          mentioned: true,
+        });
+        return { ok: true, result: { agent_id: params.agent_id } };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.log("warn", `wake_agent failed: ${message}`);
+        return { ok: false, error: { code: "wake_failed", message } };
+      }
     }
     case "set_route":
       return { ok: true };
