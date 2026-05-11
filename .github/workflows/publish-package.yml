@@ -184,6 +184,9 @@ jobs:
             git add package.json package-lock.json openclaw.plugin.json
           else
             git add package.json
+            if [ -f package-lock.json ]; then
+              git add package-lock.json
+            fi
           fi
           case "$PKG" in
             plugin) TAG_PREFIX="" ;;
