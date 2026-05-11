@@ -304,6 +304,7 @@ async def issue_install_ticket(
 class _InstallTokenRequest(BaseModel):
     install_token: str = Field(..., min_length=8, max_length=128)
     label: str | None = Field(default=None, max_length=64)
+    daemon_instance_id: str | None = Field(default=None, max_length=32)
 
 
 @router.post("/daemon/auth/install-token")
@@ -328,10 +329,31 @@ async def redeem_install_token(
         if isinstance(body.label, str) and body.label.strip()
         else row.label
     )
-    daemon_instance_id, refresh_token = await _provision_daemon_instance(
-        db, row.user_id, label
+    requested_daemon_id = (
+        body.daemon_instance_id.strip()
+        if isinstance(body.daemon_instance_id, str) and body.daemon_instance_id.strip()
+        else None
     )
-    bundle, _ = _build_token_bundle(str(row.user_id), daemon_instance_id)
+    if requested_daemon_id:
+        existing_result = await db.execute(
+            select(DaemonInstance).where(DaemonInstance.id == requested_daemon_id)
+        )
+        instance = existing_result.scalar_one_or_none()
+        if instance is None or str(instance.user_id) != str(row.user_id):
+            raise HTTPException(status_code=404, detail="daemon_instance_not_found")
+        if instance.revoked_at is not None:
+            raise HTTPException(status_code=409, detail="daemon_revoked")
+        bundle, refresh_token = _build_token_bundle(str(row.user_id), instance.id)
+        instance.refresh_token_hash = _hash_refresh_token(refresh_token)
+        instance.last_seen_at = _now()
+        if label:
+            instance.label = label
+        daemon_instance_id = instance.id
+    else:
+        daemon_instance_id, refresh_token = await _provision_daemon_instance(
+            db, row.user_id, label
+        )
+        bundle, _ = _build_token_bundle(str(row.user_id), daemon_instance_id)
     bundle["refresh_token"] = refresh_token
 
     row.consumed_at = _now()
