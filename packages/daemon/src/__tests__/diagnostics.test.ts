@@ -25,6 +25,8 @@ describe("diagnostics bundle", () => {
     });
     expect(bundle.filename).toMatch(/^botcord-daemon-diagnostics-.*\.zip$/);
     expect(bundle.path).toContain(diagnosticsDir);
+    expect(bundle.revealCommand).toContain(bundle.path);
+    expect(bundle.copyPathCommand).toContain(bundle.path);
     expect(existsSync(bundle.path)).toBe(true);
     const bytes = readFileSync(bundle.path);
     expect(bytes.subarray(0, 4).toString("binary")).toBe("PK\u0003\u0004");

@@ -43,6 +43,8 @@ export interface DiagnosticBundleResult {
   filename: string;
   sizeBytes: number;
   createdAt: string;
+  revealCommand: string;
+  copyPathCommand: string;
 }
 
 export interface DiagnosticUploadResult {
@@ -242,6 +244,35 @@ function createZip(entries: Array<{ name: string; data: string | Buffer }>): Buf
   return Buffer.concat([...localParts, central, end]);
 }
 
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+function diagnosticBundleCommands(filePath: string): {
+  revealCommand: string;
+  copyPathCommand: string;
+} {
+  if (process.platform === "darwin") {
+    return {
+      revealCommand: `open -R ${shellQuote(filePath)}`,
+      copyPathCommand: `printf '%s' ${shellQuote(filePath)} | pbcopy`,
+    };
+  }
+
+  if (process.platform === "win32") {
+    const psPath = filePath.replace(/'/g, "''");
+    return {
+      revealCommand: `explorer.exe /select,"${filePath.replace(/"/g, '""')}"`,
+      copyPathCommand: `powershell.exe -NoProfile -Command "Set-Clipboard -Value '${psPath}'"`,
+    };
+  }
+
+  return {
+    revealCommand: `xdg-open ${shellQuote(path.dirname(filePath))}`,
+    copyPathCommand: `printf '%s' ${shellQuote(filePath)} | xclip -selection clipboard`,
+  };
+}
+
 export async function createDiagnosticBundle(
   opts: CreateDiagnosticBundleOptions = {},
 ): Promise<DiagnosticBundleResult> {
@@ -296,11 +327,13 @@ export async function createDiagnosticBundle(
   const zip = createZip(entries);
   const out = path.join(diagnosticsDir, filename);
   writeFileSync(out, zip, { mode: 0o600 });
+  const commands = diagnosticBundleCommands(out);
   return {
     path: out,
     filename,
     sizeBytes: zip.length,
     createdAt: createdAt.toISOString(),
+    ...commands,
   };
 }
 
