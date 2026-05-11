@@ -793,9 +793,14 @@ export default function DashboardApp() {
 
   const selectedAgentForCard = chatStore.selectedAgentProfile;
   const isSelectedAgentOwned = selectedAgentForCard
-    ? sessionStore.ownedAgents.some(
-      (item) => item.agent_id === selectedAgentForCard.agent_id,
-    )
+    ? selectedAgentForCard.agent_id === sessionStore.activeAgentId
+      || sessionStore.ownedAgents.some(
+        (item) => item.agent_id === selectedAgentForCard.agent_id,
+      )
+      || (
+        Boolean(selectedAgentForCard.owner_human_id)
+        && selectedAgentForCard.owner_human_id === sessionStore.human?.human_id
+      )
     : false;
   const alreadyInContacts = selectedAgentForCard
     ? (chatStore.overview?.contacts || []).some(
@@ -814,6 +819,7 @@ export default function DashboardApp() {
 
   const handleSendFriendRequestFromCard = () => {
     if (!selectedAgentForCard) return;
+    if (isSelectedAgentOwned) return;
     if (sessionStore.sessionMode !== "authed-ready") {
       router.push("/login");
       return;
