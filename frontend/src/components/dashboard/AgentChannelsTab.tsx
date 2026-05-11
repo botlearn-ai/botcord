@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
+  GatewayApiError,
   useAgentGatewayStore,
   type AgentGatewayConnection,
   type GatewayProvider,
@@ -65,6 +66,13 @@ function ProviderIcon({ provider }: { provider: GatewayProvider }) {
 
 function providerName(provider: GatewayProvider): string {
   return provider === "telegram" ? "Telegram" : "微信";
+}
+
+function isAckTimeoutError(err: unknown): boolean {
+  return (
+    err instanceof GatewayApiError &&
+    (err.status === 504 || err.message === "daemon_ack_timeout")
+  );
 }
 
 function StepSection({
@@ -163,7 +171,9 @@ export default function AgentChannelsTab({ agentId }: Props) {
       if (g.enabled) await disable(agentId, g.id);
       else await enable(agentId, g.id);
     } catch (err) {
-      setErr(g.id, err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setErr(g.id, err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setBusyId(null);
     }
@@ -178,7 +188,9 @@ export default function AgentChannelsTab({ agentId }: Props) {
       await remove(agentId, g.id);
       setPendingDelete(null);
     } catch (err) {
-      setErr(g.id, err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setErr(g.id, err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setBusyId(null);
     }
@@ -470,7 +482,9 @@ function TelegramAddForm({
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setSaving(false);
     }
@@ -964,7 +978,9 @@ function WechatAddForm({
         void doPoll(r.loginId);
       }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -989,10 +1005,12 @@ function WechatAddForm({
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      if (pollTimer.current) {
-        clearInterval(pollTimer.current);
-        pollTimer.current = null;
+      if (!isAckTimeoutError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+        if (pollTimer.current) {
+          clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        }
       }
     }
   }
@@ -1021,7 +1039,9 @@ function WechatAddForm({
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -1058,8 +1078,10 @@ function WechatAddForm({
         setSenderDiscoverHint("发现多个用户，请选择要允许的微信用户 ID。");
       }
     } catch (err) {
-      setSenderDiscoverHint(null);
-      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setSenderDiscoverHint(null);
+        setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setDiscoveringSenders(false);
     }
@@ -1414,7 +1436,9 @@ function GatewayEditForm({
       });
       onSaved();
     } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        onError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setSaving(false);
     }
@@ -1508,7 +1532,9 @@ function GatewayEditForm({
         void pollEditWechatLogin(r.loginId);
       }, 2000);
     } catch (err) {
-      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setWechatLoginBusy(false);
     }
@@ -1528,10 +1554,12 @@ function GatewayEditForm({
         setSenderDiscoverHint("已确认登录，请用要接入的微信账号发一条消息。");
       }
     } catch (err) {
-      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
-      if (editPollTimer.current) {
-        clearInterval(editPollTimer.current);
-        editPollTimer.current = null;
+      if (!isAckTimeoutError(err)) {
+        setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+        if (editPollTimer.current) {
+          clearInterval(editPollTimer.current);
+          editPollTimer.current = null;
+        }
       }
     }
   }
@@ -1567,8 +1595,10 @@ function GatewayEditForm({
         setSenderDiscoverHint("发现多个用户，请选择要允许的微信用户 ID。");
       }
     } catch (err) {
-      setSenderDiscoverHint(null);
-      setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+      if (!isAckTimeoutError(err)) {
+        setSenderDiscoverHint(null);
+        setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setDiscoveringSenders(false);
     }
