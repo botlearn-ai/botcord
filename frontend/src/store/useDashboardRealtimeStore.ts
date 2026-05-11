@@ -32,6 +32,10 @@ function isTypingRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
   return type === "typing";
 }
 
+function isRoomMemberRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
+  return type === "room_member_added" || type === "room_member_removed";
+}
+
 function isMessageLikeRealtimeEvent(event: RealtimeMetaEvent | null): event is RealtimeMetaEvent {
   return Boolean(event && isMessageRealtimeEvent(event.type) && event.room_id);
 }
@@ -119,6 +123,10 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         }
 
         const chatStore = useDashboardChatStore.getState();
+        if (currentEvent?.room_id && isRoomMemberRealtimeEvent(currentEvent.type)) {
+          chatStore.bumpRoomMembersVersion(currentEvent.room_id);
+        }
+
         const shouldRefreshOverview = (() => {
           if (!currentEvent) return true;
           if (isContactRealtimeEvent(currentEvent.type)) return true;

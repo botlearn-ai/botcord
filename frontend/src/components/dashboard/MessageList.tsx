@@ -255,6 +255,9 @@ export default function MessageList() {
 
   const roomId = openedRoomId;
   const messages = roomId ? messagesByRoom[roomId] || [] : [];
+  const roomMemberVersion = useDashboardChatStore(
+    (state) => roomId ? (state.roomMemberVersions[roomId] ?? 0) : 0,
+  );
   const isRoomMessagesLoading = roomId ? messagesLoading[roomId] ?? false : false;
   const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
   const currentAgentId = overview?.agent?.agent_id;
@@ -293,7 +296,7 @@ export default function MessageList() {
     return () => {
       cancelled = true;
     };
-  }, [roomId]);
+  }, [roomId, roomMemberVersion]);
 
   const commitRoomSeen = useCallback((targetRoomId: string) => {
     const joinedRoom = overview?.rooms.find((room) => room.room_id === targetRoomId);

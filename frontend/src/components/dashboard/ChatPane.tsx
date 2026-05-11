@@ -606,6 +606,9 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     recentVisitedRooms: state.recentVisitedRooms,
     getRoomSummary: state.getRoomSummary,
   })));
+  const openedRoomMemberVersion = useDashboardChatStore(
+    (state) => openedRoomId ? (state.roomMemberVersions[openedRoomId] ?? 0) : 0,
+  );
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms }),
     [overview, recentVisitedRooms, token, humanRooms],
@@ -634,7 +637,7 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     return () => {
       cancelled = true;
     };
-  }, [openedRoomId]);
+  }, [openedRoomId, openedRoomMemberVersion]);
 
   if (sidebarTab === "explore") {
     return <ExploreMainPane onHumanOpen={onHumanOpen} />;
