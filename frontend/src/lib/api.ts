@@ -934,7 +934,10 @@ const userApi = {
     body: {
       name: string;
       enabled: boolean;
-      schedule: { kind: "every"; every_ms: number };
+      schedule:
+        | { kind: "every"; every_ms: number }
+        | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
+        | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
       payload: { kind: "agent_turn"; message: string };
     },
   ): Promise<any> {
@@ -947,7 +950,10 @@ const userApi = {
     body: {
       name?: string;
       enabled?: boolean;
-      schedule?: { kind: "every"; every_ms: number };
+      schedule?:
+        | { kind: "every"; every_ms: number }
+        | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
+        | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
       payload?: { kind: "agent_turn"; message: string };
     },
   ): Promise<any> {

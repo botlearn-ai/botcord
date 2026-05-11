@@ -12,6 +12,19 @@ function everyMsFromArgs(args: any): number | undefined {
   return undefined;
 }
 
+function calendarScheduleFromArgs(args: any): Record<string, unknown> | undefined {
+  const frequency = String(args.frequency || "");
+  if (frequency !== "daily" && frequency !== "weekly") return undefined;
+  if (typeof args.time !== "string" || !/^\d{2}:\d{2}$/.test(args.time)) return undefined;
+  const timezone = typeof args.timezone === "string" && args.timezone ? args.timezone : "UTC";
+  if (frequency === "daily") {
+    return { kind: "calendar", frequency, time: args.time, timezone };
+  }
+  const weekdays = Array.isArray(args.weekdays) ? args.weekdays.map((day: unknown) => Math.trunc(Number(day))) : [];
+  if (weekdays.length === 0) return undefined;
+  return { kind: "calendar", frequency, time: args.time, timezone, weekdays };
+}
+
 export function createScheduleTool() {
   return {
     name: "botcord_schedule",
@@ -29,6 +42,18 @@ export function createScheduleTool() {
         scheduleId: { type: "string" as const, description: "Schedule id for edit/delete/run/runs." },
         name: { type: "string" as const, description: "Human-readable schedule name." },
         everyMs: { type: "number" as const, description: "Interval in milliseconds. Minimum 300000." },
+        frequency: {
+          type: "string" as const,
+          enum: ["daily", "weekly"],
+          description: "Calendar cadence. Use with time and timezone instead of everyMs.",
+        },
+        time: { type: "string" as const, description: "Local 24-hour time in HH:MM format." },
+        timezone: { type: "string" as const, description: "IANA timezone, for example Asia/Shanghai." },
+        weekdays: {
+          type: "array" as const,
+          items: { type: "number" as const },
+          description: "Weekly weekdays, Monday=0 through Sunday=6.",
+        },
         message: {
           type: "string" as const,
           description: "Message used to trigger the proactive turn.",
@@ -60,13 +85,14 @@ export function createScheduleTool() {
           }
           case "add": {
             const everyMs = everyMsFromArgs(args);
+            const calendarSchedule = calendarScheduleFromArgs(args);
             if (!args.name) return validationError("name is required");
-            if (!everyMs) return validationError("everyMs is required");
+            if (!everyMs && !calendarSchedule) return validationError("everyMs or frequency/time is required");
             return { response: await client.request("POST", "/hub/schedules", {
               body: {
                 name: args.name,
                 enabled: args.enabled !== false,
-                schedule: { kind: "every", every_ms: everyMs },
+                schedule: calendarSchedule || { kind: "every", every_ms: everyMs },
                 payload: { kind: "agent_turn", message: args.message || DEFAULT_MESSAGE },
               },
             }) };
@@ -75,8 +101,10 @@ export function createScheduleTool() {
             if (!args.scheduleId) return validationError("scheduleId is required");
             const body: Record<string, unknown> = {};
             const everyMs = everyMsFromArgs(args);
+            const calendarSchedule = calendarScheduleFromArgs(args);
             if (args.name) body.name = args.name;
             if (everyMs) body.schedule = { kind: "every", every_ms: everyMs };
+            if (calendarSchedule) body.schedule = calendarSchedule;
             if (args.message) body.payload = { kind: "agent_turn", message: args.message };
             if (args.enabled !== undefined) body.enabled = Boolean(args.enabled);
             if (Object.keys(body).length === 0) return validationError("nothing to edit");
