@@ -371,7 +371,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
       expect(argv).toContain('approval_policy="never"');
     });
 
-    it("extraArgs `-s read-only` suppresses the default sandbox `-c`s", async () => {
+    it("extraArgs `-s read-only` is converted to resume-compatible sandbox config", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -384,11 +384,87 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         extraArgs: ["-s", "read-only"],
       });
       const argv = JSON.parse(res.text) as string[];
-      // Only the operator-supplied `-s` appears; our defaults are suppressed.
-      expect(argv.filter((a) => a === "-s").length).toBe(1);
-      expect(argv[argv.indexOf("-s") + 1]).toBe("read-only");
+      expect(argv).not.toContain("-s");
+      expect(argv).toContain('sandbox_mode="read-only"');
       expect(argv).not.toContain('sandbox_mode="workspace-write"');
       expect(argv).not.toContain('sandbox_mode="danger-full-access"');
+    });
+
+    it("extraArgs `--sandbox=value` is converted on resume too", async () => {
+      const adapter = new CodexAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: "01234567-89ab-7def-8123-456789abcdef",
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "public",
+        extraArgs: ["--sandbox=workspace-write"],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv[0]).toBe("exec");
+      expect(argv[1]).toBe("resume");
+      expect(argv).not.toContain("--sandbox=workspace-write");
+      expect(argv).toContain('sandbox_mode="workspace-write"');
+      expect(argv).not.toContain('sandbox_mode="danger-full-access"');
+    });
+
+    it("maps legacy Codex --full-auto to the current bypass flag", async () => {
+      const adapter = new CodexAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "public",
+        extraArgs: ["--full-auto"],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv).not.toContain("--full-auto");
+      expect(argv).toContain("--dangerously-bypass-approvals-and-sandbox");
+      expect(argv).not.toContain('sandbox_mode="danger-full-access"');
+    });
+
+    it("drops inherited Claude --permission-mode extraArgs and their values", async () => {
+      const adapter = new CodexAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "public",
+        extraArgs: ["--permission-mode", "bypassPermissions", "--model", "gpt-5.2"],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv).not.toContain("--permission-mode");
+      expect(argv).not.toContain("bypassPermissions");
+      expect(argv).toContain("--model");
+      expect(argv[argv.indexOf("--model") + 1]).toBe("gpt-5.2");
+      expect(argv).toContain('sandbox_mode="danger-full-access"');
+      expect(argv).toContain('approval_policy="never"');
+    });
+
+    it("drops inherited Claude --permission-mode=value extraArgs", async () => {
+      const adapter = new CodexAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "public",
+        extraArgs: ["--permission-mode=bypassPermissions"],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv).not.toContain("--permission-mode=bypassPermissions");
+      expect(argv).toContain('sandbox_mode="danger-full-access"');
+      expect(argv).toContain('approval_policy="never"');
     });
   });
 });

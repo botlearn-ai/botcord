@@ -349,5 +349,40 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       const modeIdx = argv.indexOf("--permission-mode");
       expect(argv[modeIdx + 1]).toBe("plan");
     });
+
+    it("drops inherited Codex-only extraArgs while preserving shared Claude flags", async () => {
+      const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "public",
+        extraArgs: [
+          "-c",
+          'model="gpt-5.2"',
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "--json",
+          "-p",
+          "codex-profile",
+          "--model",
+          "sonnet",
+        ],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv).not.toContain("-c");
+      expect(argv).not.toContain('model="gpt-5.2"');
+      expect(argv).not.toContain("--sandbox");
+      expect(argv).not.toContain("read-only");
+      expect(argv).not.toContain("--skip-git-repo-check");
+      expect(argv).not.toContain("--json");
+      expect(argv).not.toContain("codex-profile");
+      expect(argv).toContain("--model");
+      expect(argv[argv.indexOf("--model") + 1]).toBe("sonnet");
+    });
   });
 });

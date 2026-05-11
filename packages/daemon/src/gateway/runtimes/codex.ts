@@ -15,6 +15,69 @@ import type { RuntimeProbeResult, RuntimeRunOptions, StreamBlock } from "../type
 const CODEX_DESKTOP_BUNDLE_PATH = "/Applications/Codex.app/Contents/Resources/codex";
 /** Codex UUIDv7 / v4 session ids are 36-char dashed hex; reject anything else to keep argv safe. */
 const CODEX_SESSION_ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const CODEX_FOREIGN_EXTRA_FLAGS_WITH_VALUE = new Set([
+  "--append-system-prompt",
+  "--permission-mode",
+]);
+const CODEX_SANDBOX_MODES = new Set(["read-only", "workspace-write", "danger-full-access"]);
+
+function extraFlagName(arg: string): string {
+  if (!arg.startsWith("-")) return arg;
+  const eq = arg.indexOf("=");
+  return eq === -1 ? arg : arg.slice(0, eq);
+}
+
+function nextExtraValue(args: string[], index: number): string | undefined {
+  const next = args[index + 1];
+  if (typeof next !== "string") return undefined;
+  if (!next.startsWith("-")) return next;
+  return /^-\d/.test(next) ? next : undefined;
+}
+
+function sanitizeCodexExtraArgs(extraArgs: string[] | undefined): string[] {
+  if (!extraArgs?.length) return [];
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i += 1) {
+    const arg = extraArgs[i];
+    const name = extraFlagName(arg);
+    if (CODEX_FOREIGN_EXTRA_FLAGS_WITH_VALUE.has(name)) {
+      if (!arg.includes("=") && nextExtraValue(extraArgs, i) !== undefined) i += 1;
+      continue;
+    }
+    if (name === "-s" || name === "--sandbox") {
+      const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : nextExtraValue(extraArgs, i);
+      if (!arg.includes("=") && value !== undefined) i += 1;
+      if (value && CODEX_SANDBOX_MODES.has(value)) {
+        out.push("-c", `sandbox_mode="${value}"`);
+      }
+      continue;
+    }
+    if (arg === "--full-auto") {
+      out.push("--dangerously-bypass-approvals-and-sandbox");
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
+function hasCodexSandboxOverride(args: string[]): boolean {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (
+      arg === "--dangerously-bypass-approvals-and-sandbox" ||
+      arg.startsWith("-c sandbox_mode=") ||
+      arg.startsWith("-csandbox_mode=") ||
+      arg.startsWith("--config=sandbox_mode=")
+    ) {
+      return true;
+    }
+    if ((arg === "-c" || arg === "--config") && args[i + 1]?.startsWith("sandbox_mode=")) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** Resolve the Codex CLI executable via PATH or macOS desktop bundle. */
 export function resolveCodexCommand(deps: ProbeDeps = {}): string | null {
@@ -167,6 +230,7 @@ export class CodexAdapter extends NdjsonStreamAdapter {
    */
   protected buildArgs(opts: RuntimeRunOptions): string[] {
     const tail: string[] = [];
+    const extraArgs = sanitizeCodexExtraArgs(opts.extraArgs);
 
     // Sandbox / approval policy. Expressed as `-c` overrides because
     // `codex exec resume` rejects `-s` / `--full-auto`. `-c` works on both
@@ -177,16 +241,7 @@ export class CodexAdapter extends NdjsonStreamAdapter {
     // relay back to the user yet. Default to bypassing both approvals and the
     // sandbox for every trust tier; operators who need a stricter posture can
     // still override with route/defaultRoute extraArgs.
-    const hasSandboxOverride =
-      opts.extraArgs?.some(
-        (a) =>
-          a === "-s" ||
-          a.startsWith("--sandbox") ||
-          a === "--full-auto" ||
-          a === "--dangerously-bypass-approvals-and-sandbox" ||
-          a.startsWith("-c sandbox_mode=") ||
-          a.startsWith("-csandbox_mode="),
-      ) ?? false;
+    const hasSandboxOverride = hasCodexSandboxOverride(extraArgs);
     if (!hasSandboxOverride) {
       tail.push(
         "-c",
@@ -196,7 +251,7 @@ export class CodexAdapter extends NdjsonStreamAdapter {
       );
     }
     tail.push("--skip-git-repo-check", "--json");
-    if (opts.extraArgs?.length) tail.push(...opts.extraArgs);
+    if (extraArgs.length) tail.push(...extraArgs);
 
     // `--` separates flags from positionals so a prompt starting with `-`
     // can never be parsed as an option. `systemContext` is NOT prepended to
