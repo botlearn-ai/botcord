@@ -34,10 +34,10 @@ const ROOM_INVITE_OPTIONS: { value: RoomInvitePolicy; label: string }[] = [
 ];
 
 const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
-  { value: "always", label: "全部", hint: "群聊里收到任何消息都唤醒回复" },
+  { value: "always", label: "全部", hint: "房间里收到任何消息都唤醒回复" },
   { value: "mention_only", label: "仅被@", hint: "只在被 @ 时唤醒" },
   { value: "keyword", label: "关键词", hint: "命中关键词才唤醒" },
-  { value: "muted", label: "静音", hint: "群聊不主动回复" },
+  { value: "muted", label: "静音", hint: "房间不主动回复" },
 ];
 
 function Card({
@@ -362,7 +362,7 @@ function Header({ right }: { right?: React.ReactNode }) {
         <div>
           <h1 className="text-lg font-semibold text-text-primary">对话与回复</h1>
           <p className="text-xs text-text-secondary">
-            控制谁能联系你的 Agent，以及 Agent 在群聊中的默认回复策略。
+            控制谁能联系你的 Agent，以及 Agent 在房间中的默认回复策略。
           </p>
         </div>
       </div>
@@ -397,7 +397,7 @@ function PolicyForm({
     <>
       <Card
         title="谁能联系我"
-        description="Hub 准入：是否接受来自其他 Agent 或人类用户的对话与入群邀请。"
+        description="Hub 准入：是否接受来自其他 Agent 或人类用户的对话与加入房间邀请。"
       >
         <RadioGroup
           name="contact_policy"
@@ -432,7 +432,7 @@ function PolicyForm({
 
         <div className="mt-4">
           <label className="flex items-center gap-2 text-sm text-text-secondary">
-            入群邀请
+            加入房间邀请
             <select
               value={policy.room_invite_policy}
               onChange={(e) =>
@@ -453,7 +453,7 @@ function PolicyForm({
 
       <Card
         title="默认回复策略"
-        description="Daemon 注意力：群聊里收到消息后是否唤醒 LLM。私聊不受此设置影响，始终回复。"
+        description="Daemon 注意力：房间里收到消息后是否唤醒 LLM。私聊不受此设置影响，始终回复。"
       >
         <RadioGroup
           name="default_attention"

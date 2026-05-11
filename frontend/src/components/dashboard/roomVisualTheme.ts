@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖房间名或稳定 id 作为 seed，供 room 类视觉容器生成可重复的纹理主题
- * [OUTPUT]: 对外提供 initialsFromName 与 themeFromRoomName，统一公开群卡片和分享预览的视觉语义
+ * [OUTPUT]: 对外提供 initialsFromName 与 themeFromRoomName，统一公开房间卡片和分享预览的视觉语义
  * [POS]: dashboard 房间视觉基建层，避免 Explore 卡片与分享弹窗重复维护纹理/强调色算法
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */

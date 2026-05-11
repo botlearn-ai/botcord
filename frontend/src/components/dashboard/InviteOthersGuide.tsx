@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 share/invite API 为当前已加入群生成真实 share asset，依赖 onboarding 模板把真实入口写成可复制 Prompt
- * [OUTPUT]: 对外提供 InviteOthersGuide 组件，展示邀请他人加入当前群的 Prompt 并支持复制
- * [POS]: dashboard 加群引导中的外部邀请分支，只消费真实 invite/share 资产，不接触内部 room route
+ * [INPUT]: 依赖 share/invite API 为当前已加入房间生成真实 share asset，依赖 onboarding 模板把真实入口写成可复制 Prompt
+ * [OUTPUT]: 对外提供 InviteOthersGuide 组件，展示邀请他人加入当前房间的 Prompt 并支持复制
+ * [POS]: dashboard 加入房间引导中的外部邀请分支，只消费真实 invite/share 资产，不接触内部 room route
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 

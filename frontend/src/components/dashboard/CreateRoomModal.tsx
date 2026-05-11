@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 humansApi 的建群能力，依赖 dashboard/session store 提供联系人、Bot 与当前身份
- * [OUTPUT]: 对外提供 CreateRoomModal 组件，完成群名称、描述与初始成员提交
- * [POS]: dashboard 建群入口弹框，被 Sidebar 触发，负责把建群表单收敛为 humans room API 请求
+ * [INPUT]: 依赖 humansApi 的创建房间能力，依赖 dashboard/session store 提供联系人、Bot 与当前身份
+ * [OUTPUT]: 对外提供 CreateRoomModal 组件，完成房间名称、描述与初始成员提交
+ * [POS]: dashboard 创建房间入口弹框，被 Sidebar 触发，负责把创建房间表单收敛为 humans room API 请求
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 

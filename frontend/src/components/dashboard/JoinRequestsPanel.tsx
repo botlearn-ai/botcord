@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 api 层获取入群申请列表，依赖 roomList i18n 文案
- * [OUTPUT]: 对外提供 JoinRequestsPanel 组件，展示并管理当前房间的入群申请（accept/reject）
- * [POS]: dashboard 右侧面板的子模块，嵌入 AgentBrowser 中供群主/管理员消费
+ * [INPUT]: 依赖 api 层获取加入房间申请列表，依赖 roomList i18n 文案
+ * [OUTPUT]: 对外提供 JoinRequestsPanel 组件，展示并管理当前房间的加入申请（accept/reject）
+ * [POS]: dashboard 右侧面板的子模块，嵌入 AgentBrowser 中供房主/管理员消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 "use client";

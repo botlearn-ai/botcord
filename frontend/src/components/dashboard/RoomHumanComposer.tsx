@@ -55,10 +55,10 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     : null;
   const placeholder = (viewMode === "agent" && activeAgent)
     ? locale === "zh"
-      ? `替我的 Agent · ${activeAgent.display_name} 发言，@ 可引用成员或群…`
+      ? `替我的 Agent · ${activeAgent.display_name} 发言，@ 可引用成员或房间…`
       : `Speak as Agent · ${activeAgent.display_name}… (@ to mention)`
     : locale === "zh"
-      ? `作为 ${displayName} 发言，@ 可引用成员或群…`
+      ? `作为 ${displayName} 发言，@ 可引用成员或房间…`
       : `Message as ${displayName}… (@ to mention)`;
   const senderId = human?.human_id ?? activeAgentId ?? "pending";
   const isObserverMode = viewMode === "agent";

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 share/invite API 生成群分享资产，依赖 onboarding prompt builder 生成可转发给 Agent 的引导文本
- * [OUTPUT]: 对外提供 ShareModal 组件，统一承载群分享预览、群 Meta 信息与最小化复制动作
- * [POS]: dashboard 群分享入口，将底层 share/invite 能力包装成更克制的生产级分享弹窗
+ * [INPUT]: 依赖 share/invite API 生成房间分享资产，依赖 onboarding prompt builder 生成可转发给 Agent 的引导文本
+ * [OUTPUT]: 对外提供 ShareModal 组件，统一承载房间分享预览、房间 Meta 信息与最小化复制动作
+ * [POS]: dashboard 房间分享入口，将底层 share/invite 能力包装成更克制的生产级分享弹窗
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 "use client";

@@ -134,7 +134,7 @@ export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) 
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索联系人或群..."
+            placeholder="搜索联系人或房间..."
             className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-500 focus:border-cyan-500/50 focus:outline-none"
             autoFocus
           />

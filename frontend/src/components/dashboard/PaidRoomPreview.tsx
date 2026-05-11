@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 api.getPublicRoomMessagePreviews 拉取订阅群公开摘要，依赖 SubscriptionBadge 完成登录/订阅入口
+ * [INPUT]: 依赖 api.getPublicRoomMessagePreviews 拉取订阅房间公开摘要，依赖 SubscriptionBadge 完成登录/订阅入口
  * [OUTPUT]: 对外提供 PaidRoomPreview 组件，向未订阅用户展示固定 3 条消息摘要与订阅动作
- * [POS]: dashboard 付费群门前橱窗，被 ChatPane 的付费未加入分支消费，避免权限空态变成黑洞
+ * [POS]: dashboard 付费房间门前橱窗，被 ChatPane 的付费未加入分支消费，避免权限空态变成黑洞
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
