@@ -21,9 +21,12 @@ import datetime
 import hashlib
 import json
 import logging
+import os
+import re
 import secrets
 import uuid as _uuid
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import quote
 from typing import Any
 
@@ -33,9 +36,11 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.responses import FileResponse
 from nacl.signing import SigningKey
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
@@ -46,6 +51,9 @@ from hub.config import (
     DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS,
     DAEMON_DEVICE_CODE_INTERVAL_SECONDS,
     DAEMON_DEVICE_CODE_TTL_SECONDS,
+    DAEMON_DIAGNOSTICS_DIR,
+    DAEMON_DIAGNOSTICS_MAX_BYTES,
+    DAEMON_DIAGNOSTICS_TTL_HOURS,
     DAEMON_INSTALL_TICKET_TTL_SECONDS,
     DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS,
     DAEMON_DISPATCH_MAX_TIMEOUT_MS,
@@ -66,6 +74,7 @@ from hub.id_generators import (
 from hub.models import (
     Agent,
     DaemonAgentCleanup,
+    DaemonDiagnosticBundle,
     DaemonDeviceCode,
     DaemonInstallTicket,
     DaemonInstance,
@@ -829,6 +838,7 @@ _ALLOWED_DISPATCH_TYPES = {
     "set_route",
     "ping",
     "list_runtimes",
+    "collect_diagnostics",
     # PR3: BFF fans this out from PATCH /api/agents/{id}/policy and the
     # per-room override endpoints (the latter ship in PR2). Daemon handler
     # invalidates `policyResolver` cache for the (agent, room?) pair.
@@ -1129,6 +1139,196 @@ async def refresh_instance_runtimes(
     return _RefreshRuntimesResponse(
         runtimes=runtimes,
         runtimes_probed_at=probed_dt,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics
+# ---------------------------------------------------------------------------
+
+
+class _CollectDiagnosticsResponse(BaseModel):
+    ok: bool
+    bundle_id: str
+    filename: str
+    size_bytes: int
+    expires_at: datetime.datetime | None = None
+    local_path: str | None = None
+
+
+@router.post(
+    "/daemon/instances/{daemon_instance_id}/diagnostics",
+    response_model=_CollectDiagnosticsResponse,
+)
+async def collect_instance_diagnostics(
+    daemon_instance_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> _CollectDiagnosticsResponse:
+    """Ask an online daemon to generate and upload a redacted diagnostic zip."""
+    instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
+    if instance.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="daemon_revoked")
+
+    ack = await send_control_frame(
+        daemon_instance_id,
+        "collect_diagnostics",
+        {},
+        timeout_ms=DAEMON_DISPATCH_MAX_TIMEOUT_MS,
+    )
+    if not isinstance(ack, dict) or not ack.get("ok"):
+        err = ack.get("error") if isinstance(ack, dict) else None
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        message = (err or {}).get("message") if isinstance(err, dict) else None
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "upstream_error",
+                "daemon_code": code,
+                "daemon_message": message,
+            },
+        )
+    result = ack.get("result") if isinstance(ack.get("result"), dict) else {}
+    bundle_id = result.get("bundle_id") if isinstance(result, dict) else None
+    filename = result.get("filename") if isinstance(result, dict) else None
+    size_bytes = result.get("size_bytes") if isinstance(result, dict) else None
+    expires_raw = result.get("expires_at") if isinstance(result, dict) else None
+    local_path = result.get("local_path") if isinstance(result, dict) else None
+    if not isinstance(bundle_id, str) or not isinstance(filename, str) or not isinstance(size_bytes, int):
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "upstream_error", "daemon_message": "malformed diagnostics result"},
+        )
+    expires_at = None
+    if isinstance(expires_raw, str):
+        try:
+            expires_at = datetime.datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
+        except ValueError:
+            expires_at = None
+    return _CollectDiagnosticsResponse(
+        ok=True,
+        bundle_id=bundle_id,
+        filename=filename,
+        size_bytes=size_bytes,
+        expires_at=expires_at,
+        local_path=local_path if isinstance(local_path, str) else None,
+    )
+
+
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_diagnostic_filename(raw: str | None) -> str:
+    name = (raw or "botcord-daemon-diagnostics.zip").strip()
+    name = os.path.basename(name)
+    name = _SAFE_FILENAME_RE.sub("_", name)
+    if not name.endswith(".zip"):
+        name += ".zip"
+    return name[:180] or "botcord-daemon-diagnostics.zip"
+
+
+@router.post("/daemon/diagnostics/upload")
+async def upload_daemon_diagnostics(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Receive a daemon-generated diagnostic zip.
+
+    Auth uses the daemon access token. The body is a single application/zip
+    payload; daemon-side code has already redacted secrets before upload.
+    """
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="missing_bearer")
+    claims = _verify_daemon_access_token(auth_header[len("Bearer ") :])
+    daemon_instance_id = claims["daemon_instance_id"]
+    user_id = claims.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="missing_user_id")
+
+    async with async_session() as check_db:
+        instance = await check_db.get(DaemonInstance, daemon_instance_id)
+        if instance is None:
+            raise HTTPException(status_code=401, detail="daemon_instance_not_found")
+        if instance.revoked_at is not None:
+            raise HTTPException(status_code=403, detail="daemon_revoked")
+        if str(instance.user_id) != str(user_id):
+            raise HTTPException(status_code=403, detail="daemon_user_mismatch")
+
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > DAEMON_DIAGNOSTICS_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="diagnostic_bundle_too_large")
+        chunks.append(chunk)
+    body = b"".join(chunks)
+    if not body:
+        raise HTTPException(status_code=400, detail="empty_diagnostic_bundle")
+    if not body.startswith(b"PK\x03\x04"):
+        raise HTTPException(status_code=400, detail="diagnostic_bundle_must_be_zip")
+
+    bundle_uuid = _uuid.uuid4()
+    filename = _safe_diagnostic_filename(request.headers.get("x-botcord-filename"))
+    root = Path(DAEMON_DIAGNOSTICS_DIR)
+    root.mkdir(parents=True, exist_ok=True)
+    storage_path = root / f"{bundle_uuid}_{filename}"
+    storage_path.write_bytes(body)
+    try:
+        os.chmod(storage_path, 0o600)
+    except OSError:
+        pass
+
+    expires_at = _now() + datetime.timedelta(hours=DAEMON_DIAGNOSTICS_TTL_HOURS)
+    try:
+        user_uuid = _uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(status_code=401, detail="invalid_user_id")
+
+    row = DaemonDiagnosticBundle(
+        id=bundle_uuid,
+        daemon_instance_id=daemon_instance_id,
+        user_id=user_uuid,
+        filename=filename,
+        storage_path=str(storage_path),
+        size_bytes=len(body),
+        expires_at=expires_at,
+    )
+    db.add(row)
+    await db.commit()
+    return {
+        "ok": True,
+        "bundle_id": str(bundle_uuid),
+        "filename": filename,
+        "size_bytes": len(body),
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@router.get("/daemon/diagnostics/{bundle_id}/download")
+async def download_daemon_diagnostics(
+    bundle_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """Download a diagnostic zip uploaded by one of the current user's daemons."""
+    try:
+        bundle_uuid = _uuid.UUID(bundle_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="diagnostic_bundle_not_found")
+    row = await db.get(DaemonDiagnosticBundle, bundle_uuid)
+    if row is None or str(row.user_id) != str(ctx.user_id):
+        raise HTTPException(status_code=404, detail="diagnostic_bundle_not_found")
+    if _aware(row.expires_at) <= _now():
+        raise HTTPException(status_code=410, detail="diagnostic_bundle_expired")
+    if not os.path.isfile(row.storage_path):
+        raise HTTPException(status_code=404, detail="diagnostic_bundle_missing")
+    return FileResponse(
+        row.storage_path,
+        media_type="application/zip",
+        filename=row.filename,
     )
 
 

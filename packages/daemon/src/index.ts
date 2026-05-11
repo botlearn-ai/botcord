@@ -57,6 +57,7 @@ import {
   updateWorkingMemory,
   DEFAULT_SECTION,
 } from "./working-memory.js";
+import { createDiagnosticBundle } from "./diagnostics.js";
 import { resolveStartAuthAction } from "./start-auth.js";
 import {
   discoverLocalOpenclawGateways,
@@ -131,7 +132,9 @@ Commands:
   route list
   route remove --room <rm_xxx>|--prefix <rm_xxx>
   config                                  Print resolved config
-  doctor [--json]                         Scan local runtimes (${ADAPTER_LIST})
+  doctor [--json] [--bundle]              Scan local runtimes (${ADAPTER_LIST});
+                                          --bundle also writes a zip under
+                                          ~/.botcord/diagnostics/
   memory get [--agent <ag_xxx>] [--json]  Show current working memory
   memory set [--agent <ag_xxx>] --goal <text>
                                           Pin/update the agent's work goal
@@ -164,6 +167,7 @@ const BOOLEAN_FLAGS = new Set([
   "f",
   "follow",
   "json",
+  "bundle",
   "help",
   "h",
   "mentioned",
@@ -1342,6 +1346,18 @@ const fsFileReader: DoctorFileReader = {
 };
 
 async function cmdDoctor(args: ParsedArgs): Promise<void> {
+  if (args.flags.bundle === true) {
+    const bundle = await createDiagnosticBundle();
+    if (args.flags.json === true) {
+      console.log(JSON.stringify({ bundle }, null, 2));
+      return;
+    }
+    console.log(`diagnostic bundle written: ${bundle.path}`);
+    console.log(`size: ${bundle.sizeBytes} bytes`);
+    console.log("Send this zip file to the BotCord developer/support contact.");
+    return;
+  }
+
   const entries: import("./doctor.js").DoctorRuntimeEntry[] = detectRuntimes();
   // Doctor should not hard-fail when no config exists yet; channel probes
   // simply produce an empty list in that case.

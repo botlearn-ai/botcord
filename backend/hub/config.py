@@ -212,6 +212,11 @@ DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS: int = int(
 DAEMON_DISPATCH_MAX_TIMEOUT_MS: int = int(
     os.getenv("DAEMON_DISPATCH_MAX_TIMEOUT_MS", "60000")
 )
+DAEMON_DIAGNOSTICS_DIR: str = os.getenv("DAEMON_DIAGNOSTICS_DIR", "/tmp/botcord/daemon-diagnostics")
+DAEMON_DIAGNOSTICS_MAX_BYTES: int = int(
+    os.getenv("DAEMON_DIAGNOSTICS_MAX_BYTES", str(50 * 1024 * 1024))
+)
+DAEMON_DIAGNOSTICS_TTL_HOURS: int = int(os.getenv("DAEMON_DIAGNOSTICS_TTL_HOURS", "168"))
 
 # OpenClaw host (plugin) control plane — mirrors daemon's defaults.
 OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS: int = int(

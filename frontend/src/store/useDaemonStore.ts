@@ -82,6 +82,14 @@ export interface RemoveDeviceResult {
   cleanup_jobs_queued: number;
 }
 
+export interface DiagnosticBundleResult {
+  bundle_id: string;
+  filename: string;
+  size_bytes: number;
+  expires_at?: string | null;
+  local_path?: string | null;
+}
+
 export interface ProvisionAgentInput {
   name: string;
   bio?: string;
@@ -127,7 +135,10 @@ interface DaemonState {
   removingId: string | null;
   renamingId: string | null;
   refreshingRuntimesId: string | null;
+  collectingDiagnosticsId: string | null;
   runtimeErrors: Record<string, string>;
+  diagnosticErrors: Record<string, string>;
+  diagnosticResults: Record<string, DiagnosticBundleResult>;
   renameErrors: Record<string, string>;
 
   refresh: (opts?: { quiet?: boolean }) => Promise<void>;
@@ -138,6 +149,7 @@ interface DaemonState {
   ) => Promise<RemoveDeviceResult>;
   rename: (id: string, label: string | null) => Promise<boolean>;
   refreshRuntimes: (id: string, opts?: { quiet?: boolean }) => Promise<void>;
+  collectDiagnostics: (id: string) => Promise<DiagnosticBundleResult | null>;
   provisionAgent: (
     daemonId: string,
     input: ProvisionAgentInput,
@@ -154,7 +166,10 @@ const initialState = {
   removingId: null as string | null,
   renamingId: null as string | null,
   refreshingRuntimesId: null as string | null,
+  collectingDiagnosticsId: null as string | null,
   runtimeErrors: {} as Record<string, string>,
+  diagnosticErrors: {} as Record<string, string>,
+  diagnosticResults: {} as Record<string, DiagnosticBundleResult>,
   renameErrors: {} as Record<string, string>,
 };
 
@@ -623,6 +638,66 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         refreshingRuntimesId: null,
         runtimeErrors: { ...state.runtimeErrors, [id]: msg },
       }));
+    }
+  },
+
+  collectDiagnostics: async (id) => {
+    set((state) => {
+      const nextErrors = { ...state.diagnosticErrors };
+      delete nextErrors[id];
+      return { collectingDiagnosticsId: id, diagnosticErrors: nextErrors };
+    });
+    try {
+      const res = await fetch(
+        `/api/daemon/instances/${encodeURIComponent(id)}/diagnostics`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        let msg: string;
+        if (res.status === 409) {
+          msg = "daemon offline, start it first";
+        } else if (res.status === 504) {
+          msg = "daemon timed out while collecting diagnostics";
+        } else if (res.status === 502) {
+          msg = "daemon failed to collect diagnostics";
+        } else {
+          msg = await parseError(res);
+        }
+        set((state) => ({
+          collectingDiagnosticsId: null,
+          diagnosticErrors: { ...state.diagnosticErrors, [id]: msg },
+        }));
+        return null;
+      }
+      const data = (await res.json().catch(() => null)) as
+        | Record<string, unknown>
+        | null;
+      const result: DiagnosticBundleResult = {
+        bundle_id: String(data?.bundle_id ?? ""),
+        filename: String(data?.filename ?? "diagnostics.zip"),
+        size_bytes:
+          typeof data?.size_bytes === "number" ? data.size_bytes : 0,
+        expires_at:
+          typeof data?.expires_at === "string" ? data.expires_at : null,
+        local_path:
+          typeof data?.local_path === "string" ? data.local_path : null,
+      };
+      if (!result.bundle_id) {
+        throw new Error("diagnostics response missing bundle id");
+      }
+      set((state) => ({
+        collectingDiagnosticsId: null,
+        diagnosticResults: { ...state.diagnosticResults, [id]: result },
+      }));
+      return result;
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to collect diagnostics";
+      set((state) => ({
+        collectingDiagnosticsId: null,
+        diagnosticErrors: { ...state.diagnosticErrors, [id]: msg },
+      }));
+      return null;
     }
   },
 

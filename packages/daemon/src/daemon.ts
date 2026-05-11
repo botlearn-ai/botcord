@@ -46,6 +46,7 @@ import { composeBotCordUserTurn } from "./turn-text.js";
 import { UserAuthManager } from "./user-auth.js";
 import { PolicyResolver } from "./gateway/policy-resolver.js";
 import { scanMention } from "./mention-scan.js";
+import { createDiagnosticBundle, uploadDiagnosticBundle } from "./diagnostics.js";
 
 /**
  * Default hard cap for a single runtime turn. Long-running coding/research
@@ -558,7 +559,30 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     const provisioner = createProvisioner({ gateway, policyResolver, onAgentInstalled });
     controlChannel = new ControlChannel({
       auth: userAuth,
-      handle: provisioner,
+      handle: async (frame) => {
+        if (frame.type === "collect_diagnostics") {
+          logger.info("diagnostics: collect requested", { frameId: frame.id });
+          const bundle = await createDiagnosticBundle();
+          const upload = await uploadDiagnosticBundle({ auth: userAuth, bundle });
+          logger.info("diagnostics: uploaded", {
+            frameId: frame.id,
+            bundleId: upload.bundleId,
+            sizeBytes: upload.sizeBytes,
+            localPath: bundle.path,
+          });
+          return {
+            ok: true,
+            result: {
+              bundle_id: upload.bundleId,
+              filename: upload.filename,
+              size_bytes: upload.sizeBytes,
+              expires_at: upload.expiresAt ?? null,
+              local_path: bundle.path,
+            },
+          };
+        }
+        return provisioner(frame);
+      },
     });
     try {
       await controlChannel.start();

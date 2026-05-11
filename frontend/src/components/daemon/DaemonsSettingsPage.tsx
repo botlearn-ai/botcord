@@ -11,6 +11,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  FileArchive,
   Loader2,
   Pencil,
   RefreshCcw,
@@ -36,6 +37,13 @@ function relativeTime(iso: string | null): string {
   if (h < 48) return `${h}h ago`;
   const d = Math.round(h / 24);
   return `${d}d ago`;
+}
+
+function compactDateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString();
 }
 
 function truncateId(id: string): string {
@@ -134,14 +142,32 @@ function RuntimesBlock({
   refreshing,
   errorMsg,
   onRefresh,
+  collectingDiagnostics,
+  diagnosticError,
+  diagnosticResult,
+  onCollectDiagnostics,
 }: {
   daemon: DaemonInstance;
   refreshing: boolean;
   errorMsg: string | undefined;
   onRefresh: () => void;
+  collectingDiagnostics: boolean;
+  diagnosticError: string | undefined;
+  diagnosticResult:
+    | {
+        bundle_id: string;
+        filename: string;
+        size_bytes: number;
+        expires_at?: string | null;
+        local_path?: string | null;
+      }
+    | undefined;
+  onCollectDiagnostics: () => void;
 }) {
   const runtimes = daemon.runtimes;
   const disabled = refreshing || daemon.status === "revoked";
+  const diagnosticsDisabled =
+    collectingDiagnostics || daemon.status !== "online";
   return (
     <div className="mt-2 flex flex-col gap-2 rounded-xl border border-glass-border/60 bg-glass-bg/40 p-3">
       <div className="flex items-center justify-between gap-3">
@@ -189,6 +215,55 @@ function RuntimesBlock({
       {errorMsg ? (
         <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">
           {errorMsg}
+        </span>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-glass-border/40 pt-2">
+        <div className="flex flex-col">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+            Diagnostics
+          </span>
+          <span className="text-[11px] text-text-tertiary">
+            Full local log + doctor output.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onCollectDiagnostics}
+          disabled={diagnosticsDisabled}
+          className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          title={
+            daemon.status === "online"
+              ? "Collect daemon diagnostics"
+              : "Daemon must be online to collect diagnostics from Dashboard"
+          }
+        >
+          {collectingDiagnostics ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <FileArchive className="h-3 w-3" />
+          )}
+          Upload diagnostics
+        </button>
+      </div>
+      {diagnosticResult ? (
+        <span className="rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-1 text-[11px] text-neon-green">
+          Uploaded {diagnosticResult.filename} ({diagnosticResult.size_bytes} bytes)
+          {diagnosticResult.expires_at
+            ? `, expires ${compactDateTime(diagnosticResult.expires_at)}`
+            : ""}
+          {" · "}
+          <a
+            href={`/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`}
+            className="underline underline-offset-2"
+          >
+            Download
+          </a>
+        </span>
+      ) : null}
+      {diagnosticError ? (
+        <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">
+          {diagnosticError}
         </span>
       ) : null}
     </div>
@@ -298,11 +373,15 @@ export default function DaemonsSettingsPage() {
   const renamingId = useDaemonStore((s) => s.renamingId);
   const renameErrors = useDaemonStore((s) => s.renameErrors);
   const refreshingRuntimesId = useDaemonStore((s) => s.refreshingRuntimesId);
+  const collectingDiagnosticsId = useDaemonStore((s) => s.collectingDiagnosticsId);
   const runtimeErrors = useDaemonStore((s) => s.runtimeErrors);
+  const diagnosticErrors = useDaemonStore((s) => s.diagnosticErrors);
+  const diagnosticResults = useDaemonStore((s) => s.diagnosticResults);
   const refresh = useDaemonStore((s) => s.refresh);
   const revoke = useDaemonStore((s) => s.revoke);
   const rename = useDaemonStore((s) => s.rename);
   const refreshRuntimes = useDaemonStore((s) => s.refreshRuntimes);
+  const collectDiagnostics = useDaemonStore((s) => s.collectDiagnostics);
 
   const [confirmTarget, setConfirmTarget] = useState<DaemonInstance | null>(
     null,
@@ -466,6 +545,10 @@ export default function DaemonsSettingsPage() {
                           refreshing={refreshingRuntimesId === d.id}
                           errorMsg={runtimeErrors[d.id]}
                           onRefresh={() => void refreshRuntimes(d.id)}
+                          collectingDiagnostics={collectingDiagnosticsId === d.id}
+                          diagnosticError={diagnosticErrors[d.id]}
+                          diagnosticResult={diagnosticResults[d.id]}
+                          onCollectDiagnostics={() => void collectDiagnostics(d.id)}
                         />
                       </td>
                     </tr>
