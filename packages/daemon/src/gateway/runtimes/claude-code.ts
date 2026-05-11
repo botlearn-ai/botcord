@@ -32,6 +32,77 @@ function invalidClaudeSessionIdError(): string {
   return "claude-code: invalid sessionId (expected non-control text not starting with '-')";
 }
 
+const CLAUDE_FOREIGN_FLAGS_WITH_VALUE = new Set([
+  "--color",
+  "--config",
+  "--disable",
+  "--enable",
+  "--image",
+  "--local-provider",
+  "--output-last-message",
+  "--output-schema",
+  "--profile",
+  "--sandbox",
+  "-i",
+  "-o",
+  "-p",
+  "-s",
+]);
+const CLAUDE_FOREIGN_BOOLEAN_FLAGS = new Set([
+  "--all",
+  "--dangerously-bypass-approvals-and-sandbox",
+  "--ephemeral",
+  "--full-auto",
+  "--ignore-rules",
+  "--ignore-user-config",
+  "--json",
+  "--last",
+  "--oss",
+  "--print",
+  "--skip-git-repo-check",
+]);
+
+function extraFlagName(arg: string): string {
+  if (!arg.startsWith("-")) return arg;
+  const eq = arg.indexOf("=");
+  return eq === -1 ? arg : arg.slice(0, eq);
+}
+
+function nextExtraValue(args: string[], index: number): string | undefined {
+  const next = args[index + 1];
+  if (typeof next !== "string") return undefined;
+  if (!next.startsWith("-")) return next;
+  return /^-\d/.test(next) ? next : undefined;
+}
+
+function sanitizeClaudeExtraArgs(extraArgs: string[] | undefined): string[] {
+  if (!extraArgs?.length) return [];
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i += 1) {
+    const arg = extraArgs[i];
+    const name = extraFlagName(arg);
+
+    if (arg === "-c") {
+      const value = nextExtraValue(extraArgs, i);
+      if (value !== undefined) i += 1;
+      continue;
+    }
+    if (name === "--config" || name === "--sandbox") {
+      if (!arg.includes("=") && nextExtraValue(extraArgs, i) !== undefined) i += 1;
+      continue;
+    }
+    if (CLAUDE_FOREIGN_FLAGS_WITH_VALUE.has(name)) {
+      if (!arg.includes("=") && nextExtraValue(extraArgs, i) !== undefined) i += 1;
+      continue;
+    }
+    if (CLAUDE_FOREIGN_BOOLEAN_FLAGS.has(name)) {
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
 /** Resolve the Claude Code CLI path on PATH or the macOS desktop bundle fallback. */
 export function resolveClaudeCommand(deps: ProbeDeps = {}): string | null {
   const onPath = resolveCommandOnPath("claude", deps);
@@ -95,11 +166,12 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
   }
 
   protected buildArgs(opts: RuntimeRunOptions): string[] {
+    const extraArgs = sanitizeClaudeExtraArgs(opts.extraArgs);
     const args = ["-p", opts.text, "--output-format", "stream-json", "--verbose"];
     // Headless `-p` mode does not load project `.claude/` by default, so
     // per-agent skills seeded at `<workspace>/.claude/skills/` are invisible
     // unless we opt in. `extraArgs` wins so operators can still override.
-    if (!opts.extraArgs?.some((a) => a.startsWith("--setting-sources"))) {
+    if (!extraArgs.some((a) => a.startsWith("--setting-sources"))) {
       args.push("--setting-sources", "project");
     }
     if (opts.sessionId) {
@@ -112,16 +184,16 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
     // MCP) because there is no prompt relay back to the user yet. Default to
     // bypassPermissions for every trust tier; operators who need a stricter
     // posture can still override with route/defaultRoute extraArgs.
-    if (!opts.extraArgs?.some((a) => a.startsWith("--permission-mode"))) {
+    if (!extraArgs.some((a) => a.startsWith("--permission-mode"))) {
       args.push("--permission-mode", "bypassPermissions");
     }
     // Claude Code's `--append-system-prompt` is applied per invocation and NOT
     // persisted in the resumed session transcript — ideal for memory / digest
     // content that should re-evaluate every turn.
-    if (opts.systemContext && !opts.extraArgs?.includes("--append-system-prompt")) {
+    if (opts.systemContext && !extraArgs.includes("--append-system-prompt")) {
       args.push("--append-system-prompt", opts.systemContext);
     }
-    if (opts.extraArgs?.length) args.push(...opts.extraArgs);
+    if (extraArgs.length) args.push(...extraArgs);
     return args;
   }
 
