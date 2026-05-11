@@ -116,6 +116,8 @@ describe("composeBotCordUserTurn", () => {
     );
     expect(out).toContain("third-party gateway chat");
     expect(out).toContain("Reply normally in your final assistant message");
+    expect(out).toContain("conversation_id: telegram:user:7904063707");
+    expect(out).toContain("channel: gw_telegram_123");
     expect(out).not.toContain("Plain text output WILL NOT be sent");
     expect(out).not.toContain("botcord_send");
   });
@@ -219,6 +221,7 @@ describe("composeBotCordUserTurn", () => {
       }),
     );
     expect(out).toContain("[BotCord Messages (2 new)]");
+    expect(out).toContain("conversation_id: rm_team");
     expect(out).toContain("room: Ouraca");
     expect(out).toContain("mentioned: true");
     expect(out).toContain('<agent-message sender="ag_alice" sender_kind="agent">');
