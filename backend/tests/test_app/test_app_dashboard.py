@@ -7,9 +7,11 @@ import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock
 
+from hub.enums import ParticipantType
 from hub.models import (
     Agent,
     Base,
@@ -438,6 +440,55 @@ async def test_chat_room_for_explicit_owned_agent_without_active_agent(
     )
     assert messages_resp.status_code == 200
     assert len(messages_resp.json()["messages"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_human_owner_can_open_dm_with_own_contacts_only_agent(
+    client: AsyncClient, seed_data: dict, db_session: AsyncSession
+):
+    """Human owners should not need a contact request to DM their own bot."""
+    token = seed_data["token"]
+    agent_id = "ag_ownedbot001"
+    db_session.add(
+        Agent(
+            agent_id=agent_id,
+            display_name="Owned Bot",
+            message_policy=MessagePolicy.contacts_only,
+            user_id=seed_data["user_id"],
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/dashboard/dms/open",
+        json={"peer_id": agent_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    room_id = resp.json()["room_id"]
+    members = (
+        await db_session.execute(
+            select(RoomMember).where(RoomMember.room_id == room_id)
+        )
+    ).scalars().all()
+    member_ids = {m.agent_id for m in members}
+    assert agent_id in member_ids
+    assert any(m.participant_type == ParticipantType.human for m in members)
+
+
+@pytest.mark.asyncio
+async def test_human_cannot_open_dm_with_unowned_contacts_only_agent_without_contact(
+    client: AsyncClient, seed_data: dict
+):
+    """The owner bypass must not open arbitrary contacts_only agents."""
+    resp = await client.post(
+        "/api/dashboard/dms/open",
+        json={"peer_id": "ag_other00001"},
+        headers={"Authorization": f"Bearer {seed_data['token']}"},
+    )
+    assert resp.status_code == 403, resp.text
 
 
 # ---------------------------------------------------------------------------

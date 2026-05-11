@@ -792,6 +792,11 @@ export default function DashboardApp() {
   }
 
   const selectedAgentForCard = chatStore.selectedAgentProfile;
+  const isSelectedAgentOwned = selectedAgentForCard
+    ? sessionStore.ownedAgents.some(
+      (item) => item.agent_id === selectedAgentForCard.agent_id,
+    )
+    : false;
   const alreadyInContacts = selectedAgentForCard
     ? (chatStore.overview?.contacts || []).some(
       (item) => item.contact_agent_id === selectedAgentForCard.agent_id,
@@ -1063,6 +1068,7 @@ export default function DashboardApp() {
         alreadyInContacts={alreadyInContacts}
         requestAlreadyPending={requestAlreadyPending}
         sendingFriendRequest={isSendingFriendRequest}
+        isOwnAgent={isSelectedAgentOwned}
         onSendFriendRequest={handleSendFriendRequestFromCard}
         onSendMessage={handleSendMessageFromAgentCard}
         onRetry={() => {

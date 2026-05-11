@@ -2313,14 +2313,30 @@ async def _ensure_dashboard_dm_room(
         peer_agent = peer_row.scalar_one_or_none()
         if peer_agent is None:
             return None
+
+        sender_owns_peer = False
+        if sender_is_human and peer_agent.user_id is not None:
+            owner_row = await db.execute(
+                select(User.id).where(User.human_id == sender_id)
+            )
+            sender_user_id = owner_row.scalar_one_or_none()
+            sender_owns_peer = (
+                sender_user_id is not None
+                and str(peer_agent.user_id) == str(sender_user_id)
+            )
+
         # Centralised admission: block + contact_policy + allow_*_sender.
+        # The human owner of an agent may always open a direct chat with that
+        # agent; requiring a contact request to one's own bot is impossible by
+        # design and is rejected in the human contact-request flow.
         # Allow same-room bypass off since this call IS the room creation.
-        await check_direct_admission(
-            db,
-            sender=Principal(id=sender_id, type=sender_type),
-            receiver=peer_agent,
-            allow_same_room_bypass=False,
-        )
+        if not sender_owns_peer:
+            await check_direct_admission(
+                db,
+                sender=Principal(id=sender_id, type=sender_type),
+                receiver=peer_agent,
+                allow_same_room_bypass=False,
+            )
 
     room = Room(
         room_id=room_id,
