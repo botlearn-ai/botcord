@@ -172,12 +172,23 @@ export type OutboundObserver = (
 ) => Promise<void> | void;
 
 /** Outbound reply payload passed to `ChannelAdapter.send()`. */
+export interface GatewayOutboundAttachment {
+  /** Local daemon-readable file path. */
+  filePath?: string;
+  /** In-memory bytes, primarily for tests and in-process tool callers. */
+  data?: Uint8Array;
+  filename?: string;
+  contentType?: string;
+  kind?: "image" | "file" | "video";
+}
+
 export interface GatewayOutboundMessage {
   channel: string;
   accountId: string;
   conversationId: string;
   threadId?: string | null;
   text: string;
+  attachments?: GatewayOutboundAttachment[];
   replyTo?: string | null;
   traceId?: string | null;
 }
