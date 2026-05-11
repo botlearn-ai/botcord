@@ -18,6 +18,8 @@ export interface DashboardUIState {
   pendingHumanOpen: { humanId: string; displayName: string } | null;
   /** When set, the topic side drawer is open for this topic_id in the opened room. */
   openedTopicId: string | null;
+  /** Mobile-only temporary drawer for the secondary sidebar/list panel. */
+  mobileSidebarOpen: boolean;
   sidebarTab: "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
   /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
   selectedBotAgentId: string | null;
@@ -39,6 +41,8 @@ export interface DashboardUIState {
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
   setOpenedTopicId: (topicId: string | null) => void;
+  openMobileSidebar: () => void;
+  closeMobileSidebar: () => void;
   toggleRightPanel: () => void;
   openAgentCard: () => void;
   closeAgentCard: () => void;
@@ -58,6 +62,7 @@ const initialUIState = {
   agentCardOpen: false,
   pendingHumanOpen: null as { humanId: string; displayName: string } | null,
   openedTopicId: null as string | null,
+  mobileSidebarOpen: false,
   sidebarTab: "messages" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
   messagesPane: "room" as const,
@@ -88,6 +93,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.contactsView === contactsView ? state : { contactsView })),
   setOpenedTopicId: (openedTopicId) =>
     set((state) => (state.openedTopicId === openedTopicId ? state : { openedTopicId })),
+  openMobileSidebar: () => set({ mobileSidebarOpen: true }),
+  closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
   setSidebarWidth: (sidebarWidth) =>
     set((state) => (state.sidebarWidth === sidebarWidth ? state : { sidebarWidth })),
   toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),

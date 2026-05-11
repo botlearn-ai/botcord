@@ -36,7 +36,7 @@ import MessagesPanel from "./MessagesPanel";
 import WalletPanel from "./WalletPanel";
 
 import { humansApi } from "@/lib/api";
-import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus } from "lucide-react";
+import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, X } from "lucide-react";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
 
@@ -99,9 +99,15 @@ const authNavItems = [
 
 interface SidebarProps {
   mobileHideSecondary?: boolean;
+  mobileSecondaryOpen?: boolean;
+  onMobileSecondaryClose?: () => void;
 }
 
-export default function Sidebar({ mobileHideSecondary = false }: SidebarProps) {
+export default function Sidebar({
+  mobileHideSecondary = false,
+  mobileSecondaryOpen = false,
+  onMobileSecondaryClose,
+}: SidebarProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const locale = useLanguage();
@@ -298,6 +304,7 @@ export default function Sidebar({ mobileHideSecondary = false }: SidebarProps) {
     if (tab === "messages" && !uiStore.openedRoomId && uiStore.messagesPane !== "user-chat") {
       uiStore.setMessagesPane("room");
     }
+    onMobileSecondaryClose?.();
     startTransition(() => { router.push(pathByTab[tab]); });
   };
 
@@ -396,6 +403,7 @@ export default function Sidebar({ mobileHideSecondary = false }: SidebarProps) {
             uiStore.setMessagesPane("room");
             uiStore.setFocusedRoomId(room.room_id);
             uiStore.setOpenedRoomId(room.room_id);
+            onMobileSecondaryClose?.();
             router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
           }}
         />
@@ -413,14 +421,30 @@ export default function Sidebar({ mobileHideSecondary = false }: SidebarProps) {
             await sessionStore.refreshUserProfile();
             uiStore.setSidebarTab("bots");
             useDashboardUIStore.getState().setSelectedBotAgentId(agentId);
+            onMobileSecondaryClose?.();
             startTransition(() => { router.push(`/chats/bots/${encodeURIComponent(agentId)}`); });
           }}
         />
       )}
 
+      {mobileHideSecondary && mobileSecondaryOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          className="fixed inset-x-0 bottom-16 top-0 z-30 hidden bg-black/45 backdrop-blur-sm max-md:block"
+          onClick={onMobileSecondaryClose}
+        />
+      )}
+
       {/* Secondary panel */}
       <div
-        className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!w-full max-md:!min-w-0 max-md:border-r-0 ${mobileHideSecondary ? "max-md:hidden" : ""}`}
+        className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
+          mobileHideSecondary
+            ? mobileSecondaryOpen
+              ? "max-md:fixed max-md:inset-x-3 max-md:bottom-20 max-md:top-4 max-md:z-40 max-md:!w-auto max-md:rounded-xl max-md:border max-md:border-glass-border max-md:shadow-2xl max-md:shadow-black/50"
+              : "max-md:hidden"
+            : "max-md:!w-full"
+        }`}
         style={{ width: uiStore.sidebarWidth, minWidth: SIDEBAR_MIN }}
       >
         {/* Resize handle */}
@@ -436,6 +460,17 @@ export default function Sidebar({ mobileHideSecondary = false }: SidebarProps) {
               <p className="truncate text-[10px] text-text-secondary/60">{t.browseAsGuest}</p>
             )}
           </div>
+          {mobileHideSecondary && (
+            <button
+              type="button"
+              onClick={onMobileSecondaryClose}
+              className="mr-1 hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+              aria-label="Close sidebar"
+              title="Close sidebar"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
           {uiStore.sidebarTab === "messages" && !isGuest && (
             <div className="flex items-center gap-1">
               <button

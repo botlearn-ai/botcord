@@ -79,9 +79,10 @@ export default function RoomList({
     messages: state.messages,
     loadRoomMessages: state.loadRoomMessages,
   })));
-  const { focusedRoomId, messagesPane, setFocusedRoomId, setOpenedRoomId, setMessagesPane } = useDashboardUIStore(useShallow((state) => ({
+  const { focusedRoomId, messagesPane, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
     messagesPane: state.messagesPane,
+    closeMobileSidebar: state.closeMobileSidebar,
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
     setMessagesPane: state.setMessagesPane,
@@ -129,6 +130,7 @@ export default function RoomList({
     setMessagesPane("room");
     setFocusedRoomId(roomId);
     setOpenedRoomId(roomId);
+    closeMobileSidebar();
     router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
     if (!messages[roomId]) {
       loadRoomMessages(roomId);
@@ -151,6 +153,7 @@ export default function RoomList({
     setMessagesPane("user-chat");
     setFocusedRoomId(null);
     setOpenedRoomId(null);
+    closeMobileSidebar();
     router.push(USER_CHAT_PATH);
   };
 

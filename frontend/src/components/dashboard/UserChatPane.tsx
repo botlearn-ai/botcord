@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Bot, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2, User } from "lucide-react";
+import { ArrowLeft, Bot, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
@@ -74,7 +74,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
   const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
-  const { setMessagesPane, setSelectedBotAgentId, setUserChatRoomId } = useDashboardUIStore();
+  const { openMobileSidebar, setMessagesPane, setSelectedBotAgentId, setUserChatRoomId } = useDashboardUIStore();
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
@@ -328,6 +328,15 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           title="Back"
         >
           <ArrowLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={openMobileSidebar}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          aria-label={agentId ? "Open bot list" : "Open message list"}
+          title={agentId ? "Open bot list" : "Open message list"}
+        >
+          <PanelLeftOpen className="h-4 w-4" />
         </button>
         <MessageSquare className="w-4 h-4 text-cyan-400" />
         <h2 className="min-w-0 truncate text-sm font-medium text-zinc-200">

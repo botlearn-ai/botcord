@@ -12,7 +12,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Bell, Info, Loader2, Plus, Settings, Share2 } from "lucide-react";
+import { ArrowLeft, Bell, Info, Loader2, PanelLeftOpen, Plus, Settings, Share2 } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -54,10 +54,11 @@ export default function RoomHeader() {
   const { openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
   })));
-  const { setFocusedRoomId, setOpenedRoomId, setMessagesPane } = useDashboardUIStore(useShallow((state) => ({
+  const { setFocusedRoomId, setOpenedRoomId, setMessagesPane, openMobileSidebar } = useDashboardUIStore(useShallow((state) => ({
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
     setMessagesPane: state.setMessagesPane,
+    openMobileSidebar: state.openMobileSidebar,
   })));
   const { overview, getRoomSummary, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -280,6 +281,15 @@ export default function RoomHeader() {
           title="Back to messages"
         >
           <ArrowLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={openMobileSidebar}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          aria-label="Open message list"
+          title="Open message list"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
         </button>
         <div className="min-w-0 py-0.5">
           <div className="flex items-center gap-2">

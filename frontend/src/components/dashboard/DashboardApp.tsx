@@ -175,7 +175,6 @@ export default function DashboardApp() {
       const accessToken = session?.access_token ?? null;
       const isSignOutEvent = event === "SIGNED_OUT";
 
-      if (source === "authEvent" && event === "INITIAL_SESSION") return;
       if (source === "authEvent" && !initResolvedRef.current && !accessToken && !isSignOutEvent) return;
 
       if (accessToken) {
@@ -196,11 +195,11 @@ export default function DashboardApp() {
       await syncSession(session, "getSession");
     };
 
-    void resolveSession();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       void syncSession(session, "authEvent", _event);
     });
+
+    void resolveSession();
 
     return () => {
       cancelled = true;
@@ -956,7 +955,11 @@ export default function DashboardApp() {
 
   return (
     <div className="relative flex h-[100dvh] overflow-hidden bg-deep-black max-md:flex-col-reverse md:h-screen">
-      <Sidebar mobileHideSecondary={mobileHideSecondary} />
+      <Sidebar
+        mobileHideSecondary={mobileHideSecondary}
+        mobileSecondaryOpen={uiStore.mobileSidebarOpen}
+        onMobileSecondaryClose={uiStore.closeMobileSidebar}
+      />
       <div className={mainPaneClass}>
         {uiStore.sidebarTab === "activity" ? (
           <ActivityPanel />
