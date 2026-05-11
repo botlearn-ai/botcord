@@ -28,16 +28,10 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-type DaemonStartMode = "foreground" | "background";
-
-export function buildDaemonStartCommand(
-  installToken?: string,
-  mode: DaemonStartMode = "foreground",
-): string {
+export function buildDaemonStartCommand(installToken?: string): string {
   const args = [`--hub ${shellQuote(HUB_BASE_URL)}`];
   if (installToken) args.push(`--install-token ${shellQuote(installToken)}`);
-  const daemonArgs = mode === "background" ? " -- --background" : "";
-  return `curl -fsSL ${HUB_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")}${daemonArgs}`;
+  return `curl -fsSL ${HUB_BASE_URL.replace(/\/$/, "")}/daemon/install.sh | sh -s -- ${args.join(" ")} -- --background`;
 }
 
 export interface DaemonInstallCommandLabels {
@@ -48,9 +42,6 @@ export interface DaemonInstallCommandLabels {
   refresh: string;
   generating?: string;
   copyDisabled?: string;
-  foregroundMode?: string;
-  foregroundHint?: string;
-  backgroundMode?: string;
   backgroundHint?: string;
   installTokenError?: string;
 }
@@ -69,7 +60,6 @@ export default function DaemonInstallCommand({
   onRefresh,
 }: DaemonInstallCommandProps) {
   const [installToken, setInstallToken] = useState<string | undefined>();
-  const [mode, setMode] = useState<DaemonStartMode>("foreground");
   const [tokenLoading, setTokenLoading] = useState(true);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -135,7 +125,7 @@ export default function DaemonInstallCommand({
   }
 
   const loading = !!busy || tokenLoading;
-  const command = buildDaemonStartCommand(installToken, mode);
+  const command = buildDaemonStartCommand(installToken);
   const copyDisabled = tokenLoading;
   const commandDisplay = tokenLoading
     ? (labels.generating ?? "Generating secure install command...")
@@ -148,15 +138,9 @@ export default function DaemonInstallCommand({
     ? labels.copyDisabled ??
       (zh ? "安装令牌生成完成后才能复制" : "Wait until the install token is ready")
     : labels.copy;
-  const foregroundModeLabel = labels.foregroundMode ?? (zh ? "前台运行" : "Foreground");
-  const foregroundHint =
-    labels.foregroundHint ??
-    (zh ? "在当前终端运行，日志会直接显示。" : "Runs in the current terminal so logs stay visible.");
-  const backgroundModeLabel = labels.backgroundMode ?? (zh ? "后台运行" : "Background");
   const backgroundHint =
     labels.backgroundHint ??
     (zh ? "启动后自动脱离终端，命令执行完会回到 shell。" : "Starts the daemon detached and returns your shell.");
-  const activeModeHint = mode === "background" ? backgroundHint : foregroundHint;
 
   return (
     <div className="space-y-4">
@@ -169,34 +153,6 @@ export default function DaemonInstallCommand({
       </div>
 
       <div>
-        <div className="mb-2 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setMode("foreground")}
-            aria-pressed={mode === "foreground"}
-            className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
-              mode === "foreground"
-                ? "border-neon-cyan/50 bg-neon-cyan/10 text-text-primary"
-                : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-            }`}
-          >
-            <span className="block font-medium">{foregroundModeLabel}</span>
-            <span className="mt-1 block leading-4 text-text-secondary">{foregroundHint}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("background")}
-            aria-pressed={mode === "background"}
-            className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
-              mode === "background"
-                ? "border-neon-cyan/50 bg-neon-cyan/10 text-text-primary"
-                : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-            }`}
-          >
-            <span className="block font-medium">{backgroundModeLabel}</span>
-            <span className="mt-1 block leading-4 text-text-secondary">{backgroundHint}</span>
-          </button>
-        </div>
         <div className="flex items-stretch gap-2">
           <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xl border border-glass-border bg-deep-black px-3 py-2 font-mono text-xs text-text-primary">
             {commandDisplay}
@@ -226,7 +182,7 @@ export default function DaemonInstallCommand({
             )}
           </button>
         </div>
-        <p className="mt-2 text-xs text-text-secondary">{activeModeHint}</p>
+        <p className="mt-2 text-xs text-text-secondary">{backgroundHint}</p>
         {tokenError && (
           <p className="mt-2 text-xs text-red-400">{fallbackErrorMsg}</p>
         )}
