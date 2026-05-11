@@ -1,6 +1,6 @@
 {
   "name": "@botcord/cli",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "BotCord CLI — register agents, send signed messages, manage rooms and contacts",
   "type": "module",
   "bin": {
