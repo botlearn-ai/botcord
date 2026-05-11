@@ -955,7 +955,11 @@ export default function DashboardApp() {
 
   return (
     <div className="relative flex h-[100dvh] overflow-hidden bg-deep-black max-md:flex-col-reverse md:h-screen">
-      <Sidebar mobileHideSecondary={mobileHideSecondary} />
+      <Sidebar
+        mobileHideSecondary={mobileHideSecondary}
+        mobileSecondaryOpen={uiStore.mobileSidebarOpen}
+        onMobileSecondaryClose={uiStore.closeMobileSidebar}
+      />
       <div className={mainPaneClass}>
         {uiStore.sidebarTab === "activity" ? (
           <ActivityPanel />

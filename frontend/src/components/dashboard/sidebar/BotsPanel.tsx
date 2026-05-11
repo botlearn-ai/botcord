@@ -87,8 +87,9 @@ export default function BotsPanel({
   const { ownedAgents } = useDashboardSessionStore(useShallow((s) => ({
     ownedAgents: s.ownedAgents,
   })));
-  const { selectedBotAgentId, setSelectedBotAgentId } = useDashboardUIStore(useShallow((s) => ({
+  const { selectedBotAgentId, closeMobileSidebar, setSelectedBotAgentId } = useDashboardUIStore(useShallow((s) => ({
     selectedBotAgentId: s.selectedBotAgentId,
+    closeMobileSidebar: s.closeMobileSidebar,
     setSelectedBotAgentId: s.setSelectedBotAgentId,
   })));
   const daemons = useDaemonStore((s) => s.daemons);
@@ -104,6 +105,7 @@ export default function BotsPanel({
 
   const handleSelectAgent = (agentId: string) => {
     setSelectedBotAgentId(agentId);
+    closeMobileSidebar();
     startTransition(() => {
       router.push(`/chats/bots/${encodeURIComponent(agentId)}`);
     });
