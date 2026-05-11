@@ -76,6 +76,17 @@ function replyDeliveryHint(msg: GatewayInboundMessage): string {
     : NON_OWNER_REPLY_HINT;
 }
 
+function appendConversationFields(
+  fields: string[],
+  msg: GatewayInboundMessage,
+): void {
+  const conversationId = sanitizeSenderName(msg.conversation.id);
+  fields.push(`conversation_id: ${conversationId}`);
+  if (isThirdPartyConversation(msg.conversation.id)) {
+    fields.push(`channel: ${sanitizeSenderName(msg.channel)}`);
+  }
+}
+
 /** Minimal shape of one batched inbound entry. Matches the BotCord channel
  * `BatchedInboxRaw.batch[]` elements but expressed structurally so the
  * composer doesn't import channel internals. */
@@ -205,6 +216,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
     `from: ${sanitizedSenderLabel}`,
     `to: ${msg.accountId}`,
   ];
+  appendConversationFields(headerFields, msg);
   if (isGroup && roomTitle) {
     const safeRoom = sanitizeSenderName(roomTitle.replace(/[\r\n]+/g, " "));
     headerFields.push(`room: ${safeRoom}`);
@@ -267,6 +279,7 @@ function composeBatchedTurn(
     `[BotCord Messages (${batch.length} new)]`,
     `to: ${msg.accountId}`,
   ];
+  appendConversationFields(header, msg);
   if (isGroup && roomTitle) {
     const safeRoom = sanitizeSenderName(roomTitle.replace(/[\r\n]+/g, " "));
     header.push(`room: ${safeRoom}`);
