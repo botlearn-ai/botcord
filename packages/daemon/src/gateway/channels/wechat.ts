@@ -1,3 +1,11 @@
+import { basename } from "node:path";
+import { readFile } from "node:fs/promises";
+import {
+  createCipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
 import type {
   ChannelAdapter,
   ChannelSendContext,
@@ -8,15 +16,16 @@ import type {
   ChannelTypingContext,
   GatewayInboundEnvelope,
   GatewayInboundMessage,
+  GatewayOutboundAttachment,
 } from "../types.js";
 import { sanitizeUntrustedContent } from "./sanitize.js";
 import { GatewayStateStore } from "./state-store.js";
 import { loadGatewaySecret } from "./secret-store.js";
 import { splitText } from "./text-split.js";
 import { wechatHeaders, WECHAT_BASE_INFO, type FetchLike } from "./wechat-http.js";
-import { randomUUID } from "node:crypto";
 
 const DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
+const DEFAULT_CDN_BASE_URL = "https://novac2c.cdn.weixin.qq.com/c2c";
 
 /**
  * Replace every occurrence of `token` in `input` with `"[REDACTED]"`.
@@ -90,6 +99,11 @@ interface WechatGetUpdatesResp {
 interface WechatGenericResp {
   ret?: number;
   [k: string]: unknown;
+}
+
+interface WechatUploadUrlResp extends WechatGenericResp {
+  upload_param?: string;
+  upload_full_url?: string;
 }
 
 interface TraceContext {
@@ -229,6 +243,142 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     } catch {
       return {} as T;
     }
+  }
+
+  function cdnUploadUrl(resp: WechatUploadUrlResp): string | null {
+    if (typeof resp.upload_full_url === "string" && resp.upload_full_url.length > 0) {
+      return resp.upload_full_url;
+    }
+    if (typeof resp.upload_param === "string" && resp.upload_param.length > 0) {
+      return `${DEFAULT_CDN_BASE_URL}/upload?encrypted_query_param=${encodeURIComponent(
+        resp.upload_param,
+      )}`;
+    }
+    return null;
+  }
+
+  async function uploadEncryptedMedia(
+    trace: TraceContext,
+    attachment: GatewayOutboundAttachment,
+  ): Promise<Record<string, unknown>> {
+    const raw =
+      attachment.data ??
+      (attachment.filePath ? await readFile(attachment.filePath) : undefined);
+    if (!raw || raw.length === 0) {
+      throw new Error("wechat media upload requires non-empty attachment data or filePath");
+    }
+    const data = Buffer.from(raw);
+    const filename =
+      attachment.filename ??
+      (attachment.filePath ? basename(attachment.filePath) : "attachment");
+    const kind = attachment.kind ?? kindFromContentType(attachment.contentType);
+    const mediaType = kind === "image" ? 1 : kind === "video" ? 2 : 3;
+    const itemType = kind === "image" ? 2 : kind === "video" ? 5 : 4;
+    const aesKey = randomBytes(16);
+    const aesKeyHex = aesKey.toString("hex");
+    const encrypted = encryptAes128Ecb(data, aesKey);
+    const filekey = `botcord-${randomUUID()}`;
+    const uploadResp = await callApi<WechatUploadUrlResp>(
+      "ilink/bot/getuploadurl",
+      {
+        filekey,
+        media_type: mediaType,
+        to_user_id: trace.fromUserId,
+        rawsize: data.length,
+        rawfilemd5: md5Hex(data),
+        filesize: encrypted.length,
+        aeskey: aesKeyHex,
+        no_need_thumb: true,
+      },
+      15_000,
+    );
+    if (uploadResp.ret !== 0 && uploadResp.ret !== undefined) {
+      throw new Error(redactSecret(`wechat getuploadurl failed: ret=${uploadResp.ret}`, botToken));
+    }
+    const uploadUrl = cdnUploadUrl(uploadResp);
+    if (!uploadUrl) throw new Error("wechat getuploadurl returned no upload URL");
+
+    const uploadResult = await fetchImpl(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: encrypted,
+      signal: AbortSignal.timeout(30_000),
+    });
+    const encryptedParam =
+      uploadResult.headers?.get("x-encrypted-param") ??
+      uploadResult.headers?.get("X-Encrypted-Param") ??
+      (await readEncryptedParamFromBody(uploadResult));
+    if (!encryptedParam) {
+      throw new Error("wechat CDN upload returned no x-encrypted-param");
+    }
+
+    const media = {
+      encrypt_query_param: encryptedParam,
+      aes_key: Buffer.from(aesKeyHex, "utf8").toString("base64"),
+    };
+    if (itemType === 2) {
+      return {
+        type: itemType,
+        image_item: {
+          media,
+          aeskey: aesKeyHex,
+          mid_size: data.length,
+        },
+      };
+    }
+    if (itemType === 5) {
+      return {
+        type: itemType,
+        video_item: {
+          media,
+          video_size: data.length,
+          file_name: filename,
+        },
+      };
+    }
+    return {
+      type: itemType,
+      file_item: {
+        media,
+        file_name: filename,
+        md5: md5Hex(data),
+        len: data.length,
+      },
+    };
+  }
+
+  async function readEncryptedParamFromBody(
+    resp: Awaited<ReturnType<FetchLike>>,
+  ): Promise<string | null> {
+    const raw = await resp.text().catch(() => "");
+    if (!raw) return null;
+    try {
+      const json = JSON.parse(raw) as Record<string, unknown>;
+      const v = json.encrypted_query_param ?? json.encrypt_query_param ?? json.upload_param;
+      return typeof v === "string" && v.length > 0 ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function sendItems(trace: TraceContext, items: Record<string, unknown>[]): Promise<string> {
+    const clientId = `botcord-${randomUUID()}`;
+    const body = {
+      msg: {
+        from_user_id: "",
+        to_user_id: trace.fromUserId,
+        client_id: clientId,
+        message_type: 2, // BOT → user
+        message_state: 2, // FINISH
+        context_token: trace.contextToken,
+        item_list: items,
+      },
+    };
+    const resp = await callApi<WechatGenericResp>("ilink/bot/sendmessage", body, 15_000);
+    if (resp.ret !== 0 && resp.ret !== undefined) {
+      throw new Error(redactSecret(`wechat sendmessage failed: ret=${resp.ret}`, botToken));
+    }
+    return clientId;
   }
 
   function extractText(msg: WechatInboundMsg): string {
@@ -495,27 +645,22 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
         );
       }
 
-      const chunks = splitText(message.text, splitAt);
+      const chunks = message.text.length > 0 ? splitText(message.text, splitAt) : [];
       let lastClientId: string | null = null;
       for (const chunk of chunks) {
-        const clientId = `botcord-${randomUUID()}`;
-        const body = {
-          msg: {
-            from_user_id: "",
-            to_user_id: trace.fromUserId,
-            client_id: clientId,
-            message_type: 2, // BOT → user
-            message_state: 2, // FINISH
-            context_token: trace.contextToken,
-            item_list: [{ type: 1, text_item: { text: chunk } }],
-          },
-        };
-        const resp = await callApi<WechatGenericResp>("ilink/bot/sendmessage", body, 15_000);
-        if (resp.ret !== 0 && resp.ret !== undefined) {
-          log.warn("wechat sendmessage non-zero ret", { ret: resp.ret });
-          throw new Error(redactSecret(`wechat sendmessage failed: ret=${resp.ret}`, botToken));
+        lastClientId = await sendItems(trace, [{ type: 1, text_item: { text: chunk } }]);
+      }
+      for (const attachment of message.attachments ?? []) {
+        try {
+          const item = await uploadEncryptedMedia(trace, attachment);
+          lastClientId = await sendItems(trace, [item]);
+        } catch (err) {
+          log.warn("wechat media send failed", {
+            err: redactSecret(String(err), botToken),
+            filename: attachment.filename ?? attachment.filePath ?? "attachment",
+          });
+          throw err;
         }
-        lastClientId = clientId;
       }
       const sendAt = Date.now();
       statusSnapshot = { ...statusSnapshot, lastSendAt: sendAt };
@@ -551,6 +696,22 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
   };
 
   return adapter;
+}
+
+function md5Hex(data: Buffer): string {
+  return createHash("md5").update(data).digest("hex");
+}
+
+function encryptAes128Ecb(data: Buffer, key: Buffer): Buffer {
+  const cipher = createCipheriv("aes-128-ecb", key, null);
+  cipher.setAutoPadding(true);
+  return Buffer.concat([cipher.update(data), cipher.final()]);
+}
+
+function kindFromContentType(contentType: string | undefined): "image" | "file" | "video" {
+  if (contentType?.startsWith("image/")) return "image";
+  if (contentType?.startsWith("video/")) return "video";
+  return "file";
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

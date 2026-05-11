@@ -12,11 +12,12 @@ export type FetchLike = (
   init?: {
     method?: string;
     headers?: Record<string, string>;
-    body?: string;
+    body?: BodyInit | Uint8Array | string;
     signal?: AbortSignal;
   },
 ) => Promise<{
   status?: number;
   ok?: boolean;
+  headers?: { get(name: string): string | null };
   text(): Promise<string>;
 }>;

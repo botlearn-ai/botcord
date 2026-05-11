@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +20,7 @@ const SILENT_LOG: GatewayLogger = {
 interface StubResponse {
   status?: number;
   body: unknown;
+  headers?: Record<string, string>;
 }
 
 /**
@@ -35,16 +36,20 @@ function buildFetchStub(
       body: Record<string, unknown> | null,
     ) => StubResponse | Promise<StubResponse>;
   }>,
-  calls: Array<{ url: string; body: Record<string, unknown> | null }>,
+  calls: Array<{ url: string; body: any }>,
 ): FetchLike {
   const counters = new Map<string, number>();
   return async (url, init) => {
-    let parsed: Record<string, unknown> | null = null;
+    let parsed: Record<string, unknown> | Uint8Array | null = null;
     if (init?.body) {
-      try {
-        parsed = JSON.parse(init.body as string) as Record<string, unknown>;
-      } catch {
-        parsed = null;
+      if (typeof init.body === "string") {
+        try {
+          parsed = JSON.parse(init.body) as Record<string, unknown>;
+        } catch {
+          parsed = null;
+        }
+      } else if (init.body instanceof Uint8Array) {
+        parsed = init.body;
       }
     }
     calls.push({ url, body: parsed });
@@ -59,11 +64,21 @@ function buildFetchStub(
         return {
           status,
           ok: status >= 200 && status < 300,
+          headers: {
+            get(name: string) {
+              return resp.headers?.[name] ?? resp.headers?.[name.toLowerCase()] ?? null;
+            },
+          },
           text: async () => text,
         };
       }
     }
-    return { status: 404, ok: false, text: async () => "" };
+    return {
+      status: 404,
+      ok: false,
+      headers: { get: () => null },
+      text: async () => "",
+    };
   };
 }
 
@@ -407,6 +422,109 @@ describe("wechat channel adapter", () => {
       }),
     ).rejects.toThrow(/no context_token/);
     expect(calls.find((c) => c.url.includes("sendmessage"))).toBeUndefined();
+  });
+
+  it("send() uploads local file attachments to WeChat CDN and sends a file_item", async () => {
+    const filePath = path.join(tmp, "report.pdf");
+    writeFileSync(filePath, "plain file bytes");
+    const calls: Array<{ url: string; body: any }> = [];
+    const fetchImpl = buildFetchStub(
+      [
+        {
+          match: "getupdates",
+          respond: (idx) => {
+            if (idx === 0) {
+              return {
+                body: {
+                  ret: 0,
+                  get_updates_buf: "c",
+                  msgs: [
+                    {
+                      message_type: 1,
+                      from_user_id: "alice@im.wechat",
+                      context_token: "ctx-file",
+                      item_list: [{ type: 1, text_item: { text: "send file" } }],
+                    },
+                  ],
+                },
+              };
+            }
+            return { body: { ret: 0, get_updates_buf: "c", msgs: [] } };
+          },
+        },
+        {
+          match: "getuploadurl",
+          respond: () => ({
+            body: {
+              ret: 0,
+              upload_full_url: "https://cdn.test/upload/report",
+            },
+          }),
+        },
+        {
+          match: "cdn.test/upload",
+          respond: () => ({
+            body: "",
+            headers: { "x-encrypted-param": "encrypted-download-token" },
+          }),
+        },
+        { match: "sendmessage", respond: () => ({ body: { ret: 0 } }) },
+      ],
+      calls,
+    );
+    const adapter = createWechatChannel({
+      id: "gw_wx_file",
+      accountId: "ag_test",
+      botToken: "tok",
+      stateFile: path.join(tmp, "state.json"),
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: ["alice@im.wechat"],
+    });
+    const h = startAdapter(adapter, { stopAfterEnvelopes: 1 });
+    await h.pollDone;
+    const traceId = h.envelopes[0]!.message.trace!.id;
+
+    await adapter.send({
+      log: SILENT_LOG,
+      message: {
+        channel: "gw_wx_file",
+        accountId: "ag_test",
+        conversationId: "wechat:user:alice@im.wechat",
+        text: "",
+        traceId,
+        attachments: [
+          {
+            filePath,
+            filename: "report.pdf",
+            contentType: "application/pdf",
+            kind: "file",
+          },
+        ],
+      },
+    });
+
+    const uploadRequest = calls.find((c) => c.url.includes("getuploadurl"))!;
+    expect(uploadRequest.body!.media_type).toBe(3);
+    expect(uploadRequest.body!.rawsize).toBe("plain file bytes".length);
+    expect(uploadRequest.body!.filesize).toBeGreaterThan("plain file bytes".length);
+
+    const cdnCall = calls.find((c) => c.url.includes("cdn.test/upload"))!;
+    expect(cdnCall.body).toBeInstanceOf(Uint8Array);
+    expect(Buffer.from(cdnCall.body as Uint8Array).toString("utf8")).not.toContain(
+      "plain file bytes",
+    );
+
+    const sendCall = calls.find((c) => c.url.includes("sendmessage"))!;
+    const msg = sendCall.body!.msg as Record<string, unknown>;
+    const item = (msg.item_list as Array<Record<string, unknown>>)[0]!;
+    expect(item.type).toBe(4);
+    const fileItem = item.file_item as Record<string, unknown>;
+    expect(fileItem.file_name).toBe("report.pdf");
+    expect(fileItem.len).toBe("plain file bytes".length);
+    expect((fileItem.media as Record<string, unknown>).encrypt_query_param).toBe(
+      "encrypted-download-token",
+    );
   });
 
   it("send() splits long replies into chunks <= splitAt, preferring newline boundaries", async () => {
