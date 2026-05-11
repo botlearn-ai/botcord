@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, MessageSquare, Search, Users, User, X } from "lucide-react";
-import { api } from "@/lib/api";
+import { Check, FileArchive, Loader2, MessageSquare, Search, Users, User, X } from "lucide-react";
+import { api, getActiveIdentity } from "@/lib/api";
+import type { Attachment } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -18,10 +19,16 @@ interface ForwardTarget {
 
 interface ForwardModalProps {
   quoteText: string;
+  sourceFile?: {
+    url: string;
+    filename: string;
+    contentType?: string;
+    sizeBytes?: number;
+  };
   onClose: () => void;
 }
 
-export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) {
+export default function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
@@ -83,18 +90,42 @@ export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) 
     setSending(true);
     setError(null);
     try {
+      let attachments: Attachment[] | undefined;
+      if (sourceFile) {
+        const activeIdentity = getActiveIdentity();
+        const uploadAgentId =
+          activeIdentity?.type === "agent"
+            ? activeIdentity.id
+            : ownedAgents[0]?.agent_id;
+        if (!uploadAgentId) {
+          throw new Error("Choose or create an agent before sending files.");
+        }
+        const res = await fetch(sourceFile.url, { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to prepare file for sending");
+        const blob = await res.blob();
+        const file = new File([blob], sourceFile.filename, {
+          type: sourceFile.contentType || blob.type || "application/zip",
+        });
+        const uploaded = await api.uploadFile(file, uploadAgentId);
+        attachments = [{
+          filename: uploaded.original_filename,
+          url: uploaded.url,
+          content_type: uploaded.content_type,
+          size_bytes: uploaded.size_bytes,
+        }];
+      }
       const openRoomIds: string[] = [];
       await Promise.all(
         [...selected].map(async (targetId) => {
           const [kind, id] = targetId.split(":") as ["agent" | "contact" | "room", string];
           if (kind === "agent") {
-            await api.sendUserChatMessage(quoteText, undefined, id);
+            await api.sendUserChatMessage(quoteText, attachments, id);
           } else if (kind === "contact") {
             const dmRoom = await api.openDmRoom(id);
-            await api.sendRoomHumanMessage(dmRoom.room_id, quoteText);
+            await api.sendRoomHumanMessage(dmRoom.room_id, quoteText, undefined, undefined, attachments);
             openRoomIds.push(dmRoom.room_id);
           } else {
-            await api.sendRoomHumanMessage(id, quoteText);
+            await api.sendRoomHumanMessage(id, quoteText, undefined, undefined, attachments);
             openRoomIds.push(id);
           }
         })
@@ -116,7 +147,10 @@ export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
         {/* Header */}
@@ -140,11 +174,23 @@ export default function ForwardModal({ quoteText, onClose }: ForwardModalProps) 
           />
         </div>
 
-        {/* Quote preview */}
+        {/* Quote / file preview */}
         <div className="mx-4 mt-3 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-2">
-          <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-400 leading-relaxed">
-            {quoteText}
-          </pre>
+          {sourceFile ? (
+            <div className="flex items-center gap-2 text-zinc-300">
+              <FileArchive className="h-4 w-4 shrink-0 text-cyan-400" />
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium">{sourceFile.filename}</p>
+                {sourceFile.sizeBytes != null && (
+                  <p className="text-[10px] text-zinc-500">{sourceFile.sizeBytes} bytes</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-400 leading-relaxed">
+              {quoteText}
+            </pre>
+          )}
         </div>
 
         {/* Target list */}

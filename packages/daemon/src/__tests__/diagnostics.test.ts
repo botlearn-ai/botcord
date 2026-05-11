@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -48,5 +48,41 @@ describe("diagnostics bundle", () => {
     });
     expect(log).toContain("Authorization: Bearer [REDACTED]");
     expect(log).toContain('"refreshToken":"[REDACTED]"');
+  }, 20_000);
+
+  it("bundles active log plus latest 5 rotated logs by default, or all with includeAllLogs", async () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "botcord-diag-logs-test-"));
+    const logFile = path.join(tmp, "daemon.log");
+    const configFile = path.join(tmp, "config.json");
+    const snapshotFile = path.join(tmp, "snapshot.json");
+    writeFileSync(logFile, "active\n");
+    writeFileSync(configFile, "{}\n");
+    writeFileSync(snapshotFile, "{}\n");
+    for (let i = 0; i < 7; i += 1) {
+      const rotated = path.join(tmp, `daemon.log.rot-${i}`);
+      writeFileSync(rotated, `rotated ${i}\n`);
+      const t = new Date(1_700_000_000_000 + i * 1000);
+      utimesSync(rotated, t, t);
+    }
+
+    const baseOpts = {
+      diagnosticsDir: path.join(tmp, "diagnostics"),
+      logFile,
+      configFile,
+      snapshotFile,
+      doctor: { text: "doctor ok", json: { ok: true } },
+    };
+    const bundle = await createDiagnosticBundle(baseOpts);
+    const listing = execFileSync("unzip", ["-l", bundle.path], { encoding: "utf8" });
+    expect(listing).toContain("daemon.log");
+    expect(listing).toContain("logs/daemon.log.rot-6");
+    expect(listing).toContain("logs/daemon.log.rot-2");
+    expect(listing).not.toContain("logs/daemon.log.rot-1");
+    expect(listing).not.toContain("logs/daemon.log.rot-0");
+
+    const full = await createDiagnosticBundle({ ...baseOpts, includeAllLogs: true });
+    const fullListing = execFileSync("unzip", ["-l", full.path], { encoding: "utf8" });
+    expect(fullListing).toContain("logs/daemon.log.rot-0");
+    expect(fullListing).toContain("logs/daemon.log.rot-6");
   }, 20_000);
 });

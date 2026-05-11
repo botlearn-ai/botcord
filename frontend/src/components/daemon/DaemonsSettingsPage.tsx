@@ -221,10 +221,10 @@ function RuntimesBlock({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-glass-border/40 pt-2">
         <div className="flex flex-col">
           <span className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-            Diagnostics
+            Troubleshooting logs
           </span>
           <span className="text-[11px] text-text-tertiary">
-            Full local log + doctor output.
+            Recent device logs for support.
           </span>
         </div>
         <button
@@ -234,8 +234,8 @@ function RuntimesBlock({
           className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
           title={
             daemon.status === "online"
-              ? "Collect daemon diagnostics"
-              : "Daemon must be online to collect diagnostics from Dashboard"
+              ? "Collect logs from this device"
+              : "Device must be online to collect logs"
           }
         >
           {collectingDiagnostics ? (
@@ -243,12 +243,12 @@ function RuntimesBlock({
           ) : (
             <FileArchive className="h-3 w-3" />
           )}
-          Upload diagnostics
+          Collect logs
         </button>
       </div>
       {diagnosticResult ? (
         <span className="rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-1 text-[11px] text-neon-green">
-          Uploaded {diagnosticResult.filename} ({diagnosticResult.size_bytes} bytes)
+          Log file ready: {diagnosticResult.filename} ({diagnosticResult.size_bytes} bytes)
           {diagnosticResult.expires_at
             ? `, expires ${compactDateTime(diagnosticResult.expires_at)}`
             : ""}

@@ -132,9 +132,12 @@ Commands:
   route list
   route remove --room <rm_xxx>|--prefix <rm_xxx>
   config                                  Print resolved config
-  doctor [--json] [--bundle]              Scan local runtimes (${ADAPTER_LIST});
+  doctor [--json] [--bundle] [--full-log] Scan local runtimes (${ADAPTER_LIST});
                                           --bundle also writes a zip under
-                                          ~/.botcord/diagnostics/
+                                          ~/.botcord/diagnostics/. Bundles
+                                          daemon.log plus the latest 5 rotated
+                                          logs by default; --full-log bundles
+                                          all retained rotated logs.
   memory get [--agent <ag_xxx>] [--json]  Show current working memory
   memory set [--agent <ag_xxx>] --goal <text>
                                           Pin/update the agent's work goal
@@ -168,6 +171,7 @@ const BOOLEAN_FLAGS = new Set([
   "follow",
   "json",
   "bundle",
+  "full-log",
   "help",
   "h",
   "mentioned",
@@ -1347,7 +1351,9 @@ const fsFileReader: DoctorFileReader = {
 
 async function cmdDoctor(args: ParsedArgs): Promise<void> {
   if (args.flags.bundle === true) {
-    const bundle = await createDiagnosticBundle();
+    const bundle = await createDiagnosticBundle({
+      includeAllLogs: args.flags["full-log"] === true,
+    });
     if (args.flags.json === true) {
       console.log(JSON.stringify({ bundle }, null, 2));
       return;
