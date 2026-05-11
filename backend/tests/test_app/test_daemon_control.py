@@ -621,6 +621,187 @@ async def test_dispatch_offline_returns_409(client: AsyncClient, seed_user):
     assert r.status_code == 409
 
 
+@pytest.mark.asyncio
+async def test_collect_diagnostics_dispatches_and_returns_bundle(
+    client: AsyncClient, seed_user
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    from hub.routers.daemon_control import _DaemonConn, _registry_for_tests
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+    registry = _registry_for_tests()
+    await registry.register(conn)
+    try:
+        async def _reply_when_sent() -> None:
+            for _ in range(50):
+                if fake_ws.sent:
+                    break
+                await asyncio.sleep(0.01)
+            assert fake_ws.sent
+            sent_frame = json.loads(fake_ws.sent[0])
+            assert sent_frame["type"] == "collect_diagnostics"
+            fut = conn.pending_acks.get(sent_frame["id"])
+            assert fut is not None
+            fut.set_result(
+                {
+                    "id": sent_frame["id"],
+                    "ok": True,
+                    "result": {
+                        "bundle_id": "diag_test",
+                        "filename": "botcord-daemon-diagnostics-test.zip",
+                        "size_bytes": 128,
+                        "expires_at": "2026-05-18T00:00:00+00:00",
+                        "local_path": "/Users/example/.botcord/diagnostics/test.zip",
+                    },
+                }
+            )
+
+        reply_task = asyncio.create_task(_reply_when_sent())
+        r = await client.post(
+            f"/daemon/instances/{instance_id}/diagnostics",
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        await reply_task
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["ok"] is True
+        assert body["bundle_id"] == "diag_test"
+        assert body["filename"].endswith(".zip")
+        assert body["size_bytes"] == 128
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_daemon_diagnostics_upload_persists_bundle(
+    client: AsyncClient,
+    seed_user,
+    db_session: AsyncSession,
+    tmp_path,
+    monkeypatch,
+):
+    from sqlalchemy import select
+
+    import hub.routers.daemon_control as daemon_control_mod
+    from hub.models import DaemonDiagnosticBundle
+
+    monkeypatch.setattr(daemon_control_mod, "DAEMON_DIAGNOSTICS_DIR", str(tmp_path))
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    access_token = bundle["access_token"]
+    instance_id = bundle["daemon_instance_id"]
+    zip_bytes = b"PK\x03\x04fake zip body"
+
+    r = await client.post(
+        "/daemon/diagnostics/upload",
+        content=zip_bytes,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/zip",
+            "X-BotCord-Filename": "../../diag.zip",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["filename"] == "diag.zip"
+    assert body["size_bytes"] == len(zip_bytes)
+
+    await db_session.commit()
+    res = await db_session.execute(
+        select(DaemonDiagnosticBundle).where(
+            DaemonDiagnosticBundle.daemon_instance_id == instance_id
+        )
+    )
+    row = res.scalar_one()
+    assert row.filename == "diag.zip"
+    assert row.size_bytes == len(zip_bytes)
+    assert row.storage_path.startswith(str(tmp_path))
+    assert (tmp_path / f"{body['bundle_id']}_diag.zip").exists()
+
+    download = await client.get(
+        f"/daemon/diagnostics/{body['bundle_id']}/download",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert download.status_code == 200, download.text
+    assert download.content == zip_bytes
+    assert download.headers["content-type"].startswith("application/zip")
+
+
+@pytest.mark.asyncio
+async def test_daemon_diagnostics_download_requires_owner_and_unexpired(
+    client: AsyncClient,
+    seed_user,
+    db_session: AsyncSession,
+    tmp_path,
+    monkeypatch,
+):
+    from sqlalchemy import select
+
+    import hub.routers.daemon_control as daemon_control_mod
+    from hub.models import DaemonDiagnosticBundle
+
+    monkeypatch.setattr(daemon_control_mod, "DAEMON_DIAGNOSTICS_DIR", str(tmp_path))
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    r = await client.post(
+        "/daemon/diagnostics/upload",
+        content=b"PK\x03\x04diagnostics",
+        headers={
+            "Authorization": f"Bearer {bundle['access_token']}",
+            "Content-Type": "application/zip",
+            "X-BotCord-Filename": "diag.zip",
+        },
+    )
+    assert r.status_code == 200, r.text
+    bundle_id = r.json()["bundle_id"]
+
+    other_supabase_uuid = uuid.uuid4()
+    other_user_id = uuid.uuid4()
+    db_session.add(
+        User(
+            id=other_user_id,
+            display_name="Other User",
+            email="other@example.com",
+            status="active",
+            supabase_user_id=other_supabase_uuid,
+            max_agents=10,
+        )
+    )
+    await db_session.commit()
+    other_token = _make_supabase_token(str(other_supabase_uuid))
+
+    other_download = await client.get(
+        f"/daemon/diagnostics/{bundle_id}/download",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert other_download.status_code == 404
+
+    row = (
+        await db_session.execute(
+            select(DaemonDiagnosticBundle).where(
+                DaemonDiagnosticBundle.id == uuid.UUID(bundle_id)
+            )
+        )
+    ).scalar_one()
+    row.expires_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+    await db_session.commit()
+
+    expired_download = await client.get(
+        f"/daemon/diagnostics/{bundle_id}/download",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert expired_download.status_code == 410
+
+
 # ---------------------------------------------------------------------------
 # Runtime discovery (§8.5)
 # ---------------------------------------------------------------------------

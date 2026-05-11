@@ -1311,6 +1311,29 @@ class DaemonAgentCleanup(Base):
     )
 
 
+class DaemonDiagnosticBundle(Base):
+    """Diagnostic zip uploaded by a user-authorized daemon."""
+
+    __tablename__ = "daemon_diagnostic_bundles"
+    __table_args__ = (
+        Index("ix_daemon_diagnostic_bundles_daemon_created", "daemon_instance_id", "created_at"),
+        Index("ix_daemon_diagnostic_bundles_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    daemon_instance_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("daemon_instances.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class DaemonInstallTicket(Base):
     """Short-lived one-time token for non-interactive daemon bootstrap."""
 
