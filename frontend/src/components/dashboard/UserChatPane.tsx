@@ -395,6 +395,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
             return (
               <div key={msg.clientId} className="space-y-1.5">
                 <StreamBlocksView
+                  key={`${msg.clientId}-streaming`}
                   blocks={msg.streamBlocks}
                   defaultExpanded
                   onScrollRequest={wasNearBottomRef.current ? scrollToBottom : undefined}
@@ -458,7 +459,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
             <div key={msg.clientId} className="space-y-1.5">
               {/* Finalized execution blocks above agent message */}
               {!isUser && msg.streamBlocks.length > 0 && (
-                <StreamBlocksView blocks={msg.streamBlocks} />
+                <StreamBlocksView key={`${msg.clientId}-delivered`} blocks={msg.streamBlocks} />
               )}
               <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                 <div
