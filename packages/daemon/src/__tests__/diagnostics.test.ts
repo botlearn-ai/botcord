@@ -25,7 +25,11 @@ describe("diagnostics bundle", () => {
     });
     expect(bundle.filename).toMatch(/^botcord-daemon-diagnostics-.*\.zip$/);
     expect(bundle.path).toContain(diagnosticsDir);
-    expect(bundle.revealCommand).toContain(bundle.path);
+    if (process.platform === "linux") {
+      expect(bundle.revealCommand).toContain(diagnosticsDir);
+    } else {
+      expect(bundle.revealCommand).toContain(bundle.path);
+    }
     expect(bundle.copyPathCommand).toContain(bundle.path);
     expect(existsSync(bundle.path)).toBe(true);
     const bytes = readFileSync(bundle.path);
