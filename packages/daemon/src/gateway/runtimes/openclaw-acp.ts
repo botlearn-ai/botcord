@@ -350,7 +350,7 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       }
       const pickedText = normalizeAssistantText(pickFinalText(promptResult));
       const streamedText = normalizeAssistantText(assistantText);
-      finalText = pickedText && !looksLikeReasoningLeak(pickedText) ? pickedText : streamedText;
+      finalText = pickSafeAssistantText(pickedText) || pickSafeAssistantText(streamedText);
 
       if (capped) {
         log.warn("openclaw-acp.assistant-text-capped", { sessionId: acpSessionId });
@@ -853,7 +853,7 @@ function createAssistantTextFilter(): {
     if (flush && !seenFinal && fallback) {
       const text = normalizeAssistantText(fallback);
       fallback = "";
-      if (!looksLikeReasoningLeak(text)) return text;
+      return pickSafeAssistantText(text);
     }
     return out;
   };
@@ -906,6 +906,41 @@ function looksLikeReasoningLeak(text: string): boolean {
     /^i('|’)m .*\b(i('|’)ll|i will|need to|should|going to)\b/i.test(t) ||
     /\bi('|’)ll respond\b/i.test(t) ||
     /\bi need to\b/i.test(t)
+  );
+}
+
+function pickSafeAssistantText(text: string | undefined): string {
+  if (!text) return "";
+  const trimmed = text.trim();
+  if (!looksLikeReasoningLeak(trimmed)) return trimmed;
+  return stripLeadingReasoningLeak(trimmed);
+}
+
+function stripLeadingReasoningLeak(text: string): string {
+  const paragraphs = text
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  while (paragraphs.length > 0 && isReasoningNarration(paragraphs[0])) {
+    paragraphs.shift();
+  }
+
+  const candidate = paragraphs.join("\n\n").trim();
+  return candidate && !looksLikeReasoningLeak(candidate) ? candidate : "";
+}
+
+function isReasoningNarration(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return (
+    looksLikeReasoningLeak(t) ||
+    /^let me\b/i.test(t) ||
+    /^i('|’)ll\b/i.test(t) ||
+    /^i will\b/i.test(t) ||
+    /^i should\b/i.test(t) ||
+    /^i need to\b/i.test(t)
   );
 }
 

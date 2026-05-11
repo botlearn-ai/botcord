@@ -353,6 +353,62 @@ describe("OpenclawAcpAdapter.run", () => {
     expect(assistantChunks).toEqual(["好！终于可以正常交流了。"]);
   });
 
+  it("keeps final streamed text after an untagged reasoning preamble", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-reasoning-preamble" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params: {
+                sessionId: "sid-reasoning-preamble",
+                update: {
+                  sessionUpdate: "agent_message_chunk",
+                  content: {
+                    type: "text",
+                    text: "The user is asking about today's weather in Chinese. Let me check the weather skill to see how to get this info.\n\n今天上海天气不错！\n\n- 气温：29°C\n- 湿度：52%",
+                  },
+                },
+              },
+            }) + "\n",
+          );
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { stopReason: "end_turn" } }) + "\n");
+        }
+      }
+    });
+
+    const blocks: any[] = [];
+    const res = await adapter.run({
+      text: "今天天气咋样",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+      onBlock: (b) => blocks.push(b),
+    });
+
+    expect(res.error).toBeUndefined();
+    expect(res.text).toBe("今天上海天气不错！\n\n- 气温：29°C\n- 湿度：52%");
+    expect(blocks.filter((b) => b.kind === "assistant_text")).toHaveLength(1);
+    expect(JSON.stringify(blocks)).not.toContain("The user is asking");
+  });
+
   it("preserves real leading angle syntax in streamed fallback text", async () => {
     const child = new FakeChild();
     const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
