@@ -18,8 +18,16 @@ interface TelegramChat {
   last_name?: string;
 }
 
+interface TelegramSender {
+  id?: number | string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+}
+
 interface TelegramMessageLike {
   chat?: TelegramChat;
+  from?: TelegramSender;
 }
 
 interface TelegramUpdate {
@@ -40,6 +48,12 @@ function chatLabel(chat: TelegramChat): string {
   const username = chat.username ? `@${chat.username}` : "";
   if (chat.title && username) return `${chat.title} ${username}`;
   return chat.title || username || name || String(chat.id ?? "");
+}
+
+function senderLabel(sender: TelegramSender): string {
+  const name = [sender.first_name, sender.last_name].filter(Boolean).join(" ");
+  const username = sender.username ? `@${sender.username}` : "";
+  return username || name || String(sender.id ?? "");
 }
 
 export async function POST(req: Request) {
@@ -113,12 +127,14 @@ export async function POST(req: Request) {
     string,
     { id: string; type: string | null; label: string | null }
   >();
+  const sendersById = new Map<string, { id: string; label: string | null }>();
   for (const update of json.result ?? []) {
-    const chat =
-      update.message?.chat ??
-      update.edited_message?.chat ??
-      update.channel_post?.chat ??
-      update.edited_channel_post?.chat;
+    const message =
+      update.message ??
+      update.edited_message ??
+      update.channel_post ??
+      update.edited_channel_post;
+    const chat = message?.chat;
     if (chat?.id === undefined || chat.id === null) continue;
     const id = String(chat.id);
     byId.set(id, {
@@ -126,7 +142,18 @@ export async function POST(req: Request) {
       type: chat.type ?? null,
       label: chatLabel(chat) || null,
     });
+    const sender = message?.from;
+    if (sender?.id !== undefined && sender.id !== null) {
+      const senderId = String(sender.id);
+      sendersById.set(senderId, {
+        id: senderId,
+        label: senderLabel(sender) || null,
+      });
+    }
   }
 
-  return NextResponse.json({ chats: Array.from(byId.values()) });
+  return NextResponse.json({
+    chats: Array.from(byId.values()),
+    senders: Array.from(sendersById.values()),
+  });
 }

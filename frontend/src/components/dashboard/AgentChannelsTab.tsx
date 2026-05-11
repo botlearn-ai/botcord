@@ -39,6 +39,8 @@ interface Props {
 }
 
 type AddMode = null | "telegram" | "wechat";
+type TelegramDiscoveryChat = { id: string; type: string | null; label: string | null };
+type TelegramDiscoverySender = { id: string; label: string | null };
 
 const STATUS_LABELS: Record<GatewayStatus, string> = {
   active: "运行中",
@@ -63,6 +65,45 @@ function ProviderIcon({ provider }: { provider: GatewayProvider }) {
 
 function providerName(provider: GatewayProvider): string {
   return provider === "telegram" ? "Telegram" : "微信";
+}
+
+function StepSection({
+  step,
+  title,
+  description,
+  complete,
+  children,
+}: {
+  step: number;
+  title: string;
+  description?: string;
+  complete?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-glass-border bg-deep-black/30 p-3">
+      <div className="mb-3 flex items-start gap-2.5">
+        <span
+          className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${
+            complete
+              ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+              : "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
+          }`}
+        >
+          {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : step}
+        </span>
+        <div className="min-w-0">
+          <h4 className="text-xs font-semibold text-text-primary">{title}</h4>
+          {description ? (
+            <p className="mt-0.5 text-[10px] leading-relaxed text-text-tertiary">
+              {description}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
 }
 
 // Stable empty list reference — must live outside the component so selectors
@@ -394,12 +435,12 @@ function TelegramAddForm({
   const [senderIds, setSenderIds] = useState("");
   const [enableNow, setEnableNow] = useState(true);
   const [discoveringChats, setDiscoveringChats] = useState(false);
-  const [discoveredChats, setDiscoveredChats] = useState<
-    { id: string; type: string | null; label: string | null }[]
-  >([]);
+  const [discoveredChats, setDiscoveredChats] = useState<TelegramDiscoveryChat[]>([]);
+  const [discoveredSenders, setDiscoveredSenders] = useState<TelegramDiscoverySender[]>([]);
   const [discoverHint, setDiscoverHint] = useState<string | null>(null);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
+  const [copiedSenderId, setCopiedSenderId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenGuideOpen, setTokenGuideOpen] = useState(false);
@@ -407,8 +448,9 @@ function TelegramAddForm({
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
   const tokenReady = !!token.trim();
-  const whitelistIncomplete =
-    allowedChatIds.length === 0 || allowedSenderIds.length === 0;
+  const chatReady = allowedChatIds.length > 0;
+  const senderReady = allowedSenderIds.length > 0;
+  const whitelistIncomplete = !chatReady || !senderReady;
   const canSave = tokenReady && !whitelistIncomplete && !daemonOffline && !saving;
 
   async function handleSave() {
@@ -442,8 +484,10 @@ function TelegramAddForm({
     setDiscoverHint("等待 Telegram 最近消息...");
     setDiscoverError(null);
     setDiscoveredChats([]);
+    setDiscoveredSenders([]);
     try {
-      let chats: { id: string; type: string | null; label: string | null }[] = [];
+      let chats: TelegramDiscoveryChat[] = [];
+      let senders: TelegramDiscoverySender[] = [];
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         setDiscoverHint(
           attempt === 1
@@ -456,7 +500,8 @@ function TelegramAddForm({
           body: JSON.stringify({ botToken, timeoutSeconds: 8 }),
         });
         const json = (await res.json().catch(() => ({}))) as {
-          chats?: { id: string; type: string | null; label: string | null }[];
+          chats?: TelegramDiscoveryChat[];
+          senders?: TelegramDiscoverySender[];
           message?: string;
           error?: string;
         };
@@ -464,12 +509,23 @@ function TelegramAddForm({
           throw new Error(json.message || json.error || `HTTP ${res.status}`);
         }
         chats = Array.isArray(json.chats) ? json.chats : [];
-        if (chats.length > 0) break;
+        senders = Array.isArray(json.senders) ? json.senders : [];
+        if (chats.length > 0 || senders.length > 0) break;
       }
       setDiscoveredChats(chats);
+      setDiscoveredSenders(senders);
       if (chats.length === 1) {
         setChatIds(chats[0].id);
+      }
+      if (senders.length === 1) {
+        setSenderIds(senders[0].id);
+      }
+      if (chats.length === 1 && senders.length === 1) {
+        setDiscoverHint("已自动填入发现的 chat id 和发送者 user id。");
+      } else if (chats.length === 1) {
         setDiscoverHint("已自动填入发现的 chat id。");
+      } else if (senders.length === 1) {
+        setDiscoverHint("已自动填入发现的发送者 user id。");
       } else if (chats.length === 0) {
         setDiscoverHint(null);
         setDiscoverError("还没有发现会话。请先在目标私聊或群聊里给 bot 发一条消息，然后再读取。");
@@ -490,6 +546,12 @@ function TelegramAddForm({
     setChatIds(Array.from(existing).join("\n"));
   }
 
+  function appendSenderId(id: string) {
+    const existing = new Set(csvToList(senderIds));
+    existing.add(id);
+    setSenderIds(Array.from(existing).join("\n"));
+  }
+
   async function copyChatId(id: string) {
     try {
       await navigator.clipboard.writeText(id);
@@ -500,44 +562,57 @@ function TelegramAddForm({
     }
   }
 
+  async function copySenderId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedSenderId(id);
+      window.setTimeout(() => setCopiedSenderId(null), 1600);
+    } catch {
+      setDiscoverError("复制失败，请手动复制发送者 user id。");
+    }
+  }
+
   return (
     <div className="space-y-3">
-      <Field label="Bot token">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
-            type="password"
-            autoComplete="off"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            disabled={saving}
-            placeholder="123456:ABC-..."
-            className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={() => setTokenGuideOpen(true)}
-            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/12 px-3 py-2 text-[11px] font-medium text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)] hover:bg-amber-300/20"
-          >
-            <Info className="h-3.5 w-3.5" />
-            如何获取 token
-          </button>
-        </div>
-        <p className="mt-1 text-[10px] text-text-tertiary">
-          Token 仅在创建/替换时填写，保存后只显示 token preview。
-        </p>
-      </Field>
+      <StepSection
+        step={1}
+        title="填写 Bot token"
+        description="先从 BotFather 创建 bot 并复制 token；没有 token 就不能读取最近消息或保存接入。"
+        complete={tokenReady}
+      >
+        <Field label="Bot token">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              type="password"
+              autoComplete="off"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              disabled={saving}
+              placeholder="123456:ABC-..."
+              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={() => setTokenGuideOpen(true)}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/12 px-3 py-2 text-[11px] font-medium text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)] hover:bg-amber-300/20"
+            >
+              <Info className="h-3.5 w-3.5" />
+              如何获取 token
+            </button>
+          </div>
+          <p className="mt-1 text-[10px] text-text-tertiary">
+            Token 仅在创建/替换时填写，保存后只显示 token preview。
+          </p>
+        </Field>
+      </StepSection>
       {tokenReady && (
         <>
-          <Field label="接入名称（可选）">
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              disabled={saving}
-              placeholder="例如：客服 Bot"
-              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-            />
-          </Field>
+          <StepSection
+            step={2}
+            title="让目标会话发消息，读取 chat id"
+            description="chat id 限定 BotCord 只处理指定私聊、群或频道里的消息。"
+            complete={chatReady}
+          >
           <Field label="允许的 chat id（逗号或换行分隔）">
             <textarea
               value={chatIds}
@@ -633,6 +708,14 @@ function TelegramAddForm({
               </p>
             )}
           </Field>
+          </StepSection>
+          {chatReady && (
+            <StepSection
+              step={3}
+              title="确认允许的发送者 user id"
+              description="同一个群里可能有多人发言；必须限制具体 Telegram 用户。第 2 步读取最近消息时会尽量自动带出发送者。"
+              complete={senderReady}
+            >
           <Field label="允许的发送者 user id（逗号或换行分隔）">
             <textarea
               value={senderIds}
@@ -645,18 +728,88 @@ function TelegramAddForm({
             <p className="mt-1 text-[10px] text-text-tertiary">
               必填；Telegram 需要同时限制 chat id 和发送者 user id。
             </p>
+            {discoveredSenders.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {discoveredSenders.map((sender) => (
+                  <div
+                    key={sender.id}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="block max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                        {sender.label || "未命名用户"}
+                      </span>
+                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                        {sender.id}
+                      </code>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSenderIds(sender.id)}
+                        disabled={saving}
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                      >
+                        填入
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => appendSenderId(sender.id)}
+                        disabled={saving}
+                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        追加
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copySenderId(sender.id)}
+                        disabled={saving}
+                        title={copiedSenderId === sender.id ? "已复制" : "复制 user id"}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        {copiedSenderId === sender.id ? (
+                          <CheckCircle2 className="h-3 w-3" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Field>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
-            <input
-              type="checkbox"
-              checked={enableNow}
-              onChange={(e) => setEnableNow(e.target.checked)}
-              disabled={saving}
-              className="accent-neon-cyan"
-            />
-            立即启用
-          </label>
-          {whitelistIncomplete && (
+            </StepSection>
+          )}
+          {senderReady && (
+            <StepSection
+              step={4}
+              title="命名并保存接入"
+              description="保存后 token 只留在 daemon 侧，前端只展示 token preview。"
+            >
+              <Field label="接入名称（可选）">
+                <input
+                  type="text"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  disabled={saving}
+                  placeholder="例如：客服 Bot"
+                  className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+                />
+              </Field>
+              <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={enableNow}
+                  onChange={(e) => setEnableNow(e.target.checked)}
+                  disabled={saving}
+                  className="accent-neon-cyan"
+                />
+                立即启用
+              </label>
+            </StepSection>
+          )}
+          {chatReady && whitelistIncomplete && (
             <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
               必须同时填写允许的 chat id 和发送者 user id，才能保存 Telegram 接入。
             </p>
@@ -682,7 +835,7 @@ function TelegramAddForm({
           onClick={handleSave}
           disabled={!tokenReady || !canSave}
           className={`inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50 ${
-            tokenReady ? "" : "hidden"
+            senderReady ? "" : "hidden"
           }`}
         >
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -861,6 +1014,8 @@ function WechatAddForm({
 
   const allowedSenderIds = csvToList(senderIds);
   const whitelistEmpty = allowedSenderIds.length === 0;
+  const loginReady = phase === "ready" && !!loginId;
+  const senderReady = allowedSenderIds.length > 0;
   const canSave = phase === "ready" && !!loginId && !whitelistEmpty && !daemonOffline && !busy;
 
   async function handleSave() {
@@ -951,84 +1106,89 @@ function WechatAddForm({
 
   return (
     <div className="space-y-3">
-      {phase === "idle" && (
-        <button
-          type="button"
-          onClick={handleStart}
-          disabled={daemonOffline || busy}
-          className="inline-flex items-center gap-2 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
-        >
-          {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-          扫码登录
-        </button>
-      )}
+      <StepSection
+        step={1}
+        title="扫码授权微信登录"
+        description="先让 daemon 拿到临时登录态；未授权前不能读取微信用户 ID，也不能保存接入。"
+        complete={loginReady}
+      >
+        {phase === "idle" && (
+          <button
+            type="button"
+            onClick={handleStart}
+            disabled={daemonOffline || busy}
+            className="inline-flex items-center gap-2 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+          >
+            {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+            扫码登录
+          </button>
+        )}
 
-      {phase === "scanning" && (
-        <div className="space-y-2 rounded-lg border border-glass-border bg-deep-black/40 p-3">
-          <div className="text-xs text-text-secondary">{statusText[status]}</div>
-          {qrcodeUrl ? (
-            <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-white p-2">
-              <QRCodeSVG
-                value={qrcodeUrl}
-                size={160}
-                marginSize={1}
-                level="M"
-                title="WeChat 二维码"
-              />
-            </div>
-          ) : qrcode ? (
-            <div className="space-y-1.5">
-              <div className="break-all rounded-md border border-glass-border bg-glass-bg/40 p-2 font-mono text-[10px] text-text-secondary">
-                {qrcode}
+        {phase === "scanning" && (
+          <div className="space-y-2 rounded-lg border border-glass-border bg-deep-black/40 p-3">
+            <div className="text-xs text-text-secondary">{statusText[status]}</div>
+            {qrcodeUrl ? (
+              <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-white p-2">
+                <QRCodeSVG
+                  value={qrcodeUrl}
+                  size={160}
+                  marginSize={1}
+                  level="M"
+                  title="WeChat 二维码"
+                />
               </div>
+            ) : qrcode ? (
+              <div className="space-y-1.5">
+                <div className="break-all rounded-md border border-glass-border bg-glass-bg/40 p-2 font-mono text-[10px] text-text-secondary">
+                  {qrcode}
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(qrcode);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    } catch {
+                      /* noop */
+                    }
+                  }}
+                  className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary"
+                >
+                  {copied ? "已复制" : "复制二维码内容"}
+                </button>
+              </div>
+            ) : null}
+            {(status === "expired" || status === "failed") && (
               <button
                 type="button"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(qrcode);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  } catch {
-                    /* noop */
-                  }
-                }}
-                className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary"
+                onClick={handleStart}
+                disabled={busy}
+                className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary disabled:opacity-50"
               >
-                {copied ? "已复制" : "复制二维码内容"}
+                重新获取二维码
               </button>
-            </div>
-          ) : null}
-          {(status === "expired" || status === "failed") && (
-            <button
-              type="button"
-              onClick={handleStart}
-              disabled={busy}
-              className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary disabled:opacity-50"
-            >
-              重新获取二维码
-            </button>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
 
-      {phase === "ready" && (
-        <div className="space-y-3">
+        {phase === "ready" && (
           <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2 text-[11px] text-emerald-200">
             已授权
             {tokenPreview ? (
               <span className="ml-1 font-mono">· token {tokenPreview}</span>
             ) : null}
           </div>
-          <Field label="接入名称（可选）">
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              disabled={busy}
-              placeholder="例如：我的微信"
-              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-            />
-          </Field>
+        )}
+      </StepSection>
+
+      {loginReady && (
+        <StepSection
+          step={2}
+          title="让授权用户发消息，读取微信用户 ID"
+          description="保存时必须限制 allowedSenderIds；先用要授权的微信账号发一条消息，再读取最近用户。"
+          complete={senderReady}
+        >
           <Field label="允许的微信用户 ID（逗号或换行分隔）">
             <textarea
               value={senderIds}
@@ -1132,7 +1292,55 @@ function WechatAddForm({
               必须填写至少一个允许的微信用户 ID，才能保存微信接入。
             </p>
           )}
-        </div>
+        </StepSection>
+      )}
+
+      {senderReady && (
+        <StepSection
+          step={3}
+          title="确认接入名称和启用状态"
+          description="名称只用于后台识别；启用后会立即开始处理来自允许用户的微信消息。"
+          complete
+        >
+          <Field label="接入名称（可选）">
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              disabled={busy}
+              placeholder="例如：我的微信"
+              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+          </Field>
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-text-primary">
+            <input
+              type="checkbox"
+              checked={enableNow}
+              onChange={(e) => setEnableNow(e.target.checked)}
+              disabled={busy}
+              className="accent-neon-cyan"
+            />
+            立即启用
+          </label>
+        </StepSection>
+      )}
+
+      {senderReady && (
+        <StepSection
+          step={4}
+          title="保存微信接入"
+          description="保存后会用本次 loginId 在 daemon 侧创建连接，后续列表里可以停用、编辑或删除。"
+        >
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave}
+            className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+          >
+            {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+            保存
+          </button>
+        </StepSection>
       )}
 
       {error && (
@@ -1150,17 +1358,6 @@ function WechatAddForm({
         >
           取消
         </button>
-        {phase === "ready" && (
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!canSave}
-            className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
-          >
-            {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-            保存
-          </button>
-        )}
       </div>
     </div>
   );
