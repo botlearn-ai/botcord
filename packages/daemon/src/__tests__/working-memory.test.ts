@@ -207,6 +207,15 @@ describe("buildWorkingMemoryPrompt", () => {
     expect(p).toContain("currently empty");
   });
 
+  it("instructs agents to persist cross-room handoffs", () => {
+    const p = wm.buildWorkingMemoryPrompt({ workingMemory: null });
+    expect(p).toContain("For cross-room work");
+    expect(p).toContain("pending_tasks");
+    expect(p).toContain("source room");
+    expect(p).toContain("target room");
+    expect(p).toContain("where to report completion");
+  });
+
   it("renders goal + named sections", () => {
     const p = wm.buildWorkingMemoryPrompt({
       workingMemory: {
@@ -237,4 +246,3 @@ describe("buildWorkingMemoryPrompt", () => {
     expect(p).toContain("‹current_memory›");
   });
 });
-

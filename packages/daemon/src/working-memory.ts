@@ -307,6 +307,11 @@ export function buildWorkingMemoryPrompt(opts: {
     "- sections: named buckets (contacts, pending_tasks, preferences, etc.).",
     "- Updating one section never touches others. Empty content deletes a section.",
     "",
+    "For cross-room work, update memory before or immediately after delegating:",
+    "- If you accept a request in one room and continue it in another, record a `pending_tasks` entry with source room id/name, target room id/name, requested deliverable, current status, and where to report completion.",
+    "- When a delegated room replies or delivers an artifact, consult `pending_tasks` before deciding `NO_REPLY`; if it matches a pending handoff, acknowledge, update status, and send the promised follow-up to the source room when appropriate.",
+    "- Remove or mark the entry done once the source room has been updated.",
+    "",
     "Only update when something meaningful changes. Keep each section tight.",
   ];
 
