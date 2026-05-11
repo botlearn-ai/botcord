@@ -31,7 +31,7 @@ export function PrimaryNavButton({
   return (
     <button
       onClick={onClick}
-      className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
+      className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 max-md:h-12 max-md:min-w-0 max-md:flex-1 max-md:px-1 ${
         disabled
           ? "text-text-secondary/45 hover:bg-neon-cyan/10 hover:text-neon-cyan"
           : active
@@ -41,11 +41,11 @@ export function PrimaryNavButton({
       title={title}
     >
       {active && !disabled && (
-        <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full ${indicatorClass}`} />
+        <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full max-md:left-1/2 max-md:top-0 max-md:h-[3px] max-md:w-5 max-md:-translate-x-1/2 max-md:translate-y-0 max-md:rounded-b-full max-md:rounded-r-none ${indicatorClass}`} />
       )}
       {badge}
       {icon}
-      <span className="mt-0.5 text-[9px] font-medium leading-none">{label}</span>
+      <span className="mt-0.5 max-w-full truncate text-[9px] font-medium leading-none">{label}</span>
     </button>
   );
 }
