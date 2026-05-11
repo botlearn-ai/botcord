@@ -133,6 +133,7 @@ interface DashboardChatState {
   ownedAgentRooms: HumanAgentRoomSummary[];
   ownedAgentRoomsLoading: boolean;
   ownedAgentRoomsLoaded: boolean;
+  roomMemberVersions: Record<string, number>;
 
   setError: (error: string | null) => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
@@ -146,6 +147,7 @@ interface DashboardChatState {
   applyRealtimeEventHint: (event: RealtimeMetaEvent) => void;
   replaceOverview: (overview: DashboardOverview) => void;
   patchRoom: (roomId: string, patch: Partial<DashboardRoom>) => void;
+  bumpRoomMembersVersion: (roomId: string) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
   loadRoomMessages: (roomId: string) => Promise<void>;
@@ -198,6 +200,7 @@ const initialChatState = {
   ownedAgentRooms: [],
   ownedAgentRoomsLoading: false,
   ownedAgentRoomsLoaded: false,
+  roomMemberVersions: {},
 };
 
 function hasTransientChatState(state: DashboardChatState): boolean {
@@ -364,6 +367,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               ),
             }
             : state.overview,
+        })),
+
+      bumpRoomMembersVersion: (roomId) =>
+        set((state) => ({
+          roomMemberVersions: {
+            ...state.roomMemberVersions,
+            [roomId]: (state.roomMemberVersions[roomId] ?? 0) + 1,
+          },
         })),
 
       loadRoomMessages: async (roomId: string) => {

@@ -42,6 +42,9 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
 
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
+  const roomMemberVersion = useDashboardChatStore(
+    (s) => s.roomMemberVersions[roomId] ?? 0,
+  );
 
   const displayName = user?.display_name || "You";
   const isOwnerChat = roomId.startsWith("rm_oc_");
@@ -72,7 +75,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       }
     })();
     return () => { cancelled = true; };
-  }, [roomId, isOwnerChat]);
+  }, [roomId, isOwnerChat, roomMemberVersion]);
 
   const selfId = viewMode === "agent" ? activeAgentId : human?.human_id;
 
