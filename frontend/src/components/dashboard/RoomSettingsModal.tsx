@@ -142,6 +142,12 @@ function ActionConfirmDialog({
   );
 }
 
+function formatWholeCoinAmount(amountMinor: string | number): string {
+  const coins = Number(amountMinor) / 100;
+  if (!Number.isFinite(coins)) return "";
+  return Number.isInteger(coins) ? String(coins) : String(coins);
+}
+
 export default function RoomSettingsModal({
   roomId,
   roomOwnerType,
@@ -334,8 +340,7 @@ export default function RoomSettingsModal({
         }
         setSubscriptionProduct(product);
         if (product) {
-          const major = Number(product.amount_minor) / 100;
-          setPriceInput(Number.isFinite(major) ? major.toFixed(2) : "");
+          setPriceInput(formatWholeCoinAmount(product.amount_minor));
           if (product.billing_interval === "week" || product.billing_interval === "month") {
             setBillingInterval(product.billing_interval);
           }
@@ -491,12 +496,12 @@ export default function RoomSettingsModal({
       return "blocked";
     }
 
-    const priceMajor = Number(priceInput);
-    if (!Number.isFinite(priceMajor) || priceMajor <= 0) {
-      setError(ta.subscriptionPriceLabel);
+    const priceCoins = Number(priceInput);
+    if (!Number.isFinite(priceCoins) || !Number.isInteger(priceCoins) || priceCoins < 1) {
+      setError(locale === "zh" ? "价格必须是不小于 1 的整数 Coin" : "Price must be a whole number of at least 1 Coin");
       return "blocked";
     }
-    const amountMinor = String(Math.round(priceMajor * 100));
+    const amountMinor = String(priceCoins * 100);
 
     // Human-owned rooms must specify a provider bot; the dashboard human
     // path doesn't send X-Active-Agent so the backend has no implicit fallback.
@@ -542,8 +547,12 @@ export default function RoomSettingsModal({
     setPlanChangeBusy(true);
     setError(null);
     try {
-      const priceMajor = Number(priceInput);
-      const amountMinor = String(Math.round(priceMajor * 100));
+      const priceCoins = Number(priceInput);
+      if (!Number.isFinite(priceCoins) || !Number.isInteger(priceCoins) || priceCoins < 1) {
+        setError(locale === "zh" ? "价格必须是不小于 1 的整数 Coin" : "Price must be a whole number of at least 1 Coin");
+        return;
+      }
+      const amountMinor = String(priceCoins * 100);
       await upsertRoomPlan(roomId, {
         amount_minor: amountMinor,
         billing_interval: billingInterval,
@@ -974,13 +983,17 @@ export default function RoomSettingsModal({
                         </label>
                         <input
                           type="number"
-                          min="0"
-                          step="0.01"
-                          inputMode="decimal"
+                          min="1"
+                          step="1"
+                          inputMode="numeric"
                           disabled={multiRoomBlocked}
                           placeholder={ta.subscriptionPricePlaceholder}
                           value={priceInput}
-                          onChange={(e) => setPriceInput(e.target.value)}
+                          onChange={(e) => {
+                            if (/^\d*$/.test(e.target.value)) {
+                              setPriceInput(e.target.value);
+                            }
+                          }}
                           className="w-28 rounded-lg border border-glass-border bg-deep-black px-2 py-1 text-sm text-text-primary"
                         />
                         <span className="text-xs text-text-secondary/80">Coin</span>
@@ -1194,10 +1207,10 @@ export default function RoomSettingsModal({
         <PlanChangeConfirmDialog
           fromLabel={
             subscriptionProduct
-              ? `${(Number(subscriptionProduct.amount_minor) / 100).toFixed(2)} Coin / ${subscriptionProduct.billing_interval}`
+              ? `${formatWholeCoinAmount(subscriptionProduct.amount_minor)} Coin / ${subscriptionProduct.billing_interval}`
               : "—"
           }
-          toLabel={`${Number(priceInput).toFixed(2)} Coin / ${billingInterval}`}
+          toLabel={`${priceInput || "0"} Coin / ${billingInterval}`}
           affectedCount={planChangeAffected}
           loading={planChangeBusy}
           onClose={() => {
