@@ -33,6 +33,7 @@ import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
+const emptyRoomMessageSnapshot = new Map<string, string | null>();
 
 function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -63,6 +64,10 @@ function applyRealtimeRoomHint<T extends {
     last_message_preview: preview,
     last_sender_name: senderName,
   };
+}
+
+function getRoomMessageSnapshot(room: DashboardRoom | null): string | null {
+  return room?.last_message_at ?? null;
 }
 
 function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
@@ -373,6 +378,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
 
         try {
           const result = await api.getRoomMessages(roomId, { limit: 50 });
+          if (result.messages.length === 0) {
+            emptyRoomMessageSnapshot.set(roomId, getRoomMessageSnapshot(get().getRoomSummary(roomId)));
+          } else {
+            emptyRoomMessageSnapshot.delete(roomId);
+          }
           set((state) => ({
             messages: { ...state.messages, [roomId]: result.messages.reverse() },
             messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
@@ -396,8 +406,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         try {
           const existing = get().messages[roomId];
 
-          if (!existing || existing.length === 0) {
+          if (!existing) {
             await get().loadRoomMessages(roomId);
+          } else if (existing.length === 0) {
+            const currentSnapshot = getRoomMessageSnapshot(get().getRoomSummary(roomId));
+            const previousSnapshot = emptyRoomMessageSnapshot.get(roomId);
+            if (opts?.expectedHubMsgId || previousSnapshot !== currentSnapshot) {
+              await get().loadRoomMessages(roomId);
+            }
           } else {
             const newestPersisted = [...existing].reverse().find(
               (m) => m.hub_msg_id && !m.hub_msg_id.startsWith("tmp_"),
