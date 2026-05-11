@@ -260,6 +260,58 @@ async def test_install_ticket_redeems_once(
 
 
 @pytest.mark.asyncio
+async def test_install_ticket_can_reauthorize_existing_daemon_instance(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    bundle = await _provision_instance_via_device_code(
+        client, seed_user, label="MacBook"
+    )
+    instance_id = bundle["daemon_instance_id"]
+    old_refresh = bundle["refresh_token"]
+
+    # Burn the old refresh token to simulate an expired local daemon auth.
+    r = await client.post("/daemon/auth/refresh", json={"refresh_token": old_refresh})
+    assert r.status_code == 200, r.text
+
+    r = await client.post(
+        "/daemon/auth/install-ticket",
+        json={"label": "MacBook Reloaded"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    issued = r.json()
+
+    r = await client.post(
+        "/daemon/auth/install-token",
+        json={
+            "install_token": issued["install_token"],
+            "daemon_instance_id": instance_id,
+            "label": "MacBook Reloaded",
+        },
+    )
+    assert r.status_code == 200, r.text
+    rebound = r.json()
+    assert rebound["daemon_instance_id"] == instance_id
+    assert rebound["refresh_token"].startswith("drt_")
+    assert rebound["refresh_token"] != old_refresh
+
+    from sqlalchemy import select
+
+    res = await db_session.execute(
+        select(DaemonInstance).where(DaemonInstance.id == instance_id)
+    )
+    inst = res.scalar_one()
+    assert inst.label == "MacBook Reloaded"
+
+    # The newly issued refresh token belongs to the same daemon instance.
+    r = await client.post(
+        "/daemon/auth/refresh", json={"refresh_token": rebound["refresh_token"]}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["daemon_instance_id"] == instance_id
+
+
+@pytest.mark.asyncio
 async def test_install_ticket_requires_user_auth(client: AsyncClient):
     r = await client.post("/daemon/auth/install-ticket", json={})
     assert r.status_code == 401

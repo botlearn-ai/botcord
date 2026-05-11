@@ -7,7 +7,7 @@ export function resolveStartAuthAction(opts: {
   relogin: boolean;
   installToken?: string;
 }): StartAuthAction {
-  if (opts.existing && !opts.relogin) return "reuse-existing";
   if (opts.installToken) return "install-token";
+  if (opts.existing && !opts.relogin) return "reuse-existing";
   return "device-code";
 }

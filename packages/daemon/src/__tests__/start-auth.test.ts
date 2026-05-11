@@ -14,14 +14,14 @@ const existingAuth: UserAuthRecord = {
 };
 
 describe("resolveStartAuthAction", () => {
-  it("reuses existing auth even when a one-time install token is present", () => {
+  it("redeems an install token even when existing auth is available", () => {
     expect(
       resolveStartAuthAction({
         existing: existingAuth,
         relogin: false,
         installToken: "dit_expired",
       }),
-    ).toBe("reuse-existing");
+    ).toBe("install-token");
   });
 
   it("redeems an install token when no existing auth is available", () => {

@@ -81,11 +81,12 @@ export async function refreshDaemonToken(
 export async function redeemDaemonInstallToken(
   hubUrl: string,
   installToken: string,
-  opts?: { label?: string; timeoutMs?: number },
+  opts?: { label?: string; daemonInstanceId?: string; timeoutMs?: number },
 ): Promise<DaemonTokenResponse> {
   const base = normalizeAndValidateHubUrl(hubUrl);
   const body: Record<string, unknown> = { install_token: installToken };
   if (opts?.label) body.label = opts.label;
+  if (opts?.daemonInstanceId) body.daemon_instance_id = opts.daemonInstanceId;
   const resp = await fetch(`${base}/daemon/auth/install-token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

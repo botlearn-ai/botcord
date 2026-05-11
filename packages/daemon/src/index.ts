@@ -231,6 +231,44 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!pidAlive(pid)) return true;
+    await delay(100);
+  }
+  return !pidAlive(pid);
+}
+
+async function stopExistingDaemonForRestart(pid: number): Promise<void> {
+  if (pid === process.pid) return;
+  log.info("existing daemon found; restarting", { pid });
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    try {
+      unlinkSync(PID_PATH);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  if (!(await waitForPidExit(pid, 5_000))) {
+    log.warn("existing daemon did not stop after SIGTERM; sending SIGKILL", { pid });
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // ignore
+    }
+    await waitForPidExit(pid, 2_000);
+  }
+  try {
+    unlinkSync(PID_PATH);
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Load the daemon config, auto-creating `~/.botcord/daemon/config.json`
  * with sensible defaults on first run. `--agent` (repeated) pins explicit
@@ -323,9 +361,11 @@ async function redeemInstallToken(opts: {
   hubUrl: string;
   installToken: string;
   label?: string;
+  daemonInstanceId?: string;
 }): Promise<DaemonTokenResponse> {
   const body: Record<string, unknown> = { install_token: opts.installToken };
   if (opts.label) body.label = opts.label;
+  if (opts.daemonInstanceId) body.daemon_instance_id = opts.daemonInstanceId;
   const resp = await fetch(`${opts.hubUrl.replace(/\/+$/, "")}/daemon/auth/install-token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -334,7 +374,9 @@ async function redeemInstallToken(opts: {
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
-    throw new Error(`daemon install-token redeem failed: ${resp.status} ${text}`);
+    const err = new Error(`daemon install-token redeem failed: ${resp.status} ${text}`);
+    (err as unknown as { status?: number }).status = resp.status;
+    throw err;
   }
   return parseDaemonTokenResponse(await resp.json(), opts.hubUrl);
 }
@@ -418,10 +460,10 @@ async function runDeviceCodeFlow(opts: {
  * plane (legacy P0 behavior — caller may still log a warning).
  *
  * Decision tree (plan §4.4 + §6.4):
- * 1. Have existing creds and no `--relogin` → return existing record, even
- *    when a dashboard `--install-token` is present. The token is one-time and
- *    the generated install command should be safe to re-run after first login.
- * 2. No existing creds + `--install-token` → redeem the one-time dashboard ticket.
+ * 1. `--install-token` → redeem the one-time dashboard ticket. If local
+ *    user-auth exists, include its daemonInstanceId so Hub can re-authorize
+ *    the same device instead of creating a new one.
+ * 2. Have existing creds and no `--relogin` → return existing record.
  * 3. `--relogin` → device-code login.
  * 4. No creds + TTY → device-code login.
  * 5. No creds + no TTY → exit 1 with the §6.4 hint.
@@ -452,9 +494,6 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
         `note: --label "${labelFlag}" ignored (already logged in as "${existing.label ?? "<unset>"}"); pass --relogin to change it`,
       );
     }
-    if (installToken) {
-      console.error("note: --install-token ignored because daemon is already logged in; pass --relogin to re-bind");
-    }
     return existing;
   }
 
@@ -463,13 +502,37 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
   const label = labelFlag ?? defaultLoginLabel();
 
   if (authAction === "install-token" && installToken) {
-    const tok = await redeemInstallToken({ hubUrl, installToken, label });
-    const record = userAuthFromTokenResponse(tok, { label });
+    let tok: DaemonTokenResponse;
+    try {
+      tok = await redeemInstallToken({
+        hubUrl,
+        installToken,
+        label,
+        daemonInstanceId: existing?.daemonInstanceId,
+      });
+    } catch (err) {
+      if (existing && !relogin && !existsSync(AUTH_EXPIRED_FLAG_PATH)) {
+        console.error(
+          `note: --install-token could not be redeemed (${err instanceof Error ? err.message : String(err)}); reusing existing daemon auth`,
+        );
+        return existing;
+      }
+      throw err;
+    }
+    const record = userAuthFromTokenResponse(tok, {
+      label,
+      loggedInAt:
+        existing?.daemonInstanceId && existing.daemonInstanceId === tok.daemonInstanceId
+          ? existing.loggedInAt
+          : undefined,
+    });
     saveUserAuth(record);
     clearAuthExpiredFlag();
     log.info("install-token flow: authorized", {
       userId: record.userId,
       daemonInstanceId: record.daemonInstanceId,
+      reusedExistingDaemonInstance:
+        existing?.daemonInstanceId === record.daemonInstanceId,
       hubUrl: record.hubUrl,
       label,
     });
@@ -527,12 +590,6 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
     child: process.env.BOTCORD_DAEMON_CHILD === "1",
   });
 
-  const existing = readPid();
-  if (existing && pidAlive(existing)) {
-    console.error(`daemon already running (pid ${existing})`);
-    process.exit(1);
-  }
-
   // Login MUST happen before fork — once detached, stdio is gone and the
   // user can't see the device code. We also run it for explicit
   // --foreground so an interactive user can log in without the fork dance.
@@ -540,6 +597,16 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
   // var so we don't try to re-prompt for credentials it already has.
   if (process.env.BOTCORD_DAEMON_CHILD !== "1") {
     await ensureUserAuthForStart(args);
+    const existing = readPid();
+    if (existing && pidAlive(existing)) {
+      await stopExistingDaemonForRestart(existing);
+    }
+  } else {
+    const existing = readPid();
+    if (existing && existing !== process.pid && pidAlive(existing)) {
+      console.error(`daemon already running (pid ${existing})`);
+      process.exit(1);
+    }
   }
 
   if (background) {

@@ -207,6 +207,22 @@ function buildStartCommand(token: string, label?: string): string {
 botcord-daemon start --relogin --install-token <token>
 ```
 
+后续修正：当已有 `user-auth.json` 但 refresh 被 Hub 明确拒绝为
+`invalid_refresh_token` / `daemon_revoked` 时，启动命令里携带的
+`--install-token` 不应继续被忽略。daemon 应优先尝试用本地
+`daemonInstanceId` 重新授权同一个 daemon instance，而不是新建 daemon instance。
+否则旧设备会被保留为离线，已绑定到旧 `daemon_instance_id` 的 agents 也会继续
+挂在旧设备下；新建 instance 后再批量改绑 agents 会破坏设备历史和管理语义。
+
+期望行为：
+
+1. 本地有 `daemonInstanceId` 且 Hub 返回 `invalid_refresh_token`：用用户授权的
+   install token / device-code 为同一个 instance 重新签发 daemon auth。
+2. 本地没有 `daemonInstanceId`，或旧 instance 不属于当前用户 / 已删除：才创建新
+   daemon instance。
+3. `daemon_revoked` 应保持终态，不自动恢复同一个 instance，除非产品明确提供
+   “恢复已撤销设备”流程。
+
 也可以新增更明确的：
 
 ```sh
@@ -334,3 +350,6 @@ hash = sha256(token)
 2. 前端是否需要每次展示弹窗都签发新 ticket？建议是。
 3. install token 是否绑定 IP / UA？不建议第一版做，容易误伤用户在远端机器安装的场景。
 4. 是否需要在 dashboard 上显示 pending install tickets？第一版不需要，只显示 daemon instances。
+5. relogin / install-token 是否支持“恢复同一个 daemon instance”？建议支持：
+   CLI 提交本地 `daemonInstanceId`，Hub 验证该 instance 属于当前用户且未 revoked，
+   然后仅重发 daemon auth，不新建 instance，也不改绑 agents。
