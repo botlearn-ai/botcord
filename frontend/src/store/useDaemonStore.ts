@@ -193,6 +193,13 @@ async function parseError(res: Response): Promise<string> {
     if (typeof data?.error === "string") return data.error;
     if (typeof data?.message === "string") return data.message;
     if (typeof data?.detail === "string") return data.detail;
+    if (data?.detail && typeof data.detail === "object") {
+      const detail = data.detail as Record<string, unknown>;
+      if (typeof detail.daemon_message === "string") return detail.daemon_message;
+      if (typeof detail.message === "string") return detail.message;
+      if (typeof detail.daemon_code === "string") return detail.daemon_code;
+      if (typeof detail.code === "string") return detail.code;
+    }
   } catch {
     // ignore
   }
@@ -659,7 +666,10 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         } else if (res.status === 504) {
           msg = "daemon timed out while collecting diagnostics";
         } else if (res.status === 502) {
-          msg = "daemon failed to collect diagnostics";
+          msg = await parseError(res);
+          if (!msg || msg === "Bad Gateway") {
+            msg = "daemon failed to collect diagnostics";
+          }
         } else {
           msg = await parseError(res);
         }
