@@ -261,4 +261,13 @@ export class Gateway {
     const idx = this.config.channels.findIndex((c) => c.id === id);
     if (idx >= 0) this.config.channels.splice(idx, 1);
   }
+
+  /**
+   * Inject a daemon-internal inbound message into the normal dispatcher.
+   * Control-plane wakeups use this path so scheduled turns share the same
+   * routing, queueing, transcript, and runtime behavior as channel messages.
+   */
+  async injectInbound(message: GatewayInboundMessage): Promise<void> {
+    await this.dispatcher.handle({ message });
+  }
 }

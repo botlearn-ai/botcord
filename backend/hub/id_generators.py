@@ -93,6 +93,16 @@ def generate_subscription_charge_attempt_id() -> str:
     return "sca_" + secrets.token_hex(8)
 
 
+def generate_agent_schedule_id() -> str:
+    """Generate agent schedule ID: 'sch_' + 16 random hex chars."""
+    return "sch_" + secrets.token_hex(8)
+
+
+def generate_agent_schedule_run_id() -> str:
+    """Generate agent schedule run ID: 'sr_' + 16 random hex chars."""
+    return "sr_" + secrets.token_hex(8)
+
+
 def generate_join_request_id() -> str:
     """Generate room join request ID: 'jr_' + 16 random hex chars."""
     return "jr_" + secrets.token_hex(8)

@@ -28,6 +28,7 @@ import {
   type UpdateAgentParams,
 } from "@botcord/protocol-core";
 import type { Gateway } from "./gateway/index.js";
+import type { GatewayInboundMessage } from "./gateway/index.js";
 import type { PolicyResolverLike } from "./gateway/policy-resolver.js";
 import type { PolicyUpdatedParams } from "@botcord/protocol-core";
 import type {
@@ -398,6 +399,10 @@ export function createProvisioner(opts: ProvisionerOptions): (
         return { ok: true, result };
       }
 
+      case "wake_agent": {
+        return handleWakeAgent(gateway, frame.params);
+      }
+
       default:
         daemonLog.warn("provision.dispatch: unknown frame type", {
           type: frame.type,
@@ -409,6 +414,87 @@ export function createProvisioner(opts: ProvisionerOptions): (
         };
     }
   };
+}
+
+interface WakeAgentParams {
+  agent_id?: string;
+  agentId?: string;
+  message?: string;
+  run_id?: string;
+  runId?: string;
+  schedule_id?: string;
+  scheduleId?: string;
+  dedupe_key?: string;
+  dedupeKey?: string;
+}
+
+async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      ok: false,
+      error: { code: "bad_params", message: "wake_agent params must be an object" },
+    };
+  }
+  const params = raw as WakeAgentParams;
+  const agentId = params.agent_id || params.agentId;
+  const message = params.message;
+  if (!agentId || typeof agentId !== "string") {
+    return {
+      ok: false,
+      error: { code: "bad_params", message: "wake_agent requires params.agent_id" },
+    };
+  }
+  if (!message || typeof message !== "string") {
+    return {
+      ok: false,
+      error: { code: "bad_params", message: "wake_agent requires params.message" },
+    };
+  }
+
+  const channels = gateway.snapshot().channels;
+  if (!channels[agentId]) {
+    return {
+      ok: false,
+      error: { code: "agent_not_loaded", message: `agent ${agentId} is not loaded in daemon gateway` },
+    };
+  }
+
+  const runId = params.run_id || params.runId || `wake-${Date.now()}`;
+  const scheduleId = params.schedule_id || params.scheduleId;
+  const dedupeKey = params.dedupe_key || params.dedupeKey;
+  const conversationId = `rm_schedule_${agentId}`;
+  const msg: GatewayInboundMessage = {
+    id: runId,
+    channel: agentId,
+    accountId: agentId,
+    conversation: {
+      id: conversationId,
+      kind: "direct",
+      title: "BotCord Scheduler",
+      threadId: scheduleId ?? null,
+    },
+    sender: {
+      id: "hub",
+      name: "BotCord Scheduler",
+      kind: "system",
+    },
+    text: message,
+    raw: {
+      source_type: "botcord_schedule",
+      schedule_id: scheduleId,
+      run_id: runId,
+      dedupe_key: dedupeKey,
+    },
+    mentioned: true,
+    receivedAt: Date.now(),
+    trace: {
+      id: runId,
+      streamable: false,
+    },
+  };
+
+  await gateway.injectInbound(msg);
+  return { ok: true, result: { agent_id: agentId } };
 }
 
 // W8: hand-written runtime validator for the third-party gateway frame
