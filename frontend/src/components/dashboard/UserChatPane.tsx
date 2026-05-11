@@ -10,7 +10,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Bot, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2, User } from "lucide-react";
+import { ArrowLeft, Bot, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, Settings2, User } from "lucide-react";
+import { useRouter } from "nextjs-toploader/app";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -68,11 +69,12 @@ function TypewriterText({
 
 export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const locale = useLanguage();
+  const router = useRouter();
   const { activeAgentId, activeIdentity } = useDashboardSessionStore();
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
   const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
-  const { setUserChatRoomId } = useDashboardUIStore();
+  const { setMessagesPane, setSelectedBotAgentId, setUserChatRoomId } = useDashboardUIStore();
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
@@ -304,13 +306,31 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   }
 
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
+  const handleMobileBack = () => {
+    if (agentId) {
+      setSelectedBotAgentId(null);
+      router.push("/chats/bots");
+      return;
+    }
+    setMessagesPane("room");
+    router.push("/chats/messages");
+  };
 
   return (
     <div className="relative flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800 max-md:px-3">
+        <button
+          type="button"
+          onClick={handleMobileBack}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          aria-label="Back"
+          title="Back"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
         <MessageSquare className="w-4 h-4 text-cyan-400" />
-        <h2 className="text-sm font-medium text-zinc-200">
+        <h2 className="min-w-0 truncate text-sm font-medium text-zinc-200">
           {chatRoomName || "Chat with Agent"}
         </h2>
         <div className="ml-auto flex items-center gap-2">

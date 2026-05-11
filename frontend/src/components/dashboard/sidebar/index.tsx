@@ -97,7 +97,11 @@ const authNavItems = [
   },
 ] as const;
 
-export default function Sidebar() {
+interface SidebarProps {
+  mobileHideSecondary?: boolean;
+}
+
+export default function Sidebar({ mobileHideSecondary = false }: SidebarProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const locale = useLanguage();
@@ -308,17 +312,17 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className={`flex h-full max-md:w-full max-md:flex-col-reverse ${mobileHideSecondary ? "max-md:h-16" : "max-md:h-full"}`}>
       {/* Primary rail */}
-      <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3">
+      <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3 max-md:h-16 max-md:w-full max-md:min-w-0 max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:py-2">
         <Link
           href="/"
-          className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg"
+          className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg max-md:mb-0 max-md:mr-2 max-md:hidden"
           title={tNav.home}
         >
           <img src="/logo.svg" alt="BotCord" className="h-6 w-6" />
         </Link>
-        <div className="flex flex-1 flex-col items-center gap-1 pt-1">
+        <div className="flex flex-1 flex-col items-center gap-1 pt-1 max-md:min-w-0 max-md:flex-row max-md:justify-around max-md:pt-0">
           {navItems.map((item) => {
             const isActive = uiStore.sidebarTab === item.key;
             const isExplore = item.key === "explore";
@@ -354,11 +358,11 @@ export default function Sidebar() {
           })}
         </div>
 
-        <div className="flex flex-col items-center gap-2 border-t border-glass-border pt-3">
+        <div className="flex flex-col items-center gap-2 border-t border-glass-border pt-3 max-md:ml-2 max-md:border-l max-md:border-t-0 max-md:pl-2 max-md:pt-0">
           {isGuest ? (
             <button
               onClick={showLoginModal}
-              className="flex h-10 w-12 flex-col items-center justify-center rounded-xl text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/10"
+              className="flex h-10 w-12 flex-col items-center justify-center rounded-xl text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/10 max-md:w-10"
               title={tc.login}
             >
               <LogIn className="h-5 w-5" strokeWidth={1.75} />
@@ -415,11 +419,14 @@ export default function Sidebar() {
       )}
 
       {/* Secondary panel */}
-      <div className="relative flex h-full flex-col border-r border-glass-border bg-deep-black-light" style={{ width: uiStore.sidebarWidth, minWidth: SIDEBAR_MIN }}>
+      <div
+        className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!w-full max-md:!min-w-0 max-md:border-r-0 ${mobileHideSecondary ? "max-md:hidden" : ""}`}
+        style={{ width: uiStore.sidebarWidth, minWidth: SIDEBAR_MIN }}
+      >
         {/* Resize handle */}
         <div
           onMouseDown={handleResizeStart}
-          className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-neon-cyan/30 active:bg-neon-cyan/50"
+          className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-neon-cyan/30 active:bg-neon-cyan/50 max-md:hidden"
         />
         {/* Panel header */}
         <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">

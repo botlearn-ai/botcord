@@ -10,8 +10,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
+import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { Bell, Info, Loader2, Plus, Settings, Share2 } from "lucide-react";
+import { ArrowLeft, Bell, Info, Loader2, Plus, Settings, Share2 } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -37,6 +38,7 @@ export default function RoomHeader() {
   const [humanJoining, setHumanJoining] = useState(false);
   const rulePopoverRef = useRef<HTMLDivElement>(null);
   const locale = useLanguage();
+  const router = useRouter();
   const t = roomList[locale];
   const tc = common[locale];
   const [ruleExpanded, setRuleExpanded] = useState(false);
@@ -51,6 +53,11 @@ export default function RoomHeader() {
   const refreshHumanRooms = useDashboardSessionStore((state) => state.refreshHumanRooms);
   const { openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
+  })));
+  const { setFocusedRoomId, setOpenedRoomId, setMessagesPane } = useDashboardUIStore(useShallow((state) => ({
+    setFocusedRoomId: state.setFocusedRoomId,
+    setOpenedRoomId: state.setOpenedRoomId,
+    setMessagesPane: state.setMessagesPane,
   })));
   const { overview, getRoomSummary, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -195,6 +202,13 @@ export default function RoomHeader() {
 
   if (!room) return null;
 
+  const handleMobileBack = () => {
+    setMessagesPane("room");
+    setFocusedRoomId(null);
+    setOpenedRoomId(null);
+    router.push("/chats/messages");
+  };
+
   const renderJoinButton = () => {
     if (isJoined || isOwnerChatRoom) return null;
 
@@ -257,7 +271,16 @@ export default function RoomHeader() {
 
   return (
     <>
-      <div className="flex min-h-16 items-center justify-between border-b border-glass-border px-4 py-3">
+      <div className="flex min-h-16 items-center justify-between border-b border-glass-border px-4 py-3 max-md:gap-2 max-md:px-3">
+        <button
+          type="button"
+          onClick={handleMobileBack}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          aria-label="Back to messages"
+          title="Back to messages"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
         <div className="min-w-0 py-0.5">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-text-primary">{titleText}</h3>
@@ -301,7 +324,7 @@ export default function RoomHeader() {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-text-secondary">
             <button
               onClick={() => setShowSettingsModal(true)}
               className="shrink-0 whitespace-nowrap hover:text-neon-cyan hover:underline transition-colors"
@@ -337,7 +360,7 @@ export default function RoomHeader() {
             </div>
           )}
         </div>
-        <div className="flex shrink-0 flex-nowrap items-center gap-1.5 self-start py-0.5">
+        <div className="flex shrink-0 flex-nowrap items-center gap-1.5 self-start py-0.5 max-md:gap-1">
 
           {renderJoinButton()}
           {isGuest && (
