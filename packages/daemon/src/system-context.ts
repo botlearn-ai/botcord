@@ -57,6 +57,16 @@ function buildOwnerChatSceneContext(): string {
   ].join("\n");
 }
 
+function buildGroupRoomEnvironmentContext(message: GatewayInboundMessage): string | null {
+  if (message.conversation.kind !== "group") return null;
+  return [
+    "[BotCord Runtime Environment]",
+    "You are running as a local agent process connected to a remote BotCord group room.",
+    "Other room members can read your messages and any uploaded/attached files, but they cannot access this machine's local filesystem, container paths, or absolute paths such as /var/..., /tmp/..., or /Users/....",
+    "Do not present a local file path as a useful report link or deliverable in group chat. If an artifact needs to be shared, upload or attach it through the available BotCord file/attachment mechanism, then refer to the uploaded attachment or summarize the content in the message.",
+  ].join("\n");
+}
+
 /** Dependencies injected by the daemon bootstrap. */
 export interface SystemContextDeps {
   /** The owning daemon's agent id. Used to scope working-memory + activity lookups. */
@@ -133,6 +143,7 @@ export function createDaemonSystemContextBuilder(
   const gatherSyncBlocks = (message: GatewayInboundMessage): {
     identity: string | null;
     ownerScene: string | null;
+    environment: string | null;
     memory: string | null;
     digest: string | null;
   } => {
@@ -142,6 +153,7 @@ export function createDaemonSystemContextBuilder(
       classifyActivitySender(message).kind === "owner"
         ? buildOwnerChatSceneContext()
         : null;
+    const environment = ownerScene ? null : buildGroupRoomEnvironmentContext(message);
 
     const wm = safeReadWorkingMemory(deps.agentId);
     const memory = wm ? buildWorkingMemoryPrompt({ workingMemory: wm }) : null;
@@ -155,7 +167,7 @@ export function createDaemonSystemContextBuilder(
         }) || null
       : null;
 
-    return { identity, ownerScene, memory, digest };
+    return { identity, ownerScene, environment, memory, digest };
   };
 
   const assemble = (parts: Array<string | null | undefined>): string | undefined => {
@@ -195,13 +207,13 @@ export function createDaemonSystemContextBuilder(
 
   if (!deps.roomContextBuilder) {
     const syncBuilder = (message: GatewayInboundMessage): string | undefined => {
-      const { identity, ownerScene, memory, digest } = gatherSyncBlocks(message);
+      const { identity, ownerScene, environment, memory, digest } = gatherSyncBlocks(message);
       // Loop-risk sits at the end so its "reply NO_REPLY unless…" guidance
       // is the last thing the model sees before the user turn body.
       // Identity sits at the very front so it frames every other block.
       const skillIndex = buildSkillIndex(message);
       const loopRisk = runLoopRisk(message);
-      return assemble([identity, ownerScene, memory, digest, skillIndex, loopRisk]);
+      return assemble([identity, ownerScene, environment, memory, digest, skillIndex, loopRisk]);
     };
     // Compile-time witness that the narrower sync signature still satisfies
     // `SystemContextBuilder` (which allows async). Prevents the two contracts
@@ -215,7 +227,7 @@ export function createDaemonSystemContextBuilder(
   const asyncBuilder = async (
     message: GatewayInboundMessage,
   ): Promise<string | undefined> => {
-    const { identity, ownerScene, memory, digest } = gatherSyncBlocks(message);
+    const { identity, ownerScene, environment, memory, digest } = gatherSyncBlocks(message);
     // Room context landing order: after owner-scene / memory, before digest —
     // "what room am I in" belongs with the session's own identity, while the
     // cross-room digest deliberately describes OTHER rooms and should stay
@@ -233,7 +245,7 @@ export function createDaemonSystemContextBuilder(
     }
     const skillIndex = buildSkillIndex(message);
     const loopRisk = runLoopRisk(message);
-    return assemble([identity, ownerScene, memory, roomBlock, digest, skillIndex, loopRisk]);
+    return assemble([identity, ownerScene, environment, memory, roomBlock, digest, skillIndex, loopRisk]);
   };
   const _typecheck: SystemContextBuilder = asyncBuilder;
   void _typecheck;

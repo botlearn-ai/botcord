@@ -54,6 +54,16 @@ type CachedRoomInfo = {
 
 const roomInfoCache = new Map<string, CachedRoomInfo>();
 const ROOM_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const GROUP_ROOM_ENVIRONMENT_LINES = [
+  `[BotCord Runtime Environment]`,
+  `You are running as a local agent process connected to a remote BotCord group room.`,
+  `Other room members can read your messages and any uploaded/attached files, but they cannot access this machine's local filesystem, container paths, or absolute paths such as /var/..., /tmp/..., or /Users/....`,
+  `Do not present a local file path as a useful report link or deliverable in group chat. If an artifact needs to be shared, upload or attach it through the available BotCord file/attachment mechanism, then refer to the uploaded attachment or summarize the content in the message.`,
+];
+
+function buildGroupRoomEnvironmentContext(): string {
+  return GROUP_ROOM_ENVIRONMENT_LINES.join("\n");
+}
 
 async function fetchRoomInfoCached(
   roomId: string,
@@ -115,7 +125,7 @@ export async function buildRoomStaticContext(
   if (entry.roomId.startsWith("rm_dm_")) return null;
 
   const cached = await fetchRoomInfoCached(entry.roomId, entry.accountId);
-  if (!cached) return null;
+  if (!cached) return buildGroupRoomEnvironmentContext();
 
   const { room, members } = cached;
   // Sanitize all tenant-controlled fields to prevent prompt injection
@@ -124,6 +134,8 @@ export async function buildRoomStaticContext(
   // prevent structural reshaping of the system prompt.
   const safeName = sanitizeUntrustedContent((room.name || "").replace(/[\r\n]+/g, " "));
   const lines: string[] = [
+    buildGroupRoomEnvironmentContext(),
+    "",
     `[BotCord Room Context]`,
     `Room: ${safeName} (${room.room_id})`,
   ];
