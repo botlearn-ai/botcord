@@ -29,6 +29,7 @@ interface AgentCardModalProps {
   onSendFriendRequest: () => void;
   onSendMessage?: () => void;
   onRetry?: () => void;
+  isOwnAgent?: boolean;
 }
 
 export default function AgentCardModal({
@@ -44,6 +45,7 @@ export default function AgentCardModal({
   onSendFriendRequest,
   onSendMessage,
   onRetry,
+  isOwnAgent = false,
 }: AgentCardModalProps) {
   const locale = useLanguage();
   const t = exploreUi[locale];
@@ -118,7 +120,14 @@ export default function AgentCardModal({
                 {agent?.message_policy || "-"}
               </span>
             </div>
-            {alreadyInContacts ? (
+            {isOwnAgent ? (
+              <button
+                onClick={onSendMessage}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
+              >
+                {t.sendMessage}
+              </button>
+            ) : alreadyInContacts ? (
               <button
                 onClick={onSendMessage}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
