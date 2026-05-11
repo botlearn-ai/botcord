@@ -57,12 +57,22 @@ afterEach(() => {
 });
 
 describe("createDaemonSystemContextBuilder", () => {
-  it("returns undefined when working memory is empty and no activity tracker is wired", () => {
+  it("injects group-room runtime environment even when memory is empty", () => {
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    expect(builder(makeMessage())).toBeUndefined();
+    const out = builder(makeMessage()) as string;
+    expect(out).toContain("[BotCord Runtime Environment]");
+    expect(out).toContain("local agent process");
+    expect(out).toContain("cannot access this machine's local filesystem");
   });
 
-  it("returns undefined when working memory is empty and the activity digest is empty", () => {
+  it("returns undefined for direct rooms when working memory is empty and no activity tracker is wired", () => {
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    expect(
+      builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } })),
+    ).toBeUndefined();
+  });
+
+  it("still injects group-room runtime environment when the activity digest is empty", () => {
     const tracker = new ActivityTracker({
       filePath: path.join(tmpDir, "activity.json"),
     });
@@ -70,7 +80,9 @@ describe("createDaemonSystemContextBuilder", () => {
       agentId: "ag_me",
       activityTracker: tracker,
     });
-    expect(builder(makeMessage({ conversation: { id: "rm_x", kind: "group" } }))).toBeUndefined();
+    const out = builder(makeMessage({ conversation: { id: "rm_x", kind: "group" } })) as string;
+    expect(out).toContain("[BotCord Runtime Environment]");
+    expect(out).not.toContain("[BotCord Cross-Room Awareness]");
   });
 
   it("injects the working-memory block when goal / sections are set", () => {
@@ -124,7 +136,8 @@ describe("createDaemonSystemContextBuilder", () => {
   it("skips the identity block cleanly when identity.md is missing", () => {
     // No ensureAgentWorkspace — workspace never provisioned.
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    expect(builder(makeMessage())).toBeUndefined();
+    const out = builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } }));
+    expect(out).toBeUndefined();
   });
 
   it("skips the identity block when identity.md is blank", () => {
@@ -138,7 +151,9 @@ describe("createDaemonSystemContextBuilder", () => {
 
   it("detects a newly added global Claude skill on the next turn", () => {
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    expect(builder(makeMessage())).toBeUndefined();
+    expect(
+      builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } })),
+    ).toBeUndefined();
 
     const skillDir = path.join(tmpDir, ".claude", "skills", "digest-query");
     mkdirSync(skillDir, { recursive: true });
@@ -310,7 +325,8 @@ describe("createDaemonSystemContextBuilder", () => {
         sender: { id: "ag_peer", kind: "agent" },
       }),
     );
-    expect(out).toBeUndefined();
+    expect(out).not.toContain("[BotCord Scene: Owner Chat]");
+    expect(out).toContain("[BotCord Runtime Environment]");
   });
 
   it("awaits roomContextBuilder and slots the [BotCord Room Context] block between memory and digest", async () => {
@@ -360,11 +376,12 @@ describe("createDaemonSystemContextBuilder", () => {
         throw new Error("hub 500");
       },
     });
-    // Empty working memory + no tracker + thrown room fetch ⇒ no blocks ⇒ undefined.
+    // The room metadata block is skipped, but group-room environment remains.
     const out = await builder(
       makeMessage({ conversation: { id: "rm_team", kind: "group" } }),
     );
-    expect(out).toBeUndefined();
+    expect(out).toContain("[BotCord Runtime Environment]");
+    expect(out).not.toContain("[BotCord Room Context]");
   });
 
   it("appends loopRiskBuilder output at the end of the system context", async () => {
@@ -399,7 +416,8 @@ describe("createDaemonSystemContextBuilder", () => {
       },
     });
     const out = await builder(makeMessage());
-    expect(out).toBeUndefined();
+    expect(out).toContain("[BotCord Runtime Environment]");
+    expect(out).not.toContain("[BotCord loop-risk check]");
   });
 
   it("translates GatewayInboundMessage.conversation.id → old `room_id` for the digest exclude key", () => {
@@ -423,7 +441,9 @@ describe("createDaemonSystemContextBuilder", () => {
     const out = builder(
       makeMessage({ conversation: { id: "rm_conv_id_123", kind: "group" } }),
     );
-    // Empty working memory + digest excluding the only entry → undefined.
-    expect(out).toBeUndefined();
+    // Empty working memory + digest excluding the only entry leaves only the
+    // always-on group-room runtime environment block.
+    expect(out).toContain("[BotCord Runtime Environment]");
+    expect(out).not.toContain("[BotCord Cross-Room Awareness]");
   });
 });

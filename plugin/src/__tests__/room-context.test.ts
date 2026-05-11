@@ -109,6 +109,19 @@ describe("room-context", () => {
       const result = await buildRoomStaticContext("botcord:dm-session");
       expect(result).toBeNull();
     });
+
+    it("returns runtime environment guidance for group sessions even when room metadata is unavailable", async () => {
+      registerSessionRoom("botcord:group-session", {
+        roomId: "rm_group_abc",
+        accountId: "default",
+        lastActivityAt: Date.now(),
+      });
+      const result = await buildRoomStaticContext("botcord:group-session");
+      expect(result).not.toBeNull();
+      expect(result).toContain("[BotCord Runtime Environment]");
+      expect(result).toContain("local agent process");
+      expect(result).toContain("cannot access this machine's local filesystem");
+    });
   });
 
   describe("buildCrossRoomDigest", () => {
@@ -328,12 +341,8 @@ describe("room-context", () => {
 
       // Should not return null — the session is registered even without prefix
       const result = await buildRoomStaticContextHookResult("agent:pm:botcord:group:rm_test");
-      // Result may be null because room info fetch fails (config not configured),
-      // but the function should not bail out at the session key check.
-      // We verify it didn't bail by checking it got past the map membership check.
-      // Since we can't fetch room info in test (mocked), it returns null, but
-      // the important thing is that it tried (didn't return early).
-      expect(result).toBeNull(); // no room info available in test
+      expect(result).not.toBeNull();
+      expect(result!.appendSystemContext).toContain("[BotCord Runtime Environment]");
     });
   });
 });
