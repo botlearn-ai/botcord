@@ -1354,6 +1354,8 @@ async function cmdDoctor(args: ParsedArgs): Promise<void> {
     }
     console.log(`diagnostic bundle written: ${bundle.path}`);
     console.log(`size: ${bundle.sizeBytes} bytes`);
+    console.log(`open in Finder/file manager: ${bundle.revealCommand}`);
+    console.log(`copy path to clipboard: ${bundle.copyPathCommand}`);
     console.log("Send this zip file to the BotCord developer/support contact.");
     return;
   }
