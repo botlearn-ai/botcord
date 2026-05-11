@@ -184,7 +184,7 @@ jobs:
             git add package.json package-lock.json openclaw.plugin.json
           else
             git add package.json
-            if [ -f package-lock.json ]; then
+            if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
               git add package-lock.json
             fi
           fi
