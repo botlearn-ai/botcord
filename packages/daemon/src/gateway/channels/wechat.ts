@@ -65,6 +65,8 @@ export interface WechatChannelOptions {
   stateDebounceMs?: number;
   /** Test hook: override Date.now() for trace cache TTL assertions. */
   now?: () => number;
+  /** Test hook: override trace context cache cap without a 5000-poll test. */
+  traceContextMax?: number;
 }
 
 interface WechatSecret {
@@ -138,6 +140,10 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
   const fetchImpl: FetchLike =
     opts.fetchImpl ?? ((globalThis.fetch as unknown) as FetchLike);
   const now: () => number = opts.now ?? (() => Date.now());
+  const traceContextMax =
+    opts.traceContextMax && opts.traceContextMax > 0
+      ? opts.traceContextMax
+      : TRACE_CONTEXT_MAX;
 
   let botToken: string | undefined = opts.botToken;
   let stateStore: GatewayStateStore | null = null;
@@ -195,7 +201,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
 
   function rememberTrace(traceId: string, ctx: TraceContext): void {
     // W1: prune oldest entry by updatedAt when cap is reached.
-    if (traceContexts.size >= TRACE_CONTEXT_MAX) {
+    if (traceContexts.size >= traceContextMax) {
       let oldestKey: string | undefined;
       let oldestAt = Infinity;
       for (const [k, v] of traceContexts) {

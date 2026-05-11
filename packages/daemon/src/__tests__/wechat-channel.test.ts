@@ -1080,7 +1080,7 @@ describe("W1: traceContexts hard cap", () => {
     rmSync(tmpCap, { recursive: true, force: true });
   });
 
-  it("inserting 5001 entries keeps the map at <= 5000 (oldest pruned)", async () => {
+  it("keeps trace context map at the configured cap (oldest pruned)", async () => {
     // Build an adapter with a fake clock so we can control updatedAt order.
     let nowMs = 1_000_000;
     const fetchImpl = buildFetchStub(
@@ -1088,8 +1088,9 @@ describe("W1: traceContexts hard cap", () => {
         {
           match: "getupdates",
           respond: (idx) => {
-            if (idx < 5001) {
-              // Each poll returns one message so we get 5001 trace entries.
+            if (idx < 3) {
+              // Each poll returns one message so we get one more entry than
+              // the test cap without looping 5001 times in CI.
               nowMs += 1;
               return {
                 body: {
@@ -1106,7 +1107,7 @@ describe("W1: traceContexts hard cap", () => {
                 },
               };
             }
-            return { body: { ret: 0, get_updates_buf: `buf-5001`, msgs: [] } };
+            return { body: { ret: 0, get_updates_buf: `buf-3`, msgs: [] } };
           },
         },
       ],
@@ -1121,11 +1122,12 @@ describe("W1: traceContexts hard cap", () => {
       stateDebounceMs: 0,
       allowedSenderIds: ["alice@im.wechat"],
       now: () => nowMs,
+      traceContextMax: 2,
     });
-    const h = startAdapter(adapter, { stopAfterEnvelopes: 5001 });
+    const h = startAdapter(adapter, { stopAfterEnvelopes: 3 });
     await h.pollDone;
-    // 5001 messages were accepted; the cap should have kept the map <= 5000.
-    expect(h.envelopes.length).toBe(5001);
+    // 3 messages were accepted; the cap should have kept the map <= 2.
+    expect(h.envelopes.length).toBe(3);
     // We can't read traceContexts directly, but we verify that the send() for
     // the very first trace ID now fails (it was evicted as the oldest entry).
     const firstTraceId = h.envelopes[0]!.message.trace!.id;
