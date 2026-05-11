@@ -246,7 +246,9 @@ export default function DeviceSettingsModal({
                 <DaemonInstallCommand
                   labels={{
                     title: locale === "zh" ? "重新启动 BotCord Daemon" : "Restart BotCord Daemon",
-                    hint: locale === "zh" ? "在设备终端运行以下命令重新连接" : "Run this command in your device terminal to reconnect",
+                    hint: locale === "zh"
+                      ? "在这台同一设备的终端运行；daemon 会使用本机保存的设备 ID 重新连接"
+                      : "Run this in the terminal on this same device; the daemon will reconnect using the device ID saved locally.",
                     copy: locale === "zh" ? "复制" : "Copy",
                     copied: locale === "zh" ? "已复制" : "Copied",
                     refresh: locale === "zh" ? "刷新" : "Refresh",
