@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
@@ -28,7 +28,22 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next") || "/chats/messages";
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!cancelled && session) {
+        router.replace(nextPath);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nextPath, router, supabase]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
