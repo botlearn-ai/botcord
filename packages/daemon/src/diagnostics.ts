@@ -16,7 +16,7 @@ import {
   loadConfig,
   type DaemonConfig,
 } from "./config.js";
-import { LOG_FILE_PATH } from "./log.js";
+import { listDaemonLogFiles, LOG_FILE_PATH, type LogFileEntry } from "./log.js";
 import {
   channelsFromDaemonConfig,
   defaultHttpFetcher,
@@ -29,6 +29,7 @@ import { detectRuntimes } from "./adapters/runtimes.js";
 
 const DIAGNOSTICS_DIR = path.join(homedir(), ".botcord", "diagnostics");
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const DEFAULT_ROTATED_LOGS_IN_BUNDLE = 5;
 
 export interface CreateDiagnosticBundleOptions {
   diagnosticsDir?: string;
@@ -36,6 +37,7 @@ export interface CreateDiagnosticBundleOptions {
   configFile?: string;
   snapshotFile?: string;
   doctor?: { text: string; json: unknown };
+  includeAllLogs?: boolean;
 }
 
 export interface DiagnosticBundleResult {
@@ -273,6 +275,16 @@ function diagnosticBundleCommands(filePath: string): {
   };
 }
 
+function bundledLogs(logFile: string, includeAllLogs: boolean): LogFileEntry[] {
+  const all = listDaemonLogFiles(logFile);
+  const active = all.filter((entry) => entry.active);
+  const rotated = all.filter((entry) => !entry.active);
+  return [
+    ...active,
+    ...(includeAllLogs ? rotated : rotated.slice(0, DEFAULT_ROTATED_LOGS_IN_BUNDLE)),
+  ];
+}
+
 export async function createDiagnosticBundle(
   opts: CreateDiagnosticBundleOptions = {},
 ): Promise<DiagnosticBundleResult> {
@@ -283,6 +295,8 @@ export async function createDiagnosticBundle(
   const logFile = opts.logFile ?? LOG_FILE_PATH;
   const configFile = opts.configFile ?? CONFIG_FILE_PATH;
   const snapshotFile = opts.snapshotFile ?? SNAPSHOT_PATH;
+  const includeAllLogs = opts.includeAllLogs === true;
+  const logs = bundledLogs(logFile, includeAllLogs);
   mkdirSync(diagnosticsDir, { recursive: true, mode: 0o700 });
 
   const doctor = opts.doctor ?? await buildDoctorEntries();
@@ -298,6 +312,13 @@ export async function createDiagnosticBundle(
     configPath: configFile,
     snapshotPath: snapshotFile,
     logPath: logFile,
+    logsBundled: logs.map((entry) => ({
+      name: entry.name,
+      path: entry.path,
+      sizeBytes: entry.sizeBytes,
+      active: entry.active,
+    })),
+    logsBundleMode: includeAllLogs ? "all" : `active_plus_${DEFAULT_ROTATED_LOGS_IN_BUNDLE}_rotated`,
     diagnosticsDir,
     userAuth: readUserAuthSummary(),
   };
@@ -308,11 +329,20 @@ export async function createDiagnosticBundle(
     { name: "doctor.txt", data: doctor.text + "\n" },
     { name: "doctor.json", data: JSON.stringify(doctor.json, null, 2) + "\n" },
   ];
-  const log = safeReadText(logFile);
-  entries.push({
-    name: "daemon.log",
-    data: log ?? `no log file at ${logFile}\n`,
-  });
+  if (logs.length === 0) {
+    entries.push({
+      name: "daemon.log",
+      data: `no log file at ${logFile}\n`,
+    });
+  } else {
+    for (const entry of logs) {
+      const log = safeReadText(entry.path);
+      entries.push({
+        name: entry.active ? "daemon.log" : `logs/${entry.name}`,
+        data: log ?? `no log file at ${entry.path}\n`,
+      });
+    }
+  }
   const config = safeReadText(configFile);
   entries.push({
     name: "config.json.redacted",

@@ -59,6 +59,7 @@ from hub.routers.hub import (
     notify_inbox,
 )
 from hub.share_payloads import share_create_payload
+from hub.validators import normalize_file_url
 
 _logger = logging.getLogger(__name__)
 
@@ -95,6 +96,13 @@ class UpdateRoomSettingsBody(BaseModel):
     max_members: int | None = None
     slow_mode_seconds: int | None = None
     required_subscription_product_id: str | None = None
+
+
+class ChatAttachment(BaseModel):
+    filename: str = Field(..., max_length=200)
+    url: str = Field(..., max_length=500)
+    content_type: str | None = None
+    size_bytes: int | None = None
 
 
 
@@ -2434,6 +2442,7 @@ class HumanRoomSendBody(BaseModel):
     mentions: list[str] | None = None
     topic: str | None = None
     topic_id: str | None = None
+    attachments: list[ChatAttachment] | None = Field(default=None, max_length=10)
 
 
 @router.post("/rooms/{room_id}/send", status_code=202)
@@ -2535,8 +2544,20 @@ async def human_room_send(
         topic_row.message_count = (topic_row.message_count or 0) + 1
         topic_row.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
+    normalized_attachments: list[dict] = []
+    if body.attachments:
+        for att in body.attachments:
+            normalized = normalize_file_url(att.url)
+            if normalized is None:
+                raise HTTPException(status_code=400, detail=f"Invalid attachment URL: {att.url}")
+            dumped = att.model_dump(exclude_none=True)
+            dumped["url"] = normalized
+            normalized_attachments.append(dumped)
+
     # Slow mode + duplicate content (step 7) keyed by (room_id, sender_id)
-    payload_for_checks = {"text": body.text}
+    payload_for_checks: dict = {"text": body.text}
+    if normalized_attachments:
+        payload_for_checks["attachments"] = normalized_attachments
     try:
         _check_slow_mode(room, active_member)
         _check_duplicate_content(room_id, sender_id, payload_for_checks)
@@ -2622,6 +2643,8 @@ async def human_room_send(
     msg_id = str(_uuid.uuid4())
     ts = int(_time.time())
     payload: dict = {"text": body.text}
+    if normalized_attachments:
+        payload["attachments"] = normalized_attachments
     envelope_data = {
         "v": "a2a/0.1",
         "msg_id": msg_id,
@@ -3043,16 +3066,6 @@ async def get_inbox(
 # ---------------------------------------------------------------------------
 # Owner-agent chat
 # ---------------------------------------------------------------------------
-
-
-from hub.validators import normalize_file_url
-
-
-class ChatAttachment(BaseModel):
-    filename: str = Field(..., max_length=200)
-    url: str = Field(..., max_length=500)
-    content_type: str | None = None
-    size_bytes: int | None = None
 
 
 class ChatSendBody(BaseModel):

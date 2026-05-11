@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Loader2, Check, Trash2, FileArchive } from "lucide-react";
+import { RefreshCw, Loader2, Check, Trash2, FileArchive, Download, Send } from "lucide-react";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
+import ForwardModal from "@/components/dashboard/ForwardModal";
 import type { DiagnosticBundleResult } from "@/store/useDaemonStore";
 
 interface DeviceSettingsModalProps {
@@ -49,6 +50,7 @@ export default function DeviceSettingsModal({
   const [showInstall, setShowInstall] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [forwardLogs, setForwardLogs] = useState(false);
 
   async function handleRename() {
     if (editingName.trim() === label) return;
@@ -86,6 +88,9 @@ export default function DeviceSettingsModal({
   const isOffline = status === "offline";
   const removeDisabled = isRemoving || status === "revoked" || status === "removal_pending";
   const diagnosticsDisabled = isCollectingDiagnostics || status !== "online";
+  const diagnosticDownloadUrl = diagnosticResult
+    ? `/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
+    : "";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -157,12 +162,12 @@ export default function DeviceSettingsModal({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-text-primary">
-                  {locale === "zh" ? "诊断日志" : "Diagnostics"}
+                  {locale === "zh" ? "排障日志" : "Troubleshooting logs"}
                 </p>
                 <p className="mt-1 text-[11px] leading-relaxed text-text-secondary/60">
                   {locale === "zh"
-                    ? "打包本机 daemon 日志和 doctor 输出。"
-                    : "Bundle local daemon logs and doctor output."}
+                    ? "收集这台设备最近的运行日志，便于排查问题。"
+                    : "Collect recent logs from this device to help troubleshoot issues."}
                 </p>
               </div>
               <button
@@ -181,20 +186,36 @@ export default function DeviceSettingsModal({
                 ) : (
                   <FileArchive className="h-3 w-3" />
                 )}
-                {locale === "zh" ? "打包" : "Bundle"}
+                {locale === "zh" ? "收集日志" : "Collect logs"}
               </button>
             </div>
             {diagnosticResult && (
-              <p className="mt-2 rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-1 text-[11px] text-neon-green">
-                {locale === "zh" ? "已生成" : "Ready"} {diagnosticResult.filename} ({diagnosticResult.size_bytes} bytes)
-                {" · "}
-                <a
-                  href={`/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`}
-                  className="underline underline-offset-2"
+              <div className="mt-2 flex items-center gap-2 rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-2">
+                <FileArchive className="h-4 w-4 shrink-0 text-neon-green" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[11px] font-medium text-neon-green">
+                    {diagnosticResult.filename}
+                  </p>
+                  <p className="text-[10px] text-neon-green/70">
+                    {locale === "zh" ? "日志文件已准备好" : "Log file ready"} · {diagnosticResult.size_bytes} bytes
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForwardLogs(true)}
+                  title={locale === "zh" ? "转发到聊天" : "Send to a chat"}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
                 >
-                  {locale === "zh" ? "下载" : "Download"}
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+                <a
+                  href={diagnosticDownloadUrl}
+                  title={locale === "zh" ? "下载日志文件" : "Download log file"}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
+                >
+                  <Download className="h-3.5 w-3.5" />
                 </a>
-              </p>
+              </div>
             )}
             {diagnosticError && (
               <p className="mt-2 rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">
@@ -321,6 +342,18 @@ export default function DeviceSettingsModal({
           </div>
         </div>
       </div>
+      {forwardLogs && diagnosticResult && (
+        <ForwardModal
+          quoteText={locale === "zh" ? "设备排障日志" : "Device troubleshooting logs"}
+          sourceFile={{
+            url: diagnosticDownloadUrl,
+            filename: diagnosticResult.filename,
+            contentType: "application/zip",
+            sizeBytes: diagnosticResult.size_bytes,
+          }}
+          onClose={() => setForwardLogs(false)}
+        />
+      )}
     </div>
   );
 }

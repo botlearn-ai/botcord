@@ -777,10 +777,17 @@ export const api = {
     return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", body);
   },
 
-  sendRoomHumanMessage(roomId: string, text: string, mentions?: string[], topicId?: string | null) {
+  sendRoomHumanMessage(
+    roomId: string,
+    text: string,
+    mentions?: string[],
+    topicId?: string | null,
+    attachments?: Attachment[],
+  ) {
     const body: Record<string, unknown> = { text };
     if (mentions && mentions.length > 0) body.mentions = mentions;
     if (topicId) body.topic_id = topicId;
+    if (attachments && attachments.length > 0) body.attachments = attachments;
     return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, body);
   },
 
