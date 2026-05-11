@@ -175,7 +175,6 @@ export default function DashboardApp() {
       const accessToken = session?.access_token ?? null;
       const isSignOutEvent = event === "SIGNED_OUT";
 
-      if (source === "authEvent" && event === "INITIAL_SESSION") return;
       if (source === "authEvent" && !initResolvedRef.current && !accessToken && !isSignOutEvent) return;
 
       if (accessToken) {
@@ -196,11 +195,11 @@ export default function DashboardApp() {
       await syncSession(session, "getSession");
     };
 
-    void resolveSession();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       void syncSession(session, "authEvent", _event);
     });
+
+    void resolveSession();
 
     return () => {
       cancelled = true;
