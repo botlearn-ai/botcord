@@ -433,7 +433,6 @@ function TelegramAddForm({
   const [label, setLabel] = useState("");
   const [chatIds, setChatIds] = useState("");
   const [senderIds, setSenderIds] = useState("");
-  const [enableNow, setEnableNow] = useState(true);
   const [discoveringChats, setDiscoveringChats] = useState(false);
   const [discoveredChats, setDiscoveredChats] = useState<TelegramDiscoveryChat[]>([]);
   const [discoveredSenders, setDiscoveredSenders] = useState<TelegramDiscoverySender[]>([]);
@@ -461,7 +460,7 @@ function TelegramAddForm({
       await create(agentId, {
         provider: "telegram",
         label: label.trim() || null,
-        enabled: enableNow,
+        enabled: true,
         secret: { botToken: token.trim() },
         config: {
           label: label.trim() || undefined,
@@ -577,7 +576,7 @@ function TelegramAddForm({
       <StepSection
         step={1}
         title="填写 Bot token"
-        description="先从 BotFather 创建 bot 并复制 token；没有 token 就不能读取最近消息或保存接入。"
+        description="先从 BotFather 创建 bot，并把 token 填到这里。"
         complete={tokenReady}
       >
         <Field label="Bot token">
@@ -601,7 +600,7 @@ function TelegramAddForm({
             </button>
           </div>
           <p className="mt-1 text-[10px] text-text-tertiary">
-            Token 仅在创建/替换时填写，保存后只显示 token preview。
+            Token 只在创建或替换时填写。
           </p>
         </Field>
       </StepSection>
@@ -609,36 +608,33 @@ function TelegramAddForm({
         <>
           <StepSection
             step={2}
-            title="让目标会话发消息，读取 chat id"
-            description="chat id 限定 BotCord 只处理指定私聊、群或频道里的消息。"
+            title="让目标对话发条消息"
+            description="在要接入的私聊、群或频道里发一条消息，发完后点击下面的按钮。"
             complete={chatReady}
           >
           <Field label="允许的 chat id（逗号或换行分隔）">
-            <textarea
-              value={chatIds}
-              onChange={(e) => setChatIds(e.target.value)}
-              disabled={saving}
-              rows={2}
-              placeholder="-1001234567890, 987654321"
-              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-            />
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <textarea
+                value={chatIds}
+                onChange={(e) => setChatIds(e.target.value)}
+                disabled={saving}
+                rows={2}
+                placeholder="-1001234567890, 987654321"
+                className="min-h-16 flex-1 resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              />
               <button
                 type="button"
                 onClick={handleDiscoverChats}
                 disabled={!token.trim() || saving || discoveringChats}
-                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                className="inline-flex min-h-16 items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-4 py-2 text-sm font-semibold text-neon-cyan shadow-[0_0_22px_rgba(0,229,255,0.12)] hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-32"
               >
                 {discoveringChats ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Search className="h-3 w-3" />
+                  <Search className="h-4 w-4" />
                 )}
-                读取最近 chat id
+                我已发送
               </button>
-              <span className="text-[10px] text-text-tertiary">
-                先在目标私聊或群聊里给 bot 发一条消息。
-              </span>
             </div>
             {discoveredChats.length > 0 && (
               <div className="mt-2 space-y-1.5">
@@ -713,7 +709,7 @@ function TelegramAddForm({
             <StepSection
               step={3}
               title="确认允许的发送者 user id"
-              description="同一个群里可能有多人发言；必须限制具体 Telegram 用户。第 2 步读取最近消息时会尽量自动带出发送者。"
+              description="群里可能有多人发言，这里选择允许发消息的人。"
               complete={senderReady}
             >
           <Field label="允许的发送者 user id（逗号或换行分隔）">
@@ -726,7 +722,7 @@ function TelegramAddForm({
               className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
             />
             <p className="mt-1 text-[10px] text-text-tertiary">
-              必填；Telegram 需要同时限制 chat id 和发送者 user id。
+              如果第 2 步识别到用户，会自动填到这里。
             </p>
             {discoveredSenders.length > 0 && (
               <div className="mt-2 space-y-1.5">
@@ -784,8 +780,8 @@ function TelegramAddForm({
           {senderReady && (
             <StepSection
               step={4}
-              title="命名并保存接入"
-              description="保存后 token 只留在 daemon 侧，前端只展示 token preview。"
+              title="确认接入名称"
+              description="名称只用于列表里识别这个 Telegram 接入。"
             >
               <Field label="接入名称（可选）">
                 <input
@@ -797,16 +793,6 @@ function TelegramAddForm({
                   className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
                 />
               </Field>
-              <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={enableNow}
-                  onChange={(e) => setEnableNow(e.target.checked)}
-                  disabled={saving}
-                  className="accent-neon-cyan"
-                />
-                立即启用
-              </label>
             </StepSection>
           )}
           {chatReady && whitelistIncomplete && (
@@ -946,7 +932,6 @@ function WechatAddForm({
   // form fields shown after confirmed
   const [label, setLabel] = useState("");
   const [senderIds, setSenderIds] = useState("");
-  const [enableNow, setEnableNow] = useState(true);
   const [copied, setCopied] = useState(false);
   const [discoveringSenders, setDiscoveringSenders] = useState(false);
   const [discoveredSenders, setDiscoveredSenders] = useState<
@@ -1026,7 +1011,7 @@ function WechatAddForm({
       await create(agentId, {
         provider: "wechat",
         label: label.trim() || null,
-        enabled: enableNow,
+        enabled: true,
         loginId,
         config: {
           label: label.trim() || undefined,
@@ -1185,36 +1170,33 @@ function WechatAddForm({
       {loginReady && (
         <StepSection
           step={2}
-          title="让授权用户发消息，读取微信用户 ID"
-          description="保存时必须限制 allowedSenderIds；先用要授权的微信账号发一条消息，再读取最近用户。"
+          title="让用户给微信发条消息"
+          description="用要接入的微信账号发一条消息，发完后点击下面的按钮。"
           complete={senderReady}
         >
           <Field label="允许的微信用户 ID（逗号或换行分隔）">
-            <textarea
-              value={senderIds}
-              onChange={(e) => setSenderIds(e.target.value)}
-              disabled={busy}
-              rows={2}
-              placeholder="xxx@im.wechat"
-              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
-            />
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <textarea
+                value={senderIds}
+                onChange={(e) => setSenderIds(e.target.value)}
+                disabled={busy}
+                rows={2}
+                placeholder="xxx@im.wechat"
+                className="min-h-16 flex-1 resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              />
               <button
                 type="button"
                 onClick={handleDiscoverSenders}
                 disabled={!loginId || busy || discoveringSenders}
-                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                className="inline-flex min-h-16 items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-4 py-2 text-sm font-semibold text-neon-cyan shadow-[0_0_22px_rgba(0,229,255,0.12)] hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-32"
               >
                 {discoveringSenders ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Search className="h-3 w-3" />
+                  <Search className="h-4 w-4" />
                 )}
-                读取最近微信用户 ID
+                我已发送
               </button>
-              <span className="text-[10px] text-text-tertiary">
-                先用要授权的微信账号发一条消息。
-              </span>
             </div>
             {discoveredSenders.length > 0 && (
               <div className="mt-2 space-y-1.5">
@@ -1277,16 +1259,6 @@ function WechatAddForm({
               </p>
             )}
           </Field>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-text-primary">
-            <input
-              type="checkbox"
-              checked={enableNow}
-              onChange={(e) => setEnableNow(e.target.checked)}
-              disabled={busy}
-              className="accent-neon-cyan"
-            />
-            立即启用
-          </label>
           {whitelistEmpty && (
             <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
               必须填写至少一个允许的微信用户 ID，才能保存微信接入。
@@ -1298,8 +1270,8 @@ function WechatAddForm({
       {senderReady && (
         <StepSection
           step={3}
-          title="确认接入名称和启用状态"
-          description="名称只用于后台识别；启用后会立即开始处理来自允许用户的微信消息。"
+          title="确认接入名称"
+          description="名称只用于列表里识别这个微信接入。"
           complete
         >
           <Field label="接入名称（可选）">
@@ -1312,16 +1284,6 @@ function WechatAddForm({
               className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
             />
           </Field>
-          <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-text-primary">
-            <input
-              type="checkbox"
-              checked={enableNow}
-              onChange={(e) => setEnableNow(e.target.checked)}
-              disabled={busy}
-              className="accent-neon-cyan"
-            />
-            立即启用
-          </label>
         </StepSection>
       )}
 
@@ -1329,7 +1291,7 @@ function WechatAddForm({
         <StepSection
           step={4}
           title="保存微信接入"
-          description="保存后会用本次 loginId 在 daemon 侧创建连接，后续列表里可以停用、编辑或删除。"
+          description="保存后会开始处理来自允许用户的微信消息，后续可以在列表里停用、编辑或删除。"
         >
           <button
             type="button"
@@ -1563,7 +1525,7 @@ function GatewayEditForm({
         }
       }
       if (r.status === "confirmed") {
-        setSenderDiscoverHint("已确认登录，可以读取最近微信用户 ID。");
+        setSenderDiscoverHint("已确认登录，请用要接入的微信账号发一条消息。");
       }
     } catch (err) {
       setSenderDiscoverError(err instanceof Error ? err.message : String(err));
@@ -1665,17 +1627,17 @@ function GatewayEditForm({
                   type="button"
                   onClick={handleDiscoverTelegramChats}
                   disabled={!token.trim() || saving || discoveringChats}
-                  className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-1.5 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
                 >
                   {discoveringChats ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <Search className="h-3 w-3" />
                   )}
-                  读取最近 chat id
+                  我已发送
                 </button>
                 <span className="text-[10px] text-text-tertiary">
-                  先填写 Bot token，并在目标私聊或群聊里给 bot 发一条消息。
+                  在要接入的私聊、群或频道里发一条消息。
                 </span>
               </div>
               {discoveredChats.length > 0 && (
@@ -1800,17 +1762,17 @@ function GatewayEditForm({
                   saving ||
                   discoveringSenders
                 }
-                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-1.5 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
               >
                 {discoveringSenders ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : (
                   <Search className="h-3 w-3" />
                 )}
-                读取最近微信用户 ID
+                我已发送
               </button>
               <span className="text-[10px] text-text-tertiary">
-                扫码确认后，用要授权的微信账号发一条消息。
+                用要接入的微信账号发一条消息。
               </span>
             </div>
             {wechatLoginId && wechatStatus !== "confirmed" && (
