@@ -27,8 +27,8 @@ import {
 const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
   { value: "always", label: "所有消息", hint: "本房间任何新消息都会唤醒 Bot" },
   { value: "mention_only", label: "仅 @ 我", hint: "只有被 @ 或明确点名时唤醒" },
-  { value: "keyword", label: "关键词命中", hint: "消息包含关键词时唤醒" },
   { value: "muted", label: "静音", hint: "本房间不主动唤醒 Bot" },
+  { value: "keyword", label: "关键词命中", hint: "消息包含关键词时唤醒" },
 ];
 
 function modeLabel(mode: AttentionMode): string {

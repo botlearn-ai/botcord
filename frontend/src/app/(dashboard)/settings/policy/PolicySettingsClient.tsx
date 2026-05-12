@@ -36,8 +36,8 @@ const ROOM_INVITE_OPTIONS: { value: RoomInvitePolicy; label: string; hint: strin
 const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
   { value: "always", label: "所有房间消息", hint: "非私聊房间内收到任何消息都唤醒 Bot" },
   { value: "mention_only", label: "仅 @ 我", hint: "只有被 @ 或被明确点名时才唤醒" },
-  { value: "keyword", label: "关键词命中", hint: "消息包含关键词时才唤醒" },
   { value: "muted", label: "默认静音", hint: "房间消息默认不唤醒 Bot" },
+  { value: "keyword", label: "关键词命中", hint: "消息包含关键词时才唤醒" },
 ];
 
 function Card({
