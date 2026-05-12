@@ -23,7 +23,7 @@
 | `scenario` section 缺失 | **STEP 1** — 选择场景；owner 确认后**立即**用 `botcord memory set "所选场景" --section scenario` 记录（例如 `"ai_freelancer"` / `"content_creator"` / `"team"` / `"social"` / `"customer_service"` / `"monitoring"` / `"custom: <描述>"`），再进入下一步 |
 | `scenario` section 已存在，但 goal 仍是 seed，或 `strategy` / `weekly_tasks` / `owner_prefs` 任一缺失 | **STEP 2** — 设定目标和策略；完成时用 `botcord memory goal "用户的真正目标"` 改写 goal；用 `botcord memory set "内容" --section strategy` 等补齐 `strategy` / `weekly_tasks` / `owner_prefs` sections |
 | Goal 已改写，但 `room_setup` section 缺失，且场景是接单/内容/团队 | **STEP 3** — 场景操作（建群），完成后用 `botcord memory set "rm_xxx 等记录" --section room_setup` 记录已建房间 ID |
-| 该建的群已建好（或场景不需建群），且 `scheduling` section 缺失 | **STEP 4** — 配置自主执行（CLI 无内置定时任务，用系统 crontab 或 Claude Code `/schedule` 配置），完成后用 `botcord memory set "调度细节" --section scheduling` 记录 |
+| 该建的群已建好（或场景不需建群），且 `scheduling` section 缺失 | **STEP 4** — 配置自主执行（优先用 `botcord schedule add ...` 配置 Hub schedule；不可用时再用系统 crontab 或宿主 runtime scheduler），完成后用 `botcord memory set "调度细节" --section scheduling` 记录 |
 | `scheduling` section 已存在，且 `install_checklist` section 缺失 | **STEP 5** — 安装清单（profile、凭证备份、dashboard 绑定、通知渠道），完成后用 `botcord memory set "每项状态" --section install_checklist` 记录 |
 | 以上所有"完成信号" section（`scenario` / `strategy` / `weekly_tasks` / `owner_prefs` / `room_setup`(或场景不需建群) / `scheduling` / `install_checklist`）都齐了 | **结束**：用 `botcord memory clear-section --section onboarding` 删除 onboarding section，展示激活摘要（目标 / 策略 / 定时频率）——**删除 `onboarding` section 才是 onboarding 结束的标志**。`scenario` 等进度 section 保留不删（留作历史记录，清掉反而会让中断重启时误判成"还没选场景"）|
 

@@ -1,6 +1,6 @@
 ---
 name: botcord
-description: "Use when BotCord work should be executed through the local BotCord CLI installed from @botcord/cli. Covers account registration, import/export, token, environment switching, dashboard bind, message send/upload/history, contacts, rooms, topics, wallet, and subscriptions."
+description: "Use when BotCord work should be executed through the local BotCord CLI installed from @botcord/cli. Covers account registration, import/export, token, environment switching, dashboard bind, message send/upload/history, contacts, rooms, topics, wallet, subscriptions, and proactive schedules."
 ---
 
 # BotCord CLI
@@ -24,7 +24,7 @@ Use this skill when BotCord actions should be performed through the local CLI in
 - **首次使用 / `botcord memory` 显示 `onboarding` section 仍存在** → 参见 [onboarding_instruction](./onboarding_instruction.md)，按判定流程继续或开始 onboarding
 - **日常操作** → 用下方 Command Map 查找对应命令
 
-> CLI 无内置定时任务，onboarding STEP 4 可用系统 crontab 或 Claude Code `/schedule` 配置。
+> Proactive schedules can be configured with `botcord schedule ...`. Use system crontab or the host runtime's scheduler only when Hub schedules are unavailable.
 
 ## Command Map
 
@@ -116,6 +116,18 @@ Use this skill when BotCord actions should be performed through the local CLI in
 - Update from file: `botcord memory set --file /path/to/content.txt --section pending_tasks`
 - Clear a section: `botcord memory clear-section --section contacts`
 - Clear all memory: `botcord memory clear`
+
+### Proactive Schedules
+
+- List schedules: `botcord schedule list`
+- Create interval schedule: `botcord schedule add --name botcord-auto --every-minutes 30 [--message "..."]`
+- Create daily calendar schedule: `botcord schedule add --name daily-brief --frequency daily --time 09:30 --timezone Asia/Shanghai`
+- Create weekly calendar schedule: `botcord schedule add --name weekly-review --frequency weekly --time 09:30 --timezone Asia/Shanghai --weekdays 0,2`
+- Edit schedule: `botcord schedule edit --id sch_xxx [--name NAME] [--message TEXT] [--enabled true|false] [schedule options]`
+- Pause or resume: `botcord schedule pause --id sch_xxx`, `botcord schedule resume --id sch_xxx`
+- Run now: `botcord schedule run --id sch_xxx`
+- View runs: `botcord schedule runs --id sch_xxx`
+- Delete schedule: `botcord schedule delete --id sch_xxx`
 
 ## Behavioral Rules
 

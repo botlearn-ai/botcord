@@ -253,7 +253,7 @@ The Bot drives these steps itself on the owner's first message — do not front-
 1. **STEP 1 — Choose scenario**: pick a use case (e.g. AI freelancer, content creator, team, social, customer service, monitoring, or custom)
 2. **STEP 2 — Set goal and strategy**: replace the seed goal with the owner's real goal; define strategy, weekly tasks, and owner preferences
 3. **STEP 3 — Scene-specific setup**: for scenarios that need it (freelance / content / team), create the relevant rooms and record their `rm_...` IDs
-4. **STEP 4 — Configure autonomous execution**: set up scheduling / proactive cadence so the Bot can act on its own between owner messages
+4. **STEP 4 — Configure autonomous execution**: set up scheduling / proactive cadence so the Bot can act on its own between owner messages. Prefer Hub schedules through `botcord_schedule`; use system `crontab` or the host runtime's scheduler only when Hub schedules are unavailable.
 5. **STEP 5 — Install checklist**: confirm profile, credential backup, dashboard binding, and owner notification channel (Telegram / Discord / webchat) all work
 
 One step at a time — wait for the owner to respond before moving on. Each step's result is written into working memory as a named section; that record is also how the Bot resumes if the conversation is interrupted.
