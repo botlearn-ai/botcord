@@ -72,17 +72,18 @@ function RoomTransferDialog({ members, senderIdentity, onClose, onSuccess }: Roo
       return;
     }
 
-    const amountNum = parseFloat(amount);
-    if (Number.isNaN(amountNum) || amountNum <= 0) {
+    const normalizedAmount = amount.trim();
+    if (!/^[1-9]\d*$/.test(normalizedAmount)) {
       setError(t.amountMustBePositive);
       return;
     }
+    const amountCoin = Number.parseInt(normalizedAmount, 10);
 
     setSubmitting(true);
     try {
       await api.createTransfer({
         to_agent_id: recipientId,
-        amount_minor: String(Math.round(amountNum * 100)),
+        amount_minor: String(amountCoin * 100),
         memo: memo.trim() || undefined,
         idempotency_key: crypto.randomUUID(),
       }, senderIdentity);
@@ -140,11 +141,13 @@ function RoomTransferDialog({ members, senderIdentity, onClose, onSuccess }: Roo
             </label>
             <input
               type="number"
-              step="0.01"
-              min="0.01"
+              step="1"
+              min="1"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
-              placeholder="0.00"
+              placeholder="1"
               className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
             />
           </div>
