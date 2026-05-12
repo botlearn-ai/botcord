@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, DragEvent, KeyboardEvent } from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent } from "react";
 import { FileText, Paperclip, Send, X } from "lucide-react";
 
 interface PendingFile {
@@ -35,6 +35,7 @@ interface MessageComposerProps {
 }
 
 const MAX_SUGGESTIONS = 2000;
+const MESSAGE_MAX_LENGTH = 8000;
 
 function detectMention(text: string, cursor: number): MentionMatch | null {
   for (let i = cursor - 1; i >= 0; i--) {
@@ -82,6 +83,7 @@ export default function MessageComposer({
   const [mentionMatch, setMentionMatch] = useState<MentionMatch | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [pickedMentions, setPickedMentions] = useState<MentionCandidate[]>([]);
+  const [showLengthError, setShowLengthError] = useState((initialText?.length ?? 0) > MESSAGE_MAX_LENGTH);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionListRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,7 @@ export default function MessageComposer({
   useEffect(() => {
     if (!initialText) return;
     setText(initialText);
+    setShowLengthError(initialText.length > MESSAGE_MAX_LENGTH);
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (!el) return;
@@ -232,7 +235,8 @@ export default function MessageComposer({
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     const hasFiles = files.length > 0;
-    if ((!trimmed && !hasFiles) || disabled) return;
+    const hasLengthError = text.length > MESSAGE_MAX_LENGTH || showLengthError;
+    if ((!trimmed && !hasFiles) || disabled || hasLengthError) return;
 
     const raw = files.map((pf) => pf.file);
     for (const pf of files) { if (pf.preview) URL.revokeObjectURL(pf.preview); }
@@ -247,7 +251,7 @@ export default function MessageComposer({
     }
 
     await onSend(trimmed, raw, mentions.length > 0 ? mentions : undefined);
-  }, [text, files, disabled, activeMentions, onSend]);
+  }, [text, files, disabled, showLengthError, activeMentions, onSend]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionMatch && suggestions.length > 0) {
@@ -306,10 +310,36 @@ export default function MessageComposer({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const canSend = !disabled && (text.trim().length > 0 || files.length > 0);
+  const wouldExceedMaxLength = useCallback((incomingText: string) => {
+    const el = inputRef.current;
+    if (!el || !incomingText) return false;
+    const selectedLength = Math.max(0, (el.selectionEnd ?? 0) - (el.selectionStart ?? 0));
+    return text.length - selectedLength + incomingText.length > MESSAGE_MAX_LENGTH;
+  }, [text.length]);
+
+  const handleBeforeInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+    const nativeEvent = e.nativeEvent as InputEvent;
+    if (wouldExceedMaxLength(nativeEvent.data ?? "")) {
+      setShowLengthError(true);
+    }
+  }, [wouldExceedMaxLength]);
+
+  const handlePaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (wouldExceedMaxLength(e.clipboardData.getData("text"))) {
+      setShowLengthError(true);
+    }
+  }, [wouldExceedMaxLength]);
+
+  const hasLengthError = text.length > MESSAGE_MAX_LENGTH || showLengthError;
+  const canSend = !disabled && !hasLengthError && (text.trim().length > 0 || files.length > 0);
 
   return (
     <div onDrop={handleDrop} onDragOver={handleDragOver}>
+      {hasLengthError && (
+        <p className="mb-1 px-1 text-[11px] leading-4 text-red-400">
+          Message cannot exceed {MESSAGE_MAX_LENGTH.toLocaleString()} characters.
+        </p>
+      )}
       {allowAttachments && files.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {files.map((pf, idx) => (
@@ -358,17 +388,25 @@ export default function MessageComposer({
         <textarea
           ref={inputRef}
           className={`flex-1 bg-zinc-900 border rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-all ${
-            emptyState
+            hasLengthError
+              ? "border-red-500/70 focus:border-red-500/80"
+              : emptyState
               ? "border-cyan-500/40 shadow-[0_0_8px_rgba(0,240,255,0.1)] animate-[pulse-border_2s_ease-in-out_infinite]"
               : "border-zinc-700"
           }`}
           placeholder={placeholder}
           value={text}
+          maxLength={MESSAGE_MAX_LENGTH}
           onChange={(e) => {
-            setText(e.target.value);
+            const nextText = e.target.value;
+            setText(nextText);
+            if (nextText.length < MESSAGE_MAX_LENGTH) setShowLengthError(false);
+            if (nextText.length > MESSAGE_MAX_LENGTH) setShowLengthError(true);
             autoResize();
             updateMentionMatch();
           }}
+          onBeforeInput={handleBeforeInput}
+          onPaste={handlePaste}
           onKeyUp={updateMentionMatch}
           onClick={updateMentionMatch}
           onBlur={() => setTimeout(() => setMentionMatch(null), 120)}
