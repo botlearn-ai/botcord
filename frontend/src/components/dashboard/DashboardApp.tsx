@@ -252,7 +252,11 @@ export default function DashboardApp() {
       }
 
       if (normalizedTab === "messages" || normalizedTab === "user-chat") {
-        const opensUserChat = tab === "user-chat" || subtab === USER_CHAT_SUBTAB;
+        const roomIdFromSubtab = subtab && subtab !== USER_CHAT_SUBTAB ? decodeRoomIdFromPath(subtab) : null;
+        const opensUserChat =
+          tab === "user-chat"
+          || subtab === USER_CHAT_SUBTAB
+          || (roomIdFromSubtab !== null && roomIdFromSubtab === uiStore.userChatRoomId);
         if (opensUserChat) {
           if (uiStore.messagesPane !== "user-chat") uiStore.setMessagesPane("user-chat");
           if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
@@ -282,8 +286,8 @@ export default function DashboardApp() {
           if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
         }
       }
-    } else if (uiStore.sidebarTab !== "messages") {
-      uiStore.setSidebarTab("messages");
+    } else if (uiStore.sidebarTab !== "home") {
+      uiStore.setSidebarTab("home");
     }
   }, [
     sessionStore.authResolved,
@@ -293,6 +297,7 @@ export default function DashboardApp() {
     uiStore.openedRoomId,
     uiStore.sidebarTab,
     uiStore.messagesPane,
+    uiStore.userChatRoomId,
     uiStore.exploreView,
     uiStore.contactsView,
     uiStore.setFocusedRoomId,

@@ -7,16 +7,35 @@ import { useShallow } from "zustand/shallow";
 import BotAvatar from "./BotAvatar";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { api } from "@/lib/api";
 import type { UserAgent } from "@/lib/types";
 
 export default function MyBotsPanel() {
   const router = useRouter();
   const [settingsBot, setSettingsBot] = useState<UserAgent | null>(null);
-  const { ownedAgents } = useDashboardSessionStore(
-    useShallow((s) => ({ ownedAgents: s.ownedAgents })),
+  const { ownedAgents, activeAgentId } = useDashboardSessionStore(
+    useShallow((s) => ({ ownedAgents: s.ownedAgents, activeAgentId: s.activeAgentId })),
   );
+  const switchActiveAgent = useDashboardChatStore((s) => s.switchActiveAgent);
   const openCreateBotModal = useDashboardUIStore((s) => s.openCreateBotModal);
+  const setMessagesPane = useDashboardUIStore((s) => s.setMessagesPane);
+  const setUserChatRoomId = useDashboardUIStore((s) => s.setUserChatRoomId);
+
+  const handleOpenChat = async (agent: UserAgent) => {
+    try {
+      if (agent.agent_id !== activeAgentId) {
+        await switchActiveAgent(agent.agent_id);
+      }
+      const room = await api.getUserChatRoom(agent.agent_id);
+      setUserChatRoomId(room.room_id);
+      setMessagesPane("user-chat");
+      router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    } catch {
+      router.push("/chats/messages/__user-chat__");
+    }
+  };
 
   return (
     <div className="h-full overflow-y-auto">
@@ -98,7 +117,7 @@ export default function MyBotsPanel() {
 
                   <div className="mt-4 flex gap-2 border-t border-glass-border pt-3">
                     <button
-                      onClick={() => router.push("/chats/messages/__user-chat__")}
+                      onClick={() => { void handleOpenChat(agent); }}
                       className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-xs font-medium text-text-primary transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/10 hover:text-neon-cyan"
                     >
                       <MessageCircle className="h-3.5 w-3.5" />
