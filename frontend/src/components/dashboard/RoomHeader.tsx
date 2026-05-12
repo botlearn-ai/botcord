@@ -78,6 +78,8 @@ export default function RoomHeader() {
   const isGuest = sessionMode === "guest";
   const isAuthedReady = sessionMode === "authed-ready";
   const isHumanView = viewMode === "human";
+  const canActAsHuman = !isGuest && Boolean(humanId);
+  const canActAsCurrentViewer = isHumanView ? canActAsHuman : isAuthedReady;
   const isJoined = isHumanView ? Boolean(humanRoom) : Boolean(authRoom);
   const isJoining = isHumanView ? humanJoining : joiningRoomId === room?.room_id;
   const isInviteOnly = room?.join_policy === "invite_only" && !room?.required_subscription_product_id;
@@ -116,7 +118,7 @@ export default function RoomHeader() {
     : null;
 
   useEffect(() => {
-    if (!isAuthedReady || !room?.room_id || isJoined || !isInviteOnly) return;
+    if (!canActAsCurrentViewer || !room?.room_id || isJoined || !isInviteOnly) return;
     setJoinRequestStatus("idle");
     let cancelled = false;
     api.getMyJoinRequest(room.room_id).then((res) => {
@@ -127,7 +129,7 @@ export default function RoomHeader() {
       }
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isAuthedReady, room?.room_id, isJoined, isInviteOnly]);
+  }, [canActAsCurrentViewer, room?.room_id, isJoined, isInviteOnly]);
 
   // Close rule popover on outside click
   useEffect(() => {
@@ -162,8 +164,9 @@ export default function RoomHeader() {
       }
       return;
     }
-    if (!isAuthedReady || room.required_subscription_product_id) return;
+    if (room.required_subscription_product_id) return;
     if (isHumanView) {
+      if (!canActAsHuman) return;
       if (humanJoining) return;
       setHumanJoining(true);
       humansApi
@@ -173,11 +176,12 @@ export default function RoomHeader() {
         .finally(() => setHumanJoining(false));
       return;
     }
+    if (!isAuthedReady) return;
     void joinRoom(room.room_id);
   };
 
   const handleRequestJoin = useCallback(async () => {
-    if (!room?.room_id || !isAuthedReady) return;
+    if (!room?.room_id || !canActAsCurrentViewer) return;
     setJoinRequestStatus("sending");
     try {
       await api.createJoinRequest(room.room_id);
@@ -185,7 +189,7 @@ export default function RoomHeader() {
     } catch {
       setJoinRequestStatus("idle");
     }
-  }, [room?.room_id, isAuthedReady]);
+  }, [room?.room_id, canActAsCurrentViewer]);
 
   const handleOpenAddMemberModal = useCallback(async () => {
     if (!room?.room_id || addMemberLoading) return;
@@ -244,7 +248,7 @@ export default function RoomHeader() {
       return (
         <button
           onClick={() => void handleRequestJoin()}
-          disabled={!isAuthedReady || joinRequestStatus === "sending"}
+          disabled={!canActAsCurrentViewer || joinRequestStatus === "sending"}
           className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
           title={t.requestToJoin}
         >
@@ -257,7 +261,7 @@ export default function RoomHeader() {
     return (
       <button
         onClick={handleJoinOpenRoom}
-        disabled={!isGuest && (!isAuthedReady || isJoining)}
+        disabled={!isGuest && (!canActAsCurrentViewer || isJoining)}
         className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
         title={t.join}
       >
