@@ -362,6 +362,58 @@ describe("Dispatcher", () => {
     expect(runtime.calls[0].text).toBe("WRAPPED:hello");
   });
 
+  it("defers multimodal-only BotCord messages until the next text turn and preserves order", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      composeUserTurn: (msg) => {
+        const raw = msg.raw as { batch?: Array<{ text?: string }> };
+        return (raw.batch ?? [{ text: msg.text }]).map((m) => m.text).join("\n");
+      },
+    });
+    const acceptMedia = vi.fn(async () => {});
+    const acceptText = vi.fn(async () => {});
+
+    await dispatcher.handle(makeEnvelope({
+      id: "h_media",
+      text: '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png',
+      raw: {
+        hub_msg_id: "h_media",
+        text: '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png',
+        envelope: {
+          type: "message",
+          payload: { attachments: [{ filename: "a.png", url: "/hub/files/f_1" }] },
+        },
+      },
+    }, { accept: acceptMedia }));
+
+    expect(acceptMedia).toHaveBeenCalledTimes(1);
+    expect(runtime.calls.length).toBe(0);
+
+    await dispatcher.handle(makeEnvelope({
+      id: "h_text",
+      text: "please inspect this",
+      raw: {
+        hub_msg_id: "h_text",
+        text: "please inspect this",
+        envelope: { type: "message", payload: { text: "please inspect this" } },
+      },
+    }, { accept: acceptText }));
+
+    expect(acceptText).toHaveBeenCalledTimes(1);
+    expect(runtime.calls.length).toBe(1);
+    expect(runtime.calls[0].text).toBe(
+      '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png\nplease inspect this',
+    );
+  });
+
   it("falls back to raw text when composeUserTurn throws", async () => {
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
     const { store, dir } = await makeStore();

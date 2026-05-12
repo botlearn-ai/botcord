@@ -205,6 +205,10 @@ interface QueueState {
   serialWorkerActive: boolean;
 }
 
+interface DeferredMultimodalEntry extends BufferedSerialEntry {
+  queuedAt: number;
+}
+
 /**
  * Gateway dispatcher: consumes `GatewayInboundEnvelope` and drives a runtime
  * turn per message, respecting queue mode, trust level, streaming, and
@@ -233,6 +237,7 @@ export class Dispatcher {
   private readonly resolveHubUrl?: (accountId: string) => string | undefined;
   private readonly transcript: TranscriptWriter;
   private readonly queues: Map<string, QueueState> = new Map();
+  private readonly deferredMultimodal: Map<string, DeferredMultimodalEntry[]> = new Map();
   /**
    * Last `/hub/typing` ping timestamp per (accountId, conversationId).
    * Used to debounce cancel-previous bursts so we don't trip Hub's 20/min
@@ -286,6 +291,11 @@ export class Dispatcher {
       return;
     }
 
+    const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;
+    const route = resolveRoute(msg, this.config, managed);
+    const mode = resolveQueueMode(route, msg.conversation.kind);
+    const queueKey = buildQueueKey(msg);
+
     // Pre-skip: empty/whitespace text.
     const rawText = typeof msg.text === "string" ? msg.text.trim() : "";
     if (!rawText) {
@@ -298,28 +308,87 @@ export class Dispatcher {
     // turnId and write the inbound transcript record.
     const turnId = randomUUID();
 
-    const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;
-    const route = resolveRoute(msg, this.config, managed);
-    const mode = resolveQueueMode(route, msg.conversation.kind);
-    const queueKey = buildQueueKey(msg);
+    // Multimodal-only arrivals (files/images without sender-authored text)
+    // should not wake the runtime on their own. Ack them, record the inbound
+    // event, and prepend them to the next text-bearing turn for this queue.
+    if (isMultimodalOnlyMessage(msg)) {
+      await this.safeAck(envelope);
+      this.emitInbound(turnId, msg);
+      this.deferMultimodal(queueKey, { route, msg, channel, turnId, queuedAt: Date.now() });
+      this.log.info("dispatcher: deferred multimodal-only inbound", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        turnId,
+        messageId: msg.id,
+        senderId: msg.sender.id,
+        senderKind: msg.sender.kind,
+        mode,
+        queueKey,
+      });
+      if (this.onInbound) {
+        try {
+          await this.onInbound(msg);
+        } catch (err) {
+          this.log.warn("dispatcher: onInbound threw — continuing", {
+            messageId: msg.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return;
+    }
+
+    const deferred = this.takeDeferredMultimodal(queueKey);
+    let dispatchMsg = msg;
+    let dispatchTurnId: string = turnId;
+    let dispatchRoute = route;
+    let dispatchChannel = channel;
+    let text = rawText;
+    let mergedFromDeferredTurnIds: string[] = [];
+    if (deferred.length > 0) {
+      const merged = this.mergeSerialBuffer(
+        [...deferred, { route, msg, channel, turnId }],
+        queueKey,
+      );
+      if (merged) {
+        dispatchMsg = merged.msg;
+        dispatchTurnId = merged.turnId;
+        dispatchRoute = merged.route;
+        dispatchChannel = merged.channel;
+        text = merged.text;
+        mergedFromDeferredTurnIds = deferred.map((e) => e.turnId);
+        for (const entry of deferred) {
+          this.transcript.write({
+            ts: nowIso(),
+            kind: "dropped",
+            turnId: entry.turnId,
+            agentId: entry.msg.accountId,
+            roomId: entry.msg.conversation.id,
+            topicId: entry.msg.conversation.threadId ?? null,
+            reason: "batch_merged",
+            supersededBy: dispatchTurnId,
+          });
+        }
+      }
+    }
 
     // Compose the final user-turn text only for cancel-previous mode, where
     // the dispatcher consumes the pre-composed text directly. Serial mode
     // re-runs the composer at drain time on the merged message (so it sees
     // the full coalesced batch instead of any single arrival), so calling
     // the composer here would just be redundant work.
-    let text = rawText;
     let composeFailedError: string | undefined;
     if (mode === "cancel-previous" && this.composeUserTurn) {
       try {
-        const composed = this.composeUserTurn(msg);
+        const composed = this.composeUserTurn(dispatchMsg);
         if (typeof composed === "string" && composed.length > 0) {
           text = composed;
         }
       } catch (err) {
         composeFailedError = err instanceof Error ? err.message : String(err);
         this.log.warn("dispatcher: composeUserTurn threw — using raw text", {
-          messageId: msg.id,
+          messageId: dispatchMsg.id,
           error: composeFailedError,
         });
       }
@@ -364,28 +433,28 @@ export class Dispatcher {
     if (this.attentionGate) {
       let wake = true;
       try {
-        const result = this.attentionGate(msg);
+        const result = this.attentionGate(dispatchMsg);
         wake = result instanceof Promise ? await result : result;
       } catch (err) {
         this.log.warn("dispatcher: attentionGate threw — waking", {
-          messageId: msg.id,
+          messageId: dispatchMsg.id,
           error: err instanceof Error ? err.message : String(err),
         });
         wake = true;
       }
       if (!wake) {
         this.log.debug("dispatcher skip turn: attention policy", {
-          messageId: msg.id,
-          accountId: msg.accountId,
-          conversationId: msg.conversation.id,
+          messageId: dispatchMsg.id,
+          accountId: dispatchMsg.accountId,
+          conversationId: dispatchMsg.conversation.id,
         });
         this.transcript.write({
           ts: nowIso(),
           kind: "attention_skipped",
-          turnId,
-          agentId: msg.accountId,
-          roomId: msg.conversation.id,
-          topicId: msg.conversation.threadId ?? null,
+          turnId: dispatchTurnId,
+          agentId: dispatchMsg.accountId,
+          roomId: dispatchMsg.conversation.id,
+          topicId: dispatchMsg.conversation.threadId ?? null,
           reason: "attention_gate_false",
         });
         return;
@@ -396,19 +465,35 @@ export class Dispatcher {
       this.transcript.write({
         ts: nowIso(),
         kind: "compose_failed",
-        turnId,
-        agentId: msg.accountId,
-        roomId: msg.conversation.id,
-        topicId: msg.conversation.threadId ?? null,
+        turnId: dispatchTurnId,
+        agentId: dispatchMsg.accountId,
+        roomId: dispatchMsg.conversation.id,
+        topicId: dispatchMsg.conversation.threadId ?? null,
         error: composeFailedError,
         fallback: "raw_text",
       });
     }
 
     if (mode === "cancel-previous") {
-      await this.runCancelPrevious(queueKey, route, text, msg, channel, turnId);
+      await this.runCancelPrevious(
+        queueKey,
+        dispatchRoute,
+        text,
+        dispatchMsg,
+        dispatchChannel,
+        dispatchTurnId,
+        mergedFromDeferredTurnIds,
+      );
     } else {
-      await this.runSerial(queueKey, route, text, msg, channel, turnId);
+      await this.runSerial(
+        queueKey,
+        dispatchRoute,
+        text,
+        dispatchMsg,
+        dispatchChannel,
+        dispatchTurnId,
+        mergedFromDeferredTurnIds,
+      );
     }
   }
 
@@ -452,6 +537,37 @@ export class Dispatcher {
     return q;
   }
 
+  private deferMultimodal(queueKey: string, entry: DeferredMultimodalEntry): void {
+    const list = this.deferredMultimodal.get(queueKey) ?? [];
+    list.push(entry);
+    while (list.length > MAX_BATCH_BUFFER_ENTRIES) {
+      const dropped = list.shift()!;
+      this.log.warn("dispatcher: deferred multimodal buffer overflow — dropped oldest", {
+        queueKey,
+        droppedMessageId: dropped.msg.id,
+        bufferCap: MAX_BATCH_BUFFER_ENTRIES,
+      });
+      this.transcript.write({
+        ts: nowIso(),
+        kind: "dropped",
+        turnId: dropped.turnId,
+        agentId: dropped.msg.accountId,
+        roomId: dropped.msg.conversation.id,
+        topicId: dropped.msg.conversation.threadId ?? null,
+        reason: "queue_overflow",
+        supersededBy: null,
+      });
+    }
+    this.deferredMultimodal.set(queueKey, list);
+  }
+
+  private takeDeferredMultimodal(queueKey: string): DeferredMultimodalEntry[] {
+    const list = this.deferredMultimodal.get(queueKey);
+    if (!list || list.length === 0) return [];
+    this.deferredMultimodal.delete(queueKey);
+    return list;
+  }
+
   private async runCancelPrevious(
     queueKey: string,
     route: GatewayRoute,
@@ -459,6 +575,7 @@ export class Dispatcher {
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
     turnId: string,
+    mergedFromTurnIds: string[] = [],
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     // Bump the generation on every arrival. Older arrivals still awaiting
@@ -518,7 +635,7 @@ export class Dispatcher {
       });
       return;
     }
-    await this.runTurn(queueKey, route, text, msg, channel, turnId, []);
+    await this.runTurn(queueKey, route, text, msg, channel, turnId, mergedFromTurnIds);
   }
 
   /**
@@ -546,6 +663,7 @@ export class Dispatcher {
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
     turnId: string,
+    mergedFromTurnIds: string[] = [],
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     q.serialBuffer.push({ route, msg, channel, turnId });
@@ -591,8 +709,10 @@ export class Dispatcher {
             });
           }
         }
-        const mergedFromTurnIds =
-          drained.length > 1 ? drained.slice(0, -1).map((e) => e.turnId) : [];
+        const mergedTurnIds =
+          drained.length > 1
+            ? [...mergedFromTurnIds, ...drained.slice(0, -1).map((e) => e.turnId)]
+            : mergedFromTurnIds;
         await this.runTurn(
           queueKey,
           merged.route,
@@ -600,7 +720,7 @@ export class Dispatcher {
           merged.msg,
           merged.channel,
           merged.turnId,
-          mergedFromTurnIds,
+          mergedTurnIds,
         );
       }
     } finally {
@@ -681,8 +801,13 @@ export class Dispatcher {
     const latestRaw = (latest.msg.raw as Record<string, unknown> | null | undefined) ?? {};
     const mergedRaw = { ...latestRaw, batch: items };
     const anyMentioned = entries.some((e) => e.msg.mentioned === true);
+    const mergedText = entries
+      .map((e) => (typeof e.msg.text === "string" ? e.msg.text.trim() : ""))
+      .filter((s) => s.length > 0)
+      .join("\n");
     const mergedMsg: GatewayInboundEnvelope["message"] = {
       ...latest.msg,
+      ...(mergedText ? { text: mergedText } : {}),
       mentioned: anyMentioned,
       raw: mergedRaw,
     };
@@ -1525,6 +1650,67 @@ function isOwnerChatRoom(msg: GatewayInboundEnvelope["message"]): boolean {
 
 function isBotCordChannel(channel: ChannelAdapter): boolean {
   return channel.type === "botcord" || channel.id === "botcord";
+}
+
+function isMultimodalOnlyMessage(msg: GatewayInboundEnvelope["message"]): boolean {
+  if (!hasMultimodalContent(msg.raw)) return false;
+  return !hasAuthoredText(msg.raw);
+}
+
+function hasAuthoredText(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const obj = raw as Record<string, unknown>;
+  const batch = obj.batch;
+  if (Array.isArray(batch)) return batch.some((item) => hasAuthoredText(item));
+
+  if (typeof obj.text === "string" && obj.text.trim().length > 0) {
+    // BotCord's /hub/inbox `text` may be synthesized from attachment metadata
+    // when payload text is empty, so prefer envelope payload below when present.
+    if (!obj.envelope || typeof obj.envelope !== "object") return true;
+  }
+
+  const envelope = obj.envelope as Record<string, unknown> | undefined;
+  const payload = envelope?.payload as Record<string, unknown> | undefined;
+  if (payload) {
+    for (const key of ["text", "body", "message"]) {
+      const value = payload[key];
+      if (typeof value === "string" && value.trim().length > 0) return true;
+    }
+    return false;
+  }
+
+  const itemList = obj.item_list;
+  if (Array.isArray(itemList)) {
+    return itemList.some((item) => {
+      if (!item || typeof item !== "object") return false;
+      const textItem = (item as { text_item?: { text?: unknown } }).text_item;
+      return typeof textItem?.text === "string" && textItem.text.trim().length > 0;
+    });
+  }
+
+  return typeof obj.text === "string" && obj.text.trim().length > 0;
+}
+
+function hasMultimodalContent(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const obj = raw as Record<string, unknown>;
+  const batch = obj.batch;
+  if (Array.isArray(batch)) return batch.some((item) => hasMultimodalContent(item));
+
+  const envelope = obj.envelope as Record<string, unknown> | undefined;
+  const payload = envelope?.payload as Record<string, unknown> | undefined;
+  const attachments = payload?.attachments;
+  if (Array.isArray(attachments) && attachments.length > 0) return true;
+
+  const itemList = obj.item_list;
+  if (Array.isArray(itemList)) {
+    return itemList.some((item) => {
+      if (!item || typeof item !== "object") return false;
+      return (item as { type?: unknown }).type !== 1;
+    });
+  }
+
+  return false;
 }
 
 function resolveQueueMode(
