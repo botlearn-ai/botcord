@@ -10,6 +10,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { api } from "@/lib/api";
 import type { ActivityStats, AgentProfile, PublicHumanProfile, UserAgent } from "@/lib/types";
+import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
 import BotAvatar from "./BotAvatar";
 import ExploreEntityCard from "./ExploreEntityCard";
 
@@ -68,7 +69,7 @@ function BotSummaryCard({
   return (
     <button
       type="button"
-      className="min-w-[260px] max-w-[280px] rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40"
+      className="h-full w-full rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40"
     >
       <div className="mb-3 flex items-center gap-2.5">
         <BotAvatar agentId={agent.agent_id} avatarUrl={agent.avatar_url} size={40} alt={agent.display_name} />
@@ -152,11 +153,42 @@ export default function HomePanel() {
   })));
   const [botStats, setBotStats] = useState<Record<string, ActivityStats>>({});
   const [botStatsLoading, setBotStatsLoading] = useState(false);
+  const [botPresence, setBotPresence] = useState<Record<string, AgentPresenceSnapshotPayload>>({});
   const visibleBots = useMemo(() => (noBots ? [] : ownedAgents), [noBots, ownedAgents]);
+  const sortedVisibleBots = useMemo(() => {
+    const totalMessages = (agentId: string) => {
+      const stats = botStats[agentId];
+      return stats ? stats.messages_sent + stats.messages_received : 0;
+    };
+    const isOnline = (agent: UserAgent) => {
+      const presence = botPresence[agent.agent_id];
+      if (presence?.effective_status) return presence.effective_status !== "offline";
+      return agent.ws_online;
+    };
+    const lastSeenMs = (agent: UserAgent) => {
+      const presence = botPresence[agent.agent_id];
+      const ts = presence?.last_seen_at ?? presence?.updated_at ?? agent.claimed_at;
+      const value = ts ? new Date(ts).getTime() : 0;
+      return Number.isFinite(value) ? value : 0;
+    };
+
+    return [...visibleBots].sort((a, b) => {
+      const aOnline = isOnline(a);
+      const bOnline = isOnline(b);
+      if (aOnline !== bOnline) return aOnline ? -1 : 1;
+      if (aOnline && bOnline) {
+        return totalMessages(b.agent_id) - totalMessages(a.agent_id)
+          || a.display_name.localeCompare(b.display_name);
+      }
+      return lastSeenMs(b) - lastSeenMs(a)
+        || a.display_name.localeCompare(b.display_name);
+    }).slice(0, 6);
+  }, [botPresence, botStats, visibleBots]);
 
   useEffect(() => {
     if (visibleBots.length === 0) {
       setBotStats({});
+      setBotPresence({});
       return;
     }
     let cancelled = false;
@@ -176,6 +208,15 @@ export default function HomePanel() {
     }).finally(() => {
       if (!cancelled) setBotStatsLoading(false);
     });
+
+    void api.getPresenceSnapshots(visibleBots.map((agent) => agent.agent_id))
+      .then((result) => {
+        if (cancelled) return;
+        setBotPresence(Object.fromEntries(result.agents.map((agent) => [agent.agent_id, agent])));
+      })
+      .catch(() => {
+        if (!cancelled) setBotPresence({});
+      });
     return () => {
       cancelled = true;
     };
@@ -200,9 +241,9 @@ export default function HomePanel() {
             subtitle={visibleBots.length > 0 ? "你托管的 Bot" : "你还没有 Bot — 创建一个开始你的 A2A 之旅"}
             onShowAll={visibleBots.length > 0 ? () => router.push("/chats/bots") : undefined}
           />
-          {visibleBots.length > 0 ? (
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {visibleBots.map((agent) => (
+          {sortedVisibleBots.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {sortedVisibleBots.map((agent) => (
                 <BotSummaryCard
                   key={agent.agent_id}
                   agent={agent}
