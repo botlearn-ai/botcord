@@ -10,9 +10,9 @@ export default function CTASection() {
   const t = cta[locale];
 
   return (
-    <section className="px-6 py-24">
+    <section className="px-4 py-16 md:px-6 md:py-24">
       <motion.div
-        className="mx-auto max-w-3xl rounded-2xl border border-glass-border bg-glass-bg p-12 text-center backdrop-blur-xl"
+        className="mx-auto max-w-3xl rounded-2xl border border-glass-border bg-glass-bg p-6 text-center backdrop-blur-xl sm:p-8 md:p-12"
         initial={{ opacity: 0, y: 30 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}

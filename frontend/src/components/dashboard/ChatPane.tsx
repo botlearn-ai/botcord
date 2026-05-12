@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
-import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
+import { chatPane, exploreUi, sidebar } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
@@ -58,6 +58,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
+  const tSidebar = sidebar[locale];
   const { contactsView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
     contactsView: state.contactsView,
     setFocusedRoomId: state.setFocusedRoomId,
@@ -173,9 +174,20 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
     }
   };
 
+  const switchContactsView = (view: "requests" | "agents" | "rooms" | "created") => {
+    useDashboardUIStore.getState().setContactsView(view);
+    router.push(`/chats/contacts/${view}`);
+  };
+  const mobileContactsBtn = (active: boolean) =>
+    `whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+      active
+        ? "border-neon-cyan/60 bg-neon-cyan/15 text-neon-cyan"
+        : "border-glass-border bg-glass-bg text-text-secondary hover:text-text-primary"
+    }`;
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
-      <div className="border-b border-glass-border px-5 py-4">
+      <div className="border-b border-glass-border px-5 py-4 max-md:px-4 max-md:py-3">
         <h2 className="text-base font-semibold text-text-primary">
           {isRequestsView
             ? t.contactRequests
@@ -185,7 +197,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                 ? t.createdRooms
                 : t.contacts}
         </h2>
-        <p className="mt-1 text-xs text-text-secondary">
+        <p className="mt-1 text-xs text-text-secondary max-md:hidden">
           {isRequestsView
             ? t.reviewRequests
             : isRoomsView
@@ -194,6 +206,12 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                 ? t.roomsCreatedByMe
                 : t.yourAgentContacts}
         </p>
+        <div className="mt-3 flex flex-nowrap gap-1.5 overflow-x-auto md:hidden">
+          <button type="button" onClick={() => switchContactsView("requests")} className={mobileContactsBtn(isRequestsView)}>{tSidebar.friendRequests}</button>
+          <button type="button" onClick={() => switchContactsView("agents")} className={mobileContactsBtn(!isRequestsView && !isRoomsView && !isCreatedView)}>{tSidebar.myFriends}</button>
+          <button type="button" onClick={() => switchContactsView("rooms")} className={mobileContactsBtn(isRoomsView)}>{tSidebar.joinedRooms}</button>
+          <button type="button" onClick={() => switchContactsView("created")} className={mobileContactsBtn(isCreatedView)}>{tSidebar.createdRooms}</button>
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <div className="min-w-[240px] max-w-xl flex-1">
             <SearchBar
@@ -516,19 +534,35 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   const loading = isRoomsView ? publicRoomsLoading : isAgentsView ? publicAgentsLoading : publicHumansLoading;
   const emptyText = isRoomsView ? t.noRoomsFound : isAgentsView ? t.noAgentsFound : t.noHumansFound;
 
+  const switchExploreView = (view: "rooms" | "agents" | "humans") => {
+    useDashboardUIStore.getState().setExploreView(view);
+    router.push(`/chats/explore/${view}`);
+  };
+  const mobileTabBtn = (active: boolean) =>
+    `flex-1 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+      active
+        ? "border-neon-purple/60 bg-neon-purple/15 text-neon-purple"
+        : "border-glass-border bg-glass-bg text-text-secondary hover:text-text-primary"
+    }`;
+
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-deep-black">
-      <div className="border-b border-glass-border px-5 py-4">
+      <div className="border-b border-glass-border px-5 py-4 max-md:px-4 max-md:py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-text-primary">{title}</h2>
-          <p className="mt-1 text-xs text-text-secondary">{subtitle}</p>
+          <p className="mt-1 text-xs text-text-secondary max-md:hidden">{subtitle}</p>
+        </div>
+        <div className="mt-3 flex gap-1.5 md:hidden">
+          <button type="button" onClick={() => switchExploreView("rooms")} className={mobileTabBtn(isRoomsView)}>{t.publicRooms}</button>
+          <button type="button" onClick={() => switchExploreView("agents")} className={mobileTabBtn(isAgentsView)}>{t.publicAgents}</button>
+          <button type="button" onClick={() => switchExploreView("humans")} className={mobileTabBtn(isHumansView)}>{t.publicHumans}</button>
         </div>
         <div className="mt-3 max-w-xl">
           <SearchBar onSearch={setQuery} placeholder={searchPlaceholder} />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="flex-1 overflow-y-auto px-5 py-4 max-md:px-4">
         {loading ? (
           <GridSkeletonCards />
         ) : isRoomsView ? (

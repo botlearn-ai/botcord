@@ -5,7 +5,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import NextTopLoader from "nextjs-toploader";
 import { inter, jetbrainsMono } from "@/lib/fonts";
@@ -24,6 +24,13 @@ export const metadata: Metadata = {
     type: "website",
   },
   icons: { icon: "/logo.svg" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0a0a0f",
 };
 
 export default function RootLayout({
