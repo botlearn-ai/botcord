@@ -43,7 +43,7 @@ function inferPeerTypeForOwnedAgentRoom(
   return peer.startsWith("hu_") ? "human" : "agent";
 }
 
-function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
+export function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
   const origin = originFor(room);
   return {
     room_id: room.room_id,
@@ -84,15 +84,6 @@ export function mergeOwnerVisibleRooms({ ownRooms, ownedAgentRooms }: MergeOpts)
     const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
     return tb - ta;
   });
-}
-
-/** Look up the origin agent for a single roomId without rebuilding the full list. */
-export function findOriginAgentForRoom(
-  roomId: string,
-  ownedAgentRooms: HumanAgentRoomSummary[],
-): { agent_id: string; display_name: string } | null {
-  const room = ownedAgentRooms.find((item) => item.room_id === roomId);
-  return room ? originFor(room) : null;
 }
 
 /**

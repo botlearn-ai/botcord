@@ -424,8 +424,8 @@ export default function DashboardApp() {
 
   useEffect(() => {
     if (!sessionStore.authResolved) return;
-    // Human-first: fire for both Agent viewer (authed-ready) and Human
-    // viewer (authed-no-agent). Only stay idle for guest sessions.
+    // Human-first: fire for authenticated Human sessions, with or without a
+    // selected managed Bot. Only stay idle for guest sessions.
     if (
       sessionStore.sessionMode !== "authed-ready"
       && sessionStore.sessionMode !== "authed-no-agent"
@@ -450,11 +450,10 @@ export default function DashboardApp() {
     if (
       sessionStore.sessionMode !== "authed-ready"
       || !sessionStore.activeAgentId
-      || sessionStore.activeIdentity?.type !== "agent"
     ) return;
 
     let cancelled = false;
-    api.getUserChatRoom().then((room) => {
+    api.getUserChatRoom(sessionStore.activeAgentId).then((room) => {
       if (!cancelled) uiStore.setUserChatRoomId(room.room_id);
     }).catch(() => { /* ignore — UserChatPane will retry on mount */ });
 
@@ -462,7 +461,6 @@ export default function DashboardApp() {
   }, [
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
-    sessionStore.activeIdentity?.type,
     uiStore.setUserChatRoomId,
   ]);
 
@@ -713,9 +711,8 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
-    // Both Agent viewer (authed-ready) and Human viewer (authed-no-agent OR
-    // authed-ready with viewMode=human) own a wallet — backend resolves
-    // owner from activeIdentity.type via the `?as=` query param.
+    // The authenticated Human owns a wallet; selected Bot wallets are explicit
+    // viewer overrides elsewhere.
     if (
       sessionStore.sessionMode !== "authed-ready"
       && sessionStore.sessionMode !== "authed-no-agent"
@@ -846,11 +843,7 @@ export default function DashboardApp() {
   };
 
   const navigateToDmWith = async (peerId: string, onClose: () => void) => {
-    // Pick the sender id based on view mode: human view uses the user's
-    // hu_*, agent view uses the active agent.
-    const selfId = sessionStore.viewMode === "human"
-      ? sessionStore.human?.human_id ?? null
-      : sessionStore.activeAgentId;
+    const selfId = sessionStore.human?.human_id ?? null;
     const predictedRoomId = selfId
       ? `rm_dm_${[selfId, peerId].sort().join("_")}`
       : null;

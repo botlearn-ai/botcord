@@ -37,7 +37,6 @@ import RoomZeroState from "./RoomZeroState";
 import { initialsFromName } from "./roomVisualTheme";
 import { dmPeerId } from "./dmRoom";
 import ContactsDetailPane from "./ContactsDetailPane";
-import { findOriginAgentForRoom } from "@/lib/messages-merge";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
@@ -724,10 +723,9 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     openedRoomId: state.openedRoomId,
     messagesFilter: state.messagesFilter,
   })));
-  const { overview, recentVisitedRooms, ownedAgentRooms, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, recentVisitedRooms, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     recentVisitedRooms: state.recentVisitedRooms,
-    ownedAgentRooms: state.ownedAgentRooms,
     getRoomSummary: state.getRoomSummary,
   })));
   const openedRoomMemberVersion = useDashboardChatStore(
@@ -818,11 +816,11 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
       </div>
       {openedRoomId && !isPaidAndNotJoined && (
         <>
-          {openedRoomId && findOriginAgentForRoom(openedRoomId, ownedAgentRooms) ? (
+          {openedRoom?._originAgent ? (
             <div className="border-t border-glass-border bg-glass-bg/30 px-4 py-2.5">
               <p className="text-center text-xs text-text-secondary/70">
                 <span className="mr-1">🔒</span>
-                由 {findOriginAgentForRoom(openedRoomId, ownedAgentRooms)?.display_name} 代为发言 · 你是 owner，可观察不可发
+                由 {openedRoom._originAgent.display_name} 代为发言 · 你是 owner，可观察不可发
               </p>
             </div>
           ) : isGuest ? (

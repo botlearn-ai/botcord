@@ -28,6 +28,7 @@ import {
 } from "@/store/dashboard-shared";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { ownedAgentRoomToDashboardRoom } from "@/lib/messages-merge";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 
 let publicRoomsRequestSeq = 0;
@@ -68,32 +69,6 @@ function applyRealtimeRoomHint<T extends {
 
 function getRoomMessageSnapshot(room: DashboardRoom | null): string | null {
   return room?.last_message_at ?? null;
-}
-
-function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
-  return {
-    room_id: room.room_id,
-    name: room.name,
-    description: room.description ?? "",
-    owner_id: room.owner_id,
-    // ownedAgentRoomToDashboardRoom is the human-as-owner-via-bot listing —
-    // these rooms are by definition agent-owned.
-    owner_type: "agent",
-    visibility: room.visibility,
-    join_policy: room.join_policy ?? undefined,
-    can_invite: undefined,
-    member_count: room.member_count,
-    my_role: room.bots[0]?.role ?? "member",
-    created_at: room.created_at ?? null,
-    rule: room.rule,
-    required_subscription_product_id: room.required_subscription_product_id ?? null,
-    last_viewed_at: null,
-    has_unread: false,
-    last_message_preview: room.last_message_preview,
-    last_message_at: room.last_message_at,
-    last_sender_name: room.last_sender_name,
-    allow_human_send: room.allow_human_send ?? undefined,
-  };
 }
 
 export function mapOwnedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
@@ -544,9 +519,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           await Promise.all([get().loadPublicRooms(), get().loadPublicAgents()]);
           return;
         }
-        // Human-first: /overview works for both Agent viewer (X-Active-Agent
-        // header) and Human viewer (derived from Supabase JWT). The backend
-        // decides; we just need a valid token.
+        // Human-first: /overview resolves the viewer from the Supabase JWT.
 
         set({ overviewRefreshing: true, overviewErrored: false });
         try {
@@ -710,7 +683,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         if (agentId === activeAgentId) return;
         get().bindToActiveAgent(agentId);
         useDashboardSessionStore.getState().switchActiveAgent(agentId);
-        window.location.replace(window.location.pathname + window.location.search + window.location.hash);
       },
     }),
     {

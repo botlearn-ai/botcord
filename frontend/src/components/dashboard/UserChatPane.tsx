@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Owner-chat pane — renders a 1:1 conversation between user and their active agent.
+ * Owner-chat pane — renders a 1:1 conversation between the user and a managed Bot.
  *
  * Architecture (post-refactor):
  *   - Single source of truth: useOwnerChatStore.messages[]
@@ -70,10 +70,9 @@ function TypewriterText({
 export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const locale = useLanguage();
   const router = useRouter();
-  const { activeAgentId, activeIdentity } = useDashboardSessionStore();
+  const { activeAgentId } = useDashboardSessionStore();
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
-  const isAgentMode = activeIdentity?.type === "agent" && !!activeAgentId;
-  const chatAgentId = agentId || (isAgentMode ? activeAgentId : null);
+  const chatAgentId = agentId || activeAgentId || null;
   const { openMobileSidebar, setMessagesPane, setSelectedBotAgentId, setUserChatRoomId } = useDashboardUIStore();
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
@@ -104,8 +103,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const wasNearBottomRef = useRef(true);
   const [, forceRender] = useState(0);
 
-  // WS hook authenticates the selected owner-chat target explicitly. The plain
-  // user-chat route still stays idle unless the user is acting as an agent.
+  // WS hook authenticates the selected owner-chat target explicitly.
   const { wsClientRef, streamedTraceIds } = useOwnerChatWs({
     activeAgentId: chatAgentId,
     roomId,
@@ -279,7 +277,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   if (!chatAgentId) {
     return (
       <div className="flex items-center justify-center h-full text-zinc-500">
-        <p>Switch to an agent identity to start chatting</p>
+        <p>Select a Bot to start chatting</p>
       </div>
     );
   }
