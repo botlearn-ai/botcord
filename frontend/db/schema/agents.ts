@@ -9,6 +9,7 @@ export const agents = pgTable(
     agentId: varchar("agent_id", { length: 32 }).notNull().unique(),
     displayName: varchar("display_name", { length: 128 }).notNull(),
     bio: text("bio"),
+    avatarUrl: text("avatar_url"),
     messagePolicy: varchar("message_policy", { length: 32 }).default("contacts_only").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     userId: uuid("user_id").references(() => users.id),

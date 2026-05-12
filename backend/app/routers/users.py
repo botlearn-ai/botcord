@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import RequestContext, require_user
 from hub import config as hub_config
 from hub.auth import create_agent_token, verify_agent_token
+from hub.agent_avatars import normalize_agent_avatar_url, random_agent_avatar_url
 from hub.config import BIND_PROOF_SECRET, HUB_PUBLIC_BASE_URL, JWT_SECRET
 from hub.routers.hub import is_agent_ws_online
 from hub.routers.daemon_control import (
@@ -94,6 +95,7 @@ class PatchAgentBody(BaseModel):
     is_default: bool | None = None
     display_name: str | None = Field(default=None, min_length=1, max_length=128)
     bio: str | None = Field(default=None, max_length=4000)
+    avatar_url: str | None = None
 
 
 class ClaimResolveBody(BaseModel):
@@ -140,6 +142,7 @@ def _agent_meta(agent: Agent) -> dict:
         "agent_id": agent.agent_id,
         "display_name": agent.display_name,
         "bio": agent.bio,
+        "avatar_url": agent.avatar_url,
         "is_default": agent.is_default,
         "claimed_at": agent.claimed_at.isoformat() if agent.claimed_at else None,
     }
@@ -833,6 +836,7 @@ async def _bind_agent_to_user(
         agent = Agent(
             agent_id=agent_id,
             display_name=display_name,
+            avatar_url=random_agent_avatar_url(),
             user_id=user_id,
             agent_token=agent_token,
             is_default=is_first,
@@ -860,6 +864,7 @@ async def _bind_agent_to_user(
                 .values(
                     user_id=user_id,
                     display_name=display_name,
+                    avatar_url=agent.avatar_url or random_agent_avatar_url(),
                     agent_token=agent_token,
                     is_default=is_first,
                     claimed_at=now,
@@ -883,6 +888,7 @@ async def _bind_agent_to_user(
             .values(
                 user_id=user_id,
                 display_name=display_name,
+                avatar_url=agent.avatar_url or random_agent_avatar_url(),
                 agent_token=agent_token,
                 is_default=is_first,
                 claimed_at=now,
@@ -951,6 +957,7 @@ async def get_me(
                 "agent_id": a.agent_id,
                 "display_name": a.display_name,
                 "bio": a.bio,
+                "avatar_url": a.avatar_url,
                 "is_default": a.is_default,
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
                 "ws_online": is_agent_ws_online(a.agent_id),
@@ -982,6 +989,7 @@ async def get_my_agents(
                 "agent_id": a.agent_id,
                 "display_name": a.display_name,
                 "bio": a.bio,
+                "avatar_url": a.avatar_url,
                 "message_policy": a.message_policy.value if a.message_policy else None,
                 "is_default": a.is_default,
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
@@ -1069,7 +1077,7 @@ async def patch_agent(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update agent attributes (is_default, display_name, bio)."""
+    """Update agent attributes (is_default, display_name, bio, avatar_url)."""
     result = await db.execute(
         select(Agent).where(
             Agent.agent_id == agent_id,
@@ -1109,6 +1117,14 @@ async def patch_agent(
         if agent.bio != bio:
             agent.bio = bio
             identity_changed = True
+
+    if body.avatar_url is not None:
+        try:
+            avatar_url = normalize_agent_avatar_url(body.avatar_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if agent.avatar_url != avatar_url:
+            agent.avatar_url = avatar_url
 
     await db.commit()
     await db.refresh(agent)
@@ -1802,6 +1818,7 @@ async def install_claim(
     agent = Agent(
         agent_id=agent_id,
         display_name=display_name,
+        avatar_url=random_agent_avatar_url(),
         user_id=user_id,
         agent_token=agent_token,
         token_expires_at=token_expires_at,
@@ -1978,6 +1995,7 @@ class ProvisionAgentBody(BaseModel):
 class ProvisionAgentResponse(BaseModel):
     agent_id: str
     display_name: str
+    avatar_url: str | None = None
     runtime: str
     daemon_instance_id: str
     is_default: bool
@@ -2191,6 +2209,7 @@ async def provision_agent(
         agent_id=agent_id,
         display_name=label,
         bio=body.bio,
+        avatar_url=random_agent_avatar_url(),
         user_id=ctx.user_id,
         is_default=is_first,
         claimed_at=now,
@@ -2313,6 +2332,7 @@ async def provision_agent(
     return ProvisionAgentResponse(
         agent_id=agent.agent_id,
         display_name=agent.display_name,
+        avatar_url=agent.avatar_url,
         runtime=runtime,
         daemon_instance_id=body.daemon_instance_id,
         is_default=agent.is_default,

@@ -16,11 +16,13 @@ import {
 import UnbindAgentDialog from "./UnbindAgentDialog";
 import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
+import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
 
 interface AgentSettingsDrawerProps {
   agentId: string;
   displayName: string;
   bio?: string | null;
+  avatarUrl?: string | null;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -200,6 +202,7 @@ export default function AgentSettingsDrawer({
   agentId,
   displayName,
   bio,
+  avatarUrl,
   onClose,
   onSaved,
 }: AgentSettingsDrawerProps) {
@@ -218,22 +221,25 @@ export default function AgentSettingsDrawer({
   // --- Profile state ---
   const [nameVal, setNameVal] = useState(displayName);
   const [bioVal, setBioVal] = useState(bio ?? "");
+  const [avatarVal, setAvatarVal] = useState(avatarUrl ?? "");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
   const trimmedName = nameVal.trim();
   const nameChanged = trimmedName !== displayName.trim();
   const bioChanged = bioVal.trim() !== (bio ?? "").trim();
-  const canSaveProfile = !profileSaving && trimmedName.length > 0 && (nameChanged || bioChanged);
+  const avatarChanged = avatarVal !== (avatarUrl ?? "");
+  const canSaveProfile = !profileSaving && trimmedName.length > 0 && (nameChanged || bioChanged || avatarChanged);
 
   async function handleSaveProfile() {
     if (!canSaveProfile) return;
     setProfileSaving(true);
     setProfileError(null);
     try {
-      const patch: { display_name?: string; bio?: string | null } = {};
+      const patch: { display_name?: string; bio?: string | null; avatar_url?: string | null } = {};
       if (nameChanged) patch.display_name = trimmedName;
       if (bioChanged) patch.bio = bioVal.trim() || null;
+      if (avatarChanged) patch.avatar_url = avatarVal || null;
       await userApi.updateAgent(agentId, patch);
       await refreshUserProfile();
       onSaved?.();
@@ -384,6 +390,34 @@ export default function AgentSettingsDrawer({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {tab === "profile" && (
             <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-medium text-text-secondary">
+                  头像
+                </label>
+                <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
+                  {AGENT_AVATAR_URLS.map((url) => {
+                    const selected = avatarVal === url;
+                    return (
+                      <button
+                        key={url}
+                        type="button"
+                        onClick={() => setAvatarVal(url)}
+                        disabled={profileSaving}
+                        className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
+                          selected
+                            ? "border-neon-cyan ring-2 ring-neon-cyan/30"
+                            : "border-glass-border hover:border-neon-cyan/50"
+                        }`}
+                        aria-label="选择头像"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1 block text-xs font-medium text-text-secondary">
                   显示名称

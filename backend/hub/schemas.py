@@ -277,6 +277,7 @@ class ResolveResponse(BaseModel):
     agent_id: str
     display_name: str
     bio: str | None = None
+    avatar_url: str | None = None
     is_bound: bool = False
     has_endpoint: bool
     endpoints: list[ResolveEndpointInfo]
@@ -416,6 +417,7 @@ class BlockListResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=128)
     bio: str | None = Field(default=None, max_length=500)
+    avatar_url: str | None = None
 
 
 class UpdatePolicyRequest(BaseModel):
@@ -581,6 +583,7 @@ class DashboardAgentProfile(BaseModel):
     agent_id: str
     display_name: str
     bio: str | None = None
+    avatar_url: str | None = None
     message_policy: str
     created_at: datetime.datetime
     owner_human_id: str | None = None

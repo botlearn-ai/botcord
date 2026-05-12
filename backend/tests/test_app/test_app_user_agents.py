@@ -739,6 +739,36 @@ async def test_patch_agent_set_default(client: AsyncClient, seed_user: dict):
 
 
 @pytest.mark.asyncio
+async def test_patch_agent_updates_avatar_url(client: AsyncClient, seed_user: dict):
+    token = seed_user["token"]
+
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={"avatar_url": "/agent-avatars/7.png"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["avatar_url"] == "/agent-avatars/7.png"
+
+    agents_resp = await client.get(
+        "/api/users/me/agents",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    agents = {a["agent_id"]: a for a in agents_resp.json()["agents"]}
+    assert agents["ag_agent001"]["avatar_url"] == "/agent-avatars/7.png"
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_rejects_unknown_avatar_url(client: AsyncClient, seed_user: dict):
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={"avatar_url": "https://example.com/avatar.png"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_patch_agent_pushes_update_when_daemon_online(
     client: AsyncClient, db_session: AsyncSession, seed_user: dict, monkeypatch
 ):

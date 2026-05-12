@@ -164,8 +164,13 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         className={`group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg ${className}`}
       >
         <div className="flex items-start gap-2.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
-            {initials}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
+            {agent.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={agent.avatar_url} alt={agent.display_name} className="h-full w-full object-cover" />
+            ) : (
+              initials
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-text-primary">{agent.display_name}</p>

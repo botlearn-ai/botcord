@@ -904,11 +904,12 @@ const userApi = {
 
   async updateAgent(
     agentId: string,
-    patch: { display_name?: string; bio?: string | null; is_default?: boolean },
+    patch: { display_name?: string; bio?: string | null; avatar_url?: string | null; is_default?: boolean },
   ): Promise<{
     agent_id: string;
     display_name: string;
     bio: string | null;
+    avatar_url: string | null;
     is_default: boolean;
     claimed_at: string | null;
   }> {
@@ -916,6 +917,7 @@ const userApi = {
       agent_id: string;
       display_name: string;
       bio: string | null;
+      avatar_url: string | null;
       is_default: boolean;
       claimed_at: string | null;
     }>(`/api/users/me/agents/${agentId}`, patch);
