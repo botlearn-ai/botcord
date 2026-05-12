@@ -23,6 +23,15 @@ export interface DashboardUIState {
   sidebarTab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
   /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
   selectedBotAgentId: string | null;
+  /** Active sub-tab inside the My Bots tab. */
+  myBotsTab: "bots" | "devices";
+  setMyBotsTab: (tab: DashboardUIState["myBotsTab"]) => void;
+  /** Drill-down: selected device id inside the My Bots → 我的设备 view. */
+  selectedDeviceId: string | null;
+  setSelectedDeviceId: (id: string | null) => void;
+  /** Right-side drawer: selected bot agent_id in the My Bots → Bots view. */
+  botDetailAgentId: string | null;
+  setBotDetailAgentId: (id: string | null) => void;
   setSelectedBotAgentId: (agentId: string | null) => void;
   /** Controls the Create Bot modal visibility from any component. */
   createBotModalOpen: boolean;
@@ -100,6 +109,9 @@ const initialUIState = {
   mobileSidebarOpen: false,
   sidebarTab: "messages" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
+  myBotsTab: "bots" as DashboardUIState["myBotsTab"],
+  selectedDeviceId: null as string | null,
+  botDetailAgentId: null as string | null,
   messagesPane: "room" as const,
   messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
   messagesScope: { type: "human" as const } as DashboardUIState["messagesScope"],
@@ -124,6 +136,12 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
+  setMyBotsTab: (myBotsTab) =>
+    set((state) => (state.myBotsTab === myBotsTab ? state : { myBotsTab })),
+  setSelectedDeviceId: (selectedDeviceId) =>
+    set((state) => (state.selectedDeviceId === selectedDeviceId ? state : { selectedDeviceId })),
+  setBotDetailAgentId: (botDetailAgentId) =>
+    set((state) => (state.botDetailAgentId === botDetailAgentId ? state : { botDetailAgentId })),
   setSelectedBotAgentId: (selectedBotAgentId) =>
     set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
   setMessagesPane: (messagesPane) =>

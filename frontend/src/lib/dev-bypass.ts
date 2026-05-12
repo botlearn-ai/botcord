@@ -61,7 +61,7 @@ const userProfile = {
       is_default: true,
       claimed_at: DAY_AGO(30),
       ws_online: true,
-      daemon_instance_id: "daemon_local_01",
+      daemon_instance_id: "dev_dev_macbook",
     },
     {
       agent_id: AGENT_BETA,
@@ -70,10 +70,42 @@ const userProfile = {
       is_default: false,
       claimed_at: DAY_AGO(12),
       ws_online: false,
-      daemon_instance_id: null,
+      daemon_instance_id: "dev_dev_macbook",
     },
   ],
 };
+
+// --- Mock devices (daemon instances) ---
+//
+// In the dev-bypass world we don't really have daemons phoning home, so we
+// seed a small list directly into useDaemonStore on My Bots panel mount.
+// Owned agents above point at one of these ids via `daemon_instance_id`.
+export const devDaemons = [
+  {
+    id: "dev_dev_macbook",
+    label: "Jin 的 MacBook Pro",
+    status: "online" as const,
+    created_at: DAY_AGO(40),
+    last_seen_at: MIN_AGO(1),
+    revoked_at: null as string | null,
+    removal_requested_at: null as string | null,
+    cleanup_completed_at: null as string | null,
+    runtimes: null,
+    runtimes_probed_at: null,
+  },
+  {
+    id: "dev_dev_office",
+    label: "Office Mac mini",
+    status: "offline" as const,
+    created_at: DAY_AGO(20),
+    last_seen_at: HOUR_AGO(2),
+    revoked_at: null as string | null,
+    removal_requested_at: null as string | null,
+    cleanup_completed_at: null as string | null,
+    runtimes: null,
+    runtimes_probed_at: null,
+  },
+];
 
 const humanInfo = {
   human_id: HUMAN_ID,
@@ -709,6 +741,55 @@ export interface BotActivityStat {
   followers_delta_7d: number;
   last_active_at: string;
 }
+
+// --- Bot autonomous schedules (per-agent) ---
+
+export interface AutoSchedule {
+  id: string;
+  name: string;
+  mode: "interval" | "daily" | "weekly";
+  intervalMinutes?: number;
+  time?: string;        // "HH:MM" for daily/weekly
+  dayOfWeek?: number;   // 0–6 for weekly
+  prompt: string;
+  enabled: boolean;
+  last_run_at: string | null;
+}
+
+export const devSchedulesByAgent: Record<string, AutoSchedule[]> = {
+  ag_devbot_alpha: [
+    {
+      id: "sch_alpha_daily_brief",
+      name: "daily-market-brief",
+      mode: "daily",
+      time: "08:00",
+      prompt: "【BotCord 自主任务】拉取今日开盘前的市场要闻，整理为 5 条摘要发到 36Kr 科技快讯群。",
+      enabled: true,
+      last_run_at: HOUR_AGO(11),
+    },
+    {
+      id: "sch_alpha_interval_scan",
+      name: "btc-pulse",
+      mode: "interval",
+      intervalMinutes: 30,
+      prompt: "【BotCord 自主任务】扫描 BTC / ETH 大单异动，超过 3% 偏离触发提醒。",
+      enabled: true,
+      last_run_at: MIN_AGO(12),
+    },
+  ],
+  ag_devbot_beta: [
+    {
+      id: "sch_beta_paper",
+      name: "arxiv-digest",
+      mode: "weekly",
+      time: "21:00",
+      dayOfWeek: 1, // Monday
+      prompt: "【BotCord 自主任务】整理 arXiv 上 multi-agent collaboration 类目本周最新 3 篇论文摘要。",
+      enabled: false,
+      last_run_at: DAY_AGO(7),
+    },
+  ],
+};
 
 export const devBotActivities: BotActivityStat[] = [
   {
