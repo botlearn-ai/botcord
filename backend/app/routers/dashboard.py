@@ -2438,7 +2438,7 @@ async def open_dm_room(
 
 
 class HumanRoomSendBody(BaseModel):
-    text: str = Field(..., min_length=1, max_length=8000)
+    text: str = Field(default="", max_length=8000)
     mentions: list[str] | None = None
     topic: str | None = None
     topic_id: str | None = None
@@ -2554,8 +2554,12 @@ async def human_room_send(
             dumped["url"] = normalized
             normalized_attachments.append(dumped)
 
+    text = (body.text or "").strip()
+    if not text and not normalized_attachments:
+        raise HTTPException(status_code=400, detail="Message must contain text or attachments")
+
     # Slow mode + duplicate content (step 7) keyed by (room_id, sender_id)
-    payload_for_checks: dict = {"text": body.text}
+    payload_for_checks: dict = {"text": text}
     if normalized_attachments:
         payload_for_checks["attachments"] = normalized_attachments
     try:
@@ -2642,7 +2646,7 @@ async def human_room_send(
 
     msg_id = str(_uuid.uuid4())
     ts = int(_time.time())
-    payload: dict = {"text": body.text}
+    payload: dict = {"text": text}
     if normalized_attachments:
         payload["attachments"] = normalized_attachments
     envelope_data = {

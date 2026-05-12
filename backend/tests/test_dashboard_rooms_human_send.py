@@ -246,6 +246,45 @@ async def test_happy_path_fanout(client: AsyncClient, seed: dict, db_session: As
 
 
 @pytest.mark.asyncio
+async def test_attachment_only_message_allowed(client: AsyncClient, seed: dict, db_session: AsyncSession):
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={
+            "text": "",
+            "attachments": [
+                {
+                    "filename": "diagnostics.zip",
+                    "url": "/hub/files/f_diagnostics",
+                    "content_type": "application/zip",
+                    "size_bytes": 123,
+                }
+            ],
+        },
+    )
+    assert r.status_code == 202, r.text
+
+    rows = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
+    )).scalars().all()
+    assert rows
+    env = json.loads(rows[0].envelope_json)
+    assert env["payload"]["text"] == ""
+    assert env["payload"]["attachments"][0]["filename"] == "diagnostics.zip"
+
+
+@pytest.mark.asyncio
+async def test_empty_message_without_attachments_rejected(client: AsyncClient, seed: dict):
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": ""},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Message must contain text or attachments"
+
+
+@pytest.mark.asyncio
 async def test_topic_reply_keeps_message_in_topic(
     client: AsyncClient, seed: dict, db_session: AsyncSession
 ):
