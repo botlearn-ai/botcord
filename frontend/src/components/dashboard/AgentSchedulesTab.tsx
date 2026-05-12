@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock, Loader2, Pause, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { CirclePlay, Clock, Loader2, Pause, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { userApi } from "@/lib/api";
 
 interface AgentSchedulesTabProps {
@@ -359,7 +359,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
                       title="立即运行"
                     >
-                      <RefreshCw className="h-3.5 w-3.5" />
+                      <CirclePlay className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
