@@ -57,14 +57,18 @@ function Stat({ label, value }: { label: string; value: number | string }) {
 
 function BotSummaryCard({
   agent,
+  presence,
   stats,
   statsLoading,
 }: {
   agent: UserAgent;
+  presence?: AgentPresenceSnapshotPayload;
   stats?: ActivityStats;
   statsLoading: boolean;
 }) {
-  const online = agent.ws_online;
+  const online = presence?.effective_status
+    ? presence.effective_status !== "offline"
+    : agent.ws_online;
   const loadingValue = statsLoading ? "..." : "-";
   return (
     <button
@@ -156,34 +160,20 @@ export default function HomePanel() {
   const [botPresence, setBotPresence] = useState<Record<string, AgentPresenceSnapshotPayload>>({});
   const visibleBots = useMemo(() => (noBots ? [] : ownedAgents), [noBots, ownedAgents]);
   const sortedVisibleBots = useMemo(() => {
-    const totalMessages = (agentId: string) => {
-      const stats = botStats[agentId];
-      return stats ? stats.messages_sent + stats.messages_received : 0;
-    };
-    const isOnline = (agent: UserAgent) => {
-      const presence = botPresence[agent.agent_id];
-      if (presence?.effective_status) return presence.effective_status !== "offline";
-      return agent.ws_online;
-    };
     const lastSeenMs = (agent: UserAgent) => {
-      const presence = botPresence[agent.agent_id];
-      const ts = presence?.last_seen_at ?? presence?.updated_at ?? agent.claimed_at;
+      const ts = agent.claimed_at;
       const value = ts ? new Date(ts).getTime() : 0;
       return Number.isFinite(value) ? value : 0;
     };
 
     return [...visibleBots].sort((a, b) => {
-      const aOnline = isOnline(a);
-      const bOnline = isOnline(b);
+      const aOnline = a.ws_online;
+      const bOnline = b.ws_online;
       if (aOnline !== bOnline) return aOnline ? -1 : 1;
-      if (aOnline && bOnline) {
-        return totalMessages(b.agent_id) - totalMessages(a.agent_id)
-          || a.display_name.localeCompare(b.display_name);
-      }
       return lastSeenMs(b) - lastSeenMs(a)
         || a.display_name.localeCompare(b.display_name);
     }).slice(0, 6);
-  }, [botPresence, botStats, visibleBots]);
+  }, [visibleBots]);
 
   useEffect(() => {
     if (visibleBots.length === 0) {
@@ -247,6 +237,7 @@ export default function HomePanel() {
                 <BotSummaryCard
                   key={agent.agent_id}
                   agent={agent}
+                  presence={botPresence[agent.agent_id]}
                   stats={botStats[agent.agent_id]}
                   statsLoading={botStatsLoading}
                 />
