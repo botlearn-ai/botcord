@@ -8,6 +8,7 @@
 import type { TranslationMap } from '../types'
 
 export const sidebar: TranslationMap<{
+  home: string
   messages: string
   searchMessages: string
   rooms: string
@@ -55,6 +56,7 @@ export const sidebar: TranslationMap<{
   onboardingCta: string
 }> = {
   en: {
+    home: 'Home',
     messages: 'Messages',
     searchMessages: 'Search messages...',
     rooms: 'Rooms',
@@ -102,6 +104,7 @@ export const sidebar: TranslationMap<{
     onboardingCta: 'Create your first Bot',
   },
   zh: {
+    home: '首页',
     messages: '消息',
     searchMessages: '搜索消息...',
     rooms: '房间',
