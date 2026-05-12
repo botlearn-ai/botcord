@@ -12,7 +12,8 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { ChevronsRight, MessageSquarePlus, Search, UserPlus } from "lucide-react";
-import { mergeOwnerVisibleRooms } from "@/lib/messages-merge";
+import { applyMessagesFilter, mergeOwnerVisibleRooms } from "@/lib/messages-merge";
+import MessagesBotScopeDropdown from "./MessagesBotScopeDropdown";
 import type { DashboardRoom } from "@/lib/types";
 import RoomList from "../RoomList";
 import RoomZeroState from "../RoomZeroState";
@@ -35,11 +36,12 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     token: s.token,
     humanRooms: s.humanRooms,
   })));
-  const { sidebarTab, openedRoomId, messagesPane, messagesFilter, messagesGroupingOpen, setMessagesGroupingOpen, messagesSearchOpen, setMessagesSearchOpen } = useDashboardUIStore(useShallow((s) => ({
+  const { sidebarTab, openedRoomId, messagesPane, messagesFilter, messagesBotScope, messagesGroupingOpen, setMessagesGroupingOpen, messagesSearchOpen, setMessagesSearchOpen } = useDashboardUIStore(useShallow((s) => ({
     sidebarTab: s.sidebarTab,
     openedRoomId: s.openedRoomId,
     messagesPane: s.messagesPane,
     messagesFilter: s.messagesFilter,
+    messagesBotScope: s.messagesBotScope,
     messagesGroupingOpen: s.messagesGroupingOpen,
     setMessagesGroupingOpen: s.setMessagesGroupingOpen,
     messagesSearchOpen: s.messagesSearchOpen,
@@ -64,19 +66,18 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     return mergeOwnerVisibleRooms({ ownRooms, ownedAgentRooms });
   }, [overview, recentVisitedRooms, token, humanRooms, ownedAgentRooms]);
 
+  // Type-level filter from the grouping sidebar (self-* / bots-*).
+  const typeFilteredRooms = useMemo(() => {
+    const selfMyBotRoomIds = new Set(ownedAgentRooms.map((r) => r.room_id));
+    return applyMessagesFilter(visibleMessageRooms, messagesFilter, selfMyBotRoomIds);
+  }, [messagesFilter, visibleMessageRooms, ownedAgentRooms]);
+
+  // Per-bot narrowing — only meaningful for bots-* filters.
+  const isBotsFilter = messagesFilter.startsWith("bots-");
   const categorizedRooms = useMemo(() => {
-    if (messagesFilter === "all") return visibleMessageRooms;
-    if (messagesFilter === "groups") {
-      return visibleMessageRooms.filter((r) => (r.member_count ?? 0) > 2);
-    }
-    // Below: DMs only (2 members or fewer).
-    const dms = visibleMessageRooms.filter((r) => (r.member_count ?? 0) <= 2);
-    if (messagesFilter === "humans") {
-      return dms.filter((r) => r.peer_type === "human");
-    }
-    // bots: explicit agent peer OR DMs with no explicit peer_type (legacy default).
-    return dms.filter((r) => r.peer_type !== "human");
-  }, [messagesFilter, visibleMessageRooms]);
+    if (!isBotsFilter || messagesBotScope === "all") return typeFilteredRooms;
+    return typeFilteredRooms.filter((r) => r._originAgent?.agent_id === messagesBotScope);
+  }, [isBotsFilter, messagesBotScope, typeFilteredRooms]);
 
   const normalizedMessageQuery = messageQuery.trim().toLowerCase();
   const filteredMessageRooms = useMemo(() => {
@@ -154,6 +155,11 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
       {messagesSearchOpen ? (
         <div className="border-b border-glass-border px-3 py-2">
           <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
+        </div>
+      ) : null}
+      {isBotsFilter ? (
+        <div className="border-b border-glass-border/60 px-3">
+          <MessagesBotScopeDropdown rooms={typeFilteredRooms} />
         </div>
       ) : null}
       {visibleMessageRooms.length === 0 && !activeAgentId ? (

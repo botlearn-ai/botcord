@@ -30,8 +30,27 @@ export interface DashboardUIState {
   closeCreateBotModal: () => void;
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
-  /** Filter chip in the Messages list. */
-  messagesFilter: "all" | "bots" | "humans" | "groups";
+  /**
+   * Two-level filter in the Messages list. Two parent buckets:
+   *  - `self-*`  conversations the owner participates in (can send)
+   *  - `bots-*`  conversations of owned bots (owner observes only)
+   * Each parent has an `*-all` aggregate as its default leaf.
+   */
+  messagesFilter:
+    | "self-all"
+    | "self-my-bot"
+    | "self-third-bot"
+    | "self-human"
+    | "self-group"
+    | "bots-all"
+    | "bots-bot-bot"
+    | "bots-bot-human"
+    | "bots-group";
+  /**
+   * Per-bot narrowing inside the `bots-*` family. "all" = no narrowing;
+   * otherwise the agent_id of the single owned bot to scope to.
+   */
+  messagesBotScope: string;
   /**
    * Messages identity scope: whose conversations are listed.
    *  - "human": my own (Jin's) conversations
@@ -53,6 +72,7 @@ export interface DashboardUIState {
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
   setMessagesPane: (pane: DashboardUIState["messagesPane"]) => void;
   setMessagesFilter: (filter: DashboardUIState["messagesFilter"]) => void;
+  setMessagesBotScope: (scope: string) => void;
   setMessagesScope: (scope: DashboardUIState["messagesScope"]) => void;
   setMessagesGroupingOpen: (open: boolean) => void;
   setMessagesSearchOpen: (open: boolean) => void;
@@ -85,7 +105,8 @@ const initialUIState = {
   sidebarTab: "home" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
   messagesPane: "room" as const,
-  messagesFilter: "all" as const,
+  messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
+  messagesBotScope: "all",
   messagesScope: { type: "human" as const } as DashboardUIState["messagesScope"],
   messagesGroupingOpen: true,
   messagesSearchOpen: false,
@@ -113,6 +134,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
   setMessagesFilter: (messagesFilter) =>
     set((state) => (state.messagesFilter === messagesFilter ? state : { messagesFilter })),
+  setMessagesBotScope: (messagesBotScope) =>
+    set((state) => (state.messagesBotScope === messagesBotScope ? state : { messagesBotScope })),
   setMessagesScope: (messagesScope) =>
     set((state) => {
       const a = state.messagesScope;

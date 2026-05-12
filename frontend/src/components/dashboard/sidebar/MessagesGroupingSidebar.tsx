@@ -1,39 +1,34 @@
 "use client";
 
-import { useMemo } from "react";
-import { Bot, ChevronsLeft, Inbox, User, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Bot, ChevronDown, ChevronRight, ChevronsLeft, Eye, Inbox, User, Users, UsersRound } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
-import { mergeOwnerVisibleRooms } from "@/lib/messages-merge";
-import type { DashboardRoom } from "@/lib/types";
+import { countMessagesByFilter, mergeOwnerVisibleRooms, type MessagesFilterKey } from "@/lib/messages-merge";
 
-type FilterKey = "all" | "bots" | "humans" | "groups";
-
-interface FilterDef {
-  key: FilterKey;
+interface FilterRow {
+  key: MessagesFilterKey;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const FILTER_DEFS: FilterDef[] = [
-  { key: "all", label: "全部", icon: Inbox },
-  { key: "bots", label: "Bot", icon: Bot },
-  { key: "humans", label: "真人", icon: User },
-  { key: "groups", label: "群聊", icon: Users },
+const SELF_ROWS: FilterRow[] = [
+  { key: "self-all", label: "全部", icon: Inbox },
+  { key: "self-my-bot", label: "和我自己的 Bot", icon: Bot },
+  { key: "self-third-bot", label: "和别人的 Bot", icon: Bot },
+  { key: "self-human", label: "和真人", icon: User },
+  { key: "self-group", label: "我加入的群", icon: Users },
 ];
 
-function countByFilter(rooms: DashboardRoom[]): Record<FilterKey, number> {
-  const dms = rooms.filter((r) => (r.member_count ?? 0) <= 2);
-  return {
-    all: rooms.length,
-    bots: dms.filter((r) => r.peer_type !== "human").length,
-    humans: dms.filter((r) => r.peer_type === "human").length,
-    groups: rooms.filter((r) => (r.member_count ?? 0) > 2).length,
-  };
-}
+const BOTS_ROWS: FilterRow[] = [
+  { key: "bots-all", label: "全部", icon: Inbox },
+  { key: "bots-bot-bot", label: "Bot 和其他 Bot", icon: Bot },
+  { key: "bots-bot-human", label: "Bot 和真人", icon: UsersRound },
+  { key: "bots-group", label: "Bot 加入的群", icon: Users },
+];
 
 export default function MessagesGroupingSidebar() {
   const { token, humanRooms } = useDashboardSessionStore(
@@ -60,48 +55,145 @@ export default function MessagesGroupingSidebar() {
   const counts = useMemo(() => {
     const ownRooms = buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms });
     const merged = mergeOwnerVisibleRooms({ ownRooms, ownedAgentRooms });
-    return countByFilter(merged);
+    const selfMyBotRoomIds = new Set(ownedAgentRooms.map((r) => r.room_id));
+    return countMessagesByFilter(merged, selfMyBotRoomIds);
   }, [overview, recentVisitedRooms, token, humanRooms, ownedAgentRooms]);
 
+  const [selfOpen, setSelfOpen] = useState(true);
+  const [botsOpen, setBotsOpen] = useState(true);
+
   return (
-    <div className="flex h-full w-[180px] shrink-0 flex-col border-r border-glass-border bg-deep-black/50">
+    <div className="flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border bg-deep-black/50">
       <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
         <button
           onClick={() => setMessagesGroupingOpen(false)}
-          title="收起"
-          aria-label="收起"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
+          title="收起分组"
+          aria-label="收起分组"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg/50 hover:text-text-primary"
         >
           <ChevronsLeft className="h-3.5 w-3.5" />
         </button>
       </div>
+
       <div className="flex-1 overflow-y-auto py-1">
-        {FILTER_DEFS.map((f) => {
-          const Icon = f.icon;
-          const active = messagesFilter === f.key;
-          const count = counts[f.key];
-          return (
-            <button
-              key={f.key}
-              onClick={() => setMessagesFilter(f.key)}
-              className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-                active
-                  ? "bg-neon-cyan/10 text-neon-cyan"
-                  : "text-text-secondary hover:bg-glass-bg/50 hover:text-text-primary"
-              }`}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1 text-sm font-medium">{f.label}</span>
-              <span className={`shrink-0 rounded-full px-1.5 text-[10px] ${
-                active ? "bg-neon-cyan/20 text-neon-cyan" : "bg-text-secondary/15 text-text-secondary/70"
-              }`}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
+        <GroupHeader
+          title="我参与的对话"
+          subtitle="可以收发消息"
+          icon={User}
+          count={counts["self-all"]}
+          open={selfOpen}
+          onToggle={() => setSelfOpen((v) => !v)}
+        />
+        {selfOpen ? (
+          <div className="pb-1">
+            {SELF_ROWS.map((row) => (
+              <FilterButton
+                key={row.key}
+                row={row}
+                count={counts[row.key]}
+                active={messagesFilter === row.key}
+                onClick={() => setMessagesFilter(row.key)}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        <div className="my-1 border-t border-glass-border/40" />
+
+        <GroupHeader
+          title="Bot 监控"
+          subtitle="观察我的 bots 在干什么"
+          icon={Eye}
+          count={counts["bots-all"]}
+          open={botsOpen}
+          onToggle={() => setBotsOpen((v) => !v)}
+        />
+        {botsOpen ? (
+          <div className="pb-1">
+            {BOTS_ROWS.map((row) => (
+              <FilterButton
+                key={row.key}
+                row={row}
+                count={counts[row.key]}
+                active={messagesFilter === row.key}
+                onClick={() => setMessagesFilter(row.key)}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function GroupHeader({
+  title,
+  subtitle,
+  icon: Icon,
+  count,
+  open,
+  onToggle,
+}: {
+  title: string;
+  subtitle: string;
+  icon: React.ComponentType<{ className?: string }>;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-glass-bg/40"
+    >
+      {open ? (
+        <ChevronDown className="h-3 w-3 shrink-0 text-text-secondary/60" />
+      ) : (
+        <ChevronRight className="h-3 w-3 shrink-0 text-text-secondary/40" />
+      )}
+      <Icon className="h-3.5 w-3.5 shrink-0 text-text-secondary/70" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-text-secondary/85">
+          {title}
+        </div>
+        <div className="truncate text-[10px] text-text-secondary/45">{subtitle}</div>
+      </div>
+      <span className="shrink-0 text-[10px] text-text-secondary/55">{count}</span>
+    </button>
+  );
+}
+
+function FilterButton({
+  row,
+  count,
+  active,
+  onClick,
+}: {
+  row: FilterRow;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const Icon = row.icon;
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 py-1.5 pl-[28px] pr-3 text-[12px] transition-colors ${
+        active
+          ? "bg-neon-cyan/10 text-neon-cyan"
+          : "text-text-secondary hover:bg-glass-bg/50 hover:text-text-primary"
+      }`}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{row.label}</span>
+      </span>
+      <span className={`shrink-0 rounded-full px-1.5 text-[10px] ${
+        active ? "bg-neon-cyan/20 text-neon-cyan" : "bg-text-secondary/15 text-text-secondary/70"
+      }`}>
+        {count}
+      </span>
+    </button>
   );
 }

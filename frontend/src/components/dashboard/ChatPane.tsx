@@ -632,9 +632,32 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   );
 }
 
-type MessagesFilter = "all" | "bots" | "humans" | "groups";
+type MessagesFilter =
+  | "self-all"
+  | "self-my-bot"
+  | "self-third-bot"
+  | "self-human"
+  | "self-group"
+  | "bots-all"
+  | "bots-bot-bot"
+  | "bots-bot-human"
+  | "bots-group";
 
-const messagesEmptyByFilter: Record<MessagesFilter, {
+type EmptyBucket = "all" | "bots" | "humans" | "groups";
+
+const filterToBucket: Record<MessagesFilter, EmptyBucket> = {
+  "self-all": "all",
+  "self-my-bot": "bots",
+  "self-third-bot": "bots",
+  "self-human": "humans",
+  "self-group": "groups",
+  "bots-all": "all",
+  "bots-bot-bot": "bots",
+  "bots-bot-human": "humans",
+  "bots-group": "groups",
+};
+
+const messagesEmptyByFilter: Record<EmptyBucket, {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
@@ -644,7 +667,7 @@ const messagesEmptyByFilter: Record<MessagesFilter, {
     icon: MessageSquare,
     title: "选择一个对话",
     description: "从左侧列表选一条对话开始 — Bot、真人、群聊都在这里。",
-    hint: "提示：用顶部的「全部 / Bot / 真人 / 群聊」chip 快速切换。",
+    hint: "提示：用左侧分组在「我参与的对话」和「Bot 监控」之间切换。",
   },
   bots: {
     icon: Bot,
@@ -667,7 +690,7 @@ const messagesEmptyByFilter: Record<MessagesFilter, {
 };
 
 function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
-  const config = messagesEmptyByFilter[filter];
+  const config = messagesEmptyByFilter[filterToBucket[filter]];
   const Icon = config.icon;
   return (
     <div className="w-full max-w-md text-center">
