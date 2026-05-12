@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bot, Plus, Sparkles, TrendingUp, Users } from "lucide-react";
@@ -7,7 +8,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import type { AgentProfile, PublicHumanProfile, UserAgent } from "@/lib/types";
+import { api } from "@/lib/api";
+import type { ActivityStats, AgentProfile, PublicHumanProfile, UserAgent } from "@/lib/types";
 import BotAvatar from "./BotAvatar";
 import ExploreEntityCard from "./ExploreEntityCard";
 
@@ -43,14 +45,32 @@ function SectionHeader({
   );
 }
 
-function BotSummaryCard({ agent }: { agent: UserAgent }) {
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-lg bg-glass-bg px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-wider text-text-secondary/60">{label}</div>
+      <div className="text-sm font-semibold text-text-primary">{value}</div>
+    </div>
+  );
+}
+
+function BotSummaryCard({
+  agent,
+  stats,
+  statsLoading,
+}: {
+  agent: UserAgent;
+  stats?: ActivityStats;
+  statsLoading: boolean;
+}) {
   const online = agent.ws_online;
+  const loadingValue = statsLoading ? "..." : "-";
   return (
     <button
       type="button"
-      className="min-w-[240px] max-w-[280px] rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40"
+      className="min-w-[260px] max-w-[280px] rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40"
     >
-      <div className="flex items-center gap-2.5">
+      <div className="mb-3 flex items-center gap-2.5">
         <BotAvatar agentId={agent.agent_id} avatarUrl={agent.avatar_url} size={40} alt={agent.display_name} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -61,6 +81,12 @@ function BotSummaryCard({ agent }: { agent: UserAgent }) {
             {agent.bio || "暂无简介"}
           </p>
         </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <Stat label="7d 发送" value={stats?.messages_sent ?? loadingValue} />
+        <Stat label="7d 接收" value={stats?.messages_received ?? loadingValue} />
+        <Stat label="活跃房间" value={stats?.active_rooms ?? loadingValue} />
+        <Stat label="完成话题" value={stats?.topics_completed ?? loadingValue} />
       </div>
     </button>
   );
@@ -124,7 +150,36 @@ export default function HomePanel() {
     publicAgents: s.publicAgents,
     publicHumans: s.publicHumans,
   })));
-  const visibleBots = noBots ? [] : ownedAgents;
+  const [botStats, setBotStats] = useState<Record<string, ActivityStats>>({});
+  const [botStatsLoading, setBotStatsLoading] = useState(false);
+  const visibleBots = useMemo(() => (noBots ? [] : ownedAgents), [noBots, ownedAgents]);
+
+  useEffect(() => {
+    if (visibleBots.length === 0) {
+      setBotStats({});
+      return;
+    }
+    let cancelled = false;
+    setBotStatsLoading(true);
+    void Promise.all(
+      visibleBots.map(async (agent) => {
+        try {
+          const stats = await api.getActivityStats("7d", { type: "agent", id: agent.agent_id });
+          return [agent.agent_id, stats] as const;
+        } catch {
+          return [agent.agent_id, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setBotStats(Object.fromEntries(entries.filter((entry): entry is readonly [string, ActivityStats] => entry[1] !== null)));
+    }).finally(() => {
+      if (!cancelled) setBotStatsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleBots]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -148,7 +203,12 @@ export default function HomePanel() {
           {visibleBots.length > 0 ? (
             <div className="flex gap-3 overflow-x-auto pb-2">
               {visibleBots.map((agent) => (
-                <BotSummaryCard key={agent.agent_id} agent={agent} />
+                <BotSummaryCard
+                  key={agent.agent_id}
+                  agent={agent}
+                  stats={botStats[agent.agent_id]}
+                  statsLoading={botStatsLoading}
+                />
               ))}
             </div>
           ) : (

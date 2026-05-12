@@ -817,8 +817,11 @@ export const api = {
 
   // --- Activity / Observability ---
 
-  getActivityStats(period: "today" | "7d" | "30d" = "today") {
-    return apiGet<ActivityStats>("/api/dashboard/activity/stats", { period });
+  getActivityStats(
+    period: "today" | "7d" | "30d" = "today",
+    identityOverride?: ActiveIdentity | null,
+  ) {
+    return apiGet<ActivityStats>("/api/dashboard/activity/stats", { period }, identityOverride);
   },
 
   getActivityFeed(opts?: { period?: string; limit?: number; offset?: number }) {
