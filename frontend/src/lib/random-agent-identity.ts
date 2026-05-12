@@ -220,12 +220,19 @@ export function pickRandomAgentIdentity(
 ): { index: number; name: string; bio: string } {
   const pool = locale === "zh" ? ZH_POOL : EN_POOL;
   if (pool.length === 0) return { index: -1, name: "", bio: "" };
-  let idx = Math.floor(Math.random() * pool.length);
-  if (typeof excludeIndex === "number" && pool.length > 1) {
-    let guard = 8;
-    while (idx === excludeIndex && guard-- > 0) {
-      idx = Math.floor(Math.random() * pool.length);
-    }
+  // Deterministic non-repeat: when excludeIndex is in range and the pool has
+  // more than one entry, sample uniformly from the (N - 1) remaining slots.
+  const canExclude =
+    typeof excludeIndex === "number" &&
+    excludeIndex >= 0 &&
+    excludeIndex < pool.length &&
+    pool.length > 1;
+  let idx: number;
+  if (canExclude) {
+    idx = Math.floor(Math.random() * (pool.length - 1));
+    if (idx >= (excludeIndex as number)) idx += 1;
+  } else {
+    idx = Math.floor(Math.random() * pool.length);
   }
   const pick = pool[idx];
   return { index: idx, name: pick.name, bio: pick.bio };

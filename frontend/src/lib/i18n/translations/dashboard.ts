@@ -1639,7 +1639,6 @@ export const createAgentDialog: TranslationMap<{
   namePlaceholder: string
   nameHint: string
   nameRequired: string
-  randomizeLabel: string
   randomizeTooltip: string
   bioLabel: string
   bioPlaceholder: string
@@ -1684,7 +1683,6 @@ export const createAgentDialog: TranslationMap<{
     namePlaceholder: 'Enter a name, e.g. Research assistant',
     nameHint: 'This is the BotCord display name. Everyone in group chats can see it.',
     nameRequired: 'Name is required',
-    randomizeLabel: 'Surprise me',
     randomizeTooltip: 'Fill in a random name and bio',
     bioLabel: 'Bio',
     bioPlaceholder: 'Tell us what this Agent does (optional)',
@@ -1729,7 +1727,6 @@ export const createAgentDialog: TranslationMap<{
     namePlaceholder: '输入名称，例如：研究助理',
     nameHint: 'Agent 名称是 BotCord 的显示名称，在房间对话中对所有人可见。',
     nameRequired: '名称不能为空',
-    randomizeLabel: '随机一组',
     randomizeTooltip: '随机生成一组名称和简介',
     bioLabel: '简介',
     bioPlaceholder: '介绍一下这个 Agent 是做什么的（选填）',
