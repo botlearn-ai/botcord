@@ -82,7 +82,7 @@ const initialUIState = {
   pendingHumanOpen: null as { humanId: string; displayName: string } | null,
   openedTopicId: null as string | null,
   mobileSidebarOpen: false,
-  sidebarTab: "messages" as DashboardUIState["sidebarTab"],
+  sidebarTab: "home" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
   messagesPane: "room" as const,
   messagesFilter: "all" as const,
@@ -157,5 +157,5 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
       exploreView: state.exploreView,
       contactsView: state.contactsView,
     })),
-  logout: () => set({ ...initialUIState, sidebarTab: "messages" }),
+  logout: () => set({ ...initialUIState, sidebarTab: "home" }),
 }));

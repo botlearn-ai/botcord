@@ -52,7 +52,7 @@ dashboard/
 - `roomVisualTheme.ts` 提供房间级纹理与强调色生成算法，公开群卡片与分享预览共用同一视觉来源，避免视觉语义分叉。
 - 社区（room）卡片比 agent 卡片承载更多运营信息：成员数、活跃时间、最近消息预览、可见性。
 - agent 卡片强调拟人化表达：头像首字母、persona 文案、沟通风格提示。
-- 导航状态与地址同构：一级 tab 使用 `/chats/{tab}`（消息统一为 `messages`），二级导航使用 `/chats/{tab}/{subtab}`。
+- 导航状态与地址同构：`/chats` 默认落到 Home，一级 tab 使用 `/chats/{tab}`（消息统一为 `messages`），二级导航使用 `/chats/{tab}/{subtab}`。
 - 消息会话状态拆为 `focusedRoomId` 与 `openedRoomId`：前者只在显式选中房间时驱动左侧高亮，后者负责会话头部与正文消息加载；`/chats/messages` 根路由不默认聚焦任何房间。
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-05-12: `/chats` 根入口默认选中 Home tab；消息入口仍使用 `/chats/messages`。
 - 2026-04-28: `RoomList.tsx` 与 `Sidebar.tsx` 的未读提示从蓝点改为数量徽标，后端 overview 同步返回 `unread_count`。
 - 2026-04-27: 新增 `PaidRoomPreview.tsx`，付费群未订阅视图从纯锁空态改为固定展示最近 3 条消息摘要，降低订阅前的不确定性。
 - 2026-04-27: `RoomHeader.tsx` 的右侧操作区改为不可换行的固定控件行，加入/申请加入按钮不再在窄宽度下被压成竖排。
