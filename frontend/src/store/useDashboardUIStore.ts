@@ -24,6 +24,14 @@ export interface DashboardUIState {
   /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
   selectedBotAgentId: string | null;
   setSelectedBotAgentId: (agentId: string | null) => void;
+  /** My Bots main content sub-tab. */
+  myBotsTab: "bots" | "devices";
+  setMyBotsTab: (tab: DashboardUIState["myBotsTab"]) => void;
+  /** Right-side drawer selections for My Bots detail views. */
+  selectedDeviceId: string | null;
+  botDetailAgentId: string | null;
+  setSelectedDeviceId: (deviceId: string | null) => void;
+  setBotDetailAgentId: (agentId: string | null) => void;
   /** Controls the Create Bot modal visibility from any component. */
   createBotModalOpen: boolean;
   openCreateBotModal: () => void;
@@ -104,6 +112,9 @@ const initialUIState = {
   mobileSidebarOpen: false,
   sidebarTab: "home" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
+  myBotsTab: "bots" as const,
+  selectedDeviceId: null as string | null,
+  botDetailAgentId: null as string | null,
   messagesPane: "room" as const,
   messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
   messagesBotScope: "all",
@@ -130,6 +141,12 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
   setSelectedBotAgentId: (selectedBotAgentId) =>
     set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
+  setMyBotsTab: (myBotsTab) =>
+    set((state) => (state.myBotsTab === myBotsTab ? state : { myBotsTab })),
+  setSelectedDeviceId: (selectedDeviceId) =>
+    set((state) => (state.selectedDeviceId === selectedDeviceId ? state : { selectedDeviceId })),
+  setBotDetailAgentId: (botDetailAgentId) =>
+    set((state) => (state.botDetailAgentId === botDetailAgentId ? state : { botDetailAgentId })),
   setMessagesPane: (messagesPane) =>
     set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
   setMessagesFilter: (messagesFilter) =>
