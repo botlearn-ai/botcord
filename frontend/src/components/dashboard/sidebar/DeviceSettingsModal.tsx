@@ -344,7 +344,7 @@ export default function DeviceSettingsModal({
       </div>
       {forwardLogs && diagnosticResult && (
         <ForwardModal
-          quoteText={locale === "zh" ? "设备排障日志" : "Device troubleshooting logs"}
+          quoteText=""
           sourceFile={{
             url: diagnosticDownloadUrl,
             filename: diagnosticResult.filename,
