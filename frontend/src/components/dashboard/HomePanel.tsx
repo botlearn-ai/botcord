@@ -3,6 +3,7 @@
 import { useRouter } from "nextjs-toploader/app";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Bot, Plus, Sparkles, TrendingUp, Users } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -118,11 +119,11 @@ export default function HomePanel() {
   );
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const openCreateBotModal = useDashboardUIStore((s) => s.openCreateBotModal);
-  const { publicRooms, publicAgents, publicHumans } = useDashboardChatStore((s) => ({
+  const { publicRooms, publicAgents, publicHumans } = useDashboardChatStore(useShallow((s) => ({
     publicRooms: s.publicRooms,
     publicAgents: s.publicAgents,
     publicHumans: s.publicHumans,
-  }));
+  })));
   const visibleBots = noBots ? [] : ownedAgents;
 
   return (
