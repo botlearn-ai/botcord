@@ -426,7 +426,7 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
             </span>
           )}
-          {isAuthedReady && activeAgentId && !isHumanView && isJoined && !isOwnerChatRoom && (
+          {isAuthedReady && activeAgentId && isJoined && !isOwnerChatRoom && (
             <span className="group relative">
               <button
                 onClick={() => setShowPolicyModal(true)}
