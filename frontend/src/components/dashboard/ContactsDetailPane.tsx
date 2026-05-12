@@ -137,7 +137,7 @@ export default function ContactsDetailPane() {
     const a = target.agent;
     title = a.display_name;
     subtitle = a.agent_id;
-    tag = { tone: "cyan", label: a.is_default ? "BOT · 默认" : "BOT" };
+    tag = { tone: "cyan", label: "BOT" };
     statusText = a.ws_online ? "● Online" : "● Offline";
     bio = a.bio ?? null;
     avatar = <BotAvatar agentId={a.agent_id} avatarUrl={a.avatar_url} size={96} alt={a.display_name} />;

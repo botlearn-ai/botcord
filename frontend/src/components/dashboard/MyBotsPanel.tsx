@@ -100,11 +100,6 @@ export default function MyBotsPanel() {
                           <span className={`h-1 w-1 rounded-full ${online ? "bg-neon-green" : "bg-text-secondary/40"}`} />
                           {online ? "Online" : "Offline"}
                         </span>
-                        {agent.is_default ? (
-                          <span className="rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[10px] text-neon-purple">
-                            默认
-                          </span>
-                        ) : null}
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs text-text-secondary/70">
                         {agent.bio || "暂无简介"}

@@ -191,7 +191,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
               key={`owned-${agent.agent_id}`}
               avatar={<BotAvatar agentId={agent.agent_id} size={32} alt={agent.display_name} />}
               name={agent.display_name}
-              subtitle={agent.is_default ? "默认 · 我的 Bot" : "我的 Bot"}
+              subtitle="我的 Bot"
               online={agent.ws_online}
               active={isActive("agent", agent.agent_id)}
               onClick={() => selectAgent(agent.agent_id)}
