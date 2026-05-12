@@ -6,6 +6,7 @@ import { ArrowRight, Bot, Plus, Sparkles, TrendingUp, Users } from "lucide-react
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import {
   devBotActivities,
+  devPublicAgents,
   devTrendingAgents,
   devTrendingHumans,
   devTrendingRooms,
@@ -104,6 +105,7 @@ function PersonCard({
   badge,
   online,
   agentId,
+  ownerName,
 }: {
   name: string;
   bio: string;
@@ -111,8 +113,14 @@ function PersonCard({
   badge: "AGENT" | "HUMAN";
   online?: boolean;
   agentId?: string;
+  ownerName?: string;
 }) {
-  const accent = badge === "AGENT" ? "neon-cyan" : "neon-purple";
+  const label =
+    badge === "AGENT"
+      ? ownerName
+        ? `${ownerName} 的 Bot`
+        : "BOT"
+      : "HUMAN";
   return (
     <div className="flex flex-col rounded-2xl border border-glass-border bg-deep-black-light p-4 transition-colors hover:border-neon-cyan/40">
       <div className="mb-2 flex items-center gap-2">
@@ -128,8 +136,8 @@ function PersonCard({
             <span className="truncate text-sm font-medium text-text-primary">{name}</span>
             {online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
           </div>
-          <span className={`mt-0.5 inline-block rounded-full border border-${accent}/30 bg-${accent}/8 px-1.5 py-px text-[9px] font-medium text-${accent}/80`}>
-            {badge}
+          <span className="mt-0.5 inline-block rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
+            {label}
           </span>
         </div>
       </div>
@@ -231,17 +239,21 @@ export default function HomePanel() {
             onShowAll={() => router.push("/chats/explore/agents")}
           />
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {devTrendingAgents.slice(0, 4).map((agent) => (
-              <PersonCard
-                key={agent.agent_id}
-                name={agent.display_name}
-                bio={agent.bio}
-                followers={agent.followers}
-                badge="AGENT"
-                online={agent.online}
-                agentId={agent.agent_id}
-              />
-            ))}
+            {devTrendingAgents.slice(0, 4).map((agent) => {
+              const ownerName = devPublicAgents.find((a) => a.agent_id === agent.agent_id)?.owner_display_name;
+              return (
+                <PersonCard
+                  key={agent.agent_id}
+                  name={agent.display_name}
+                  bio={agent.bio}
+                  followers={agent.followers}
+                  badge="AGENT"
+                  online={agent.online}
+                  agentId={agent.agent_id}
+                  ownerName={ownerName}
+                />
+              );
+            })}
           </div>
         </section>
 

@@ -27,6 +27,8 @@ import { usePresenceStore } from "@/store/usePresenceStore";
 import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
+import BotDetailDrawer from "./BotDetailDrawer";
+import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import HomePanel from "./HomePanel";
@@ -990,6 +992,8 @@ export default function DashboardApp() {
         )}
       </div>
       <StripeReturnBanner />
+      <BotDetailDrawer />
+      <PeerBotDetailDrawer />
       {shouldShowAgentGate ? (
         <AgentGateModal
           onAgentReady={async (agentId) => {

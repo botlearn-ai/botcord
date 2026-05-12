@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "nextjs-toploader/app";
 import {
   Bot,
   Eye,
@@ -16,11 +17,22 @@ import {
   X,
 } from "lucide-react";
 import { useShallow } from "zustand/shallow";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
-import { devBotActivities, devSchedulesByAgent, type AutoSchedule } from "@/lib/dev-bypass";
+import {
+  devBotActivities,
+  devBotContactsByAgent,
+  devBotGroupsByAgent,
+  devBotRoomsByAgent,
+  devSchedulesByAgent,
+  type AutoSchedule,
+  type BotContact,
+  type BotGroupRef,
+} from "@/lib/dev-bypass";
 import BotAvatar from "./BotAvatar";
+import { CompositeAvatar } from "./CompositeAvatar";
 
 type TabKey = "overview" | "profile" | "policy" | "auto" | "gateways" | "files";
 
@@ -39,17 +51,31 @@ const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?
  * All edit operations are local-state-only in dev bypass.
  */
 export default function BotDetailDrawer() {
-  const { botDetailAgentId, setBotDetailAgentId, setSelectedDeviceId } = useDashboardUIStore(
+  const router = useRouter();
+  const {
+    botDetailAgentId,
+    setBotDetailAgentId,
+    setSelectedDeviceId,
+    setSidebarTab,
+    setOpenedRoomId,
+    setMessagesFilter,
+    setMessagesBotScope,
+  } = useDashboardUIStore(
     useShallow((s) => ({
       botDetailAgentId: s.botDetailAgentId,
       setBotDetailAgentId: s.setBotDetailAgentId,
       setSelectedDeviceId: s.setSelectedDeviceId,
+      setSidebarTab: s.setSidebarTab,
+      setOpenedRoomId: s.setOpenedRoomId,
+      setMessagesFilter: s.setMessagesFilter,
+      setMessagesBotScope: s.setMessagesBotScope,
     })),
   );
   const { ownedAgents } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents })),
   );
   const daemons = useDaemonStore((s) => s.daemons);
+  const overview = useDashboardChatStore((s) => s.overview);
 
   const open = botDetailAgentId !== null;
   const bot = botDetailAgentId ? ownedAgents.find((a) => a.agent_id === botDetailAgentId) ?? null : null;
@@ -77,6 +103,26 @@ export default function BotDetailDrawer() {
   if (!open || !bot) return null;
 
   const online = stats?.online ?? bot.ws_online;
+
+  // Jump to a conversation visible from THIS bot's perspective. Sets BOT 监控
+  // scope so the Messages list narrows to this bot's rooms, then opens the room.
+  const jumpToBotConversation = (roomId: string | null) => {
+    setBotDetailAgentId(null);
+    setSidebarTab("messages");
+    setMessagesFilter("bots-all");
+    setMessagesBotScope(bot.agent_id);
+    if (roomId) {
+      setOpenedRoomId(roomId);
+      router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+    } else {
+      router.push("/chats/messages");
+    }
+  };
+
+  const findFriendRoomId = (friendId: string): string | null => {
+    const rooms = devBotRoomsByAgent[bot.agent_id] ?? [];
+    return rooms.find((r) => r.owner_id === friendId)?.room_id ?? null;
+  };
 
   return (
     <>
@@ -146,11 +192,27 @@ export default function BotDetailDrawer() {
               bot={bot}
               stats={stats}
               device={device}
+              friends={devBotContactsByAgent[bot.agent_id] ?? []}
+              groups={devBotGroupsByAgent[bot.agent_id] ?? []}
               onJumpToDevice={(id) => {
                 setBotDetailAgentId(null);
                 setSelectedDeviceId(id);
               }}
-              onOpenChat={() => alert("Open chat (TODO)")}
+              onJumpToFriend={(friend) => jumpToBotConversation(findFriendRoomId(friend.id))}
+              onJumpToGroup={(group) => jumpToBotConversation(group.room_id)}
+              onOpenChat={() => {
+                const dm = overview?.rooms.find(
+                  (r) => r.owner_id === bot.agent_id && (r.peer_type ?? r.owner_type) === "agent",
+                );
+                setBotDetailAgentId(null);
+                setSidebarTab("messages");
+                if (dm) {
+                  setOpenedRoomId(dm.room_id);
+                  router.push(`/chats/messages/${encodeURIComponent(dm.room_id)}`);
+                } else {
+                  router.push("/chats/messages");
+                }
+              }}
               onOpenSettings={() => setTab("profile")}
             />
           )}
@@ -171,14 +233,22 @@ function OverviewTab({
   bot,
   stats,
   device,
+  friends,
+  groups,
   onJumpToDevice,
+  onJumpToFriend,
+  onJumpToGroup,
   onOpenChat,
   onOpenSettings,
 }: {
   bot: { agent_id: string; display_name: string; bio?: string | null };
   stats: typeof devBotActivities[number] | null | undefined;
   device: { id: string; label: string | null; status: string } | null;
+  friends: BotContact[];
+  groups: BotGroupRef[];
   onJumpToDevice: (id: string) => void;
+  onJumpToFriend: (friend: BotContact) => void;
+  onJumpToGroup: (group: BotGroupRef) => void;
   onOpenChat: () => void;
   onOpenSettings: () => void;
 }) {
@@ -238,6 +308,84 @@ function OverviewTab({
           </button>
         ) : (
           <p className="text-xs text-text-secondary/55">未关联任何设备</p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+        <h3 className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          <span>好友 · {friends.length}</span>
+        </h3>
+        {friends.length > 0 ? (
+          <ul className="space-y-1">
+            {friends.slice(0, 6).map((f) => (
+              <li key={`${f.type}-${f.id}`}>
+                <button
+                  onClick={() => onJumpToFriend(f)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg/60"
+                >
+                  {f.type === "agent" ? (
+                    <BotAvatar agentId={f.id} size={28} alt={f.display_name} />
+                  ) : (
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-neon-purple/25 bg-neon-purple/10 text-[11px] font-semibold text-neon-purple">
+                      {f.display_name.charAt(0)}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-xs text-text-primary">{f.display_name}</span>
+                      {f.online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
+                    {f.type === "agent" ? "BOT" : "HUMAN"}
+                  </span>
+                </button>
+              </li>
+            ))}
+            {friends.length > 6 ? (
+              <li className="px-2 pt-1 text-[11px] text-text-secondary/55">
+                还有 {friends.length - 6} 位 · 点击查看全部 →
+              </li>
+            ) : null}
+          </ul>
+        ) : (
+          <p className="text-xs text-text-secondary/55">还没有好友</p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+        <h3 className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          <span>加入的群 · {groups.length}</span>
+        </h3>
+        {groups.length > 0 ? (
+          <ul className="space-y-1">
+            {groups.map((g) => (
+              <li key={g.room_id}>
+                <button
+                  onClick={() => onJumpToGroup(g)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg/60"
+                >
+                  {g.members_preview && g.members_preview.length >= 2 ? (
+                    <CompositeAvatar
+                      members={g.members_preview}
+                      totalMembers={g.member_count}
+                      size={28}
+                    />
+                  ) : (
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-neon-cyan/25 bg-neon-cyan/10 text-[11px] font-semibold text-neon-cyan">
+                      #
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-text-primary">{g.name}</p>
+                    <p className="text-[10px] text-text-secondary/55">{g.member_count} 成员</p>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-text-secondary/55">还没加入任何群</p>
         )}
       </section>
 

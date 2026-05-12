@@ -32,6 +32,9 @@ export interface DashboardUIState {
   /** Right-side drawer: selected bot agent_id in the My Bots → Bots view. */
   botDetailAgentId: string | null;
   setBotDetailAgentId: (id: string | null) => void;
+  /** Right-side drawer for peer (non-owned) bots — shows public info only. */
+  peerBotAgentId: string | null;
+  setPeerBotAgentId: (id: string | null) => void;
   setSelectedBotAgentId: (agentId: string | null) => void;
   /** Controls the Create Bot modal visibility from any component. */
   createBotModalOpen: boolean;
@@ -112,6 +115,7 @@ const initialUIState = {
   myBotsTab: "bots" as DashboardUIState["myBotsTab"],
   selectedDeviceId: null as string | null,
   botDetailAgentId: null as string | null,
+  peerBotAgentId: null as string | null,
   messagesPane: "room" as const,
   messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
   messagesScope: { type: "human" as const } as DashboardUIState["messagesScope"],
@@ -142,6 +146,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.selectedDeviceId === selectedDeviceId ? state : { selectedDeviceId })),
   setBotDetailAgentId: (botDetailAgentId) =>
     set((state) => (state.botDetailAgentId === botDetailAgentId ? state : { botDetailAgentId })),
+  setPeerBotAgentId: (peerBotAgentId) =>
+    set((state) => (state.peerBotAgentId === peerBotAgentId ? state : { peerBotAgentId })),
   setSelectedBotAgentId: (selectedBotAgentId) =>
     set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
   setMessagesPane: (messagesPane) =>

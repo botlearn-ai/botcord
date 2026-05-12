@@ -6,7 +6,6 @@ import { useShallow } from "zustand/shallow";
 import BotAvatar from "./BotAvatar";
 import MyDevicesView from "./MyDevicesView";
 import DeviceDetailDrawer from "./DeviceDetailDrawer";
-import BotDetailDrawer from "./BotDetailDrawer";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
@@ -105,7 +104,6 @@ export default function MyBotsPanel() {
         {myBotsTab === "bots" ? <BotsView ownedAgents={ownedAgents} openCreateBotModal={openCreateBotModal} /> : <MyDevicesView />}
       </div>
       <DeviceDetailDrawer />
-      <BotDetailDrawer />
     </div>
   );
 }

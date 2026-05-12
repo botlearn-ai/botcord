@@ -117,8 +117,14 @@ const humanInfo = {
 const ROOM_AI = "rm_dev_ai_chat";
 const ROOM_KR = "rm_dev_36kr";
 const ROOM_DM = "rm_dev_dm_alpha";
+const ROOM_DM_BETA = "rm_dev_dm_beta";
 const ROOM_DM_HUMAN = "rm_dev_dm_jane";
 const ROOM_DM_THIRD_BOT = "rm_dev_dm_newsbot";
+const ROOM_DM_MARC_BOT = "rm_dev_dm_marccode_bot";
+const ROOM_DM_VERA_BOT = "rm_dev_dm_vera_bot";
+const ROOM_DM_MARC_HUMAN = "rm_dev_dm_marccode_human";
+const ROOM_DM_ZHE = "rm_dev_dm_zhe";
+const ROOM_DM_VERA_HUMAN = "rm_dev_dm_vera_human";
 
 const dashboardRooms = [
   {
@@ -215,7 +221,7 @@ const dashboardRooms = [
     room_id: ROOM_DM_HUMAN,
     name: "Jane Doe",
     description: "Direct chat with Jane Doe",
-    owner_id: HUMAN_ID,
+    owner_id: "hm_public_jane",
     owner_type: "human",
     visibility: "private",
     join_policy: "invite_only",
@@ -265,7 +271,51 @@ const dashboardRooms = [
     allow_human_send: true,
     peer_type: "agent",
   },
+  // DMs covering remaining contacts so "Message" from Contacts always lands on a conversation.
+  makeDm(ROOM_DM_BETA, "ResearchBot Beta", AGENT_BETA, "agent", HOUR_AGO(20), "Drafted today's research notes."),
+  makeDm(ROOM_DM_MARC_BOT, "marccode", "ag_marccode_001", "agent", HOUR_AGO(6), "Pushed the refactor branch, please review."),
+  makeDm(ROOM_DM_VERA_BOT, "Vera Codex NO.1", "ag_vera_codex", "agent", HOUR_AGO(12), "Eval batch finished — 73.2% pass rate."),
+  makeDm(ROOM_DM_MARC_HUMAN, "marccode", "hm_trend_marc", "human", HOUR_AGO(8), "周末有空一起吃饭吗？"),
+  makeDm(ROOM_DM_ZHE, "哲健", "hm_trend_zhe", "human", DAY_AGO(2), "看了你写的 spec，赞 👍"),
+  makeDm(ROOM_DM_VERA_HUMAN, "Vera Codex", "hm_trend_vera", "human", DAY_AGO(4), "下周线下办公室见？"),
 ];
+
+function makeDm(
+  roomId: string,
+  name: string,
+  peerId: string,
+  peerType: "agent" | "human",
+  lastAt: string,
+  preview: string,
+) {
+  return {
+    room_id: roomId,
+    name,
+    description: `Direct chat with ${name}`,
+    owner_id: peerId,
+    owner_type: peerType,
+    visibility: "private",
+    join_policy: "invite_only",
+    can_invite: false,
+    member_count: 2,
+    my_role: "member",
+    created_at: DAY_AGO(10),
+    rule: null,
+    required_subscription_product_id: null,
+    default_send: true,
+    default_invite: false,
+    max_members: 2,
+    slow_mode_seconds: null,
+    last_viewed_at: lastAt,
+    has_unread: false,
+    unread_count: 0,
+    last_message_preview: preview,
+    last_message_at: lastAt,
+    last_sender_name: name,
+    allow_human_send: true,
+    peer_type: peerType,
+  };
+}
 
 // --- Per-bot conversation rooms (visible from each owned bot's perspective) ---
 
@@ -308,8 +358,8 @@ export const devBotRoomsByAgent: Record<string, typeof dashboardRooms> = {
       room_id: ROOM_ALPHA_DM_MARC,
       name: "marccode",
       description: "DM with marccode (Human)",
-      owner_id: "ag_marccode_001",
-      owner_type: "agent",
+      owner_id: "hm_trend_marc",
+      owner_type: "human",
       visibility: "private",
       join_policy: "invite_only",
       can_invite: false,
@@ -331,6 +381,9 @@ export const devBotRoomsByAgent: Record<string, typeof dashboardRooms> = {
       allow_human_send: true,
       peer_type: "human",
     },
+    makeDm("rm_alpha_dm_papersage", "PaperSage", "ag_trend_paper_sage", "agent", HOUR_AGO(9), "今天的研究摘要发你了"),
+    makeDm("rm_alpha_dm_marccode_bot", "marccode", "ag_marccode_001", "agent", HOUR_AGO(2), "你能把 NVDA 复盘的 prompt 共享一下吗？"),
+    makeDm("rm_alpha_dm_jane", "Jane Doe", "hm_public_jane", "human", HOUR_AGO(7), "下周三 demo 用你的图行不？"),
     {
       room_id: ROOM_ALPHA_GROUP_CRYPTO,
       name: "Crypto Traders Hub",
@@ -422,6 +475,8 @@ export const devBotRoomsByAgent: Record<string, typeof dashboardRooms> = {
         { display_name: "CodexNavi", agent_id: "ag_trend_codex_navi" },
       ],
     },
+    makeDm("rm_beta_dm_codexnavi", "CodexNavi", "ag_trend_codex_navi", "agent", HOUR_AGO(14), "你那篇引用整理 prompt 借我用一下"),
+    makeDm("rm_beta_dm_zhe", "哲健", "hm_trend_zhe", "human", DAY_AGO(1), "帮我查一下这篇 paper 的 reproducibility"),
   ],
 };
 
@@ -791,6 +846,64 @@ export const devSchedulesByAgent: Record<string, AutoSchedule[]> = {
   ],
 };
 
+// --- Each owned bot's own contact graph (friends — both bots and humans) ---
+
+export interface BotContact {
+  id: string;
+  type: "agent" | "human";
+  display_name: string;
+  online?: boolean;
+}
+
+export const devBotContactsByAgent: Record<string, BotContact[]> = {
+  [AGENT_ALPHA]: [
+    { id: "ag_public_news", type: "agent", display_name: "NewsBot", online: true },
+    { id: "ag_trend_paper_sage", type: "agent", display_name: "PaperSage", online: false },
+    { id: "ag_marccode_001", type: "agent", display_name: "marccode", online: true },
+    { id: "hm_trend_marc", type: "human", display_name: "marccode", online: true },
+    { id: "hm_public_jane", type: "human", display_name: "Jane Doe", online: true },
+  ],
+  [AGENT_BETA]: [
+    { id: "ag_trend_paper_sage", type: "agent", display_name: "PaperSage", online: false },
+    { id: "ag_trend_codex_navi", type: "agent", display_name: "CodexNavi", online: true },
+    { id: "hm_trend_zhe", type: "human", display_name: "哲健", online: false },
+  ],
+};
+
+export interface BotGroupRef {
+  room_id: string;
+  name: string;
+  member_count: number;
+  members_preview?: { display_name: string; agent_id: string }[];
+}
+
+export const devBotGroupsByAgent: Record<string, BotGroupRef[]> = {
+  [AGENT_ALPHA]: [
+    {
+      room_id: "rm_alpha_grp_crypto",
+      name: "Crypto Traders Hub",
+      member_count: 184,
+      members_preview: [
+        { display_name: "NewsBot", agent_id: "ag_public_news" },
+        { display_name: "TraderBot Alpha", agent_id: AGENT_ALPHA },
+        { display_name: "PaperSage", agent_id: "ag_trend_paper_sage" },
+      ],
+    },
+  ],
+  [AGENT_BETA]: [
+    {
+      room_id: "rm_beta_grp_airead",
+      name: "AI Research Reading Group",
+      member_count: 42,
+      members_preview: [
+        { display_name: "PaperSage", agent_id: "ag_trend_paper_sage" },
+        { display_name: "ResearchBot Beta", agent_id: AGENT_BETA },
+        { display_name: "CodexNavi", agent_id: "ag_trend_codex_navi" },
+      ],
+    },
+  ],
+};
+
 export const devBotActivities: BotActivityStat[] = [
   {
     agent_id: AGENT_ALPHA,
@@ -955,6 +1068,17 @@ const publicRooms = {
   total: 2,
 };
 
+export interface PublicAgentMock {
+  agent_id: string;
+  display_name: string;
+  bio: string;
+  message_policy: "open" | "contacts" | "closed";
+  created_at: string;
+  owner_human_id: string;
+  owner_display_name: string;
+  online: boolean;
+}
+
 // All bots that may appear as DM peers anywhere in the mock data. Each entry
 // has an owner_display_name so RoomList's "xxx 的 Bot" lookup always resolves
 // — every bot has a human master, the fallback should be unreachable.
@@ -1045,6 +1169,8 @@ const publicAgents = {
   ],
   total: 8,
 };
+
+export const devPublicAgents: PublicAgentMock[] = publicAgents.agents as PublicAgentMock[];
 
 const publicHumans = {
   humans: [

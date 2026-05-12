@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "nextjs-toploader/app";
-import { MessageCircle, Settings2, Share2, UserCircle, Users } from "lucide-react";
+import { MessageCircle, Settings2, Share2, SlidersHorizontal, UserCircle, Users } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import type { DashboardRoom, ContactInfo, UserAgent } from "@/lib/types";
+import { devPublicAgents } from "@/lib/dev-bypass";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotAvatar from "./BotAvatar";
 
@@ -40,15 +41,15 @@ function resolveTarget(
   return room ? { kind: "group", room } : null;
 }
 
-function Tag({ tone, children }: { tone: "cyan" | "purple" | "green"; children: React.ReactNode }) {
+function Tag({ tone, children }: { tone: "cyan" | "gray" | "green"; children: React.ReactNode }) {
   const cls =
-    tone === "purple"
-      ? "border-neon-purple/40 bg-neon-purple/10 text-neon-purple"
+    tone === "gray"
+      ? "border-text-secondary/20 bg-text-secondary/10 text-text-secondary/70"
       : tone === "green"
         ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
-        : "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan";
+        : "border-neon-cyan/40 bg-neon-cyan/15 text-neon-cyan";
   return (
-    <span className={`rounded-full border px-2 py-px text-[10px] font-medium uppercase tracking-[0.12em] ${cls}`}>
+    <span className={`rounded-full border px-2 py-px text-[10px] font-medium ${cls}`}>
       {children}
     </span>
   );
@@ -95,6 +96,10 @@ function ActionButton({
 export default function ContactsDetailPane() {
   const router = useRouter();
   const selectedContactKey = useDashboardUIStore((s) => s.selectedContactKey);
+  const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
+  const setPeerBotAgentId = useDashboardUIStore((s) => s.setPeerBotAgentId);
+  const setSidebarTab = useDashboardUIStore((s) => s.setSidebarTab);
+  const setOpenedRoomId = useDashboardUIStore((s) => s.setOpenedRoomId);
   const { ownedAgents, humanRooms } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents, humanRooms: s.humanRooms })),
   );
@@ -123,7 +128,7 @@ export default function ContactsDetailPane() {
   // --- Resolve display fields per target type ---
   let title = "";
   let subtitle = "";
-  let tag: { tone: "cyan" | "purple"; label: string } | null = null;
+  let tag: { tone: "cyan" | "gray"; label: string } | null = null;
   let statusText = "";
   let avatar: React.ReactNode;
   let bio: string | null = null;
@@ -133,7 +138,7 @@ export default function ContactsDetailPane() {
     const a = target.agent;
     title = a.display_name;
     subtitle = a.agent_id;
-    tag = { tone: "cyan", label: a.is_default ? "BOT · 默认" : "BOT" };
+    tag = { tone: "cyan", label: a.is_default ? "My Bot · 默认" : "My Bot" };
     statusText = a.ws_online ? "● Online" : "● Offline";
     bio = a.bio ?? null;
     avatar = <BotAvatar agentId={a.agent_id} size={96} alt={a.display_name} />;
@@ -141,14 +146,15 @@ export default function ContactsDetailPane() {
     const c = target.contact;
     title = c.alias || c.display_name;
     subtitle = c.contact_agent_id;
-    tag = { tone: "cyan", label: "BOT" };
+    const ownerName = devPublicAgents.find((a) => a.agent_id === c.contact_agent_id)?.owner_display_name;
+    tag = { tone: "gray", label: ownerName ? `${ownerName} 的 Bot` : "外部 Bot" };
     statusText = c.online ? "● Online" : "● Offline";
     avatar = <BotAvatar agentId={c.contact_agent_id} size={96} alt={c.display_name} />;
   } else if (target.kind === "human-contact") {
     const c = target.contact;
     title = c.alias || c.display_name;
     subtitle = c.contact_agent_id;
-    tag = { tone: "purple", label: "HUMAN" };
+    tag = { tone: "gray", label: "HUMAN" };
     statusText = c.online ? "● Online" : "● Offline";
     avatar = <BigAvatar seed={c.display_name} tone="purple" />;
   } else {
@@ -176,12 +182,31 @@ export default function ContactsDetailPane() {
   }
 
   const handleMessage = () => {
-    if (messageRoomId) {
-      router.push(`/chats/messages/${encodeURIComponent(messageRoomId)}`);
-      return;
+    let roomId = messageRoomId;
+    if (!roomId) {
+      // Resolve DM room by peer id (peer_type-aware) from the merged room list.
+      const peerId =
+        target.kind === "owned-bot"
+          ? target.agent.agent_id
+          : target.kind === "agent-contact" || target.kind === "human-contact"
+            ? target.contact.contact_agent_id
+            : null;
+      const peerType: "agent" | "human" | null =
+        target.kind === "human-contact" ? "human" : peerId ? "agent" : null;
+      if (peerId) {
+        const dm = rooms.find(
+          (r) => r.owner_id === peerId && (r.peer_type ?? r.owner_type) === peerType,
+        );
+        roomId = dm?.room_id ?? null;
+      }
     }
-    // For agent/human DMs we don't have a stable DM room id mocked yet — fall back to Messages.
-    router.push("/chats/messages");
+    setSidebarTab("messages");
+    if (roomId) {
+      setOpenedRoomId(roomId);
+      router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+    } else {
+      router.push("/chats/messages");
+    }
   };
 
   return (
@@ -206,8 +231,19 @@ export default function ContactsDetailPane() {
 
         <div className="mt-8 flex items-center gap-3">
           <ActionButton icon={MessageCircle} label="Message" tone="cyan" onClick={handleMessage} />
-          <ActionButton icon={Share2} label="Share" onClick={() => alert("Share (TODO)")} />
-          <ActionButton icon={Settings2} label="Settings" onClick={() => alert("Settings (TODO)")} />
+          {target.kind === "owned-bot" ? (
+            <ActionButton
+              icon={SlidersHorizontal}
+              label="查看详情"
+              onClick={() => setBotDetailAgentId(target.agent.agent_id)}
+            />
+          ) : target.kind === "agent-contact" ? (
+            <ActionButton
+              icon={SlidersHorizontal}
+              label="查看详情"
+              onClick={() => setPeerBotAgentId(target.contact.contact_agent_id)}
+            />
+          ) : null}
         </div>
       </div>
     </div>
