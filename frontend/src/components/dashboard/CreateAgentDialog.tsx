@@ -17,10 +17,12 @@ import {
   Plus,
   RefreshCcw,
   Server,
+  Sparkles,
   X,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { createAgentDialog } from "@/lib/i18n/translations/dashboard";
+import { pickRandomAgentIdentity } from "@/lib/random-agent-identity";
 import {
   useDaemonStore,
   ProvisionAgentError,
@@ -139,6 +141,16 @@ export default function CreateAgentDialog({
   const [addingDevice, setAddingDevice] = useState(false);
   const addDeviceExistingIdsRef = useRef<Set<string>>(new Set());
   const autoFilledNameRef = useRef<string | null>(null);
+  const lastRandomIdxRef = useRef<number | undefined>(undefined);
+
+  function handleRandomize(): void {
+    const pick = pickRandomAgentIdentity(locale, lastRandomIdxRef.current);
+    lastRandomIdxRef.current = pick.index;
+    autoFilledNameRef.current = null;
+    setName(pick.name);
+    setBio(pick.bio);
+    if (error === t.nameRequired) setError(null);
+  }
 
   useEffect(() => {
     void refresh();
@@ -531,9 +543,16 @@ export default function CreateAgentDialog({
                 <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
                   {t.nameLabel}
                 </label>
-                <span className="text-[11px] font-medium text-neon-cyan">
-                  {t.nameRequired}
-                </span>
+                <button
+                  type="button"
+                  onClick={handleRandomize}
+                  disabled={submitting}
+                  title={t.randomizeTooltip}
+                  aria-label={t.randomizeTooltip}
+                  className="inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan disabled:opacity-50"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                </button>
               </div>
               <input
                 type="text"
