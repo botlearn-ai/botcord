@@ -11,8 +11,9 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
-import { ChevronsRight, MessageSquarePlus, Search, UserPlus } from "lucide-react";
-import { mergeOwnerVisibleRooms } from "@/lib/messages-merge";
+import { Bot, ChevronsRight, MessageSquarePlus, Plus, Search, UserPlus } from "lucide-react";
+import MessagesBotScopeDropdown from "./MessagesBotScopeDropdown";
+import { applyMessagesFilter, mergeOwnerVisibleRooms } from "@/lib/messages-merge";
 import type { DashboardRoom } from "@/lib/types";
 import RoomList from "../RoomList";
 import RoomZeroState from "../RoomZeroState";
@@ -36,7 +37,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     humanRooms: s.humanRooms,
     ownedAgents: s.ownedAgents,
   })));
-  const { sidebarTab, openedRoomId, messagesPane, messagesFilter, messagesGroupingOpen, setMessagesGroupingOpen, messagesSearchOpen, setMessagesSearchOpen } = useDashboardUIStore(useShallow((s) => ({
+  const { sidebarTab, openedRoomId, messagesPane, messagesFilter, messagesGroupingOpen, setMessagesGroupingOpen, messagesSearchOpen, setMessagesSearchOpen, messagesBotScope, openCreateBotModal } = useDashboardUIStore(useShallow((s) => ({
     sidebarTab: s.sidebarTab,
     openedRoomId: s.openedRoomId,
     messagesPane: s.messagesPane,
@@ -45,6 +46,8 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     setMessagesGroupingOpen: s.setMessagesGroupingOpen,
     messagesSearchOpen: s.messagesSearchOpen,
     setMessagesSearchOpen: s.setMessagesSearchOpen,
+    messagesBotScope: s.messagesBotScope,
+    openCreateBotModal: s.openCreateBotModal,
   })));
   const { overview, messages, recentVisitedRooms } = useDashboardChatStore(useShallow((s) => ({
     overview: s.overview,
@@ -64,19 +67,22 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     return mergeOwnerVisibleRooms({ ownedAgents, ownRooms });
   }, [overview, recentVisitedRooms, token, humanRooms, ownedAgents]);
 
+  const isBotsScope = messagesFilter.startsWith("bots-");
+  // Type-filtered rooms (used both for the list and for the bot-scope dropdown
+  // counts — so each owned bot's count reflects the current type filter).
+  const typeFilteredRooms = useMemo(() => {
+    const ids = new Set(ownedAgents.map((a) => a.agent_id));
+    return applyMessagesFilter(visibleMessageRooms, messagesFilter, ids);
+  }, [messagesFilter, visibleMessageRooms, ownedAgents]);
+
+  // After the type filter, narrow further by which owned bot's conversations
+  // when we're in a bots-* filter and the user has picked a specific bot.
   const categorizedRooms = useMemo(() => {
-    if (messagesFilter === "all") return visibleMessageRooms;
-    if (messagesFilter === "groups") {
-      return visibleMessageRooms.filter((r) => (r.member_count ?? 0) > 2);
-    }
-    // Below: DMs only (2 members or fewer).
-    const dms = visibleMessageRooms.filter((r) => (r.member_count ?? 0) <= 2);
-    if (messagesFilter === "humans") {
-      return dms.filter((r) => r.peer_type === "human");
-    }
-    // bots: explicit agent peer OR DMs with no explicit peer_type (legacy default).
-    return dms.filter((r) => r.peer_type !== "human");
-  }, [messagesFilter, visibleMessageRooms]);
+    if (!isBotsScope || messagesBotScope === "all") return typeFilteredRooms;
+    return typeFilteredRooms.filter(
+      (r) => r._originAgent?.agent_id === messagesBotScope,
+    );
+  }, [typeFilteredRooms, isBotsScope, messagesBotScope]);
 
   const normalizedMessageQuery = messageQuery.trim().toLowerCase();
   const filteredMessageRooms = useMemo(() => {
@@ -156,7 +162,29 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
         </div>
       ) : null}
-      {visibleMessageRooms.length === 0 && !activeAgentId ? (
+      {isBotsScope && ownedAgents.length > 0 ? (
+        <div className="border-b border-glass-border px-3 py-2">
+          <MessagesBotScopeDropdown rooms={typeFilteredRooms} />
+        </div>
+      ) : null}
+      {isBotsScope && ownedAgents.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
+            <Bot className="h-7 w-7 text-text-secondary/70" />
+          </div>
+          <p className="text-sm font-medium text-text-primary">还没有 Bot</p>
+          <p className="mt-1 max-w-[180px] text-xs text-text-secondary/60">
+            创建你的第一个 Bot，然后在这里观察它在跟谁聊什么。
+          </p>
+          <button
+            onClick={() => openCreateBotModal()}
+            className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3.5 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            创建 Bot
+          </button>
+        </div>
+      ) : visibleMessageRooms.length === 0 && !activeAgentId ? (
         <RoomZeroState compact />
       ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 && !activeAgentId ? (
         <div className="px-4 py-6 text-center text-xs text-text-secondary">

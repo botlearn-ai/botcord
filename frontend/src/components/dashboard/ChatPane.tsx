@@ -12,7 +12,7 @@ import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { Bot, Loader2, MessageSquare, User, Users } from "lucide-react";
+import { Bot, Eye, Loader2, MessageSquare, User, Users } from "lucide-react";
 import {
   buildVisibleMessageRooms,
   isRoomOwnedByCurrentViewer,
@@ -614,7 +614,16 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   );
 }
 
-type MessagesFilter = "all" | "bots" | "humans" | "groups";
+type MessagesFilter =
+  | "self-all"
+  | "self-my-bot"
+  | "self-third-bot"
+  | "self-human"
+  | "self-group"
+  | "bots-all"
+  | "bots-bot-bot"
+  | "bots-bot-human"
+  | "bots-group";
 
 const messagesEmptyByFilter: Record<MessagesFilter, {
   icon: React.ComponentType<{ className?: string }>;
@@ -622,34 +631,64 @@ const messagesEmptyByFilter: Record<MessagesFilter, {
   description: string;
   hint: string;
 }> = {
-  all: {
+  "self-all": {
     icon: MessageSquare,
     title: "选择一个对话",
-    description: "从左侧列表选一条对话开始 — Bot、真人、群聊都在这里。",
-    hint: "提示：用顶部的「全部 / Bot / 真人 / 群聊」chip 快速切换。",
+    description: "从左侧列表选一条对话开始 — 这里是你直接参与的所有会话。",
+    hint: "想看你的 Bot 在干什么？切到「Bot 监控」分组。",
   },
-  bots: {
+  "self-my-bot": {
     icon: Bot,
-    title: "和你的 Bot 聊一聊",
-    description: "左侧是你与每个 Bot 的私聊，点开就可以发消息。",
-    hint: "想发现更多 Bot？去「发现」标签浏览公开 agents。",
+    title: "和你自己的 Bot 聊一聊",
+    description: "左侧是你和你托管的 Bot 之间的主控通道。",
+    hint: "在「我的 Bots」标签可以管理这些 Bot。",
   },
-  humans: {
+  "self-third-bot": {
+    icon: Bot,
+    title: "和第三方 Bot 聊一聊",
+    description: "左侧是你在用别人 Bot 服务的私聊记录。",
+    hint: "去「发现」→ Bot 浏览更多公开 Agent。",
+  },
+  "self-human": {
     icon: User,
     title: "和真人聊一聊",
     description: "左侧是你与真实联系人的私聊。",
-    hint: "想认识更多人？去「发现」→ 公开 Human。",
+    hint: "想认识更多人？去「发现」→ 真人。",
   },
-  groups: {
+  "self-group": {
     icon: Users,
     title: "选一个群开始",
     description: "你已加入的群聊都列在左侧，点击进入即可发言。",
-    hint: "想找新的群？去「发现」→ 公开房间。",
+    hint: "想找新的群？去「发现」→ 群组。",
+  },
+  "bots-all": {
+    icon: Eye,
+    title: "看看你的 Bot 在干什么",
+    description: "这里是你托管的 Bot 自己参与的所有对话 — 你是 owner，只读观察。",
+    hint: "点开一条会话，可以看完整对话流。",
+  },
+  "bots-bot-bot": {
+    icon: Bot,
+    title: "Bot ↔ Bot 的自主对话",
+    description: "你的 Bot 在跟其他 Bot 协作 / 协商 / 转交任务的记录。",
+    hint: "Owner 视角只读 — 不能代为发言。",
+  },
+  "bots-bot-human": {
+    icon: User,
+    title: "你的 Bot 跟真人的对话",
+    description: "你的 Bot 在替你应对真人请求 — 看它说得怎么样。",
+    hint: "Owner 视角只读 — 不能代为发言。",
+  },
+  "bots-group": {
+    icon: Users,
+    title: "你的 Bot 加入的群",
+    description: "Bot 在公开 / 私有群里的活动。",
+    hint: "Owner 视角只读 — 不能代为发言。",
   },
 };
 
 function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
-  const config = messagesEmptyByFilter[filter];
+  const config = messagesEmptyByFilter[filter] ?? messagesEmptyByFilter["self-all"];
   const Icon = config.icon;
   return (
     <div className="w-full max-w-md text-center">

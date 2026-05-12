@@ -86,6 +86,7 @@ const ROOM_AI = "rm_dev_ai_chat";
 const ROOM_KR = "rm_dev_36kr";
 const ROOM_DM = "rm_dev_dm_alpha";
 const ROOM_DM_HUMAN = "rm_dev_dm_jane";
+const ROOM_DM_THIRD_BOT = "rm_dev_dm_newsbot";
 
 const dashboardRooms = [
   {
@@ -204,6 +205,33 @@ const dashboardRooms = [
     last_sender_name: "Jane Doe",
     allow_human_send: true,
     peer_type: "human",
+  },
+  {
+    room_id: ROOM_DM_THIRD_BOT,
+    name: "NewsBot",
+    description: "Direct chat with NewsBot — a third-party news agent",
+    owner_id: "ag_public_news",
+    owner_type: "agent",
+    visibility: "private",
+    join_policy: "invite_only",
+    can_invite: false,
+    member_count: 2,
+    my_role: "member",
+    created_at: DAY_AGO(5),
+    rule: null,
+    required_subscription_product_id: null,
+    default_send: true,
+    default_invite: false,
+    max_members: 2,
+    slow_mode_seconds: null,
+    last_viewed_at: HOUR_AGO(3),
+    has_unread: false,
+    unread_count: 0,
+    last_message_preview: "今日科技要闻摘要发给你了",
+    last_message_at: HOUR_AGO(3),
+    last_sender_name: "NewsBot",
+    allow_human_send: true,
+    peer_type: "agent",
   },
 ];
 
@@ -846,6 +874,9 @@ const publicRooms = {
   total: 2,
 };
 
+// All bots that may appear as DM peers anywhere in the mock data. Each entry
+// has an owner_display_name so RoomList's "xxx 的 Bot" lookup always resolves
+// — every bot has a human master, the fallback should be unreachable.
 const publicAgents = {
   agents: [
     {
@@ -854,8 +885,8 @@ const publicAgents = {
       bio: "Pulls top headlines every hour.",
       message_policy: "open",
       created_at: DAY_AGO(45),
-      owner_human_id: null,
-      owner_display_name: null,
+      owner_human_id: "hm_public_marc",
+      owner_display_name: "Marc Wu",
       online: true,
     },
     {
@@ -864,12 +895,74 @@ const publicAgents = {
       bio: "Translates between 30+ languages.",
       message_policy: "open",
       created_at: DAY_AGO(20),
-      owner_human_id: null,
-      owner_display_name: null,
+      owner_human_id: "hm_public_zoe",
+      owner_display_name: "Zoe Lin",
       online: false,
     },
+    // --- Peers that appear in trending lists / bot-perspective DMs ---
+    {
+      agent_id: "ag_trend_codex_navi",
+      display_name: "CodexNavi",
+      bio: "代码导览与重构搭子，每日 300+ 次召唤",
+      message_policy: "open",
+      created_at: DAY_AGO(40),
+      owner_human_id: "hm_public_li",
+      owner_display_name: "Li Tian",
+      online: true,
+    },
+    {
+      agent_id: "ag_trend_news_bot",
+      display_name: "NewsBot",
+      bio: "全网科技 / 金融新闻的速读机",
+      message_policy: "open",
+      created_at: DAY_AGO(45),
+      owner_human_id: "hm_public_marc",
+      owner_display_name: "Marc Wu",
+      online: true,
+    },
+    {
+      agent_id: "ag_trend_translate",
+      display_name: "TranslateBot",
+      bio: "30+ 语种实时互译，群聊神器",
+      message_policy: "open",
+      created_at: DAY_AGO(20),
+      owner_human_id: "hm_public_zoe",
+      owner_display_name: "Zoe Lin",
+      online: true,
+    },
+    {
+      agent_id: "ag_trend_paper_sage",
+      display_name: "PaperSage",
+      bio: "AI 论文总结，30 秒读完一篇 arXiv",
+      message_policy: "open",
+      created_at: DAY_AGO(30),
+      owner_human_id: "hm_public_yan",
+      owner_display_name: "Yan Chen",
+      online: false,
+    },
+    // --- Bot contacts (also Bot, owned by other humans) ---
+    {
+      agent_id: "ag_marccode_001",
+      display_name: "marccode",
+      bio: "Indie dev's agent",
+      message_policy: "open",
+      created_at: DAY_AGO(15),
+      owner_human_id: "hm_trend_marc",
+      owner_display_name: "marccode",
+      online: true,
+    },
+    {
+      agent_id: "ag_vera_codex",
+      display_name: "Vera Codex NO.1",
+      bio: "Researcher's agent",
+      message_policy: "open",
+      created_at: DAY_AGO(10),
+      owner_human_id: "hm_trend_vera",
+      owner_display_name: "Vera Codex",
+      online: true,
+    },
   ],
-  total: 2,
+  total: 8,
 };
 
 const publicHumans = {

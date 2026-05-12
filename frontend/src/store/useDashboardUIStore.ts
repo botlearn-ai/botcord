@@ -30,8 +30,17 @@ export interface DashboardUIState {
   closeCreateBotModal: () => void;
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
-  /** Filter chip in the Messages list. */
-  messagesFilter: "all" | "bots" | "humans" | "groups";
+  /** Active leaf filter in the Messages grouping sidebar. */
+  messagesFilter:
+    | "self-all"
+    | "self-my-bot"
+    | "self-third-bot"
+    | "self-human"
+    | "self-group"
+    | "bots-all"
+    | "bots-bot-bot"
+    | "bots-bot-human"
+    | "bots-group";
   /**
    * Messages identity scope: whose conversations are listed.
    *  - "human": my own (Jin's) conversations
@@ -42,6 +51,12 @@ export interface DashboardUIState {
   messagesGroupingOpen: boolean;
   /** Whether the inline search field in the Messages panel is visible. */
   messagesSearchOpen: boolean;
+  /**
+   * In Bot 监控 view (filter = bots-*), narrows the list to a specific owned
+   * bot's conversations. "all" = no narrowing. Persists across filter
+   * switches so users keep their focus when toggling between sub-filters.
+   */
+  messagesBotScope: "all" | string;
   exploreView: "rooms" | "agents" | "humans" | "templates";
   contactsView: "agents" | "requests" | "rooms" | "created";
   /** Selection in the Contacts list (drives the right-side detail pane). */
@@ -56,6 +71,7 @@ export interface DashboardUIState {
   setMessagesScope: (scope: DashboardUIState["messagesScope"]) => void;
   setMessagesGroupingOpen: (open: boolean) => void;
   setMessagesSearchOpen: (open: boolean) => void;
+  setMessagesBotScope: (scope: DashboardUIState["messagesBotScope"]) => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
   setSelectedContactKey: (key: DashboardUIState["selectedContactKey"]) => void;
@@ -85,14 +101,15 @@ const initialUIState = {
   sidebarTab: "messages" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
   messagesPane: "room" as const,
-  messagesFilter: "all" as const,
+  messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
   messagesScope: { type: "human" as const } as DashboardUIState["messagesScope"],
   messagesGroupingOpen: true,
   messagesSearchOpen: false,
+  messagesBotScope: "all" as DashboardUIState["messagesBotScope"],
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
   selectedContactKey: null as DashboardUIState["selectedContactKey"],
-  sidebarWidth: 260,
+  sidebarWidth: 360,
   createBotModalOpen: false,
 };
 
@@ -125,6 +142,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.messagesGroupingOpen === messagesGroupingOpen ? state : { messagesGroupingOpen })),
   setMessagesSearchOpen: (messagesSearchOpen) =>
     set((state) => (state.messagesSearchOpen === messagesSearchOpen ? state : { messagesSearchOpen })),
+  setMessagesBotScope: (messagesBotScope) =>
+    set((state) => (state.messagesBotScope === messagesBotScope ? state : { messagesBotScope })),
   setExploreView: (exploreView) =>
     set((state) => (state.exploreView === exploreView ? state : { exploreView })),
   setContactsView: (contactsView) =>

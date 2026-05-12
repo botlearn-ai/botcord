@@ -464,7 +464,7 @@ export default function Sidebar({
         }`}
         style={{
           width: uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen
-            ? uiStore.sidebarWidth + 180
+            ? uiStore.sidebarWidth + 200
             : uiStore.sidebarWidth,
           minWidth: SIDEBAR_MIN,
         }}
