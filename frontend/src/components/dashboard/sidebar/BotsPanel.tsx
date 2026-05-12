@@ -35,8 +35,17 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
             : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
         }`}
       >
-        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-glass-bg">
-          <Bot className="h-3.5 w-3.5" />
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-glass-bg">
+          {bot.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={bot.avatar_url}
+              alt={bot.display_name || bot.agent_id}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <Bot className="h-3.5 w-3.5" />
+          )}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium">
@@ -323,7 +332,8 @@ export default function BotsPanel({
         <AgentSettingsDrawer
           agentId={agentSettingsBot.agent_id}
           displayName={agentSettingsBot.display_name}
-          bio={null}
+          bio={agentSettingsBot.bio ?? null}
+          avatarUrl={agentSettingsBot.avatar_url ?? null}
           onClose={() => setAgentSettingsBot(null)}
           onSaved={() => setAgentSettingsBot(null)}
         />

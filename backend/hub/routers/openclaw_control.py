@@ -65,6 +65,7 @@ from hub.enums import KeyState
 from hub.routers.daemon_control import _build_signed_frame
 from hub.validators import parse_pubkey
 from hub.auth import create_agent_token
+from hub.agent_avatars import random_agent_avatar_url
 
 logger = logging.getLogger(__name__)
 
@@ -405,6 +406,7 @@ async def openclaw_install_claim(
         agent_id=agent_id,
         display_name=display_name,
         bio=intended_bio,
+        avatar_url=random_agent_avatar_url(),
         user_id=owner_user_id,
         agent_token=agent_token,
         token_expires_at=token_expires_at,
@@ -455,6 +457,7 @@ async def openclaw_install_claim(
             "token_expires_at": expires_at_ts,
             "display_name": agent.display_name,
             "bio": agent.bio,
+            "avatar_url": agent.avatar_url,
         },
         "host": {
             **bundle,
@@ -668,6 +671,7 @@ async def openclaw_provision_claim(
         agent_id=agent_id,
         display_name=display_name,
         bio=intended_bio,
+        avatar_url=random_agent_avatar_url(),
         user_id=owner_user_id,
         agent_token=agent_token,
         token_expires_at=token_expires_at,
@@ -711,6 +715,7 @@ async def openclaw_provision_claim(
         "token_expires_at": expires_at_ts,
         "display_name": agent.display_name,
         "bio": agent.bio,
+        "avatar_url": agent.avatar_url,
     }
 
 

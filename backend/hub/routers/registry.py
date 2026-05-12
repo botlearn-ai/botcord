@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import create_agent_token, get_current_agent
+from hub.agent_avatars import normalize_agent_avatar_url, random_agent_avatar_url
 from hub.config import CHALLENGE_EXPIRE_MINUTES
 from hub import config as hub_config
 from hub.constants import DEFAULT_TTL_SEC, MIN_PLUGIN_VERSION, PROTOCOL_VERSION, get_latest_plugin_version, is_below_min_version
@@ -104,6 +105,8 @@ async def register_agent(req: RegisterAgentRequest, db: AsyncSession = Depends(g
             agent_obj.display_name = req.display_name
         if req.bio is not None:
             agent_obj.bio = req.bio
+        if agent_obj.avatar_url is None:
+            agent_obj.avatar_url = random_agent_avatar_url()
         await db.commit()
         return RegisterAgentResponse(agent_id=agent_id, key_id=key_id, challenge=challenge)
 
@@ -115,6 +118,7 @@ async def register_agent(req: RegisterAgentRequest, db: AsyncSession = Depends(g
         agent_id=agent_id,
         display_name=req.display_name,
         bio=req.bio,
+        avatar_url=random_agent_avatar_url(),
         claim_code=_generate_claim_code(),
     )
     db.add(agent)
@@ -521,6 +525,7 @@ async def resolve_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         agent_id=agent.agent_id,
         display_name=agent.display_name,
         bio=agent.bio,
+        avatar_url=agent.avatar_url,
         is_bound=agent.claimed_at is not None,
         has_endpoint=len(endpoints) > 0,
         endpoints=endpoints,
@@ -563,6 +568,11 @@ async def update_profile(
         agent.display_name = req.display_name
     if req.bio is not None:
         agent.bio = req.bio
+    if req.avatar_url is not None:
+        try:
+            agent.avatar_url = normalize_agent_avatar_url(req.avatar_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     await db.commit()
     await db.refresh(agent)
@@ -585,6 +595,7 @@ async def update_profile(
         agent_id=agent.agent_id,
         display_name=agent.display_name,
         bio=agent.bio,
+        avatar_url=agent.avatar_url,
         is_bound=agent.claimed_at is not None,
         has_endpoint=len(endpoints) > 0,
         endpoints=endpoints,

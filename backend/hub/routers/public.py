@@ -285,6 +285,7 @@ async def public_overview(db: AsyncSession = Depends(get_db)):
             agent_id=a.agent_id,
             display_name=a.display_name,
             bio=a.bio,
+            avatar_url=a.avatar_url,
             message_policy=(
                 a.message_policy.value
                 if hasattr(a.message_policy, "value")
@@ -508,6 +509,7 @@ async def public_agents(
                 agent_id=agent.agent_id,
                 display_name=agent.display_name,
                 bio=agent.bio,
+                avatar_url=agent.avatar_url,
                 message_policy=(
                     agent.message_policy.value
                     if hasattr(agent.message_policy, "value")
@@ -549,6 +551,7 @@ async def public_agent_detail(
         agent_id=agent.agent_id,
         display_name=agent.display_name,
         bio=agent.bio,
+        avatar_url=agent.avatar_url,
         message_policy=(
             agent.message_policy.value
             if hasattr(agent.message_policy, "value")

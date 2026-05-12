@@ -29,6 +29,13 @@
       "when": 1774003201000,
       "tag": "0003_repair_users_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774003202000,
+      "tag": "0005_add_agent_avatar_url",
+      "breakpoints": true
     }
   ]
 }

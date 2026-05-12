@@ -7,6 +7,7 @@ class DashboardAgentProfile(BaseModel):
     agent_id: str
     display_name: str
     bio: str | None = None
+    avatar_url: str | None = None
     message_policy: str
     created_at: datetime.datetime
     owner_human_id: str | None = None

@@ -492,6 +492,7 @@ async def get_overview(
             "agent_id": agent.agent_id,
             "display_name": agent.display_name,
             "bio": agent.bio,
+            "avatar_url": agent.avatar_url,
             "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
             "created_at": agent.created_at.isoformat() if agent.created_at else None,
         }
@@ -511,6 +512,7 @@ async def get_overview(
         select(
             Contact,
             Agent.display_name.label("agent_dn"),
+            Agent.avatar_url.label("agent_avatar"),
             User.display_name.label("user_dn"),
             User.avatar_url.label("user_avatar"),
         )
@@ -522,10 +524,10 @@ async def get_overview(
         )
     )
     contacts = []
-    for c, agent_dn, user_dn, user_avatar in contact_result.all():
+    for c, agent_dn, agent_avatar, user_dn, user_avatar in contact_result.all():
         is_human = c.peer_type == ParticipantType.human
         dn = (user_dn if is_human else agent_dn) or c.contact_agent_id
-        avatar = user_avatar if is_human else None
+        avatar = user_avatar if is_human else agent_avatar
         contacts.append({
             "contact_agent_id": c.contact_agent_id,
             "alias": c.alias,
@@ -1031,6 +1033,7 @@ async def search_agents(
                 "agent_id": a.agent_id,
                 "display_name": a.display_name,
                 "bio": a.bio,
+                "avatar_url": a.avatar_url,
                 "created_at": a.created_at.isoformat() if a.created_at else None,
             }
             for a in agents
@@ -1068,6 +1071,7 @@ async def get_agent_detail(
         "agent_id": agent.agent_id,
         "display_name": agent.display_name,
         "bio": agent.bio,
+        "avatar_url": agent.avatar_url,
         "message_policy": agent.message_policy.value if hasattr(agent.message_policy, "value") else str(agent.message_policy),
         "created_at": agent.created_at.isoformat() if agent.created_at else None,
         "owner_human_id": owner_human_id,

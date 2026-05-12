@@ -6,11 +6,13 @@ import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import UnbindAgentDialog from "./UnbindAgentDialog";
+import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
 
 interface AgentProfileEditModalProps {
   agentId: string;
   initialDisplayName: string;
   initialBio?: string | null;
+  initialAvatarUrl?: string | null;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -19,6 +21,7 @@ export default function AgentProfileEditModal({
   agentId,
   initialDisplayName,
   initialBio,
+  initialAvatarUrl,
   onClose,
   onSaved,
 }: AgentProfileEditModalProps) {
@@ -27,6 +30,7 @@ export default function AgentProfileEditModal({
 
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [bio, setBio] = useState(initialBio ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showUnbind, setShowUnbind] = useState(false);
@@ -34,21 +38,24 @@ export default function AgentProfileEditModal({
   useEffect(() => {
     setDisplayName(initialDisplayName);
     setBio(initialBio ?? "");
-  }, [initialDisplayName, initialBio]);
+    setAvatarUrl(initialAvatarUrl ?? "");
+  }, [initialDisplayName, initialBio, initialAvatarUrl]);
 
   const trimmedName = displayName.trim();
   const nameChanged = trimmedName !== initialDisplayName.trim();
   const bioChanged = (bio ?? "").trim() !== (initialBio ?? "").trim();
-  const canSave = !saving && trimmedName.length > 0 && (nameChanged || bioChanged);
+  const avatarChanged = avatarUrl !== (initialAvatarUrl ?? "");
+  const canSave = !saving && trimmedName.length > 0 && (nameChanged || bioChanged || avatarChanged);
 
   async function handleSave() {
     if (!canSave) return;
     setSaving(true);
     setError(null);
     try {
-      const patch: { display_name?: string; bio?: string | null } = {};
+      const patch: { display_name?: string; bio?: string | null; avatar_url?: string | null } = {};
       if (nameChanged) patch.display_name = trimmedName;
       if (bioChanged) patch.bio = bio.trim() || null;
+      if (avatarChanged) patch.avatar_url = avatarUrl || null;
       await userApi.updateAgent(agentId, patch);
       await refreshUserProfile();
       onSaved?.();
@@ -87,6 +94,34 @@ export default function AgentProfileEditModal({
           </h3>
           <p className="mt-2 text-sm text-text-secondary">{tDesc}</p>
           <p className="mt-1 font-mono text-[10px] text-text-secondary/60">{agentId}</p>
+        </div>
+
+        <div className="mb-3">
+          <span className="mb-2 block text-xs font-medium text-text-secondary">
+            {locale === "zh" ? "头像" : "Avatar"}
+          </span>
+          <div className="grid max-h-40 grid-cols-6 gap-2 overflow-y-auto pr-1">
+            {AGENT_AVATAR_URLS.map((url) => {
+              const selected = avatarUrl === url;
+              return (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setAvatarUrl(url)}
+                  disabled={saving}
+                  className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
+                    selected
+                      ? "border-neon-cyan ring-2 ring-neon-cyan/30"
+                      : "border-glass-border hover:border-neon-cyan/50"
+                  }`}
+                  aria-label={locale === "zh" ? "选择头像" : "Select avatar"}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <label className="mb-3 block">

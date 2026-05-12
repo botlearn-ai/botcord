@@ -78,6 +78,7 @@ class Agent(Base):
     agent_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     message_policy: Mapped[MessagePolicy] = mapped_column(
         Enum(MessagePolicy), nullable=False, server_default="contacts_only"
     )

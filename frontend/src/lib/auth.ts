@@ -17,6 +17,7 @@ export interface AuthenticatedUser {
   agents: {
     agentId: string;
     displayName: string;
+    avatarUrl?: string | null;
     isDefault: boolean;
     claimedAt: Date;
   }[];
@@ -67,6 +68,7 @@ export async function getAuthUser(): Promise<AuthenticatedUser | null> {
     agents: agentRows.map((a) => ({
       agentId: a.agentId,
       displayName: a.displayName,
+      avatarUrl: a.avatarUrl,
       isDefault: a.isDefault,
       claimedAt: a.claimedAt || a.createdAt,
     })),
