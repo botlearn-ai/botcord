@@ -14,9 +14,12 @@ from hub.auth import get_current_agent, get_dashboard_agent
 from hub.database import get_db
 from hub.routers.hub import is_agent_ws_online
 from hub.dashboard_message_shaping import (
+    HUMAN_SOURCE_TYPES,
     derive_sender_fields,
     load_agent_display_names,
+    load_agent_profiles,
     load_user_display_names,
+    load_user_profiles,
 )
 from hub.dashboard_schemas import (
     CreateShareResponse,
@@ -436,13 +439,17 @@ async def get_room_messages(
         if rec.sender_id:
             sender_ids.add(rec.sender_id)
     sender_ids.discard("")
-    sender_names = await load_agent_display_names(db, sender_ids)
+    sender_profiles = await load_agent_profiles(db, sender_ids)
+    sender_names = {sid: profile[0] for sid, profile in sender_profiles.items()}
+    sender_avatars = {sid: profile[1] for sid, profile in sender_profiles.items()}
 
     _human_user_ids = {
         rec.source_user_id for rec in rows
-        if (rec.source_type or "") == "dashboard_human_room" and rec.source_user_id
+        if (rec.source_type or "") in HUMAN_SOURCE_TYPES and rec.source_user_id
     }
-    _user_name_map = await load_user_display_names(db, _human_user_ids)
+    _user_profiles = await load_user_profiles(db, _human_user_ids)
+    _user_name_map = {uid: profile[0] for uid, profile in _user_profiles.items()}
+    _user_avatar_map = {uid: profile[1] for uid, profile in _user_profiles.items()}
 
     # Batch-resolve state counts for all messages in this page
     msg_ids = [rec.msg_id for rec in rows]
@@ -479,7 +486,9 @@ async def get_room_messages(
         extra = derive_sender_fields(
             rec,
             agent_name_map=sender_names,
+            agent_avatar_map=sender_avatars,
             user_name_map=_user_name_map,
+            user_avatar_map=_user_avatar_map,
             viewer_agent_id=current_agent,
             viewer_user_id=None,
         )

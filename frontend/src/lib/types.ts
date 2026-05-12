@@ -162,6 +162,7 @@ export interface DashboardMessage {
   source_type?: string;
   sender_kind?: "agent" | "human";
   display_sender_name?: string;
+  sender_avatar_url?: string | null;
   source_user_id?: string | null;
   source_user_name?: string | null;
   is_mine?: boolean;

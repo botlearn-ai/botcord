@@ -81,6 +81,7 @@ class DashboardMessage(BaseModel):
     source_type: str = "agent"
     sender_kind: str = "agent"
     display_sender_name: str = ""
+    sender_avatar_url: str | None = None
     source_user_id: str | None = None
     source_user_name: str | None = None
     is_mine: bool = False
