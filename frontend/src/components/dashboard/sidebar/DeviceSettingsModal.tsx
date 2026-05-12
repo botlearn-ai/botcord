@@ -157,6 +157,34 @@ export default function DeviceSettingsModal({
             </div>
           </div>
 
+          {/* Restart command toggle */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowInstall((v) => !v)}
+              className="flex w-full items-center justify-between rounded-lg border border-glass-border/50 px-3 py-2 text-xs text-text-secondary/70 transition-colors hover:border-glass-border hover:text-text-secondary"
+            >
+              <span>{locale === "zh" ? "重新启动命令" : "Restart command"}</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`h-3.5 w-3.5 transition-transform ${showInstall ? "rotate-180" : ""}`}><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+            </button>
+            {showInstall && (
+              <div className="mt-2">
+                <DaemonInstallCommand
+                  labels={{
+                    title: locale === "zh" ? "重新启动 BotCord Daemon" : "Restart BotCord Daemon",
+                    hint: locale === "zh"
+                      ? "在这台同一设备的终端运行；daemon 会使用本机保存的设备 ID 重新连接"
+                      : "Run this in the terminal on this same device; the daemon will reconnect using the device ID saved locally.",
+                    copy: locale === "zh" ? "复制" : "Copy",
+                    copied: locale === "zh" ? "已复制" : "Copied",
+                    refresh: locale === "zh" ? "刷新" : "Refresh",
+                  }}
+                  onRefresh={onRefreshDaemons}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Diagnostics */}
           <div className="rounded-lg border border-glass-border/50 bg-glass-bg/20 p-3">
             <div className="flex items-start justify-between gap-3">
@@ -309,34 +337,6 @@ export default function DeviceSettingsModal({
                     {locale === "zh" ? "移除设备" : "Remove device"}
                   </button>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Restart command toggle */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowInstall((v) => !v)}
-              className="flex w-full items-center justify-between rounded-lg border border-glass-border/50 px-3 py-2 text-xs text-text-secondary/70 transition-colors hover:border-glass-border hover:text-text-secondary"
-            >
-              <span>{locale === "zh" ? "重新启动命令" : "Restart command"}</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`h-3.5 w-3.5 transition-transform ${showInstall ? "rotate-180" : ""}`}><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-            </button>
-            {showInstall && (
-              <div className="mt-2">
-                <DaemonInstallCommand
-                  labels={{
-                    title: locale === "zh" ? "重新启动 BotCord Daemon" : "Restart BotCord Daemon",
-                    hint: locale === "zh"
-                      ? "在这台同一设备的终端运行；daemon 会使用本机保存的设备 ID 重新连接"
-                      : "Run this in the terminal on this same device; the daemon will reconnect using the device ID saved locally.",
-                    copy: locale === "zh" ? "复制" : "Copy",
-                    copied: locale === "zh" ? "已复制" : "Copied",
-                    refresh: locale === "zh" ? "刷新" : "Refresh",
-                  }}
-                  onRefresh={onRefreshDaemons}
-                />
               </div>
             )}
           </div>
