@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useLanguage, chatPane } from "@/lib/i18n";
-import type { DashboardMessage, PublicRoomMember } from "@/lib/types";
+import type { Attachment, DashboardMessage, FileUploadResult, PublicRoomMember } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useShallow } from "zustand/react/shallow";
@@ -16,6 +16,28 @@ interface RoomHumanComposerProps {
 }
 
 const ROOM_MENTION_SOURCES = ["roomMembers"] as const;
+
+export async function uploadRoomAttachments(
+  files: File[],
+  uploadAgentId: string | null | undefined,
+  uploadFile: (file: File, agentId?: string | null) => Promise<FileUploadResult> = api.uploadFile,
+): Promise<Attachment[]> {
+  if (files.length === 0) return [];
+  if (!uploadAgentId) {
+    throw new Error("Choose or create an agent before sending files.");
+  }
+  const results: Attachment[] = [];
+  for (const file of files) {
+    const uploaded = await uploadFile(file, uploadAgentId);
+    results.push({
+      filename: uploaded.original_filename,
+      url: uploaded.url,
+      content_type: uploaded.content_type,
+      size_bytes: uploaded.size_bytes,
+    });
+  }
+  return results;
+}
 
 export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanComposerProps) {
   const locale = useLanguage();
@@ -53,6 +75,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
   const activeAgent = activeAgentId
     ? ownedAgents.find((a) => a.agent_id === activeAgentId) ?? null
     : null;
+  const uploadAgentId = activeAgentId ?? ownedAgents[0]?.agent_id ?? null;
   const placeholder = (viewMode === "agent" && activeAgent)
     ? locale === "zh"
       ? `替我的 Agent · ${activeAgent.display_name} 发言，@ 可引用成员或房间…`
@@ -90,19 +113,30 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
   const sendDenied = !isOwnerChat && !!selfId &&
     members.find((m) => m.agent_id === selfId)?.can_send === false;
 
-  const handleSend = useCallback(async (text: string, _files: File[], mentions?: string[]) => {
-    if (!text) return;
+  const handleSend = useCallback(async (text: string, files: File[], mentions?: string[]) => {
+    if (!text && files.length === 0) return;
+
+    setError(null);
+    let attachments: Attachment[] | undefined;
+    try {
+      const uploaded = await uploadRoomAttachments(files, uploadAgentId);
+      attachments = uploaded.length > 0 ? uploaded : undefined;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+      return;
+    }
 
     const clientTempId = `tmp_${crypto.randomUUID()}`;
     const now = new Date().toISOString();
+    const displayText = text || (attachments ? `[${attachments.length} file(s)]` : "");
     const optimistic: DashboardMessage = {
       hub_msg_id: clientTempId,
       msg_id: clientTempId,
       sender_id: senderId,
       sender_name: displayName,
       type: "message",
-      text,
-      payload: { text },
+      text: displayText,
+      payload: attachments ? { text, attachments } : { text },
       room_id: roomId,
       topic: null,
       topic_id: topicId,
@@ -119,12 +153,11 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     };
 
     insertMessage(roomId, optimistic);
-    setError(null);
 
     try {
-      const result = await api.sendRoomHumanMessage(roomId, text, mentions, topicId);
+      const result = await api.sendRoomHumanMessage(roomId, text, mentions, topicId, attachments);
       patchRoom(roomId, {
-        last_message_preview: text,
+        last_message_preview: displayText,
         last_message_at: now,
         last_sender_name: displayName,
       });
@@ -141,7 +174,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send");
     }
-  }, [senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
+  }, [uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
 
   if (sendDenied) {
     return (
@@ -162,6 +195,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       )}
       <MessageComposer
         onSend={handleSend}
+        allowAttachments
         placeholder={placeholder}
         mentionCandidates={mentionCandidates}
       />
