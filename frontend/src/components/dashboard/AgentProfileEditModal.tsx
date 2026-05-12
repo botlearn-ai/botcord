@@ -34,11 +34,13 @@ export default function AgentProfileEditModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showUnbind, setShowUnbind] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   useEffect(() => {
     setDisplayName(initialDisplayName);
     setBio(initialBio ?? "");
     setAvatarUrl(initialAvatarUrl ?? "");
+    setShowAvatarPicker(false);
   }, [initialDisplayName, initialBio, initialAvatarUrl]);
 
   const trimmedName = displayName.trim();
@@ -100,28 +102,48 @@ export default function AgentProfileEditModal({
           <span className="mb-2 block text-xs font-medium text-text-secondary">
             {locale === "zh" ? "头像" : "Avatar"}
           </span>
-          <div className="grid max-h-40 grid-cols-6 gap-2 overflow-y-auto pr-1">
-            {AGENT_AVATAR_URLS.map((url) => {
-              const selected = avatarUrl === url;
-              return (
-                <button
-                  key={url}
-                  type="button"
-                  onClick={() => setAvatarUrl(url)}
-                  disabled={saving}
-                  className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
-                    selected
-                      ? "border-neon-cyan ring-2 ring-neon-cyan/30"
-                      : "border-glass-border hover:border-neon-cyan/50"
-                  }`}
-                  aria-label={locale === "zh" ? "选择头像" : "Select avatar"}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="h-full w-full object-cover" />
-                </button>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowAvatarPicker((open) => !open)}
+            disabled={saving}
+            className="h-14 w-14 overflow-hidden rounded-full border border-neon-cyan bg-glass-bg ring-2 ring-neon-cyan/30 transition-all hover:border-neon-cyan/80 disabled:opacity-60"
+            aria-label={locale === "zh" ? "更换头像" : "Change avatar"}
+            aria-expanded={showAvatarPicker}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={avatarUrl || AGENT_AVATAR_URLS[0]}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </button>
+          {showAvatarPicker && (
+            <div className="mt-3 grid max-h-40 grid-cols-6 gap-2 overflow-y-auto pr-1">
+              {AGENT_AVATAR_URLS.map((url) => {
+                const selected = avatarUrl === url;
+                return (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => {
+                      setAvatarUrl(url);
+                      setShowAvatarPicker(false);
+                    }}
+                    disabled={saving}
+                    className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
+                      selected
+                        ? "border-neon-cyan ring-2 ring-neon-cyan/30"
+                        : "border-glass-border hover:border-neon-cyan/50"
+                    }`}
+                    aria-label={locale === "zh" ? "选择头像" : "Select avatar"}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <label className="mb-3 block">

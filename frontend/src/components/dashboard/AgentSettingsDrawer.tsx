@@ -224,12 +224,20 @@ export default function AgentSettingsDrawer({
   const [avatarVal, setAvatarVal] = useState(avatarUrl ?? "");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   const trimmedName = nameVal.trim();
   const nameChanged = trimmedName !== displayName.trim();
   const bioChanged = bioVal.trim() !== (bio ?? "").trim();
   const avatarChanged = avatarVal !== (avatarUrl ?? "");
   const canSaveProfile = !profileSaving && trimmedName.length > 0 && (nameChanged || bioChanged || avatarChanged);
+
+  useEffect(() => {
+    setNameVal(displayName);
+    setBioVal(bio ?? "");
+    setAvatarVal(avatarUrl ?? "");
+    setShowAvatarPicker(false);
+  }, [agentId, avatarUrl, bio, displayName]);
 
   async function handleSaveProfile() {
     if (!canSaveProfile) return;
@@ -394,28 +402,48 @@ export default function AgentSettingsDrawer({
                 <label className="mb-2 block text-xs font-medium text-text-secondary">
                   头像
                 </label>
-                <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
-                  {AGENT_AVATAR_URLS.map((url) => {
-                    const selected = avatarVal === url;
-                    return (
-                      <button
-                        key={url}
-                        type="button"
-                        onClick={() => setAvatarVal(url)}
-                        disabled={profileSaving}
-                        className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
-                          selected
-                            ? "border-neon-cyan ring-2 ring-neon-cyan/30"
-                            : "border-glass-border hover:border-neon-cyan/50"
-                        }`}
-                        aria-label="选择头像"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    );
-                  })}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarPicker((open) => !open)}
+                  disabled={profileSaving}
+                  className="h-14 w-14 overflow-hidden rounded-full border border-neon-cyan bg-glass-bg ring-2 ring-neon-cyan/30 transition-all hover:border-neon-cyan/80 disabled:opacity-60"
+                  aria-label="更换头像"
+                  aria-expanded={showAvatarPicker}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={avatarVal || AGENT_AVATAR_URLS[0]}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+                {showAvatarPicker && (
+                  <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-8">
+                    {AGENT_AVATAR_URLS.map((url) => {
+                      const selected = avatarVal === url;
+                      return (
+                        <button
+                          key={url}
+                          type="button"
+                          onClick={() => {
+                            setAvatarVal(url);
+                            setShowAvatarPicker(false);
+                          }}
+                          disabled={profileSaving}
+                          className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
+                            selected
+                              ? "border-neon-cyan ring-2 ring-neon-cyan/30"
+                              : "border-glass-border hover:border-neon-cyan/50"
+                          }`}
+                          aria-label="选择头像"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="" className="h-full w-full object-cover" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div>
