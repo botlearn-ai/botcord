@@ -77,6 +77,9 @@ interface WechatSecret {
 interface WechatItem {
   type?: number;
   text_item?: { text?: string };
+  image_item?: Record<string, unknown>;
+  file_item?: { file_name?: string; len?: unknown; [k: string]: unknown };
+  video_item?: { file_name?: string; video_size?: unknown; [k: string]: unknown };
   [k: string]: unknown;
 }
 
@@ -398,16 +401,40 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     return parts.join("\n").trim();
   }
 
+  function extractMultimodalSummary(msg: WechatInboundMsg): string {
+    const parts: string[] = [];
+    for (const item of msg.item_list ?? []) {
+      if (!item || item.type === 1) continue;
+      if (item.type === 2) {
+        parts.push("[Image]");
+        continue;
+      }
+      if (item.type === 5) {
+        const name = item.video_item?.file_name;
+        parts.push(name ? `[Video: ${name}]` : "[Video]");
+        continue;
+      }
+      if (item.type === 4) {
+        const name = item.file_item?.file_name;
+        parts.push(name ? `[File: ${name}]` : "[File]");
+        continue;
+      }
+      parts.push(`[Unsupported media item: type=${String(item.type ?? "unknown")}]`);
+    }
+    return parts.join("\n").trim();
+  }
+
   function normalizeInbound(msg: WechatInboundMsg): GatewayInboundMessage | null {
     if (msg.message_type !== 1) return null;
     const fromUid = typeof msg.from_user_id === "string" ? msg.from_user_id : "";
     const contextToken = typeof msg.context_token === "string" ? msg.context_token : "";
     if (!fromUid || !contextToken) return null;
     const text = extractText(msg);
-    if (!text) return null;
+    const multimodalSummary = text ? "" : extractMultimodalSummary(msg);
+    if (!text && !multimodalSummary) return null;
     if (!allowedSenderIds.has(fromUid)) return null;
 
-    const sanitized = sanitizeUntrustedContent(text);
+    const sanitized = sanitizeUntrustedContent(text || multimodalSummary);
     const receivedAt = now();
     // W10: append randomUUID() to the fallback so two messages received in
     // the same millisecond can't collide. Trace id below already does this.

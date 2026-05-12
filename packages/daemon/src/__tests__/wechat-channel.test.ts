@@ -222,6 +222,53 @@ describe("wechat channel adapter", () => {
     expect(JSON.parse(stateRaw).cursor).toBe("cursor-after-1");
   });
 
+  it("normalizes media-only inbound items so dispatcher can defer them", async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    const fetchImpl = buildFetchStub(
+      [
+        {
+          match: "getupdates",
+          respond: (idx) => {
+            if (idx === 0) {
+              return {
+                body: {
+                  ret: 0,
+                  get_updates_buf: "cursor-after-media",
+                  msgs: [
+                    {
+                      message_type: 1,
+                      from_user_id: "alice@im.wechat",
+                      context_token: "ctx-media",
+                      client_id: "wechat-media-1",
+                      item_list: [{ type: 4, file_item: { file_name: "report.pdf", len: 123 } }],
+                    },
+                  ],
+                },
+              };
+            }
+            return { body: { ret: 0, get_updates_buf: "cursor-after-media", msgs: [] } };
+          },
+        },
+      ],
+      calls,
+    );
+    const adapter = createWechatChannel({
+      id: "gw_wx_media",
+      accountId: "ag_test",
+      botToken: "tok-123",
+      stateFile: path.join(tmp, "state.json"),
+      fetchImpl,
+      stateDebounceMs: 0,
+      allowedSenderIds: ["alice@im.wechat"],
+    });
+    const h = startAdapter(adapter, { stopAfterEnvelopes: 1 });
+    await h.pollDone;
+
+    expect(h.envelopes).toHaveLength(1);
+    expect(h.envelopes[0]!.message.id).toBe("wechat-media-1");
+    expect(h.envelopes[0]!.message.text).toBe("[File: report.pdf]");
+  });
+
   it("drops messages missing context_token", async () => {
     const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
     const fetchImpl = buildFetchStub(
