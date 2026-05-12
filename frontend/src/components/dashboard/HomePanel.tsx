@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import type { ActivityStats, AgentProfile, PublicHumanProfile, UserAgent } from "@/lib/types";
 import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
 import BotAvatar from "./BotAvatar";
+import BotDetailDrawer from "./BotDetailDrawer";
 import ExploreEntityCard from "./ExploreEntityCard";
 
 function SectionHeader({
@@ -60,11 +61,13 @@ function BotSummaryCard({
   presence,
   stats,
   statsLoading,
+  onOpen,
 }: {
   agent: UserAgent;
   presence?: AgentPresenceSnapshotPayload;
   stats?: ActivityStats;
   statsLoading: boolean;
+  onOpen: () => void;
 }) {
   const online = presence?.effective_status
     ? presence.effective_status !== "offline"
@@ -73,6 +76,7 @@ function BotSummaryCard({
   return (
     <button
       type="button"
+      onClick={onOpen}
       className="h-full w-full rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40"
     >
       <div className="mb-3 flex items-center gap-2.5">
@@ -149,7 +153,10 @@ export default function HomePanel() {
     (s) => s.human?.display_name || s.user?.display_name || "there",
   );
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
-  const openCreateBotModal = useDashboardUIStore((s) => s.openCreateBotModal);
+  const { openCreateBotModal, setBotDetailAgentId } = useDashboardUIStore(useShallow((s) => ({
+    openCreateBotModal: s.openCreateBotModal,
+    setBotDetailAgentId: s.setBotDetailAgentId,
+  })));
   const { publicRooms, publicAgents, publicHumans } = useDashboardChatStore(useShallow((s) => ({
     publicRooms: s.publicRooms,
     publicAgents: s.publicAgents,
@@ -240,6 +247,7 @@ export default function HomePanel() {
                   presence={botPresence[agent.agent_id]}
                   stats={botStats[agent.agent_id]}
                   statsLoading={botStatsLoading}
+                  onOpen={() => setBotDetailAgentId(agent.agent_id)}
                 />
               ))}
             </div>
@@ -323,6 +331,7 @@ export default function HomePanel() {
           </div>
         </section>
       </div>
+      <BotDetailDrawer />
     </div>
   );
 }

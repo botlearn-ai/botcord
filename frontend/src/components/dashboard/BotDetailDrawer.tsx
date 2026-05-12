@@ -175,12 +175,12 @@ export default function BotDetailDrawer() {
           </button>
         </div>
 
-        <div className="flex overflow-x-auto border-b border-glass-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex flex-nowrap overflow-x-auto border-b border-glass-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-xs font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-1 whitespace-nowrap border-b-2 px-2.5 py-2.5 text-xs font-medium transition-colors ${
                 tab === key ? "border-neon-cyan text-neon-cyan" : "border-transparent text-text-secondary hover:text-text-primary"
               }`}
             >
