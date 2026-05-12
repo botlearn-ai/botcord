@@ -967,7 +967,7 @@ export default function DashboardApp() {
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
 
   return (
-    <div className="relative flex h-[100dvh] overflow-hidden bg-deep-black max-md:flex-col-reverse md:h-screen">
+    <div className="fixed inset-0 flex overflow-hidden bg-deep-black max-md:flex-col-reverse">
       <Sidebar
         mobileHideSecondary={mobileHideSecondary}
         mobileSecondaryOpen={uiStore.mobileSidebarOpen}

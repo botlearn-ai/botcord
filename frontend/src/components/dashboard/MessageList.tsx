@@ -443,7 +443,7 @@ export default function MessageList() {
   const newMessagesBanner = showNewMessagesBanner && (
     <button
       onClick={scrollToBottom}
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 rounded-full bg-neon-cyan/90 px-4 py-1.5 text-xs font-medium text-deep-black shadow-lg shadow-neon-cyan/20 transition-all hover:bg-neon-cyan animate-bounce"
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 rounded-full bg-neon-cyan/90 px-4 py-1.5 text-xs font-medium text-deep-black shadow-lg shadow-neon-cyan/20 transition-all hover:bg-neon-cyan animate-bounce max-md:bottom-6"
     >
       {t.newMessages}
     </button>
