@@ -90,6 +90,7 @@ export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
     last_sender_name: r.last_sender_name ?? null,
     allow_human_send: r.allow_human_send,
     created_at: r.created_at,
+    members_preview: r.members_preview ?? undefined,
   };
 }
 

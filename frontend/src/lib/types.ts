@@ -922,6 +922,7 @@ export interface HumanRoomSummary {
   visibility: string;
   join_policy: string;
   member_count: number;
+  members_preview?: RoomMemberPreview[] | null;
   my_role: string;
   allow_human_send: boolean;
   default_send: boolean;

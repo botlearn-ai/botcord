@@ -15,6 +15,12 @@ class DashboardAgentProfile(BaseModel):
     online: bool = False
 
 
+class RoomMemberPreview(BaseModel):
+    display_name: str
+    avatar_url: str | None = None
+    agent_id: str | None = None
+
+
 class DashboardRoom(BaseModel):
     room_id: str
     name: str
@@ -24,6 +30,7 @@ class DashboardRoom(BaseModel):
     visibility: str
     join_policy: str | None = None
     member_count: int
+    members_preview: list[RoomMemberPreview] | None = None
     my_role: str
     can_invite: bool | None = None
     allow_human_send: bool

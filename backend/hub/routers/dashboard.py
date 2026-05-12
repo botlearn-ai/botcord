@@ -32,6 +32,7 @@ from hub.dashboard_schemas import (
     DiscoverRoomsResponse,
     JoinRoomResponse,
     PlatformStatsResponse,
+    RoomMemberPreview,
     SharedMessage,
     SharedRoomInfo,
     SharedRoomResponse,
@@ -114,6 +115,50 @@ async def _build_dashboard_rooms(
     )
     my_roles = {row[0]: row[1].value for row in role_result.all()}
 
+    # Member previews per room: top 4 by joined_at for group rooms (the
+    # frontend's CompositeAvatar consumes up to 4 + overflow counter).
+    member_preview_rows = await db.execute(
+        select(
+            RoomMember.room_id,
+            RoomMember.agent_id,
+            RoomMember.participant_type,
+            RoomMember.joined_at,
+        )
+        .where(RoomMember.room_id.in_(room_ids))
+        .order_by(RoomMember.room_id, RoomMember.joined_at)
+    )
+    members_by_room: dict[str, list[tuple[str, "ParticipantType"]]] = {}
+    for rid, pid, ptype, _joined in member_preview_rows.all():
+        bucket = members_by_room.setdefault(rid, [])
+        if len(bucket) < 4:
+            bucket.append((pid, ptype))
+
+    agent_ids_needed: set[str] = set()
+    human_ids_needed: set[str] = set()
+    for entries in members_by_room.values():
+        for pid, ptype in entries:
+            ptype_val = ptype.value if hasattr(ptype, "value") else str(ptype)
+            if ptype_val == "human":
+                human_ids_needed.add(pid)
+            else:
+                agent_ids_needed.add(pid)
+
+    agent_info: dict[str, tuple[str, str | None]] = {}
+    if agent_ids_needed:
+        rows = await db.execute(
+            select(Agent.agent_id, Agent.display_name, Agent.avatar_url)
+            .where(Agent.agent_id.in_(agent_ids_needed))
+        )
+        agent_info = {aid: (name, avatar) for aid, name, avatar in rows.all()}
+
+    human_info: dict[str, tuple[str, str | None]] = {}
+    if human_ids_needed:
+        rows = await db.execute(
+            select(User.human_id, User.display_name, User.avatar_url)
+            .where(User.human_id.in_(human_ids_needed))
+        )
+        human_info = {hid: (name, avatar) for hid, name, avatar in rows.all()}
+
     # Last message per room: get the most recent MessageRecord per room_id.
     # Use a subquery to find max(id) grouped by (room_id, msg_id) first,
     # then max of those per room_id.
@@ -184,6 +229,25 @@ async def _build_dashboard_rooms(
         if room_created_at is not None and room_created_at.tzinfo is None:
             room_created_at = room_created_at.replace(tzinfo=datetime.timezone.utc)
 
+        member_count = member_counts.get(rid, 0)
+        previews: list[RoomMemberPreview] | None = None
+        if member_count > 2:
+            entries = members_by_room.get(rid, [])
+            previews_list: list[RoomMemberPreview] = []
+            for pid, ptype in entries:
+                ptype_val = ptype.value if hasattr(ptype, "value") else str(ptype)
+                if ptype_val == "human":
+                    name, avatar = human_info.get(pid, (pid, None))
+                    previews_list.append(
+                        RoomMemberPreview(display_name=name, avatar_url=avatar, agent_id=None)
+                    )
+                else:
+                    name, avatar = agent_info.get(pid, (pid, None))
+                    previews_list.append(
+                        RoomMemberPreview(display_name=name, avatar_url=avatar, agent_id=pid)
+                    )
+            previews = previews_list or None
+
         dashboard_rooms.append(
             DashboardRoom(
                 room_id=room.room_id,
@@ -192,7 +256,8 @@ async def _build_dashboard_rooms(
                 rule=room.rule,
                 owner_id=room.owner_id,
                 visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
-                member_count=member_counts.get(rid, 0),
+                member_count=member_count,
+                members_preview=previews,
                 my_role=my_roles.get(rid, "member"),
                 allow_human_send=room.allow_human_send,
                 created_at=room_created_at,
