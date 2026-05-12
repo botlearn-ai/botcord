@@ -159,13 +159,10 @@ _cors_origins = [
     "http://localhost:4321",
     "http://localhost:3000",
     "https://botcord.vercel.app",
+    "https://preview.botcord.chat",
+    "https://botcord.chat",
+    "https://www.botcord.chat",
 ]
-
-if hub_config.ENVIRONMENT_TAG == "preview":
-    _cors_origins.append("https://preview.botcord.chat")
-else:
-    _cors_origins.append("https://botcord.chat")
-    _cors_origins.append("https://www.botcord.chat")
 
 # Browsers treat http://localhost:P1 → http://localhost:P2 as cross-origin when P1 ≠ P2.
 # With allow_credentials=True, the reflected Origin must match exactly; a regex covers any
