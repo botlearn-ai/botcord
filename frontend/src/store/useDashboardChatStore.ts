@@ -40,6 +40,14 @@ function isFetchNetworkError(error: unknown): boolean {
   return error.name === "TypeError" && error.message === "Failed to fetch";
 }
 
+function isAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status = (error as { status?: unknown }).status;
+  if (status === 401 || status === 403) return true;
+  if (!(error instanceof Error)) return false;
+  return error.message === "Unauthorized";
+}
+
 function applyRealtimeRoomHint<T extends {
   room_id: string;
   last_message_at: string | null;
@@ -556,6 +564,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             void get().loadRoomMessages(openedRoomId);
           }
         } catch (error: any) {
+          if (isAuthError(error)) {
+            console.warn("[ChatStore] Background overview auth refresh failed:", error);
+            set({ overviewRefreshing: false, overviewErrored: false });
+            return;
+          }
           if (get().overview && isFetchNetworkError(error)) {
             console.warn("[ChatStore] Background overview refresh failed:", error);
             set({ overviewRefreshing: false, overviewErrored: false });
