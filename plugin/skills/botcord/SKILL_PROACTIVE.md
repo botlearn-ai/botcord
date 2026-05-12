@@ -1,6 +1,6 @@
 ---
 name: botcord-proactive
-description: "BotCord proactive execution protocol. Load when: incoming message contains 'BotCord 自主任务' trigger phrase (typically from a scheduled cron job)."
+description: "BotCord proactive execution protocol. Load when: incoming message contains 'BotCord 自主任务' trigger phrase (typically from a Hub schedule or fallback cron job)."
 metadata:
   requires:
     plugins: ["@botcord/botcord"]
@@ -8,7 +8,7 @@ metadata:
 
 # BotCord — Proactive Execution Protocol
 
-**Trigger:** Load this when the incoming message contains「BotCord 自主任务」. This is typically a scheduled cron message, but the protocol applies regardless of how the trigger phrase arrives.
+**Trigger:** Load this when the incoming message contains「BotCord 自主任务」. This is typically a Hub schedule message, but the protocol applies regardless of how the trigger phrase arrives.
 
 **Prerequisites:** Read [`SKILL.md`](./SKILL.md) for protocol overview and agent behavior rules.
 

@@ -23,6 +23,10 @@ import type {
   WithdrawalResponse,
   SubscriptionProduct,
   Subscription,
+  AgentSchedule,
+  AgentScheduleRun,
+  AgentScheduleSpec,
+  AgentSchedulePayload,
 } from "./types.js";
 
 const MAX_RETRIES = 2;
@@ -1010,5 +1014,64 @@ export class BotCordClient {
     } catch {
       return null;
     }
+  }
+
+  // ── Agent schedules ──────────────────────────────────────────
+
+  async listSchedules(): Promise<{ schedules: AgentSchedule[] }> {
+    const resp = await this.hubFetch("/hub/schedules");
+    return (await resp.json()) as { schedules: AgentSchedule[] };
+  }
+
+  async createSchedule(params: {
+    name: string;
+    enabled?: boolean;
+    schedule: AgentScheduleSpec;
+    payload?: AgentSchedulePayload;
+  }): Promise<AgentSchedule> {
+    const resp = await this.hubFetch("/hub/schedules", {
+      method: "POST",
+      body: JSON.stringify({
+        name: params.name,
+        enabled: params.enabled ?? true,
+        schedule: params.schedule,
+        payload: params.payload,
+      }),
+    });
+    return (await resp.json()) as AgentSchedule;
+  }
+
+  async updateSchedule(
+    scheduleId: string,
+    params: {
+      name?: string;
+      enabled?: boolean;
+      schedule?: AgentScheduleSpec;
+      payload?: AgentSchedulePayload;
+    },
+  ): Promise<AgentSchedule> {
+    const resp = await this.hubFetch(`/hub/schedules/${encodeURIComponent(scheduleId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(params),
+    });
+    return (await resp.json()) as AgentSchedule;
+  }
+
+  async deleteSchedule(scheduleId: string): Promise<void> {
+    await this.hubFetch(`/hub/schedules/${encodeURIComponent(scheduleId)}`, {
+      method: "DELETE",
+    });
+  }
+
+  async runSchedule(scheduleId: string): Promise<AgentScheduleRun> {
+    const resp = await this.hubFetch(`/hub/schedules/${encodeURIComponent(scheduleId)}/run`, {
+      method: "POST",
+    });
+    return (await resp.json()) as AgentScheduleRun;
+  }
+
+  async listScheduleRuns(scheduleId: string): Promise<{ runs: AgentScheduleRun[] }> {
+    const resp = await this.hubFetch(`/hub/schedules/${encodeURIComponent(scheduleId)}/runs`);
+    return (await resp.json()) as { runs: AgentScheduleRun[] };
   }
 }

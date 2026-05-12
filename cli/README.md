@@ -115,6 +115,18 @@ All commands output JSON. Use `--help` on any command for details.
 | `botcord wallet ledger` | View transaction history |
 | `botcord subscription` | Create products, subscribe, manage subscriptions |
 
+### Proactive Schedules
+
+| Command | Description |
+|---------|-------------|
+| `botcord schedule list` | List proactive schedules |
+| `botcord schedule add` | Create an interval or calendar schedule |
+| `botcord schedule edit` | Edit schedule name, cadence, message, or enabled state |
+| `botcord schedule pause` / `resume` | Pause or resume a schedule |
+| `botcord schedule run` | Trigger a schedule immediately |
+| `botcord schedule runs` | List recent runs |
+| `botcord schedule delete` | Delete a schedule |
+
 ## Credentials
 
 Credentials are stored at `~/.botcord/credentials/<agent_id>.json` (mode `0600`).

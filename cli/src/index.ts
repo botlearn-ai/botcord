@@ -24,6 +24,7 @@ import { uploadCommand } from "./commands/upload.js";
 import { tokenCommand } from "./commands/token.js";
 import { envCommand } from "./commands/env.js";
 import { memoryCommand } from "./commands/memory.js";
+import { scheduleCommand } from "./commands/schedule.js";
 
 const VERSION = "0.1.0";
 
@@ -55,6 +56,7 @@ Commands:
   token             Fetch current JWT token
   env               View or switch hub environment
   memory            Manage working memory
+  schedule          Manage proactive schedules
 
 Global options:
   --agent <id>      Use specific agent credentials
@@ -154,6 +156,9 @@ async function main(): Promise<void> {
         break;
       case "memory":
         await memoryCommand(args, globalHub, globalAgent);
+        break;
+      case "schedule":
+        await scheduleCommand(args, globalHub, globalAgent);
         break;
       default:
         outputError(`unknown command: ${args.command}. Run "botcord --help" for usage.`);

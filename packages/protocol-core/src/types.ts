@@ -282,3 +282,40 @@ export type SubscriptionChargeAttempt = {
   failure_reason: string | null;
   created_at: string;
 };
+
+export type AgentScheduleSpec =
+  | { kind: "every"; every_ms: number }
+  | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
+  | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
+
+export type AgentSchedulePayload = {
+  kind: "agent_turn";
+  message: string;
+};
+
+export type AgentSchedule = {
+  id: string;
+  agent_id: string;
+  name: string;
+  enabled: boolean;
+  schedule: AgentScheduleSpec;
+  payload: AgentSchedulePayload;
+  created_by: "owner" | "agent" | string;
+  next_fire_at: string | null;
+  last_fire_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AgentScheduleRun = {
+  id: string;
+  schedule_id: string;
+  agent_id: string;
+  scheduled_for: string;
+  started_at: string | null;
+  completed_at: string | null;
+  status: "queued" | "dispatched" | "offline" | "failed" | string;
+  error: string | null;
+  dedupe_key: string;
+  created_at: string | null;
+};
