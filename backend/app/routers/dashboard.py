@@ -3114,7 +3114,7 @@ async def get_chat_room(
     room_id = await _ensure_owner_chat_room(db, str(ctx.user_id), chat_agent_id, display_name)
     await db.commit()
 
-    return {"room_id": room_id, "name": f"Chat with {display_name}", "agent_id": chat_agent_id}
+    return {"room_id": room_id, "name": display_name, "agent_id": chat_agent_id}
 
 
 # Allowed MIME type prefixes (mirrors hub/routers/files.py)

@@ -340,7 +340,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
         </button>
         <MessageSquare className="w-4 h-4 text-cyan-400" />
         <h2 className="min-w-0 truncate text-sm font-medium text-zinc-200">
-          {chatRoomName || "Chat with Agent"}
+          {chatRoomName || "Agent"}
         </h2>
         <div className="ml-auto flex items-center gap-2">
           {wsConnected && (

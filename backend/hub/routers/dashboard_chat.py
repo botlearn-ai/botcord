@@ -91,7 +91,7 @@ async def _ensure_owner_chat_room(
 
     room = Room(
         room_id=room_id,
-        name=f"Chat with {agent_display_name}",
+        name=agent_display_name,
         owner_id=agent_id,
         visibility=RoomVisibility.private,
         join_policy=RoomJoinPolicy.invite_only,
@@ -139,7 +139,7 @@ async def get_or_create_chat_room(
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, display_name)
     await db.commit()
 
-    return ChatRoomResponse(room_id=room_id, name=f"Chat with {display_name}", agent_id=agent_id)
+    return ChatRoomResponse(room_id=room_id, name=display_name, agent_id=agent_id)
 
 
 @router.post("/send", response_model=ChatSendResponse, status_code=202)
