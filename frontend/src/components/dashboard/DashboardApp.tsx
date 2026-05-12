@@ -960,6 +960,8 @@ export default function DashboardApp() {
   const mobileHideSecondary =
     uiStore.sidebarTab === "wallet"
     || uiStore.sidebarTab === "activity"
+    || uiStore.sidebarTab === "explore"
+    || uiStore.sidebarTab === "contacts"
     || (uiStore.sidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
     || (uiStore.sidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;

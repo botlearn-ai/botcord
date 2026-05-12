@@ -12,7 +12,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Bell, Info, Loader2, PanelLeftOpen, Plus, Settings, Share2 } from "lucide-react";
+import { ArrowLeft, Bell, Info, Loader2, PanelLeftOpen, Plus, Settings, Share2, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -276,7 +276,7 @@ export default function RoomHeader() {
 
   return (
     <>
-      <div className="flex min-h-16 items-center justify-between border-b border-glass-border px-4 py-3 max-md:gap-2 max-md:px-3">
+      <div className="flex min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:gap-1 max-md:px-2 max-md:py-2">
         <button
           type="button"
           onClick={handleMobileBack}
@@ -284,7 +284,7 @@ export default function RoomHeader() {
           aria-label="Back to messages"
           title="Back to messages"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-5 w-5" />
         </button>
         <button
           type="button"
@@ -293,9 +293,9 @@ export default function RoomHeader() {
           aria-label="Open message list"
           title="Open message list"
         >
-          <PanelLeftOpen className="h-4 w-4" />
+          <PanelLeftOpen className="h-5 w-5" />
         </button>
-        <div className="min-w-0 py-0.5">
+        <div className="min-w-0 flex-1 py-0.5 max-md:py-0">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-text-primary">{titleText}</h3>
             {room.required_subscription_product_id ? (
@@ -312,33 +312,52 @@ export default function RoomHeader() {
                   <Info className="h-4 w-4" />
                 </button>
                 {showRulePopover && (
-                  <div className="absolute left-0 top-full z-30 mt-1 w-[min(32rem,calc(100vw-2rem))] space-y-3 rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl">
-                    {roomDescription && (
-                      <div>
-                        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
-                          {t.roomDescriptionLabel}
-                        </p>
-                        <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
-                          {roomDescription}
-                        </p>
-                      </div>
-                    )}
-                    {roomRule && (
-                      <div>
-                        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
-                          {t.viewRule}
-                        </p>
-                        <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary">
-                          {roomRule}
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close"
+                      onClick={() => setShowRulePopover(false)}
+                      className="fixed inset-0 z-40 hidden bg-black/70 backdrop-blur-sm max-md:block"
+                    />
+                    <div
+                      className="absolute left-0 top-full z-50 mt-1 w-[min(32rem,calc(100vw-2rem))] space-y-3 rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl
+                        max-md:fixed max-md:inset-x-4 max-md:top-1/2 max-md:mt-0 max-md:w-auto max-md:max-h-[75vh] max-md:-translate-y-1/2 max-md:space-y-4 max-md:overflow-y-auto max-md:rounded-2xl max-md:border-glass-border max-md:bg-deep-black-light max-md:p-5 max-md:pt-12 max-md:shadow-2xl"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setShowRulePopover(false)}
+                        className="absolute right-3 top-3 hidden h-7 w-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+                        aria-label="Close"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                      {roomDescription && (
+                        <div>
+                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                            {t.roomDescriptionLabel}
+                          </p>
+                          <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary max-md:max-h-none max-md:text-sm max-md:leading-6">
+                            {roomDescription}
+                          </p>
+                        </div>
+                      )}
+                      {roomRule && (
+                        <div>
+                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                            {t.viewRule}
+                          </p>
+                          <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary max-md:max-h-none max-md:text-sm max-md:leading-6">
+                            {roomRule}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             )}
           </div>
-          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-text-secondary">
+          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-text-secondary max-md:hidden">
             <button
               onClick={() => setShowSettingsModal(true)}
               className="shrink-0 whitespace-nowrap hover:text-neon-cyan hover:underline transition-colors"
@@ -355,7 +374,7 @@ export default function RoomHeader() {
             <span className="shrink-0"><CopyableId value={room.room_id} /></span>
           </div>
           {roomRule && (
-            <div className="mt-1">
+            <div className="mt-1 max-md:hidden">
               <p
                 ref={ruleRef}
                 className={`text-xs leading-5 text-text-secondary ${ruleExpanded ? "" : "line-clamp-2"}`}
@@ -374,7 +393,7 @@ export default function RoomHeader() {
             </div>
           )}
         </div>
-        <div className="flex shrink-0 flex-nowrap items-center gap-1.5 self-start py-0.5 max-md:gap-1">
+        <div className="flex shrink-0 flex-nowrap items-center gap-1.5 self-center py-0.5 max-md:gap-0.5">
 
           {renderJoinButton()}
           {isGuest && (
@@ -395,7 +414,7 @@ export default function RoomHeader() {
             </span>
           )}
           {canAddMembers && (
-            <span className="group relative">
+            <span className="group relative max-md:hidden">
               <button
                 onClick={() => void handleOpenAddMemberModal()}
                 disabled={addMemberLoading}
@@ -408,7 +427,7 @@ export default function RoomHeader() {
             </span>
           )}
           {isAuthedReady && activeAgentId && !isHumanView && isJoined && !isOwnerChatRoom && (
-            <span className="group relative">
+            <span className="group relative max-md:hidden">
               <button
                 onClick={() => setShowPolicyModal(true)}
                 className={iconBtn}

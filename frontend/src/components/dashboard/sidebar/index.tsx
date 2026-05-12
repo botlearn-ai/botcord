@@ -319,9 +319,9 @@ export default function Sidebar({
   };
 
   return (
-    <div className={`flex h-full max-md:w-full max-md:flex-col-reverse ${mobileHideSecondary ? "max-md:h-16" : "max-md:h-full"}`}>
+    <div className={`flex h-full max-md:w-full max-md:flex-col-reverse ${mobileHideSecondary ? "max-md:h-[calc(4rem+env(safe-area-inset-bottom))]" : "max-md:h-full"}`}>
       {/* Primary rail */}
-      <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3 max-md:h-16 max-md:w-full max-md:min-w-0 max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:py-2">
+      <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:min-w-0 max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pb-[calc(0.5rem+env(safe-area-inset-bottom))] max-md:pt-2">
         <Link
           href="/"
           className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg max-md:mb-0 max-md:mr-2 max-md:hidden"
@@ -431,7 +431,7 @@ export default function Sidebar({
         <button
           type="button"
           aria-label="Close sidebar"
-          className="fixed inset-x-0 bottom-16 top-0 z-30 hidden bg-black/45 backdrop-blur-sm max-md:block"
+          className="fixed inset-x-0 top-0 z-30 hidden bg-black/45 backdrop-blur-sm max-md:block max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))]"
           onClick={onMobileSecondaryClose}
         />
       )}
@@ -441,7 +441,7 @@ export default function Sidebar({
         className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
           mobileHideSecondary
             ? mobileSecondaryOpen
-              ? "max-md:fixed max-md:inset-x-3 max-md:bottom-20 max-md:top-4 max-md:z-40 max-md:!w-auto max-md:rounded-xl max-md:border max-md:border-glass-border max-md:shadow-2xl max-md:shadow-black/50"
+              ? "max-md:fixed max-md:inset-x-3 max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))] max-md:top-4 max-md:z-40 max-md:!w-auto max-md:rounded-xl max-md:border max-md:border-glass-border max-md:shadow-2xl max-md:shadow-black/50"
               : "max-md:hidden"
             : "max-md:!w-full"
         }`}

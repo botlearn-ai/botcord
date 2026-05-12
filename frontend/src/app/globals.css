@@ -27,6 +27,29 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safari/Chrome auto-zooms when focusing inputs with font-size < 16px.
+ * Force at least 16px on touch-screen devices for input/textarea/select.
+ * Desktop keeps the original Tailwind text-sm/xs sizes. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* iPhone safe-area helpers for the dashboard bottom nav and floating UI. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.h-safe-bottom {
+  height: env(safe-area-inset-bottom);
 }
 
 ::selection {
