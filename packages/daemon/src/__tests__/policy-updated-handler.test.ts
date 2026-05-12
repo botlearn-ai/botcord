@@ -48,16 +48,13 @@ function makeFakeGateway(): unknown {
   };
 }
 
-function makeFakeResolver(): PolicyResolverLike & {
-  invalidate: ReturnType<typeof vi.fn>;
-  put: ReturnType<typeof vi.fn>;
-  resolve: ReturnType<typeof vi.fn>;
-} {
-  return {
-    resolve: vi.fn(async () => ({ mode: "always", keywords: [] })),
+function makeFakeResolver() {
+  const resolver = {
+    resolve: vi.fn(async () => ({ mode: "always" as const, keywords: [] })),
     invalidate: vi.fn(),
     put: vi.fn(),
   };
+  return resolver as PolicyResolverLike & typeof resolver;
 }
 
 describe("policy_updated control-frame handler", () => {
@@ -110,6 +107,7 @@ describe("policy_updated control-frame handler", () => {
     expect(resolver.put).toHaveBeenCalledWith("ag_a", null, {
       mode: "keyword",
       keywords: ["foo", "bar"],
+      allowedSenderIds: [],
       muted_until: 123,
     });
     expect(resolver.invalidate).not.toHaveBeenCalled();

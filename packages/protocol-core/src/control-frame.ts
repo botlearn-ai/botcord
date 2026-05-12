@@ -242,7 +242,7 @@ export interface ProvisionAgentParams {
    * `policyResolver` is warm before the first inbound message lands. Daemons
    * that don't recognize these fields safely ignore them (PR3 §5).
    */
-  defaultAttention?: "always" | "mention_only" | "keyword" | "muted";
+  defaultAttention?: "always" | "mention_only" | "keyword" | "allowed_senders" | "muted";
   attentionKeywords?: string[];
 }
 
@@ -270,8 +270,10 @@ export interface PolicyUpdatedParams {
   agent_id: string;
   room_id?: string;
   policy?: {
-    mode: "always" | "mention_only" | "keyword" | "muted";
+    mode: "always" | "mention_only" | "keyword" | "allowed_senders" | "muted";
     keywords: string[];
+    /** Sender IDs allowed to wake in `allowed_senders` mode. */
+    allowedSenderIds?: string[];
     /** Unix milliseconds; absent means no temporary mute. */
     muted_until?: number;
   };

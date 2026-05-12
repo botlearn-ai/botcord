@@ -44,7 +44,7 @@ import {
 } from "./loop-risk.js";
 import { composeBotCordUserTurn } from "./turn-text.js";
 import { UserAuthManager } from "./user-auth.js";
-import { PolicyResolver } from "./gateway/policy-resolver.js";
+import { PolicyResolver, type DaemonAttentionPolicy } from "./gateway/policy-resolver.js";
 import { scanMention } from "./mention-scan.js";
 import { createDiagnosticBundle, uploadDiagnosticBundle } from "./diagnostics.js";
 
@@ -436,15 +436,18 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   // with a local `@<display_name>` / `@<agent_id>` text scan, resolve the
   // effective policy, then defer to the protocol-core `shouldWake` decision.
   const attentionGate = async (msg: GatewayInboundMessage): Promise<boolean> => {
-    const policy: AttentionPolicy = await policyResolver.resolve(
+    const policy: DaemonAttentionPolicy = await policyResolver.resolve(
       msg.accountId,
       msg.conversation.id,
     );
+    if (policy.mode === "allowed_senders") {
+      return (policy.allowedSenderIds ?? []).includes(msg.sender.id);
+    }
     const localMention = scanMention(msg.text, {
       agentId: msg.accountId,
       displayName: displayNameByAgent.get(msg.accountId),
     });
-    return shouldWake(policy, {
+    return shouldWake(policy as AttentionPolicy, {
       mentioned: msg.mentioned === true || localMention,
       text: msg.text,
     });

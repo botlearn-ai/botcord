@@ -27,6 +27,7 @@ from hub.models import (
     Base,
     Role,
     Room,
+    RoomMember,
     User,
     UserRole,
 )
@@ -309,6 +310,18 @@ async def room_seed(db_session: AsyncSession, seed):
         join_policy=RoomJoinPolicy.invite_only,
     )
     db_session.add_all([room, dm])
+    db_session.add_all([
+        RoomMember(
+            room_id="rm_pub_1",
+            agent_id="ag_owned",
+            participant_type=ParticipantType.agent,
+        ),
+        RoomMember(
+            room_id="rm_pub_1",
+            agent_id="ag_other",
+            participant_type=ParticipantType.agent,
+        ),
+    ])
     await db_session.commit()
     return seed
 
@@ -356,6 +369,36 @@ async def test_put_then_get_room_policy_mixed_inherit(client, room_seed):
     r = await client.get("/api/agents/ag_owned/rooms/rm_pub_1/policy", headers=headers)
     assert r.status_code == 200
     assert r.json()["override"]["attention_mode"] == "mention_only"
+
+
+@pytest.mark.asyncio
+async def test_put_room_policy_allowed_senders_validates_room_members(client, room_seed):
+    headers = {"Authorization": f"Bearer {room_seed['token']}"}
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy",
+        headers=headers,
+        json={
+            "attention_mode": "allowed_senders",
+            "allowed_sender_ids": ["ag_other"],
+            "keywords": None,
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["override"]["attention_mode"] == "allowed_senders"
+    assert body["override"]["allowed_sender_ids"] == ["ag_other"]
+    assert body["effective"]["mode"] == "allowed_senders"
+    assert body["effective"]["allowed_sender_ids"] == ["ag_other"]
+
+    r = await client.put(
+        "/api/agents/ag_owned/rooms/rm_pub_1/policy",
+        headers=headers,
+        json={
+            "attention_mode": "allowed_senders",
+            "allowed_sender_ids": ["ag_not_in_room"],
+        },
+    )
+    assert r.status_code == 400
 
 
 @pytest.mark.asyncio

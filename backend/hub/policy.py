@@ -217,6 +217,7 @@ EffectiveSource = Literal["global", "override", "dm_forced"]
 class EffectiveAttention:
     mode: AttentionMode
     keywords: list[str] = field(default_factory=list)
+    allowed_sender_ids: list[str] = field(default_factory=list)
     muted_until: datetime.datetime | None = None
     source: EffectiveSource = "global"
 
@@ -266,6 +267,7 @@ async def resolve_effective_attention(
         return EffectiveAttention(
             mode=AttentionMode.always,
             keywords=[],
+            allowed_sender_ids=[],
             muted_until=None,
             source="dm_forced",
         )
@@ -287,6 +289,7 @@ async def resolve_effective_attention(
         return EffectiveAttention(
             mode=default_mode,
             keywords=list(default_keywords),
+            allowed_sender_ids=[],
             muted_until=None,
             source="global",
         )
@@ -305,6 +308,7 @@ async def resolve_effective_attention(
         if override.keywords is not None
         else list(default_keywords)
     )
+    allowed_sender_ids = _decode_keywords(override.allowed_sender_ids)
 
     muted_until = override.muted_until
     if muted_until is not None:
@@ -318,6 +322,7 @@ async def resolve_effective_attention(
     return EffectiveAttention(
         mode=mode,
         keywords=keywords,
+        allowed_sender_ids=allowed_sender_ids,
         muted_until=muted_until,
         source="override",
     )

@@ -65,6 +65,14 @@ describe("shouldWake", () => {
     ).toBe(false);
   });
 
+  it("mode=allowed_senders only wakes for listed sender ids", () => {
+    const p = policy({ mode: "allowed_senders", allowedSenderIds: ["ag_alice", "hu_bob"] });
+    expect(shouldWake(p, { senderId: "ag_alice", text: "hi" }, NOW)).toBe(true);
+    expect(shouldWake(p, { senderId: "hu_bob", text: "hi" }, NOW)).toBe(true);
+    expect(shouldWake(p, { senderId: "ag_carol", text: "hi" }, NOW)).toBe(false);
+    expect(shouldWake(p, { text: "hi" }, NOW)).toBe(false);
+  });
+
   it("unknown mode fails open (forward-compat)", () => {
     const future = { mode: "future_mode", keywords: [] } as unknown as AttentionPolicy;
     expect(shouldWake(future, { text: "hi" }, NOW)).toBe(true);
