@@ -31,12 +31,14 @@ import AddFriendModal from "../AddFriendModal";
 import CreateRoomModal from "../CreateRoomModal";
 import CreateAgentDialog from "../CreateAgentDialog";
 import { PrimaryNavButton, SecondaryNavButton } from "./NavButtons";
+import ContactsPanel from "./ContactsPanel";
+import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 import WalletPanel from "./WalletPanel";
 
 import { humansApi } from "@/lib/api";
-import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, X } from "lucide-react";
+import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
 
@@ -45,6 +47,15 @@ function formatBadgeCount(count: number): string {
 }
 
 const authNavItems = [
+  {
+    key: "home" as const,
+    label: "Home",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+      </svg>
+    ),
+  },
   {
     key: "messages" as const,
     label: "Messages",
@@ -134,6 +145,9 @@ export default function Sidebar({
     exploreView: s.exploreView,
     openedRoomId: s.openedRoomId,
     messagesPane: s.messagesPane,
+    messagesGroupingOpen: s.messagesGroupingOpen,
+    setMessagesGroupingOpen: s.setMessagesGroupingOpen,
+    messagesSearchOpen: s.messagesSearchOpen,
     sidebarWidth: s.sidebarWidth,
     setSidebarTab: s.setSidebarTab,
     setMessagesPane: s.setMessagesPane,
@@ -218,6 +232,7 @@ export default function Sidebar({
   }, [uiStore.sidebarTab, isGuest, refreshDaemons]);
 
   const tabTitles: Record<string, string> = {
+    home: t.home,
     messages: t.messages,
     contacts: t.contacts,
     explore: t.discover,
@@ -282,7 +297,7 @@ export default function Sidebar({
 
   const showLoginModal = () => router.push("/login");
 
-  const navigatePrimaryTab = (tab: "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots") => {
+  const navigatePrimaryTab = (tab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots") => {
     if (isGuest && (tab === "contacts" || tab === "activity" || tab === "bots")) {
       showLoginModal();
       return;
@@ -293,6 +308,7 @@ export default function Sidebar({
         ? USER_CHAT_ROUTE
         : "/chats/messages";
     const pathByTab: Record<typeof tab, string> = {
+      home: "/chats/home",
       messages: openedRoomPath,
       contacts: `/chats/contacts/${uiStore.contactsView}`,
       explore: `/chats/explore/${uiStore.exploreView}`,
@@ -436,7 +452,8 @@ export default function Sidebar({
         />
       )}
 
-      {/* Secondary panel */}
+      {/* Secondary panel — hidden on Home, My Bots, and Explore (those pages get full width). */}
+      {uiStore.sidebarTab !== "home" && uiStore.sidebarTab !== "bots" && uiStore.sidebarTab !== "explore" && (
       <div
         className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
           mobileHideSecondary
@@ -445,14 +462,20 @@ export default function Sidebar({
               : "max-md:hidden"
             : "max-md:!w-full"
         }`}
-        style={{ width: uiStore.sidebarWidth, minWidth: SIDEBAR_MIN }}
+        style={{
+          width: uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen
+            ? uiStore.sidebarWidth + 180
+            : uiStore.sidebarWidth,
+          minWidth: SIDEBAR_MIN,
+        }}
       >
         {/* Resize handle */}
         <div
           onMouseDown={handleResizeStart}
           className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-neon-cyan/30 active:bg-neon-cyan/50 max-md:hidden"
         />
-        {/* Panel header */}
+        {/* Outer panel header — hidden on messages tab; MessagesPanel owns its own column header (Feishu-style). */}
+        {uiStore.sidebarTab !== "messages" && (
         <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-text-primary">{tabTitles[uiStore.sidebarTab]}</h2>
@@ -471,23 +494,15 @@ export default function Sidebar({
               <X className="h-4 w-4" />
             </button>
           )}
-          {uiStore.sidebarTab === "messages" && !isGuest && (
+          {uiStore.sidebarTab === "contacts" && !isGuest && (
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setShowAddFriend(true)}
-                title={tMsgHeader.addFriend}
-                aria-label={tMsgHeader.addFriend}
+                title="邀请新好友"
+                aria-label="邀请新好友"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
               >
                 <UserPlus className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setShowCreateRoom(true)}
-                title={tMsgHeader.createRoom}
-                aria-label={tMsgHeader.createRoom}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
-              >
-                <MessageSquarePlus className="h-4 w-4" />
               </button>
             </div>
           )}
@@ -514,6 +529,7 @@ export default function Sidebar({
             </div>
           )}
         </div>
+        )}
 
         {/* Secondary nav (explore / contacts) */}
         {uiStore.sidebarTab === "explore" && (
@@ -523,28 +539,23 @@ export default function Sidebar({
             <SecondaryNavButton onClick={() => { uiStore.setExploreView("humans"); startTransition(() => { router.push("/chats/explore/humans"); }); }} active={uiStore.exploreView === "humans"} className="mt-2" tone="purple">{t.publicHumans}</SecondaryNavButton>
           </div>
         )}
-        {uiStore.sidebarTab === "contacts" && (
-          <div className="border-b border-glass-border p-3">
-            <SecondaryNavButton
-              onClick={() => { uiStore.setContactsView("requests"); startTransition(() => { router.push("/chats/contacts/requests"); }); }}
-              active={uiStore.contactsView === "requests"}
-              badge={pendingContactRequests > 0 ? (
-                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
-                  {pendingContactRequests > 99 ? "99+" : pendingContactRequests}
-                </span>
-              ) : undefined}
-              tone="cyan"
-            >{t.friendRequests}</SecondaryNavButton>
-            <SecondaryNavButton onClick={() => { uiStore.setContactsView("agents"); startTransition(() => { router.push("/chats/contacts/agents"); }); }} active={uiStore.contactsView === "agents"} className="mt-2" tone="cyan">{t.myFriends}</SecondaryNavButton>
-            <SecondaryNavButton onClick={() => { uiStore.setContactsView("rooms"); startTransition(() => { router.push("/chats/contacts/rooms"); }); }} active={uiStore.contactsView === "rooms"} className="mt-2" tone="cyan">{t.joinedRooms}</SecondaryNavButton>
-            <SecondaryNavButton onClick={() => { uiStore.setContactsView("created"); startTransition(() => { router.push("/chats/contacts/created"); }); }} active={uiStore.contactsView === "created"} className="mt-2" tone="cyan">{t.createdRooms}</SecondaryNavButton>
-          </div>
-        )}
+        {/* Contacts: legacy 4-subtab nav replaced by single-column ContactsPanel below. */}
 
         {/* Panel content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-1 min-h-0">
+          {uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen && (
+            <MessagesGroupingSidebar />
+          )}
+          <div className="flex-1 overflow-y-auto">
           {uiStore.sidebarTab === "messages" && (
-            <MessagesPanel isGuest={isGuest} onCreateRoom={() => setShowCreateRoom(true)} />
+            <MessagesPanel
+              isGuest={isGuest}
+              onCreateRoom={() => setShowCreateRoom(true)}
+              onAddFriend={() => setShowAddFriend(true)}
+            />
+          )}
+          {uiStore.sidebarTab === "contacts" && (
+            <ContactsPanel onOpenAddFriend={() => setShowAddFriend(true)} />
           )}
           {uiStore.sidebarTab === "bots" && (
             <BotsPanel
@@ -557,8 +568,10 @@ export default function Sidebar({
           {uiStore.sidebarTab === "wallet" && (
             <WalletPanel isGuest={isGuest} onLogin={showLoginModal} />
           )}
+          </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

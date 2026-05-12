@@ -79,6 +79,7 @@ import type {
 
 import { createClient } from "@/lib/supabase/client";
 import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
+import { DEV_BYPASS_AUTH, mockApiGet, mockApiSend } from "@/lib/dev-bypass";
 
 /**
  * [INPUT]: Supabase client-side SDK for auth tokens, browser fetch, local active-agent state
@@ -232,6 +233,7 @@ async function apiGet<T>(
   params?: Record<string, string>,
   identityOverride?: ActiveIdentity | null,
 ): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiGet<T>(path, params);
   const url = new URL(path, API_BASE);
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
@@ -252,6 +254,7 @@ async function apiPost<T>(
   body?: unknown,
   identityOverride?: ActiveIdentity | null,
 ): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiSend<T>("POST", path, body);
   const headers: Record<string, string> = { ...(await buildAuthHeaders(identityOverride)) };
   const init: RequestInit = { method: "POST", headers };
   if (body !== undefined) {
@@ -268,6 +271,7 @@ async function apiPost<T>(
 }
 
 async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiSend<T>("PATCH", path, body);
   const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
   const init: RequestInit = { method: "PATCH", headers };
   if (body !== undefined) {
@@ -284,6 +288,7 @@ async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function apiDelete<T>(path: string): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiSend<T>("DELETE", path);
   const headers = await buildAuthHeaders();
   const url = new URL(path, API_BASE);
   const res = await fetch(url.toString(), { method: "DELETE", headers });

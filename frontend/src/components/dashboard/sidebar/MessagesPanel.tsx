@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useMemo, useState } from "react";
+// messagesFilter is in useDashboardUIStore so ChatPane can also read it.
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
@@ -10,6 +11,9 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+import { ChevronsRight, MessageSquarePlus, Search, UserPlus } from "lucide-react";
+import { mergeOwnerVisibleRooms } from "@/lib/messages-merge";
+import type { DashboardRoom } from "@/lib/types";
 import RoomList from "../RoomList";
 import RoomZeroState from "../RoomZeroState";
 import SearchBar from "../SearchBar";
@@ -17,23 +21,30 @@ import SearchBar from "../SearchBar";
 interface MessagesPanelProps {
   isGuest: boolean;
   onCreateRoom: () => void;
+  onAddFriend: () => void;
 }
 
-export default function MessagesPanel({ isGuest, onCreateRoom }: MessagesPanelProps) {
+export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: MessagesPanelProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = sidebar[locale];
 
-  const { activeAgentId, sessionMode, token, humanRooms } = useDashboardSessionStore(useShallow((s) => ({
+  const { activeAgentId, sessionMode, token, humanRooms, ownedAgents } = useDashboardSessionStore(useShallow((s) => ({
     activeAgentId: s.activeAgentId,
     sessionMode: s.sessionMode,
     token: s.token,
     humanRooms: s.humanRooms,
+    ownedAgents: s.ownedAgents,
   })));
-  const { sidebarTab, openedRoomId, messagesPane } = useDashboardUIStore(useShallow((s) => ({
+  const { sidebarTab, openedRoomId, messagesPane, messagesFilter, messagesGroupingOpen, setMessagesGroupingOpen, messagesSearchOpen, setMessagesSearchOpen } = useDashboardUIStore(useShallow((s) => ({
     sidebarTab: s.sidebarTab,
     openedRoomId: s.openedRoomId,
     messagesPane: s.messagesPane,
+    messagesFilter: s.messagesFilter,
+    messagesGroupingOpen: s.messagesGroupingOpen,
+    setMessagesGroupingOpen: s.setMessagesGroupingOpen,
+    messagesSearchOpen: s.messagesSearchOpen,
+    setMessagesSearchOpen: s.setMessagesSearchOpen,
   })));
   const { overview, messages, recentVisitedRooms } = useDashboardChatStore(useShallow((s) => ({
     overview: s.overview,
@@ -47,15 +58,30 @@ export default function MessagesPanel({ isGuest, onCreateRoom }: MessagesPanelPr
 
   const [messageQuery, setMessageQuery] = useState("");
 
-  const visibleMessageRooms = useMemo(
-    () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms }),
-    [overview, recentVisitedRooms, token, humanRooms],
-  );
+  // Owner-unified Messages list: my own conversations + tagged bot conversations.
+  const visibleMessageRooms = useMemo<DashboardRoom[]>(() => {
+    const ownRooms = buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms });
+    return mergeOwnerVisibleRooms({ ownedAgents, ownRooms });
+  }, [overview, recentVisitedRooms, token, humanRooms, ownedAgents]);
+
+  const categorizedRooms = useMemo(() => {
+    if (messagesFilter === "all") return visibleMessageRooms;
+    if (messagesFilter === "groups") {
+      return visibleMessageRooms.filter((r) => (r.member_count ?? 0) > 2);
+    }
+    // Below: DMs only (2 members or fewer).
+    const dms = visibleMessageRooms.filter((r) => (r.member_count ?? 0) <= 2);
+    if (messagesFilter === "humans") {
+      return dms.filter((r) => r.peer_type === "human");
+    }
+    // bots: explicit agent peer OR DMs with no explicit peer_type (legacy default).
+    return dms.filter((r) => r.peer_type !== "human");
+  }, [messagesFilter, visibleMessageRooms]);
 
   const normalizedMessageQuery = messageQuery.trim().toLowerCase();
   const filteredMessageRooms = useMemo(() => {
-    if (!normalizedMessageQuery) return visibleMessageRooms;
-    return visibleMessageRooms.filter((room) => {
+    if (!normalizedMessageQuery) return categorizedRooms;
+    return categorizedRooms.filter((room) => {
       const cachedLatestMessage = messages[room.room_id]?.findLast(
         (m) => m.type !== "ack" && m.type !== "result" && m.type !== "error",
       );
@@ -66,15 +92,70 @@ export default function MessagesPanel({ isGuest, onCreateRoom }: MessagesPanelPr
       ].filter(Boolean).join("\n").toLowerCase();
       return searchHaystack.includes(normalizedMessageQuery);
     });
-  }, [messages, normalizedMessageQuery, visibleMessageRooms]);
+  }, [messages, normalizedMessageQuery, categorizedRooms]);
+
+  // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
   const showOverviewSkeleton = sessionMode === "authed-ready" && !overview && sidebarTab === "messages";
 
+  // When the search toggles off, clear the query so the room list isn't accidentally
+  // left filtered behind the scenes.
+  // (Keep behavior minimal — only reset on close, not on every keystroke.)
+  // The setMessageQuery call lives in the onClick path below.
+
   return (
-    <div className="flex min-h-full flex-col py-1">
-      <div className="border-b border-glass-border px-3 pb-3">
-        <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
+    <div className="flex min-h-full flex-col">
+      {/* Column header — peer-level to MessagesGroupingSidebar's header */}
+      <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          {!messagesGroupingOpen ? (
+            <button
+              onClick={() => setMessagesGroupingOpen(true)}
+              title="展开分组"
+              aria-label="展开分组"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-glass-border text-text-secondary/70 transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
+            >
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          <h2 className="truncate text-sm font-semibold text-text-primary">Messages</h2>
+        </div>
+        {!isGuest && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setMessagesSearchOpen(!messagesSearchOpen)}
+              title="搜索消息"
+              aria-label="搜索消息"
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
+                messagesSearchOpen ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
+              }`}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <button
+              onClick={onAddFriend}
+              title="邀请好友"
+              aria-label="邀请好友"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+            >
+              <UserPlus className="h-4 w-4" />
+            </button>
+            <button
+              onClick={onCreateRoom}
+              title="新建会话"
+              aria-label="新建会话"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
+      {messagesSearchOpen ? (
+        <div className="border-b border-glass-border px-3 py-2">
+          <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
+        </div>
+      ) : null}
       {visibleMessageRooms.length === 0 && !activeAgentId ? (
         <RoomZeroState compact />
       ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 && !activeAgentId ? (

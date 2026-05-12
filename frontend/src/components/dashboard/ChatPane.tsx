@@ -7,12 +7,12 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { Loader2 } from "lucide-react";
+import { Bot, Loader2, MessageSquare, User, Users } from "lucide-react";
 import {
   buildVisibleMessageRooms,
   isRoomOwnedByCurrentViewer,
@@ -36,6 +36,8 @@ import { usePresenceStore } from "@/store/usePresenceStore";
 import RoomZeroState from "./RoomZeroState";
 import { initialsFromName } from "./roomVisualTheme";
 import { dmPeerId } from "./dmRoom";
+import ContactsDetailPane from "./ContactsDetailPane";
+import { findOriginAgentForRoom } from "@/lib/messages-merge";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
@@ -421,8 +423,9 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   const { authResolved } = useDashboardSessionStore(useShallow((state) => ({
     authResolved: state.authResolved,
   })));
-  const { exploreView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
+  const { exploreView, setExploreView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
     exploreView: state.exploreView,
+    setExploreView: state.setExploreView,
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
     setSidebarTab: state.setSidebarTab,
@@ -510,25 +513,52 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     }
   };
 
-  const title = isRoomsView ? t.publicRooms : isAgentsView ? t.publicAgents : t.publicHumans;
-  const subtitle = isRoomsView ? t.browseRooms : isAgentsView ? t.browseAgents : t.browseHumans;
   const searchPlaceholder = isRoomsView ? t.searchRooms : isAgentsView ? t.searchAgents : t.searchHumans;
   const loading = isRoomsView ? publicRoomsLoading : isAgentsView ? publicAgentsLoading : publicHumansLoading;
   const emptyText = isRoomsView ? t.noRoomsFound : isAgentsView ? t.noAgentsFound : t.noHumansFound;
 
+  const exploreTabs: Array<{ key: "rooms" | "agents" | "humans"; label: string }> = [
+    { key: "rooms", label: locale === "zh" ? "群组" : "Groups" },
+    { key: "agents", label: locale === "zh" ? "Bot" : "Agents" },
+    { key: "humans", label: locale === "zh" ? "真人" : "Humans" },
+  ];
+
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-deep-black">
-      <div className="border-b border-glass-border px-5 py-4">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-text-primary">{title}</h2>
-          <p className="mt-1 text-xs text-text-secondary">{subtitle}</p>
+      <div className="mx-auto w-full max-w-5xl px-6 pt-8">
+        <h1 className="text-2xl font-semibold text-text-primary">
+          {locale === "zh" ? "发现" : "Explore"}
+        </h1>
+        <p className="mt-1 text-sm text-text-secondary/70">
+          {locale === "zh" ? "找到你的同好，与有趣的人聊天" : "Find your tribe, chat with interesting people"}
+        </p>
+        <div className="mt-5 inline-flex items-center gap-1 rounded-full border border-glass-border bg-glass-bg/60 p-1">
+          {exploreTabs.map((tab) => {
+            const active = exploreView === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  setExploreView(tab.key);
+                  startTransition(() => router.push(`/chats/explore/${tab.key}`));
+                }}
+                className={`rounded-full px-5 py-1.5 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-text-primary text-deep-black"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-        <div className="mt-3 max-w-xl">
+        <div className="mt-5 max-w-xl">
           <SearchBar onSearch={setQuery} placeholder={searchPlaceholder} />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-6 py-6">
         {loading ? (
           <GridSkeletonCards />
         ) : isRoomsView ? (
@@ -584,6 +614,57 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   );
 }
 
+type MessagesFilter = "all" | "bots" | "humans" | "groups";
+
+const messagesEmptyByFilter: Record<MessagesFilter, {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  hint: string;
+}> = {
+  all: {
+    icon: MessageSquare,
+    title: "选择一个对话",
+    description: "从左侧列表选一条对话开始 — Bot、真人、群聊都在这里。",
+    hint: "提示：用顶部的「全部 / Bot / 真人 / 群聊」chip 快速切换。",
+  },
+  bots: {
+    icon: Bot,
+    title: "和你的 Bot 聊一聊",
+    description: "左侧是你与每个 Bot 的私聊，点开就可以发消息。",
+    hint: "想发现更多 Bot？去「发现」标签浏览公开 agents。",
+  },
+  humans: {
+    icon: User,
+    title: "和真人聊一聊",
+    description: "左侧是你与真实联系人的私聊。",
+    hint: "想认识更多人？去「发现」→ 公开 Human。",
+  },
+  groups: {
+    icon: Users,
+    title: "选一个群开始",
+    description: "你已加入的群聊都列在左侧，点击进入即可发言。",
+    hint: "想找新的群？去「发现」→ 公开房间。",
+  },
+};
+
+function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
+  const config = messagesEmptyByFilter[filter];
+  const Icon = config.icon;
+  return (
+    <div className="w-full max-w-md text-center">
+      <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
+        <Icon className="h-6 w-6 text-neon-cyan/80" />
+      </div>
+      <h2 className="text-lg font-semibold text-text-primary">{config.title}</h2>
+      <p className="mt-2 text-sm text-text-secondary/70">{config.description}</p>
+      <p className="mt-4 inline-block rounded-full border border-glass-border/60 bg-glass-bg/30 px-3 py-1 text-[11px] text-text-secondary/60">
+        {config.hint}
+      </p>
+    </div>
+  );
+}
+
 export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const router = useRouter();
   const locale = useLanguage();
@@ -596,11 +677,13 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     activeAgentId: state.activeAgentId,
     humanId: state.human?.human_id ?? null,
   })));
-  const { sidebarTab, focusedRoomId, openedRoomId } = useDashboardUIStore(useShallow((state) => ({
+  const { sidebarTab, focusedRoomId, openedRoomId, messagesFilter } = useDashboardUIStore(useShallow((state) => ({
     sidebarTab: state.sidebarTab,
     focusedRoomId: state.focusedRoomId,
     openedRoomId: state.openedRoomId,
+    messagesFilter: state.messagesFilter,
   })));
+  const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const { overview, recentVisitedRooms, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     recentVisitedRooms: state.recentVisitedRooms,
@@ -641,13 +724,13 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   }
 
   if (sidebarTab === "contacts") {
-    return <ContactsMainPane onHumanOpen={onHumanOpen} />;
+    return <ContactsDetailPane />;
   }
 
   if (!focusedRoomId) {
     return (
-      <div className="flex flex-1 justify-center overflow-y-auto bg-deep-black px-6 py-10">
-        <RoomZeroState hasRooms={visibleMessageRooms.length > 0} onHumanOpen={onHumanOpen} />
+      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-deep-black px-6 py-10">
+        <MessagesEmptyState filter={messagesFilter} />
       </div>
     );
   }
@@ -691,7 +774,14 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
       </div>
       {openedRoomId && !isPaidAndNotJoined && (
         <>
-          {isGuest ? (
+          {openedRoomId && findOriginAgentForRoom(openedRoomId, ownedAgents) ? (
+            <div className="border-t border-glass-border bg-glass-bg/30 px-4 py-2.5">
+              <p className="text-center text-xs text-text-secondary/70">
+                <span className="mr-1">🔒</span>
+                由 {findOriginAgentForRoom(openedRoomId, ownedAgents)?.display_name} 代为发言 · 你是 owner，可观察不可发
+              </p>
+            </div>
+          ) : isGuest ? (
             <div className="border-t border-glass-border px-4 py-2">
               <div className="flex items-center justify-center gap-2">
                 <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>

@@ -29,6 +29,8 @@ import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
 import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
+import HomePanel from "./HomePanel";
+import MyBotsPanel from "./MyBotsPanel";
 import HumanCardModal from "./HumanCardModal";
 import Sidebar from "./sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
@@ -221,7 +223,7 @@ export default function DashboardApp() {
     const normalizedTab =
       tab === "dm" || tab === "rooms"
         ? "messages"
-        : tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet" || tab === "activity" || tab === "user-chat" || tab === "bots"
+        : tab === "home" || tab === "messages" || tab === "contacts" || tab === "explore" || tab === "wallet" || tab === "activity" || tab === "user-chat" || tab === "bots"
           ? tab
           : null;
 
@@ -961,66 +963,14 @@ export default function DashboardApp() {
         onMobileSecondaryClose={uiStore.closeMobileSidebar}
       />
       <div className={mainPaneClass}>
-        {uiStore.sidebarTab === "activity" ? (
+        {uiStore.sidebarTab === "home" ? (
+          <HomePanel />
+        ) : uiStore.sidebarTab === "activity" ? (
           <ActivityPanel />
         ) : uiStore.sidebarTab === "wallet" ? (
           <WalletPanel />
         ) : uiStore.sidebarTab === "bots" ? (
-          <div className="h-full min-w-0">
-            {uiStore.selectedBotAgentId ? (
-              <UserChatPane agentId={uiStore.selectedBotAgentId} />
-            ) : sessionStore.ownedAgents.length === 0 ? (
-              <div className="flex h-full items-center justify-center px-8">
-                <div className="w-full max-w-md">
-                  <div className="mb-8 text-center">
-                    <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-neon-cyan/10 text-neon-cyan">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="11" width="18" height="10" rx="2" />
-                        <circle cx="12" cy="5" r="2" />
-                        <path d="M12 7v4" />
-                        <path d="M8 15h.01M12 15h.01M16 15h.01" />
-                      </svg>
-                    </div>
-                    <h2 className="text-base font-semibold text-text-primary">{tSidebar.onboardingTitle}</h2>
-                    <p className="mt-1 text-sm text-text-secondary/70">{tSidebar.onboardingSubtitle}</p>
-                  </div>
-                  <ol className="space-y-4">
-                    {[
-                      { title: tSidebar.onboardingStep1Title, desc: tSidebar.onboardingStep1Desc },
-                      { title: tSidebar.onboardingStep2Title, desc: tSidebar.onboardingStep2Desc },
-                      { title: tSidebar.onboardingStep3Title, desc: tSidebar.onboardingStep3Desc },
-                    ].map((step, i) => (
-                      <li key={i} className="flex gap-4">
-                        <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-glass-bg border border-glass-border text-[11px] font-semibold text-neon-cyan">
-                          {i + 1}
-                        </span>
-                        <div className="min-w-0 pt-0.5">
-                          <p className="text-sm font-medium text-text-primary">{step.title}</p>
-                          <p className="mt-0.5 text-xs text-text-secondary/70">{step.desc}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                  <div className="mt-8 text-center">
-                    <button
-                      type="button"
-                      onClick={() => uiStore.openCreateBotModal()}
-                      className="inline-flex items-center gap-2 rounded-lg bg-neon-cyan/10 border border-neon-cyan/40 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 5v14M5 12h14" />
-                      </svg>
-                      {tSidebar.onboardingCta}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-secondary/70">
-                <span>{tSidebar.selectBotPrompt}</span>
-              </div>
-            )}
-          </div>
+          <MyBotsPanel />
         ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
           <div className="h-full min-w-0">
             <UserChatPane />
