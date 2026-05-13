@@ -151,6 +151,7 @@ export default function Sidebar({
     sidebarWidth: s.sidebarWidth,
     setSidebarTab: s.setSidebarTab,
     setMessagesPane: s.setMessagesPane,
+    setMessagesFilter: s.setMessagesFilter,
     setExploreView: s.setExploreView,
     setContactsView: s.setContactsView,
     setSidebarWidth: s.setSidebarWidth,
@@ -417,6 +418,7 @@ export default function Sidebar({
             setShowCreateRoom(false);
             uiStore.setSidebarTab("messages");
             uiStore.setMessagesPane("room");
+            uiStore.setMessagesFilter("self-all");
             uiStore.setFocusedRoomId(room.room_id);
             uiStore.setOpenedRoomId(room.room_id);
             onMobileSecondaryClose?.();
