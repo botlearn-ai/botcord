@@ -9,6 +9,7 @@ import type { ActivityStats, PublicRoom, UserAgent } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import BotAvatar from "./BotAvatar";
 import ExploreEntityCard from "./ExploreEntityCard";
 
@@ -51,10 +52,14 @@ function statTotal(stats: AgentStats): number | string {
   return stats.messages_sent + stats.messages_received;
 }
 
-function BotActivityCard({ bot, stats }: { bot: UserAgent; stats: AgentStats }) {
+function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: AgentStats; onClick: () => void }) {
   const online = bot.ws_online;
   return (
-    <div className="min-w-[260px] max-w-[280px] rounded-2xl border border-glass-border bg-deep-black-light p-4 transition-colors hover:border-neon-cyan/40">
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
+    >
       <div className="mb-3 flex items-center gap-2.5">
         <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={36} alt={bot.display_name} />
         <div className="min-w-0 flex-1">
@@ -71,7 +76,7 @@ function BotActivityCard({ bot, stats }: { bot: UserAgent; stats: AgentStats }) 
         <Stat label="打开话题" value={stats?.topics_open ?? "—"} />
         <Stat label="完成话题" value={stats?.topics_completed ?? "—"} />
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -92,6 +97,7 @@ function PersonCard({
   online,
   agentId,
   avatarUrl,
+  onClick,
 }: {
   name: string;
   subtitle?: string;
@@ -100,9 +106,14 @@ function PersonCard({
   online?: boolean;
   agentId?: string;
   avatarUrl?: string | null;
+  onClick: () => void;
 }) {
   return (
-    <div className="flex flex-col rounded-2xl border border-glass-border bg-deep-black-light p-4 transition-colors hover:border-neon-cyan/40">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
+    >
       <div className="mb-2 flex items-center gap-2">
         {badge === "AGENT" && agentId ? (
           <BotAvatar agentId={agentId} avatarUrl={avatarUrl} size={40} alt={name} />
@@ -125,7 +136,7 @@ function PersonCard({
         </div>
       </div>
       <p className="line-clamp-2 min-h-[2rem] text-xs text-text-secondary/70">{bio || "暂无简介"}</p>
-    </div>
+    </button>
   );
 }
 
@@ -147,6 +158,7 @@ export default function HomePanel() {
     loadPublicRooms,
     loadPublicAgents,
     loadPublicHumans,
+    selectAgent,
   } = useDashboardChatStore(
     useShallow((s) => ({
       publicRooms: s.publicRooms,
@@ -158,10 +170,17 @@ export default function HomePanel() {
       loadPublicRooms: s.loadPublicRooms,
       loadPublicAgents: s.loadPublicAgents,
       loadPublicHumans: s.loadPublicHumans,
+      selectAgent: s.selectAgent,
     })),
   );
-  const openCreateBotModal = useDashboardUIStore((s) => s.openCreateBotModal);
+  const { openCreateBotModal, requestOpenHuman } = useDashboardUIStore(
+    useShallow((s) => ({
+      openCreateBotModal: s.openCreateBotModal,
+      requestOpenHuman: s.requestOpenHuman,
+    })),
+  );
   const [statsByAgent, setStatsByAgent] = useState<Record<string, ActivityStats>>({});
+  const [settingsBot, setSettingsBot] = useState<UserAgent | null>(null);
 
   useEffect(() => {
     if (!publicRoomsLoaded) void loadPublicRooms();
@@ -192,6 +211,7 @@ export default function HomePanel() {
     () => [...publicRooms].sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")).slice(0, 4),
     [publicRooms],
   );
+  const previewOwnedAgents = ownedAgents.slice(0, 6);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -215,9 +235,14 @@ export default function HomePanel() {
             onShowAll={ownedAgents.length > 0 ? () => router.push("/chats/bots") : undefined}
           />
           {ownedAgents.length > 0 ? (
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {ownedAgents.map((bot) => (
-                <BotActivityCard key={bot.agent_id} bot={bot} stats={statsByAgent[bot.agent_id] ?? null} />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {previewOwnedAgents.map((bot) => (
+                <BotActivityCard
+                  key={bot.agent_id}
+                  bot={bot}
+                  stats={statsByAgent[bot.agent_id] ?? null}
+                  onClick={() => setSettingsBot(bot)}
+                />
               ))}
             </div>
           ) : (
@@ -284,6 +309,7 @@ export default function HomePanel() {
                   agentId={agent.agent_id}
                   avatarUrl={agent.avatar_url}
                   subtitle={agent.owner_display_name ? `${agent.owner_display_name} 的 Bot` : "BOT"}
+                  onClick={() => void selectAgent(agent.agent_id)}
                 />
               ))}
             </div>
@@ -311,6 +337,7 @@ export default function HomePanel() {
                   badge="HUMAN"
                   avatarUrl={human.avatar_url}
                   subtitle="HUMAN"
+                  onClick={() => requestOpenHuman(human.human_id, human.display_name)}
                 />
               ))}
             </div>
@@ -321,6 +348,16 @@ export default function HomePanel() {
           )}
         </section>
       </div>
+      {settingsBot ? (
+        <AgentSettingsDrawer
+          agentId={settingsBot.agent_id}
+          displayName={settingsBot.display_name}
+          bio={settingsBot.bio ?? null}
+          avatarUrl={settingsBot.avatar_url ?? null}
+          onClose={() => setSettingsBot(null)}
+          onSaved={() => setSettingsBot(null)}
+        />
+      ) : null}
     </div>
   );
 }
