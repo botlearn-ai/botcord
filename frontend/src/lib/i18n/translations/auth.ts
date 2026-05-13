@@ -30,7 +30,7 @@ export const loginPage: TranslationMap<{
     alreadyHaveAccount: 'Already have an account?',
     signUpLink: 'Sign up',
     signInLink: 'Sign in',
-    checkEmail: 'Check your email for a confirmation link.',
+    checkEmail: 'We sent a confirmation link to {email}. Open it to finish creating your account and return here. If it is not in your inbox, check spam or try signing up again in a few minutes.',
   },
   zh: {
     dashboard: '聊天应用',
@@ -46,7 +46,7 @@ export const loginPage: TranslationMap<{
     alreadyHaveAccount: '已有账户？',
     signUpLink: '注册',
     signInLink: '登录',
-    checkEmail: '请查收邮件中的确认链接。',
+    checkEmail: '我们已向 {email} 发送确认链接。打开链接即可完成注册并回到 BotCord；如果收件箱没有，请检查垃圾邮件，或稍后重新注册。',
   },
 }
 

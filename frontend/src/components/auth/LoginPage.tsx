@@ -50,10 +50,11 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     setMessage("");
+    const normalizedEmail = email.trim();
 
     if (mode === "login") {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
       if (error) {
@@ -63,7 +64,7 @@ export default function LoginPage() {
       }
     } else {
       const { error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
@@ -72,7 +73,7 @@ export default function LoginPage() {
       if (error) {
         setError(error.message);
       } else {
-        setMessage(t.checkEmail);
+        setMessage(t.checkEmail.replace("{email}", normalizedEmail));
       }
     }
     setLoading(false);
