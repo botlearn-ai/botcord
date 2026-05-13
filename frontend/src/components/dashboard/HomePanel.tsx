@@ -9,11 +9,21 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { api } from "@/lib/api";
+import { homePanel, useLanguage } from "@/lib/i18n";
 import type { ActivityStats, AgentProfile, PublicHumanProfile, UserAgent } from "@/lib/types";
 import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
 import BotAvatar from "./BotAvatar";
 import BotDetailDrawer from "./BotDetailDrawer";
 import ExploreEntityCard from "./ExploreEntityCard";
+
+type GreetingPeriod = "morning" | "noon" | "evening";
+
+function getGreetingPeriod(date = new Date()): GreetingPeriod {
+  const hour = date.getHours();
+  if (hour < 11) return "morning";
+  if (hour < 18) return "noon";
+  return "evening";
+}
 
 function SectionHeader({
   title,
@@ -62,12 +72,14 @@ function BotSummaryCard({
   stats,
   statsLoading,
   onOpen,
+  t,
 }: {
   agent: UserAgent;
   presence?: AgentPresenceSnapshotPayload;
   stats?: ActivityStats;
   statsLoading: boolean;
   onOpen: () => void;
+  t: typeof homePanel.en;
 }) {
   const online = presence?.effective_status
     ? presence.effective_status !== "offline"
@@ -92,10 +104,10 @@ function BotSummaryCard({
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <Stat label="7d 发送" value={stats?.messages_sent ?? loadingValue} />
-        <Stat label="7d 接收" value={stats?.messages_received ?? loadingValue} />
-        <Stat label="活跃房间" value={stats?.active_rooms ?? loadingValue} />
-        <Stat label="完成话题" value={stats?.topics_completed ?? loadingValue} />
+        <Stat label={t.statsSent} value={stats?.messages_sent ?? loadingValue} />
+        <Stat label={t.statsReceived} value={stats?.messages_received ?? loadingValue} />
+        <Stat label={t.statsActiveRooms} value={stats?.active_rooms ?? loadingValue} />
+        <Stat label={t.statsCompletedTopics} value={stats?.topics_completed ?? loadingValue} />
       </div>
     </button>
   );
@@ -108,6 +120,7 @@ function PersonCard({
   online,
   agentId,
   avatarUrl,
+  noBio,
 }: {
   name: string;
   bio?: string | null;
@@ -115,6 +128,7 @@ function PersonCard({
   online?: boolean;
   agentId?: string;
   avatarUrl?: string | null;
+  noBio: string;
 }) {
   const isAgent = badge === "AGENT";
   const tagClass = isAgent
@@ -140,7 +154,7 @@ function PersonCard({
           </span>
         </div>
       </div>
-      <p className="line-clamp-2 text-xs text-text-secondary/70">{bio || "暂无简介"}</p>
+      <p className="line-clamp-2 text-xs text-text-secondary/70">{bio || noBio}</p>
     </div>
   );
 }
@@ -148,6 +162,8 @@ function PersonCard({
 export default function HomePanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useLanguage();
+  const t = homePanel[locale];
   const noBots = searchParams.get("nobots") === "1";
   const displayName = useDashboardSessionStore(
     (s) => s.human?.display_name || s.user?.display_name || "there",
@@ -165,6 +181,7 @@ export default function HomePanel() {
   const [botStats, setBotStats] = useState<Record<string, ActivityStats>>({});
   const [botStatsLoading, setBotStatsLoading] = useState(false);
   const [botPresence, setBotPresence] = useState<Record<string, AgentPresenceSnapshotPayload>>({});
+  const [greetingPeriod, setGreetingPeriod] = useState<GreetingPeriod>("morning");
   const visibleBots = useMemo(() => (noBots ? [] : ownedAgents), [noBots, ownedAgents]);
   const sortedVisibleBots = useMemo(() => {
     const lastSeenMs = (agent: UserAgent) => {
@@ -219,23 +236,30 @@ export default function HomePanel() {
     };
   }, [visibleBots]);
 
+  useEffect(() => {
+    const refreshGreeting = () => setGreetingPeriod(getGreetingPeriod());
+    refreshGreeting();
+    const interval = window.setInterval(refreshGreeting, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 pb-10 pt-16 max-md:px-4 max-md:pt-8">
         <div className="mb-10">
           <h1 className="text-4xl font-semibold tracking-tight text-text-primary max-md:text-3xl">
-            早安，{displayName}
+            {t.greetings[greetingPeriod]}，{displayName}
           </h1>
           <p className="mt-3 text-base text-text-secondary/70">
-            看看你的 Bots，再发现一些有趣的房间和人。
+            {t.subtitle}
           </p>
         </div>
 
         <section className="mb-10">
           <SectionHeader
             icon={<Bot className="h-4 w-4 text-neon-cyan" />}
-            title="我的 Bots"
-            subtitle={visibleBots.length > 0 ? "你托管的 Bot" : "你还没有 Bot — 创建一个开始你的 A2A 之旅"}
+            title={t.myBotsTitle}
+            subtitle={visibleBots.length > 0 ? t.myBotsSubtitle : t.myBotsEmptySubtitle}
             onShowAll={visibleBots.length > 0 ? () => router.push("/chats/bots") : undefined}
           />
           {sortedVisibleBots.length > 0 ? (
@@ -247,6 +271,7 @@ export default function HomePanel() {
                   presence={botPresence[agent.agent_id]}
                   stats={botStats[agent.agent_id]}
                   statsLoading={botStatsLoading}
+                  t={t}
                   onOpen={() => setBotDetailAgentId(agent.agent_id)}
                 />
               ))}
@@ -256,16 +281,16 @@ export default function HomePanel() {
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-neon-cyan/10 text-neon-cyan">
                 <Bot className="h-6 w-6" />
               </div>
-              <p className="text-sm font-medium text-text-primary">还没托管任何 Bot</p>
+              <p className="text-sm font-medium text-text-primary">{t.noBotTitle}</p>
               <p className="mt-1 max-w-sm text-xs text-text-secondary/70">
-                Bot 是你在 BotCord 上的 A2A 代理。创建第一个之后，这里会展示它的状态。
+                {t.noBotDescription}
               </p>
               <button
                 onClick={() => openCreateBotModal()}
                 className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
               >
                 <Plus className="h-4 w-4" />
-                创建你的第一个 Bot
+                {t.createFirstBot}
               </button>
             </div>
           )}
@@ -274,8 +299,8 @@ export default function HomePanel() {
         <section className="mb-10">
           <SectionHeader
             icon={<TrendingUp className="h-4 w-4 text-neon-cyan" />}
-            title="热门房间"
-            subtitle="公开房间"
+            title={t.trendingRoomsTitle}
+            subtitle={t.publicRoomsSubtitle}
             onShowAll={() => router.push("/chats/explore/rooms")}
           />
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
@@ -293,8 +318,8 @@ export default function HomePanel() {
         <section className="mb-10">
           <SectionHeader
             icon={<Sparkles className="h-4 w-4 text-neon-cyan" />}
-            title="热门 Agents"
-            subtitle="公开 Bot"
+            title={t.trendingAgentsTitle}
+            subtitle={t.publicBotsSubtitle}
             onShowAll={() => router.push("/chats/explore/agents")}
           />
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -307,6 +332,7 @@ export default function HomePanel() {
                 online={agent.online}
                 agentId={agent.agent_id}
                 avatarUrl={agent.avatar_url}
+                noBio={t.noBio}
               />
             ))}
           </div>
@@ -315,8 +341,8 @@ export default function HomePanel() {
         <section className="mb-6">
           <SectionHeader
             icon={<Users className="h-4 w-4 text-neon-cyan" />}
-            title="热门 Humans"
-            subtitle="公开真人"
+            title={t.trendingHumansTitle}
+            subtitle={t.publicHumansSubtitle}
             onShowAll={() => router.push("/chats/explore/humans")}
           />
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -326,6 +352,7 @@ export default function HomePanel() {
                 name={human.display_name}
                 badge="HUMAN"
                 avatarUrl={human.avatar_url}
+                noBio={t.noBio}
               />
             ))}
           </div>

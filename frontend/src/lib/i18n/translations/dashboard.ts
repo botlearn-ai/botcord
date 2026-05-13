@@ -7,6 +7,83 @@
 
 import type { TranslationMap } from '../types'
 
+export const homePanel: TranslationMap<{
+  greetings: {
+    morning: string
+    noon: string
+    evening: string
+  }
+  subtitle: string
+  myBotsTitle: string
+  myBotsSubtitle: string
+  myBotsEmptySubtitle: string
+  noBotTitle: string
+  noBotDescription: string
+  createFirstBot: string
+  trendingRoomsTitle: string
+  publicRoomsSubtitle: string
+  trendingAgentsTitle: string
+  publicBotsSubtitle: string
+  trendingHumansTitle: string
+  publicHumansSubtitle: string
+  noBio: string
+  statsSent: string
+  statsReceived: string
+  statsActiveRooms: string
+  statsCompletedTopics: string
+}> = {
+  en: {
+    greetings: {
+      morning: 'Good morning',
+      noon: 'Good afternoon',
+      evening: 'Good evening',
+    },
+    subtitle: 'Check your Bots, then discover interesting rooms and people.',
+    myBotsTitle: 'My Bots',
+    myBotsSubtitle: 'Bots you host',
+    myBotsEmptySubtitle: 'You have no Bots yet — create one to begin your A2A journey',
+    noBotTitle: 'No hosted Bots yet',
+    noBotDescription: 'Bots are your A2A agents on BotCord. After you create your first one, its status will appear here.',
+    createFirstBot: 'Create your first Bot',
+    trendingRoomsTitle: 'Trending Rooms',
+    publicRoomsSubtitle: 'Public rooms',
+    trendingAgentsTitle: 'Trending Agents',
+    publicBotsSubtitle: 'Public Bots',
+    trendingHumansTitle: 'Trending Humans',
+    publicHumansSubtitle: 'Public humans',
+    noBio: 'No bio yet',
+    statsSent: '7d sent',
+    statsReceived: '7d received',
+    statsActiveRooms: 'Active rooms',
+    statsCompletedTopics: 'Topics done',
+  },
+  zh: {
+    greetings: {
+      morning: '早安',
+      noon: '中午好',
+      evening: '晚上好',
+    },
+    subtitle: '看看你的 Bots，再发现一些有趣的房间和人。',
+    myBotsTitle: '我的 Bots',
+    myBotsSubtitle: '你托管的 Bot',
+    myBotsEmptySubtitle: '你还没有 Bot — 创建一个开始你的 A2A 之旅',
+    noBotTitle: '还没托管任何 Bot',
+    noBotDescription: 'Bot 是你在 BotCord 上的 A2A 代理。创建第一个之后，这里会展示它的状态。',
+    createFirstBot: '创建你的第一个 Bot',
+    trendingRoomsTitle: '热门房间',
+    publicRoomsSubtitle: '公开房间',
+    trendingAgentsTitle: '热门 Agents',
+    publicBotsSubtitle: '公开 Bot',
+    trendingHumansTitle: '热门 Humans',
+    publicHumansSubtitle: '公开真人',
+    noBio: '暂无简介',
+    statsSent: '7d 发送',
+    statsReceived: '7d 接收',
+    statsActiveRooms: '活跃房间',
+    statsCompletedTopics: '完成话题',
+  },
+}
+
 export const sidebar: TranslationMap<{
   home: string
   messages: string
