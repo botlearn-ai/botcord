@@ -115,6 +115,44 @@ describe("messages merge filters", () => {
       "bots-group": 1,
     });
   });
+
+  it("classifies human-human DMs as self-human even when peer_type is missing", () => {
+    const room = makeRoom({
+      room_id: "rm_dm_hu_owner_hu_peer",
+      name: "Human peer",
+      member_count: 2,
+      peer_type: undefined,
+    });
+    const ownedAgentIds = new Set(["ag_bot"]);
+
+    expect(applyMessagesFilter([room], "self-human", ownedAgentIds).map((r) => r.room_id)).toEqual([
+      "rm_dm_hu_owner_hu_peer",
+    ]);
+    expect(applyMessagesFilter([room], "self-third-bot", ownedAgentIds)).toEqual([]);
+    expect(countMessagesByFilter([room], ownedAgentIds)).toMatchObject({
+      "self-all": 1,
+      "self-human": 1,
+      "self-third-bot": 0,
+    });
+  });
+
+  it("classifies observed bot-human DMs as bots-bot-human when peer_type is missing", () => {
+    const room = makeRoom({
+      room_id: "rm_dm_ag_bot_hu_peer",
+      name: "Bot human peer",
+      owner_id: "ag_bot",
+      owner_type: "agent",
+      member_count: 2,
+      peer_type: undefined,
+      _originAgent: { agent_id: "ag_bot", display_name: "My Bot" },
+    });
+    const ownedAgentIds = new Set(["ag_bot"]);
+
+    expect(applyMessagesFilter([room], "bots-bot-human", ownedAgentIds).map((r) => r.room_id)).toEqual([
+      "rm_dm_ag_bot_hu_peer",
+    ]);
+    expect(applyMessagesFilter([room], "bots-bot-bot", ownedAgentIds)).toEqual([]);
+  });
 });
 
 describe("mergeOwnerVisibleRooms", () => {

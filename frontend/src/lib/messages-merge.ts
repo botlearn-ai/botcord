@@ -103,6 +103,26 @@ function hasOwnedAgentParticipant(room: Pick<DashboardRoom, "owner_id" | "room_i
   return [...ownedAgentIds].some((agentId) => room.room_id.includes(agentId));
 }
 
+function inferDmPeerType(
+  room: Pick<DashboardRoom, "room_id" | "peer_type" | "_originAgent">,
+): ParticipantType | undefined {
+  if (room.peer_type) return room.peer_type;
+  const parsed = parseDmRoomId(room.room_id);
+  if (!parsed) return undefined;
+
+  const aIsHuman = parsed.a.startsWith("hu_");
+  const bIsHuman = parsed.b.startsWith("hu_");
+  if (aIsHuman && bIsHuman) return "human";
+  if (!aIsHuman && !bIsHuman) return "agent";
+
+  // For observed bot rooms, peer_type means "who my bot is talking to".
+  // Mixed ag/hu DMs are therefore bot-human conversations.
+  if (room._originAgent) return "human";
+
+  // For the human owner's own mixed DM, the peer is the agent endpoint.
+  return "agent";
+}
+
 /**
  * Classify a single room into its most-specific filter bucket. Used both for
  * filtering the visible list and for computing sidebar counts.
@@ -120,15 +140,16 @@ export function classifyMessagesRoom(
 ): MessagesFilterKey {
   const isObserver = !!room._originAgent;
   const isPrivateChat = isPrivateMessageRoom(room);
+  const dmPeerType = isPrivateChat ? inferDmPeerType(room) : undefined;
 
   if (isObserver) {
     if (!isPrivateChat) return "bots-group";
-    if (room.peer_type === "human") return "bots-bot-human";
+    if (dmPeerType === "human") return "bots-bot-human";
     return "bots-bot-bot";
   }
 
   if (!isPrivateChat) return "self-group";
-  if (room.peer_type === "human") return "self-human";
+  if (dmPeerType === "human") return "self-human";
   // Agent peer: did I bring this bot into existence (my owned bot)?
   if (hasOwnedAgentParticipant(room, ownedAgentIds)) return "self-my-bot";
   return "self-third-bot";
