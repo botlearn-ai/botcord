@@ -215,23 +215,6 @@ export default function AgentChannelsTab({ agentId }: Props) {
         </div>
       )}
 
-      {/* BotCord built-in entry — read-only. */}
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-text-primary">BotCord 内置入口</h3>
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${STATUS_STYLES.active}`}
-          >
-            <CheckCircle2 className="h-3 w-3" />
-            始终启用
-          </span>
-        </div>
-        <div className="font-mono text-[11px] text-text-secondary/80">{agentId}</div>
-        <p className="mt-2 text-xs text-text-secondary">
-          这是 BotCord agent 的基础数据面入口，无法删除或停用。
-        </p>
-      </section>
-
       {/* Connected gateways. */}
       <section className="space-y-2">
         <div className="flex items-center justify-between">
