@@ -131,6 +131,7 @@ class HumanAgentRoomSummary(BaseModel):
     last_message_at: str | None = None
     last_sender_name: str | None = None
     allow_human_send: bool | None = None
+    members_preview: list[HumanRoomMemberPreviewItem] | None = None
     bots: list[HumanAgentRoomBot]
 
 
@@ -711,6 +712,7 @@ async def list_owned_agent_only_rooms(
         )
     )
     human_member_room_ids = {row[0] for row in human_membership_result.all()}
+    previews_by_room = await _build_member_previews(db, room_ids)
 
     response_rooms: list[HumanAgentRoomSummary] = []
     for room_id, preview in rooms_by_id.items():
@@ -736,6 +738,8 @@ async def list_owned_agent_only_rooms(
                 last_message_at=preview.get("last_message_at"),
                 last_sender_name=preview.get("last_sender_name"),
                 allow_human_send=preview.get("allow_human_send"),
+                members_preview=previews_by_room.get(room_id)
+                if int(preview.get("member_count") or 0) > 2 else None,
                 bots=sorted(bots, key=lambda bot: agent_names.get(bot.agent_id) or bot.agent_id),
             )
         )

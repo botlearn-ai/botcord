@@ -966,6 +966,7 @@ export interface HumanAgentRoomSummary {
   last_message_at: string | null;
   last_sender_name: string | null;
   allow_human_send?: boolean | null;
+  members_preview?: RoomMemberPreview[] | null;
   bots: HumanAgentRoomBot[];
 }
 
