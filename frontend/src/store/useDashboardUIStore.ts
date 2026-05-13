@@ -93,6 +93,7 @@ export interface DashboardUIState {
   setMessagesGroupingOpen: (open: boolean) => void;
   setMessagesSearchOpen: (open: boolean) => void;
   setMessagesBotScope: (scope: DashboardUIState["messagesBotScope"]) => void;
+  resetMessagesGroupingForRoomOpen: () => void;
   /** Hides all wallet amounts behind a placeholder (default true). Toggle via the eye button on the wallet page. */
   walletAmountsHidden: boolean;
   toggleWalletAmountsHidden: () => void;
@@ -199,6 +200,22 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.messagesSearchOpen === messagesSearchOpen ? state : { messagesSearchOpen })),
   setMessagesBotScope: (messagesBotScope) =>
     set((state) => (state.messagesBotScope === messagesBotScope ? state : { messagesBotScope })),
+  resetMessagesGroupingForRoomOpen: () =>
+    set((state) => {
+      const next = {
+        messagesFilter: initialUIState.messagesFilter,
+        messagesScope: initialUIState.messagesScope,
+        messagesBotScope: initialUIState.messagesBotScope,
+      };
+      if (
+        state.messagesFilter === next.messagesFilter
+        && state.messagesScope.type === "human"
+        && state.messagesBotScope === next.messagesBotScope
+      ) {
+        return state;
+      }
+      return next;
+    }),
   toggleWalletAmountsHidden: () =>
     set((state) => ({ walletAmountsHidden: !state.walletAmountsHidden })),
   setExploreView: (exploreView) =>
