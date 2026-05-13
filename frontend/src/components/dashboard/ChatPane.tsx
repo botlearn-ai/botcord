@@ -456,6 +456,14 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
       void loadPublicHumans(normalizedQuery);
     }
   }, [authResolved, isRoomsView, isAgentsView, isHumansView, query, loadPublicRooms, loadPublicAgents, loadPublicHumans]);
+
+  useEffect(() => {
+    if (publicAgents.length === 0) return;
+    usePresenceStore.getState().seed(
+      publicAgents.map((agent) => ({ agentId: agent.agent_id, online: Boolean(agent.online) })),
+    );
+  }, [publicAgents]);
+
   const publicRoomsById = useMemo(
     () => Object.fromEntries(publicRooms.map((room) => [room.room_id, room])),
     [publicRooms],
