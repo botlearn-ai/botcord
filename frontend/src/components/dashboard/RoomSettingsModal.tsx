@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Search, Trash2, X } from "lucide-react";
+import { useRouter } from "nextjs-toploader/app";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -166,6 +167,7 @@ export default function RoomSettingsModal({
   initialSubscriptionProductId = null,
   onClose,
 }: RoomSettingsModalProps) {
+  const router = useRouter();
   const locale = useLanguage();
   const t = roomSettingsModal[locale];
   const ta = roomAdvancedSettings[locale];
@@ -576,6 +578,7 @@ export default function RoomSettingsModal({
       await Promise.all([leaveRoom(roomId), refreshHumanRooms()]);
       setLeaveDialogOpen(false);
       onClose();
+      router.push("/chats/messages");
     } catch (err) {
       setError(err instanceof Error ? err.message : tm.leaveRoomFailed);
     }

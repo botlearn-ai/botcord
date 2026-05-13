@@ -576,9 +576,22 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             api.getOverview(),
             get().loadPublicRoomDetail(roomId),
           ]);
-          set({ leavingRoomId: null });
+          set((state) => {
+            const messages = { ...state.messages };
+            const messagesLoading = { ...state.messagesLoading };
+            const messagesHasMore = { ...state.messagesHasMore };
+            delete messages[roomId];
+            delete messagesLoading[roomId];
+            delete messagesHasMore[roomId];
+            return { leavingRoomId: null, messages, messagesLoading, messagesHasMore };
+          });
+          const ui = useDashboardUIStore.getState();
+          if (ui.openedRoomId === roomId || ui.focusedRoomId === roomId) {
+            ui.setFocusedRoomId(null);
+            ui.setOpenedRoomId(null);
+            ui.setOpenedTopicId(null);
+          }
           get().replaceOverview(overview);
-          void get().loadRoomMessages(roomId);
         } catch (error) {
           set({ leavingRoomId: null });
           throw error;

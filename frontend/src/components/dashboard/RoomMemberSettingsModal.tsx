@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { useLanguage } from "@/lib/i18n";
 import { roomMemberSettingsModal } from "@/lib/i18n/translations/dashboard";
@@ -27,6 +28,7 @@ export default function RoomMemberSettingsModal({
   requiredSubscriptionProductId,
   onClose,
 }: RoomMemberSettingsModalProps) {
+  const router = useRouter();
   const locale = useLanguage();
   const t = roomMemberSettingsModal[locale];
 
@@ -60,6 +62,7 @@ export default function RoomMemberSettingsModal({
     try {
       await leaveRoom(roomId);
       onClose();
+      router.push("/chats/messages");
     } catch (err) {
       setError(err instanceof Error ? err.message : t.leaveRoomFailed);
       setConfirmingLeave(false);

@@ -147,6 +147,7 @@ export default function AgentBrowser() {
     setRoomActionError(null);
     try {
       await leaveRoom(currentRoom.room_id);
+      router.push("/chats/messages");
     } catch (err: any) {
       setRoomActionError(err?.message || t.leaveRoomFailed);
     }
