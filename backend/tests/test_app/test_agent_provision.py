@@ -438,6 +438,57 @@ async def test_provision_rejects_runtime_not_in_snapshot(
 
 
 @pytest.mark.asyncio
+async def test_provision_rejects_unavailable_openclaw_profile_in_snapshot(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    instance_id = await _provision_instance(client, seed_user)
+    conn, _, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[
+            {
+                "id": "openclaw-acp",
+                "available": True,
+                "endpoints": [
+                    {
+                        "name": "local",
+                        "url": "ws://127.0.0.1:18789",
+                        "reachable": True,
+                        "agents": [
+                            {
+                                "id": "claude-code",
+                                "availability": {
+                                    "available": False,
+                                    "code": "stale_config",
+                                    "message": 'Agent "claude-code" no longer exists in configuration',
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        db_session=db_session,
+    )
+    try:
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "openclaw-acp",
+                "openclaw_gateway": "local",
+                "openclaw_agent": "claude-code",
+            },
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        assert r.status_code == 409
+        assert r.json()["detail"] == "runtime_unavailable"
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
 async def test_provision_permits_runtime_when_snapshot_empty(
     client: AsyncClient, seed_user, db_session: AsyncSession
 ):

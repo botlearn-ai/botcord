@@ -136,6 +136,96 @@ interface SpawnDeps {
   spawnFn?: typeof spawn;
 }
 
+export interface OpenclawAgentValidationResult {
+  ok: boolean;
+  code?: "stale_config" | "probe_failed";
+  error?: string;
+}
+
+export async function validateOpenclawAgentProfile(args: {
+  gateway: { name: string; url: string; token?: string };
+  openclawAgent: string;
+  cwd: string;
+  timeoutMs?: number;
+  spawnFn?: typeof spawn;
+}): Promise<OpenclawAgentValidationResult> {
+  const command = resolveOpenclawCommand() ?? "openclaw";
+  const acpArgs = ["acp", "--url", args.gateway.url];
+  if (args.gateway.token) acpArgs.push("--token", args.gateway.token);
+  const child = (args.spawnFn ?? spawn)(command, acpArgs, {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env },
+  }) as ChildProcessWithoutNullStreams;
+  const handle: AcpProcessHandle = {
+    child,
+    pending: new Map(),
+    subscribers: new Map(),
+    nextId: 1,
+    buffer: "",
+    nonJsonStdoutTail: [],
+    initialized: false,
+    inFlight: 0,
+    closed: false,
+    spawnedUrl: args.gateway.url,
+    spawnedToken: args.gateway.token,
+  };
+
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => onStdoutChunk(handle, chunk));
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    log.debug("openclaw-acp.validate.stderr", {
+      gateway: args.gateway.name,
+      openclawAgent: args.openclawAgent,
+      chunk: chunk.slice(0, 500),
+    });
+  });
+  child.on("exit", (code, signal) => {
+    shutdownHandle(handle, `exit code=${code ?? "null"} signal=${signal ?? "null"}`);
+  });
+  child.on("error", (err) => {
+    shutdownHandle(handle, `error: ${(err as Error).message}`);
+  });
+
+  const timeoutMs = args.timeoutMs ?? 3000;
+  try {
+    await withTimeout(
+      sendRequest(handle, "initialize", {
+        protocolVersion: ACP_PROTOCOL_VERSION,
+        clientCapabilities: {},
+      }),
+      timeoutMs,
+      "initialize timed out",
+    );
+    await withTimeout(
+      sendRequest(handle, "session/new", {
+        cwd: args.cwd,
+        mcpServers: [],
+        _meta: {
+          sessionKey: buildAcpSessionKey({
+            openclawAgent: args.openclawAgent,
+            accountId: "botcord-provision-check",
+            conversationKey: "validate",
+          }),
+        },
+      }),
+      timeoutMs,
+      "session/new timed out",
+    );
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stale = /agent\s+["']?[^"']+["']?\s+no longer exists in configuration/i.test(message);
+    return {
+      ok: false,
+      code: stale ? "stale_config" : "probe_failed",
+      error: message,
+    };
+  } finally {
+    shutdownHandle(handle, "validation-complete");
+  }
+}
+
 /**
  * OpenClaw ACP runtime adapter.
  *
@@ -620,6 +710,17 @@ function sendNotification(
   } catch {
     // best-effort fire-and-forget
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 // ---------------------------------------------------------------------------

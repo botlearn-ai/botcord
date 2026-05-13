@@ -483,7 +483,7 @@ export interface RuntimeEndpointProbe {
    * Coarse diagnostic state for dashboards. `reachable` is kept for backward
    * compatibility; new clients should prefer `status` when present.
    */
-  status?: "reachable" | "unreachable" | "acp_disabled";
+  status?: "reachable" | "unreachable" | "acp_disabled" | "missing_token" | "auth_required";
   /** True when the gateway responded successfully within the timeout. */
   reachable: boolean;
   /** Gateway-reported version, when available. */
@@ -492,7 +492,7 @@ export interface RuntimeEndpointProbe {
   error?: string;
   /** Structured diagnostics for UI/tooling. */
   diagnostics?: Array<{
-    code: "gateway_unreachable" | "probe_failed" | "acp_disabled";
+    code: "gateway_unreachable" | "probe_failed" | "acp_disabled" | "missing_token" | "auth_required";
     message?: string;
   }>;
   /**
@@ -506,6 +506,16 @@ export interface RuntimeEndpointProbe {
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    /**
+     * Runtime-level availability for this profile. `agents.list` can expose a
+     * stale profile that ACP later refuses at `session/new`; when the daemon
+     * detects that, it marks the row unavailable so dashboards can disable it.
+     */
+    availability?: {
+      available: boolean;
+      code?: "stale_config" | "probe_failed";
+      message?: string;
+    };
     /**
      * Present when this OpenClaw agent profile is already bound to a local
      * BotCord identity on the daemon. Dashboards should treat these profiles
