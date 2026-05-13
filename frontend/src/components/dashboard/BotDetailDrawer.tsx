@@ -6,10 +6,12 @@ import {
   Bot,
   Eye,
   FileText,
+  Loader2,
   MessageCircle,
   MessageSquare,
   Pencil,
   Plug,
+  RefreshCw,
   Trash2,
   User,
   X,
@@ -21,6 +23,14 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
+import {
+  usePolicyStore,
+  type AgentPolicyPatch,
+  type AttentionMode,
+  type ContactPolicy,
+  type RoomInvitePolicy,
+} from "@/store/usePolicyStore";
+import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
 import BotAvatar from "./BotAvatar";
 
@@ -34,6 +44,44 @@ const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?
   { key: "gateways", label: "接入", icon: Plug },
   { key: "files", label: "文件/记忆", icon: FileText },
 ];
+
+const CONTACT_OPTIONS: { value: ContactPolicy; label: string; hint: string }[] = [
+  { value: "open", label: "公开", hint: "任何人都可以联系我" },
+  { value: "contacts_only", label: "仅联系人", hint: "联系人或同房间成员" },
+  { value: "whitelist", label: "白名单", hint: "仅联系人（严格）" },
+  { value: "closed", label: "关闭", hint: "拒绝所有新对话（联系人申请仍可发起）" },
+];
+
+const ROOM_INVITE_OPTIONS: { value: RoomInvitePolicy; label: string }[] = [
+  { value: "open", label: "公开" },
+  { value: "contacts_only", label: "仅联系人" },
+  { value: "closed", label: "关闭" },
+];
+
+const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
+  { value: "always", label: "全部", hint: "房间里收到任何消息都唤醒回复" },
+  { value: "mention_only", label: "仅被@", hint: "只在被 @ 时唤醒" },
+  { value: "keyword", label: "关键词", hint: "命中关键词才唤醒" },
+  { value: "muted", label: "静音", hint: "房间不主动回复" },
+];
+
+interface AgentRuntimeFile {
+  id: string;
+  name: string;
+  scope: "workspace" | "hermes" | "openclaw";
+  runtime?: string;
+  profile?: string;
+  size?: number;
+  content?: string;
+  truncated?: boolean;
+  error?: string;
+}
+
+interface AgentRuntimeFilesResponse {
+  agentId: string;
+  runtime?: string;
+  files: AgentRuntimeFile[];
+}
 
 /**
  * Right-side drawer for a single owned bot.
@@ -223,10 +271,10 @@ export default function BotDetailDrawer() {
             />
           )}
           {tab === "profile" && <ProfileTab agentId={bot.agent_id} initialName={bot.display_name} initialBio={bot.bio ?? ""} />}
-          {tab === "policy" && <PlaceholderTab title="对话与回复" desc="真实策略配置请使用 Bot 设置页；这里不展示本地假配置。" />}
+          {tab === "policy" && <PolicyTab agentId={bot.agent_id} />}
           {tab === "auto" && <AgentSchedulesTab agentId={bot.agent_id} />}
-          {tab === "gateways" && <PlaceholderTab title="接入" desc="管理 daemon runtime 与 gateway profile（Claude Code / Codex / OpenClaw / Hermes）。" />}
-          {tab === "files" && <PlaceholderTab title="文件 / 记忆" desc="查看和编辑 Agent 的运行时文件（workspace / hermes / openclaw scope）。" />}
+          {tab === "gateways" && <AgentChannelsTab agentId={bot.agent_id} />}
+          {tab === "files" && <FilesTab agentId={bot.agent_id} />}
         </div>
       </aside>
     </>
@@ -474,24 +522,331 @@ function ProfileTab({
   );
 }
 
-/* --------------------------- Placeholder --------------------------- */
+/* --------------------------- Policy --------------------------- */
 
-function PlaceholderTab({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40 text-text-secondary/70">
-        <Plug className="h-6 w-6" />
+function PolicyTab({ agentId }: { agentId: string }) {
+  const policy = usePolicyStore((s) => s.globalByAgent[agentId]);
+  const loadingPolicy = usePolicyStore((s) => Boolean(s.globalLoading[agentId]));
+  const loadGlobal = usePolicyStore((s) => s.loadGlobal);
+  const patchGlobal = usePolicyStore((s) => s.patchGlobal);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draftKeyword, setDraftKeyword] = useState("");
+
+  useEffect(() => {
+    if (!policy && !loadingPolicy) {
+      void loadGlobal(agentId).catch(() => {});
+    }
+  }, [agentId, loadGlobal, loadingPolicy, policy]);
+
+  const applyPolicy = async (patch: AgentPolicyPatch) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await patchGlobal(agentId, patch);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!policy || loadingPolicy) {
+    return (
+      <div className="space-y-4">
+        {[1, 2].map((i) => (
+          <div key={i} className="animate-pulse rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
+            <div className="mb-3 h-4 w-28 rounded bg-glass-bg" />
+            <div className="space-y-2">
+              <div className="h-9 rounded bg-glass-bg/70" />
+              <div className="h-9 rounded bg-glass-bg/70" />
+            </div>
+          </div>
+        ))}
       </div>
-      <p className="text-sm font-medium text-text-primary">{title}</p>
-      <p className="mt-2 max-w-xs text-xs text-text-secondary/65">{desc}</p>
-      <p className="mt-4 rounded-full border border-dashed border-glass-border bg-glass-bg/20 px-3 py-1 text-[10px] text-text-secondary/50">
-        待接通真实 daemon API
-      </p>
+    );
+  }
+
+  const addKeyword = () => {
+    const value = draftKeyword.trim();
+    if (!value || policy.attention_keywords.includes(value)) return;
+    setDraftKeyword("");
+    void applyPolicy({ attention_keywords: [...policy.attention_keywords, value] });
+  };
+
+  return (
+    <div className="space-y-5">
+      {error ? <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">{error}</div> : null}
+
+      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+        <h3 className="mb-1 text-sm font-semibold text-text-primary">谁能联系我</h3>
+        <p className="mb-4 text-xs text-text-secondary/65">是否接受来自其他 Agent 或人类用户的对话与加入房间邀请。</p>
+        <RadioGroup
+          name={`contact_policy_${agentId}`}
+          value={policy.contact_policy}
+          options={CONTACT_OPTIONS}
+          disabled={saving}
+          onChange={(value) => void applyPolicy({ contact_policy: value })}
+        />
+        <div className="mt-4 flex flex-col gap-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+            <input type="checkbox" checked={policy.allow_agent_sender} onChange={(e) => void applyPolicy({ allow_agent_sender: e.target.checked })} disabled={saving} className="accent-neon-cyan" />
+            接受其他 agent 直接对话
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+            <input type="checkbox" checked={policy.allow_human_sender} onChange={(e) => void applyPolicy({ allow_human_sender: e.target.checked })} disabled={saving} className="accent-neon-cyan" />
+            接受人类用户对话
+          </label>
+        </div>
+        <label className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
+          加入房间邀请
+          <select
+            value={policy.room_invite_policy}
+            onChange={(e) => void applyPolicy({ room_invite_policy: e.target.value as RoomInvitePolicy })}
+            disabled={saving}
+            className="rounded-lg border border-glass-border bg-deep-black/40 px-2 py-1 text-text-primary"
+          >
+            {ROOM_INVITE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
+        </label>
+      </section>
+
+      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+        <h3 className="mb-1 text-sm font-semibold text-text-primary">默认回复策略</h3>
+        <p className="mb-4 text-xs text-text-secondary/65">Daemon 注意力：房间里收到消息后是否唤醒 LLM。</p>
+        <RadioGroup
+          name={`default_attention_${agentId}`}
+          value={policy.default_attention}
+          options={ATTENTION_OPTIONS}
+          disabled={saving}
+          onChange={(value) => void applyPolicy({ default_attention: value })}
+        />
+        {policy.default_attention === "keyword" ? (
+          <div className="mt-4">
+            <div className="mb-2 text-xs text-text-secondary">关键词</div>
+            <div className="flex flex-wrap gap-1.5">
+              {policy.attention_keywords.map((keyword) => (
+                <span key={keyword} className="inline-flex items-center gap-1 rounded-full border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-0.5 text-xs text-neon-cyan">
+                  {keyword}
+                  <button
+                    type="button"
+                    onClick={() => void applyPolicy({ attention_keywords: policy.attention_keywords.filter((item) => item !== keyword) })}
+                    disabled={saving}
+                    className="rounded-full p-0.5 hover:bg-neon-cyan/10 disabled:opacity-50"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={draftKeyword}
+                onChange={(e) => setDraftKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addKeyword();
+                  }
+                }}
+                onBlur={addKeyword}
+                disabled={saving}
+                placeholder="输入关键词后按回车添加"
+                className="min-w-[150px] flex-1 rounded-full border border-dashed border-glass-border bg-transparent px-2 py-0.5 text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-neon-cyan/40"
+              />
+            </div>
+          </div>
+        ) : null}
+        <p className="mt-4 rounded-lg border border-glass-border/60 bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">私聊不受此设置影响，始终回复</p>
+      </section>
+
+      {saving ? (
+        <div className="flex items-center gap-2 text-xs text-text-secondary">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          保存中...
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* --------------------------- Files --------------------------- */
+
+function FilesTab({ agentId }: { agentId: string }) {
+  const [files, setFiles] = useState<AgentRuntimeFile[]>([]);
+  const [runtimeLabel, setRuntimeLabel] = useState<string | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadFiles = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/runtime-files`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const detail = data?.detail;
+        const msg =
+          typeof data?.error === "string"
+            ? data.error
+            : typeof detail === "string"
+              ? detail
+              : typeof detail?.code === "string"
+                ? detail.code
+                : res.status === 409
+                  ? "Daemon 未在线或此 Agent 未由 daemon 托管"
+                  : "读取文件失败";
+        throw new Error(msg);
+      }
+      const data = (await res.json()) as AgentRuntimeFilesResponse;
+      const nextFiles = Array.isArray(data.files) ? data.files : [];
+      setFiles(nextFiles);
+      setRuntimeLabel(data.runtime ?? null);
+      setSelectedFileId((prev) =>
+        prev && nextFiles.some((file) => file.id === prev) ? prev : nextFiles[0]?.id ?? null,
+      );
+      setLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取文件失败");
+      setLoaded(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!loaded && !loading) {
+      void loadFiles();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId, loaded, loading]);
+
+  const selectedFile = files.find((file) => file.id === selectedFileId) ?? null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-text-primary">运行时文件</h3>
+          <p className="truncate text-xs text-text-secondary">{runtimeLabel || "当前 Agent 的本地文件"}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadFiles()}
+          disabled={loading}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border bg-glass-bg text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+          title="刷新"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {error ? <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">{error}</div> : null}
+
+      {loading && files.length === 0 ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-glass-bg/60" />)}
+        </div>
+      ) : files.length === 0 ? (
+        <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
+          没有可显示的文件
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-2">
+            {files.map((file) => {
+              const selected = file.id === selectedFileId;
+              return (
+                <button
+                  key={file.id}
+                  type="button"
+                  onClick={() => setSelectedFileId(file.id)}
+                  className={`flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+                    selected ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border bg-glass-bg/40 hover:bg-glass-bg/70"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm text-text-primary">{file.name}</span>
+                    <span className="mt-0.5 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-normal text-text-secondary">
+                      <span>{scopeLabel(file.scope)}</span>
+                      {file.profile ? <span>{file.profile}</span> : null}
+                      {typeof file.size === "number" ? <span>{formatBytes(file.size)}</span> : null}
+                    </span>
+                  </span>
+                  {file.truncated ? <span className="shrink-0 rounded border border-yellow-400/30 px-1.5 py-0.5 text-[10px] text-yellow-300">过大</span> : null}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedFile ? (
+            <section className="rounded-xl border border-glass-border bg-glass-bg/30">
+              <div className="border-b border-glass-border px-3 py-2">
+                <div className="truncate text-xs font-medium text-text-primary">{selectedFile.name}</div>
+              </div>
+              <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-text-secondary">
+                {selectedFile.error
+                  ? selectedFile.error
+                  : selectedFile.truncated
+                    ? "文件超过预览大小限制"
+                    : selectedFile.content ?? ""}
+              </pre>
+            </section>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
 
 /* --------------------------- Helpers --------------------------- */
+
+function RadioGroup<T extends string>({
+  name,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  name: string;
+  value: T;
+  options: { value: T; label: string; hint?: string }[];
+  onChange: (next: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {options.map((opt) => {
+        const selected = value === opt.value;
+        return (
+          <label
+            key={opt.value}
+            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+              selected ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border bg-transparent hover:bg-glass-bg/60"
+            } ${disabled ? "pointer-events-none opacity-50" : ""}`}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={opt.value}
+              checked={selected}
+              onChange={() => onChange(opt.value)}
+              className="mt-0.5 accent-neon-cyan"
+              disabled={disabled}
+            />
+            <span className="flex-1">
+              <span className="block text-sm text-text-primary">{opt.label}</span>
+              {opt.hint ? <span className="block text-xs text-text-secondary">{opt.hint}</span> : null}
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
@@ -503,4 +858,17 @@ function Stat({ label, value, delta }: { label: string; value: number | string; 
       </div>
     </div>
   );
+}
+
+function formatBytes(value?: number): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function scopeLabel(scope: AgentRuntimeFile["scope"]): string {
+  if (scope === "hermes") return "Hermes";
+  if (scope === "openclaw") return "OpenClaw";
+  return "Workspace";
 }
