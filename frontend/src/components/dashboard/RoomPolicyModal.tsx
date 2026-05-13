@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
 import {
@@ -26,12 +26,12 @@ import {
   type RoomPolicyEffective,
 } from "@/store/usePolicyStore";
 
-const ATTENTION_OPTIONS: { value: AttentionMode; label: string }[] = [
-  { value: "always", label: "全部回复" },
-  { value: "mention_only", label: "仅被@" },
-  { value: "keyword", label: "关键词" },
-  { value: "allowed_senders", label: "仅允许成员" },
-  { value: "muted", label: "静音" },
+const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
+  { value: "always", label: "所有消息", hint: "本房间任何新消息都会唤醒 Bot" },
+  { value: "mention_only", label: "仅 @ 我", hint: "只有被 @ 或明确点名时唤醒" },
+  { value: "muted", label: "静音", hint: "本房间不主动唤醒 Bot" },
+  { value: "keyword", label: "关键词命中", hint: "消息包含关键词时唤醒" },
+  { value: "allowed_senders", label: "仅允许成员", hint: "只回复指定成员发出的消息" },
 ];
 
 function modeLabel(mode: AttentionMode): string {
@@ -88,6 +88,13 @@ export default function RoomPolicyModal({
     };
   }, [agentId, roomId, loadRoomPolicy]);
 
+  const effective: RoomPolicyEffective | null = data?.effective ?? null;
+  const hasOverride = data?.override != null;
+
+  useEffect(() => {
+    if (hasOverride) setExpanded(true);
+  }, [hasOverride]);
+
   useEffect(() => {
     if (isDM) return;
     let cancelled = false;
@@ -106,13 +113,6 @@ export default function RoomPolicyModal({
       cancelled = true;
     };
   }, [isDM, roomId]);
-
-  const effective: RoomPolicyEffective | null = data?.effective ?? null;
-  const hasOverride = data?.override != null;
-
-  useEffect(() => {
-    if (hasOverride) setExpanded(true);
-  }, [hasOverride]);
 
   const draftKeywords = useMemo(() => {
     if (data?.override?.keywords) return data.override.keywords;
@@ -143,12 +143,15 @@ export default function RoomPolicyModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur">
-      <div className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+      <div className="w-full max-w-lg rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
         <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-text-primary">我的回复策略</h2>
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2">
+              <Bell className="h-4 w-4 text-neon-cyan" />
+              <h2 className="text-base font-semibold text-text-primary">本房间回复策略</h2>
+            </div>
             <p className="mt-0.5 text-xs text-text-secondary">
-              控制此 Agent 在该房间内的注意力（是否唤醒回复）。
+              只控制这个 Bot 在当前房间是否被唤醒；不影响谁能发消息到房间。
             </p>
           </div>
           <button
@@ -172,14 +175,21 @@ export default function RoomPolicyModal({
           </div>
         ) : data && effective ? (
           isDM ? (
-            <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-3 text-sm text-text-secondary">
-              一对一始终回复
+            <div className="rounded-xl border border-neon-cyan/25 bg-neon-cyan/5 px-4 py-4">
+              <div className="text-sm font-medium text-neon-cyan">私聊始终唤醒</div>
+              <p className="mt-1 text-xs text-text-secondary">
+                DM 房间当前强制使用所有消息唤醒，不能在房间级静音或覆盖。
+              </p>
             </div>
           ) : (
             <>
               <EffectiveBadge effective={effective} hasOverride={hasOverride} />
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4">
+                <div className="mb-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
+                  快速静音
+                </div>
+                <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() =>
@@ -205,6 +215,16 @@ export default function RoomPolicyModal({
                 <button
                   type="button"
                   onClick={() =>
+                    void apply(() => snoozeRoom(agentId, roomId, 7 * 24 * 60))
+                  }
+                  disabled={busy}
+                  className="rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-1.5 text-xs text-text-primary transition-colors hover:bg-glass-bg disabled:opacity-50"
+                >
+                  静音 7 天
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
                     void apply(() =>
                       putRoomOverride(agentId, roomId, { attention_mode: "muted" }),
                     )
@@ -214,15 +234,16 @@ export default function RoomPolicyModal({
                 >
                   永久静音
                 </button>
+                </div>
               </div>
 
               <div className="mt-4 rounded-xl border border-glass-border bg-glass-bg/30 p-3">
                 <button
                   type="button"
                   onClick={() => setExpanded((v) => !v)}
-                  className="text-sm text-neon-cyan transition-colors hover:text-neon-cyan/80"
+                  className="text-sm font-medium text-neon-cyan transition-colors hover:text-neon-cyan/80"
                 >
-                  {expanded ? "▾ 改为本房间专属" : "▸ 改为本房间专属"}
+                  {expanded ? "收起本房间专属策略" : "设置本房间专属策略"}
                 </button>
 
                 {expanded ? (
@@ -327,6 +348,11 @@ function EffectiveBadge({
           ))}
         </div>
       ) : null}
+      <p className="mt-3 text-xs text-text-secondary">
+        {effective.source === "override" || hasOverride
+          ? "此房间正在使用专属策略；修改 Bot 默认回复不会覆盖这里。"
+          : "此房间继承 Bot 默认房间回复策略。"}
+      </p>
     </div>
   );
 }
@@ -385,7 +411,11 @@ function OverrideForm({
         {ATTENTION_OPTIONS.map((opt) => (
           <label
             key={opt.value}
-            className="flex cursor-pointer items-center gap-2 text-sm text-text-primary"
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 transition-colors ${
+              mode === opt.value
+                ? "border-neon-cyan/40 bg-neon-cyan/5"
+                : "border-glass-border bg-transparent hover:bg-glass-bg/50"
+            }`}
           >
             <input
               type="radio"
@@ -393,10 +423,13 @@ function OverrideForm({
               value={opt.value}
               checked={mode === opt.value}
               onChange={() => setMode(opt.value)}
-              className="accent-neon-cyan"
+              className="mt-1 accent-neon-cyan"
               disabled={busy}
             />
-            {opt.label}
+            <span>
+              <span className="block text-sm text-text-primary">{opt.label}</span>
+              <span className="block text-xs text-text-secondary">{opt.hint}</span>
+            </span>
           </label>
         ))}
       </div>
@@ -494,6 +527,21 @@ function OverrideForm({
       ) : null}
 
       <div className="mt-3 flex justify-end">
+        {currentMode !== mode || mode === "keyword" ? (
+          <button
+            type="button"
+            onClick={() => {
+              setMode(currentMode);
+              setKeywords(currentKeywords);
+              setAllowedSenderIds(currentAllowedSenderIds);
+            }}
+            disabled={busy}
+            className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            撤销更改
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => onApply(mode, keywords, allowedSenderIds)}

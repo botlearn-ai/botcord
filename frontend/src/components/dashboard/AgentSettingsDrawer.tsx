@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Trash2, User, X } from "lucide-react";
+import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Trash2, User, UserRound, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -28,23 +28,23 @@ interface AgentSettingsDrawerProps {
 }
 
 const CONTACT_OPTIONS: { value: ContactPolicy; label: string; hint: string }[] = [
-  { value: "open", label: "公开", hint: "任何人都可以联系我" },
-  { value: "contacts_only", label: "仅联系人", hint: "联系人或同房间成员" },
-  { value: "whitelist", label: "白名单", hint: "仅联系人（严格）" },
-  { value: "closed", label: "关闭", hint: "拒绝所有新对话（联系人申请仍可发起）" },
+  { value: "open", label: "所有人可私聊", hint: "任何未被屏蔽的 Agent 或 Human 都能直接发起对话" },
+  { value: "contacts_only", label: "联系人 + 同房间成员", hint: "联系人可以私聊；同一房间成员也可以发起私聊" },
+  { value: "whitelist", label: "仅联系人白名单", hint: "只有联系人列表中的对象可以直接私聊" },
+  { value: "closed", label: "只收联系申请", hint: "拒绝普通私聊；未被屏蔽的人仍可发送联系申请" },
 ];
 
-const ROOM_INVITE_OPTIONS: { value: RoomInvitePolicy; label: string }[] = [
-  { value: "open", label: "公开" },
-  { value: "contacts_only", label: "仅联系人" },
-  { value: "closed", label: "关闭" },
+const ROOM_INVITE_OPTIONS: { value: RoomInvitePolicy; label: string; hint: string }[] = [
+  { value: "open", label: "任何人可邀请", hint: "未被屏蔽的对象都可以邀请此 Bot 加入房间" },
+  { value: "contacts_only", label: "仅联系人可邀请", hint: "只有联系人可以邀请此 Bot 加入房间" },
+  { value: "closed", label: "不接受邀请", hint: "拒绝新的房间邀请" },
 ];
 
 const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
-  { value: "always", label: "全部", hint: "房间里收到任何消息都唤醒回复" },
-  { value: "mention_only", label: "仅被@", hint: "只在被 @ 时唤醒" },
-  { value: "keyword", label: "关键词", hint: "命中关键词才唤醒" },
-  { value: "muted", label: "静音", hint: "房间不主动回复" },
+  { value: "always", label: "所有房间消息", hint: "非私聊房间内收到任何消息都唤醒 Bot" },
+  { value: "mention_only", label: "仅 @ 我", hint: "只有被 @ 或被明确点名时才唤醒" },
+  { value: "muted", label: "默认静音", hint: "房间消息默认不唤醒 Bot" },
+  { value: "keyword", label: "关键词命中", hint: "消息包含关键词时才唤醒" },
 ];
 
 type Tab = "profile" | "policy" | "schedules" | "gateways" | "files";
@@ -196,6 +196,36 @@ function scopeLabel(scope: AgentRuntimeFile["scope"]): string {
   if (scope === "hermes") return "Hermes";
   if (scope === "openclaw") return "OpenClaw";
   return "Workspace";
+}
+
+function SummaryTile({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone: "cyan" | "green" | "yellow" | "red";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "border-neon-green/30 bg-neon-green/5 text-neon-green"
+      : tone === "yellow"
+        ? "border-yellow-400/30 bg-yellow-400/5 text-yellow-300"
+        : tone === "red"
+          ? "border-red-400/30 bg-red-400/5 text-red-300"
+          : "border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan";
+  return (
+    <div className={`rounded-xl border px-3 py-3 ${toneClass}`}>
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-normal opacity-80">
+        {icon}
+        {label}
+      </div>
+      <div className="text-sm font-semibold leading-snug">{value}</div>
+    </div>
+  );
 }
 
 export default function AgentSettingsDrawer({
@@ -374,9 +404,9 @@ export default function AgentSettingsDrawer({
                 <FileText className="h-3.5 w-3.5" />
               )}
               {t === "profile"
-                ? "资料"
+                  ? "资料"
                 : t === "policy"
-                  ? "对话与回复"
+                  ? "权限与回复"
                   : t === "schedules"
                     ? "自主"
                     : t === "gateways"
@@ -505,10 +535,34 @@ export default function AgentSettingsDrawer({
                 </div>
               ) : (
                 <>
+                  <div className="grid gap-3">
+                    <SummaryTile
+                      icon={<Shield className="h-4 w-4" />}
+                      label="直接联系"
+                      value={CONTACT_OPTIONS.find((o) => o.value === policy.contact_policy)?.label ?? policy.contact_policy}
+                      tone="cyan"
+                    />
+                    <SummaryTile
+                      icon={<UserRound className="h-4 w-4" />}
+                      label="允许来源"
+                      value={[
+                        policy.allow_agent_sender ? "Agent" : null,
+                        policy.allow_human_sender ? "Human" : null,
+                      ].filter(Boolean).join(" + ") || "全部关闭"}
+                      tone={policy.allow_agent_sender || policy.allow_human_sender ? "green" : "red"}
+                    />
+                    <SummaryTile
+                      icon={<Bell className="h-4 w-4" />}
+                      label="默认房间回复"
+                      value={ATTENTION_OPTIONS.find((o) => o.value === policy.default_attention)?.label ?? policy.default_attention}
+                      tone={policy.default_attention === "muted" ? "yellow" : "cyan"}
+                    />
+                  </div>
+
                   <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
-                    <h3 className="mb-1 text-sm font-semibold text-text-primary">谁能联系我</h3>
+                    <h3 className="mb-1 text-sm font-semibold text-text-primary">直接联系我</h3>
                     <p className="mb-4 text-xs text-text-secondary">
-                      是否接受来自其他 Agent 或人类用户的对话与加入房间邀请。
+                      Hub 准入权限：控制谁可以把私聊消息送到这个 Bot。Blocklist 仍然拥有最高优先级。
                     </p>
                     <RadioGroup
                       name={`contact_policy_${agentId}`}
@@ -517,8 +571,17 @@ export default function AgentSettingsDrawer({
                       onChange={(v) => void applyPolicy({ contact_policy: v })}
                       disabled={policySaving}
                     />
-                    <div className="mt-4 flex flex-col gap-2">
-                      <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+
+                    <div className="mt-5 rounded-xl border border-glass-border bg-deep-black/20 p-3">
+                      <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
+                        <Bot className="h-3.5 w-3.5" />
+                        允许的发送者类型
+                      </div>
+                      <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
+                        <span>
+                          Agent
+                          <span className="ml-2 text-xs text-text-secondary">其他 bot / agent</span>
+                        </span>
                         <input
                           type="checkbox"
                           checked={policy.allow_agent_sender}
@@ -526,9 +589,12 @@ export default function AgentSettingsDrawer({
                           disabled={policySaving}
                           className="accent-neon-cyan"
                         />
-                        接受其他 agent 直接对话
                       </label>
-                      <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
+                        <span>
+                          Human
+                          <span className="ml-2 text-xs text-text-secondary">人类用户 / dashboard</span>
+                        </span>
                         <input
                           type="checkbox"
                           checked={policy.allow_human_sender}
@@ -536,34 +602,27 @@ export default function AgentSettingsDrawer({
                           disabled={policySaving}
                           className="accent-neon-cyan"
                         />
-                        接受人类用户对话
                       </label>
                     </div>
-                    <div className="mt-4">
-                      <label className="flex items-center gap-2 text-sm text-text-secondary">
-                        加入房间邀请
-                        <select
-                          value={policy.room_invite_policy}
-                          onChange={(e) =>
-                            void applyPolicy({ room_invite_policy: e.target.value as RoomInvitePolicy })
-                          }
-                          disabled={policySaving}
-                          className="rounded-lg border border-glass-border bg-deep-black/40 px-2 py-1 text-text-primary"
-                        >
-                          {ROOM_INVITE_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+
+                    <div className="mt-5">
+                      <div className="mb-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
+                        谁能邀请我进房间
+                      </div>
+                      <RadioGroup
+                        name={`room_invite_policy_${agentId}`}
+                        value={policy.room_invite_policy}
+                        options={ROOM_INVITE_OPTIONS}
+                        onChange={(v) => void applyPolicy({ room_invite_policy: v })}
+                        disabled={policySaving}
+                      />
                     </div>
                   </section>
 
                   <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
-                    <h3 className="mb-1 text-sm font-semibold text-text-primary">默认回复策略</h3>
+                    <h3 className="mb-1 text-sm font-semibold text-text-primary">默认房间回复</h3>
                     <p className="mb-4 text-xs text-text-secondary">
-                      Daemon 注意力：房间里收到消息后是否唤醒 LLM。
+                      Daemon 注意力策略：消息已进入 inbox 后，是否值得唤醒 Bot。单个房间可以覆盖。
                     </p>
                     <RadioGroup
                       name={`default_attention_${agentId}`}
@@ -582,8 +641,8 @@ export default function AgentSettingsDrawer({
                         />
                       </div>
                     )}
-                    <p className="mt-4 inline-flex items-center gap-2 rounded-lg border border-glass-border/60 bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">
-                      ⓘ 私聊不受此设置影响，始终回复
+                    <p className="mt-4 rounded-lg border border-glass-border/60 bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">
+                      私聊 DM 当前强制始终唤醒；房间消息会先看房间级覆盖，没有覆盖时继承这里的默认策略。
                     </p>
                   </section>
 

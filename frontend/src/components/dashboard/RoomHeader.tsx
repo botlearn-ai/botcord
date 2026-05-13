@@ -426,16 +426,17 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
             </span>
           )}
-          {isAuthedReady && activeAgentId && !isHumanView && isJoined && !isOwnerChatRoom && (
-            <span className="group relative max-md:hidden">
+          {isAuthedReady && activeAgentId && isJoined && !isOwnerChatRoom && (
+            <span className="group relative">
               <button
                 onClick={() => setShowPolicyModal(true)}
-                className={iconBtn}
-                aria-label="我的回复策略"
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-neon-cyan/35 bg-neon-cyan/10 px-2.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-60 max-md:h-8 max-md:px-2 max-md:text-[11px]"
+                aria-label="本房间回复策略"
               >
-                <Bell className="h-4 w-4" />
+                <Bell className="h-4 w-4 max-md:h-3.5 max-md:w-3.5" />
+                <span>本房间回复</span>
               </button>
-              <span className={tooltipCls}>我的回复策略</span>
+              <span className={tooltipCls}>本房间回复策略</span>
             </span>
           )}
           {!isOwnerChatRoom && (
