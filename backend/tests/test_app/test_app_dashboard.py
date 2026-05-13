@@ -363,7 +363,7 @@ async def test_chat_room_creates_on_first_call(
     data = resp.json()
     assert "room_id" in data
     assert data["agent_id"] == "ag_dashtest001"
-    assert "Chat with" in data["name"]
+    assert data["name"] == "Dashboard Agent"
 
     # Store room_id for idempotency check
     room_id = data["room_id"]
@@ -419,7 +419,7 @@ async def test_chat_room_for_explicit_owned_agent_without_active_agent(
     assert resp.status_code == 200
     data = resp.json()
     assert data["agent_id"] == "ag_secondbot01"
-    assert data["name"] == "Chat with Second Bot"
+    assert data["name"] == "Second Bot"
 
     from hub.routers import hub as hub_router
 
