@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
-import { sidebar as sidebarI18n } from "@/lib/i18n/translations/dashboard";
+import { sidebar as sidebarI18n, chatPane as chatPaneI18n } from "@/lib/i18n/translations/dashboard";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
 import { createClient } from "@/lib/supabase/client";
@@ -32,6 +32,7 @@ import BotDetailDrawer from "./BotDetailDrawer";
 import DeviceDetailDrawer from "./DeviceDetailDrawer";
 import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
+import ContactRequestsInbox from "./ContactRequestsInbox";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import DashboardTabSkeleton from "./DashboardTabSkeleton";
 import HomePanel from "./HomePanel";
@@ -91,6 +92,7 @@ export default function DashboardApp() {
   const supabase = useMemo(() => createClient(), []);
   const locale = useLanguage();
   const tSidebar = sidebarI18n[locale];
+  const tChatPane = chatPaneI18n[locale];
   const recoveredAgentRef = useRef<string | null>(null);
   // Wallet is keyed on the active identity (agent OR human), since both
   // can own a wallet (`backend/app/routers/wallet.py:_resolve_owner`).
@@ -1045,6 +1047,11 @@ export default function DashboardApp() {
           <WalletPanel />
         ) : uiStore.sidebarTab === "bots" ? (
           <MyBotsPanel />
+        ) : uiStore.sidebarTab === "messages" && uiStore.messagesShowRequests ? (
+          <ContactRequestsInbox
+            title={tChatPane.contactRequests}
+            hideTabs
+          />
         ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
           <div className="h-full min-w-0">
             <UserChatPane agentId={uiStore.userChatAgentId} />

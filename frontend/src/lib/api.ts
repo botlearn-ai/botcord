@@ -80,6 +80,7 @@ import type {
 
 import { createClient } from "@/lib/supabase/client";
 import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
+import { DEV_BYPASS_AUTH, mockApiGet, mockApiSend } from "@/lib/dev-bypass";
 
 /**
  * [INPUT]: Supabase client-side SDK for auth tokens, browser fetch, local active-agent state
@@ -224,6 +225,18 @@ function walletAsParam(identityOverride?: ActiveIdentity | null): "agent" | "hum
   return id?.type === "agent" ? "agent" : "human";
 }
 
+// Inject the calling identity into mock request params under `_actor` so the
+// dev-bypass mock router can route per-account (e.g. wallet/ledger per owner).
+// Production code path ignores this helper.
+function withMockActor(
+  params: Record<string, string> | undefined,
+  identityOverride: ActiveIdentity | null | undefined,
+): Record<string, string> | undefined {
+  const id = identityOverride ?? getActiveIdentity();
+  if (!id) return params;
+  return { ...(params ?? {}), _actor: id.id };
+}
+
 // --- Core request helpers ---
 
 async function apiGet<T>(
@@ -231,6 +244,7 @@ async function apiGet<T>(
   params?: Record<string, string>,
   identityOverride?: ActiveIdentity | null,
 ): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiGet<T>(path, withMockActor(params, identityOverride));
   const url = new URL(path, API_BASE);
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
@@ -251,6 +265,7 @@ async function apiPost<T>(
   body?: unknown,
   identityOverride?: ActiveIdentity | null,
 ): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiSend<T>("POST", path, body, identityOverride ?? getActiveIdentity());
   const headers: Record<string, string> = { ...(await buildAuthHeaders(identityOverride)) };
   const init: RequestInit = { method: "POST", headers };
   if (body !== undefined) {
@@ -267,6 +282,7 @@ async function apiPost<T>(
 }
 
 async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiSend<T>("PATCH", path, body, getActiveIdentity());
   const headers: Record<string, string> = { ...(await buildAuthHeaders()) };
   const init: RequestInit = { method: "PATCH", headers };
   if (body !== undefined) {
@@ -283,6 +299,7 @@ async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function apiDelete<T>(path: string): Promise<T> {
+  if (DEV_BYPASS_AUTH) return mockApiSend<T>("DELETE", path, undefined, getActiveIdentity());
   const headers = await buildAuthHeaders();
   const url = new URL(path, API_BASE);
   const res = await fetch(url.toString(), { method: "DELETE", headers });
