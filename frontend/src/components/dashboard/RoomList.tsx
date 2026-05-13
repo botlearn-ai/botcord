@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 ui/chat/unread store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
- * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项（头像 + 最后一条消息预览 + 未读数量）
+ * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架（头像 + 最后一条消息预览 + 未读数量）
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -194,6 +194,14 @@ export default function RoomList({
     handleSelectUserChat();
   };
 
+  if (loading) {
+    return (
+      <div className="py-1">
+        <SidebarListSkeleton rows={6} />
+      </div>
+    );
+  }
+
   return (
     <div className="py-1">
       {showUserChatEntry && (
@@ -245,15 +253,12 @@ export default function RoomList({
           </div>
         </div>
       )}
-      {loading && (
-        <SidebarListSkeleton rows={6} />
-      )}
-      {!loading && rooms.length === 0 && !showUserChatEntry && (
+      {rooms.length === 0 && !showUserChatEntry && (
         <div className="p-4 text-center text-xs text-text-secondary">
           {t.noRooms}
         </div>
       )}
-      {!loading && rooms.map((room) => {
+      {rooms.map((room) => {
         const ownerChatAgentId = isOwnerChatRoom(room.room_id) ? room._originAgent?.agent_id || room.owner_id : null;
         const isSelected = ownerChatAgentId
           ? messagesPane === "user-chat" && ownerChatAgentId === activeAgentId
