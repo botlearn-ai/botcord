@@ -10,7 +10,8 @@ import BotAvatar from "./BotAvatar";
 import MyDevicesView from "./MyDevicesView";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import { useDaemonStore } from "@/store/useDaemonStore";
+import { useDaemonStore, type DaemonInstance } from "@/store/useDaemonStore";
+import { DEV_BYPASS_AUTH, devDaemons } from "@/lib/dev-bypass";
 
 const SUB_TABS = [
   { key: "bots" as const, label: "我的 Bots" },
@@ -32,6 +33,15 @@ export default function MyBotsPanel() {
   );
 
   useEffect(() => {
+    if (DEV_BYPASS_AUTH) {
+      useDaemonStore.setState({
+        daemons: devDaemons as unknown as DaemonInstance[],
+        loading: false,
+        loaded: true,
+        error: null,
+      });
+      return;
+    }
     void useDaemonStore.getState().refresh();
   }, []);
 
