@@ -13,6 +13,7 @@ import {
 } from "@/lib/i18n/translations/dashboard";
 import type { ParticipantType, PublicRoomMember, SubscriptionProduct, UserAgent } from "@/lib/types";
 import AddRoomMemberModal from "./AddRoomMemberModal";
+import RoomPolicyModal from "./RoomPolicyModal";
 import MemberActionsMenu from "./MemberActionsMenu";
 import PlanChangeConfirmDialog from "./PlanChangeConfirmDialog";
 import TransferOwnershipDialog from "./TransferOwnershipDialog";
@@ -178,6 +179,7 @@ export default function RoomSettingsModal({
   const leavingRoomId = useDashboardChatStore((s) => s.leavingRoomId);
   const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
   const humanId = useDashboardSessionStore((s) => s.human?.human_id ?? null);
+  const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
   const getActiveSubscription = useDashboardSubscriptionStore((s) => s.getActiveSubscription);
   const ensureSubscriptions = useDashboardSubscriptionStore((s) => s.ensureSubscriptions);
   const cancelSubscription = useDashboardSubscriptionStore((s) => s.cancelSubscription);
@@ -237,6 +239,7 @@ export default function RoomSettingsModal({
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dissolving, setDissolving] = useState(false);
@@ -853,6 +856,28 @@ export default function RoomSettingsModal({
               </div>
             </section>
 
+            {activeAgentId ? (
+              <section className="border-t border-glass-border/40 py-5">
+                <button
+                  type="button"
+                  onClick={() => setShowPolicyModal(true)}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-3 text-left transition-colors hover:border-neon-cyan/40 hover:bg-glass-bg/60"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-text-primary">
+                      {locale === "zh" ? "本房间回复策略" : "Reply policy for this room"}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-text-secondary/70">
+                      {locale === "zh"
+                        ? "设置当前 Bot 在这个房间的应答规则"
+                        : "Configure how your active bot responds in this room"}
+                    </p>
+                  </div>
+                  <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-text-secondary" />
+                </button>
+              </section>
+            ) : null}
+
             <section className="py-5">
               <button
                 type="button"
@@ -1176,6 +1201,14 @@ export default function RoomSettingsModal({
           onAdded={refreshRoomDetails}
         />
       )}
+
+      {showPolicyModal && activeAgentId ? (
+        <RoomPolicyModal
+          agentId={activeAgentId}
+          roomId={roomId}
+          onClose={() => setShowPolicyModal(false)}
+        />
+      ) : null}
 
       {transferDialogOpen && canManageMembers && isOwner && humanId && (
         <TransferOwnershipDialog

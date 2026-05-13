@@ -12,7 +12,7 @@ import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { Bot, Eye, Loader2, MessageSquare, User, Users } from "lucide-react";
+import { Bot, Eye, MessageSquare, User, Users } from "lucide-react";
 import {
   buildVisibleMessageRooms,
   isRoomOwnedByCurrentViewer,
@@ -24,6 +24,7 @@ import PaidRoomPreview from "./PaidRoomPreview";
 import RoomHumanComposer from "./RoomHumanComposer";
 import TopicDrawer from "./TopicDrawer";
 import FriendInviteModal from "./FriendInviteModal";
+import ContactRequestsInbox from "./ContactRequestsInbox";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import { PublicHumanProfile, PublicRoom } from "@/lib/types";
@@ -59,19 +60,11 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
     refreshOverview: state.refreshOverview,
   })));
   const {
-    contactRequestsLoading,
     contactRequestsReceived,
-    processingContactRequestId,
-    processingContactRequestAction,
     loadContactRequests,
-    respondContactRequest,
   } = useDashboardContactStore(useShallow((state) => ({
-    contactRequestsLoading: state.contactRequestsLoading,
     contactRequestsReceived: state.contactRequestsReceived,
-    processingContactRequestId: state.processingContactRequestId,
-    processingContactRequestAction: state.processingContactRequestAction,
     loadContactRequests: state.loadContactRequests,
-    respondContactRequest: state.respondContactRequest,
   })));
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
@@ -204,52 +197,11 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
         </div>
       </div>
 
+      {isRequestsView ? (
+        <ContactRequestsInbox initialTab="received" />
+      ) : (
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        {isRequestsView ? (
-          contactRequestsLoading ? (
-            <DashboardMainSkeleton variant="contacts" />
-          ) : pageItems.length === 0 ? (
-            <p className="text-xs text-text-secondary">{t.noPendingRequests}</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {(pageItems as typeof filteredRequests).map((request) => {
-                const isProcessing = processingContactRequestId === request.id;
-                const isAccepting = isProcessing && processingContactRequestAction === "accept";
-                const isRejecting = isProcessing && processingContactRequestAction === "reject";
-
-                return (
-                  <div key={request.id} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
-                    <p className="truncate text-sm font-semibold text-text-primary">
-                      {request.from_display_name || request.from_agent_id}
-                    </p>
-                    <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{request.from_agent_id}</p>
-                    <p className="mt-2 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
-                      {request.message || t.noRequestMessage}
-                    </p>
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        onClick={() => respondContactRequest(request.id, "accept")}
-                        disabled={isProcessing}
-                        className="inline-flex items-center gap-1.5 rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
-                      >
-                        {isAccepting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                        {isAccepting ? t.accepting : t.accept}
-                      </button>
-                      <button
-                        onClick={() => respondContactRequest(request.id, "reject")}
-                        disabled={isProcessing}
-                        className="inline-flex items-center gap-1.5 rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
-                      >
-                        {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                        {isRejecting ? t.rejecting : t.reject}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )
-        ) : isRoomsView ? (
+        {isRoomsView ? (
           !overview ? (
             <DashboardMainSkeleton variant="contacts" />
           ) : pageItems.length === 0 ? (
@@ -387,6 +339,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
           </div>
         )}
       </div>
+      )}
 
       {showFriendInvite ? <FriendInviteModal onClose={() => setShowFriendInvite(false)} /> : null}
     </div>
@@ -702,11 +655,12 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     activeAgentId: state.activeAgentId,
     humanId: state.human?.human_id ?? null,
   })));
-  const { sidebarTab, focusedRoomId, openedRoomId, messagesFilter } = useDashboardUIStore(useShallow((state) => ({
+  const { sidebarTab, focusedRoomId, openedRoomId, messagesFilter, contactsView } = useDashboardUIStore(useShallow((state) => ({
     sidebarTab: state.sidebarTab,
     focusedRoomId: state.focusedRoomId,
     openedRoomId: state.openedRoomId,
     messagesFilter: state.messagesFilter,
+    contactsView: state.contactsView,
   })));
   const { overview, recentVisitedRooms, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -748,6 +702,9 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   }
 
   if (sidebarTab === "contacts") {
+    if (contactsView === "requests") {
+      return <ContactRequestsInbox initialTab="received" />;
+    }
     return <ContactsDetailPane />;
   }
 
