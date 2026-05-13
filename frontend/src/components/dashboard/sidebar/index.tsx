@@ -36,6 +36,7 @@ import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 import WalletPanel from "./WalletPanel";
+import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
 import { humansApi } from "@/lib/api";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
@@ -141,6 +142,7 @@ export default function Sidebar({
   })));
   const uiStore = useDashboardUIStore(useShallow((s) => ({
     sidebarTab: s.sidebarTab,
+    pendingPrimaryNavigation: s.pendingPrimaryNavigation,
     contactsView: s.contactsView,
     exploreView: s.exploreView,
     openedRoomId: s.openedRoomId,
@@ -150,6 +152,7 @@ export default function Sidebar({
     messagesSearchOpen: s.messagesSearchOpen,
     sidebarWidth: s.sidebarWidth,
     setSidebarTab: s.setSidebarTab,
+    startPrimaryNavigation: s.startPrimaryNavigation,
     setMessagesPane: s.setMessagesPane,
     setMessagesFilter: s.setMessagesFilter,
     setExploreView: s.setExploreView,
@@ -267,6 +270,9 @@ export default function Sidebar({
   }, [unreadStore, visibleMessageRooms]);
 
   const pendingContactRequests = chatStore.overview?.pending_requests || 0;
+  const secondaryPanelLoading = Boolean(
+    uiStore.pendingPrimaryNavigation && uiStore.pendingPrimaryNavigation.tab === uiStore.sidebarTab,
+  );
 
   useEffect(() => {
     const prefetch = (path: string) => {
@@ -317,7 +323,7 @@ export default function Sidebar({
       activity: "/chats/activity",
       bots: "/chats/bots",
     };
-    uiStore.setSidebarTab(tab);
+    uiStore.startPrimaryNavigation(tab, pathByTab[tab]);
     if (tab === "messages" && !uiStore.openedRoomId && uiStore.messagesPane !== "user-chat") {
       uiStore.setMessagesPane("room");
     }
@@ -515,21 +521,42 @@ export default function Sidebar({
 
         {/* Panel content */}
         <div className="flex flex-1 min-h-0">
-          {uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen && (
+          {!secondaryPanelLoading && uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen && (
             <MessagesGroupingSidebar />
           )}
           <div className="flex-1 overflow-y-auto">
-          {uiStore.sidebarTab === "messages" && (
+          {secondaryPanelLoading ? (
+            uiStore.sidebarTab === "wallet" ? (
+              <div className="space-y-3 p-4">
+                <SkeletonBlock className="h-20 rounded-xl bg-glass-border/40" />
+                <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
+                <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
+              </div>
+            ) : (
+              <>
+                {uiStore.sidebarTab === "messages" ? (
+                  <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
+                    <SkeletonBlock className="h-4 w-28" />
+                    <div className="flex gap-1">
+                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                    </div>
+                  </div>
+                ) : null}
+                <SidebarListSkeleton rows={uiStore.sidebarTab === "contacts" ? 9 : 7} />
+              </>
+            )
+          ) : uiStore.sidebarTab === "messages" && (
             <MessagesPanel
               isGuest={isGuest}
               onCreateRoom={() => setShowCreateRoom(true)}
               onAddFriend={() => setShowAddFriend(true)}
             />
           )}
-          {uiStore.sidebarTab === "contacts" && (
+          {!secondaryPanelLoading && uiStore.sidebarTab === "contacts" && (
             <ContactsPanel onOpenAddFriend={() => setShowAddFriend(true)} />
           )}
-          {uiStore.sidebarTab === "wallet" && (
+          {!secondaryPanelLoading && uiStore.sidebarTab === "wallet" && (
             <WalletPanel isGuest={isGuest} onLogin={showLoginModal} />
           )}
           </div>

@@ -4,6 +4,7 @@ import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import { SkeletonBlock } from "../DashboardTabSkeleton";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -67,7 +68,11 @@ export default function WalletPanel({ isGuest, onLogin }: WalletPanelProps) {
               <p className="text-center text-xs text-red-400">{walletError}</p>
             </div>
           ) : (
-            <p className="text-center text-xs text-text-secondary animate-pulse">{t.loadingWallet}</p>
+            <div className="space-y-3">
+              <SkeletonBlock className="h-20 rounded-xl bg-glass-border/40" />
+              <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
+              <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
+            </div>
           )}
         </>
       )}

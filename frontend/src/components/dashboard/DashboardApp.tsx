@@ -33,6 +33,7 @@ import DeviceDetailDrawer from "./DeviceDetailDrawer";
 import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
+import DashboardTabSkeleton from "./DashboardTabSkeleton";
 import HomePanel from "./HomePanel";
 import MyBotsPanel from "./MyBotsPanel";
 import HumanCardModal from "./HumanCardModal";
@@ -216,6 +217,15 @@ export default function DashboardApp() {
   useEffect(() => {
     if (!sessionStore.authResolved) return;
 
+    const pendingPrimaryNavigation = uiStore.pendingPrimaryNavigation;
+    if (pendingPrimaryNavigation) {
+      if (pathname === pendingPrimaryNavigation.path) {
+        uiStore.clearPrimaryNavigation();
+      } else {
+        return;
+      }
+    }
+
     // Previously: authed-no-agent short-circuited the router and forced
     // focusedRoomId=null, pairing with the AgentGateModal block. Human-first
     // drops that short-circuit so users without an Agent can still navigate
@@ -296,7 +306,9 @@ export default function DashboardApp() {
   }, [
     sessionStore.authResolved,
     sessionStore.sessionMode,
+    pathname,
     pathnameParts,
+    uiStore.pendingPrimaryNavigation,
     uiStore.focusedRoomId,
     uiStore.openedRoomId,
     uiStore.sidebarTab,
@@ -307,6 +319,7 @@ export default function DashboardApp() {
     uiStore.setFocusedRoomId,
     uiStore.setOpenedRoomId,
     uiStore.setSidebarTab,
+    uiStore.clearPrimaryNavigation,
     uiStore.setMessagesPane,
     uiStore.setExploreView,
     uiStore.setContactsView,
@@ -980,6 +993,9 @@ export default function DashboardApp() {
     || (uiStore.sidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
     || (uiStore.sidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
+  const primaryNavigationPending = Boolean(
+    uiStore.pendingPrimaryNavigation && pathname !== uiStore.pendingPrimaryNavigation.path,
+  );
 
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-deep-black max-md:flex-col-reverse">
@@ -989,7 +1005,9 @@ export default function DashboardApp() {
         onMobileSecondaryClose={uiStore.closeMobileSidebar}
       />
       <div className={mainPaneClass}>
-        {uiStore.sidebarTab === "home" ? (
+        {primaryNavigationPending ? (
+          <DashboardTabSkeleton variant={uiStore.sidebarTab} />
+        ) : uiStore.sidebarTab === "home" ? (
           <HomePanel />
         ) : uiStore.sidebarTab === "activity" ? (
           <ActivityPanel />

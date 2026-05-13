@@ -6,6 +6,7 @@ import type { ActivityStats, ActivityFeedItem } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { DashboardMainSkeleton } from "./DashboardTabSkeleton";
 
 type Period = "today" | "7d" | "30d";
 
@@ -290,9 +291,7 @@ export default function ActivityPanel() {
             </button>
           </div>
         ) : loading && feed.length === 0 ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-glass-border border-t-neon-cyan" />
-          </div>
+          <DashboardMainSkeleton variant="activity" />
         ) : (
           <>
             {/* Stats */}
