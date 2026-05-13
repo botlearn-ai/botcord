@@ -19,6 +19,7 @@ interface RoomHumanComposerProps {
 }
 
 const ROOM_MENTION_SOURCES = ["roomMembers"] as const;
+const PREFILL_ROOM_COMPOSER_EVENT = "botcord:prefill-room-composer";
 
 interface RoomTransferDialogProps {
   members: PublicRoomMember[];
@@ -242,6 +243,8 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [prefillText, setPrefillText] = useState("");
+  const [prefillNonce, setPrefillNonce] = useState(0);
   const roomMemberVersion = useDashboardChatStore(
     (s) => s.roomMemberVersions[roomId] ?? 0,
   );
@@ -297,6 +300,19 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
 
   const sendDenied = !isOwnerChat && !!selfId &&
     members.find((m) => m.agent_id === selfId)?.can_send === false;
+
+  useEffect(() => {
+    const handlePrefill = (event: Event) => {
+      const detail = (event as CustomEvent<{ roomId?: string; text?: string }>).detail;
+      if (detail?.roomId && detail.roomId !== roomId) return;
+      if (!detail?.text) return;
+      setPrefillText(detail.text);
+      setPrefillNonce((value) => value + 1);
+    };
+
+    window.addEventListener(PREFILL_ROOM_COMPOSER_EVENT, handlePrefill);
+    return () => window.removeEventListener(PREFILL_ROOM_COMPOSER_EVENT, handlePrefill);
+  }, [roomId]);
 
   const handleSend = useCallback(async (text: string, files: File[], mentions?: string[]) => {
     if (!text && files.length === 0) return;
@@ -380,11 +396,14 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
         </p>
       )}
       <MessageComposer
+        key={`${roomId}:${prefillNonce}`}
         onSend={handleSend}
         onTransfer={() => setTransferOpen(true)}
         allowAttachments
         placeholder={placeholder}
         mentionCandidates={mentionCandidates}
+        initialText={prefillText}
+        autoFocus={prefillNonce > 0}
         actionLabels={{
           add: locale === "zh" ? "添加" : "Add",
           file: locale === "zh" ? "文件" : "File",

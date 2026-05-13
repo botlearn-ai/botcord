@@ -11,6 +11,7 @@ import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { messageList } from '@/lib/i18n/translations/dashboard';
 import { useShallow } from "zustand/react/shallow";
+import { Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import type { DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
@@ -88,6 +89,9 @@ function buildTimelineItems(
 }
 
 const TOPIC_PREVIEW_COUNT = 2;
+const PREFILL_ROOM_COMPOSER_EVENT = "botcord:prefill-room-composer";
+const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
+const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
 
 function messagePreviewText(msg: DashboardMessage): string {
   if (msg.text) return msg.text;
@@ -222,6 +226,90 @@ function isNearBottom(el: HTMLElement, threshold = 150): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
 }
 
+function EmptyRoomGuide({
+  room,
+}: {
+  room: {
+    room_id: string;
+    member_count: number;
+    my_role?: string;
+  } | null;
+}) {
+  const locale = useLanguage();
+  const t = messageList[locale];
+  const canManageRoom = room?.my_role === "owner" || room?.my_role === "admin";
+  const hasOtherMembers = (room?.member_count ?? 0) > 1;
+  const starterPrompts = [t.emptyPromptPlan, t.emptyPromptSummary, t.emptyPromptRoles];
+
+  const prefillComposer = (text: string) => {
+    window.dispatchEvent(new CustomEvent(PREFILL_ROOM_COMPOSER_EVENT, {
+      detail: { roomId: room?.room_id, text },
+    }));
+  };
+
+  return (
+    <div className="flex flex-1 items-center justify-center overflow-y-auto px-4 py-8">
+      <div className="w-full max-w-2xl rounded-lg border border-glass-border bg-deep-black-light/70 p-5 shadow-lg shadow-black/20">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
+            <Bot className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-text-primary">{t.emptyTitle}</h3>
+            <p className="mt-1 text-sm leading-6 text-text-secondary">
+              {hasOtherMembers ? t.emptyGroupDesc : t.emptySoloDesc}
+            </p>
+          </div>
+        </div>
+
+        {canManageRoom && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent(OPEN_ROOM_ADD_MEMBER_EVENT))}
+              className="inline-flex items-center gap-2 rounded-md border border-neon-cyan/30 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            >
+              <UserPlus className="h-4 w-4" />
+              {t.emptyAddMember}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent(OPEN_ROOM_SETTINGS_EVENT))}
+              className="inline-flex items-center gap-2 rounded-md border border-glass-border bg-glass-bg px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary"
+            >
+              <Settings className="h-4 w-4" />
+              {t.emptyRoomSettings}
+            </button>
+          </div>
+        )}
+
+        <div className="mt-5">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary/70">
+            {t.emptyPromptLabel}
+          </p>
+          <div className="grid gap-2">
+            {starterPrompts.map((prompt) => (
+              <button
+                type="button"
+                key={prompt}
+                onClick={() => prefillComposer(prompt)}
+                className="group flex items-start justify-between gap-3 rounded-md border border-glass-border bg-deep-black px-3 py-2 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
+              >
+                <span className="min-w-0 text-sm leading-5 text-text-secondary group-hover:text-text-primary">
+                  {prompt}
+                </span>
+                <span className="shrink-0 rounded border border-neon-cyan/30 px-2 py-1 text-[11px] font-medium text-neon-cyan">
+                  {t.emptyTryPrompt}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MessageList() {
   const locale = useLanguage();
   const t = messageList[locale];
@@ -261,7 +349,17 @@ export default function MessageList() {
   const isRoomMessagesLoading = roomId ? messagesLoading[roomId] ?? false : false;
   const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
   const currentAgentId = overview?.agent?.agent_id;
-  const currentRoomName = overview?.rooms?.find((r) => r.room_id === roomId)?.name ?? roomId ?? "";
+  const currentRoom = useMemo(() => {
+    if (!roomId) return null;
+    return (
+      overview?.rooms?.find((r) => r.room_id === roomId)
+      || publicRoomDetails[roomId]
+      || publicRooms.find((r) => r.room_id === roomId)
+      || recentVisitedRooms.find((r) => r.room_id === roomId)
+      || null
+    );
+  }, [overview?.rooms, publicRoomDetails, publicRooms, recentVisitedRooms, roomId]);
+  const currentRoomName = currentRoom?.name ?? roomId ?? "";
   const mentionCandidates = useMemo<MentionTextCandidate[]>(() => {
     const candidates: MentionTextCandidate[] = [];
     const seen = new Set<string>();
@@ -433,11 +531,7 @@ export default function MessageList() {
   }
 
   if (messages.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-text-secondary">
-        {t.noMessages}
-      </div>
-    );
+    return <EmptyRoomGuide room={currentRoom} />;
   }
 
   const newMessagesBanner = showNewMessagesBanner && (
