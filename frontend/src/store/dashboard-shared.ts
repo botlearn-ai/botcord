@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 dashboard 类型定义、@/lib/api 的 active-agent 工具与浏览器时间解析
- * [OUTPUT]: 对外提供 dashboard chat/unread/realtime store 共用的房间摘要、合并与时间比较工具
+ * [OUTPUT]: 对外提供 dashboard chat/unread/realtime store 共用的房间摘要、DM 类型推断、合并与时间比较工具
  * [POS]: frontend store 层的共享基础模块，负责消除多 store 拆分后的重复逻辑
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -10,9 +10,11 @@ import type {
   DashboardOverview,
   DashboardRoom,
   HumanRoomSummary,
+  ParticipantType,
   PublicRoom,
 } from "@/lib/types";
 import { getActiveAgentId } from "@/lib/api";
+import { parseDmRoomId } from "@/components/dashboard/dmRoom";
 
 export const roomMessagesInFlight = new Set<string>();
 export const roomMessagesReloadPending = new Set<string>();
@@ -66,6 +68,13 @@ function isOwnerChatRoom(roomId: string): boolean {
   return roomId.startsWith("rm_oc_");
 }
 
+function inferPeerTypeForHumanRoom(room: HumanRoomSummary): ParticipantType | undefined {
+  if ((room.member_count ?? 0) > 2) return undefined;
+  const parsed = parseDmRoomId(room.room_id);
+  if (!parsed) return undefined;
+  return parsed.a.startsWith("hu_") && parsed.b.startsWith("hu_") ? "human" : "agent";
+}
+
 export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
   return {
     room_id: r.room_id,
@@ -91,6 +100,7 @@ export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
     allow_human_send: r.allow_human_send,
     created_at: r.created_at,
     members_preview: r.members_preview ?? undefined,
+    peer_type: inferPeerTypeForHumanRoom(r),
   };
 }
 

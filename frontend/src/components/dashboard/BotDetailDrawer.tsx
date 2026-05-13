@@ -94,26 +94,38 @@ function formatTime(iso: string | null): string {
 
 export default function BotDetailDrawer() {
   const router = useRouter();
-  const { botDetailAgentId, setBotDetailAgentId, setSelectedDeviceId, setMessagesPane, setUserChatRoomId } = useDashboardUIStore(
+  const {
+    botDetailAgentId,
+    setBotDetailAgentId,
+    setSelectedDeviceId,
+    setSidebarTab,
+    setFocusedRoomId,
+    setOpenedRoomId,
+    setMessagesPane,
+    setMessagesFilter,
+  } = useDashboardUIStore(
     useShallow((s) => ({
       botDetailAgentId: s.botDetailAgentId,
       setBotDetailAgentId: s.setBotDetailAgentId,
       setSelectedDeviceId: s.setSelectedDeviceId,
+      setSidebarTab: s.setSidebarTab,
+      setFocusedRoomId: s.setFocusedRoomId,
+      setOpenedRoomId: s.setOpenedRoomId,
       setMessagesPane: s.setMessagesPane,
-      setUserChatRoomId: s.setUserChatRoomId,
+      setMessagesFilter: s.setMessagesFilter,
     })),
   );
-  const { ownedAgents, activeAgentId, refreshUserProfile } = useDashboardSessionStore(
+  const { ownedAgents, refreshHumanRooms, refreshUserProfile } = useDashboardSessionStore(
     useShallow((s) => ({
       ownedAgents: s.ownedAgents,
-      activeAgentId: s.activeAgentId,
+      refreshHumanRooms: s.refreshHumanRooms,
       refreshUserProfile: s.refreshUserProfile,
     })),
   );
-  const switchActiveAgent = useDashboardChatStore((s) => s.switchActiveAgent);
   const overview = useDashboardChatStore((s) => s.overview);
   const daemons = useDaemonStore((s) => s.daemons);
   const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
+  const loadOwnedAgentRooms = useDashboardChatStore((s) => s.loadOwnedAgentRooms);
 
   const bot = botDetailAgentId ? ownedAgents.find((a) => a.agent_id === botDetailAgentId) ?? null : null;
   const device = bot?.daemon_instance_id ? daemons.find((d) => d.id === bot.daemon_instance_id) ?? null : null;
@@ -137,17 +149,24 @@ export default function BotDetailDrawer() {
 
   const handleOpenChat = async () => {
     try {
-      if (bot.agent_id !== activeAgentId) {
-        await switchActiveAgent(bot.agent_id);
-      }
-      const room = await api.getUserChatRoom(bot.agent_id);
-      setUserChatRoomId(room.room_id);
-      setMessagesPane("user-chat");
+      const { room_id } = await api.openDmRoom(bot.agent_id);
+      await Promise.all([
+        refreshHumanRooms(),
+        loadOwnedAgentRooms(),
+      ]);
+      setSidebarTab("messages");
+      setMessagesPane("room");
+      setMessagesFilter("self-my-bot");
+      setFocusedRoomId(room_id);
+      setOpenedRoomId(room_id);
       setBotDetailAgentId(null);
-      router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
-    } catch {
+      router.push(`/chats/messages/${encodeURIComponent(room_id)}`);
+    } catch (error) {
+      console.error("[BotDetailDrawer] openDmRoom failed:", error);
+      setSidebarTab("messages");
+      setMessagesPane("room");
       setBotDetailAgentId(null);
-      router.push("/chats/messages/__user-chat__");
+      router.push("/chats/messages");
     }
   };
 
