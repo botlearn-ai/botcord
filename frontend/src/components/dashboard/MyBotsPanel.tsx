@@ -8,7 +8,6 @@ import type { ActivityStats } from "@/lib/types";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import BotAvatar from "./BotAvatar";
 import MyDevicesView from "./MyDevicesView";
-import DeviceDetailDrawer from "./DeviceDetailDrawer";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
@@ -116,7 +115,6 @@ export default function MyBotsPanel() {
           </div>
         </div>
       ) : null}
-      <DeviceDetailDrawer />
     </div>
   );
 }

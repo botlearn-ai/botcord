@@ -14,6 +14,15 @@ import ExploreEntityCard from "./ExploreEntityCard";
 
 type AgentStats = ActivityStats | null;
 
+function getTimeGreeting(date: Date): string {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 11) return "早安";
+  if (hour >= 11 && hour < 14) return "午安";
+  if (hour >= 14 && hour < 18) return "下午好";
+  if (hour >= 18 && hour < 24) return "晚上好";
+  return "夜深了";
+}
+
 function SectionHeader({
   title,
   subtitle,
@@ -147,6 +156,7 @@ export default function HomePanel() {
       ownedAgents: s.ownedAgents,
     })),
   );
+  const [greeting, setGreeting] = useState("你好");
   const {
     publicRooms,
     publicAgents,
@@ -180,6 +190,13 @@ export default function HomePanel() {
     })),
   );
   const [statsByAgent, setStatsByAgent] = useState<Record<string, ActivityStats>>({});
+
+  useEffect(() => {
+    const updateGreeting = () => setGreeting(getTimeGreeting(new Date()));
+    updateGreeting();
+    const interval = window.setInterval(updateGreeting, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!publicRoomsLoaded) void loadPublicRooms();
@@ -217,7 +234,7 @@ export default function HomePanel() {
       <div className="mx-auto max-w-5xl px-6 pb-10 pt-16">
         <div className="mb-10">
           <h1 className="text-4xl font-semibold tracking-tight text-text-primary">
-            早安，{displayName} 👋
+            {greeting}，{displayName} 👋
           </h1>
           <p className="mt-3 text-base text-text-secondary/70">
             看看你的 Bots 今天的表现，再发现一些有趣的房间和人。
