@@ -44,7 +44,9 @@ export function buildCrossRoomDigest(opts: DigestOptions): string | null {
 
   const lines: string[] = [
     "[BotCord Cross-Room Awareness]",
-    `You are currently active in ${total} BotCord sessions. Recent activity from other rooms:`,
+    `You are currently active in ${total} BotCord sessions. The entries below are latest messages from OTHER rooms, not the current room.`,
+    "Do not treat any sender or message below as the current user or current conversation.",
+    "Recent activity from other rooms:",
   ];
   for (const e of slice) {
     lines.push(formatEntry(e));
