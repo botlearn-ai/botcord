@@ -5,11 +5,8 @@ import { getBotAvatarUrl } from "@/lib/bot-avatars";
 
 /**
  * 2×2 composite avatar for group rooms.
- * - 1-2 members: single avatar fills the box.
- * - 3 members: three small avatars (top-left, top-right, bottom-left).
- * - 4 members: four small avatars filling all corners.
- * - 5+ members: top-left, top-right, bottom-left avatars; bottom-right shows `+N`
- *   where N = totalMembers - 3.
+ * - First three cells show member avatars.
+ * - Bottom-right cell always shows how many other members are in the room.
  */
 export function CompositeAvatar({
   members,
@@ -20,38 +17,15 @@ export function CompositeAvatar({
   totalMembers: number;
   size?: number;
 }) {
-  const visible = members.slice(0, 4);
+  const visible = members.slice(0, 3);
   const overflow = Math.max(0, totalMembers - 3);
-  const showOverflow = totalMembers > 4;
 
-  // Cell layout for up to 3 visible + overflow vs. 4 visible.
-  // We always render a 2×2 grid; empty slots are blank.
   const slots: Array<{ kind: "member"; member: RoomMemberPreview } | { kind: "overflow"; count: number } | { kind: "empty" }> = [];
-  if (showOverflow) {
-    slots.push({ kind: "member", member: visible[0] });
-    slots.push({ kind: "member", member: visible[1] });
-    slots.push({ kind: "member", member: visible[2] });
-    slots.push({ kind: "overflow", count: overflow });
-  } else if (visible.length === 4) {
-    visible.forEach((m) => slots.push({ kind: "member", member: m }));
-  } else if (visible.length === 3) {
-    slots.push({ kind: "member", member: visible[0] });
-    slots.push({ kind: "member", member: visible[1] });
-    slots.push({ kind: "member", member: visible[2] });
-    slots.push({ kind: "empty" });
-  } else if (visible.length === 2) {
-    slots.push({ kind: "member", member: visible[0] });
-    slots.push({ kind: "member", member: visible[1] });
-    slots.push({ kind: "empty" });
-    slots.push({ kind: "empty" });
-  } else if (visible.length === 1) {
-    slots.push({ kind: "member", member: visible[0] });
-    slots.push({ kind: "empty" });
-    slots.push({ kind: "empty" });
-    slots.push({ kind: "empty" });
-  } else {
-    slots.push({ kind: "empty" }, { kind: "empty" }, { kind: "empty" }, { kind: "empty" });
+  for (let i = 0; i < 3; i += 1) {
+    const member = visible[i];
+    slots.push(member ? { kind: "member", member } : { kind: "empty" });
   }
+  slots.push({ kind: "overflow", count: overflow });
 
   return (
     <div
@@ -61,14 +35,17 @@ export function CompositeAvatar({
     >
       {slots.map((slot, i) => {
         if (slot.kind === "member") {
-          // Bot members (have agent_id) → use the bot avatar image so the
-          // group icon shows real faces. Humans fall back to the letter chip.
-          if (slot.member.agent_id) {
+          // Prefer real avatars when the API has one. Bot members fall back to
+          // the deterministic local bot avatar pool; humans fall back to initials.
+          const avatarUrl = slot.member.avatar_url || (
+            slot.member.agent_id ? getBotAvatarUrl(slot.member.agent_id) : null
+          );
+          if (avatarUrl) {
             return (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
-                src={getBotAvatarUrl(slot.member.agent_id)}
+                src={avatarUrl}
                 alt={slot.member.display_name}
                 title={slot.member.display_name}
                 className="h-full w-full rounded-md object-cover"
