@@ -16,7 +16,7 @@ interface FilterRow {
 }
 
 const SELF_ROWS: FilterRow[] = [
-  { key: "self-all", label: "全部私聊", icon: Inbox },
+  { key: "self-all", label: "全部", icon: Inbox },
   { key: "self-my-bot", label: "和我自己的 Bot", icon: Bot },
   { key: "self-third-bot", label: "和别人的 Bot", icon: Bot },
   { key: "self-human", label: "和真人", icon: User },
@@ -24,7 +24,7 @@ const SELF_ROWS: FilterRow[] = [
 ];
 
 const BOTS_ROWS: FilterRow[] = [
-  { key: "bots-all", label: "全部私聊", icon: Inbox },
+  { key: "bots-all", label: "全部", icon: Inbox },
   { key: "bots-bot-bot", label: "Bot 和其他 Bot", icon: Bot },
   { key: "bots-bot-human", label: "Bot 和真人", icon: UsersRound },
   { key: "bots-group", label: "Bot 加入的群", icon: Users },
