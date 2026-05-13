@@ -202,6 +202,45 @@ describe("OpenclawAcpAdapter.run", () => {
     expect(res.error).toContain("Missing env var FOO_API_KEY");
   });
 
+  it("treats end_turn with warning-only stdout as an empty reply, not an error", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        if (frame.method === "initialize") {
+          child.stdout.write("◇  Config warnings ─────────────────────╮\n");
+          child.stdout.write("│  - plugins.allow: plugin not installed: brave │\n");
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-warn-end" } }) + "\n");
+        } else if (frame.method === "session/prompt") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { stopReason: "end_turn" } }) + "\n");
+        }
+      }
+    });
+
+    const res = await adapter.run({
+      text: "hi",
+      sessionId: null,
+      cwd: "/tmp",
+      accountId: "ag_alice",
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      gateway,
+    });
+
+    expect(res.text).toBe("");
+    expect(res.newSessionId).toBe("sid-warn-end");
+    expect(res.error).toBeUndefined();
+  });
+
   it("streams only final text when OpenClaw sends reasoning before a final block", async () => {
     const child = new FakeChild();
     const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });

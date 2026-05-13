@@ -33,6 +33,8 @@ const ASSISTANT_TEXT_CAP = 1 * 1024 * 1024;
 const KILL_GRACE_MS = 5_000;
 /** Deadline for the initial `initialize` handshake. */
 const INITIALIZE_TIMEOUT_MS = 30_000;
+/** Short drain window for late `session/update` chunks after a prompt RPC error. */
+const PROMPT_ERROR_DRAIN_MS = 750;
 /** ACP protocol version this client targets. */
 export const ACP_PROTOCOL_VERSION = 1;
 
@@ -142,6 +144,7 @@ class AcpConnection {
 
   private dispatchLine(line: string): void {
     let msg: any;
+
     try {
       msg = JSON.parse(line);
     } catch {
@@ -421,6 +424,7 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
     });
 
     let newSessionId = opts.sessionId ?? "";
+    let promptStarted = false;
 
     try {
       // 1) initialize
@@ -471,6 +475,7 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       newSessionId = sessionId;
 
       // 3) session/prompt
+      promptStarted = true;
       const promptResult = (await conn.request<unknown>("session/prompt", {
         sessionId,
         prompt: [{ type: "text", text: opts.text }],
@@ -508,6 +513,9 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       const tail = stderrTail.slice(-STDERR_ERROR_SNIPPET).trim();
       state.errorText =
         state.errorText ?? (tail ? `${baseMsg}; stderr: ${tail}` : baseMsg);
+      if (promptStarted && !opts.signal.aborted) {
+        await sleepUnlessAborted(PROMPT_ERROR_DRAIN_MS, opts.signal);
+      }
       try {
         child.stdin.end();
       } catch {
@@ -562,4 +570,18 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       );
     });
   }
+}
+
+function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const t = setTimeout(done, ms);
+    if (typeof t.unref === "function") t.unref();
+    function done(): void {
+      signal.removeEventListener("abort", done);
+      clearTimeout(t);
+      resolve();
+    }
+    signal.addEventListener("abort", done, { once: true });
+  });
 }
