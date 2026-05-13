@@ -12,7 +12,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Bell, Info, Loader2, PanelLeftOpen, Plus, Settings, Share2, X } from "lucide-react";
+import { ArrowLeft, Bell, Info, Loader2, PanelLeftOpen, Settings, Share2, UserPlus, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -110,7 +110,7 @@ export default function RoomHeader() {
   const canInvite = isHumanView
     ? isOwnerOrAdmin || (Boolean(myRole) && Boolean(humanRoom?.default_invite))
     : (authRoom?.can_invite ?? true);
-  const canAddMembers = activeIdentity?.type === "human" && isOwnerOrAdmin && isJoined && !isDMRoom && !isOwnerChatRoom;
+  const canAddMembers = activeIdentity?.type === "human" && canInvite && isJoined && !isDMRoom && !isOwnerChatRoom;
   const roleLabel = myRole
     ? locale === "zh"
       ? `你是 ${myRole}`
@@ -421,7 +421,7 @@ export default function RoomHeader() {
                 className={iconBtn}
                 aria-label={locale === "zh" ? "添加房间成员" : "Add members"}
               >
-                {addMemberLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {addMemberLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
               </button>
               <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
             </span>
