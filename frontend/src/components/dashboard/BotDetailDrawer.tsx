@@ -19,9 +19,11 @@ import {
 import { useShallow } from "zustand/shallow";
 import { api, userApi } from "@/lib/api";
 import type { ActivityStats, HumanAgentRoomSummary } from "@/lib/types";
+import { dmPeerId } from "@/components/dashboard/dmRoom";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDaemonStore } from "@/store/useDaemonStore";
 import {
   usePolicyStore,
@@ -33,6 +35,7 @@ import {
 import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
 import BotAvatar from "./BotAvatar";
+import { CompositeAvatar } from "./CompositeAvatar";
 
 type TabKey = "overview" | "profile" | "policy" | "auto" | "gateways" | "files";
 
@@ -83,6 +86,14 @@ interface AgentRuntimeFilesResponse {
   files: AgentRuntimeFile[];
 }
 
+interface BotFriendRoom {
+  id: string;
+  type: "agent" | "human";
+  display_name: string;
+  online?: boolean;
+  room: HumanAgentRoomSummary;
+}
+
 /**
  * Right-side drawer for a single owned bot.
  * 6 tabs: 概览 / 资料 / 对话与回复 / 自主 / 接入 / 文件/记忆.
@@ -94,7 +105,10 @@ export default function BotDetailDrawer() {
     setBotDetailAgentId,
     setSelectedDeviceId,
     setSidebarTab,
+    setFocusedRoomId,
     setOpenedRoomId,
+    setUserChatRoomId,
+    setMessagesPane,
     setMessagesFilter,
     setMessagesBotScope,
   } = useDashboardUIStore(
@@ -103,19 +117,22 @@ export default function BotDetailDrawer() {
       setBotDetailAgentId: s.setBotDetailAgentId,
       setSelectedDeviceId: s.setSelectedDeviceId,
       setSidebarTab: s.setSidebarTab,
+      setFocusedRoomId: s.setFocusedRoomId,
       setOpenedRoomId: s.setOpenedRoomId,
+      setUserChatRoomId: s.setUserChatRoomId,
+      setMessagesPane: s.setMessagesPane,
       setMessagesFilter: s.setMessagesFilter,
       setMessagesBotScope: s.setMessagesBotScope,
     })),
   );
-  const { ownedAgents } = useDashboardSessionStore(
-    useShallow((s) => ({ ownedAgents: s.ownedAgents })),
+  const { activeAgentId, ownedAgents } = useDashboardSessionStore(
+    useShallow((s) => ({ activeAgentId: s.activeAgentId, ownedAgents: s.ownedAgents })),
   );
   const daemons = useDaemonStore((s) => s.daemons);
-  const { overview, ownedAgentRooms } = useDashboardChatStore(
+  const { ownedAgentRooms, switchActiveAgent } = useDashboardChatStore(
     useShallow((s) => ({
-      overview: s.overview,
       ownedAgentRooms: s.ownedAgentRooms,
+      switchActiveAgent: s.switchActiveAgent,
     })),
   );
 
@@ -164,6 +181,27 @@ export default function BotDetailDrawer() {
 
   const online = bot.ws_online;
   const botRooms = ownedAgentRooms.filter((room) => room.bots.some((item) => item.agent_id === bot.agent_id));
+  const friends = deriveBotFriends(bot.agent_id, botRooms);
+  const groups = botRooms.filter((room) => !isOwnerChatRoom(room.room_id) && !dmPeerId(room.room_id, bot.agent_id));
+
+  const openOwnerChat = async () => {
+    const agentId = bot.agent_id;
+    setBotDetailAgentId(null);
+    setSidebarTab("messages");
+    setMessagesPane("user-chat");
+    setFocusedRoomId(null);
+    setOpenedRoomId(null);
+    if (agentId !== activeAgentId) {
+      await switchActiveAgent(agentId);
+    }
+    try {
+      const room = await api.getUserChatRoom(agentId);
+      setUserChatRoomId(room.room_id);
+    } catch (error) {
+      console.error("[BotDetailDrawer] getUserChatRoom failed:", error);
+    }
+    router.push("/chats/messages/__user-chat__");
+  };
 
   // Jump to a conversation visible from THIS bot's perspective. Sets BOT 监控
   // scope so the Messages list narrows to this bot's rooms, then opens the room.
@@ -248,25 +286,15 @@ export default function BotDetailDrawer() {
               bot={bot}
               stats={stats}
               device={device}
-              rooms={botRooms}
+              friends={friends}
+              groups={groups}
               onJumpToDevice={(id) => {
                 setBotDetailAgentId(null);
                 setSelectedDeviceId(id);
               }}
-              onJumpToRoom={(room) => jumpToBotConversation(room.room_id)}
-              onOpenChat={() => {
-                const dm = overview?.rooms.find(
-                  (r) => r.owner_id === bot.agent_id && (r.peer_type ?? r.owner_type) === "agent",
-                );
-                setBotDetailAgentId(null);
-                setSidebarTab("messages");
-                if (dm) {
-                  setOpenedRoomId(dm.room_id);
-                  router.push(`/chats/messages/${encodeURIComponent(dm.room_id)}`);
-                } else {
-                  router.push("/chats/messages");
-                }
-              }}
+              onJumpToFriend={(friend) => jumpToBotConversation(friend.room.room_id)}
+              onJumpToGroup={(group) => jumpToBotConversation(group.room_id)}
+              onOpenChat={() => void openOwnerChat()}
               onOpenSettings={() => setTab("profile")}
             />
           )}
@@ -281,24 +309,51 @@ export default function BotDetailDrawer() {
   );
 }
 
+function deriveBotFriends(agentId: string, rooms: HumanAgentRoomSummary[]): BotFriendRoom[] {
+  const seen = new Set<string>();
+  const friends: BotFriendRoom[] = [];
+
+  for (const room of rooms) {
+    if (isOwnerChatRoom(room.room_id)) continue;
+    const peerId = dmPeerId(room.room_id, agentId);
+    if (!peerId || seen.has(peerId)) continue;
+
+    seen.add(peerId);
+    const peerBot = room.bots.find((item) => item.agent_id === peerId);
+    const type = peerId.startsWith("hu_") ? "human" : "agent";
+    friends.push({
+      id: peerId,
+      type,
+      display_name: peerBot?.display_name || room.name || peerId,
+      room,
+    });
+  }
+
+  return friends;
+}
+
 /* --------------------------- Overview --------------------------- */
 
 function OverviewTab({
   bot,
   stats,
   device,
-  rooms,
+  friends,
+  groups,
   onJumpToDevice,
-  onJumpToRoom,
+  onJumpToFriend,
+  onJumpToGroup,
   onOpenChat,
   onOpenSettings,
 }: {
   bot: { agent_id: string; display_name: string; bio?: string | null };
   stats: ActivityStats | null;
   device: { id: string; label: string | null; status: string } | null;
-  rooms: HumanAgentRoomSummary[];
+  friends: BotFriendRoom[];
+  groups: HumanAgentRoomSummary[];
   onJumpToDevice: (id: string) => void;
-  onJumpToRoom: (room: HumanAgentRoomSummary) => void;
+  onJumpToFriend: (friend: BotFriendRoom) => void;
+  onJumpToGroup: (group: HumanAgentRoomSummary) => void;
   onOpenChat: () => void;
   onOpenSettings: () => void;
 }) {
@@ -363,37 +418,87 @@ function OverviewTab({
 
       <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
         <h3 className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
-          <span>Bot 参与的对话 · {rooms.length}</span>
+          <span>好友 · {friends.length}</span>
         </h3>
-        {rooms.length > 0 ? (
+        {friends.length > 0 ? (
           <ul className="space-y-1">
-            {rooms.slice(0, 8).map((room) => (
-              <li key={room.room_id}>
+            {friends.slice(0, 6).map((friend) => (
+              <li key={`${friend.type}-${friend.id}`}>
                 <button
-                  onClick={() => onJumpToRoom(room)}
+                  onClick={() => onJumpToFriend(friend)}
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg/60"
                 >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-neon-cyan/25 bg-neon-cyan/10 text-[11px] font-semibold text-neon-cyan">
-                    #
-                  </div>
+                  {friend.type === "agent" ? (
+                    <BotAvatar agentId={friend.id} size={28} alt={friend.display_name} />
+                  ) : (
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-neon-purple/25 bg-neon-purple/10 text-[11px] font-semibold text-neon-purple">
+                      {friend.display_name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs text-text-primary">{room.name}</p>
-                    <p className="text-[10px] text-text-secondary/55">{room.member_count} 成员</p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-xs text-text-primary">{friend.display_name}</span>
+                      {friend.online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
+                    </div>
                   </div>
                   <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
-                    {room.member_count > 2 ? "GROUP" : "DM"}
+                    {friend.type === "agent" ? "BOT" : "HUMAN"}
                   </span>
                 </button>
               </li>
             ))}
-            {rooms.length > 8 ? (
+            {friends.length > 6 ? (
               <li className="px-2 pt-1 text-[11px] text-text-secondary/55">
-                还有 {rooms.length - 8} 个对话
+                还有 {friends.length - 6} 位
               </li>
             ) : null}
           </ul>
         ) : (
-          <p className="text-xs text-text-secondary/55">暂无这个 Bot 参与的对话</p>
+          <p className="text-xs text-text-secondary/55">还没有好友</p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+        <h3 className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          <span>加入的群 · {groups.length}</span>
+        </h3>
+        {groups.length > 0 ? (
+          <ul className="space-y-1">
+            {groups.slice(0, 8).map((group) => (
+              <li key={group.room_id}>
+                <button
+                  onClick={() => onJumpToGroup(group)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg/60"
+                >
+                  {group.bots.length >= 2 ? (
+                    <CompositeAvatar
+                      members={group.bots.map((member) => ({
+                        display_name: member.display_name,
+                        agent_id: member.agent_id,
+                      }))}
+                      totalMembers={group.member_count}
+                      size={28}
+                    />
+                  ) : (
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-neon-cyan/25 bg-neon-cyan/10 text-[11px] font-semibold text-neon-cyan">
+                      #
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-text-primary">{group.name}</p>
+                    <p className="text-[10px] text-text-secondary/55">{group.member_count} 成员</p>
+                  </div>
+                </button>
+              </li>
+            ))}
+            {groups.length > 8 ? (
+              <li className="px-2 pt-1 text-[11px] text-text-secondary/55">
+                还有 {groups.length - 8} 个群
+              </li>
+            ) : null}
+          </ul>
+        ) : (
+          <p className="text-xs text-text-secondary/55">还没加入任何群</p>
         )}
       </section>
 
