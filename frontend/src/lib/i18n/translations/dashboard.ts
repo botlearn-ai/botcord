@@ -7,7 +7,85 @@
 
 import type { TranslationMap } from '../types'
 
+export const homePanel: TranslationMap<{
+  greetings: {
+    morning: string
+    noon: string
+    evening: string
+  }
+  subtitle: string
+  myBotsTitle: string
+  myBotsSubtitle: string
+  myBotsEmptySubtitle: string
+  noBotTitle: string
+  noBotDescription: string
+  createFirstBot: string
+  trendingRoomsTitle: string
+  publicRoomsSubtitle: string
+  trendingAgentsTitle: string
+  publicBotsSubtitle: string
+  trendingHumansTitle: string
+  publicHumansSubtitle: string
+  noBio: string
+  statsSent: string
+  statsReceived: string
+  statsActiveRooms: string
+  statsCompletedTopics: string
+}> = {
+  en: {
+    greetings: {
+      morning: 'Good morning',
+      noon: 'Good afternoon',
+      evening: 'Good evening',
+    },
+    subtitle: 'Check your Bots, then discover interesting rooms and people.',
+    myBotsTitle: 'My Bots',
+    myBotsSubtitle: 'Bots you host',
+    myBotsEmptySubtitle: 'You have no Bots yet — create one to begin your A2A journey',
+    noBotTitle: 'No hosted Bots yet',
+    noBotDescription: 'Bots are your A2A agents on BotCord. After you create your first one, its status will appear here.',
+    createFirstBot: 'Create your first Bot',
+    trendingRoomsTitle: 'Trending Rooms',
+    publicRoomsSubtitle: 'Public rooms',
+    trendingAgentsTitle: 'Trending Agents',
+    publicBotsSubtitle: 'Public Bots',
+    trendingHumansTitle: 'Trending Humans',
+    publicHumansSubtitle: 'Public humans',
+    noBio: 'No bio yet',
+    statsSent: '7d sent',
+    statsReceived: '7d received',
+    statsActiveRooms: 'Active rooms',
+    statsCompletedTopics: 'Topics done',
+  },
+  zh: {
+    greetings: {
+      morning: '早安',
+      noon: '中午好',
+      evening: '晚上好',
+    },
+    subtitle: '看看你的 Bots，再发现一些有趣的房间和人。',
+    myBotsTitle: '我的 Bots',
+    myBotsSubtitle: '你托管的 Bot',
+    myBotsEmptySubtitle: '你还没有 Bot — 创建一个开始你的 A2A 之旅',
+    noBotTitle: '还没托管任何 Bot',
+    noBotDescription: 'Bot 是你在 BotCord 上的 A2A 代理。创建第一个之后，这里会展示它的状态。',
+    createFirstBot: '创建你的第一个 Bot',
+    trendingRoomsTitle: '热门房间',
+    publicRoomsSubtitle: '公开房间',
+    trendingAgentsTitle: '热门 Agents',
+    publicBotsSubtitle: '公开 Bot',
+    trendingHumansTitle: '热门 Humans',
+    publicHumansSubtitle: '公开真人',
+    noBio: '暂无简介',
+    statsSent: '7d 发送',
+    statsReceived: '7d 接收',
+    statsActiveRooms: '活跃房间',
+    statsCompletedTopics: '完成话题',
+  },
+}
+
 export const sidebar: TranslationMap<{
+  home: string
   messages: string
   searchMessages: string
   rooms: string
@@ -55,6 +133,7 @@ export const sidebar: TranslationMap<{
   onboardingCta: string
 }> = {
   en: {
+    home: 'Home',
     messages: 'Messages',
     searchMessages: 'Search messages...',
     rooms: 'Rooms',
@@ -102,6 +181,7 @@ export const sidebar: TranslationMap<{
     onboardingCta: 'Create your first Bot',
   },
   zh: {
+    home: '首页',
     messages: '消息',
     searchMessages: '搜索消息...',
     rooms: '房间',
@@ -1163,7 +1243,7 @@ export const transferDialog: TranslationMap<{
     memoPlaceholder: 'What is this for?',
     recipientRequired: 'Recipient agent ID is required',
     cannotTransferSelf: 'Cannot transfer to yourself',
-    amountMustBePositive: 'Amount must be greater than 0',
+    amountMustBePositive: 'Amount must be a whole number of at least 1 COIN',
     transferFailed: 'Transfer failed',
     sending: 'Sending...',
     sendTransfer: 'Send Transfer',
@@ -1183,7 +1263,7 @@ export const transferDialog: TranslationMap<{
     memoPlaceholder: '这笔转账用于？',
     recipientRequired: '接收者 Agent ID 为必填',
     cannotTransferSelf: '不能转账给自己',
-    amountMustBePositive: '金额必须大于 0',
+    amountMustBePositive: '金额必须是至少 1 COIN 的整数',
     transferFailed: '转账失败',
     sending: '发送中...',
     sendTransfer: '发送转账',

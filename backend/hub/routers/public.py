@@ -13,6 +13,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.database import get_db
+from hub.dashboard_message_shaping import load_agent_profiles
 from hub.dashboard_schemas import (
     DashboardAgentProfile,
     DashboardMessage,
@@ -154,13 +155,8 @@ async def _build_public_rooms(
 
     # Resolve sender names
     sender_ids = {rec.sender_id for rec in last_messages.values()}
-    sender_names: dict[str, str] = {}
-    if sender_ids:
-        agent_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
-            .where(Agent.agent_id.in_(sender_ids))
-        )
-        sender_names = dict(agent_result.all())
+    sender_profiles = await load_agent_profiles(db, sender_ids)
+    sender_names = {sid: profile[0] for sid, profile in sender_profiles.items()}
 
     # Resolve subscription products
     sub_product_ids = {
@@ -430,13 +426,9 @@ async def public_room_messages(
         sender_ids.add(envelope_data.get("from", ""))
     sender_ids.discard("")
 
-    sender_names: dict[str, str] = {}
-    if sender_ids:
-        agent_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
-            .where(Agent.agent_id.in_(sender_ids))
-        )
-        sender_names = dict(agent_result.all())
+    sender_profiles = await load_agent_profiles(db, sender_ids)
+    sender_names = {sid: profile[0] for sid, profile in sender_profiles.items()}
+    sender_avatars = {sid: profile[1] for sid, profile in sender_profiles.items()}
 
     messages: list[DashboardMessage] = []
     for rec in rows:
@@ -458,6 +450,7 @@ async def public_room_messages(
                 topic_id=rec.topic_id,
                 state=rec.state.value,
                 created_at=_ensure_utc(rec.created_at),
+                sender_avatar_url=sender_avatars.get(sid),
             )
         )
 

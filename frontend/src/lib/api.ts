@@ -154,14 +154,13 @@ export function setStoredActiveIdentity(identity: ActiveIdentity | null) {
 }
 
 /**
- * Resolve the effective active identity, tolerating stores from older sessions
- * that only wrote `botcord_active_agent_id`. Returns null when neither exists.
+ * Resolve the effective active identity. Dashboard no longer treats the
+ * selected Bot as an actor, so legacy `botcord_active_agent_id` must not
+ * promote requests into Agent mode.
  */
 export function getActiveIdentity(): ActiveIdentity | null {
   const stored = getStoredActiveIdentity();
-  if (stored) return stored;
-  const legacyAgent = getActiveAgentId();
-  return legacyAgent ? { type: "agent", id: legacyAgent } : null;
+  return stored?.type === "human" ? stored : null;
 }
 
 function extractErrorMessage(body: Record<string, unknown>, fallback: string): string {
@@ -198,14 +197,13 @@ async function buildAuthHeaders(identityOverride?: ActiveIdentity | null): Promi
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
-  // New identity model: only send X-Active-Agent when acting as an agent.
-  // For type='human', the backend resolves human_id from the Supabase JWT.
+  // Dashboard normally acts as the authenticated Human, so no X-Active-Agent
+  // header is sent. Only explicit per-call Agent overrides opt into the legacy
+  // agent actor path.
   // `identityOverride` lets per-call code (e.g. wallet viewer switcher)
   // address a different owned identity without mutating global session state.
   // ``null`` and ``undefined`` both mean "no override — follow global active
-  // identity"; only a concrete ``ActiveIdentity`` overrides. The wallet
-  // store passes ``walletViewer`` (default ``null``) on every call and
-  // depends on this fallback to send X-Active-Agent for the global agent.
+  // identity"; only a concrete ``ActiveIdentity`` overrides.
   const identity = identityOverride ?? getActiveIdentity();
   if (identity?.type === "agent") {
     headers["X-Active-Agent"] = identity.id;
@@ -222,7 +220,7 @@ async function buildAuthHeaders(identityOverride?: ActiveIdentity | null): Promi
  */
 function walletAsParam(identityOverride?: ActiveIdentity | null): "agent" | "human" {
   const id = identityOverride ?? getActiveIdentity();
-  return id?.type === "human" ? "human" : "agent";
+  return id?.type === "agent" ? "agent" : "human";
 }
 
 // --- Core request helpers ---
@@ -817,8 +815,11 @@ export const api = {
 
   // --- Activity / Observability ---
 
-  getActivityStats(period: "today" | "7d" | "30d" = "today") {
-    return apiGet<ActivityStats>("/api/dashboard/activity/stats", { period });
+  getActivityStats(
+    period: "today" | "7d" | "30d" = "today",
+    identityOverride?: ActiveIdentity | null,
+  ) {
+    return apiGet<ActivityStats>("/api/dashboard/activity/stats", { period }, identityOverride);
   },
 
   getActivityFeed(opts?: { period?: string; limit?: number; offset?: number }) {

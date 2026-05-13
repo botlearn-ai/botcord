@@ -79,6 +79,12 @@ class PatchHumanBody(BaseModel):
     avatar_url: str | None = Field(default=None, max_length=2048)
 
 
+class HumanRoomMemberPreviewItem(BaseModel):
+    display_name: str
+    avatar_url: str | None = None
+    agent_id: str | None = None
+
+
 class HumanRoomSummary(BaseModel):
     room_id: str
     name: str
@@ -89,6 +95,7 @@ class HumanRoomSummary(BaseModel):
     visibility: str
     join_policy: str
     member_count: int = 0
+    members_preview: list[HumanRoomMemberPreviewItem] | None = None
     my_role: str
     allow_human_send: bool = True
     default_send: bool = True
@@ -350,6 +357,7 @@ def _serialize_human_room_summary(
     my_role: RoomRole | str,
     *,
     member_count: int = 0,
+    members_preview: list[HumanRoomMemberPreviewItem] | None = None,
 ) -> HumanRoomSummary:
     role_value = my_role.value if hasattr(my_role, "value") else str(my_role)
     created_at = room.created_at
@@ -365,6 +373,7 @@ def _serialize_human_room_summary(
         visibility=room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
         join_policy=room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
         member_count=member_count,
+        members_preview=members_preview,
         my_role=role_value,
         allow_human_send=room.allow_human_send,
         default_send=room.default_send,
@@ -374,6 +383,70 @@ def _serialize_human_room_summary(
         required_subscription_product_id=room.required_subscription_product_id,
         created_at=created_at.isoformat() if created_at else None,
     )
+
+
+async def _build_member_previews(
+    db: AsyncSession, room_ids: list[str]
+) -> dict[str, list[HumanRoomMemberPreviewItem]]:
+    """Top-4 member previews per room (used by the dashboard's group avatar)."""
+    if not room_ids:
+        return {}
+    rows = await db.execute(
+        select(
+            RoomMember.room_id,
+            RoomMember.agent_id,
+            RoomMember.participant_type,
+        )
+        .where(RoomMember.room_id.in_(room_ids))
+        .order_by(RoomMember.room_id, RoomMember.joined_at)
+    )
+    buckets: dict[str, list[tuple[str, ParticipantType]]] = {}
+    for rid, pid, ptype in rows.all():
+        bucket = buckets.setdefault(rid, [])
+        if len(bucket) < 4:
+            bucket.append((pid, ptype))
+
+    agent_ids: set[str] = set()
+    human_ids: set[str] = set()
+    for entries in buckets.values():
+        for pid, ptype in entries:
+            if ptype == ParticipantType.human:
+                human_ids.add(pid)
+            else:
+                agent_ids.add(pid)
+
+    agent_info: dict[str, tuple[str, str | None]] = {}
+    if agent_ids:
+        ar = await db.execute(
+            select(Agent.agent_id, Agent.display_name, Agent.avatar_url)
+            .where(Agent.agent_id.in_(agent_ids))
+        )
+        agent_info = {aid: (name, avatar) for aid, name, avatar in ar.all()}
+
+    human_info: dict[str, tuple[str, str | None]] = {}
+    if human_ids:
+        hr = await db.execute(
+            select(User.human_id, User.display_name, User.avatar_url)
+            .where(User.human_id.in_(human_ids))
+        )
+        human_info = {hid: (name, avatar) for hid, name, avatar in hr.all()}
+
+    out: dict[str, list[HumanRoomMemberPreviewItem]] = {}
+    for rid, entries in buckets.items():
+        items: list[HumanRoomMemberPreviewItem] = []
+        for pid, ptype in entries:
+            if ptype == ParticipantType.human:
+                name, avatar = human_info.get(pid, (pid, None))
+                items.append(HumanRoomMemberPreviewItem(
+                    display_name=name, avatar_url=avatar, agent_id=None,
+                ))
+            else:
+                name, avatar = agent_info.get(pid, (pid, None))
+                items.append(HumanRoomMemberPreviewItem(
+                    display_name=name, avatar_url=avatar, agent_id=pid,
+                ))
+        out[rid] = items
+    return out
 
 
 async def _load_human(db: AsyncSession, ctx: RequestContext) -> User:
@@ -566,6 +639,7 @@ async def list_human_rooms(
     rows = membership.all()
     room_ids = [room.room_id for room, _role in rows]
     member_counts: dict[str, int] = {}
+    previews_by_room: dict[str, list[HumanRoomMemberPreviewItem]] = {}
     if room_ids:
         count_result = await db.execute(
             select(RoomMember.room_id, func.count(RoomMember.id))
@@ -573,12 +647,15 @@ async def list_human_rooms(
             .group_by(RoomMember.room_id)
         )
         member_counts = {room_id: int(count or 0) for room_id, count in count_result.all()}
+        previews_by_room = await _build_member_previews(db, room_ids)
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
     rooms = [
         _serialize_human_room_summary(
             room,
             _effective_human_role(role, room, owned_agent_ids),
             member_count=member_counts.get(room.room_id, 0),
+            members_preview=previews_by_room.get(room.room_id)
+            if member_counts.get(room.room_id, 0) > 2 else None,
         )
         for room, role in rows
     ]

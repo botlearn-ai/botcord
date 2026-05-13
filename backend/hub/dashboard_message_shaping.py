@@ -26,10 +26,10 @@ def sender_kind_for(source_type: str | None) -> str:
     return "human" if source_type in HUMAN_SOURCE_TYPES else "agent"
 
 
-async def load_user_display_names(
+async def load_user_profiles(
     db: AsyncSession, user_ids: Iterable[str]
-) -> dict[str, str]:
-    """Map internal User.id (stored in MessageRecord.source_user_id) -> display_name.
+) -> dict[str, tuple[str, str | None]]:
+    """Map internal User.id (stored in MessageRecord.source_user_id) -> display_name/avatar.
 
     source_user_id is the internal user_id (UUID string), not supabase_user_id.
     We try User.id first, then fall back to supabase_user_id for legacy rows.
@@ -37,7 +37,7 @@ async def load_user_display_names(
     ids = {uid for uid in user_ids if uid}
     if not ids:
         return {}
-    out: dict[str, str] = {}
+    out: dict[str, tuple[str, str | None]] = {}
     uuid_ids: list[_uuid.UUID] = []
     for s in ids:
         try:
@@ -47,10 +47,12 @@ async def load_user_display_names(
     if uuid_ids:
         try:
             result = await db.execute(
-                select(User.id, User.display_name).where(User.id.in_(uuid_ids))
+                select(User.id, User.display_name, User.avatar_url).where(
+                    User.id.in_(uuid_ids)
+                )
             )
-            for uid, name in result.all():
-                out[str(uid)] = name
+            for uid, name, avatar_url in result.all():
+                out[str(uid)] = (name, avatar_url)
         except Exception:
             _logger.warning("load_user_display_names: User.id lookup failed", exc_info=True)
         missing = {str(u) for u in uuid_ids} - set(out.keys())
@@ -58,12 +60,12 @@ async def load_user_display_names(
             try:
                 missing_uuids = [_uuid.UUID(m) for m in missing]
                 result = await db.execute(
-                    select(User.supabase_user_id, User.display_name).where(
+                    select(User.supabase_user_id, User.display_name, User.avatar_url).where(
                         User.supabase_user_id.in_(missing_uuids)
                     )
                 )
-                for uid, name in result.all():
-                    out[str(uid)] = name
+                for uid, name, avatar_url in result.all():
+                    out[str(uid)] = (name, avatar_url)
             except Exception:
                 _logger.warning(
                     "load_user_display_names: supabase_user_id fallback failed",
@@ -72,23 +74,41 @@ async def load_user_display_names(
     return out
 
 
-async def load_agent_display_names(
-    db: AsyncSession, agent_ids: Iterable[str]
+async def load_user_display_names(
+    db: AsyncSession, user_ids: Iterable[str]
 ) -> dict[str, str]:
+    profiles = await load_user_profiles(db, user_ids)
+    return {uid: profile[0] for uid, profile in profiles.items()}
+
+
+async def load_agent_profiles(
+    db: AsyncSession, agent_ids: Iterable[str]
+) -> dict[str, tuple[str, str | None]]:
     ids = {aid for aid in agent_ids if aid}
     if not ids:
         return {}
     result = await db.execute(
-        select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(ids))
+        select(Agent.agent_id, Agent.display_name, Agent.avatar_url).where(
+            Agent.agent_id.in_(ids)
+        )
     )
-    return dict(result.all())
+    return {aid: (name, avatar_url) for aid, name, avatar_url in result.all()}
+
+
+async def load_agent_display_names(
+    db: AsyncSession, agent_ids: Iterable[str]
+) -> dict[str, str]:
+    profiles = await load_agent_profiles(db, agent_ids)
+    return {aid: profile[0] for aid, profile in profiles.items()}
 
 
 def derive_sender_fields(
     rec: MessageRecord,
     *,
     agent_name_map: dict[str, str],
+    agent_avatar_map: dict[str, str | None] | None = None,
     user_name_map: dict[str, str],
+    user_avatar_map: dict[str, str | None] | None = None,
     viewer_agent_id: str | None,
     viewer_user_id: str | None,
 ) -> dict:
@@ -100,21 +120,25 @@ def derive_sender_fields(
     kind = sender_kind_for(source_type)
     source_user_id = rec.source_user_id
     source_user_name: str | None = None
+    sender_avatar_url: str | None = None
     is_mine = False
 
     if kind == "human":
         source_user_name = user_name_map.get(source_user_id) if source_user_id else None
         display_sender_name = source_user_name or "User"
+        sender_avatar_url = user_avatar_map.get(source_user_id) if user_avatar_map and source_user_id else None
         if viewer_user_id and source_user_id and str(viewer_user_id) == str(source_user_id):
             is_mine = True
     else:
         display_sender_name = agent_name_map.get(rec.sender_id) or rec.sender_id
+        sender_avatar_url = agent_avatar_map.get(rec.sender_id) if agent_avatar_map else None
         if viewer_agent_id and rec.sender_id == viewer_agent_id:
             is_mine = True
 
     return {
         "sender_kind": kind,
         "display_sender_name": display_sender_name,
+        "sender_avatar_url": sender_avatar_url,
         "source_user_id": source_user_id,
         "source_user_name": source_user_name,
         "is_mine": is_mine,

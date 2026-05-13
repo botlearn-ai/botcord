@@ -17,6 +17,7 @@ import TransferCard, { parseTransferText, parseTransferNotice } from "@/componen
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import BotAvatar from "./BotAvatar";
 import { PresenceDot } from "./PresenceDot";
 
 interface MessageBubbleProps {
@@ -231,6 +232,59 @@ function getSystemJoinParticipant(payload: Record<string, unknown>): { id: strin
   return { id: payload.participant_id, name: payload.participant_name };
 }
 
+function SenderAvatar({
+  senderId,
+  displayName,
+  avatarUrl,
+  isHuman,
+  onClick,
+  onKeyDown,
+}: {
+  senderId: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  isHuman: boolean;
+  onClick: () => void;
+  onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onKeyDown={onKeyDown}
+      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+      title={displayName}
+      aria-label={`Open ${displayName}`}
+    >
+      {isHuman ? (
+        avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-full object-cover ring-1 ring-neon-green/30"
+          />
+        ) : (
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neon-green/30 bg-neon-green/10 text-neon-green">
+            <User className="h-4 w-4" />
+          </span>
+        )
+      ) : (
+        <BotAvatar
+          agentId={senderId}
+          avatarUrl={avatarUrl}
+          alt={displayName}
+          size={32}
+          className="ring-neon-purple/30"
+        />
+      )}
+    </div>
+  );
+}
+
 export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId, mentionCandidates }: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -310,6 +364,17 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     if (displayText) setForwardQuote(buildQuote());
   };
 
+  const sideAvatar = !fullWidth && (
+    <SenderAvatar
+      senderId={message.sender_id}
+      displayName={senderDisplayName}
+      avatarUrl={message.sender_avatar_url}
+      isHuman={isHuman}
+      onClick={handleSelectSender}
+      onKeyDown={handleSelectSenderByKey}
+    />
+  );
+
   const moreButton = displayText && (
     <div className="relative self-start pt-1 shrink-0">
       <button
@@ -337,12 +402,13 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   return (
     <>
     <div
-      className={`flex items-start gap-1 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
+      className={`flex items-start gap-2 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setMenuOpen(false); }}
     >
       {/* For own messages: button left of bubble */}
       {isOwn && !fullWidth && moreButton}
+      {!isOwn && sideAvatar}
       <div
         className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
           isOwn
@@ -438,6 +504,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           )}
         </div>
       </div>
+      {isOwn && sideAvatar}
       {/* For others' messages: button right of bubble */}
       {(!isOwn || fullWidth) && moreButton}
     </div>
