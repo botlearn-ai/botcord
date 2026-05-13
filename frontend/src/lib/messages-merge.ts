@@ -13,7 +13,7 @@
 
 import type { DashboardRoom, HumanAgentRoomSummary, ParticipantType } from "@/lib/types";
 import { parseDmRoomId } from "@/components/dashboard/dmRoom";
-import { compareRoomsByActivityDesc } from "@/store/dashboard-shared";
+import { compareRoomsByActivityDesc, isOwnerChatRoom } from "@/store/dashboard-shared";
 
 interface MergeOpts {
   ownRooms: DashboardRoom[];
@@ -56,7 +56,7 @@ export function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): Dash
     last_message_at: room.last_message_at,
     last_sender_name: room.last_sender_name,
     allow_human_send: room.allow_human_send ?? undefined,
-    peer_type: inferPeerTypeForOwnedAgentRoom(room),
+    peer_type: isOwnerChatRoom(room.room_id) ? "agent" : inferPeerTypeForOwnedAgentRoom(room),
     _originAgent: origin ?? undefined,
   };
 }
@@ -93,7 +93,7 @@ export type MessagesFilterKey =
   | "bots-group";
 
 function isPrivateMessageRoom(room: Pick<DashboardRoom, "room_id">): boolean {
-  return room.room_id.startsWith("rm_dm_");
+  return room.room_id.startsWith("rm_dm_") || isOwnerChatRoom(room.room_id);
 }
 
 function hasOwnedAgentParticipant(room: Pick<DashboardRoom, "owner_id" | "room_id">, ownedAgentIds: Set<string>): boolean {
@@ -138,6 +138,8 @@ export function classifyMessagesRoom(
   room: import("@/lib/types").DashboardRoom,
   ownedAgentIds: Set<string>,
 ): MessagesFilterKey {
+  if (isOwnerChatRoom(room.room_id)) return "self-my-bot";
+
   const isObserver = !!room._originAgent;
   const isPrivateChat = isPrivateMessageRoom(room);
   const dmPeerType = isPrivateChat ? inferDmPeerType(room) : undefined;
@@ -162,10 +164,10 @@ export function applyMessagesFilter(
   ownedAgentIds: Set<string>,
 ): import("@/lib/types").DashboardRoom[] {
   if (filter === "self-all") {
-    return rooms.filter((r) => !r._originAgent);
+    return rooms.filter((r) => !r._originAgent || isOwnerChatRoom(r.room_id));
   }
   if (filter === "bots-all") {
-    return rooms.filter((r) => !!r._originAgent);
+    return rooms.filter((r) => !!r._originAgent && !isOwnerChatRoom(r.room_id));
   }
   return rooms.filter((r) => classifyMessagesRoom(r, ownedAgentIds) === filter);
 }

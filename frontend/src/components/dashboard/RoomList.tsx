@@ -14,7 +14,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
 import { ContactInfo, DashboardRoom } from "@/lib/types";
-import { humanRoomToDashboardRoom } from "@/store/dashboard-shared";
+import { humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -92,6 +92,7 @@ export default function RoomList({
     setMessagesPane: state.setMessagesPane,
   })));
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
+  const switchActiveAgent = useDashboardSessionStore((state) => state.switchActiveAgent);
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
@@ -126,7 +127,7 @@ export default function RoomList({
       .map(humanRoomToDashboardRoom);
     return [...agentRooms, ...extras];
   })();
-  const showUserChatEntry = includeUserChat && Boolean(activeAgentId) && viewMode === "agent" && (
+  const showUserChatEntry = includeUserChat && Boolean(activeAgentId) && (
     !normalizedSearchQuery ||
     [t.userChatTitle, t.userChatPreview, t.userChatTooltip, activeAgentId]
       .join("\n")
@@ -137,18 +138,31 @@ export default function RoomList({
   // (roomId is set), to avoid false positives when store is in default empty state.
   const isOwnerChatEmpty = showUserChatEntry && Boolean(ownerChatRoomId) && !ownerChatLoading && ownerChatMessages.length === 0;
 
-  const handleSelect = (roomId: string) => {
+  const handleSelect = async (room: DashboardRoom) => {
+    if (isOwnerChatRoom(room.room_id)) {
+      const agentId = room._originAgent?.agent_id || room.owner_id;
+      if (agentId && agentId !== activeAgentId) {
+        await switchActiveAgent(agentId);
+      }
+      setMessagesPane("user-chat");
+      setFocusedRoomId(null);
+      setOpenedRoomId(null);
+      closeMobileSidebar();
+      router.push(USER_CHAT_PATH);
+      return;
+    }
+
     setMessagesPane("room");
-    setFocusedRoomId(roomId);
-    setOpenedRoomId(roomId);
+    setFocusedRoomId(room.room_id);
+    setOpenedRoomId(room.room_id);
     closeMobileSidebar();
-    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    if (!messages[roomId]) {
-      loadRoomMessages(roomId);
+    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    if (!messages[room.room_id]) {
+      loadRoomMessages(room.room_id);
     }
   };
 
-  const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, roomId: string) => {
+  const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, room: DashboardRoom) => {
     if (event.target !== event.currentTarget) {
       return;
     }
@@ -156,7 +170,7 @@ export default function RoomList({
       return;
     }
     event.preventDefault();
-    handleSelect(roomId);
+    void handleSelect(room);
   };
 
   const handleSelectUserChat = () => {
@@ -246,7 +260,10 @@ export default function RoomList({
         </div>
       )}
       {!loading && rooms.map((room) => {
-        const isSelected = messagesPane === "room" && focusedRoomId === room.room_id;
+        const ownerChatAgentId = isOwnerChatRoom(room.room_id) ? room._originAgent?.agent_id || room.owner_id : null;
+        const isSelected = ownerChatAgentId
+          ? messagesPane === "user-chat" && ownerChatAgentId === activeAgentId
+          : messagesPane === "room" && focusedRoomId === room.room_id;
         const roomMessages = messages[room.room_id] || [];
         // Find the latest real message (skip ack/result/error receipts)
         const cachedLatestMessage = roomMessages.findLast(
@@ -283,8 +300,8 @@ export default function RoomList({
             tabIndex={0}
             aria-label={`Open room ${displayName}`}
             aria-current={isSelected ? "page" : undefined}
-            onClick={() => handleSelect(room.room_id)}
-            onKeyDown={(event) => handleRoomKeyDown(event, room.room_id)}
+            onClick={() => void handleSelect(room)}
+            onKeyDown={(event) => handleRoomKeyDown(event, room)}
             className={`w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
               isSelected
                 ? "border-neon-cyan bg-neon-cyan/10"

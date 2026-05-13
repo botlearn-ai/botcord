@@ -6,7 +6,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
+import { buildVisibleMessageRooms, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -101,6 +101,11 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     });
   }, [messages, normalizedMessageQuery, categorizedRooms]);
 
+  const includeUserChat = (messagesFilter === "self-all" || messagesFilter === "self-my-bot")
+    && !filteredMessageRooms.some(
+      (room) => isOwnerChatRoom(room.room_id) && room._originAgent?.agent_id === activeAgentId,
+    );
+
   // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
   const showOverviewSkeleton = sessionMode === "authed-ready" && !overview && sidebarTab === "messages";
@@ -193,7 +198,12 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         </div>
       ) : (
         <>
-          <RoomList rooms={filteredMessageRooms} loading={showOverviewSkeleton} searchQuery={messageQuery} />
+          <RoomList
+            rooms={filteredMessageRooms}
+            loading={showOverviewSkeleton}
+            searchQuery={messageQuery}
+            includeUserChat={includeUserChat}
+          />
           {!showOverviewSkeleton && !normalizedMessageQuery && filteredMessageRooms.length < 5 && (
             <div className="mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 bg-glass-bg/20 p-4">
               <p className="text-[11px] font-semibold text-text-secondary/80">
