@@ -6,6 +6,12 @@ export type {
 } from "./botcord.js";
 export { createTelegramChannel, type TelegramChannelOptions } from "./telegram.js";
 export { createWechatChannel, type WechatChannelOptions } from "./wechat.js";
+export { createFeishuChannel, type FeishuChannelOptions } from "./feishu.js";
+export {
+  startFeishuRegistration,
+  pollFeishuRegistration,
+  type FeishuDomain,
+} from "./feishu-registration.js";
 export {
   getBotQrcode,
   getQrcodeStatus,

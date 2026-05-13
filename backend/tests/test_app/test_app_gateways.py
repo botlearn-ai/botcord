@@ -423,6 +423,52 @@ async def test_create_wechat_forwards_login_id_no_token_in_db(
     assert "tokenPreview" in body["config"]
 
 
+@pytest.mark.asyncio
+async def test_create_feishu_forwards_login_id_and_persists_public_metadata(
+    client, seed, monkeypatch
+):
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["params"] = params
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "feishu",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "feis...7890",
+                "appId": "cli_feishu_123",
+                "domain": "feishu",
+                "userOpenId": "ou_alice",
+                "status": {"running": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways",
+        headers=headers,
+        json={
+            "provider": "feishu",
+            "label": "飞书助手",
+            "loginId": "fsl_abc",
+            "config": {"allowedSenderIds": ["ou_alice"], "domain": "feishu"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert captured["params"]["loginId"] == "fsl_abc"
+    assert captured["params"]["type"] == "feishu"
+    assert "secret" not in captured["params"]
+    body = r.json()
+    assert body["provider"] == "feishu"
+    assert body["config"]["appId"] == "cli_feishu_123"
+    assert body["config"]["userOpenId"] == "ou_alice"
+    assert body["config"]["tokenPreview"] == "feis...7890"
+
+
 # ---------------------------------------------------------------------------
 # Daemon failure mapping
 # ---------------------------------------------------------------------------
@@ -693,6 +739,57 @@ async def test_wechat_login_status_proxies(client, seed, monkeypatch):
     assert body["tokenPreview"] == "abcd...wxyz"
 
 
+@pytest.mark.asyncio
+async def test_feishu_login_start_and_status_proxy(client, seed, monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append((type_, params))
+        if type_ == "gateway_login_start":
+            return {
+                "ok": True,
+                "result": {
+                    "loginId": "fsl_xyz",
+                    "qrcode": "DEV",
+                    "qrcodeUrl": "https://accounts.feishu.cn/verify",
+                    "expiresAt": 1700000000,
+                },
+            }
+        return {
+            "ok": True,
+            "result": {
+                "status": "confirmed",
+                "appId": "cli_feishu_123",
+                "domain": "feishu",
+                "userOpenId": "ou_alice",
+                "tokenPreview": "feis...7890",
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    start = await client.post(
+        "/api/agents/ag_daemon/gateways/feishu/login/start",
+        headers=headers,
+        json={"domain": "feishu"},
+    )
+    assert start.status_code == 200, start.text
+    assert start.json()["loginId"] == "fsl_xyz"
+    status = await client.post(
+        "/api/agents/ag_daemon/gateways/feishu/login/status",
+        headers=headers,
+        json={"loginId": "fsl_xyz"},
+    )
+    assert status.status_code == 200, status.text
+    assert status.json()["appId"] == "cli_feishu_123"
+    assert calls[0] == (
+        "gateway_login_start",
+        {"provider": "feishu", "accountId": "ag_daemon", "domain": "feishu"},
+    )
+    assert calls[1] == (
+        "gateway_login_status",
+        {"provider": "feishu", "loginId": "fsl_xyz", "accountId": "ag_daemon"},
+    )
 @pytest.mark.asyncio
 async def test_wechat_recent_senders_proxies(client, seed, monkeypatch):
     async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):

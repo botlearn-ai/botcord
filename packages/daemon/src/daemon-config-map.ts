@@ -262,6 +262,9 @@ export function toGatewayConfig(
     if (g.allowedChatIds !== undefined) ch.allowedChatIds = g.allowedChatIds;
     if (g.splitAt !== undefined) ch.splitAt = g.splitAt;
     if (g.baseUrl !== undefined) ch.baseUrl = g.baseUrl;
+    if (g.appId !== undefined) ch.appId = g.appId;
+    if (g.domain !== undefined) ch.domain = g.domain;
+    if (g.userOpenId !== undefined) ch.userOpenId = g.userOpenId;
     channels.push(ch);
   }
 

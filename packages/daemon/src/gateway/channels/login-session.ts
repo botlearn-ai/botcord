@@ -11,7 +11,7 @@
 
 import { randomBytes } from "node:crypto";
 
-export type LoginProvider = "wechat" | "telegram";
+export type LoginProvider = "wechat" | "telegram" | "feishu";
 
 export interface LoginSession {
   loginId: string;
@@ -26,6 +26,14 @@ export interface LoginSession {
   baseUrl?: string;
   /** Stored only after the user confirms the qrcode. Never returned to Hub. */
   botToken?: string;
+  /** Feishu/Lark PersonalAgent app id returned by app registration. */
+  appId?: string;
+  /** Feishu/Lark PersonalAgent app secret returned by app registration. */
+  appSecret?: string;
+  /** Feishu/Lark tenant domain selected during registration. */
+  domain?: "feishu" | "lark";
+  /** Feishu/Lark user open_id returned by app registration. */
+  userOpenId?: string;
   /** Masked preview safe for Hub/dashboard display. */
   tokenPreview?: string;
   /** Unix millis. */
@@ -127,7 +135,7 @@ export function maskTokenPreview(token: string | undefined | null): string {
  * ids and racefully claim someone else's session.
  */
 export function mintLoginId(provider: LoginProvider): string {
-  const prefix = provider === "wechat" ? "wxl" : "tgl";
+  const prefix = provider === "wechat" ? "wxl" : provider === "feishu" ? "fsl" : "tgl";
   const ts = Date.now().toString(36);
   // 32 hex chars = 128 bits of entropy — W5 regression fix from round 2.
   const rand = randomBytes(16).toString("hex");

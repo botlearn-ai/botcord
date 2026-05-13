@@ -1671,7 +1671,7 @@ class AgentGatewayConnection(Base):
     __tablename__ = "agent_gateway_connections"
     __table_args__ = (
         CheckConstraint(
-            "provider IN ('telegram', 'wechat')",
+            "provider IN ('telegram', 'wechat', 'feishu')",
             name="ck_agent_gateway_connections_provider",
         ),
         CheckConstraint(

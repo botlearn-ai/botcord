@@ -39,15 +39,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["app-gateways"])
 
 
-ProviderLit = Literal["telegram", "wechat"]
+ProviderLit = Literal["telegram", "wechat", "feishu"]
 StatusLit = Literal["pending", "active", "disabled", "error"]
 
-_ALLOWED_PROVIDERS: set[str] = {"telegram", "wechat"}
+_ALLOWED_PROVIDERS: set[str] = {"telegram", "wechat", "feishu"}
 # config_json keys we accept from the dashboard. Anything else is dropped to
 # avoid arbitrary blob storage / leaking secrets.
 # W4: tokenPreview is server-managed (overwritten with the daemon-returned
 # value on create/patch); never accept it from the caller.
-_CONFIG_KEYS = {"baseUrl", "allowedSenderIds", "allowedChatIds", "splitAt"}
+_CONFIG_KEYS = {
+    "baseUrl",
+    "domain",
+    "allowedSenderIds",
+    "allowedChatIds",
+    "splitAt",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +81,7 @@ class GatewayListOut(BaseModel):
 
 class _ConfigPatch(BaseModel):
     baseUrl: str | None = None
+    domain: Literal["feishu", "lark"] | None = None
     allowedSenderIds: list[str] | None = None
     allowedChatIds: list[str] | None = None
     splitAt: int | None = Field(default=None, ge=64, le=8192)
@@ -99,7 +106,7 @@ class GatewayCreate(BaseModel):
     # ``bot_token`` / ``botToken``. ``_normalize_secret`` collapses both.
     bot_token: str | None = Field(default=None, alias="botToken", max_length=512)
     secret: _SecretIn | None = None
-    # WeChat only — references a previously-confirmed daemon login session.
+    # WeChat/Feishu only — references a previously-confirmed daemon login session.
     login_id: str | None = Field(default=None, alias="loginId", max_length=128)
     config: _ConfigPatch | None = None
 
@@ -146,6 +153,7 @@ class WechatLoginStartIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     base_url: str | None = Field(default=None, alias="baseUrl", max_length=256)
     gateway_id: str | None = Field(default=None, alias="gatewayId", max_length=128)
+    domain: Literal["feishu", "lark"] | None = None
 
 
 class WechatLoginStatusIn(BaseModel):
@@ -168,7 +176,7 @@ def _serialize(row: AgentGatewayConnection) -> GatewayOut:
     # W10: explicit narrowing replaces the previous `# type: ignore` casts so a
     # future schema drift surfaces as a clear 500 instead of silently emitting
     # an out-of-spec literal.
-    if row.provider not in ("telegram", "wechat"):
+    if row.provider not in ("telegram", "wechat", "feishu"):
         raise ValueError(f"unexpected gateway provider in DB: {row.provider!r}")
     if row.status not in ("pending", "active", "disabled", "error"):
         raise ValueError(f"unexpected gateway status in DB: {row.status!r}")
@@ -347,7 +355,7 @@ def _filter_config(patch: _ConfigPatch | None) -> dict[str, Any]:
 def _build_settings(config: dict[str, Any]) -> dict[str, Any]:
     """Project the user-facing config into the daemon ``settings`` envelope."""
     out: dict[str, Any] = {}
-    for k in ("baseUrl", "allowedSenderIds", "allowedChatIds", "splitAt"):
+    for k in ("baseUrl", "domain", "allowedSenderIds", "allowedChatIds", "splitAt"):
         if k in config and config[k] is not None:
             out[k] = config[k]
     return out
@@ -368,6 +376,8 @@ def _require_whitelist(provider: str, config: dict[str, Any]) -> None:
             return
         raise HTTPException(status_code=400, detail="missing_gateway_whitelist")
     if provider == "wechat" and not _list_has_value(config, "allowedSenderIds"):
+        raise HTTPException(status_code=400, detail="missing_gateway_whitelist")
+    if provider == "feishu" and not _list_has_value(config, "allowedSenderIds"):
         raise HTTPException(status_code=400, detail="missing_gateway_whitelist")
 
 
@@ -421,6 +431,8 @@ async def create_gateway(
         raise HTTPException(status_code=400, detail="missing_bot_token")
     if body.provider == "wechat" and not body.login_id:
         raise HTTPException(status_code=400, detail="missing_login_id")
+    if body.provider == "feishu" and not body.login_id:
+        raise HTTPException(status_code=400, detail="missing_login_id")
 
     gateway_id = generate_gateway_connection_id(body.provider)
     config = _filter_config(body.config)
@@ -437,7 +449,7 @@ async def create_gateway(
     }
     if body.provider == "telegram":
         params["secret"] = {"botToken": body.bot_token}
-    if body.provider == "wechat":
+    if body.provider in ("wechat", "feishu"):
         params["loginId"] = body.login_id
 
     ack = await send_control_frame(daemon_id, "upsert_gateway", params)
@@ -450,6 +462,10 @@ async def create_gateway(
         config["tokenPreview"] = token_preview
     else:
         config.pop("tokenPreview", None)
+    for key in ("appId", "domain", "userOpenId"):
+        value = result.get(key)
+        if isinstance(value, str) and value:
+            config[key] = value
 
     daemon_status = result.get("status") if isinstance(result.get("status"), dict) else None
     status_value: str = "active" if body.enabled else "disabled"
@@ -670,6 +686,66 @@ async def wechat_login_status(
     return {
         "status": result.get("status"),
         "baseUrl": result.get("baseUrl"),
+        "tokenPreview": result.get("tokenPreview"),
+    }
+
+
+@router.post("/{agent_id}/gateways/feishu/login/start")
+async def feishu_login_start(
+    agent_id: str,
+    body: WechatLoginStartIn,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    _rate_limit(ctx.user_id, "wechat-login")
+    agent = await _load_daemon_agent_or_422(db, ctx, agent_id)
+    daemon_id = agent.daemon_instance_id
+    assert daemon_id is not None
+    _require_online(daemon_id)
+
+    params: dict[str, Any] = {
+        "provider": "feishu",
+        "accountId": agent_id,
+    }
+    if body.gateway_id:
+        params["gatewayId"] = body.gateway_id
+    if body.domain:
+        params["domain"] = body.domain
+
+    ack = await send_control_frame(daemon_id, "gateway_login_start", params)
+    result = _ack_or_raise(ack)
+    return {
+        "loginId": result.get("loginId"),
+        "qrcode": result.get("qrcode"),
+        "qrcodeUrl": result.get("qrcodeUrl"),
+        "expiresAt": result.get("expiresAt"),
+    }
+
+
+@router.post("/{agent_id}/gateways/feishu/login/status")
+async def feishu_login_status(
+    agent_id: str,
+    body: WechatLoginStatusIn,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    _rate_limit(ctx.user_id, "wechat-login")
+    agent = await _load_daemon_agent_or_422(db, ctx, agent_id)
+    daemon_id = agent.daemon_instance_id
+    assert daemon_id is not None
+    _require_online(daemon_id)
+
+    ack = await send_control_frame(
+        daemon_id,
+        "gateway_login_status",
+        {"provider": "feishu", "loginId": body.login_id, "accountId": agent_id},
+    )
+    result = _ack_or_raise(ack)
+    return {
+        "status": result.get("status"),
+        "appId": result.get("appId"),
+        "domain": result.get("domain"),
+        "userOpenId": result.get("userOpenId"),
         "tokenPreview": result.get("tokenPreview"),
     }
 

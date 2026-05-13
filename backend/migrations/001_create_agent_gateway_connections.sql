@@ -1,4 +1,4 @@
--- Third-party gateway (Telegram / WeChat) connection metadata.
+-- Third-party gateway (Telegram / WeChat / Feishu) connection metadata.
 -- See docs/third-party-gateway-design.md "Hub / Backend 设计".
 -- Hub stores metadata only (provider, label, whitelist, baseUrl, splitAt,
 -- tokenPreview, status). Bot tokens NEVER live here — they are written to
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS agent_gateway_connections (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_agent_gateway_connections_provider
-        CHECK (provider IN ('telegram', 'wechat')),
+        CHECK (provider IN ('telegram', 'wechat', 'feishu')),
     CONSTRAINT ck_agent_gateway_connections_status
         CHECK (status IN ('pending', 'active', 'disabled', 'error'))
 );

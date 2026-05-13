@@ -209,7 +209,7 @@ export interface ChannelStatusSnapshot {
   lastStopAt?: number;
   lastError?: string | null;
   /** Third-party provider id when this channel is not the built-in BotCord. */
-  provider?: "wechat" | "telegram";
+  provider?: "wechat" | "telegram" | "feishu";
   /** Last time the adapter polled the upstream provider (ms epoch). */
   lastPollAt?: number;
   /** Last time the adapter accepted an inbound message (ms epoch). */
