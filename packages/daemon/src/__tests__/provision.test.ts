@@ -563,6 +563,7 @@ describe("provision_agent handler writes runtime + cwd", () => {
       const gw = makeFakeGateway();
       const provisioner = createProvisioner({
         gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+        validateOpenclawAgent: async () => ({ ok: true }),
       });
 
       // A valid 32-byte Ed25519 seed → deterministic keypair. Any fresh
@@ -640,6 +641,7 @@ describe("provision_agent handler writes runtime + cwd", () => {
       const gw = makeFakeGateway();
       const provisioner = createProvisioner({
         gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+        validateOpenclawAgent: async () => ({ ok: true }),
       });
       const privateKey = Buffer.alloc(32, 11).toString("base64");
       const ack = await provisioner({
@@ -747,6 +749,7 @@ describe("provision_agent seeds workspace + hot-adds managed route", () => {
       const gw = makeFakeGateway();
       const provisioner = createProvisioner({
         gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+        validateOpenclawAgent: async () => ({ ok: true }),
       });
       const privateKey = Buffer.alloc(32, 14).toString("base64");
       const ack = await provisioner({
@@ -772,6 +775,60 @@ describe("provision_agent seeds workspace + hot-adds managed route", () => {
       const route = gw.listManagedRoutes().find((r) => r.match?.accountId === "ag_openclaw_default");
       expect(route?.gateway?.name).toBe("local");
       expect(route?.gateway?.openclawAgent).toBe("default");
+    });
+  });
+
+  it("rejects an OpenClaw agent that ACP cannot open at session creation", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      mockState.cfg = {
+        defaultRoute: { adapter: "claude-code", cwd: "/tmp" },
+        routes: [],
+        streamBlocks: true,
+        openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }],
+      };
+      const gw = makeFakeGateway();
+      const validateOpenclawAgent = vi.fn(async () => ({
+        ok: false,
+        code: "stale_config" as const,
+        error: 'Internal error: Agent "claude-code" no longer exists in configuration',
+      }));
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+        validateOpenclawAgent,
+      });
+      const privateKey = Buffer.alloc(32, 14).toString("base64");
+      const ack = await provisioner({
+        id: "req_openclaw_stale",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "openclaw-acp",
+          openclaw: { gateway: "local", agent: "claude-code" },
+          credentials: {
+            agentId: "ag_openclaw_stale",
+            keyId: "k_ocs",
+            privateKey,
+            hubUrl: "https://hub.example",
+          },
+        },
+      });
+
+      expect(ack.ok).toBe(false);
+      expect(ack.error).toMatchObject({
+        code: "openclaw_agent_unavailable",
+        gateway: "local",
+        openclawAgent: "claude-code",
+        availabilityCode: "stale_config",
+      });
+      expect(validateOpenclawAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          openclawAgent: "claude-code",
+          gateway: expect.objectContaining({ name: "local" }),
+        }),
+      );
+      expect(
+        fs.existsSync(nodePath.join(tmp, ".botcord", "credentials", "ag_openclaw_stale.json")),
+      ).toBe(false);
+      expect(gw.addChannel).not.toHaveBeenCalled();
     });
   });
 

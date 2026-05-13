@@ -194,6 +194,47 @@ describe("collectRuntimeSnapshotAsync", () => {
     }
   });
 
+  it("marks OpenClaw profiles unavailable when ACP session validation fails", async () => {
+    setRuntimes([
+      {
+        id: "openclaw-acp",
+        displayName: "OpenClaw",
+        binary: "openclaw",
+        supportsRun: true,
+        result: { available: true },
+      },
+    ]);
+
+    const snap = await collectRuntimeSnapshotAsync({
+      cfg: { openclawGateways: [{ name: "local", url: "ws://127.0.0.1:18789" }] },
+      wsProbe: async () => ({
+        ok: true,
+        agents: [{ id: "main" }, { id: "claude-code" }],
+      }),
+      acpAgentProbe: async ({ openclawAgent }) =>
+        openclawAgent === "claude-code"
+          ? {
+              ok: false,
+              code: "stale_config",
+              error: 'Internal error: Agent "claude-code" no longer exists in configuration',
+            }
+          : { ok: true },
+    });
+
+    const runtime = snap.runtimes.find((r) => r.id === "openclaw-acp");
+    expect(runtime?.endpoints?.[0]?.agents).toEqual([
+      { id: "main", availability: { available: true } },
+      {
+        id: "claude-code",
+        availability: {
+          available: false,
+          code: "stale_config",
+          message: 'Internal error: Agent "claude-code" no longer exists in configuration',
+        },
+      },
+    ]);
+  });
+
   it("reports acp_disabled without probing the gateway", async () => {
     const tmp = mkdtempSync(path.join(tmpdir(), "daemon-runtime-openclaw-"));
     const prevHome = process.env.HOME;

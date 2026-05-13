@@ -21,7 +21,7 @@ export interface DaemonRuntimeEndpoint {
   name: string;
   url: string;
   reachable: boolean;
-  status?: "reachable" | "unreachable" | "acp_disabled";
+  status?: "reachable" | "unreachable" | "acp_disabled" | "missing_token" | "auth_required";
   version?: string;
   error?: string;
   diagnostics?: Array<{ code: string; message?: string }>;
@@ -30,6 +30,11 @@ export interface DaemonRuntimeEndpoint {
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    availability?: {
+      available: boolean;
+      code?: "stale_config" | "probe_failed";
+      message?: string;
+    };
     botcordBinding?: {
       agentId: string;
     };
@@ -268,6 +273,22 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
                         workspace:
                           typeof ax.workspace === "string" ? ax.workspace : undefined,
                         model,
+                        availability:
+                          ax.availability &&
+                          typeof ax.availability === "object"
+                            ? {
+                                available:
+                                  (ax.availability as any).available !== false,
+                                code:
+                                  typeof (ax.availability as any).code === "string"
+                                    ? (ax.availability as any).code
+                                    : undefined,
+                                message:
+                                  typeof (ax.availability as any).message === "string"
+                                    ? (ax.availability as any).message
+                                    : undefined,
+                              }
+                            : undefined,
                         botcordBinding:
                           ax.botcordBinding &&
                           typeof ax.botcordBinding === "object" &&

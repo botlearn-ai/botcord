@@ -2005,6 +2005,7 @@ def _daemon_lists_runtime(
     instance: DaemonInstance,
     runtime: str,
     openclaw_gateway: str | None = None,
+    openclaw_agent: str | None = None,
     hermes_profile: str | None = None,
 ) -> bool:
     """Check that the daemon's last runtime probe lists `runtime` as available.
@@ -2038,6 +2039,23 @@ def _daemon_lists_runtime(
                 if not isinstance(ep, dict):
                     continue
                 if ep.get("name") == openclaw_gateway and ep.get("reachable") is True:
+                    if openclaw_agent:
+                        agents = ep.get("agents")
+                        if not isinstance(agents, list):
+                            return True
+                        for profile in agents:
+                            if not isinstance(profile, dict):
+                                continue
+                            if profile.get("id") != openclaw_agent:
+                                continue
+                            availability = profile.get("availability")
+                            if (
+                                isinstance(availability, dict)
+                                and availability.get("available") is False
+                            ):
+                                return False
+                            return True
+                        return False
                     return True
             return False
         if runtime == "hermes-agent" and hermes_profile:
@@ -2165,6 +2183,7 @@ async def provision_agent(
         instance,
         runtime,
         body.openclaw_gateway,
+        body.openclaw_agent,
         body.hermes_profile,
     ):
         raise HTTPException(status_code=409, detail="runtime_unavailable")

@@ -64,6 +64,10 @@ import {
   isValidHermesProfileName,
   listHermesProfiles,
 } from "./gateway/runtimes/hermes-agent.js";
+import {
+  validateOpenclawAgentProfile,
+  type OpenclawAgentValidationResult,
+} from "./gateway/runtimes/openclaw-acp.js";
 import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
 
@@ -117,6 +121,13 @@ export interface ProvisionerOptions {
    * the next restart.
    */
   onAgentInstalled?: OnAgentInstalledHook;
+  /** Test seam for OpenClaw profile runtime validation. */
+  validateOpenclawAgent?: (args: {
+    gateway: { name: string; url: string; token?: string };
+    openclawAgent: string;
+    cwd: string;
+    timeoutMs?: number;
+  }) => Promise<OpenclawAgentValidationResult>;
   /**
    * Optional shared login-session store for the third-party gateway login
    * frames. Tests inject a stub clock; production lets `createGatewayControl`
@@ -140,6 +151,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
   const register = opts.register ?? BotCordClient.register;
   const policyResolver = opts.policyResolver;
   const onAgentInstalled = opts.onAgentInstalled;
+  const validateOpenclawAgent = opts.validateOpenclawAgent ?? validateOpenclawAgentProfile;
   const gatewayControl = createGatewayControl({
     gateway,
     ...(opts.loginSessions ? { loginSessions: opts.loginSessions } : {}),
@@ -197,8 +209,27 @@ export function createProvisioner(opts: ProvisionerOptions): (
             gateway,
             register,
             onAgentInstalled,
+            validateOpenclawAgent,
           });
         } catch (err) {
+          if (err instanceof OpenclawProfileError) {
+            daemonLog.warn("provision_agent: openclaw profile rejected", {
+              code: err.code,
+              gateway: err.gateway,
+              openclawAgent: err.openclawAgent,
+              availabilityCode: err.availabilityCode ?? null,
+            });
+            return {
+              ok: false,
+              error: {
+                code: err.code,
+                message: err.message,
+                gateway: err.gateway,
+                openclawAgent: err.openclawAgent,
+                ...(err.availabilityCode ? { availabilityCode: err.availabilityCode } : {}),
+              },
+            };
+          }
           if (err instanceof HermesProfileError) {
             daemonLog.warn("provision_agent: hermes profile rejected", {
               code: err.code,
@@ -555,6 +586,28 @@ interface ProvisionCtx {
   gateway: Gateway;
   register: typeof BotCordClient.register;
   onAgentInstalled?: OnAgentInstalledHook;
+  validateOpenclawAgent?: NonNullable<ProvisionerOptions["validateOpenclawAgent"]>;
+}
+
+class OpenclawProfileError extends Error {
+  readonly code: "openclaw_agent_unavailable";
+  readonly gateway: string;
+  readonly openclawAgent: string;
+  readonly availabilityCode?: string;
+
+  constructor(args: {
+    gateway: string;
+    openclawAgent: string;
+    message: string;
+    availabilityCode?: string;
+  }) {
+    super(args.message);
+    this.name = "OpenclawProfileError";
+    this.code = "openclaw_agent_unavailable";
+    this.gateway = args.gateway;
+    this.openclawAgent = args.openclawAgent;
+    this.availabilityCode = args.availabilityCode;
+  }
 }
 
 const openclawProvisionLocks = new Map<string, Promise<unknown>>();
@@ -761,6 +814,16 @@ async function provisionAgent(
   const resolvedParams = withResolvedOpenclawSelection(params, openclawSel);
   if (openclawSel.gateway && openclawSel.agent) {
     return withOpenclawProvisionLock(openclawSel.gateway, openclawSel.agent, async () => {
+      await validateOpenclawSelectionForProvision({
+        selection: openclawSel as { gateway: string; agent: string },
+        cfg: loadConfig(),
+        ctx,
+        cwd:
+          explicitCwd ??
+          (params.credentials?.agentId
+            ? agentWorkspaceDir(params.credentials.agentId)
+            : homedir()),
+      });
       const existing = findCredentialsByOpenclaw(openclawSel.gateway!, openclawSel.agent!);
       if (existing) {
         daemonLog.info("provision_agent: openclaw binding already exists", {
@@ -1255,6 +1318,39 @@ async function withHermesProvisionLock<T>(
   }
 }
 
+async function validateOpenclawSelectionForProvision(args: {
+  selection: { gateway: string; agent: string };
+  cfg: DaemonConfig;
+  ctx: ProvisionCtx;
+  cwd: string;
+}): Promise<void> {
+  const profile = (args.cfg.openclawGateways ?? []).find(
+    (g) => g.name === args.selection.gateway,
+  );
+  if (!profile) return;
+  const prepared = prepareGatewayProfile(profile);
+  const validate = args.ctx.validateOpenclawAgent ?? validateOpenclawAgentProfile;
+  const result = await validate({
+    gateway: {
+      name: prepared.name,
+      url: prepared.url,
+      ...(prepared.resolvedToken ? { token: prepared.resolvedToken } : {}),
+    },
+    openclawAgent: args.selection.agent,
+    cwd: args.cwd,
+    timeoutMs: 3000,
+  });
+  if (result.ok) return;
+  throw new OpenclawProfileError({
+    gateway: args.selection.gateway,
+    openclawAgent: args.selection.agent,
+    availabilityCode: result.code,
+    message:
+      result.error ??
+      `OpenClaw agent "${args.selection.agent}" is not available in gateway "${args.selection.gateway}"`,
+  });
+}
+
 class HermesProfileError extends Error {
   constructor(
     public readonly code:
@@ -1739,6 +1835,13 @@ export type WsEndpointProbeFn = (args: {
   error?: string;
 }>;
 
+export type OpenclawAgentAvailabilityProbeFn = (args: {
+  gateway: { name: string; url: string; token?: string };
+  openclawAgent: string;
+  cwd: string;
+  timeoutMs?: number;
+}) => Promise<OpenclawAgentValidationResult>;
+
 export function classifyOpenclawAuthError(message: string | undefined): "missing_token" | "auth_required" | null {
   const text = (message ?? "").toLowerCase();
   if (!text) return null;
@@ -1790,6 +1893,11 @@ async function defaultWsProbe(args: {
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    availability?: {
+      available: boolean;
+      code?: "stale_config" | "probe_failed";
+      message?: string;
+    };
     botcordBinding?: { agentId: string };
   }>;
   error?: string;
@@ -2137,6 +2245,7 @@ function expandHomePath(p: string): string {
 export async function collectRuntimeSnapshotAsync(opts: {
   cfg?: { openclawGateways?: Array<{ name: string; url: string; token?: string; tokenFile?: string }> };
   wsProbe?: WsEndpointProbeFn;
+  acpAgentProbe?: OpenclawAgentAvailabilityProbeFn;
   timeoutMs?: number;
 } = {}): Promise<ListRuntimesResult> {
   const base = collectRuntimeSnapshot();
@@ -2146,6 +2255,7 @@ export async function collectRuntimeSnapshotAsync(opts: {
   // `list_runtimes` ack wait (10s, see backend/hub/routers/daemon_control.py)
   // so a single slow gateway can't blow the whole snapshot to a 504.
   const timeoutMs = opts.timeoutMs ?? 3000;
+  const acpAgentProbe = opts.acpAgentProbe ?? (opts.wsProbe ? undefined : validateOpenclawAgentProfile);
   const capped = gateways.slice(0, RUNTIME_ENDPOINTS_CAP);
   const endpoints = await Promise.all(
     capped.map(async (g) => {
@@ -2195,7 +2305,12 @@ export async function collectRuntimeSnapshotAsync(opts: {
           entry.error = res.error;
           entry.diagnostics = [{ code: "gateway_unreachable", message: res.error }];
         }
-        if (res.agents) entry.agents = annotateOpenclawAgentsWithBotcordBindings(g.name, res.agents);
+        if (res.agents) {
+          const withBindings = annotateOpenclawAgentsWithBotcordBindings(g.name, res.agents);
+          entry.agents = acpAgentProbe
+            ? await annotateOpenclawAgentsWithAvailability(g, withBindings, acpAgentProbe, timeoutMs)
+            : withBindings;
+        }
         return entry;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -2224,12 +2339,22 @@ function annotateOpenclawAgentsWithBotcordBindings(
     name?: string;
     workspace?: string;
     model?: { name?: string; provider?: string };
+    availability?: {
+      available: boolean;
+      code?: "stale_config" | "probe_failed";
+      message?: string;
+    };
   }>,
 ): Array<{
   id: string;
   name?: string;
   workspace?: string;
   model?: { name?: string; provider?: string };
+  availability?: {
+    available: boolean;
+    code?: "stale_config" | "probe_failed";
+    message?: string;
+  };
   botcordBinding?: { agentId: string };
 }> {
   const bindings = openclawBindingIndex();
@@ -2238,6 +2363,50 @@ function annotateOpenclawAgentsWithBotcordBindings(
     if (!botcordAgentId) return agent;
     return { ...agent, botcordBinding: { agentId: botcordAgentId } };
   });
+}
+
+async function annotateOpenclawAgentsWithAvailability(
+  gateway: { name: string; url: string; token?: string; tokenFile?: string },
+  agents: ReturnType<typeof annotateOpenclawAgentsWithBotcordBindings>,
+  probe: OpenclawAgentAvailabilityProbeFn,
+  timeoutMs: number,
+): Promise<ReturnType<typeof annotateOpenclawAgentsWithBotcordBindings>> {
+  const prepared = prepareGatewayProfile(gateway);
+  const checked = await Promise.all(
+    agents.map(async (agent) => {
+      try {
+        const result = await probe({
+          gateway: {
+            name: prepared.name,
+            url: prepared.url,
+            ...(prepared.resolvedToken ? { token: prepared.resolvedToken } : {}),
+          },
+          openclawAgent: agent.id,
+          cwd: agent.workspace ?? homedir(),
+          timeoutMs,
+        });
+        if (result.ok) return { ...agent, availability: { available: true } };
+        return {
+          ...agent,
+          availability: {
+            available: false,
+            code: result.code ?? "probe_failed",
+            message: result.error,
+          },
+        };
+      } catch (err) {
+        return {
+          ...agent,
+          availability: {
+            available: false,
+            code: "probe_failed" as const,
+            message: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
+    }),
+  );
+  return checked;
 }
 
 function openclawBindingIndex(): Map<string, string> {

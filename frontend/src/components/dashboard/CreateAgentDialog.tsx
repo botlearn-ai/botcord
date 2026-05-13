@@ -206,7 +206,7 @@ export default function CreateAgentDialog({
   const selectableOpenclawAgents = useMemo(
     () =>
       (selectedOpenclawEndpoint?.agents ?? []).filter(
-        (a) => !a.botcordBinding?.agentId,
+        (a) => !a.botcordBinding?.agentId && a.availability?.available !== false,
       ),
     [selectedOpenclawEndpoint],
   );
@@ -325,6 +325,12 @@ export default function CreateAgentDialog({
         case "daemon_timeout":
           return t.errorDaemonTimeout;
         case "daemon_failed":
+          if (
+            err.detail &&
+            /agent\s+["']?[^"']+["']?\s+no longer exists in configuration/i.test(err.detail)
+          ) {
+            return "The selected OpenClaw profile is no longer available. Fix the OpenClaw configuration, then refresh runtimes.";
+          }
           return err.detail
             ? `${t.errorDaemonFailed}: ${err.detail}`
             : t.errorDaemonFailed;
@@ -784,8 +790,13 @@ function OpenclawGatewayPicker({
   const reachable = endpoints.filter((e) => e.reachable);
   const current = endpoints.find((e) => e.name === selectedGateway) ?? null;
   const agents = current?.agents ?? [];
-  const availableAgents = agents.filter((a) => !a.botcordBinding?.agentId);
-  const boundCount = agents.length - availableAgents.length;
+  const availableAgents = agents.filter(
+    (a) => !a.botcordBinding?.agentId && a.availability?.available !== false,
+  );
+  const boundCount = agents.filter((a) => !!a.botcordBinding?.agentId).length;
+  const unavailableAgents = agents.filter(
+    (a) => !a.botcordBinding?.agentId && a.availability?.available === false,
+  );
   if (endpoints.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-3 text-xs text-text-secondary">
@@ -865,6 +876,13 @@ function OpenclawGatewayPicker({
               );
             })}
           </select>
+        )}
+        {unavailableAgents.length > 0 && (
+          <p className="mt-1 text-[11px] text-orange-400">
+            {unavailableAgents.length} OpenClaw profile
+            {unavailableAgents.length === 1 ? " is" : "s are"} unavailable. Refresh
+            runtimes after fixing the OpenClaw configuration.
+          </p>
         )}
         {boundCount > 0 && (
           <p className="mt-1 text-[11px] text-text-tertiary">
