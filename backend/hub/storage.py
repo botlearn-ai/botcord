@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
@@ -44,7 +45,7 @@ async def store_file(
 
     if hub_config.FILE_STORAGE_BACKEND == "supabase":
         _validate_supabase_config()
-        object_key = f"{file_id}/{original_filename}"
+        object_key = f"{file_id}/{_storage_object_filename(original_filename)}"
         await _supabase_request(
             "POST",
             f"/storage/v1/object/{_quoted_bucket_and_key(hub_config.SUPABASE_STORAGE_BUCKET, object_key)}",
@@ -120,6 +121,17 @@ def _write_file(path: str, data: bytes) -> None:
 def _read_file(path: str) -> bytes:
     with open(path, "rb") as f:
         return f.read()
+
+
+def _storage_object_filename(original_filename: str) -> str:
+    """Return an ASCII-only object key segment accepted by Supabase Storage."""
+    name = os.path.basename(original_filename).strip()[:200] or "upload"
+    stem, ext = os.path.splitext(name)
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem)
+    safe_stem = re.sub(r"-+", "-", safe_stem).strip("._-")
+    safe_ext = re.sub(r"[^A-Za-z0-9.]+", "", ext)[:32]
+    safe_name = f"{safe_stem or 'upload'}{safe_ext}"
+    return safe_name[:200] or "upload"
 
 
 def _validate_supabase_config() -> None:

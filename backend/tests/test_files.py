@@ -293,6 +293,45 @@ async def test_upload_success_supabase(client: AsyncClient, db_session: AsyncSes
     assert record.storage_object_key == f"{data['file_id']}/report.pdf"
 
 
+@pytest.mark.asyncio
+async def test_upload_supabase_uses_ascii_storage_key_for_unicode_filename(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    from sqlalchemy import select as sa_select
+
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+
+    with patch("hub.storage._supabase_request", new=AsyncMock(return_value=_supabase_response())) as mock_request:
+        resp = await client.post(
+            "/hub/upload",
+            headers=_auth_header(token),
+            files={
+                "file": (
+                    "BotLearn-完整战略蓝图-v4.0.md",
+                    io.BytesIO(b"# plan"),
+                    "text/markdown",
+                )
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["original_filename"] == "BotLearn-完整战略蓝图-v4.0.md"
+
+    result = await db_session.execute(
+        sa_select(FileRecord).where(FileRecord.file_id == data["file_id"])
+    )
+    record = result.scalar_one()
+    assert record.storage_object_key == f"{data['file_id']}/BotLearn-v4.0.md"
+
+    path = mock_request.await_args.args[1]
+    assert path.endswith(f"/{data['file_id']}/BotLearn-v4.0.md")
+    assert "完整战略蓝图" not in path
+
+
 # ===========================================================================
 # Download tests
 # ===========================================================================
