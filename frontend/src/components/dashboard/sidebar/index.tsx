@@ -551,26 +551,18 @@ export default function Sidebar({
           )}
           <div className="flex-1 overflow-y-auto">
           {secondaryPanelLoading ? (
-            uiStore.sidebarTab === "wallet" ? (
-              <div className="space-y-3 p-4">
-                <SkeletonBlock className="h-20 rounded-xl bg-glass-border/40" />
-                <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
-                <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
-              </div>
-            ) : (
-              <>
-                {uiStore.sidebarTab === "messages" ? (
-                  <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
-                    <SkeletonBlock className="h-4 w-28" />
-                    <div className="flex gap-1">
-                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                    </div>
+            <>
+              {uiStore.sidebarTab === "messages" ? (
+                <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
+                  <SkeletonBlock className="h-4 w-28" />
+                  <div className="flex gap-1">
+                    <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                    <SkeletonBlock className="h-8 w-8 rounded-lg" />
                   </div>
-                ) : null}
-                <SidebarListSkeleton rows={uiStore.sidebarTab === "contacts" ? 9 : 7} />
-              </>
-            )
+                </div>
+              ) : null}
+              <SidebarListSkeleton rows={uiStore.sidebarTab === "contacts" ? 9 : 7} />
+            </>
           ) : uiStore.sidebarTab === "messages" && (
             <MessagesPanel
               isGuest={isGuest}
