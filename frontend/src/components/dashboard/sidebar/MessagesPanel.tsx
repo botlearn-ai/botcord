@@ -109,7 +109,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
   const showOverviewSkeleton = sessionMode === "authed-ready" && !overview && sidebarTab === "messages";
-  const showRoomListSkeleton = showOverviewSkeleton && !(messagesFilter === "self-my-bot" && includeUserChat);
+  const showRoomListSkeleton = showOverviewSkeleton;
 
   // When the search toggles off, clear the query so the room list isn't accidentally
   // left filtered behind the scenes.

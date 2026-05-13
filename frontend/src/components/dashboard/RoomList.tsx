@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 ui/chat/unread store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
- * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项（头像 + 最后一条消息预览 + 未读数量）
+ * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架（头像 + 最后一条消息预览 + 未读数量）
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -65,6 +65,25 @@ function formatLastMessageTime(isoTime: string | null): string {
 
 function formatUnreadCount(count: number): string {
   return count > 99 ? "99+" : String(count);
+}
+
+function RoomListSkeleton() {
+  return (
+    <div className="space-y-1 px-3 py-2">
+      {Array.from({ length: 7 }).map((_, idx) => (
+        <div key={idx} className="flex items-center gap-3 rounded-lg px-1 py-2.5">
+          <div className="dashboard-skeleton-block h-10 w-10 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="dashboard-skeleton-block h-3.5 w-28 rounded" />
+              <div className="dashboard-skeleton-block h-3 w-9 rounded bg-glass-border/40" />
+            </div>
+            <div className="dashboard-skeleton-block mt-2 h-3 w-44 max-w-full rounded bg-glass-border/40" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function RoomList({
@@ -193,6 +212,14 @@ export default function RoomList({
     handleSelectUserChat();
   };
 
+  if (loading) {
+    return (
+      <div className="py-1">
+        <RoomListSkeleton />
+      </div>
+    );
+  }
+
   return (
     <div className="py-1">
       {showUserChatEntry && (
@@ -244,22 +271,12 @@ export default function RoomList({
           </div>
         </div>
       )}
-      {loading && (
-        <div className="space-y-2 px-3 py-2">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div key={idx} className="rounded-lg border border-glass-border bg-deep-black-light p-3">
-              <div className="h-3 w-2/3 animate-pulse rounded bg-glass-border/60" />
-              <div className="mt-2 h-2.5 w-1/2 animate-pulse rounded bg-glass-border/50" />
-            </div>
-          ))}
-        </div>
-      )}
-      {!loading && rooms.length === 0 && !showUserChatEntry && (
+      {rooms.length === 0 && !showUserChatEntry && (
         <div className="p-4 text-center text-xs text-text-secondary">
           {t.noRooms}
         </div>
       )}
-      {!loading && rooms.map((room) => {
+      {rooms.map((room) => {
         const ownerChatAgentId = isOwnerChatRoom(room.room_id) ? room._originAgent?.agent_id || room.owner_id : null;
         const isSelected = ownerChatAgentId
           ? messagesPane === "user-chat" && ownerChatAgentId === activeAgentId
