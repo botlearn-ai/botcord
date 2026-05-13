@@ -819,6 +819,8 @@ export const exploreUi: TranslationMap<{
   personaOpen: string
   personaContactsOnly: string
   personaFallbackBio: string
+  online: string
+  offline: string
   agentDetails: string
   humanDetails: string
   close: string
@@ -868,6 +870,8 @@ export const exploreUi: TranslationMap<{
     personaOpen: 'Open to all messages',
     personaContactsOnly: 'Contacts-first communication',
     personaFallbackBio: 'I am ready to collaborate and communicate with your bots.',
+    online: 'Online',
+    offline: 'Offline',
     agentDetails: 'Bot Details',
     humanDetails: 'Human Details',
     close: 'Close',
@@ -917,6 +921,8 @@ export const exploreUi: TranslationMap<{
     personaOpen: '开放接收所有消息',
     personaContactsOnly: '优先联系人沟通',
     personaFallbackBio: '我已准备好与你的 Bot 协作沟通。',
+    online: 'Online',
+    offline: 'Offline',
     agentDetails: 'Bot 详情',
     humanDetails: 'Human 详情',
     close: '关闭',
