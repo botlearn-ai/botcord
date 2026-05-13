@@ -199,6 +199,7 @@ async def _build_rooms_from_sql(
             "default_invite",
             "max_members",
             "slow_mode_seconds",
+            "members_preview",
         )
         for item in mapped:
             room_id = item.get("room_id")
@@ -297,6 +298,68 @@ async def _build_room_unread_counts(
     return counts
 
 
+async def _build_member_previews(
+    db: AsyncSession,
+    room_ids: list[str],
+) -> dict[str, list[dict[str, str | None]]]:
+    """Build top member previews for room list composite avatars."""
+    if not room_ids:
+        return {}
+
+    rows = await db.execute(
+        select(
+            RoomMember.room_id,
+            RoomMember.agent_id,
+            RoomMember.participant_type,
+        )
+        .where(RoomMember.room_id.in_(room_ids))
+        .order_by(RoomMember.room_id, RoomMember.joined_at)
+    )
+    buckets: dict[str, list[tuple[str, ParticipantType]]] = {}
+    for rid, pid, ptype in rows.all():
+        bucket = buckets.setdefault(rid, [])
+        if len(bucket) < 4:
+            bucket.append((pid, ptype))
+
+    agent_ids: set[str] = set()
+    human_ids: set[str] = set()
+    for entries in buckets.values():
+        for pid, ptype in entries:
+            if ptype == ParticipantType.human:
+                human_ids.add(pid)
+            else:
+                agent_ids.add(pid)
+
+    agent_info: dict[str, tuple[str, str | None]] = {}
+    if agent_ids:
+        ar = await db.execute(
+            select(Agent.agent_id, Agent.display_name, Agent.avatar_url)
+            .where(Agent.agent_id.in_(agent_ids))
+        )
+        agent_info = {aid: (name, avatar) for aid, name, avatar in ar.all()}
+
+    human_info: dict[str, tuple[str, str | None]] = {}
+    if human_ids:
+        hr = await db.execute(
+            select(User.human_id, User.display_name, User.avatar_url)
+            .where(User.human_id.in_(human_ids))
+        )
+        human_info = {hid: (name, avatar) for hid, name, avatar in hr.all()}
+
+    out: dict[str, list[dict[str, str | None]]] = {}
+    for rid, entries in buckets.items():
+        items: list[dict[str, str | None]] = []
+        for pid, ptype in entries:
+            if ptype == ParticipantType.human:
+                name, avatar = human_info.get(pid, (pid, None))
+                items.append({"display_name": name, "avatar_url": avatar, "agent_id": None})
+            else:
+                name, avatar = agent_info.get(pid, (pid, None))
+                items.append({"display_name": name, "avatar_url": avatar, "agent_id": pid})
+        out[rid] = items
+    return out
+
+
 async def _build_rooms_from_membership(
     agent_id: str,
     db: AsyncSession,
@@ -324,6 +387,7 @@ async def _build_rooms_from_membership(
         .group_by(RoomMember.room_id)
     )
     member_counts = dict(count_result.all())
+    members_preview = await _build_member_previews(db, room_ids)
 
     dedup_sub = (
         select(
@@ -441,6 +505,7 @@ async def _build_rooms_from_membership(
             "visibility": room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
             "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
             "member_count": member_counts.get(rid, 0),
+            "members_preview": members_preview.get(rid) if member_counts.get(rid, 0) > 2 else None,
             "my_role": my_role,
             "can_invite": computed_can_invite,
             "allow_human_send": room.allow_human_send,
