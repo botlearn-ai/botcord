@@ -412,8 +412,16 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   const { authResolved } = useDashboardSessionStore(useShallow((state) => ({
     authResolved: state.authResolved,
   })));
-  const { exploreView, setExploreView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
+  const {
+    exploreView,
+    resetMessagesGroupingForRoomOpen,
+    setExploreView,
+    setFocusedRoomId,
+    setOpenedRoomId,
+    setSidebarTab,
+  } = useDashboardUIStore(useShallow((state) => ({
     exploreView: state.exploreView,
+    resetMessagesGroupingForRoomOpen: state.resetMessagesGroupingForRoomOpen,
     setExploreView: state.setExploreView,
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
@@ -478,6 +486,7 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   );
 
   const openRoomFromExplore = (room: PublicRoom) => {
+    resetMessagesGroupingForRoomOpen();
     setFocusedRoomId(room.room_id);
     setOpenedRoomId(room.room_id);
     setSidebarTab("messages");

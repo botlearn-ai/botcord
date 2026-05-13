@@ -182,10 +182,11 @@ export default function HomePanel() {
       selectAgent: s.selectAgent,
     })),
   );
-  const { openCreateBotModal, requestOpenHuman, setBotDetailAgentId } = useDashboardUIStore(
+  const { openCreateBotModal, requestOpenHuman, resetMessagesGroupingForRoomOpen, setBotDetailAgentId } = useDashboardUIStore(
     useShallow((s) => ({
       openCreateBotModal: s.openCreateBotModal,
       requestOpenHuman: s.requestOpenHuman,
+      resetMessagesGroupingForRoomOpen: s.resetMessagesGroupingForRoomOpen,
       setBotDetailAgentId: s.setBotDetailAgentId,
     })),
   );
@@ -295,7 +296,10 @@ export default function HomePanel() {
                   key={room.room_id}
                   kind="room"
                   data={room}
-                  onRoomOpen={(r) => router.push(`/chats/messages/${encodeURIComponent(r.room_id)}`)}
+                  onRoomOpen={(r) => {
+                    resetMessagesGroupingForRoomOpen();
+                    router.push(`/chats/messages/${encodeURIComponent(r.room_id)}`);
+                  }}
                 />
               ))}
             </div>

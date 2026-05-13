@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-05-13: `messages` 分组侧栏只在已登录状态展示；游客态保留公开消息列表，不再显示分组栏或展开分组按钮。
 - 2026-05-12: `/chats` 根入口默认选中 Home tab；消息入口仍使用 `/chats/messages`。
 - 2026-04-28: `RoomList.tsx` 与 `Sidebar.tsx` 的未读提示从蓝点改为数量徽标，后端 overview 同步返回 `unread_count`。
 - 2026-04-27: 新增 `PaidRoomPreview.tsx`，付费群未订阅视图从纯锁空态改为固定展示最近 3 条消息摘要，降低订阅前的不确定性。
