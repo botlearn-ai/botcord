@@ -281,6 +281,22 @@ async def test_admin_approve_waitlist_keeps_manual_fallback_when_email_fails(
     assert data["entry"]["sent_code"] == data["code"]
 
 
+def test_render_approval_email_includes_activation_experience(monkeypatch):
+    import app.routers.admin_beta as admin_beta
+
+    monkeypatch.setattr(admin_beta, "FRONTEND_BASE_URL", "https://botcord.example/")
+
+    rendered = admin_beta._render_approval_email("INVITE-ABC123")
+
+    assert rendered["subject"] == "BotCord 公测资格已开放，请完成激活"
+    assert rendered["activate_url"] == "https://botcord.example/invite?code=INVITE-ABC123"
+    assert "立即激活：https://botcord.example/invite?code=INVITE-ABC123" in rendered["text"]
+    assert "备用邀请码：INVITE-ABC123" in rendered["text"]
+    assert "Dashboard：https://botcord.example/chats/messages" in rendered["text"]
+    assert 'href="https://botcord.example/invite?code=INVITE-ABC123"' in rendered["html"]
+    assert "备用邀请码" in rendered["html"]
+
+
 @pytest.mark.asyncio
 async def test_redeem_exhausted_code_does_not_activate_user(client: AsyncClient, db_session: AsyncSession):
     user, sub = await _create_user(db_session)

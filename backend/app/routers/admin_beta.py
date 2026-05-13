@@ -6,11 +6,12 @@ Requires beta_admin=true on the requesting user.
   POST /api/admin/beta/codes              — create invite code
   POST /api/admin/beta/codes/{id}/revoke  — revoke invite code
   GET  /api/admin/beta/waitlist           — list waitlist entries
-  POST /api/admin/beta/waitlist/{id}/approve — approve + email code
+  POST /api/admin/beta/waitlist/{id}/approve — approve + email invite
   POST /api/admin/beta/waitlist/{id}/reject  — reject application
 """
 
 import datetime
+import html
 import logging
 import uuid
 
@@ -83,17 +84,12 @@ def _entry_response(e: BetaWaitlistEntry, code: BetaInviteCode | None = None) ->
 
 async def _send_approval_email(email: str, code: str) -> bool:
     """Send approval email via Resend, generic webhook, or fallback to manual."""
-    activate_url = f"{FRONTEND_BASE_URL.rstrip('/')}/invite?code={code}"
+    rendered = _render_approval_email(code)
 
-    subject = "你的 BotCord 公测邀请码"
-    body = (
-        f"你好，\n\n"
-        f"你的 BotCord 公测申请已通过审核！\n\n"
-        f"激活码：{code}\n\n"
-        f"点击以下链接直接激活：\n{activate_url}\n\n"
-        f"或登录后前往 {FRONTEND_BASE_URL.rstrip('/')}/invite 手动输入激活码。\n\n"
-        f"— BotCord 团队"
-    )
+    subject = rendered["subject"]
+    body = rendered["text"]
+    html_body = rendered["html"]
+    activate_url = rendered["activate_url"]
 
     # Strategy 1: Resend API
     if RESEND_API_KEY:
@@ -107,6 +103,7 @@ async def _send_approval_email(email: str, code: str) -> bool:
                         "to": [email],
                         "subject": subject,
                         "text": body,
+                        "html": html_body,
                     },
                 )
                 if resp.status_code in (200, 201):
@@ -126,6 +123,7 @@ async def _send_approval_email(email: str, code: str) -> bool:
                         "email": email,
                         "subject": subject,
                         "text": body,
+                        "html": html_body,
                         "metadata": {
                             "beta_invite_code": code,
                             "activate_url": activate_url,
@@ -142,6 +140,77 @@ async def _send_approval_email(email: str, code: str) -> bool:
     _logger.warning("Approval email not configured or all attempts failed; falling back to manual code sharing")
     _logger.info("BETA_APPROVAL_FALLBACK to=%s code=%s url=%s", email, code, activate_url)
     return False
+
+
+def _render_approval_email(code: str) -> dict[str, str]:
+    """Render the beta approval email in text and HTML forms."""
+    base_url = FRONTEND_BASE_URL.rstrip("/")
+    activate_url = f"{base_url}/invite?code={code}"
+    invite_url = f"{base_url}/invite"
+    dashboard_url = f"{base_url}/chats/messages"
+
+    subject = "BotCord 公测资格已开放，请完成激活"
+    text = (
+        "你好，\n\n"
+        "你的 BotCord 公测申请已通过审核。请使用下面的按钮或链接完成激活，"
+        "之后就可以进入 Dashboard 绑定或创建你的 Agent。\n\n"
+        f"立即激活：{activate_url}\n\n"
+        f"备用邀请码：{code}\n"
+        f"如果链接无法打开，请登录后前往 {invite_url} 手动输入邀请码。\n\n"
+        "激活后建议先完成两件事：\n"
+        "1. 进入 Dashboard 查看你的 Bot 与消息入口\n"
+        "2. 按 Quick Start 安装或绑定 OpenClaw 插件\n\n"
+        f"Dashboard：{dashboard_url}\n\n"
+        "如果你没有申请过 BotCord 公测，可以直接忽略这封邮件。\n\n"
+        "— BotCord 团队"
+    )
+
+    safe_code = html.escape(code)
+    safe_activate_url = html.escape(activate_url, quote=True)
+    safe_invite_url = html.escape(invite_url)
+    safe_dashboard_url = html.escape(dashboard_url)
+    html_body = f"""\
+<!doctype html>
+<html lang="zh-CN">
+  <body style="margin:0;background:#0b0f17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e5edf7;">
+    <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+      <div style="border:1px solid #203044;background:#111827;border-radius:16px;padding:28px;">
+        <p style="margin:0 0 8px;color:#7dd3fc;font-size:14px;font-weight:700;">BotCord Beta</p>
+        <h1 style="margin:0 0 16px;font-size:24px;line-height:1.3;color:#f8fafc;">公测资格已开放</h1>
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#cbd5e1;">
+          你的 BotCord 公测申请已通过审核。完成激活后，你就可以进入 Dashboard 绑定或创建 Agent。
+        </p>
+        <a href="{safe_activate_url}" style="display:inline-block;margin:4px 0 24px;padding:12px 18px;border-radius:10px;background:#22d3ee;color:#08111f;text-decoration:none;font-weight:700;">
+          立即激活
+        </a>
+        <div style="margin:0 0 22px;padding:14px 16px;border-radius:12px;background:#0b1220;border:1px solid #1e293b;">
+          <p style="margin:0 0 6px;color:#94a3b8;font-size:13px;">备用邀请码</p>
+          <p style="margin:0;font-size:20px;letter-spacing:1px;color:#f8fafc;font-weight:700;">{safe_code}</p>
+        </div>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#cbd5e1;">
+          如果按钮无法打开，请登录后前往 <a href="{safe_invite_url}" style="color:#67e8f9;">{safe_invite_url}</a> 手动输入邀请码。
+        </p>
+        <p style="margin:0 0 6px;font-size:14px;color:#94a3b8;">激活后建议先完成：</p>
+        <ol style="margin:0 0 22px 20px;padding:0;color:#cbd5e1;font-size:14px;line-height:1.7;">
+          <li>进入 Dashboard 查看你的 Bot 与消息入口</li>
+          <li>按 Quick Start 安装或绑定 OpenClaw 插件</li>
+        </ol>
+        <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">
+          Dashboard: <a href="{safe_dashboard_url}" style="color:#67e8f9;">{safe_dashboard_url}</a><br>
+          如果你没有申请过 BotCord 公测，可以直接忽略这封邮件。
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
+"""
+
+    return {
+        "subject": subject,
+        "text": text,
+        "html": html_body,
+        "activate_url": activate_url,
+    }
 
 
 # ---------------------------------------------------------------------------
