@@ -24,6 +24,7 @@ import SubscriptionBadge from "./SubscriptionBadge";
 import { resolveDmDisplayName } from "./dmRoom";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotAvatar from "./BotAvatar";
+import { SidebarListSkeleton } from "./DashboardTabSkeleton";
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
@@ -245,14 +246,7 @@ export default function RoomList({
         </div>
       )}
       {loading && (
-        <div className="space-y-2 px-3 py-2">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div key={idx} className="rounded-lg border border-glass-border bg-deep-black-light p-3">
-              <div className="h-3 w-2/3 animate-pulse rounded bg-glass-border/60" />
-              <div className="mt-2 h-2.5 w-1/2 animate-pulse rounded bg-glass-border/50" />
-            </div>
-          ))}
-        </div>
+        <SidebarListSkeleton rows={6} />
       )}
       {!loading && rooms.length === 0 && !showUserChatEntry && (
         <div className="p-4 text-center text-xs text-text-secondary">

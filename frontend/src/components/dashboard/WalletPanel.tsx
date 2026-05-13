@@ -21,6 +21,7 @@ import LedgerList from "./LedgerList";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
 import WithdrawDialog from "./WithdrawDialog";
+import DashboardTabSkeleton from "./DashboardTabSkeleton";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -132,21 +133,18 @@ export default function WalletPanel() {
   }, [loadWallet, loadWalletLedger, loadWithdrawalRequests]);
 
   if (!wallet) {
+    if (!walletError) {
+      return <DashboardTabSkeleton variant="wallet" />;
+    }
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-deep-black gap-3">
-        {walletError ? (
-          <>
-            <div className="text-sm text-red-400">{walletError}</div>
-            <button
-              onClick={() => void loadWallet()}
-              className="rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
-            >
-              {tc.retry}
-            </button>
-          </>
-        ) : (
-          <div className="text-neon-cyan animate-pulse text-sm">{tc.loading}</div>
-        )}
+        <div className="text-sm text-red-400">{walletError}</div>
+        <button
+          onClick={() => void loadWallet()}
+          className="rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
+        >
+          {tc.retry}
+        </button>
       </div>
     );
   }

@@ -5,6 +5,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { ChevronDown, UserPlus2, Users } from "lucide-react";
 import { CompositeAvatar } from "../CompositeAvatar";
 import BotAvatar from "../BotAvatar";
+import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 import { useShallow } from "zustand/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
@@ -150,6 +151,21 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
 
   const isActive = (type: "agent" | "human" | "group", id: string) =>
     selectedContactKey?.type === type && selectedContactKey.id === id;
+
+  if (!overview) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center gap-3 border-b border-glass-border px-3 py-3">
+          <SkeletonBlock className="h-10 w-10 rounded-full" />
+          <div className="min-w-0 flex-1">
+            <SkeletonBlock className="h-3.5 w-32" />
+            <SkeletonBlock className="mt-2 h-2.5 w-24 bg-glass-border/40" />
+          </div>
+        </div>
+        <SidebarListSkeleton rows={9} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">

@@ -37,22 +37,12 @@ import RoomZeroState from "./RoomZeroState";
 import { initialsFromName } from "./roomVisualTheme";
 import { dmPeerId } from "./dmRoom";
 import ContactsDetailPane from "./ContactsDetailPane";
+import { DashboardMainSkeleton } from "./DashboardTabSkeleton";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
-function GridSkeletonCards({ count = 10 }: { count?: number }) {
-  return (
-    <div className={EXPLORE_GRID_CLASS}>
-      {Array.from({ length: count }).map((_, idx) => (
-        <div key={idx} className="rounded-xl border border-glass-border bg-deep-black-light p-3">
-          <div className="h-3 w-2/3 animate-pulse rounded bg-glass-border/60" />
-          <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-glass-border/50" />
-          <div className="mt-2.5 h-2.5 w-full animate-pulse rounded bg-glass-border/50" />
-          <div className="mt-1.5 h-2.5 w-5/6 animate-pulse rounded bg-glass-border/40" />
-        </div>
-      ))}
-    </div>
-  );
+function GridSkeletonCards() {
+  return <DashboardMainSkeleton variant="explore" />;
 }
 
 function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanProfile) => void }) {
@@ -225,7 +215,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {isRequestsView ? (
           contactRequestsLoading ? (
-            <GridSkeletonCards />
+            <DashboardMainSkeleton variant="contacts" />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">{t.noPendingRequests}</p>
           ) : (
@@ -269,7 +259,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
           )
         ) : isRoomsView ? (
           !overview ? (
-            <GridSkeletonCards />
+            <DashboardMainSkeleton variant="contacts" />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">{t.noJoinedRoomsFound}</p>
           ) : (
@@ -301,7 +291,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
           )
         ) : isCreatedView ? (
           !overview ? (
-            <GridSkeletonCards />
+            <DashboardMainSkeleton variant="contacts" />
           ) : pageItems.length === 0 ? (
             <p className="text-xs text-text-secondary">{t.noCreatedRoomsFound}</p>
           ) : (
@@ -332,7 +322,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
             </div>
           )
         ) : !overview ? (
-          <GridSkeletonCards />
+          <DashboardMainSkeleton variant="contacts" />
         ) : pageItems.length === 0 ? (
           <p className="text-xs text-text-secondary">{t.noContactsFound}</p>
         ) : (
