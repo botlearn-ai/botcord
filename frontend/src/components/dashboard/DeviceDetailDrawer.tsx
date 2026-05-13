@@ -58,8 +58,11 @@ export default function DeviceDetailDrawer() {
       setSelectedDeviceId: s.setSelectedDeviceId,
     })),
   );
-  const { ownedAgents } = useDashboardSessionStore(
-    useShallow((s) => ({ ownedAgents: s.ownedAgents })),
+  const { ownedAgents, refreshUserProfile } = useDashboardSessionStore(
+    useShallow((s) => ({
+      ownedAgents: s.ownedAgents,
+      refreshUserProfile: s.refreshUserProfile,
+    })),
   );
 
   const open = selectedDeviceId !== null;
@@ -130,6 +133,14 @@ export default function DeviceDetailDrawer() {
       setNameSaved(true);
       setTimeout(() => setNameSaved(false), 2000);
     }
+  };
+  const handleRemoveDevice = async () => {
+    await removeDevice(device.id);
+    await Promise.all([
+      refresh({ quiet: true }),
+      refreshUserProfile(),
+    ]);
+    setSelectedDeviceId(null);
   };
 
   return (
@@ -429,7 +440,7 @@ export default function DeviceDetailDrawer() {
                 取消
               </button>
               <button
-                onClick={() => void removeDevice(device.id)}
+                onClick={() => void handleRemoveDevice()}
                 disabled={removingId === device.id}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/25"
               >
