@@ -173,6 +173,7 @@ export default function RoomSettingsModal({
   const ta = roomAdvancedSettings[locale];
   const tm = agentBrowser[locale];
   const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
+  const bumpRoomMembersVersion = useDashboardChatStore((s) => s.bumpRoomMembersVersion);
   const leaveRoom = useDashboardChatStore((s) => s.leaveRoom);
   const leavingRoomId = useDashboardChatStore((s) => s.leavingRoomId);
   const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
@@ -394,6 +395,7 @@ export default function RoomSettingsModal({
   async function refreshRoomDetails() {
     const result = await api.getRoomMembers(roomId).catch(() => api.getPublicRoomMembers(roomId));
     setMembers(result.members);
+    bumpRoomMembersVersion(roomId);
     await Promise.all([
       refreshOverview({ reloadOpenedRoom: true }),
       refreshHumanRooms(),
