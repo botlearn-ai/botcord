@@ -9,7 +9,6 @@ import type { ActivityStats, PublicRoom, UserAgent } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import BotAvatar from "./BotAvatar";
 import ExploreEntityCard from "./ExploreEntityCard";
 
@@ -173,14 +172,14 @@ export default function HomePanel() {
       selectAgent: s.selectAgent,
     })),
   );
-  const { openCreateBotModal, requestOpenHuman } = useDashboardUIStore(
+  const { openCreateBotModal, requestOpenHuman, setBotDetailAgentId } = useDashboardUIStore(
     useShallow((s) => ({
       openCreateBotModal: s.openCreateBotModal,
       requestOpenHuman: s.requestOpenHuman,
+      setBotDetailAgentId: s.setBotDetailAgentId,
     })),
   );
   const [statsByAgent, setStatsByAgent] = useState<Record<string, ActivityStats>>({});
-  const [settingsBot, setSettingsBot] = useState<UserAgent | null>(null);
 
   useEffect(() => {
     if (!publicRoomsLoaded) void loadPublicRooms();
@@ -241,7 +240,7 @@ export default function HomePanel() {
                   key={bot.agent_id}
                   bot={bot}
                   stats={statsByAgent[bot.agent_id] ?? null}
-                  onClick={() => setSettingsBot(bot)}
+                  onClick={() => setBotDetailAgentId(bot.agent_id)}
                 />
               ))}
             </div>
@@ -348,16 +347,6 @@ export default function HomePanel() {
           )}
         </section>
       </div>
-      {settingsBot ? (
-        <AgentSettingsDrawer
-          agentId={settingsBot.agent_id}
-          displayName={settingsBot.display_name}
-          bio={settingsBot.bio ?? null}
-          avatarUrl={settingsBot.avatar_url ?? null}
-          onClose={() => setSettingsBot(null)}
-          onSaved={() => setSettingsBot(null)}
-        />
-      ) : null}
     </div>
   );
 }
