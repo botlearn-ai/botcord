@@ -12,6 +12,8 @@ export interface DashboardUIState {
   openedRoomId: string | null;
   /** Separate slot for the user-chat pane so it doesn't clobber openedRoomId. */
   userChatRoomId: string | null;
+  /** Agent currently targeted by the user-chat pane; independent from activeAgentId. */
+  userChatAgentId: string | null;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
   /** Dispatch slot: a component requests opening the HumanCardModal for a given human. */
@@ -78,6 +80,7 @@ export interface DashboardUIState {
   setFocusedRoomId: (roomId: string | null) => void;
   setOpenedRoomId: (roomId: string | null) => void;
   setUserChatRoomId: (roomId: string | null) => void;
+  setUserChatAgentId: (agentId: string | null) => void;
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
   startPrimaryNavigation: (tab: DashboardUIState["sidebarTab"], path: string) => void;
   clearPrimaryNavigation: () => void;
@@ -108,6 +111,7 @@ const initialUIState = {
   focusedRoomId: null,
   openedRoomId: null,
   userChatRoomId: null,
+  userChatAgentId: null,
   rightPanelOpen: false,
   agentCardOpen: false,
   pendingHumanOpen: null as { humanId: string; displayName: string } | null,
@@ -142,6 +146,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.openedRoomId === openedRoomId ? state : { openedRoomId })),
   setUserChatRoomId: (userChatRoomId) =>
     set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
+  setUserChatAgentId: (userChatAgentId) =>
+    set((state) => (state.userChatAgentId === userChatAgentId ? state : { userChatAgentId })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (
       state.sidebarTab === sidebarTab
