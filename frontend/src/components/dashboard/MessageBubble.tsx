@@ -290,6 +290,9 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const [menuOpen, setMenuOpen] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
+  const publicHumans = useDashboardChatStore((state) => state.publicHumans);
+  const human = useDashboardSessionStore((state) => state.human);
+  const user = useDashboardSessionStore((state) => state.user);
   const requestOpenHuman = useDashboardUIStore((state) => state.requestOpenHuman);
   const stateConfig = useStateConfig();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
@@ -298,6 +301,15 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const isOwn = typeof message.is_mine === "boolean" ? message.is_mine : isOwnProp;
   const isHuman = message.sender_kind === "human";
   const senderDisplayName = message.display_sender_name || message.sender_name || message.sender_id;
+  const publicHuman = isHuman ? publicHumans.find((item) => item.human_id === message.sender_id) : null;
+  const isCurrentHumanSender = isHuman && (
+    message.sender_id === human?.human_id
+    || (message.source_user_id && message.source_user_id === user?.id)
+  );
+  const senderAvatarUrl = message.sender_avatar_url
+    || (isCurrentHumanSender ? human?.avatar_url || user?.avatar_url : null)
+    || publicHuman?.avatar_url
+    || null;
 
   if (message.type === "system") {
     const joinParticipant = getSystemJoinParticipant(message.payload);
@@ -368,7 +380,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     <SenderAvatar
       senderId={message.sender_id}
       displayName={senderDisplayName}
-      avatarUrl={message.sender_avatar_url}
+      avatarUrl={senderAvatarUrl}
       isHuman={isHuman}
       onClick={handleSelectSender}
       onKeyDown={handleSelectSenderByKey}

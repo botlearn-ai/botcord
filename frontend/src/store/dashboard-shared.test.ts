@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { DashboardOverview, HumanRoomSummary, PublicRoom } from "@/lib/types";
 import {
   buildVisibleMessageRooms,
+  humanRoomToDashboardRoom,
   isRoomOwnedByCurrentViewer,
   mergeDashboardRoomsWithHumanRooms,
 } from "@/store/dashboard-shared";
+import { applyMessagesFilter } from "@/lib/messages-merge";
 
 function makePublicRoom(overrides: Partial<PublicRoom> = {}): PublicRoom {
   return {
@@ -118,6 +120,18 @@ describe("mergeDashboardRoomsWithHumanRooms", () => {
       owner_type: "human",
       my_role: "owner",
     });
+  });
+
+  it("marks human-to-human DMs so the self-human messages filter catches them", () => {
+    const room = humanRoomToDashboardRoom(makeHumanRoom({
+      room_id: "rm_dm_hu_1_hu_2",
+      member_count: 2,
+    }));
+
+    expect(room.peer_type).toBe("human");
+    expect(applyMessagesFilter([room], "self-human", new Set()).map((r) => r.room_id)).toEqual([
+      "rm_dm_hu_1_hu_2",
+    ]);
   });
 });
 

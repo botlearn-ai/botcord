@@ -332,6 +332,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       source_type: "dashboard_human_room",
       sender_kind: "human",
       display_sender_name: displayName,
+      sender_avatar_url: human?.avatar_url ?? user?.avatar_url ?? null,
       source_user_id: user?.id ?? null,
       source_user_name: displayName,
       is_mine: true,
