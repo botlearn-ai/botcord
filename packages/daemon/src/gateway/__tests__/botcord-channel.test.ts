@@ -27,6 +27,9 @@ function makeClient(overrides: Partial<BotCordChannelClient> = {}): BotCordChann
     sendMessage: vi
       .fn()
       .mockResolvedValue({ hub_msg_id: "m_provider", queued: true, status: "queued" }),
+    sendTypedMessage: vi
+      .fn()
+      .mockResolvedValue({ hub_msg_id: "m_provider_typed", queued: true, status: "queued" }),
     getHubUrl: vi.fn().mockReturnValue("http://127.0.0.1:1"),
     ...overrides,
   };
@@ -137,6 +140,34 @@ describe("createBotCordChannel — send()", () => {
     });
     expect(client.sendMessage).toHaveBeenCalledWith("rm_dm_1", "hey", {});
     expect(result.providerMessageId).toBeNull();
+  });
+
+  it("sends runtime diagnostics as BotCord error envelopes", async () => {
+    const client = makeClient();
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+    });
+    const result = await channel.send({
+      message: {
+        channel: "botcord",
+        accountId: "ag_self",
+        conversationId: "rm_group_a",
+        threadId: "tp_42",
+        replyTo: "env_source",
+        type: "error",
+        text: "Runtime error: boom",
+      },
+      log: silentLog,
+    });
+    expect(client.sendTypedMessage).toHaveBeenCalledWith("rm_group_a", "error", "Runtime error: boom", {
+      topic: "tp_42",
+      replyTo: "env_source",
+    });
+    expect(client.sendMessage).not.toHaveBeenCalled();
+    expect(result.providerMessageId).toBe("m_provider_typed");
   });
 });
 
@@ -259,6 +290,52 @@ describe("createBotCordChannel — inbox normalization", () => {
       expect(env.trace?.id).toBe("m_1");
       expect(env.trace?.streamable).toBe(false);
     } finally {
+      await server.close();
+    }
+  });
+
+  it("acks error InboxMessages without dispatching them", async () => {
+    const server = await startAuthOkServer();
+    const errorMessage = makeInbox({
+      hub_msg_id: "m_error_1",
+      text: undefined,
+      envelope: {
+        type: "error",
+        from: "ag_peer",
+        payload: { error: { code: "agent_error", message: "Runtime error: boom" } },
+      } as InboxMessage["envelope"],
+    });
+    const client = makeClient({
+      pollInbox: vi.fn().mockResolvedValue({ messages: [errorMessage], count: 1, has_more: false }),
+      getHubUrl: vi.fn().mockReturnValue(server.url),
+    });
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      hubBaseUrl: server.url,
+    });
+    const abort = new AbortController();
+    const emits: GatewayInboundEnvelope[] = [];
+    const startPromise = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: abort.signal,
+      log: silentLog,
+      emit: async (env) => {
+        emits.push(env);
+      },
+      setStatus: () => {},
+    });
+    try {
+      await vi.waitFor(() => {
+        expect(client.ackMessages).toHaveBeenCalledWith(["m_error_1"]);
+      });
+      expect(emits).toHaveLength(0);
+    } finally {
+      abort.abort();
+      await startPromise;
       await server.close();
     }
   });
