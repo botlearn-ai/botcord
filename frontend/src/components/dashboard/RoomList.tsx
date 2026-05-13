@@ -21,6 +21,8 @@ import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import SubscriptionBadge from "./SubscriptionBadge";
 import { resolveDmDisplayName } from "./dmRoom";
+import { CompositeAvatar } from "./CompositeAvatar";
+import BotAvatar from "./BotAvatar";
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
@@ -261,6 +263,7 @@ export default function RoomList({
         const displayName = resolveDmDisplayName(room.room_id, selfRoomId, contacts, room.name);
         const avatarLabel = buildRoomAvatarLabel(displayName);
         const avatarTone = buildAvatarTone(room.room_id);
+        const isGroup = (room.member_count ?? 0) > 2;
         const isUnread = isRoomUnread(room.room_id, room.has_unread);
         const unreadCount = isUnread ? Math.max(1, room.unread_count ?? 1) : 0;
 
@@ -280,13 +283,33 @@ export default function RoomList({
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${avatarTone} text-sm font-semibold text-text-primary`}>
-                {avatarLabel}
-              </div>
+              {isGroup && room.members_preview && room.members_preview.length >= 2 ? (
+                <CompositeAvatar
+                  members={room.members_preview}
+                  totalMembers={room.member_count ?? room.members_preview.length}
+                />
+              ) : !isGroup && room.peer_type === "agent" ? (
+                <BotAvatar agentId={room.owner_id} size={40} alt={displayName} shape="rounded" />
+              ) : (
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${avatarTone} text-sm font-semibold text-text-primary`}>
+                  {avatarLabel}
+                </div>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`min-w-0 truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
-                    {displayName}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={`min-w-0 truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                      {displayName}
+                    </span>
+                    {!isGroup && room.peer_type === "agent" ? (
+                      <span className="shrink-0 rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-[9px] font-medium text-neon-cyan/85">
+                        BOT
+                      </span>
+                    ) : !isGroup && room.peer_type === "human" ? (
+                      <span className="shrink-0 rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[9px] font-medium text-neon-purple/85">
+                        HUMAN
+                      </span>
+                    ) : null}
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
                     {unreadCount > 0 && (
@@ -301,6 +324,12 @@ export default function RoomList({
                     )}
                   </div>
                 </div>
+                {room._originAgent ? (
+                  <div className="mt-0.5 flex items-center gap-1 text-[10px] text-text-secondary/55">
+                    <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-neon-cyan/40" />
+                    <span className="truncate">via {room._originAgent.display_name}</span>
+                  </div>
+                ) : null}
                 <div className="mt-0.5 flex items-center gap-1.5">
                   {room.required_subscription_product_id && (
                     <span className="shrink-0">

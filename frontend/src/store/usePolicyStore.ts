@@ -12,7 +12,12 @@ import { create } from "zustand";
 
 export type ContactPolicy = "open" | "contacts_only" | "whitelist" | "closed";
 export type RoomInvitePolicy = "open" | "contacts_only" | "closed";
-export type AttentionMode = "always" | "mention_only" | "keyword" | "muted";
+export type AttentionMode =
+  | "always"
+  | "mention_only"
+  | "keyword"
+  | "allowed_senders"
+  | "muted";
 export type PolicySource = "global" | "override" | "dm_forced";
 
 export interface AgentPolicy {
@@ -36,6 +41,7 @@ export interface AgentPolicyPatch {
 export interface RoomPolicyOverride {
   attention_mode: AttentionMode | null;
   keywords: string[] | null;
+  allowed_sender_ids: string[] | null;
   muted_until: string | null;
   updated_at: string;
 }
@@ -43,6 +49,7 @@ export interface RoomPolicyOverride {
 export interface RoomPolicyEffective {
   mode: AttentionMode;
   keywords: string[];
+  allowed_sender_ids: string[];
   muted_until: string | null;
   source: PolicySource;
 }
@@ -57,6 +64,7 @@ export interface RoomOverridePatch {
   // Omit a key to leave unchanged; explicit null clears (= inherit).
   attention_mode?: AttentionMode | null;
   keywords?: string[] | null;
+  allowed_sender_ids?: string[] | null;
 }
 
 interface PolicyState {

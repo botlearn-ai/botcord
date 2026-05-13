@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * [INPUT]: 依赖用户资料、待处理请求数、当前身份列表与 i18n 文案渲染账户菜单，依赖 dashboard session store 提供当前视角
- * [OUTPUT]: 对外提供 AccountMenu 组件，承载用户头像菜单、轻量身份切换与基础账户动作
- * [POS]: dashboard 左下角统一账户入口，只保留当前身份列表与基础账户动作；Bot 创建仍复用 My Bots 的创建模态
+ * [INPUT]: 依赖用户资料、待处理请求数与 i18n 文案渲染账户菜单，依赖 dashboard session store 提供 Human 资料
+ * [OUTPUT]: 对外提供 AccountMenu 组件，承载用户头像菜单、Human 资料编辑与基础账户动作
+ * [POS]: dashboard 左下角统一账户入口；Bot 管理移动到 My Bots
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { useState } from "react";
 import type { UserAgent, UserProfile } from "@/lib/types";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check, LogOut, Pencil, Plus, Settings } from "lucide-react";
+import { LogOut, Pencil, Settings } from "lucide-react";
 import HumanProfileEditModal from "./HumanProfileEditModal";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu } from "@/lib/i18n/translations/dashboard";
@@ -34,19 +34,9 @@ function getAvatarSeed(user: UserProfile | null): string {
   return base.slice(0, 1).toUpperCase();
 }
 
-function getAgentSeed(agent: UserAgent): string {
-  const base = agent.display_name || agent.agent_id || "A";
-  return base.slice(0, 1).toUpperCase();
-}
-
 export default function AccountMenu({
   user,
-  agents,
-  activeAgentId,
   pendingRequests,
-  agentsWithApprovals,
-  onSwitchAgent,
-  onOpenCreateBot,
   onLogout,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
@@ -54,10 +44,8 @@ export default function AccountMenu({
   const locale = useLanguage();
   const t = accountMenu[locale];
   const tc = common[locale];
-  const { human, viewMode, setViewMode } = useDashboardSessionStore(useShallow((state) => ({
+  const { human } = useDashboardSessionStore(useShallow((state) => ({
     human: state.human,
-    viewMode: state.viewMode,
-    setViewMode: state.setViewMode,
   })));
 
   return (
@@ -82,8 +70,7 @@ export default function AccountMenu({
                 </span>
               )}
             </span>
-            {/* Mode indicator dot */}
-            <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-deep-black-light ${viewMode === "human" ? "bg-neon-purple" : "bg-neon-cyan"}`} />
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-deep-black-light bg-neon-purple" />
             {pendingRequests > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-purple px-1 text-[9px] font-bold text-black">
                 {pendingRequests > 9 ? "9+" : pendingRequests}
@@ -120,12 +107,8 @@ export default function AccountMenu({
                       {user?.display_name || user?.email || t.user}
                     </p>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        viewMode === "human"
-                          ? "bg-neon-purple/10 text-neon-purple/75"
-                          : "bg-neon-cyan/10 text-neon-cyan/75"
-                      }`}>
-                        {viewMode === "human" ? "Human" : "Agent"}
+                      <span className="inline-flex items-center rounded-full bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple/75">
+                        Human
                       </span>
                       {human && (
                         <button
@@ -153,88 +136,7 @@ export default function AccountMenu({
               ) : null}
             </div>
 
-            {human ? (
-              <DropdownMenu.Group>
-                <DropdownMenu.Label className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-text-secondary/72">
-                  {locale === "zh" ? "当前身份" : "Current identity"}
-                </DropdownMenu.Label>
-                <DropdownMenu.Item
-                  onClick={() => setViewMode("human")}
-                  className="relative flex cursor-pointer select-none items-center rounded-xl px-2.5 py-2 text-sm outline-none transition-colors focus:bg-neon-purple/10"
-                >
-                  {user?.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={user.avatar_url}
-                      alt={user.display_name || user.email || t.user}
-                      className="mr-2 h-7 w-7 shrink-0 rounded-full border border-white/10 object-cover"
-                    />
-                  ) : (
-                    <span className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-neon-purple/20 bg-neon-purple/10 text-[11px] font-semibold text-neon-purple">
-                      {getAvatarSeed(user)}
-                    </span>
-                  )}
-                  <span className="flex-1 truncate text-text-primary">
-                    {user?.display_name || user?.email || t.user}
-                  </span>
-                  <span className="ml-2 inline-flex items-center rounded-full border border-neon-purple/30 bg-neon-purple/8 px-1.5 py-0.5 text-[9px] font-medium text-neon-purple/80">
-                    Human
-                  </span>
-                  {viewMode === "human" ? <Check className="ml-2 h-4 w-4 text-neon-purple" /> : null}
-                </DropdownMenu.Item>
-                {agents.length > 0 ? (
-                  <div className="max-h-32 overflow-y-auto">
-                    {agents.map((agent) => {
-                      const hasPending = agentsWithApprovals?.has(agent.agent_id);
-                      return (
-                        <DropdownMenu.Item
-                          key={agent.agent_id}
-                          onClick={() => {
-                            setViewMode("agent");
-                            void onSwitchAgent(agent.agent_id);
-                          }}
-                          className="relative flex cursor-pointer select-none items-center rounded-xl px-2.5 py-2 text-sm outline-none transition-colors focus:bg-glass-bg"
-                        >
-                          <span className="relative mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-neon-cyan/20 bg-neon-cyan/10 text-[11px] font-semibold text-neon-cyan">
-                            {agent.avatar_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={agent.avatar_url}
-                                alt={agent.display_name || agent.agent_id}
-                                className="h-full w-full rounded-full object-cover"
-                              />
-                            ) : (
-                              getAgentSeed(agent)
-                            )}
-                            {hasPending ? (
-                              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-blue-400 ring-2 ring-deep-black-light" />
-                            ) : null}
-                          </span>
-                          <span className="flex-1 truncate text-text-primary">
-                            {agent.display_name}
-                          </span>
-                          <span className="ml-2 inline-flex items-center rounded-full border border-neon-cyan/25 bg-neon-cyan/[0.08] px-1.5 py-0.5 text-[9px] font-medium text-neon-cyan/75">
-                            Agent
-                          </span>
-                          {viewMode === "agent" && agent.agent_id === activeAgentId ? (
-                            <Check className="ml-2 h-4 w-4 text-neon-cyan" />
-                          ) : null}
-                        </DropdownMenu.Item>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onOpenCreateBot}
-                    className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs text-text-secondary/58 transition-colors hover:bg-neon-cyan/8 hover:text-neon-cyan"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>{locale === "zh" ? "还没有 Agent，点击新建" : "No agent yet, click to create"}</span>
-                  </button>
-                )}
-              </DropdownMenu.Group>
-            ) : null}
+            {/* Identity switcher removed: user is always Human. Manage bots via /chats/bots. */}
 
             {user?.beta_admin && (
               <>

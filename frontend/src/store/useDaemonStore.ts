@@ -173,18 +173,9 @@ const initialState = {
   renameErrors: {} as Record<string, string>,
 };
 
-/**
- * Returns the active agent id only when the session identity is "agent".
- * If the user is acting as themselves (Human) or no agent is selected,
- * returns null — agent-scoped daemon callers should treat this as a no-op
- * and surface a "No agent selected" toast/error rather than crashing.
- */
+/** Returns the currently selected managed Bot id, if any. */
 export function requireActiveAgentId(): string | null {
-  const { activeIdentity, activeAgentId } = useDashboardSessionStore.getState();
-  if (activeIdentity?.type === "agent") return activeIdentity.id;
-  // Legacy fallback: no identity set yet but an agent id exists.
-  if (!activeIdentity && activeAgentId) return activeAgentId;
-  return null;
+  return useDashboardSessionStore.getState().activeAgentId;
 }
 
 async function parseError(res: Response): Promise<string> {

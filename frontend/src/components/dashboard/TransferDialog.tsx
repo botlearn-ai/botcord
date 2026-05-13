@@ -105,13 +105,13 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
       return;
     }
 
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
+    const normalizedAmount = amount.trim();
+    if (!/^[1-9]\d*$/.test(normalizedAmount)) {
       setError(t.amountMustBePositive);
       return;
     }
 
-    const amountMinor = Math.round(amountNum * 100);
+    const amountMinor = Number.parseInt(normalizedAmount, 10) * 100;
 
     if (!isAuthed) return;
     setSubmitting(true);
@@ -214,11 +214,13 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
             </label>
             <input
               type="number"
-              step="0.01"
-              min="0.01"
+              step="1"
+              min="1"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
+              placeholder="1"
               className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
             />
           </div>

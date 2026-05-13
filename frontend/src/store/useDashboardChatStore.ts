@@ -28,6 +28,7 @@ import {
 } from "@/store/dashboard-shared";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { ownedAgentRoomToDashboardRoom } from "@/lib/messages-merge";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 
 let publicRoomsRequestSeq = 0;
@@ -38,6 +39,14 @@ const emptyRoomMessageSnapshot = new Map<string, string | null>();
 function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return error.name === "TypeError" && error.message === "Failed to fetch";
+}
+
+function isAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status = (error as { status?: unknown }).status;
+  if (status === 401 || status === 403) return true;
+  if (!(error instanceof Error)) return false;
+  return error.message === "Unauthorized";
 }
 
 function applyRealtimeRoomHint<T extends {
@@ -68,32 +77,6 @@ function applyRealtimeRoomHint<T extends {
 
 function getRoomMessageSnapshot(room: DashboardRoom | null): string | null {
   return room?.last_message_at ?? null;
-}
-
-function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
-  return {
-    room_id: room.room_id,
-    name: room.name,
-    description: room.description ?? "",
-    owner_id: room.owner_id,
-    // ownedAgentRoomToDashboardRoom is the human-as-owner-via-bot listing —
-    // these rooms are by definition agent-owned.
-    owner_type: "agent",
-    visibility: room.visibility,
-    join_policy: room.join_policy ?? undefined,
-    can_invite: undefined,
-    member_count: room.member_count,
-    my_role: room.bots[0]?.role ?? "member",
-    created_at: room.created_at ?? null,
-    rule: room.rule,
-    required_subscription_product_id: room.required_subscription_product_id ?? null,
-    last_viewed_at: null,
-    has_unread: false,
-    last_message_preview: room.last_message_preview,
-    last_message_at: room.last_message_at,
-    last_sender_name: room.last_sender_name,
-    allow_human_send: room.allow_human_send ?? undefined,
-  };
 }
 
 export function mapOwnedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
@@ -544,9 +527,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           await Promise.all([get().loadPublicRooms(), get().loadPublicAgents()]);
           return;
         }
-        // Human-first: /overview works for both Agent viewer (X-Active-Agent
-        // header) and Human viewer (derived from Supabase JWT). The backend
-        // decides; we just need a valid token.
+        // Human-first: /overview resolves the viewer from the Supabase JWT.
 
         set({ overviewRefreshing: true, overviewErrored: false });
         try {
@@ -556,6 +537,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             void get().loadRoomMessages(openedRoomId);
           }
         } catch (error: any) {
+          if (isAuthError(error)) {
+            console.warn("[ChatStore] Background overview auth refresh failed:", error);
+            set({ overviewRefreshing: false, overviewErrored: false });
+            return;
+          }
           if (get().overview && isFetchNetworkError(error)) {
             console.warn("[ChatStore] Background overview refresh failed:", error);
             set({ overviewRefreshing: false, overviewErrored: false });
@@ -603,9 +589,22 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             api.getOverview(),
             get().loadPublicRoomDetail(roomId),
           ]);
-          set({ leavingRoomId: null });
+          set((state) => {
+            const messages = { ...state.messages };
+            const messagesLoading = { ...state.messagesLoading };
+            const messagesHasMore = { ...state.messagesHasMore };
+            delete messages[roomId];
+            delete messagesLoading[roomId];
+            delete messagesHasMore[roomId];
+            return { leavingRoomId: null, messages, messagesLoading, messagesHasMore };
+          });
+          const ui = useDashboardUIStore.getState();
+          if (ui.openedRoomId === roomId || ui.focusedRoomId === roomId) {
+            ui.setFocusedRoomId(null);
+            ui.setOpenedRoomId(null);
+            ui.setOpenedTopicId(null);
+          }
           get().replaceOverview(overview);
-          void get().loadRoomMessages(roomId);
         } catch (error) {
           set({ leavingRoomId: null });
           throw error;
@@ -710,7 +709,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         if (agentId === activeAgentId) return;
         get().bindToActiveAgent(agentId);
         useDashboardSessionStore.getState().switchActiveAgent(agentId);
-        window.location.replace(window.location.pathname + window.location.search + window.location.hash);
       },
     }),
     {

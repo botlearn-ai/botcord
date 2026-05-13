@@ -44,6 +44,7 @@ class AttentionMode(str, enum.Enum):
     always = "always"
     mention_only = "mention_only"
     keyword = "keyword"
+    allowed_senders = "allowed_senders"
     muted = "muted"
 
 

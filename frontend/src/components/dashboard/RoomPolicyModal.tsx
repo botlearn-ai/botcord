@@ -18,6 +18,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
+import { api } from "@/lib/api";
+import type { PublicRoomMember } from "@/lib/types";
 import {
   usePolicyStore,
   type AttentionMode,
@@ -29,6 +31,7 @@ const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[]
   { value: "mention_only", label: "仅 @ 我", hint: "只有被 @ 或明确点名时唤醒" },
   { value: "muted", label: "静音", hint: "本房间不主动唤醒 Bot" },
   { value: "keyword", label: "关键词命中", hint: "消息包含关键词时唤醒" },
+  { value: "allowed_senders", label: "仅允许成员", hint: "只回复指定成员发出的消息" },
 ];
 
 function modeLabel(mode: AttentionMode): string {
@@ -67,6 +70,8 @@ export default function RoomPolicyModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [members, setMembers] = useState<PublicRoomMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,11 +95,36 @@ export default function RoomPolicyModal({
     if (hasOverride) setExpanded(true);
   }, [hasOverride]);
 
+  useEffect(() => {
+    if (isDM) return;
+    let cancelled = false;
+    setMembersLoading(true);
+    void api.getRoomMembers(roomId)
+      .then((result) => {
+        if (!cancelled) setMembers(result.members);
+      })
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDM, roomId]);
+
   const draftKeywords = useMemo(() => {
     if (data?.override?.keywords) return data.override.keywords;
     if (effective?.keywords) return effective.keywords;
     return [];
   }, [data?.override?.keywords, effective?.keywords]);
+
+  const draftAllowedSenderIds = useMemo(() => {
+    if (data?.override?.allowed_sender_ids) return data.override.allowed_sender_ids;
+    if (effective?.allowed_sender_ids) return effective.allowed_sender_ids;
+    return [];
+  }, [data?.override?.allowed_sender_ids, effective?.allowed_sender_ids]);
 
   const apply = useCallback(
     async (action: () => Promise<unknown>) => {
@@ -220,12 +250,17 @@ export default function RoomPolicyModal({
                   <OverrideForm
                     currentMode={data.override?.attention_mode ?? effective.mode}
                     currentKeywords={draftKeywords}
+                    currentAllowedSenderIds={draftAllowedSenderIds}
+                    members={members}
+                    membersLoading={membersLoading}
                     busy={busy}
-                    onApply={(mode, keywords) =>
+                    onApply={(mode, keywords, allowedSenderIds) =>
                       void apply(() =>
                         putRoomOverride(agentId, roomId, {
                           attention_mode: mode,
                           keywords: mode === "keyword" ? keywords : null,
+                          allowed_sender_ids:
+                            mode === "allowed_senders" ? allowedSenderIds : null,
                         }),
                       )
                     }
@@ -325,16 +360,29 @@ function EffectiveBadge({
 function OverrideForm({
   currentMode,
   currentKeywords,
+  currentAllowedSenderIds,
+  members,
+  membersLoading,
   busy,
   onApply,
 }: {
   currentMode: AttentionMode;
   currentKeywords: string[];
+  currentAllowedSenderIds: string[];
+  members: PublicRoomMember[];
+  membersLoading: boolean;
   busy: boolean;
-  onApply: (mode: AttentionMode, keywords: string[]) => void;
+  onApply: (
+    mode: AttentionMode,
+    keywords: string[],
+    allowedSenderIds: string[],
+  ) => void;
 }) {
   const [mode, setMode] = useState<AttentionMode>(currentMode);
   const [keywords, setKeywords] = useState<string[]>(currentKeywords);
+  const [allowedSenderIds, setAllowedSenderIds] = useState<string[]>(
+    currentAllowedSenderIds,
+  );
   const [draft, setDraft] = useState("");
 
   useEffect(() => {
@@ -343,6 +391,9 @@ function OverrideForm({
   useEffect(() => {
     setKeywords(currentKeywords);
   }, [currentKeywords]);
+  useEffect(() => {
+    setAllowedSenderIds(currentAllowedSenderIds);
+  }, [currentAllowedSenderIds]);
 
   const addKeyword = () => {
     const trimmed = draft.trim();
@@ -426,6 +477,55 @@ function OverrideForm({
         </div>
       ) : null}
 
+      {mode === "allowed_senders" ? (
+        <div className="mt-3 rounded-xl border border-glass-border bg-deep-black/30 p-2">
+          {membersLoading ? (
+            <div className="flex items-center gap-2 px-1 py-2 text-xs text-text-secondary">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              加载成员中…
+            </div>
+          ) : members.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-text-tertiary">未能加载房间成员</p>
+          ) : (
+            <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+              {members.map((member) => {
+                const checked = allowedSenderIds.includes(member.agent_id);
+                return (
+                  <label
+                    key={member.agent_id}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-text-primary hover:bg-glass-bg/50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setAllowedSenderIds((prev) =>
+                            prev.includes(member.agent_id)
+                              ? prev
+                              : [...prev, member.agent_id],
+                          );
+                        } else {
+                          setAllowedSenderIds((prev) =>
+                            prev.filter((id) => id !== member.agent_id),
+                          );
+                        }
+                      }}
+                      className="accent-neon-cyan"
+                      disabled={busy}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{member.display_name}</span>
+                    <span className="shrink-0 text-[10px] text-text-tertiary">
+                      {member.participant_type === "human" ? "人" : "Agent"}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div className="mt-3 flex justify-end">
         {currentMode !== mode || mode === "keyword" ? (
           <button
@@ -433,6 +533,7 @@ function OverrideForm({
             onClick={() => {
               setMode(currentMode);
               setKeywords(currentKeywords);
+              setAllowedSenderIds(currentAllowedSenderIds);
             }}
             disabled={busy}
             className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
@@ -443,7 +544,7 @@ function OverrideForm({
         ) : null}
         <button
           type="button"
-          onClick={() => onApply(mode, keywords)}
+          onClick={() => onApply(mode, keywords, allowedSenderIds)}
           disabled={busy}
           className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
         >

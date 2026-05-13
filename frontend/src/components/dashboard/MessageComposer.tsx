@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent } from "react";
-import { FileText, Paperclip, Send, X } from "lucide-react";
+import { Coins, FileText, FileUp, Plus, Send, X } from "lucide-react";
 
 interface PendingFile {
   file: File;
@@ -23,6 +23,13 @@ interface MentionMatch {
 
 interface MessageComposerProps {
   onSend: (text: string, files: File[], mentions?: string[]) => void | Promise<void>;
+  onTransfer?: () => void;
+  actionLabels?: {
+    add?: string;
+    file?: string;
+    transfer?: string;
+    close?: string;
+  };
   disabled?: boolean;
   placeholder?: string;
   allowAttachments?: boolean;
@@ -69,6 +76,8 @@ export function textHasMention(text: string, displayName: string): boolean {
 
 export default function MessageComposer({
   onSend,
+  onTransfer,
+  actionLabels,
   disabled = false,
   placeholder = "Type a message...",
   allowAttachments = false,
@@ -84,6 +93,7 @@ export default function MessageComposer({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [pickedMentions, setPickedMentions] = useState<MentionCandidate[]>([]);
   const [showLengthError, setShowLengthError] = useState((initialText?.length ?? 0) > MESSAGE_MAX_LENGTH);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionListRef = useRef<HTMLDivElement>(null);
@@ -307,6 +317,7 @@ export default function MessageComposer({
 
   const handleFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     addFiles(e.target.files);
+    setActionMenuOpen(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -332,6 +343,7 @@ export default function MessageComposer({
 
   const hasLengthError = text.length > MESSAGE_MAX_LENGTH || showLengthError;
   const canSend = !disabled && !hasLengthError && (text.trim().length > 0 || files.length > 0);
+  const showActionMenu = allowAttachments || !!onTransfer;
 
   return (
     <div onDrop={handleDrop} onDragOver={handleDragOver}>
@@ -366,24 +378,69 @@ export default function MessageComposer({
         </div>
       )}
       <div className="relative flex items-end gap-2">
-        {allowAttachments && (
+        {showActionMenu && (
           <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleFileInputChange}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center justify-center w-9 h-9 rounded-lg text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-colors"
-              title="Attach file"
-            >
-              <Paperclip className="w-4 h-4" />
-            </button>
+            {allowAttachments && (
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileInputChange}
+              />
+            )}
+            <div className="relative">
+              {actionMenuOpen && (
+                <div className="absolute bottom-full left-0 z-30 mb-2 w-36 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
+                  {allowAttachments && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionMenuOpen(false);
+                        fileInputRef.current?.click();
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                    >
+                      <FileUp className="h-4 w-4 text-zinc-400" />
+                      <span>{actionLabels?.file ?? "File"}</span>
+                    </button>
+                  )}
+                  {onTransfer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionMenuOpen(false);
+                        onTransfer();
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                    >
+                      <Coins className="h-4 w-4 text-zinc-400" />
+                      <span>{actionLabels?.transfer ?? "Transfer"}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setActionMenuOpen((open) => !open)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-cyan-400"
+                title={actionLabels?.add ?? "Add"}
+                aria-label={actionLabels?.add ?? "Open actions"}
+                aria-expanded={actionMenuOpen}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
           </>
+        )}
+        {actionMenuOpen && (
+          <button
+            type="button"
+            aria-label={actionLabels?.close ?? "Close actions"}
+            className="fixed inset-0 z-20 cursor-default bg-transparent"
+            onClick={() => setActionMenuOpen(false)}
+            tabIndex={-1}
+          />
         )}
         <textarea
           ref={inputRef}

@@ -24,21 +24,26 @@
 
 import type { AttentionPolicy } from "@botcord/protocol-core";
 
+export type DaemonAttentionPolicy = Omit<AttentionPolicy, "mode"> & {
+  mode: AttentionPolicy["mode"] | "allowed_senders";
+  allowedSenderIds?: string[];
+};
+
 /** Public surface — kept narrow so the dispatcher can mock easily in tests. */
 export interface PolicyResolverLike {
-  resolve(agentId: string, roomId: string | null): Promise<AttentionPolicy>;
+  resolve(agentId: string, roomId: string | null): Promise<DaemonAttentionPolicy>;
   invalidate(agentId: string, roomId?: string): void;
   /**
    * Install (or replace) the cached policy entry for an agent / room. Used
    * by the `policy_updated` control-frame handler to apply embedded policy
    * payloads without forcing a refetch.
    */
-  put(agentId: string, roomId: string | null, policy: AttentionPolicy): void;
+  put(agentId: string, roomId: string | null, policy: DaemonAttentionPolicy): void;
 }
 
 export interface PolicyResolverOptions {
   /** Fetcher for the per-agent default. Returning `undefined` means "no policy known"; the resolver falls back to `mode=always`. */
-  fetchGlobal: (agentId: string) => Promise<AttentionPolicy | undefined>;
+  fetchGlobal: (agentId: string) => Promise<DaemonAttentionPolicy | undefined>;
   /**
    * Optional per-room fetcher. PR2 supplies this; PR3 leaves it
    * unimplemented and the resolver collapses to the global policy.
@@ -46,13 +51,13 @@ export interface PolicyResolverOptions {
   fetchEffective?: (
     agentId: string,
     roomId: string,
-  ) => Promise<AttentionPolicy | undefined>;
+  ) => Promise<DaemonAttentionPolicy | undefined>;
   /** Cache TTL in milliseconds. Defaults to 5 minutes. */
   ttlMs?: number;
 }
 
 interface Entry {
-  policy: AttentionPolicy;
+  policy: DaemonAttentionPolicy;
   expiresAt: number;
 }
 
@@ -64,14 +69,17 @@ const FETCH_FAILED = Symbol("fetch_failed");
  * lets the user mute a DM, but a stale cache from before a UX bug is cheap
  * to defend against here.
  */
-function maybeForceDm(roomId: string | null, policy: AttentionPolicy): AttentionPolicy {
+function maybeForceDm(
+  roomId: string | null,
+  policy: DaemonAttentionPolicy,
+): DaemonAttentionPolicy {
   if (roomId && roomId.startsWith("rm_dm_") && policy.mode !== "always") {
     return { ...policy, mode: "always" };
   }
   return policy;
 }
 
-function defaultPolicy(): AttentionPolicy {
+function defaultPolicy(): DaemonAttentionPolicy {
   return { mode: "always", keywords: [] };
 }
 
@@ -87,7 +95,7 @@ export class PolicyResolver implements PolicyResolverLike {
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
   }
 
-  async resolve(agentId: string, roomId: string | null): Promise<AttentionPolicy> {
+  async resolve(agentId: string, roomId: string | null): Promise<DaemonAttentionPolicy> {
     const now = Date.now();
 
     // 1. Per-room cache — populated either by a `policy_updated{room_id}`
@@ -132,8 +140,8 @@ export class PolicyResolver implements PolicyResolverLike {
   }
 
   private async safeFetch(
-    fn: () => Promise<AttentionPolicy | undefined>,
-  ): Promise<AttentionPolicy | undefined | typeof FETCH_FAILED> {
+    fn: () => Promise<DaemonAttentionPolicy | undefined>,
+  ): Promise<DaemonAttentionPolicy | undefined | typeof FETCH_FAILED> {
     try {
       return await fn();
     } catch {
@@ -157,7 +165,7 @@ export class PolicyResolver implements PolicyResolverLike {
     }
   }
 
-  put(agentId: string, roomId: string | null, policy: AttentionPolicy): void {
+  put(agentId: string, roomId: string | null, policy: DaemonAttentionPolicy): void {
     const key = cacheKey(agentId, roomId);
     this.cache.set(key, {
       policy: maybeForceDm(roomId, policy),

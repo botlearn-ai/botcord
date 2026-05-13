@@ -17,6 +17,7 @@ import TransferCard, { parseTransferText, parseTransferNotice } from "@/componen
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import BotAvatar from "./BotAvatar";
 import { PresenceDot } from "./PresenceDot";
 
 interface MessageBubbleProps {
@@ -185,7 +186,7 @@ function MentionChip({
   };
 
   return (
-    <span className="inline-flex align-baseline">
+    <span className="inline align-baseline">
       <button
         ref={triggerRef}
         type="button"
@@ -198,16 +199,9 @@ function MentionChip({
           handleClick();
         }}
         disabled={!canOpen}
-        className="inline-flex max-w-full items-center gap-1 rounded border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-0.5 text-[0.85em] font-medium leading-none text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/20 disabled:cursor-default"
+        className="inline max-w-full rounded-none border-0 bg-transparent p-0 align-baseline font-medium leading-[inherit] text-neon-cyan underline decoration-neon-cyan/45 underline-offset-2 transition-colors hover:text-neon-cyan/80 hover:decoration-neon-cyan disabled:cursor-default"
       >
-        <span className="inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center">
-          {isAgent ? (
-            <PresenceDot agentId={id} size="xs" showOffline={false} />
-          ) : isHuman ? (
-            <User className="h-2.5 w-2.5" />
-          ) : null}
-        </span>
-        <span className="truncate">{prefix}{displayName}</span>
+        {prefix}{displayName}
       </button>
       {tooltipPosition && typeof document !== "undefined" && createPortal(
         <span
@@ -236,6 +230,59 @@ function getSystemJoinParticipant(payload: Record<string, unknown>): { id: strin
   if (payload.subtype !== "room_member_joined") return null;
   if (typeof payload.participant_id !== "string" || typeof payload.participant_name !== "string") return null;
   return { id: payload.participant_id, name: payload.participant_name };
+}
+
+function SenderAvatar({
+  senderId,
+  displayName,
+  avatarUrl,
+  isHuman,
+  onClick,
+  onKeyDown,
+}: {
+  senderId: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  isHuman: boolean;
+  onClick: () => void;
+  onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onKeyDown={onKeyDown}
+      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+      title={displayName}
+      aria-label={`Open ${displayName}`}
+    >
+      {isHuman ? (
+        avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-full object-cover ring-1 ring-neon-green/30"
+          />
+        ) : (
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neon-green/30 bg-neon-green/10 text-neon-green">
+            <User className="h-4 w-4" />
+          </span>
+        )
+      ) : (
+        <BotAvatar
+          agentId={senderId}
+          avatarUrl={avatarUrl}
+          alt={displayName}
+          size={32}
+          className="ring-neon-purple/30"
+        />
+      )}
+    </div>
+  );
 }
 
 export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId, mentionCandidates }: MessageBubbleProps) {
@@ -317,6 +364,17 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     if (displayText) setForwardQuote(buildQuote());
   };
 
+  const sideAvatar = !fullWidth && (
+    <SenderAvatar
+      senderId={message.sender_id}
+      displayName={senderDisplayName}
+      avatarUrl={message.sender_avatar_url}
+      isHuman={isHuman}
+      onClick={handleSelectSender}
+      onKeyDown={handleSelectSenderByKey}
+    />
+  );
+
   const moreButton = displayText && (
     <div className="relative self-start pt-1 shrink-0">
       <button
@@ -344,12 +402,13 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   return (
     <>
     <div
-      className={`flex items-start gap-1 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
+      className={`flex items-start gap-2 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setMenuOpen(false); }}
     >
       {/* For own messages: button left of bubble */}
       {isOwn && !fullWidth && moreButton}
+      {!isOwn && sideAvatar}
       <div
         className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
           isOwn
@@ -445,6 +504,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           )}
         </div>
       </div>
+      {isOwn && sideAvatar}
       {/* For others' messages: button right of bubble */}
       {(!isOwn || fullWidth) && moreButton}
     </div>

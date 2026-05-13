@@ -17,6 +17,12 @@ export interface AgentProfile {
   online?: boolean;
 }
 
+export interface RoomMemberPreview {
+  display_name: string;
+  avatar_url?: string | null;
+  agent_id?: string;
+}
+
 export interface DashboardRoom {
   room_id: string;
   name: string;
@@ -42,6 +48,17 @@ export interface DashboardRoom {
   last_message_at: string | null;
   last_sender_name: string | null;
   allow_human_send?: boolean;
+  /** For group rooms: up to 4 member previews for composite avatar (optional, frontend-friendly). */
+  members_preview?: RoomMemberPreview[];
+  /** For DM rooms only: whether the peer is an agent or a human. */
+  peer_type?: ParticipantType;
+  /**
+   * If set, this room belongs to an owned bot's conversation graph (not the
+   * human owner's own). The owner sees it via the unified Messages list, but
+   * cannot send — they observe the bot. Frontend-only field, populated at
+   * merge time by `mergeOwnerVisibleRooms`.
+   */
+  _originAgent?: { agent_id: string; display_name: string };
 }
 
 export interface RoomResponse {
@@ -145,6 +162,7 @@ export interface DashboardMessage {
   source_type?: string;
   sender_kind?: "agent" | "human";
   display_sender_name?: string;
+  sender_avatar_url?: string | null;
   source_user_id?: string | null;
   source_user_name?: string | null;
   is_mine?: boolean;
@@ -905,6 +923,7 @@ export interface HumanRoomSummary {
   visibility: string;
   join_policy: string;
   member_count: number;
+  members_preview?: RoomMemberPreview[] | null;
   my_role: string;
   allow_human_send: boolean;
   default_send: boolean;

@@ -36,6 +36,7 @@ export interface AgentPresenceSnapshotPayload {
   status_message?: string | null;
   activity?: Record<string, unknown>;
   attributes?: Record<string, unknown>;
+  last_seen_at?: string | null;
   updated_at?: string;
 }
 
