@@ -874,6 +874,10 @@ export interface ActivityStats {
   active_rooms: number;
 }
 
+export interface ActivityStatsBatchResponse {
+  stats: Record<string, ActivityStats>;
+}
+
 export type ActivityEventType =
   | "message_sent"
   | "message_received"

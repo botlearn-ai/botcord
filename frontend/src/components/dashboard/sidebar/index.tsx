@@ -267,16 +267,41 @@ export default function Sidebar({
   const pendingContactRequests = chatStore.overview?.pending_requests || 0;
 
   useEffect(() => {
-    const prefetch = (path: string) => {
-      if (typeof router.prefetch !== "function") return;
-      void router.prefetch(path);
+    if (typeof router.prefetch !== "function") return;
+    const paths = [
+      "/chats/messages",
+      `/chats/contacts/${uiStore.contactsView}`,
+      `/chats/explore/${uiStore.exploreView}`,
+      "/chats/wallet",
+      ...(sessionStore.viewMode === "human" ? ["/chats/bots"] : ["/chats/activity"]),
+    ];
+    const timers: number[] = [];
+    let idleId: number | null = null;
+
+    const prefetch = () => {
+      paths.forEach((path, index) => {
+        timers.push(window.setTimeout(() => {
+          void router.prefetch(path);
+        }, index * 150));
+      });
     };
-    prefetch("/chats/messages");
-    prefetch(`/chats/contacts/${uiStore.contactsView}`);
-    prefetch(`/chats/explore/${uiStore.exploreView}`);
-    prefetch("/chats/wallet");
-    prefetch("/chats/activity");
-  }, [router, uiStore.contactsView, uiStore.exploreView]);
+
+    const startTimer = window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(prefetch, { timeout: 3000 });
+      } else {
+        prefetch();
+      }
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(startTimer);
+      timers.forEach((timer) => window.clearTimeout(timer));
+      if (idleId !== null && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, [router, sessionStore.viewMode, uiStore.contactsView, uiStore.exploreView]);
 
   useEffect(() => {
     let cancelled = false;

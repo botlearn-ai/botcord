@@ -56,6 +56,7 @@ import type {
   JoinRequestListResponse,
   MyJoinRequestResponse,
   ActivityStats,
+  ActivityStatsBatchResponse,
   ActivityFeedResponse,
   RoomResponse,
   UpdateRoomBody,
@@ -820,6 +821,16 @@ export const api = {
     identityOverride?: ActiveIdentity | null,
   ) {
     return apiGet<ActivityStats>("/api/dashboard/activity/stats", { period }, identityOverride);
+  },
+
+  getActivityStatsBatch(
+    agentIds: string[],
+    period: "today" | "7d" | "30d" = "today",
+  ) {
+    return apiGet<ActivityStatsBatchResponse>("/api/dashboard/activity/stats/batch", {
+      period,
+      agent_ids: agentIds.join(","),
+    });
   },
 
   getActivityFeed(opts?: { period?: string; limit?: number; offset?: number }) {

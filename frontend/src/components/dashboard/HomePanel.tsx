@@ -57,11 +57,13 @@ function SectionHeader({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
+function Stat({ label, value, loading }: { label: string; value: number | string; loading?: boolean }) {
   return (
     <div className="rounded-lg bg-glass-bg px-2 py-1.5">
       <div className="text-[10px] uppercase tracking-wider text-text-secondary/60">{label}</div>
-      <div className="text-sm font-semibold text-text-primary">{value}</div>
+      <div className="text-sm font-semibold text-text-primary">
+        {loading ? <span className="block h-4 w-8 animate-pulse rounded bg-text-secondary/15" /> : value}
+      </div>
     </div>
   );
 }
@@ -84,7 +86,8 @@ function BotSummaryCard({
   const online = presence?.effective_status
     ? presence.effective_status !== "offline"
     : agent.ws_online;
-  const loadingValue = statsLoading ? "..." : "-";
+  const fallbackValue = "-";
+  const loading = statsLoading && !stats;
   return (
     <button
       type="button"
@@ -104,10 +107,10 @@ function BotSummaryCard({
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <Stat label={t.statsSent} value={stats?.messages_sent ?? loadingValue} />
-        <Stat label={t.statsReceived} value={stats?.messages_received ?? loadingValue} />
-        <Stat label={t.statsActiveRooms} value={stats?.active_rooms ?? loadingValue} />
-        <Stat label={t.statsCompletedTopics} value={stats?.topics_completed ?? loadingValue} />
+        <Stat label={t.statsSent} value={stats?.messages_sent ?? fallbackValue} loading={loading} />
+        <Stat label={t.statsReceived} value={stats?.messages_received ?? fallbackValue} loading={loading} />
+        <Stat label={t.statsActiveRooms} value={stats?.active_rooms ?? fallbackValue} loading={loading} />
+        <Stat label={t.statsCompletedTopics} value={stats?.topics_completed ?? fallbackValue} loading={loading} />
       </div>
     </button>
   );
@@ -179,7 +182,7 @@ export default function HomePanel() {
     publicHumans: s.publicHumans,
   })));
   const [botStats, setBotStats] = useState<Record<string, ActivityStats>>({});
-  const [botStatsLoading, setBotStatsLoading] = useState(false);
+  const [botStatsLoading, setBotStatsLoading] = useState<Record<string, boolean>>({});
   const [botPresence, setBotPresence] = useState<Record<string, AgentPresenceSnapshotPayload>>({});
   const [greetingPeriod, setGreetingPeriod] = useState<GreetingPeriod>("morning");
   const visibleBots = useMemo(() => (noBots ? [] : ownedAgents), [noBots, ownedAgents]);
@@ -198,32 +201,42 @@ export default function HomePanel() {
         || a.display_name.localeCompare(b.display_name);
     }).slice(0, 6);
   }, [visibleBots]);
+  const shownBotIds = useMemo(
+    () => sortedVisibleBots.map((agent) => agent.agent_id),
+    [sortedVisibleBots],
+  );
 
   useEffect(() => {
-    if (visibleBots.length === 0) {
+    if (shownBotIds.length === 0) {
       setBotStats({});
       setBotPresence({});
+      setBotStatsLoading({});
       return;
     }
     let cancelled = false;
-    setBotStatsLoading(true);
-    void Promise.all(
-      visibleBots.map(async (agent) => {
-        try {
-          const stats = await api.getActivityStats("7d", { type: "agent", id: agent.agent_id });
-          return [agent.agent_id, stats] as const;
-        } catch {
-          return [agent.agent_id, null] as const;
-        }
-      }),
-    ).then((entries) => {
+    const loadingMap = Object.fromEntries(shownBotIds.map((agentId) => [agentId, true]));
+    setBotStatsLoading(loadingMap);
+    void api.getActivityStatsBatch(shownBotIds, "7d").then((result) => {
       if (cancelled) return;
-      setBotStats(Object.fromEntries(entries.filter((entry): entry is readonly [string, ActivityStats] => entry[1] !== null)));
+      setBotStats((current) => {
+        const next = Object.fromEntries(
+          Object.entries(current).filter(([agentId]) => shownBotIds.includes(agentId)),
+        ) as Record<string, ActivityStats>;
+        return { ...next, ...result.stats };
+      });
+    }).catch(() => {
+      if (!cancelled) {
+        setBotStats((current) => (
+          Object.fromEntries(
+            Object.entries(current).filter(([agentId]) => shownBotIds.includes(agentId)),
+          ) as Record<string, ActivityStats>
+        ));
+      }
     }).finally(() => {
-      if (!cancelled) setBotStatsLoading(false);
+      if (!cancelled) setBotStatsLoading({});
     });
 
-    void api.getPresenceSnapshots(visibleBots.map((agent) => agent.agent_id))
+    void api.getPresenceSnapshots(shownBotIds)
       .then((result) => {
         if (cancelled) return;
         setBotPresence(Object.fromEntries(result.agents.map((agent) => [agent.agent_id, agent])));
@@ -234,7 +247,7 @@ export default function HomePanel() {
     return () => {
       cancelled = true;
     };
-  }, [visibleBots]);
+  }, [shownBotIds]);
 
   useEffect(() => {
     const refreshGreeting = () => setGreetingPeriod(getGreetingPeriod());
@@ -270,7 +283,7 @@ export default function HomePanel() {
                   agent={agent}
                   presence={botPresence[agent.agent_id]}
                   stats={botStats[agent.agent_id]}
-                  statsLoading={botStatsLoading}
+                  statsLoading={Boolean(botStatsLoading[agent.agent_id])}
                   t={t}
                   onOpen={() => setBotDetailAgentId(agent.agent_id)}
                 />

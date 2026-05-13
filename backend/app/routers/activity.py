@@ -5,11 +5,11 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_active_agent
+from app.auth import RequestContext, require_active_agent, require_user_with_optional_agent
 from hub.database import get_db
 from hub.models import (
     Agent,
@@ -72,16 +72,11 @@ def _extract_preview(envelope_json: str | None, max_len: int = 60) -> str | None
 # ---------------------------------------------------------------------------
 
 
-@router.get("/activity/stats")
-async def get_activity_stats(
-    period: str = Query(default="today", pattern="^(today|7d|30d)$"),
-    ctx: RequestContext = Depends(require_active_agent),
-    db: AsyncSession = Depends(get_db),
-):
-    """User-friendly overview statistics."""
-    agent_id = ctx.active_agent_id
-    start = _period_start(period)
-
+async def _activity_stats_for_agent(
+    agent_id: str,
+    start: datetime.datetime,
+    db: AsyncSession,
+) -> dict[str, int]:
     sent_result = await db.execute(
         select(func.count(distinct(MessageRecord.msg_id))).where(
             MessageRecord.sender_id == agent_id,
@@ -147,6 +142,51 @@ async def get_activity_stats(
         "topics_completed": tc.get("completed", 0),
         "active_rooms": active_rooms,
     }
+
+
+@router.get("/activity/stats")
+async def get_activity_stats(
+    period: str = Query(default="today", pattern="^(today|7d|30d)$"),
+    ctx: RequestContext = Depends(require_active_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """User-friendly overview statistics."""
+    agent_id = ctx.active_agent_id
+    start = _period_start(period)
+
+    return await _activity_stats_for_agent(agent_id, start, db)
+
+
+@router.get("/activity/stats/batch")
+async def get_activity_stats_batch(
+    agent_ids: str = Query(..., min_length=1),
+    period: str = Query(default="today", pattern="^(today|7d|30d)$"),
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return activity statistics for multiple owned agents in one request."""
+    requested_ids = list(dict.fromkeys(aid.strip() for aid in agent_ids.split(",") if aid.strip()))
+    if not requested_ids:
+        return {"stats": {}}
+    if len(requested_ids) > 12:
+        raise HTTPException(status_code=400, detail="Too many agent ids")
+
+    owned_result = await db.execute(
+        select(Agent.agent_id).where(
+            Agent.user_id == ctx.user_id,
+            Agent.agent_id.in_(requested_ids),
+        )
+    )
+    owned_ids = {row[0] for row in owned_result.all()}
+    unauthorized = [aid for aid in requested_ids if aid not in owned_ids]
+    if unauthorized:
+        raise HTTPException(status_code=403, detail="Agent not owned by user")
+
+    start = _period_start(period)
+    stats: dict[str, dict[str, int]] = {}
+    for agent_id in requested_ids:
+        stats[agent_id] = await _activity_stats_for_agent(agent_id, start, db)
+    return {"stats": stats}
 
 
 # ---------------------------------------------------------------------------
