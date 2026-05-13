@@ -56,6 +56,7 @@ export function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): Dash
     last_message_at: room.last_message_at,
     last_sender_name: room.last_sender_name,
     allow_human_send: room.allow_human_send ?? undefined,
+    members_preview: room.members_preview ?? undefined,
     peer_type: isOwnerChatRoom(room.room_id) ? "agent" : inferPeerTypeForOwnedAgentRoom(room),
     _originAgent: origin ?? undefined,
   };

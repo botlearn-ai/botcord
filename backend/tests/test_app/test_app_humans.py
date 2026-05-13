@@ -294,6 +294,16 @@ async def test_list_owned_agent_rooms_excludes_current_human_rooms(
         message_policy=MessagePolicy.open,
         user_id=seed["user_id"],
     )
+    peer_agent = Agent(
+        agent_id="ag_peer000001",
+        display_name="Peer Bot",
+        message_policy=MessagePolicy.open,
+    )
+    third_agent = Agent(
+        agent_id="ag_third00001",
+        display_name="Third Bot",
+        message_policy=MessagePolicy.open,
+    )
     included = Room(
         room_id="rm_bot_only",
         name="Bot Only",
@@ -321,12 +331,24 @@ async def test_list_owned_agent_rooms_excludes_current_human_rooms(
         visibility=RoomVisibility.private,
         join_policy=RoomJoinPolicy.invite_only,
     )
-    db_session.add_all([agent, included, human_member, human_owner])
+    db_session.add_all([agent, peer_agent, third_agent, included, human_member, human_owner])
     await db_session.flush()
     db_session.add_all([
         RoomMember(
             room_id="rm_bot_only",
             agent_id="ag_alice00001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id="rm_bot_only",
+            agent_id="ag_peer000001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id="rm_bot_only",
+            agent_id="ag_third00001",
             participant_type=ParticipantType.agent,
             role=RoomRole.member,
         ),
@@ -360,6 +382,12 @@ async def test_list_owned_agent_rooms_excludes_current_human_rooms(
     assert [room["room_id"] for room in rooms] == ["rm_bot_only"]
     assert rooms[0]["bots"] == [
         {"agent_id": "ag_alice00001", "display_name": "Alice Bot", "role": "member"}
+    ]
+    assert rooms[0]["member_count"] == 3
+    assert rooms[0]["members_preview"] == [
+        {"agent_id": "ag_alice00001", "avatar_url": None, "display_name": "Alice Bot"},
+        {"agent_id": "ag_peer000001", "avatar_url": None, "display_name": "Peer Bot"},
+        {"agent_id": "ag_third00001", "avatar_url": None, "display_name": "Third Bot"},
     ]
 
 
