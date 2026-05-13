@@ -276,6 +276,7 @@ export default function Sidebar({
   const secondaryPanelLoading = Boolean(
     uiStore.pendingPrimaryNavigation && uiStore.pendingPrimaryNavigation.tab === uiStore.sidebarTab,
   );
+  const showMessagesGrouping = uiStore.sidebarTab === "messages" && !isGuest && uiStore.messagesGroupingOpen;
 
   useEffect(() => {
     const prefetch = (path: string) => {
@@ -496,7 +497,7 @@ export default function Sidebar({
             : "max-md:!w-full"
         }`}
         style={{
-          width: uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen
+          width: showMessagesGrouping
             ? uiStore.sidebarWidth + 200
             : uiStore.sidebarWidth,
           minWidth: SIDEBAR_MIN,
@@ -546,7 +547,7 @@ export default function Sidebar({
 
         {/* Panel content */}
         <div className="flex flex-1 min-h-0">
-          {!secondaryPanelLoading && uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen && (
+          {!secondaryPanelLoading && showMessagesGrouping && (
             <MessagesGroupingSidebar />
           )}
           <div className="flex-1 overflow-y-auto">

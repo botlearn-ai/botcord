@@ -121,7 +121,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
       {/* Column header — peer-level to MessagesGroupingSidebar's header */}
       <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          {!messagesGroupingOpen ? (
+          {!isGuest && !messagesGroupingOpen ? (
             <button
               onClick={() => setMessagesGroupingOpen(true)}
               title="展开分组"
