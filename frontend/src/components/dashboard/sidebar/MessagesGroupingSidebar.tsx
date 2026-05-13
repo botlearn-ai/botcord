@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "nextjs-toploader/app";
 import { Bot, ChevronDown, ChevronRight, ChevronsLeft, Eye, Inbox, User, Users, UsersRound } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -31,6 +32,7 @@ const BOTS_ROWS: FilterRow[] = [
 ];
 
 export default function MessagesGroupingSidebar() {
+  const router = useRouter();
   const { ownedAgents, token, humanRooms } = useDashboardSessionStore(
     useShallow((s) => ({
       ownedAgents: s.ownedAgents,
@@ -45,10 +47,22 @@ export default function MessagesGroupingSidebar() {
       ownedAgentRooms: s.ownedAgentRooms,
     })),
   );
-  const { messagesFilter, setMessagesFilter, setMessagesGroupingOpen } = useDashboardUIStore(
+  const {
+    messagesFilter,
+    setFocusedRoomId,
+    setMessagesFilter,
+    setMessagesPane,
+    setOpenedRoomId,
+    setOpenedTopicId,
+    setMessagesGroupingOpen,
+  } = useDashboardUIStore(
     useShallow((s) => ({
       messagesFilter: s.messagesFilter,
+      setFocusedRoomId: s.setFocusedRoomId,
       setMessagesFilter: s.setMessagesFilter,
+      setMessagesPane: s.setMessagesPane,
+      setOpenedRoomId: s.setOpenedRoomId,
+      setOpenedTopicId: s.setOpenedTopicId,
       setMessagesGroupingOpen: s.setMessagesGroupingOpen,
     })),
   );
@@ -62,6 +76,15 @@ export default function MessagesGroupingSidebar() {
 
   const [selfOpen, setSelfOpen] = useState(true);
   const [botsOpen, setBotsOpen] = useState(true);
+  const selectFilter = (filter: MessagesFilterKey) => {
+    if (messagesFilter === filter) return;
+    setMessagesFilter(filter);
+    setMessagesPane("room");
+    setFocusedRoomId(null);
+    setOpenedRoomId(null);
+    setOpenedTopicId(null);
+    router.push("/chats/messages");
+  };
 
   return (
     <div className="flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border bg-deep-black/50">
@@ -94,7 +117,7 @@ export default function MessagesGroupingSidebar() {
                 row={row}
                 count={counts[row.key]}
                 active={messagesFilter === row.key}
-                onClick={() => setMessagesFilter(row.key)}
+                onClick={() => selectFilter(row.key)}
               />
             ))}
           </div>
@@ -118,7 +141,7 @@ export default function MessagesGroupingSidebar() {
                 row={row}
                 count={counts[row.key]}
                 active={messagesFilter === row.key}
-                onClick={() => setMessagesFilter(row.key)}
+                onClick={() => selectFilter(row.key)}
               />
             ))}
           </div>
