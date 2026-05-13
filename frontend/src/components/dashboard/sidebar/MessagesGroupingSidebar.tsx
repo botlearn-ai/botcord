@@ -49,18 +49,22 @@ export default function MessagesGroupingSidebar() {
   );
   const {
     messagesFilter,
+    messagesShowRequests,
     setFocusedRoomId,
     setMessagesFilter,
     setMessagesPane,
+    setMessagesShowRequests,
     setOpenedRoomId,
     setOpenedTopicId,
     setMessagesGroupingOpen,
   } = useDashboardUIStore(
     useShallow((s) => ({
       messagesFilter: s.messagesFilter,
+      messagesShowRequests: s.messagesShowRequests,
       setFocusedRoomId: s.setFocusedRoomId,
       setMessagesFilter: s.setMessagesFilter,
       setMessagesPane: s.setMessagesPane,
+      setMessagesShowRequests: s.setMessagesShowRequests,
       setOpenedRoomId: s.setOpenedRoomId,
       setOpenedTopicId: s.setOpenedTopicId,
       setMessagesGroupingOpen: s.setMessagesGroupingOpen,
@@ -77,6 +81,7 @@ export default function MessagesGroupingSidebar() {
   const [selfOpen, setSelfOpen] = useState(true);
   const [botsOpen, setBotsOpen] = useState(true);
   const selectFilter = (filter: MessagesFilterKey) => {
+    setMessagesShowRequests(false);
     if (messagesFilter === filter) return;
     setMessagesFilter(filter);
     setMessagesPane("room");
@@ -116,7 +121,7 @@ export default function MessagesGroupingSidebar() {
                 key={row.key}
                 row={row}
                 count={counts[row.key]}
-                active={messagesFilter === row.key}
+                active={messagesFilter === row.key && !messagesShowRequests}
                 onClick={() => selectFilter(row.key)}
               />
             ))}
@@ -140,12 +145,13 @@ export default function MessagesGroupingSidebar() {
                 key={row.key}
                 row={row}
                 count={counts[row.key]}
-                active={messagesFilter === row.key}
+                active={messagesFilter === row.key && !messagesShowRequests}
                 onClick={() => selectFilter(row.key)}
               />
             ))}
           </div>
         ) : null}
+
       </div>
     </div>
   );

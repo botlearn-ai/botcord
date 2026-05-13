@@ -12,7 +12,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Bell, Info, Loader2, PanelLeftOpen, Settings, Share2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Info, Loader2, PanelLeftOpen, Settings, Share2, UserPlus, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -22,7 +22,6 @@ import SubscriptionBadge from "./SubscriptionBadge";
 import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
-import RoomPolicyModal from "./RoomPolicyModal";
 import AddRoomMemberModal from "./AddRoomMemberModal";
 import { dmPeerId, resolveDmDisplayName } from "./dmRoom";
 
@@ -34,7 +33,6 @@ export default function RoomHeader() {
   const [showRulePopover, setShowRulePopover] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [addMemberExistingIds, setAddMemberExistingIds] = useState<string[]>([]);
   const [addMemberLoading, setAddMemberLoading] = useState(false);
@@ -445,19 +443,6 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
             </span>
           )}
-          {isAuthedReady && activeAgentId && isJoined && !isOwnerChatRoom && (
-            <span className="group relative">
-              <button
-                onClick={() => setShowPolicyModal(true)}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-neon-cyan/35 bg-neon-cyan/10 px-2.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-60 max-md:h-8 max-md:px-2 max-md:text-[11px]"
-                aria-label="本房间回复策略"
-              >
-                <Bell className="h-4 w-4 max-md:h-3.5 max-md:w-3.5" />
-                <span>本房间回复</span>
-              </button>
-              <span className={tooltipCls}>本房间回复策略</span>
-            </span>
-          )}
           {!isOwnerChatRoom && (
             <span className="group relative">
               <button
@@ -517,15 +502,7 @@ export default function RoomHeader() {
         />
       )}
 
-      {showPolicyModal && activeAgentId && openedRoomId && (
-        <RoomPolicyModal
-          agentId={activeAgentId}
-          roomId={openedRoomId}
-          onClose={() => setShowPolicyModal(false)}
-        />
-      )}
-
-      {showAddMemberModal && room?.room_id && (
+{showAddMemberModal && room?.room_id && (
         <AddRoomMemberModal
           roomId={room.room_id}
           existingMemberIds={addMemberExistingIds}

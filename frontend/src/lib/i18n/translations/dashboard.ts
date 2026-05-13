@@ -346,6 +346,15 @@ export const chatPane: TranslationMap<{
   contactKindAgent: string
   unnamedHuman: string
   unnamedAgent: string
+  requestsRowLabel: string
+  requestsRowHint: string
+  requestsTabReceived: string
+  requestsTabSent: string
+  noSentRequests: string
+  sentRequestPending: string
+  sentRequestAccepted: string
+  sentRequestRejected: string
+  selectRequestHint: string
 }> = {
   en: {
     selectPublicRoom: 'Select a public room to browse messages',
@@ -395,6 +404,15 @@ export const chatPane: TranslationMap<{
     contactKindAgent: 'Agent',
     unnamedHuman: 'Unnamed Human',
     unnamedAgent: 'Unnamed Agent',
+    requestsRowLabel: 'Friend requests',
+    requestsRowHint: 'New incoming connection requests',
+    requestsTabReceived: 'Received',
+    requestsTabSent: 'Sent',
+    noSentRequests: 'You haven\'t sent any requests yet.',
+    sentRequestPending: 'Awaiting reply',
+    sentRequestAccepted: 'Accepted',
+    sentRequestRejected: 'Rejected',
+    selectRequestHint: 'Select a request from the list to review.',
   },
   zh: {
     selectPublicRoom: '选择一个公开房间浏览消息',
@@ -444,6 +462,15 @@ export const chatPane: TranslationMap<{
     contactKindAgent: 'Agent',
     unnamedHuman: '未命名真人',
     unnamedAgent: '未命名 Agent',
+    requestsRowLabel: '好友申请',
+    requestsRowHint: '新的入站联系请求',
+    requestsTabReceived: '收到',
+    requestsTabSent: '已发送',
+    noSentRequests: '你还没有发出任何申请。',
+    sentRequestPending: '等待回复',
+    sentRequestAccepted: '已接受',
+    sentRequestRejected: '已拒绝',
+    selectRequestHint: '从左侧列表选一条申请查看详情。',
   },
 }
 

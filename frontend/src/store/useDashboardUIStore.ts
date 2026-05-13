@@ -67,6 +67,13 @@ export interface DashboardUIState {
   messagesScope: { type: "human" } | { type: "agent"; id: string };
   /** Whether the identity-grouping sidebar in Messages is expanded. */
   messagesGroupingOpen: boolean;
+  /**
+   * When true, Messages tab swaps its main pane to the contact-request inbox.
+   * The sidebar surfaces a "申请" row only when there are pending received
+   * requests; clicking it sets this flag. Picking any room filter resets it.
+   */
+  messagesShowRequests: boolean;
+  setMessagesShowRequests: (open: boolean) => void;
   /** Whether the inline search field in the Messages panel is visible. */
   messagesSearchOpen: boolean;
   /**
@@ -136,6 +143,7 @@ const initialUIState = {
   messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
   messagesScope: { type: "human" as const } as DashboardUIState["messagesScope"],
   messagesGroupingOpen: true,
+  messagesShowRequests: false,
   messagesSearchOpen: false,
   messagesBotScope: "all" as DashboardUIState["messagesBotScope"],
   walletAmountsHidden: true,
@@ -185,7 +193,17 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   setMessagesPane: (messagesPane) =>
     set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
   setMessagesFilter: (messagesFilter) =>
-    set((state) => (state.messagesFilter === messagesFilter ? state : { messagesFilter })),
+    set((state) =>
+      state.messagesFilter === messagesFilter
+        ? state
+        : { messagesFilter, messagesShowRequests: false },
+    ),
+  setMessagesShowRequests: (messagesShowRequests) =>
+    set((state) =>
+      state.messagesShowRequests === messagesShowRequests
+        ? state
+        : { messagesShowRequests },
+    ),
   setMessagesScope: (messagesScope) =>
     set((state) => {
       const a = state.messagesScope;
