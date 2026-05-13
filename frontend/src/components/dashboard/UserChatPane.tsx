@@ -91,6 +91,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const roomId = useOwnerChatStore((s) => s.roomId);
 
   const [chatRoomName, setChatRoomName] = useState("");
+  const [initializingRoom, setInitializingRoom] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
@@ -118,6 +119,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     // Reset store for fresh agent
     setInitError(null);
     setChatRoomName("");
+    setInitializingRoom(true);
     initialLoadRef.current = true;
     prevLengthRef.current = 0;
     animatedRef.current.clear();
@@ -142,6 +144,8 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
       } catch (err: any) {
         if (cancelled) return;
         setInitError(err?.message || "Failed to initialize chat");
+      } finally {
+        if (!cancelled) setInitializingRoom(false);
       }
     })();
 
@@ -282,7 +286,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     );
   }
 
-  if (loading) {
+  if (initializingRoom || loading) {
     return (
       <DashboardMessagePaneSkeleton
         headerIcon={<MessageSquare className="h-4 w-4" />}

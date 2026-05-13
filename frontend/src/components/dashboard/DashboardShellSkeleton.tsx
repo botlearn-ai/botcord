@@ -8,6 +8,7 @@
  */
 
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
+import { Bot, Home, LogIn, MessageSquare, Search, UserRound, Wallet } from "lucide-react";
 
 function SkeletonLine({ className }: { className: string }) {
   return <div className={`dashboard-skeleton-block rounded ${className}`} />;
@@ -28,45 +29,18 @@ function SkeletonRoomList() {
 
 export default function DashboardShellSkeleton() {
   const primaryNav = [
-    { key: "messages", active: true },
-    { key: "contacts", active: false },
-    { key: "explore", active: false },
-    { key: "wallet", active: false },
+    { key: "home", label: "Home", icon: <Home className="h-5 w-5" strokeWidth={1.5} />, active: false },
+    { key: "messages", label: "Messages", icon: <MessageSquare className="h-5 w-5" strokeWidth={1.5} />, active: true },
+    { key: "bots", label: "My Bots", icon: <Bot className="h-5 w-5" strokeWidth={1.5} />, active: false },
+    { key: "contacts", label: "Contacts", icon: <UserRound className="h-5 w-5" strokeWidth={1.5} />, active: false },
+    { key: "explore", label: "Explore", icon: <Search className="h-5 w-5" strokeWidth={1.5} />, active: false },
+    { key: "wallet", label: "Wallet", icon: <Wallet className="h-5 w-5" strokeWidth={1.5} />, active: false },
   ] as const;
 
-  const navIcon = (key: (typeof primaryNav)[number]["key"]) => {
-    if (key === "messages") {
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
-        </svg>
-      );
-    }
-    if (key === "contacts") {
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-        </svg>
-      );
-    }
-    if (key === "explore") {
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607Z" />
-        </svg>
-      );
-    }
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
-      </svg>
-    );
-  };
-
   return (
-    <div className="relative flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_42%),linear-gradient(180deg,_rgba(6,11,19,0.98),_rgba(2,6,12,1))]">
-      <div className="flex h-full w-[324px] min-w-[324px] border-r border-glass-border bg-deep-black-light">
-        <div className="flex h-full w-16 min-w-[64px] flex-col items-center py-3">
+    <div className="relative flex h-screen overflow-hidden bg-deep-black">
+      <div className="flex h-full w-[624px] min-w-[624px] bg-deep-black-light">
+        <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3">
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light">
             <img src="/logo.svg" alt="BotCord" className="h-6 w-6 opacity-80" />
           </div>
@@ -80,24 +54,56 @@ export default function DashboardShellSkeleton() {
                     : "text-text-secondary"
                 }`}
               >
-                {item.active && (
-                  <div className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-neon-cyan" />
-                )}
-                {navIcon(item.key)}
+                {item.icon}
+                <span className="mt-0.5 max-w-full truncate text-[9px] font-medium leading-none">{item.label}</span>
               </div>
             ))}
           </div>
           <div className="mt-3 flex h-10 w-12 items-center justify-center rounded-xl border border-glass-border bg-deep-black/50 text-text-secondary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m-6 0 3 3m0 0 3-3m-3 3V9" />
-            </svg>
+            <LogIn className="h-5 w-5" strokeWidth={1.5} />
           </div>
         </div>
 
-        <div className="flex h-full min-w-0 flex-1 flex-col">
-          <div className="border-b border-glass-border px-4 py-3">
-            <SkeletonLine className="h-4 w-24" />
-            <SkeletonLine className="mt-2 h-3 w-32 bg-glass-border/40" />
+        <div className="flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border bg-deep-black/50">
+          <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
+            <SkeletonLine className="h-3.5 w-3.5 bg-glass-border/50" />
+          </div>
+          <div className="flex-1 py-2">
+            <div className="px-3 py-2">
+              <SkeletonLine className="h-3 w-28" />
+              <SkeletonLine className="mt-2 h-2.5 w-20 bg-glass-border/40" />
+            </div>
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <div key={`self-${idx}`} className="flex items-center gap-2 py-1.5 pl-[28px] pr-3">
+                <SkeletonLine className="h-3.5 w-3.5 bg-glass-border/45" />
+                <SkeletonLine className="h-3 w-20 bg-glass-border/45" />
+                <SkeletonLine className="ml-auto h-4 w-6 rounded-full bg-glass-border/40" />
+              </div>
+            ))}
+            <div className="my-2 border-t border-glass-border/40" />
+            <div className="px-3 py-2">
+              <SkeletonLine className="h-3 w-20" />
+              <SkeletonLine className="mt-2 h-2.5 w-28 bg-glass-border/40" />
+            </div>
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div key={`bots-${idx}`} className="flex items-center gap-2 py-1.5 pl-[28px] pr-3">
+                <SkeletonLine className="h-3.5 w-3.5 bg-glass-border/45" />
+                <SkeletonLine className="h-3 w-24 bg-glass-border/45" />
+                <SkeletonLine className="ml-auto h-4 w-6 rounded-full bg-glass-border/40" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex h-full min-w-0 flex-1 flex-col border-r border-glass-border">
+          <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
+            <span className="text-sm font-semibold text-text-primary">Messages</span>
+            <div className="flex items-center gap-3 text-text-secondary">
+              <Search className="h-4 w-4" />
+              <UserRound className="h-4 w-4" />
+              <MessageSquare className="h-4 w-4" />
+            </div>
           </div>
           <SkeletonRoomList />
         </div>
