@@ -74,7 +74,7 @@ export function mergeOwnerVisibleRooms({ ownedAgentRooms, ownRooms }: MergeOpts)
 /**
  * Messages filter taxonomy. Two parent buckets — "self" (I am the participant)
  * and "bots" (one of my owned bots is the participant; I observe). Each parent
- * has an `*-all` private-chat aggregate that's the default leaf inside it.
+ * has an `*-all` aggregate that's the default leaf inside it.
  *
  * Important: this is a pure **filter** over a single unified data set —
  * NOT a role-switch. The owner identity never changes; whether a conversation
@@ -162,10 +162,10 @@ export function applyMessagesFilter(
   ownedAgentIds: Set<string>,
 ): import("@/lib/types").DashboardRoom[] {
   if (filter === "self-all") {
-    return rooms.filter((r) => !r._originAgent && isPrivateMessageRoom(r));
+    return rooms.filter((r) => !r._originAgent);
   }
   if (filter === "bots-all") {
-    return rooms.filter((r) => !!r._originAgent && isPrivateMessageRoom(r));
+    return rooms.filter((r) => !!r._originAgent);
   }
   return rooms.filter((r) => classifyMessagesRoom(r, ownedAgentIds) === filter);
 }
@@ -189,8 +189,8 @@ export function countMessagesByFilter(
   for (const room of rooms) {
     const key = classifyMessagesRoom(room, ownedAgentIds);
     counts[key] += 1;
-    if (key.startsWith("self-") && key !== "self-group") counts["self-all"] += 1;
-    else if (key.startsWith("bots-") && key !== "bots-group") counts["bots-all"] += 1;
+    if (key.startsWith("self-")) counts["self-all"] += 1;
+    else if (key.startsWith("bots-")) counts["bots-all"] += 1;
   }
   return counts;
 }

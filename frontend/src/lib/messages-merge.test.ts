@@ -82,7 +82,7 @@ describe("messages merge filters", () => {
     ).toEqual([ownRoom.room_id]);
   });
 
-  it("keeps non-DM rooms out of private-chat buckets even when they have two members", () => {
+  it("keeps non-DM rooms out of private-chat child buckets but includes them in all buckets", () => {
     const ownGroup = makeRoom({
       room_id: "rm_small_room",
       name: "Small room",
@@ -98,20 +98,24 @@ describe("messages merge filters", () => {
     const rooms = [ownGroup, botGroup];
     const ownedAgentIds = new Set(["ag_bot"]);
 
-    expect(applyMessagesFilter(rooms, "self-all", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "self-all", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_small_room",
+    ]);
     expect(applyMessagesFilter(rooms, "self-my-bot", ownedAgentIds)).toEqual([]);
     expect(applyMessagesFilter(rooms, "self-group", ownedAgentIds).map((room) => room.room_id)).toEqual([
       "rm_small_room",
     ]);
-    expect(applyMessagesFilter(rooms, "bots-all", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "bots-all", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_bot_small_room",
+    ]);
     expect(applyMessagesFilter(rooms, "bots-bot-bot", ownedAgentIds)).toEqual([]);
     expect(applyMessagesFilter(rooms, "bots-group", ownedAgentIds).map((room) => room.room_id)).toEqual([
       "rm_bot_small_room",
     ]);
     expect(countMessagesByFilter(rooms, ownedAgentIds)).toMatchObject({
-      "self-all": 0,
+      "self-all": 1,
       "self-group": 1,
-      "bots-all": 0,
+      "bots-all": 1,
       "bots-group": 1,
     });
   });

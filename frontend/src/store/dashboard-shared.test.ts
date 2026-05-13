@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DashboardOverview, HumanRoomSummary, PublicRoom } from "@/lib/types";
+import type { DashboardOverview, DashboardRoom, HumanRoomSummary, PublicRoom } from "@/lib/types";
 import {
   buildVisibleMessageRooms,
   humanRoomToDashboardRoom,
@@ -131,6 +131,61 @@ describe("mergeDashboardRoomsWithHumanRooms", () => {
     expect(room.peer_type).toBe("human");
     expect(applyMessagesFilter([room], "self-human", new Set()).map((r) => r.room_id)).toEqual([
       "rm_dm_hu_1_hu_2",
+    ]);
+  });
+});
+
+describe("applyMessagesFilter", () => {
+  function makeDashboardRoom(overrides: Partial<DashboardRoom>): DashboardRoom {
+    return {
+      room_id: "rm_dm_hu_1_ag_1",
+      name: "Room",
+      description: "",
+      owner_id: "hu_1",
+      visibility: "private",
+      member_count: 2,
+      my_role: "member",
+      rule: null,
+      has_unread: false,
+      last_message_preview: null,
+      last_message_at: null,
+      last_sender_name: null,
+      ...overrides,
+    };
+  }
+
+  it("shows all self conversations, including groups, in the self-all filter", () => {
+    const selfDm = makeDashboardRoom({ room_id: "rm_dm_hu_1_ag_1" });
+    const selfGroup = makeDashboardRoom({ room_id: "rm_group_self", member_count: 3 });
+    const observedBotGroup = makeDashboardRoom({
+      room_id: "rm_group_bot",
+      member_count: 3,
+      _originAgent: { agent_id: "ag_owned", display_name: "Owned Bot" },
+    });
+
+    expect(applyMessagesFilter([selfDm, selfGroup, observedBotGroup], "self-all", new Set()).map((r) => r.room_id)).toEqual([
+      "rm_dm_hu_1_ag_1",
+      "rm_group_self",
+    ]);
+  });
+
+  it("shows all observed bot conversations, including groups, in the bots-all filter", () => {
+    const selfGroup = makeDashboardRoom({ room_id: "rm_group_self", member_count: 3 });
+    const observedBotDm = makeDashboardRoom({
+      room_id: "rm_dm_ag_owned_ag_2",
+      owner_id: "ag_owned",
+      _originAgent: { agent_id: "ag_owned", display_name: "Owned Bot" },
+    });
+    const observedBotGroup = makeDashboardRoom({
+      room_id: "rm_group_bot",
+      owner_id: "ag_owned",
+      member_count: 3,
+      _originAgent: { agent_id: "ag_owned", display_name: "Owned Bot" },
+    });
+
+    expect(applyMessagesFilter([selfGroup, observedBotDm, observedBotGroup], "bots-all", new Set()).map((r) => r.room_id)).toEqual([
+      "rm_dm_ag_owned_ag_2",
+      "rm_group_bot",
     ]);
   });
 });
