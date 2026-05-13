@@ -157,6 +157,37 @@ describe("messages merge filters", () => {
     ]);
     expect(applyMessagesFilter([room], "bots-bot-bot", ownedAgentIds)).toEqual([]);
   });
+
+  it("classifies owner-chat rm_oc rooms as my own bot conversations", () => {
+    const rooms = mergeOwnerVisibleRooms({
+      ownRooms: [],
+      ownedAgentRooms: [
+        makeOwnedAgentRoom({
+          room_id: "rm_oc_abc123",
+          name: "My Bot",
+          owner_id: "ag_bot",
+          member_count: 1,
+          bots: [{ agent_id: "ag_bot", display_name: "My Bot", role: "owner" }],
+        }),
+      ],
+    });
+    const ownedAgentIds = new Set(["ag_bot"]);
+
+    expect(applyMessagesFilter(rooms, "self-my-bot", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_oc_abc123",
+    ]);
+    expect(applyMessagesFilter(rooms, "self-all", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_oc_abc123",
+    ]);
+    expect(applyMessagesFilter(rooms, "bots-all", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "bots-group", ownedAgentIds)).toEqual([]);
+    expect(countMessagesByFilter(rooms, ownedAgentIds)).toMatchObject({
+      "self-all": 1,
+      "self-my-bot": 1,
+      "bots-all": 0,
+      "bots-group": 0,
+    });
+  });
 });
 
 describe("mergeOwnerVisibleRooms", () => {

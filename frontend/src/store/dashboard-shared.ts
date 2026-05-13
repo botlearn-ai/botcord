@@ -63,8 +63,8 @@ export function compareRoomsByActivityDesc<T extends RoomActivityLike>(a: T, b: 
   return getRoomActivityTimestamp(b) - getRoomActivityTimestamp(a);
 }
 
-/** Owner-chat rooms (rm_oc_*) are shown via the dedicated UserChatPane entry, not the room list. */
-function isOwnerChatRoom(roomId: string): boolean {
+/** Owner-chat rooms (rm_oc_*) are shown via the dedicated UserChatPane entry. */
+export function isOwnerChatRoom(roomId: string): boolean {
   return roomId.startsWith("rm_oc_");
 }
 
