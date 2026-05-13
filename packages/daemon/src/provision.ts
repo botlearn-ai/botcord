@@ -286,10 +286,22 @@ export function createProvisioner(opts: ProvisionerOptions): (
         const roomId = typeof params.room_id === "string" ? params.room_id : undefined;
         if (params.policy) {
           // Embedded policy payload — install directly to avoid a refetch.
+          const embeddedPolicy = params.policy as unknown as {
+            mode?: string;
+            allowedSenderIds?: unknown;
+          };
           policyResolver.put(agentId, roomId ?? null, {
-            mode: params.policy.mode,
+            mode:
+              embeddedPolicy.mode === "allowed_senders"
+                ? "allowed_senders"
+                : params.policy.mode,
             keywords: Array.isArray(params.policy.keywords)
               ? params.policy.keywords.slice()
+              : [],
+            allowedSenderIds: Array.isArray(embeddedPolicy.allowedSenderIds)
+              ? embeddedPolicy.allowedSenderIds.filter(
+                  (id): id is string => typeof id === "string",
+                )
               : [],
             ...(typeof params.policy.muted_until === "number"
               ? { muted_until: params.policy.muted_until }

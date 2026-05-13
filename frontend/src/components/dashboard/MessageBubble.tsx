@@ -186,7 +186,7 @@ function MentionChip({
   };
 
   return (
-    <span className="inline-flex align-baseline">
+    <span className="inline align-baseline">
       <button
         ref={triggerRef}
         type="button"
@@ -199,16 +199,9 @@ function MentionChip({
           handleClick();
         }}
         disabled={!canOpen}
-        className="inline-flex max-w-full items-center gap-1 rounded border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-0.5 text-[0.85em] font-medium leading-none text-neon-cyan transition-colors hover:border-neon-cyan/50 hover:bg-neon-cyan/20 disabled:cursor-default"
+        className="inline max-w-full rounded-none border-0 bg-transparent p-0 align-baseline font-medium leading-[inherit] text-neon-cyan underline decoration-neon-cyan/45 underline-offset-2 transition-colors hover:text-neon-cyan/80 hover:decoration-neon-cyan disabled:cursor-default"
       >
-        <span className="inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center">
-          {isAgent ? (
-            <PresenceDot agentId={id} size="xs" showOffline={false} />
-          ) : isHuman ? (
-            <User className="h-2.5 w-2.5" />
-          ) : null}
-        </span>
-        <span className="truncate">{prefix}{displayName}</span>
+        {prefix}{displayName}
       </button>
       {tooltipPosition && typeof document !== "undefined" && createPortal(
         <span

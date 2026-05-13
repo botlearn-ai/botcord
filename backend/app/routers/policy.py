@@ -22,7 +22,7 @@ from app.auth import RequestContext, require_user
 from hub.database import get_db
 from hub.enums import AttentionMode, ContactPolicy, MessagePolicy, RoomInvitePolicy
 from hub.i18n import I18nHTTPException
-from hub.models import Agent, AgentRoomPolicyOverride, Room
+from hub.models import Agent, AgentRoomPolicyOverride, Room, RoomMember
 from hub.policy import EffectiveAttention, resolve_effective_attention
 from hub.routers.daemon_control import is_daemon_online, send_control_frame
 
@@ -33,7 +33,8 @@ router = APIRouter(prefix="/api/agents", tags=["app-policy"])
 
 ContactPolicyLit = Literal["open", "contacts_only", "whitelist", "closed"]
 RoomInviteLit = Literal["open", "contacts_only", "closed"]
-AttentionLit = Literal["always", "mention_only", "keyword", "muted"]
+DefaultAttentionLit = Literal["always", "mention_only", "keyword", "muted"]
+AttentionLit = Literal["always", "mention_only", "keyword", "allowed_senders", "muted"]
 
 
 class AgentPolicyOut(BaseModel):
@@ -41,7 +42,7 @@ class AgentPolicyOut(BaseModel):
     allow_agent_sender: bool
     allow_human_sender: bool
     room_invite_policy: RoomInviteLit
-    default_attention: AttentionLit
+    default_attention: DefaultAttentionLit
     attention_keywords: list[str]
 
 
@@ -50,7 +51,7 @@ class AgentPolicyPatch(BaseModel):
     allow_agent_sender: bool | None = None
     allow_human_sender: bool | None = None
     room_invite_policy: RoomInviteLit | None = None
-    default_attention: AttentionLit | None = None
+    default_attention: DefaultAttentionLit | None = None
     attention_keywords: list[str] | None = Field(default=None, max_length=64)
 
     @field_validator("attention_keywords")
@@ -240,6 +241,27 @@ async def _ensure_room_exists(db: AsyncSession, room_id: str) -> Room:
     return room
 
 
+async def _validate_allowed_senders(
+    db: AsyncSession,
+    *,
+    room_id: str,
+    sender_ids: list[str] | None,
+) -> list[str] | None:
+    if sender_ids is None:
+        return None
+    result = await db.execute(
+        select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
+    )
+    room_member_ids = {str(row[0]) for row in result.all()}
+    invalid = [sender_id for sender_id in sender_ids if sender_id not in room_member_ids]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"allowed_sender_ids must be room members: {', '.join(invalid[:5])}",
+        )
+    return sender_ids
+
+
 async def _load_override(
     db: AsyncSession, agent_id: str, room_id: str
 ) -> AgentRoomPolicyOverride | None:
@@ -255,6 +277,7 @@ async def _load_override(
 class EffectiveAttentionOut(BaseModel):
     mode: AttentionLit
     keywords: list[str]
+    allowed_sender_ids: list[str]
     muted_until: datetime.datetime | None
     source: Literal["global", "override", "dm_forced"]
 
@@ -262,6 +285,7 @@ class EffectiveAttentionOut(BaseModel):
 class RoomOverrideOut(BaseModel):
     attention_mode: AttentionLit | None
     keywords: list[str] | None
+    allowed_sender_ids: list[str] | None
     muted_until: datetime.datetime | None
     updated_at: datetime.datetime
 
@@ -281,6 +305,7 @@ class RoomPolicyPut(BaseModel):
 
     attention_mode: AttentionLit | None = None
     keywords: list[str] | None = Field(default=None, max_length=64)
+    allowed_sender_ids: list[str] | None = Field(default=None, max_length=256)
 
     @field_validator("keywords")
     @classmethod
@@ -299,6 +324,27 @@ class RoomPolicyPut(BaseModel):
             cleaned.append(kw)
         return cleaned
 
+    @field_validator("allowed_sender_ids")
+    @classmethod
+    def _validate_allowed_sender_ids(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for sender_id in v:
+            if not isinstance(sender_id, str):
+                raise ValueError("sender id must be a string")
+            sender_id = sender_id.strip()
+            if not sender_id:
+                continue
+            if len(sender_id) > 64:
+                raise ValueError("sender id too long (max 64 chars)")
+            if sender_id in seen:
+                continue
+            seen.add(sender_id)
+            cleaned.append(sender_id)
+        return cleaned
+
 
 class SnoozeIn(BaseModel):
     minutes: int = Field(..., ge=0, le=43200)  # 0 clears; max 30 days
@@ -312,6 +358,7 @@ def _wire_policy(eff: EffectiveAttention) -> dict:
     payload: dict = {
         "mode": eff.mode.value if hasattr(eff.mode, "value") else str(eff.mode),
         "keywords": list(eff.keywords),
+        "allowedSenderIds": list(eff.allowed_sender_ids),
     }
     if eff.muted_until is not None:
         payload["muted_until"] = int(eff.muted_until.timestamp() * 1000)
@@ -322,6 +369,7 @@ def _serialize_effective(eff: EffectiveAttention) -> EffectiveAttentionOut:
     return EffectiveAttentionOut(
         mode=eff.mode.value,  # type: ignore[arg-type]
         keywords=list(eff.keywords),
+        allowed_sender_ids=list(eff.allowed_sender_ids),
         muted_until=eff.muted_until,
         source=eff.source,
     )
@@ -351,9 +399,23 @@ def _serialize_override(row: AgentRoomPolicyOverride) -> RoomOverrideOut:
             )
         except json.JSONDecodeError:
             keywords = []
+    allowed_sender_ids: list[str] | None
+    if row.allowed_sender_ids is None:
+        allowed_sender_ids = None
+    else:
+        try:
+            parsed = json.loads(row.allowed_sender_ids)
+            allowed_sender_ids = (
+                [str(x) for x in parsed if isinstance(x, str)]
+                if isinstance(parsed, list)
+                else []
+            )
+        except json.JSONDecodeError:
+            allowed_sender_ids = []
     return RoomOverrideOut(
         attention_mode=mode_value,
         keywords=keywords,
+        allowed_sender_ids=allowed_sender_ids,
         muted_until=row.muted_until,
         updated_at=row.updated_at,
     )
@@ -414,6 +476,17 @@ async def put_room_policy(
     if "keywords" in fields_set:
         override.keywords = (
             json.dumps(body.keywords) if body.keywords is not None else None
+        )
+    if "allowed_sender_ids" in fields_set:
+        allowed_sender_ids = await _validate_allowed_senders(
+            db,
+            room_id=room_id,
+            sender_ids=body.allowed_sender_ids,
+        )
+        override.allowed_sender_ids = (
+            json.dumps(allowed_sender_ids)
+            if allowed_sender_ids is not None
+            else None
         )
     await db.commit()
     await db.refresh(override)

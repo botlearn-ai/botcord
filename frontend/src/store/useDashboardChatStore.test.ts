@@ -17,6 +17,9 @@ vi.mock("@/lib/api", () => ({
   },
   humansApi: {},
   getActiveAgentId: vi.fn(() => null),
+  setActiveAgentId: vi.fn(),
+  getStoredActiveIdentity: vi.fn(() => null),
+  setStoredActiveIdentity: vi.fn(),
 }));
 
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -68,10 +71,14 @@ describe("useDashboardChatStore message polling", () => {
     });
     useDashboardChatStore.setState({
       overview: makeOverview(),
+      overviewRefreshing: false,
+      overviewErrored: false,
+      error: null,
       messages: {},
       messagesLoading: {},
       messagesHasMore: {},
     });
+    useDashboardSessionStore.setState({ token: "token" });
   });
 
   it("does not refetch a room already loaded as empty when the room snapshot is unchanged", async () => {
@@ -139,5 +146,17 @@ describe("useDashboardChatStore message polling", () => {
     expect(useDashboardUIStore.getState().openedTopicId).toBeNull();
     expect(useDashboardChatStore.getState().messages.rm_empty).toBeUndefined();
     expect(mocks.getRoomMessages).not.toHaveBeenCalled();
+  });
+
+  it("does not show a global error toast when background overview refresh hits auth expiry", async () => {
+    const err = new Error("Unauthorized") as Error & { status: number };
+    err.status = 401;
+    mocks.getOverview.mockRejectedValue(err);
+
+    await useDashboardChatStore.getState().refreshOverview();
+
+    expect(useDashboardChatStore.getState().error).toBeNull();
+    expect(useDashboardChatStore.getState().overviewRefreshing).toBe(false);
+    expect(useDashboardChatStore.getState().overviewErrored).toBe(false);
   });
 });

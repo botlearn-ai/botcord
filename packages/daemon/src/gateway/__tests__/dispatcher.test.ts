@@ -1903,7 +1903,7 @@ describe("Dispatcher", () => {
     expect(channel.sends.length).toBe(0);
   });
 
-  it("non-owner-chat room: timeout reply is suppressed (logged only)", async () => {
+  it("non-owner-chat room: timeout sends a diagnostic reply", async () => {
     vi.useFakeTimers();
     try {
       const runtime = new FakeRuntime({ hang: true });
@@ -1920,13 +1920,16 @@ describe("Dispatcher", () => {
       await vi.advanceTimersByTimeAsync(501);
       await p;
       expect(runtime.calls[0].signal.aborted).toBe(true);
-      expect(channel.sends.length).toBe(0);
+      expect(channel.sends.length).toBe(1);
+      expect(channel.sends[0].message.text).toMatch(/Runtime timeout/);
+      expect(channel.sends[0].message.conversationId).toBe("rm_g_other");
+      expect(channel.sends[0].message.replyTo).toBe("m_to");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("non-owner-chat room: runtime error reply is suppressed", async () => {
+  it("non-owner-chat room: runtime error sends a diagnostic reply", async () => {
     const runtime = new FakeRuntime({ throwError: "boom" });
     const { dispatcher, channel } = await scaffold({
       runtimeFactory: () => runtime,
@@ -1937,7 +1940,10 @@ describe("Dispatcher", () => {
         conversation: { id: "rm_g_other", kind: "group" },
       }),
     );
-    expect(channel.sends.length).toBe(0);
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.text).toContain("Runtime error: boom");
+    expect(channel.sends[0].message.conversationId).toBe("rm_g_other");
+    expect(channel.sends[0].message.replyTo).toBe("m_err");
   });
 
   // ─────────────────────────────────────────────────────────────────────

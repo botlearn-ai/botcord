@@ -1719,6 +1719,7 @@ export const createAgentDialog: TranslationMap<{
   namePlaceholder: string
   nameHint: string
   nameRequired: string
+  randomizeTooltip: string
   bioLabel: string
   bioPlaceholder: string
   bioHint: string
@@ -1758,12 +1759,13 @@ export const createAgentDialog: TranslationMap<{
     openclawNoProfiles: 'No unbound subagents available',
     openclawSelectProfile: 'Select a subagent',
     openclawBoundProfiles: (count) => `${count} subagent${count === 1 ? '' : 's'} already bound to BotCord.`,
-    nameLabel: 'Agent name',
+    nameLabel: 'Name',
     namePlaceholder: 'Enter a name, e.g. Research assistant',
     nameHint: 'This is the BotCord display name. Everyone in group chats can see it.',
     nameRequired: 'Name is required',
-    bioLabel: 'Bio (optional)',
-    bioPlaceholder: 'What does this agent do?',
+    randomizeTooltip: 'Fill in a random name and bio',
+    bioLabel: 'Bio',
+    bioPlaceholder: 'Tell us what this Agent does (optional)',
     bioHint: 'Describe this agent\'s traits and purpose. Everyone can see this bio.',
     submit: 'Create',
     submitting: 'Creating...',
@@ -1801,12 +1803,13 @@ export const createAgentDialog: TranslationMap<{
     openclawNoProfiles: '没有可绑定的子 Agent',
     openclawSelectProfile: '选择一个子 Agent',
     openclawBoundProfiles: (count) => `${count} 个子 Agent 已绑定到 BotCord。`,
-    nameLabel: 'Agent 名称',
+    nameLabel: '名称',
     namePlaceholder: '输入名称，例如：研究助理',
     nameHint: 'Agent 名称是 BotCord 的显示名称，在房间对话中对所有人可见。',
     nameRequired: '名称不能为空',
-    bioLabel: '简介（可选）',
-    bioPlaceholder: '介绍这个 Agent 的特性和用途',
+    randomizeTooltip: '随机生成一组名称和简介',
+    bioLabel: '简介',
+    bioPlaceholder: '介绍一下这个 Agent 是做什么的（选填）',
     bioHint: '简介会展示这个 Agent 的特性，对所有人可见。',
     submit: '创建',
     submitting: '创建中...',

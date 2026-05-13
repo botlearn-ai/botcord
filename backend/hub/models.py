@@ -420,6 +420,9 @@ class AgentRoomPolicyOverride(Base):
     )
     # JSON-encoded list[str]; NULL means inherit from the agent default.
     keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON-encoded list[str] of room member participant IDs allowed to wake.
+    # NULL/empty both mean "no allowed senders" for allowed_senders mode.
+    allowed_sender_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     muted_until: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

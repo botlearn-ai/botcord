@@ -1244,6 +1244,7 @@ export class Dispatcher {
       // own loop-risk accounting downstream.
       const isOwnerChat = isOwnerChatRoom(msg);
       const canDeliverRuntimeText = isOwnerChat || !isBotCordChannel(channel);
+      const canDeliverRuntimeDiagnostics = canDeliverRuntimeText || isBotCordChannel(channel);
 
       if (slot.timedOut) {
         this.transcript.write({
@@ -1257,7 +1258,7 @@ export class Dispatcher {
           error: `runtime timeout after ${this.turnTimeoutMs}ms`,
           durationMs: Date.now() - slot.dispatchedAt,
         });
-        if (canDeliverRuntimeText) {
+        if (canDeliverRuntimeDiagnostics) {
           await this.sendReply(channel, {
             channel: msg.channel,
             accountId: msg.accountId,
@@ -1302,7 +1303,7 @@ export class Dispatcher {
           error: errMsg,
           durationMs: Date.now() - slot.dispatchedAt,
         });
-        if (canDeliverRuntimeText) {
+        if (canDeliverRuntimeDiagnostics) {
           await this.sendReply(channel, {
             channel: msg.channel,
             accountId: msg.accountId,
@@ -1391,7 +1392,7 @@ export class Dispatcher {
             runtime: route.runtime,
             error: result.error,
           });
-          if (canDeliverRuntimeText) {
+          if (canDeliverRuntimeDiagnostics) {
             const sendResult = await this.sendReply(channel, {
               channel: msg.channel,
               accountId: msg.accountId,

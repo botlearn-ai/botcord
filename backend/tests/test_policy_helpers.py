@@ -350,6 +350,25 @@ async def test_resolver_override_partial_inherit(session):
 
 
 @pytest.mark.asyncio
+async def test_resolver_allowed_senders_override(session):
+    receiver = _agent()
+    await _add(session, receiver)
+    session.add(
+        AgentRoomPolicyOverride(
+            agent_id="ag_receiver",
+            room_id="rm_pub_1",
+            attention_mode=AttentionMode.allowed_senders,
+            allowed_sender_ids='["ag_alice", "hu_bob"]',
+        )
+    )
+    await session.commit()
+    eff = await resolve_effective_attention(session, agent=receiver, room_id="rm_pub_1")
+    assert eff.mode == AttentionMode.allowed_senders
+    assert eff.allowed_sender_ids == ["ag_alice", "hu_bob"]
+    assert eff.source == "override"
+
+
+@pytest.mark.asyncio
 async def test_resolver_dm_room_forces_always(session):
     receiver = _agent()
     receiver.default_attention = AttentionMode.muted

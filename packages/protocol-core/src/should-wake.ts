@@ -11,13 +11,20 @@
  */
 
 /** Attention modes mirroring `hub.enums.AttentionMode`. */
-export type AttentionMode = "always" | "mention_only" | "keyword" | "muted";
+export type AttentionMode =
+  | "always"
+  | "mention_only"
+  | "keyword"
+  | "allowed_senders"
+  | "muted";
 
 /** Effective per-agent / per-room policy after override resolution. */
 export interface AttentionPolicy {
   mode: AttentionMode;
   /** Literal substrings (case-insensitive). Empty → keyword mode never wakes. */
   keywords: string[];
+  /** Sender IDs allowed to wake in `allowed_senders` mode. Empty → never wakes. */
+  allowedSenderIds?: string[];
   /** Unix milliseconds; when in the future the agent stays muted regardless of mode. */
   muted_until?: number;
 }
@@ -28,6 +35,8 @@ export interface AttentionMessage {
   mentioned?: boolean;
   /** Plain text body — used by `keyword` mode. */
   text?: string;
+  /** Normalized sender participant ID, e.g. ag_* or hu_*. */
+  senderId?: string;
 }
 
 /**
@@ -65,6 +74,10 @@ export function shouldWake(
         if (text.includes(kw.toLowerCase())) return true;
       }
       return false;
+    }
+    case "allowed_senders": {
+      if (!msg.senderId) return false;
+      return (policy.allowedSenderIds ?? []).includes(msg.senderId);
     }
     default:
       // Unknown mode — fail open so a forward-compat policy from a newer Hub
