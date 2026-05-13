@@ -1,4 +1,6 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type {
   ChannelAdapter,
   ChannelSendContext,
@@ -6,15 +8,19 @@ import type {
   ChannelStartContext,
   ChannelStatusSnapshot,
   ChannelStopContext,
+  ChannelTypingContext,
+  GatewayOutboundAttachment,
   GatewayInboundMessage,
 } from "../types.js";
 import { sanitizeUntrustedContent } from "./sanitize.js";
 import { loadGatewaySecret } from "./secret-store.js";
+import { GatewayStateStore } from "./state-store.js";
 import { splitText } from "./text-split.js";
 import type { FeishuDomain } from "./feishu-registration.js";
 
 const FEISHU_PROVIDER = "feishu" as const;
 const DEFAULT_SPLIT_AT = 4000;
+const MAX_SEEN_MESSAGES = 2048;
 
 export interface FeishuChannelOptions {
   id: string;
@@ -26,6 +32,8 @@ export interface FeishuChannelOptions {
   allowedChatIds?: string[];
   splitAt?: number;
   secretFile?: string;
+  stateFile?: string;
+  stateDebounceMs?: number;
 }
 
 interface FeishuSecret {
@@ -60,6 +68,19 @@ interface FeishuMessageEvent {
   message?: FeishuEventMessage;
 }
 
+interface FeishuProviderState {
+  seenMessageIds?: Record<string, number>;
+}
+
+interface FeishuApiResponse {
+  code?: number;
+  msg?: string;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+type FeishuClient = { request(args: unknown): Promise<unknown> };
+
 function sdkDomain(domain: FeishuDomain | undefined): unknown {
   const sdk = Lark as unknown as {
     Domain?: { Feishu?: unknown; Lark?: unknown };
@@ -67,14 +88,35 @@ function sdkDomain(domain: FeishuDomain | undefined): unknown {
   return domain === "lark" ? sdk.Domain?.Lark : sdk.Domain?.Feishu;
 }
 
-function parseTextContent(content: string | undefined): string | null {
+function parseMessageContent(content: string | undefined): Record<string, unknown> | null {
   if (!content) return null;
   try {
-    const parsed = JSON.parse(content) as { text?: unknown };
-    return typeof parsed.text === "string" ? parsed.text : null;
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
-    return content;
+    return { text: content };
   }
+}
+
+function parseInboundText(message: FeishuEventMessage): string | null {
+  const parsed = parseMessageContent(message.content);
+  if (!parsed) return null;
+  if (typeof parsed.text === "string") return parsed.text;
+  if (message.message_type === "image" && typeof parsed.image_key === "string") {
+    return `[image: ${parsed.image_key}]`;
+  }
+  if (message.message_type === "file" && typeof parsed.file_key === "string") {
+    const name = typeof parsed.file_name === "string" ? ` ${parsed.file_name}` : "";
+    return `[file${name}: ${parsed.file_key}]`;
+  }
+  if (message.message_type === "audio" && typeof parsed.file_key === "string") {
+    return `[audio: ${parsed.file_key}]`;
+  }
+  if (message.message_type === "media" && typeof parsed.file_key === "string") {
+    return `[video: ${parsed.file_key}]`;
+  }
+  if (message.message_type) return `[${message.message_type} message]`;
+  return null;
 }
 
 function senderLabel(event: FeishuMessageEvent): string | undefined {
@@ -90,7 +132,8 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
   const allowedChatIds = new Set((opts.allowedChatIds ?? []).map(String));
   let appSecret = opts.appSecret;
   let wsClient: { start(opts: unknown): unknown; close(opts?: unknown): unknown } | null = null;
-  let client: { request(args: unknown): Promise<unknown> } | null = null;
+  let client: FeishuClient | null = null;
+  let stateStore: GatewayStateStore | null = null;
   let botOpenId: string | undefined;
   let botName: string | undefined;
   let liveSetStatus: ((patch: Partial<ChannelStatusSnapshot>) => void) | null = null;
@@ -106,6 +149,38 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     authorized: false,
   };
 
+  function ensureState(): GatewayStateStore {
+    if (!stateStore) {
+      stateStore = new GatewayStateStore(opts.id, {
+        override: opts.stateFile,
+        debounceMs: opts.stateDebounceMs,
+      });
+    }
+    return stateStore;
+  }
+
+  function readProviderState(): FeishuProviderState {
+    return (ensureState().getProviderState() ?? {}) as FeishuProviderState;
+  }
+
+  function hasSeenMessage(messageId: string): boolean {
+    const seen = readProviderState().seenMessageIds ?? {};
+    return Object.prototype.hasOwnProperty.call(seen, messageId);
+  }
+
+  function rememberMessage(messageId: string): void {
+    const providerState = readProviderState();
+    const seen = { ...(providerState.seenMessageIds ?? {}), [messageId]: Date.now() };
+    const entries = Object.entries(seen).sort((a, b) => a[1] - b[1]);
+    while (entries.length > MAX_SEEN_MESSAGES) entries.shift();
+    ensureState().update({
+      providerState: {
+        ...providerState,
+        seenMessageIds: Object.fromEntries(entries),
+      },
+    });
+  }
+
   function loadSecretIfNeeded(): string | undefined {
     if (appSecret) return appSecret;
     const secret = loadGatewaySecret<FeishuSecret>(opts.id, opts.secretFile);
@@ -115,7 +190,7 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     return appSecret;
   }
 
-  function ensureClient(): { request(args: unknown): Promise<unknown> } {
+  function ensureClient(): FeishuClient {
     if (client) return client;
     if (!opts.appId || !loadSecretIfNeeded()) {
       throw new Error("feishu appId/appSecret not loaded");
@@ -158,18 +233,19 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     const message = event.message;
     const sender = event.sender;
     if (!message || !sender) return null;
-    if (message.message_type !== "text") return null;
     const chatId = message.chat_id;
     const messageId = message.message_id;
     const senderOpenId = sender.sender_id?.open_id;
     if (!chatId || !messageId || !senderOpenId) return null;
     if (botOpenId && senderOpenId === botOpenId) return null;
+    if (hasSeenMessage(messageId)) return null;
 
     if (allowedChatIds.size > 0 && !allowedChatIds.has(chatId)) return null;
     if (!allowedSenderIds.has(senderOpenId)) return null;
 
-    const text = parseTextContent(message.content);
+    const text = parseInboundText(message);
     if (text === null) return null;
+    rememberMessage(messageId);
     const chatType = message.chat_type ?? "";
     const conversationKind: "direct" | "group" =
       chatType === "p2p" ? "direct" : "group";
@@ -244,7 +320,17 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
         authorized: true,
         lastError: null,
       }, ctx.setStatus);
-      void wsClient.start({ eventDispatcher: dispatcher });
+      Promise.resolve(wsClient.start({ eventDispatcher: dispatcher })).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        markStatus({
+          running: false,
+          connected: false,
+          authorized: false,
+          lastError: message,
+          reconnectAttempts: (statusSnapshot.reconnectAttempts ?? 0) + 1,
+        });
+        ctx.log.warn("feishu ws client failed", { err: message });
+      });
       await new Promise<void>((resolve) => {
         if (ctx.abortSignal.aborted) return resolve();
         ctx.abortSignal.addEventListener("abort", () => resolve(), { once: true });
@@ -266,6 +352,13 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
       }
       wsClient = null;
       markStatus({ running: false, connected: false }, ctx.setStatus);
+      try {
+        stateStore?.flush();
+      } catch (err) {
+        ctx.log.warn("feishu state flush failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
@@ -279,31 +372,159 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     return null;
   }
 
+  async function callFeishu(args: unknown): Promise<FeishuApiResponse> {
+    const res = (await ensureClient().request(args)) as FeishuApiResponse;
+    if (res.code !== undefined && res.code !== 0) {
+      throw new Error(res.msg || `feishu api failed: code=${res.code}`);
+    }
+    return res;
+  }
+
+  function resultMessageId(res: FeishuApiResponse): string | undefined {
+    return (
+      (typeof res.data?.message_id === "string" ? res.data.message_id : undefined) ??
+      (typeof res.message_id === "string" ? res.message_id : undefined)
+    );
+  }
+
+  function resultResourceKey(res: FeishuApiResponse, key: "image_key" | "file_key"): string {
+    const direct = res[key];
+    if (typeof direct === "string") return direct;
+    const nested = res.data?.[key];
+    if (typeof nested === "string") return nested;
+    throw new Error(`feishu upload failed: ${key} missing`);
+  }
+
+  function attachmentBytes(attachment: GatewayOutboundAttachment): Buffer {
+    if (attachment.data) return Buffer.from(attachment.data);
+    if (attachment.filePath) return readFileSync(attachment.filePath);
+    throw new Error("feishu attachment requires filePath or data");
+  }
+
+  function fileNameForAttachment(attachment: GatewayOutboundAttachment): string {
+    if (attachment.filename) return attachment.filename;
+    if (attachment.filePath) return path.basename(attachment.filePath);
+    return "attachment";
+  }
+
+  function isImageAttachment(attachment: GatewayOutboundAttachment): boolean {
+    if (attachment.kind === "image") return true;
+    if (attachment.contentType?.startsWith("image/")) return true;
+    return /\.(png|jpe?g|gif|webp|bmp|tiff?|ico)$/i.test(fileNameForAttachment(attachment));
+  }
+
+  function feishuFileType(attachment: GatewayOutboundAttachment): string {
+    if (attachment.kind === "video") return "mp4";
+    const name = fileNameForAttachment(attachment).toLowerCase();
+    const contentType = attachment.contentType?.toLowerCase() ?? "";
+    if (contentType.includes("pdf") || name.endsWith(".pdf")) return "pdf";
+    if (contentType.includes("word") || /\.(doc|docx)$/i.test(name)) return "doc";
+    if (contentType.includes("spreadsheet") || /\.(xls|xlsx)$/i.test(name)) return "xls";
+    if (contentType.includes("presentation") || /\.(ppt|pptx)$/i.test(name)) return "ppt";
+    if (contentType.includes("audio/ogg") || name.endsWith(".opus")) return "opus";
+    if (contentType.includes("video/mp4") || name.endsWith(".mp4")) return "mp4";
+    return "stream";
+  }
+
+  async function uploadAttachment(attachment: GatewayOutboundAttachment): Promise<{
+    msgType: "image" | "file" | "audio" | "media";
+    content: Record<string, unknown>;
+  }> {
+    const bytes = attachmentBytes(attachment);
+    if (isImageAttachment(attachment)) {
+      const res = await callFeishu({
+        method: "POST",
+        url: "/open-apis/im/v1/images",
+        data: { image_type: "message", image: bytes },
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return { msgType: "image", content: { image_key: resultResourceKey(res, "image_key") } };
+    }
+    const fileType = feishuFileType(attachment);
+    const res = await callFeishu({
+      method: "POST",
+      url: "/open-apis/im/v1/files",
+      data: {
+        file_type: fileType,
+        file_name: fileNameForAttachment(attachment),
+        file: bytes,
+      },
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    const fileKey = resultResourceKey(res, "file_key");
+    if (fileType === "opus") return { msgType: "audio", content: { file_key: fileKey } };
+    if (fileType === "mp4") return { msgType: "media", content: { file_key: fileKey } };
+    return { msgType: "file", content: { file_key: fileKey } };
+  }
+
+  async function sendPayload(args: {
+    chatId: string;
+    msgType: string;
+    content: Record<string, unknown>;
+    replyTo?: string | null;
+    replyInThread?: boolean;
+  }): Promise<string | undefined> {
+    const data: Record<string, unknown> = {
+      msg_type: args.msgType,
+      content: JSON.stringify(args.content),
+    };
+    if (args.replyTo) {
+      data.reply_in_thread = args.replyInThread ?? false;
+      const res = await callFeishu({
+        method: "POST",
+        url: `/open-apis/im/v1/messages/${encodeURIComponent(args.replyTo)}/reply`,
+        data,
+      });
+      return resultMessageId(res);
+    }
+    const res = await callFeishu({
+      method: "POST",
+      url: "/open-apis/im/v1/messages",
+      params: { receive_id_type: "chat_id" },
+      data: {
+        ...data,
+        receive_id: args.chatId,
+      },
+    });
+    return resultMessageId(res);
+  }
+
   async function send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
     const chatId = chatIdFromConversation(ctx.message.conversationId);
     if (!chatId) {
-        throw new Error("unsupported feishu conversation id");
+      throw new Error("unsupported feishu conversation id");
     }
-    const c = ensureClient();
     let providerMessageId: string | undefined;
-    for (const part of splitText(ctx.message.text, splitAt)) {
-      const res = (await c.request({
-        method: "POST",
-        url: "/open-apis/im/v1/messages",
-        params: { receive_id_type: "chat_id" },
-        data: {
-          receive_id: chatId,
-          msg_type: "text",
-          content: JSON.stringify({ text: part }),
-        },
-      })) as { code?: number; msg?: string; data?: { message_id?: string } };
-      if (res.code !== 0) {
-        throw new Error(res.msg || `feishu send failed: code=${res.code}`);
-      }
-      providerMessageId = res.data?.message_id ?? providerMessageId;
+    const replyTo = ctx.message.replyTo ?? ctx.message.threadId ?? null;
+    const textParts = ctx.message.text.length > 0 ? splitText(ctx.message.text, splitAt) : [];
+    for (const part of textParts) {
+      providerMessageId = await sendPayload({
+        chatId,
+        msgType: "text",
+        content: { text: part },
+        replyTo,
+        replyInThread: Boolean(ctx.message.threadId),
+      }) ?? providerMessageId;
+    }
+    for (const attachment of ctx.message.attachments ?? []) {
+      const uploaded = await uploadAttachment(attachment);
+      providerMessageId = await sendPayload({
+        chatId,
+        msgType: uploaded.msgType,
+        content: uploaded.content,
+        replyTo,
+        replyInThread: Boolean(ctx.message.threadId),
+      }) ?? providerMessageId;
     }
     markStatus({ lastSendAt: Date.now() });
     return { providerMessageId };
+  }
+
+  async function typing(ctx: ChannelTypingContext): Promise<void> {
+    ctx.log.debug("feishu typing ignored: no native bot typing API", {
+      channel: opts.id,
+      conversationId: ctx.conversationId,
+    });
   }
 
   async function stop(_ctx: ChannelStopContext): Promise<void> {
@@ -313,6 +534,11 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
       // best effort
     }
     wsClient = null;
+    try {
+      stateStore?.close();
+    } catch {
+      // best effort
+    }
     markStatus({ running: false, connected: false });
   }
 
@@ -322,6 +548,7 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     start,
     stop,
     send,
+    typing,
     status: () => ({ ...statusSnapshot }),
   };
 }
