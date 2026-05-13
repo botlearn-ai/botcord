@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardRoom, HumanAgentRoomSummary } from "@/lib/types";
-import { applyMessagesFilter, mergeOwnerVisibleRooms } from "@/lib/messages-merge";
+import { applyMessagesFilter, countMessagesByFilter, mergeOwnerVisibleRooms } from "@/lib/messages-merge";
 
 function makeRoom(overrides: Partial<DashboardRoom> = {}): DashboardRoom {
   return {
@@ -78,8 +78,42 @@ describe("messages merge filters", () => {
     expect(rooms).toHaveLength(1);
     expect(rooms[0]._originAgent).toBeUndefined();
     expect(
-      applyMessagesFilter(rooms, "self-my-bot", new Set([ownedAgentRoom.room_id])).map((room) => room.room_id),
+      applyMessagesFilter(rooms, "self-my-bot", new Set(["ag_bot"])).map((room) => room.room_id),
     ).toEqual([ownRoom.room_id]);
+  });
+
+  it("keeps non-DM rooms out of private-chat buckets even when they have two members", () => {
+    const ownGroup = makeRoom({
+      room_id: "rm_small_room",
+      name: "Small room",
+      member_count: 2,
+      peer_type: "agent",
+      owner_id: "ag_bot",
+    });
+    const botGroup = {
+      ...ownGroup,
+      room_id: "rm_bot_small_room",
+      _originAgent: { agent_id: "ag_bot", display_name: "My Bot" },
+    };
+    const rooms = [ownGroup, botGroup];
+    const ownedAgentIds = new Set(["ag_bot"]);
+
+    expect(applyMessagesFilter(rooms, "self-all", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "self-my-bot", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "self-group", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_small_room",
+    ]);
+    expect(applyMessagesFilter(rooms, "bots-all", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "bots-bot-bot", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "bots-group", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_bot_small_room",
+    ]);
+    expect(countMessagesByFilter(rooms, ownedAgentIds)).toMatchObject({
+      "self-all": 0,
+      "self-group": 1,
+      "bots-all": 0,
+      "bots-group": 1,
+    });
   });
 });
 

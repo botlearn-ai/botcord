@@ -23,27 +23,26 @@ export interface DashboardUIState {
   sidebarTab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
   /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
   selectedBotAgentId: string | null;
-  setSelectedBotAgentId: (agentId: string | null) => void;
-  /** My Bots main content sub-tab. */
+  /** Active sub-tab inside the My Bots tab. */
   myBotsTab: "bots" | "devices";
   setMyBotsTab: (tab: DashboardUIState["myBotsTab"]) => void;
-  /** Right-side drawer selections for My Bots detail views. */
+  /** Drill-down: selected device id inside the My Bots → 我的设备 view. */
   selectedDeviceId: string | null;
+  setSelectedDeviceId: (id: string | null) => void;
+  /** Right-side drawer: selected bot agent_id in the My Bots → Bots view. */
   botDetailAgentId: string | null;
-  setSelectedDeviceId: (deviceId: string | null) => void;
-  setBotDetailAgentId: (agentId: string | null) => void;
+  setBotDetailAgentId: (id: string | null) => void;
+  /** Right-side drawer for peer (non-owned) bots — shows public info only. */
+  peerBotAgentId: string | null;
+  setPeerBotAgentId: (id: string | null) => void;
+  setSelectedBotAgentId: (agentId: string | null) => void;
   /** Controls the Create Bot modal visibility from any component. */
   createBotModalOpen: boolean;
   openCreateBotModal: () => void;
   closeCreateBotModal: () => void;
   /** Distinguish the fixed user-chat entry from ordinary message rooms. */
   messagesPane: "room" | "user-chat";
-  /**
-   * Two-level filter in the Messages list. Two parent buckets:
-   *  - `self-*`  conversations the owner participates in (can send)
-   *  - `bots-*`  conversations of owned bots (owner observes only)
-   * Each parent has an `*-all` aggregate as its default leaf.
-   */
+  /** Active leaf filter in the Messages grouping sidebar. */
   messagesFilter:
     | "self-all"
     | "self-my-bot"
@@ -55,11 +54,6 @@ export interface DashboardUIState {
     | "bots-bot-human"
     | "bots-group";
   /**
-   * Per-bot narrowing inside the `bots-*` family. "all" = no narrowing;
-   * otherwise the agent_id of the single owned bot to scope to.
-   */
-  messagesBotScope: string;
-  /**
    * Messages identity scope: whose conversations are listed.
    *  - "human": my own (Jin's) conversations
    *  - { type: "agent", id }: owned bot's conversations — read-only for owner
@@ -69,6 +63,12 @@ export interface DashboardUIState {
   messagesGroupingOpen: boolean;
   /** Whether the inline search field in the Messages panel is visible. */
   messagesSearchOpen: boolean;
+  /**
+   * In Bot 监控 view (filter = bots-*), narrows the list to a specific owned
+   * bot's conversations. "all" = no narrowing. Persists across filter
+   * switches so users keep their focus when toggling between sub-filters.
+   */
+  messagesBotScope: "all" | string;
   exploreView: "rooms" | "agents" | "humans" | "templates";
   contactsView: "agents" | "requests" | "rooms" | "created";
   /** Selection in the Contacts list (drives the right-side detail pane). */
@@ -80,10 +80,10 @@ export interface DashboardUIState {
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
   setMessagesPane: (pane: DashboardUIState["messagesPane"]) => void;
   setMessagesFilter: (filter: DashboardUIState["messagesFilter"]) => void;
-  setMessagesBotScope: (scope: string) => void;
   setMessagesScope: (scope: DashboardUIState["messagesScope"]) => void;
   setMessagesGroupingOpen: (open: boolean) => void;
   setMessagesSearchOpen: (open: boolean) => void;
+  setMessagesBotScope: (scope: DashboardUIState["messagesBotScope"]) => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
   setSelectedContactKey: (key: DashboardUIState["selectedContactKey"]) => void;
@@ -110,21 +110,22 @@ const initialUIState = {
   pendingHumanOpen: null as { humanId: string; displayName: string } | null,
   openedTopicId: null as string | null,
   mobileSidebarOpen: false,
-  sidebarTab: "home" as DashboardUIState["sidebarTab"],
+  sidebarTab: "messages" as DashboardUIState["sidebarTab"],
   selectedBotAgentId: null as string | null,
-  myBotsTab: "bots" as const,
+  myBotsTab: "bots" as DashboardUIState["myBotsTab"],
   selectedDeviceId: null as string | null,
   botDetailAgentId: null as string | null,
+  peerBotAgentId: null as string | null,
   messagesPane: "room" as const,
   messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
-  messagesBotScope: "all",
   messagesScope: { type: "human" as const } as DashboardUIState["messagesScope"],
   messagesGroupingOpen: true,
   messagesSearchOpen: false,
+  messagesBotScope: "all" as DashboardUIState["messagesBotScope"],
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
   selectedContactKey: null as DashboardUIState["selectedContactKey"],
-  sidebarWidth: 260,
+  sidebarWidth: 360,
   createBotModalOpen: false,
 };
 
@@ -139,20 +140,20 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (state.sidebarTab === sidebarTab ? state : { sidebarTab })),
-  setSelectedBotAgentId: (selectedBotAgentId) =>
-    set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
   setMyBotsTab: (myBotsTab) =>
     set((state) => (state.myBotsTab === myBotsTab ? state : { myBotsTab })),
   setSelectedDeviceId: (selectedDeviceId) =>
     set((state) => (state.selectedDeviceId === selectedDeviceId ? state : { selectedDeviceId })),
   setBotDetailAgentId: (botDetailAgentId) =>
     set((state) => (state.botDetailAgentId === botDetailAgentId ? state : { botDetailAgentId })),
+  setPeerBotAgentId: (peerBotAgentId) =>
+    set((state) => (state.peerBotAgentId === peerBotAgentId ? state : { peerBotAgentId })),
+  setSelectedBotAgentId: (selectedBotAgentId) =>
+    set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
   setMessagesPane: (messagesPane) =>
     set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
   setMessagesFilter: (messagesFilter) =>
     set((state) => (state.messagesFilter === messagesFilter ? state : { messagesFilter })),
-  setMessagesBotScope: (messagesBotScope) =>
-    set((state) => (state.messagesBotScope === messagesBotScope ? state : { messagesBotScope })),
   setMessagesScope: (messagesScope) =>
     set((state) => {
       const a = state.messagesScope;
@@ -165,6 +166,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.messagesGroupingOpen === messagesGroupingOpen ? state : { messagesGroupingOpen })),
   setMessagesSearchOpen: (messagesSearchOpen) =>
     set((state) => (state.messagesSearchOpen === messagesSearchOpen ? state : { messagesSearchOpen })),
+  setMessagesBotScope: (messagesBotScope) =>
+    set((state) => (state.messagesBotScope === messagesBotScope ? state : { messagesBotScope })),
   setExploreView: (exploreView) =>
     set((state) => (state.exploreView === exploreView ? state : { exploreView })),
   setContactsView: (contactsView) =>
@@ -197,5 +200,5 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
       exploreView: state.exploreView,
       contactsView: state.contactsView,
     })),
-  logout: () => set({ ...initialUIState, sidebarTab: "home" }),
+  logout: () => set({ ...initialUIState, sidebarTab: "messages" }),
 }));

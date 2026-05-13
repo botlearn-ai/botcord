@@ -1,5 +1,5 @@
 /**
- * Bot avatar fallback pool. Files live under `public/agent-avatars/{1..N}.png`.
+ * Bot avatar pool. Files live under `public/avatars/bots/{1..N}.png`.
  *
  * `getBotAvatarUrl(agentId)` returns a deterministic URL for a given agent_id,
  * so the same bot always shows the same face across reloads / components.
@@ -8,7 +8,7 @@
  * so a quick glance at an avatar tells you "image = bot, letter = human".
  */
 
-import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
+export const BOT_AVATAR_COUNT = 43;
 
 export function getBotAvatarUrl(agentId: string | null | undefined): string {
   const seed = agentId || "default";
@@ -16,5 +16,6 @@ export function getBotAvatarUrl(agentId: string | null | undefined): string {
   for (let i = 0; i < seed.length; i++) {
     hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
   }
-  return AGENT_AVATAR_URLS[hash % AGENT_AVATAR_URLS.length] ?? "/agent-avatars/1.png";
+  const n = (hash % BOT_AVATAR_COUNT) + 1;
+  return `/avatars/bots/${n}.png`;
 }

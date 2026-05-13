@@ -40,9 +40,6 @@ export function PrimaryNavButton({
       }`}
       title={title}
     >
-      {active && !disabled && (
-        <div className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full max-md:left-1/2 max-md:top-0 max-md:h-[3px] max-md:w-5 max-md:-translate-x-1/2 max-md:translate-y-0 max-md:rounded-b-full max-md:rounded-r-none ${indicatorClass}`} />
-      )}
       {badge}
       {icon}
       <span className="mt-0.5 max-w-full truncate text-[9px] font-medium leading-none">{label}</span>

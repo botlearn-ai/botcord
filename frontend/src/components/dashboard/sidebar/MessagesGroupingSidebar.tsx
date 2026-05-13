@@ -16,7 +16,7 @@ interface FilterRow {
 }
 
 const SELF_ROWS: FilterRow[] = [
-  { key: "self-all", label: "全部", icon: Inbox },
+  { key: "self-all", label: "全部私聊", icon: Inbox },
   { key: "self-my-bot", label: "和我自己的 Bot", icon: Bot },
   { key: "self-third-bot", label: "和别人的 Bot", icon: Bot },
   { key: "self-human", label: "和真人", icon: User },
@@ -24,15 +24,16 @@ const SELF_ROWS: FilterRow[] = [
 ];
 
 const BOTS_ROWS: FilterRow[] = [
-  { key: "bots-all", label: "全部", icon: Inbox },
+  { key: "bots-all", label: "全部私聊", icon: Inbox },
   { key: "bots-bot-bot", label: "Bot 和其他 Bot", icon: Bot },
   { key: "bots-bot-human", label: "Bot 和真人", icon: UsersRound },
   { key: "bots-group", label: "Bot 加入的群", icon: Users },
 ];
 
 export default function MessagesGroupingSidebar() {
-  const { token, humanRooms } = useDashboardSessionStore(
+  const { ownedAgents, token, humanRooms } = useDashboardSessionStore(
     useShallow((s) => ({
+      ownedAgents: s.ownedAgents,
       token: s.token,
       humanRooms: s.humanRooms,
     })),
@@ -54,10 +55,10 @@ export default function MessagesGroupingSidebar() {
 
   const counts = useMemo(() => {
     const ownRooms = buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms });
-    const merged = mergeOwnerVisibleRooms({ ownRooms, ownedAgentRooms });
-    const selfMyBotRoomIds = new Set(ownedAgentRooms.map((r) => r.room_id));
-    return countMessagesByFilter(merged, selfMyBotRoomIds);
-  }, [overview, recentVisitedRooms, token, humanRooms, ownedAgentRooms]);
+    const merged = mergeOwnerVisibleRooms({ ownedAgentRooms, ownRooms });
+    const ids = new Set(ownedAgents.map((agent) => agent.agent_id));
+    return countMessagesByFilter(merged, ids);
+  }, [overview, recentVisitedRooms, token, humanRooms, ownedAgents, ownedAgentRooms]);
 
   const [selfOpen, setSelfOpen] = useState(true);
   const [botsOpen, setBotsOpen] = useState(true);
@@ -68,9 +69,9 @@ export default function MessagesGroupingSidebar() {
         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
         <button
           onClick={() => setMessagesGroupingOpen(false)}
-          title="收起分组"
-          aria-label="收起分组"
-          className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg/50 hover:text-text-primary"
+          title="收起"
+          aria-label="收起"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
         >
           <ChevronsLeft className="h-3.5 w-3.5" />
         </button>
