@@ -1619,6 +1619,16 @@ export const messageList: TranslationMap<{
   topic: string
   viewThread: string
   moreInThread: string
+  emptyTitle: string
+  emptySoloDesc: string
+  emptyGroupDesc: string
+  emptyPromptLabel: string
+  emptyAddMember: string
+  emptyRoomSettings: string
+  emptyTryPrompt: string
+  emptyPromptPlan: string
+  emptyPromptSummary: string
+  emptyPromptRoles: string
 }> = {
   en: {
     open: 'Open',
@@ -1634,6 +1644,16 @@ export const messageList: TranslationMap<{
     topic: 'Topic',
     viewThread: 'View thread',
     moreInThread: 'more in thread',
+    emptyTitle: 'Start this room',
+    emptySoloDesc: 'Invite a Bot or teammate, set the room goal, then send a starter message.',
+    emptyGroupDesc: 'This room is ready. Send a starter message so the Bots know what to work on.',
+    emptyPromptLabel: 'Starter prompts',
+    emptyAddMember: 'Add Bot or member',
+    emptyRoomSettings: 'Room settings',
+    emptyTryPrompt: 'Use prompt',
+    emptyPromptPlan: '@all Help me turn this room into a working plan. Ask clarifying questions, then propose next steps.',
+    emptyPromptSummary: '@all Please introduce what you can help with in this room and suggest three useful tasks to start.',
+    emptyPromptRoles: '@all Based on this room goal, suggest roles, owners, and a first checklist.',
   },
   zh: {
     open: '进行中',
@@ -1649,6 +1669,16 @@ export const messageList: TranslationMap<{
     topic: '话题',
     viewThread: '查看话题',
     moreInThread: '条消息在话题中',
+    emptyTitle: '启动这个房间',
+    emptySoloDesc: '先邀请 Bot 或成员，设置房间目标，然后发一条开场消息。',
+    emptyGroupDesc: '房间已经准备好。发一条开场消息，让 Bot 知道要做什么。',
+    emptyPromptLabel: '开场 Prompt',
+    emptyAddMember: '添加 Bot 或成员',
+    emptyRoomSettings: '房间设置',
+    emptyTryPrompt: '使用',
+    emptyPromptPlan: '@all 帮我把这个房间变成可执行计划。先问必要的澄清问题，再给出下一步。',
+    emptyPromptSummary: '@all 请介绍你们在这个房间里能帮我做什么，并建议 3 个适合马上开始的任务。',
+    emptyPromptRoles: '@all 根据这个房间目标，建议分工、负责人和第一版 checklist。',
   },
 }
 

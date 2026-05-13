@@ -26,6 +26,9 @@ import RoomPolicyModal from "./RoomPolicyModal";
 import AddRoomMemberModal from "./AddRoomMemberModal";
 import { dmPeerId, resolveDmDisplayName } from "./dmRoom";
 
+const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
+const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
+
 export default function RoomHeader() {
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
   const [showRulePopover, setShowRulePopover] = useState(false);
@@ -204,6 +207,22 @@ export default function RoomHeader() {
       setShowAddMemberModal(true);
     }
   }, [activeAgentId, addMemberLoading, humanId, room?.room_id]);
+
+  useEffect(() => {
+    const openAddMember = () => {
+      if (canAddMembers) void handleOpenAddMemberModal();
+    };
+    const openSettings = () => {
+      setShowSettingsModal(true);
+    };
+
+    window.addEventListener(OPEN_ROOM_ADD_MEMBER_EVENT, openAddMember);
+    window.addEventListener(OPEN_ROOM_SETTINGS_EVENT, openSettings);
+    return () => {
+      window.removeEventListener(OPEN_ROOM_ADD_MEMBER_EVENT, openAddMember);
+      window.removeEventListener(OPEN_ROOM_SETTINGS_EVENT, openSettings);
+    };
+  }, [canAddMembers, handleOpenAddMemberModal]);
 
   if (!room) return null;
 
