@@ -6,11 +6,12 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Copy,
   Cpu,
+  Download,
+  FileArchive,
   Loader2,
-  MessageCircle,
   RefreshCw,
+  Send,
   Terminal,
   Trash2,
   X,
@@ -19,6 +20,8 @@ import { useShallow } from "zustand/shallow";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
+import ForwardModal from "@/components/dashboard/ForwardModal";
 import BotAvatar from "./BotAvatar";
 
 /**
@@ -31,6 +34,7 @@ export default function DeviceDetailDrawer() {
     diagnosticResults,
     collectingDiagnosticsId,
     removingId,
+    refresh,
     rename,
     removeDevice,
     refreshRuntimes,
@@ -41,6 +45,7 @@ export default function DeviceDetailDrawer() {
       diagnosticResults: s.diagnosticResults,
       collectingDiagnosticsId: s.collectingDiagnosticsId,
       removingId: s.removingId,
+      refresh: s.refresh,
       rename: s.rename,
       removeDevice: s.removeDevice,
       refreshRuntimes: s.refreshRuntimes,
@@ -67,7 +72,7 @@ export default function DeviceDetailDrawer() {
   const [showLogs, setShowLogs] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [forwardLogs, setForwardLogs] = useState(false);
   /** Nested view — when set, drawer shows that bot's detail instead of device sections. */
   const [viewingBotId, setViewingBotId] = useState<string | null>(null);
 
@@ -78,6 +83,7 @@ export default function DeviceDetailDrawer() {
     setConfirmRemove(false);
     setShowInstall(false);
     setShowLogs(false);
+    setForwardLogs(false);
     setViewingBotId(null);
   }, [device?.id]);
 
@@ -104,6 +110,10 @@ export default function DeviceDetailDrawer() {
     : device.status === "revoked" ? "text-red-400"
     : device.status === "removal_pending" ? "text-yellow-400"
     : "text-text-secondary/60";
+  const diagnosticResult = diagnosticResults[device.id];
+  const diagnosticDownloadUrl = diagnosticResult
+    ? `/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
+    : "";
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -119,17 +129,6 @@ export default function DeviceDetailDrawer() {
     if (ok) {
       setNameSaved(true);
       setTimeout(() => setNameSaved(false), 2000);
-    }
-  };
-
-  const restartCmd = "curl -fsSL https://api.botcord.chat/daemon/install.sh | bash";
-  const handleCopyCmd = async () => {
-    try {
-      await navigator.clipboard.writeText(restartCmd);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* clipboard not available; silently ignore in dev */
     }
   };
 
@@ -307,21 +306,17 @@ export default function DeviceDetailDrawer() {
           />
         </button>
         {showInstall ? (
-          <div className="mt-3 space-y-2">
-            <p className="text-[11px] leading-relaxed text-text-secondary/65">
-              在这台同一设备的终端运行；daemon 会用本机保存的设备 ID 重新连接。
-            </p>
-            <div className="relative">
-              <pre className="overflow-x-auto rounded-lg border border-glass-border bg-deep-black px-3 py-2 pr-9 font-mono text-[11px] text-text-primary">{restartCmd}</pre>
-              <button
-                onClick={() => void handleCopyCmd()}
-                title={copied ? "已复制" : "复制"}
-                aria-label="复制命令"
-                className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
-              >
-                {copied ? <Check className="h-3.5 w-3.5 text-neon-green" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-            </div>
+          <div className="mt-3">
+            <DaemonInstallCommand
+              labels={{
+                title: "重新启动 BotCord Daemon",
+                hint: "在这台同一设备的终端运行；daemon 会使用本机保存的设备 ID 重新连接。",
+                copy: "复制",
+                copied: "已复制",
+                refresh: "刷新",
+              }}
+              onRefresh={() => void refresh({ quiet: true })}
+            />
           </div>
         ) : null}
       </section>
@@ -345,13 +340,37 @@ export default function DeviceDetailDrawer() {
             <p className="text-[11px] leading-relaxed text-text-secondary/65">
               从真实 daemon API 收集诊断包。完整日志由后端生成并返回下载信息。
             </p>
-            {diagnosticResults[device.id] ? (
-              <div className="rounded-lg border border-glass-border bg-deep-black p-3 text-[11px] text-text-secondary/70">
-                <p className="font-medium text-text-primary">{diagnosticResults[device.id].filename}</p>
-                <p className="mt-1">大小：{diagnosticResults[device.id].size_bytes} bytes</p>
-                {diagnosticResults[device.id].local_path ? (
-                  <p className="mt-1 font-mono">{diagnosticResults[device.id].local_path}</p>
-                ) : null}
+            {diagnosticResult ? (
+              <div className="flex items-center gap-2 rounded-lg border border-neon-green/20 bg-neon-green/10 px-2 py-2">
+                <FileArchive className="h-4 w-4 shrink-0 text-neon-green" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[11px] font-medium text-neon-green">{diagnosticResult.filename}</p>
+                  <p className="text-[10px] text-neon-green/70">
+                    日志文件已准备好 · {diagnosticResult.size_bytes} bytes
+                  </p>
+                  {diagnosticResult.local_path ? (
+                    <p className="mt-1 truncate font-mono text-[10px] text-neon-green/55">
+                      {diagnosticResult.local_path}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForwardLogs(true)}
+                  title="转发到聊天"
+                  aria-label="转发日志到聊天"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+                <a
+                  href={diagnosticDownloadUrl}
+                  title="下载日志文件"
+                  aria-label="下载日志文件"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
               </div>
             ) : null}
             <div className="flex justify-end">
@@ -424,6 +443,18 @@ export default function DeviceDetailDrawer() {
       </>)}
       </div>
       </aside>
+      {forwardLogs && diagnosticResult ? (
+        <ForwardModal
+          quoteText=""
+          sourceFile={{
+            url: diagnosticDownloadUrl,
+            filename: diagnosticResult.filename,
+            contentType: "application/zip",
+            sizeBytes: diagnosticResult.size_bytes,
+          }}
+          onClose={() => setForwardLogs(false)}
+        />
+      ) : null}
     </>
   );
 }
