@@ -29,6 +29,7 @@ import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
 import BotDetailDrawer from "./BotDetailDrawer";
+import DeviceDetailDrawer from "./DeviceDetailDrawer";
 import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
@@ -1016,6 +1017,7 @@ export default function DashboardApp() {
       </div>
       <StripeReturnBanner />
       <BotDetailDrawer />
+      <DeviceDetailDrawer />
       <PeerBotDetailDrawer />
       {shouldShowAgentGate ? (
         <AgentGateModal
