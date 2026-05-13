@@ -4,7 +4,7 @@
  * [INPUT]: agentId; uses useAgentGatewayStore for data + actions
  * [OUTPUT]: AgentChannelsTab — content of the "接入 / Channels" tab inside
  *          AgentSettingsDrawer. Provider-specific add forms are split into
- *          TelegramAddForm and WechatAddForm so future providers (LINE, Discord)
+ *          TelegramAddForm, WechatAddForm, and FeishuAddForm so future providers
  *          can drop into the same surface without tangling.
  * [POS]: dashboard third-party gateway management UI
  * [PROTOCOL]: update header on changes
@@ -39,7 +39,7 @@ interface Props {
   agentId: string;
 }
 
-type AddMode = null | "telegram" | "wechat";
+type AddMode = null | "telegram" | "wechat" | "feishu";
 type TelegramDiscoveryChat = { id: string; type: string | null; label: string | null };
 type TelegramDiscoverySender = { id: string; label: string | null };
 
@@ -61,11 +61,16 @@ function ProviderIcon({ provider }: { provider: GatewayProvider }) {
   if (provider === "telegram") {
     return <Send className="h-3.5 w-3.5" />;
   }
+  if (provider === "feishu") {
+    return <MessageCircle className="h-3.5 w-3.5" />;
+  }
   return <MessageCircle className="h-3.5 w-3.5" />;
 }
 
 function providerName(provider: GatewayProvider): string {
-  return provider === "telegram" ? "Telegram" : "微信";
+  if (provider === "telegram") return "Telegram";
+  if (provider === "feishu") return "飞书";
+  return "微信";
 }
 
 function isAckTimeoutError(err: unknown): boolean {
@@ -377,7 +382,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
           </div>
           {/* provider segmented control */}
           <div className="mb-4 inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
-            {(["wechat", "telegram"] as const).map((p) => (
+            {(["feishu", "wechat", "telegram"] as const).map((p) => (
               <button
                 key={p}
                 type="button"
@@ -388,7 +393,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
                     : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                {p === "wechat" ? "微信" : "Telegram"}
+                {p === "feishu" ? "飞书" : p === "wechat" ? "微信" : "Telegram"}
               </button>
             ))}
           </div>
@@ -399,8 +404,15 @@ export default function AgentChannelsTab({ agentId }: Props) {
               onCancel={() => setAddMode(null)}
               onCreated={() => setAddMode(null)}
             />
-          ) : (
+          ) : addMode === "wechat" ? (
             <WechatAddForm
+              agentId={agentId}
+              daemonOffline={daemonOffline}
+              onCancel={() => setAddMode(null)}
+              onCreated={() => setAddMode(null)}
+            />
+          ) : (
+            <FeishuAddForm
               agentId={agentId}
               daemonOffline={daemonOffline}
               onCancel={() => setAddMode(null)}
@@ -912,6 +924,250 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
             知道了
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FeishuAddForm({
+  agentId,
+  daemonOffline,
+  onCancel,
+  onCreated,
+}: {
+  agentId: string;
+  daemonOffline: boolean;
+  onCancel: () => void;
+  onCreated: () => void;
+}) {
+  const startFeishuLogin = useAgentGatewayStore((s) => s.startFeishuLogin);
+  const pollFeishuLogin = useAgentGatewayStore((s) => s.pollFeishuLogin);
+  const create = useAgentGatewayStore((s) => s.create);
+  const [domain, setDomain] = useState<"feishu" | "lark">("feishu");
+  const [phase, setPhase] = useState<"idle" | "scanning" | "ready">("idle");
+  const [loginId, setLoginId] = useState<string | null>(null);
+  const [qrcodeUrl, setQrcodeUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<WechatLoginStatus>("pending");
+  const [appId, setAppId] = useState<string | null>(null);
+  const [userOpenId, setUserOpenId] = useState<string | null>(null);
+  const [tokenPreview, setTokenPreview] = useState<string | null>(null);
+  const [label, setLabel] = useState("");
+  const [senderIds, setSenderIds] = useState("");
+  const [chatIds, setChatIds] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current);
+    };
+  }, []);
+
+  async function doPoll(id: string) {
+    try {
+      const r = await pollFeishuLogin(agentId, id);
+      setStatus(r.status);
+      if (r.tokenPreview) setTokenPreview(r.tokenPreview);
+      if (r.appId) setAppId(r.appId);
+      if (r.domain === "feishu" || r.domain === "lark") setDomain(r.domain);
+      if (r.userOpenId) {
+        setUserOpenId(r.userOpenId);
+        setSenderIds((cur) => cur || r.userOpenId || "");
+      }
+      if (r.status === "confirmed") {
+        if (pollTimer.current) clearInterval(pollTimer.current);
+        pollTimer.current = null;
+        setPhase("ready");
+      } else if (r.status === "expired" || r.status === "failed") {
+        if (pollTimer.current) clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
+    } catch (err) {
+      if (!isAckTimeoutError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+        if (pollTimer.current) clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
+    }
+  }
+
+  async function handleStart() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await startFeishuLogin(agentId, { domain });
+      setLoginId(r.loginId);
+      setQrcodeUrl(r.qrcodeUrl ?? null);
+      setStatus("pending");
+      setPhase("scanning");
+      if (pollTimer.current) clearInterval(pollTimer.current);
+      pollTimer.current = setInterval(() => {
+        void doPoll(r.loginId);
+      }, 2500);
+    } catch (err) {
+      if (!isAckTimeoutError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const allowedSenderIds = csvToList(senderIds);
+  const allowedChatIds = csvToList(chatIds);
+  const canSave =
+    phase === "ready" &&
+    !!loginId &&
+    allowedSenderIds.length > 0 &&
+    !daemonOffline &&
+    !busy;
+
+  async function handleSave() {
+    if (!canSave || !loginId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await create(agentId, {
+        provider: "feishu",
+        label: label.trim() || null,
+        enabled: true,
+        loginId,
+        config: {
+          label: label.trim() || undefined,
+          domain,
+          allowedSenderIds,
+          ...(allowedChatIds.length > 0 ? { allowedChatIds } : {}),
+        },
+      });
+      onCreated();
+    } catch (err) {
+      if (!isAckTimeoutError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const statusText: Record<WechatLoginStatus, string> = {
+    pending: "等待扫码",
+    scanned: "等待确认",
+    confirmed: "已创建",
+    expired: "已过期",
+    failed: "创建失败",
+  };
+
+  return (
+    <div className="space-y-3">
+      <StepSection
+        step={1}
+        title="扫码创建飞书 Bot"
+        description="使用飞书扫码后，daemon 会拿到该 PersonalAgent 的 App ID 和 App Secret。"
+        complete={phase === "ready"}
+      >
+        <div className="mb-3 inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
+          {(["feishu", "lark"] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setDomain(d)}
+              disabled={phase !== "idle" || busy}
+              className={`rounded-md px-3 py-1 text-xs transition-colors ${
+                domain === d
+                  ? "bg-neon-cyan/20 text-neon-cyan"
+                  : "text-text-secondary hover:text-text-primary"
+              } disabled:opacity-50`}
+            >
+              {d === "feishu" ? "飞书" : "Lark"}
+            </button>
+          ))}
+        </div>
+        {phase === "idle" ? (
+          <button
+            type="button"
+            onClick={handleStart}
+            disabled={daemonOffline || busy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+            生成二维码
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <div className="text-xs text-text-secondary">{statusText[status]}</div>
+            {phase === "scanning" && qrcodeUrl ? (
+              <div className="inline-block rounded-xl border border-glass-border bg-white p-3">
+                <QRCodeSVG value={qrcodeUrl} size={176} />
+              </div>
+            ) : null}
+            {phase === "ready" ? (
+              <div className="space-y-1 text-[11px] text-text-secondary">
+                {appId ? <div className="font-mono">App ID: {appId}</div> : null}
+                {userOpenId ? <div className="font-mono">open_id: {userOpenId}</div> : null}
+                {tokenPreview ? <div>secret {tokenPreview}</div> : null}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </StepSection>
+
+      {phase === "ready" && (
+        <StepSection
+          step={2}
+          title="设置允许的飞书用户"
+          description="默认只允许扫码创建者触发，也可以追加其他 open_id。群聊可选填 chat_id。"
+          complete={allowedSenderIds.length > 0}
+        >
+          <div className="space-y-3">
+            <Field label="接入名称">
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="例如：飞书助手"
+                className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40"
+              />
+            </Field>
+            <Field label="允许的用户 open_id（逗号或换行分隔）">
+              <textarea
+                value={senderIds}
+                onChange={(e) => setSenderIds(e.target.value)}
+                rows={2}
+                className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40"
+              />
+            </Field>
+            <Field label="允许的群 chat_id（可选）">
+              <textarea
+                value={chatIds}
+                onChange={(e) => setChatIds(e.target.value)}
+                rows={2}
+                placeholder="oc_xxxxx"
+                className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40"
+              />
+            </Field>
+          </div>
+        </StepSection>
+      )}
+
+      {error && <div className="text-xs text-red-300">{error}</div>}
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-lg border border-glass-border px-3 py-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!canSave}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          保存接入
+        </button>
       </div>
     </div>
   );

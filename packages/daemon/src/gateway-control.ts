@@ -33,6 +33,11 @@ import {
   getBotQrcode,
   getQrcodeStatus,
 } from "./gateway/channels/wechat-login.js";
+import {
+  pollFeishuRegistration,
+  startFeishuRegistration,
+  type FeishuDomain,
+} from "./gateway/channels/feishu-registration.js";
 import { WECHAT_BASE_INFO, wechatHeaders } from "./gateway/channels/wechat-http.js";
 import { assertSafeBaseUrl, UnsafeBaseUrlError } from "./gateway/channels/url-guard.js";
 import { log as daemonLog } from "./log.js";
@@ -42,7 +47,7 @@ import type { FetchLike } from "./gateway/channels/http-types.js";
 
 type AckBody = Omit<ControlAck, "id">;
 
-type GatewayProvider = "telegram" | "wechat";
+type GatewayProvider = "telegram" | "wechat" | "feishu";
 
 interface GatewayProfileSummary {
   id: string;
@@ -51,6 +56,9 @@ interface GatewayProfileSummary {
   label?: string;
   enabled: boolean;
   baseUrl?: string;
+  appId?: string;
+  domain?: "feishu" | "lark";
+  userOpenId?: string;
   allowedSenderIds?: string[];
   allowedChatIds?: string[];
   splitAt?: number;
@@ -81,6 +89,7 @@ interface UpsertGatewayParams {
   };
   settings?: {
     baseUrl?: string;
+    domain?: "feishu" | "lark";
     allowedSenderIds?: string[];
     allowedChatIds?: string[];
     splitAt?: number;
@@ -93,6 +102,9 @@ interface UpsertGatewayResult {
   accountId: string;
   enabled: boolean;
   tokenPreview?: string;
+  appId?: string;
+  domain?: "feishu" | "lark";
+  userOpenId?: string;
   status?: GatewayProfileSummary["status"];
 }
 
@@ -123,6 +135,7 @@ interface GatewayLoginStartParams {
   accountId: string;
   gatewayId?: string;
   baseUrl?: string;
+  domain?: "feishu" | "lark";
 }
 
 interface GatewayLoginStartResult {
@@ -141,6 +154,9 @@ interface GatewayLoginStatusParams {
 interface GatewayLoginStatusResult {
   status: "pending" | "scanned" | "confirmed" | "expired" | "failed";
   baseUrl?: string;
+  appId?: string;
+  domain?: "feishu" | "lark";
+  userOpenId?: string;
   tokenPreview?: string;
 }
 
@@ -179,6 +195,10 @@ export interface GatewayControlContext {
     getBotQrcode: typeof getBotQrcode;
     getQrcodeStatus: typeof getQrcodeStatus;
   };
+  feishuLoginClient?: {
+    startFeishuRegistration: typeof startFeishuRegistration;
+    pollFeishuRegistration: typeof pollFeishuRegistration;
+  };
   /** Override the global fetch — used by `test_gateway` for Telegram getMe. */
   fetchImpl?: FetchLike;
 }
@@ -192,6 +212,8 @@ export function createGatewayControl(ctx: GatewayControlContext) {
   const cfgIO = ctx.configIO ?? { load: loadConfig, save: saveConfig };
   const sessions = ctx.loginSessions ?? new LoginSessionStore();
   const wechatLogin = ctx.wechatLoginClient ?? { getBotQrcode, getQrcodeStatus };
+  const feishuLogin =
+    ctx.feishuLoginClient ?? { startFeishuRegistration, pollFeishuRegistration };
   // W7: validate fetch availability at construction so a missing global is
   // diagnosed at startup, not during the first control frame. Tests inject
   // `ctx.fetchImpl` explicitly and bypass the global lookup entirely.
@@ -252,9 +274,13 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     }
 
     // Provider-specific secret resolution.
-    let botToken: string | undefined;
+    let secretPayload: Record<string, unknown>;
+    let tokenPreviewSource: string | undefined;
+    let feishuAppId: string | undefined;
+    let feishuDomain: "feishu" | "lark" | undefined;
+    let feishuUserOpenId: string | undefined;
     if (params.type === "telegram") {
-      botToken = params.secret?.botToken;
+      const botToken = params.secret?.botToken;
       if (!botToken) {
         // Allow updates that only flip enabled/whitelist — only require a
         // token when none is on disk yet.
@@ -262,7 +288,11 @@ export function createGatewayControl(ctx: GatewayControlContext) {
         if (!existing?.botToken) {
           return badParams("upsert_gateway: telegram requires secret.botToken on first install");
         }
-        botToken = existing.botToken;
+        secretPayload = { botToken: existing.botToken };
+        tokenPreviewSource = existing.botToken;
+      } else {
+        secretPayload = { botToken };
+        tokenPreviewSource = botToken;
       }
     } else if (params.type === "wechat") {
       const loginId = params.loginId;
@@ -294,8 +324,45 @@ export function createGatewayControl(ctx: GatewayControlContext) {
           error: { code: "login_unconfirmed", message: "wechat login session has no bot token yet" },
         };
       }
-      botToken = session.botToken;
+      secretPayload = { botToken: session.botToken };
+      tokenPreviewSource = session.botToken;
       // Bind the session to its eventual gateway id for forensic logging.
+      sessions.update(loginId, { gatewayId: params.id });
+    } else if (params.type === "feishu") {
+      const loginId = params.loginId;
+      if (!loginId) {
+        return badParams("upsert_gateway: feishu requires loginId");
+      }
+      const session = sessions.get(loginId);
+      if (!session) {
+        return {
+          ok: false,
+          error: { code: "login_expired", message: `feishu login session "${loginId}" not found or expired` },
+        };
+      }
+      if (session.provider !== "feishu") {
+        return badParams(`upsert_gateway: login session provider "${session.provider}" != "feishu"`);
+      }
+      if (session.accountId !== params.accountId) {
+        return {
+          ok: false,
+          error: {
+            code: "login_account_mismatch",
+            message: "feishu login session accountId does not match upsert request",
+          },
+        };
+      }
+      if (!session.appId || !session.appSecret) {
+        return {
+          ok: false,
+          error: { code: "login_unconfirmed", message: "feishu login session has no app credentials yet" },
+        };
+      }
+      secretPayload = { appSecret: session.appSecret };
+      tokenPreviewSource = session.appSecret;
+      feishuAppId = session.appId;
+      feishuDomain = session.domain ?? params.settings?.domain ?? "feishu";
+      feishuUserOpenId = session.userOpenId;
       sessions.update(loginId, { gatewayId: params.id });
     } else {
       return badParams(`upsert_gateway: unknown provider "${(params as { type: string }).type}"`);
@@ -314,7 +381,7 @@ export function createGatewayControl(ctx: GatewayControlContext) {
 
     // Persist secret first (so a config write that succeeds is never
     // followed by a missing-secret crash). Atomic rename inside saveSecret.
-    const secretFile = saveGatewaySecret(params.id, { botToken });
+    const secretFile = saveGatewaySecret(params.id, secretPayload);
 
     // Update or insert the third-party gateway profile in config.
     const enabled = params.enabled !== false;
@@ -328,6 +395,9 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       allowedSenderIds: params.settings?.allowedSenderIds,
       allowedChatIds: params.settings?.allowedChatIds,
       splitAt: params.settings?.splitAt,
+      appId: feishuAppId,
+      domain: feishuDomain,
+      userOpenId: feishuUserOpenId,
     });
     cfgIO.save(next);
 
@@ -340,7 +410,12 @@ export function createGatewayControl(ctx: GatewayControlContext) {
         // best-effort
       }
       try {
-        await ctx.gateway.addChannel(buildChannelConfig(params, secretFile));
+        await ctx.gateway.addChannel(
+          buildChannelConfig(params, secretFile, {
+            ...(feishuAppId ? { appId: feishuAppId } : {}),
+            ...(feishuDomain ? { domain: feishuDomain } : {}),
+          }),
+        );
       } catch (addErr) {
         const message = addErr instanceof Error ? addErr.message : String(addErr);
         daemonLog.warn("upsert_gateway.addChannel failed", { id: params.id, error: message });
@@ -380,9 +455,14 @@ export function createGatewayControl(ctx: GatewayControlContext) {
                       allowedSenderIds: prevProfile.allowedSenderIds,
                       allowedChatIds: prevProfile.allowedChatIds,
                       splitAt: prevProfile.splitAt,
+                      domain: prevProfile.domain,
                     },
                   },
                   secretFile,
+                  {
+                    ...(prevProfile.appId ? { appId: prevProfile.appId } : {}),
+                    ...(prevProfile.domain ? { domain: prevProfile.domain } : {}),
+                  },
                 ),
               );
             }
@@ -417,7 +497,10 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       type: params.type,
       accountId: params.accountId,
       enabled,
-      tokenPreview: maskTokenPreview(botToken),
+      tokenPreview: maskTokenPreview(tokenPreviewSource),
+      ...(feishuAppId ? { appId: feishuAppId } : {}),
+      ...(feishuDomain ? { domain: feishuDomain } : {}),
+      ...(feishuUserOpenId ? { userOpenId: feishuUserOpenId } : {}),
       ...(liveStatus ? { status: pickStatus(liveStatus) } : {}),
     };
     daemonLog.info("upsert_gateway applied", {
@@ -527,9 +610,8 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       }
     }
 
-    // WeChat: iLink has no no-side-effect probe today. Fall back to the
-    // adapter's last poll snapshot. `authorized === true` means the secret
-    // is loaded and at least one poll succeeded.
+    // WeChat/Feishu: fall back to the adapter snapshot. `authorized === true`
+    // means the secret is loaded and the provider client started.
     const snap = ctx.gateway.snapshot().channels[profile.id];
     const result: TestGatewayResult = snap
       ? {
@@ -542,7 +624,7 @@ export function createGatewayControl(ctx: GatewayControlContext) {
           },
           ...(snap.lastError ? { error: snap.lastError } : {}),
         }
-      : { id: profile.id, ok: false, error: "wechat channel not running" };
+      : { id: profile.id, ok: false, error: `${profile.type} channel not running` };
     return { ok: true, result };
   }
 
@@ -554,9 +636,7 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     if (!params.accountId || typeof params.accountId !== "string") {
       return badParams("gateway_login_start: accountId is required");
     }
-    if (params.provider !== "wechat") {
-      // Telegram has no qrcode flow; surface a clear error so the dashboard
-      // can fall through to the token form.
+    if (params.provider !== "wechat" && params.provider !== "feishu") {
       return badParams(`gateway_login_start: provider "${params.provider}" does not require login`);
     }
     // W1: SSRF guard — `baseUrl` flows directly into an authenticated fetch.
@@ -566,6 +646,38 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       if (urlErr instanceof UnsafeBaseUrlError) return badParams(urlErr.message);
       throw urlErr;
     }
+    if (params.provider === "feishu") {
+      const domain: FeishuDomain = params.domain === "lark" ? "lark" : "feishu";
+      try {
+        const r = await feishuLogin.startFeishuRegistration({ domain });
+        const loginId = mintLoginId("feishu");
+        const session = sessions.create({
+          loginId,
+          accountId: params.accountId,
+          ...(params.gatewayId ? { gatewayId: params.gatewayId } : {}),
+          provider: "feishu",
+          qrcode: r.deviceCode,
+          qrcodeUrl: r.verificationUriComplete,
+          domain: r.domain,
+        });
+        const result: GatewayLoginStartResult = {
+          loginId,
+          qrcode: r.deviceCode,
+          qrcodeUrl: r.verificationUriComplete,
+          expiresAt: session.expiresAt,
+        };
+        daemonLog.info("gateway_login_start", { provider: "feishu", loginId, accountId: params.accountId });
+        return { ok: true, result };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        daemonLog.warn("gateway_login_start.feishu failed", { error: message });
+        return {
+          ok: false,
+          error: { code: "provider_unreachable", message },
+        };
+      }
+    }
+
     const baseUrl = params.baseUrl ?? DEFAULT_WECHAT_BASE_URL;
     let qrcode: string;
     let qrcodeUrl: string | undefined;
@@ -640,8 +752,56 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       };
       return { ok: true, result };
     }
+    if (params.provider === "feishu") {
+      if (!session.qrcode) {
+        return {
+          ok: false,
+          error: { code: "no_qrcode", message: "login session has no device code to poll" },
+        };
+      }
+      try {
+        const probe = await feishuLogin.pollFeishuRegistration(session.qrcode, {
+          domain: session.domain ?? "feishu",
+        });
+        if (probe.status === "confirmed" && probe.appId && probe.appSecret) {
+          const tokenPreview = maskTokenPreview(probe.appSecret);
+          sessions.update(params.loginId, {
+            appId: probe.appId,
+            appSecret: probe.appSecret,
+            domain: probe.domain,
+            userOpenId: probe.userOpenId,
+            tokenPreview,
+          });
+          const result: GatewayLoginStatusResult = {
+            status: "confirmed",
+            appId: probe.appId,
+            domain: probe.domain,
+            userOpenId: probe.userOpenId,
+            tokenPreview,
+          };
+          return { ok: true, result };
+        }
+        const status =
+          probe.status === "denied"
+            ? "failed"
+            : probe.status === "expired"
+              ? "expired"
+              : probe.status === "failed"
+                ? "failed"
+                : "pending";
+        const result: GatewayLoginStatusResult = { status, domain: probe.domain };
+        return { ok: true, result };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        daemonLog.warn("gateway_login_status.feishu failed", { error: message });
+        return {
+          ok: false,
+          error: { code: "provider_unreachable", message },
+        };
+      }
+    }
+
     if (params.provider !== "wechat") {
-      // Future provider hook — today only WeChat poll path exists.
       return badParams(`gateway_login_status: provider "${params.provider}" not supported`);
     }
     if (!session.qrcode) {
@@ -789,7 +949,7 @@ function badParams(message: string): AckBody {
 }
 
 function isProvider(p: unknown): p is GatewayProvider {
-  return p === "telegram" || p === "wechat";
+  return p === "telegram" || p === "wechat" || p === "feishu";
 }
 
 function validateUpsertParams(p: UpsertGatewayParams): string | null {
@@ -810,6 +970,9 @@ function annotateProfile(
     ...(p.label !== undefined ? { label: p.label } : {}),
     enabled: p.enabled !== false,
     ...(p.baseUrl !== undefined ? { baseUrl: p.baseUrl } : {}),
+    ...(p.appId !== undefined ? { appId: p.appId } : {}),
+    ...(p.domain !== undefined ? { domain: p.domain } : {}),
+    ...(p.userOpenId !== undefined ? { userOpenId: p.userOpenId } : {}),
     ...(p.allowedSenderIds !== undefined ? { allowedSenderIds: p.allowedSenderIds } : {}),
     ...(p.allowedChatIds !== undefined ? { allowedChatIds: p.allowedChatIds } : {}),
     ...(p.splitAt !== undefined ? { splitAt: p.splitAt } : {}),
@@ -857,6 +1020,9 @@ function compactProfile(p: ThirdPartyGatewayProfile): ThirdPartyGatewayProfile {
   if (p.label !== undefined) out.label = p.label;
   if (p.enabled !== undefined) out.enabled = p.enabled;
   if (p.baseUrl !== undefined) out.baseUrl = p.baseUrl;
+  if (p.appId !== undefined) out.appId = p.appId;
+  if (p.domain !== undefined) out.domain = p.domain;
+  if (p.userOpenId !== undefined) out.userOpenId = p.userOpenId;
   if (p.allowedSenderIds !== undefined) out.allowedSenderIds = p.allowedSenderIds;
   if (p.allowedChatIds !== undefined) out.allowedChatIds = p.allowedChatIds;
   if (p.splitAt !== undefined) out.splitAt = p.splitAt;
@@ -868,6 +1034,7 @@ function compactProfile(p: ThirdPartyGatewayProfile): ThirdPartyGatewayProfile {
 function buildChannelConfig(
   params: UpsertGatewayParams,
   secretFile: string,
+  extra: { appId?: string; domain?: "feishu" | "lark" } = {},
 ): GatewayChannelConfig {
   const ch: GatewayChannelConfig = {
     id: params.id,
@@ -878,6 +1045,10 @@ function buildChannelConfig(
   if (params.label !== undefined) ch.label = params.label;
   const s = params.settings ?? {};
   if (s.baseUrl !== undefined) ch.baseUrl = s.baseUrl;
+  if (params.type === "feishu") {
+    if (extra.appId) ch.appId = extra.appId;
+    if (extra.domain) ch.domain = extra.domain;
+  }
   if (s.allowedSenderIds !== undefined) ch.allowedSenderIds = s.allowedSenderIds;
   if (s.allowedChatIds !== undefined) ch.allowedChatIds = s.allowedChatIds;
   if (s.splitAt !== undefined) ch.splitAt = s.splitAt;

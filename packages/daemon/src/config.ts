@@ -100,7 +100,7 @@ export interface OpenclawDiscoveryConfig {
 }
 
 /** Third-party messaging provider supported by the daemon's channel factory. */
-export type ThirdPartyGatewayType = "telegram" | "wechat";
+export type ThirdPartyGatewayType = "telegram" | "wechat" | "feishu";
 
 /**
  * One third-party gateway profile bound to a BotCord agent. `id` is the
@@ -122,6 +122,9 @@ export interface ThirdPartyGatewayProfile {
   allowedChatIds?: string[];
   splitAt?: number;
   baseUrl?: string;
+  appId?: string;
+  domain?: "feishu" | "lark";
+  userOpenId?: string;
 }
 
 export interface DaemonConfig {
@@ -445,9 +448,9 @@ export function loadConfig(): DaemonConfig {
           `daemon config thirdPartyGateways[${i}].id must be a non-empty string (${CONFIG_PATH})`,
         );
       }
-      if (gg.type !== "telegram" && gg.type !== "wechat") {
+      if (gg.type !== "telegram" && gg.type !== "wechat" && gg.type !== "feishu") {
         throw new Error(
-          `daemon config thirdPartyGateways[${i}].type must be "telegram" or "wechat" (${CONFIG_PATH})`,
+          `daemon config thirdPartyGateways[${i}].type must be "telegram", "wechat", or "feishu" (${CONFIG_PATH})`,
         );
       }
       if (typeof gg.accountId !== "string" || gg.accountId.length === 0) {

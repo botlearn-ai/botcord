@@ -37,6 +37,15 @@ describe("toGatewayConfig + thirdPartyGateways", () => {
           allowedSenderIds: ["abc@im.wechat"],
           splitAt: 1800,
         },
+        {
+          id: "gw_fs_1",
+          type: "feishu",
+          accountId: "ag_daemon",
+          appId: "cli_xxx",
+          domain: "feishu",
+          allowedSenderIds: ["ou_alice"],
+          allowedChatIds: ["oc_team"],
+        },
       ],
     });
     const gw = toGatewayConfig(cfg);
@@ -44,6 +53,7 @@ describe("toGatewayConfig + thirdPartyGateways", () => {
       { id: "ag_daemon", type: BOTCORD_CHANNEL_TYPE },
       { id: "gw_tg_1", type: TELEGRAM_CHANNEL_TYPE },
       { id: "gw_wx_1", type: WECHAT_CHANNEL_TYPE },
+      { id: "gw_fs_1", type: "feishu" },
     ]);
     const tg = gw.channels[1]!;
     expect(tg.accountId).toBe("ag_daemon");
@@ -52,6 +62,11 @@ describe("toGatewayConfig + thirdPartyGateways", () => {
     expect(wx.baseUrl).toBe("https://ilinkai.weixin.qq.com");
     expect(wx.allowedSenderIds).toEqual(["abc@im.wechat"]);
     expect(wx.splitAt).toBe(1800);
+    const fs = gw.channels[3]!;
+    expect(fs.appId).toBe("cli_xxx");
+    expect(fs.domain).toBe("feishu");
+    expect(fs.allowedSenderIds).toEqual(["ou_alice"]);
+    expect(fs.allowedChatIds).toEqual(["oc_team"]);
   });
 
   it("filters out gateways with enabled === false", () => {
@@ -113,6 +128,19 @@ describe("createDaemonChannel", () => {
     const adapter = createDaemonChannel(chCfg, deps);
     expect(adapter.type).toBe("wechat");
     expect(adapter.id).toBe("gw_wx_1");
+  });
+
+  it("dispatches feishu type to the Feishu adapter", () => {
+    const chCfg: GatewayChannelConfig = {
+      id: "gw_fs_1",
+      type: "feishu",
+      accountId: "ag_x",
+      appId: "cli_xxx",
+      domain: "feishu",
+    };
+    const adapter = createDaemonChannel(chCfg, deps);
+    expect(adapter.type).toBe("feishu");
+    expect(adapter.id).toBe("gw_fs_1");
   });
 
   it("throws on unknown channel type", () => {

@@ -8,7 +8,7 @@
 
 import { create } from "zustand";
 
-export type GatewayProvider = "telegram" | "wechat";
+export type GatewayProvider = "telegram" | "wechat" | "feishu";
 export type GatewayStatus = "pending" | "active" | "error" | "disabled";
 
 export interface AgentGatewayConnection {
@@ -47,7 +47,21 @@ export interface WechatCreateInput {
   };
 }
 
-export type GatewayCreateInput = TelegramCreateInput | WechatCreateInput;
+export interface FeishuCreateInput {
+  provider: "feishu";
+  label?: string | null;
+  enabled?: boolean;
+  loginId: string;
+  config: {
+    label?: string;
+    allowedSenderIds?: string[];
+    allowedChatIds?: string[];
+    domain?: "feishu" | "lark";
+    splitAt?: number;
+  };
+}
+
+export type GatewayCreateInput = TelegramCreateInput | WechatCreateInput | FeishuCreateInput;
 
 export interface GatewayPatchInput {
   label?: string | null;
@@ -56,6 +70,7 @@ export interface GatewayPatchInput {
     allowedChatIds?: string[];
     allowedSenderIds?: string[];
     baseUrl?: string;
+    domain?: "feishu" | "lark";
     splitAt?: number;
     label?: string;
   };
@@ -188,6 +203,18 @@ interface AgentGatewayState {
     loginId: string,
     opts?: { timeoutSeconds?: number },
   ) => Promise<WechatSenderDiscoveryResponse>;
+  startFeishuLogin: (
+    agentId: string,
+    opts?: { domain?: "feishu" | "lark"; gatewayId?: string },
+  ) => Promise<WechatLoginStartResponse>;
+  pollFeishuLogin: (
+    agentId: string,
+    loginId: string,
+  ) => Promise<WechatLoginStatusResponse & {
+    appId?: string | null;
+    domain?: "feishu" | "lark" | null;
+    userOpenId?: string | null;
+  }>;
 }
 
 function base(agentId: string): string {
@@ -452,5 +479,49 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
       }
     }
     return { senders };
+  },
+
+  async startFeishuLogin(agentId, opts) {
+    const res = await fetch(`${base(agentId)}/feishu/login/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts ?? {}),
+    });
+    if (!res.ok) {
+      const err = await readErr(res);
+      if (err.status === 409) {
+        set((s) => ({ daemonOffline: { ...s.daemonOffline, [agentId]: true } }));
+      }
+      throw err;
+    }
+    return (await res.json()) as WechatLoginStartResponse;
+  },
+
+  async pollFeishuLogin(agentId, loginId) {
+    const res = await fetch(`${base(agentId)}/feishu/login/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ loginId }),
+    });
+    if (!res.ok) {
+      const err = await readErr(res);
+      if (err.status === 409) {
+        set((s) => ({ daemonOffline: { ...s.daemonOffline, [agentId]: true } }));
+      }
+      throw err;
+    }
+    const json = (await res.json()) as Partial<WechatLoginStatusResponse> & {
+      appId?: string | null;
+      domain?: "feishu" | "lark" | null;
+      userOpenId?: string | null;
+    };
+    return {
+      status: normalizeWechatStatus(json.status),
+      baseUrl: json.baseUrl ?? null,
+      tokenPreview: json.tokenPreview ?? null,
+      appId: json.appId ?? null,
+      domain: json.domain ?? null,
+      userOpenId: json.userOpenId ?? null,
+    };
   },
 }));

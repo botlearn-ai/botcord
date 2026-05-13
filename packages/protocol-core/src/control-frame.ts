@@ -550,7 +550,7 @@ export interface ListRuntimesResult {
 // ---------------------------------------------------------------------------
 
 /** Provider tag used by every third-party gateway frame today. */
-export type GatewayProvider = "telegram" | "wechat";
+export type GatewayProvider = "telegram" | "wechat" | "feishu";
 
 /**
  * One annotated gateway entry returned by `list_gateways`. Mirrors the on-disk
@@ -564,6 +564,9 @@ export interface GatewayProfileSummary {
   label?: string;
   enabled: boolean;
   baseUrl?: string;
+  appId?: string;
+  domain?: "feishu" | "lark";
+  userOpenId?: string;
   allowedSenderIds?: string[];
   allowedChatIds?: string[];
   splitAt?: number;
@@ -613,6 +616,7 @@ export interface UpsertGatewayParams {
   };
   settings?: {
     baseUrl?: string;
+    domain?: "feishu" | "lark";
     allowedSenderIds?: string[];
     allowedChatIds?: string[];
     splitAt?: number;
@@ -666,6 +670,7 @@ export interface GatewayLoginStartParams {
   gatewayId?: string;
   /** WeChat — override the iLink base URL. Defaults to `https://ilinkai.weixin.qq.com`. */
   baseUrl?: string;
+  domain?: "feishu" | "lark";
 }
 
 export interface GatewayLoginStartResult {
@@ -694,6 +699,9 @@ export interface GatewayLoginStatusResult {
   status: "pending" | "scanned" | "confirmed" | "expired" | "failed";
   /** Mirror of the daemon-resolved baseUrl (WeChat only). */
   baseUrl?: string;
+  appId?: string;
+  domain?: "feishu" | "lark";
+  userOpenId?: string;
   /** Masked token preview, e.g. `"abcd...wxyz"`. Only present on `confirmed`. */
   tokenPreview?: string;
 }

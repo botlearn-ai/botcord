@@ -240,6 +240,90 @@ describe("gateway_login_start / status", () => {
     expect(JSON.stringify(statusResult)).not.toContain("wechat-bot-token-1234567890");
   });
 
+  it("round-trips Feishu registration and upsert stores app secret locally", async () => {
+    const gw = makeFakeGateway();
+    const { state, io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    const feishuLogin = {
+      startFeishuRegistration: vi.fn(async () => ({
+        deviceCode: "DEV-CODE",
+        verificationUriComplete: "https://accounts.feishu.cn/verify?x=1",
+        expiresIn: 600,
+        interval: 5,
+        domain: "feishu" as const,
+        raw: {},
+      })),
+      pollFeishuRegistration: vi.fn(async () => ({
+        status: "confirmed" as const,
+        appId: "cli_feishu_123",
+        appSecret: "feishu-secret-1234567890",
+        userOpenId: "ou_alice",
+        domain: "feishu" as const,
+        raw: {},
+      })),
+    };
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+      feishuLoginClient: feishuLogin,
+    });
+
+    const startAck = await ctrl.handleLoginStart({
+      provider: "feishu",
+      accountId: "ag_alice",
+      domain: "feishu",
+    });
+    expect(startAck.ok).toBe(true);
+    const startResult = startAck.result as { loginId: string; qrcodeUrl?: string };
+    expect(startResult.loginId).toMatch(/^fsl_/);
+    expect(startResult.qrcodeUrl).toBe("https://accounts.feishu.cn/verify?x=1");
+
+    const statusAck = await ctrl.handleLoginStatus({
+      provider: "feishu",
+      loginId: startResult.loginId,
+      accountId: "ag_alice",
+    });
+    expect(statusAck.ok).toBe(true);
+    const statusResult = statusAck.result as {
+      status: string;
+      appId?: string;
+      userOpenId?: string;
+      tokenPreview?: string;
+    };
+    expect(statusResult).toMatchObject({
+      status: "confirmed",
+      appId: "cli_feishu_123",
+      userOpenId: "ou_alice",
+      tokenPreview: "feis...7890",
+    });
+    expect(JSON.stringify(statusResult)).not.toContain("feishu-secret-1234567890");
+
+    const gwId = uniqId("fs");
+    const upsertAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: startResult.loginId,
+      settings: { allowedSenderIds: ["ou_alice"], domain: "feishu" },
+    });
+    expect(upsertAck.ok).toBe(true);
+    expect(state.cfg.thirdPartyGateways?.[0]).toMatchObject({
+      id: gwId,
+      type: "feishu",
+      appId: "cli_feishu_123",
+      domain: "feishu",
+      userOpenId: "ou_alice",
+    });
+    expect(gw.addChannel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: gwId, type: "feishu", appId: "cli_feishu_123" }),
+    );
+    const secretPath = trackSecret(gwId);
+    const secret = JSON.parse(readFileSync(secretPath, "utf8")) as { appSecret?: string };
+    expect(secret.appSecret).toBe("feishu-secret-1234567890");
+  });
+
   it("discovers recent WeChat senders from a confirmed login session", async () => {
     const gw = makeFakeGateway();
     const { io } = makeConfigIO(baseCfg());

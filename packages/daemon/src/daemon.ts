@@ -6,6 +6,7 @@ import {
 import {
   Gateway,
   createBotCordChannel,
+  createFeishuChannel,
   createTelegramChannel,
   createWechatChannel,
   resolveTranscriptEnabled,
@@ -177,6 +178,23 @@ export function createDaemonChannel(
         ...(typeof chCfg.splitAt === "number" ? { splitAt: chCfg.splitAt } : {}),
         ...(typeof chCfg.secretFile === "string" ? { secretFile: chCfg.secretFile } : {}),
         ...(typeof chCfg.stateFile === "string" ? { stateFile: chCfg.stateFile } : {}),
+      });
+    case "feishu":
+      return createFeishuChannel({
+        id: chCfg.id,
+        accountId: chCfg.accountId,
+        ...(typeof chCfg.appId === "string" ? { appId: chCfg.appId } : {}),
+        ...(chCfg.domain === "feishu" || chCfg.domain === "lark"
+          ? { domain: chCfg.domain }
+          : {}),
+        ...(Array.isArray(chCfg.allowedSenderIds)
+          ? { allowedSenderIds: chCfg.allowedSenderIds as string[] }
+          : {}),
+        ...(Array.isArray(chCfg.allowedChatIds)
+          ? { allowedChatIds: chCfg.allowedChatIds as string[] }
+          : {}),
+        ...(typeof chCfg.splitAt === "number" ? { splitAt: chCfg.splitAt } : {}),
+        ...(typeof chCfg.secretFile === "string" ? { secretFile: chCfg.secretFile } : {}),
       });
     default:
       throw new Error(`unknown channel type "${chCfg.type}"`);
