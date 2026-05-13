@@ -906,6 +906,27 @@ export default function DashboardApp() {
 
   const handleSendMessageFromAgentCard = () => {
     if (!selectedAgentForCard) return;
+    if (isSelectedAgentOwned) {
+      const agentId = selectedAgentForCard.agent_id;
+      void (async () => {
+        uiStore.closeAgentCard();
+        chatStore.closeAgentCardState();
+        uiStore.setSidebarTab("messages");
+        uiStore.setMessagesPane("user-chat");
+        uiStore.setFocusedRoomId(null);
+        uiStore.setOpenedRoomId(null);
+        if (agentId !== sessionStore.activeAgentId) {
+          await chatStore.switchActiveAgent(agentId);
+        }
+        api.getUserChatRoom(agentId).then((room) => {
+          uiStore.setUserChatRoomId(room.room_id);
+        }).catch((error) => {
+          console.error("[DashboardApp] getUserChatRoom failed:", error);
+        });
+        router.push(`/chats/messages/${USER_CHAT_SUBTAB}`);
+      })();
+      return;
+    }
     void navigateToDmWith(selectedAgentForCard.agent_id, () => {
       uiStore.closeAgentCard();
       chatStore.closeAgentCardState();
