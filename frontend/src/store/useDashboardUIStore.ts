@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand 保存 dashboard 纯界面状态，不直接持有远端数据与同步逻辑
- * [OUTPUT]: 对外提供 useDashboardUIStore，管理路由同构 tab、房间焦点与 Agent 卡片开合状态
+ * [OUTPUT]: 对外提供 useDashboardUIStore，管理路由同构 tab、房间焦点、Messages 请求视图与 Agent 卡片开合状态
  * [POS]: frontend dashboard 的 UI 域状态源，负责界面导航与模态/面板控制
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -160,7 +160,14 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   setFocusedRoomId: (focusedRoomId) =>
     set((state) => (state.focusedRoomId === focusedRoomId ? state : { focusedRoomId })),
   setOpenedRoomId: (openedRoomId) =>
-    set((state) => (state.openedRoomId === openedRoomId ? state : { openedRoomId })),
+    set((state) => {
+      return state.openedRoomId === openedRoomId
+        && (!openedRoomId || !state.messagesShowRequests)
+        ? state
+        : openedRoomId
+          ? { openedRoomId, messagesShowRequests: false }
+          : { openedRoomId };
+    }),
   setUserChatRoomId: (userChatRoomId) =>
     set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
   setUserChatAgentId: (userChatAgentId) =>
@@ -191,7 +198,15 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   setSelectedBotAgentId: (selectedBotAgentId) =>
     set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
   setMessagesPane: (messagesPane) =>
-    set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
+    set((state) => {
+      const clearsRequests = messagesPane === "user-chat";
+      if (state.messagesPane === messagesPane && (!clearsRequests || !state.messagesShowRequests)) {
+        return state;
+      }
+      return clearsRequests
+        ? { messagesPane, messagesShowRequests: false }
+        : { messagesPane };
+    }),
   setMessagesFilter: (messagesFilter) =>
     set((state) =>
       state.messagesFilter === messagesFilter
