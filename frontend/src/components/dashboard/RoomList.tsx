@@ -24,6 +24,7 @@ import SubscriptionBadge from "./SubscriptionBadge";
 import { resolveDmDisplayName } from "./dmRoom";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotAvatar from "./BotAvatar";
+import { SidebarListSkeleton } from "./DashboardTabSkeleton";
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
@@ -65,25 +66,6 @@ function formatLastMessageTime(isoTime: string | null): string {
 
 function formatUnreadCount(count: number): string {
   return count > 99 ? "99+" : String(count);
-}
-
-function RoomListSkeleton() {
-  return (
-    <div className="space-y-1 px-3 py-2">
-      {Array.from({ length: 7 }).map((_, idx) => (
-        <div key={idx} className="flex items-center gap-3 rounded-lg px-1 py-2.5">
-          <div className="dashboard-skeleton-block h-10 w-10 shrink-0 rounded-xl" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <div className="dashboard-skeleton-block h-3.5 w-28 rounded" />
-              <div className="dashboard-skeleton-block h-3 w-9 rounded bg-glass-border/40" />
-            </div>
-            <div className="dashboard-skeleton-block mt-2 h-3 w-44 max-w-full rounded bg-glass-border/40" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export default function RoomList({
@@ -215,7 +197,7 @@ export default function RoomList({
   if (loading) {
     return (
       <div className="py-1">
-        <RoomListSkeleton />
+        <SidebarListSkeleton rows={6} />
       </div>
     );
   }
