@@ -386,7 +386,7 @@ export default function CreateAgentDialog({
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+      <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
         <button
           onClick={onClose}
           disabled={submitting}
