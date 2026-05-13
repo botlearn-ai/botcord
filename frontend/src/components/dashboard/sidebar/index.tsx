@@ -436,13 +436,12 @@ export default function Sidebar({
           onClose={() => setShowCreateRoom(false)}
           onCreated={(room) => {
             setShowCreateRoom(false);
-            uiStore.setSidebarTab("messages");
             uiStore.setMessagesPane("room");
             uiStore.setMessagesFilter("self-all");
-            uiStore.setFocusedRoomId(room.room_id);
-            uiStore.setOpenedRoomId(room.room_id);
+            const path = `/chats/messages/${encodeURIComponent(room.room_id)}`;
+            uiStore.startPrimaryNavigation("messages", path);
             onMobileSecondaryClose?.();
-            router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+            startTransition(() => { router.push(path); });
           }}
         />
       )}

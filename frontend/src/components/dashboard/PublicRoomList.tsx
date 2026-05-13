@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 ui/chat store 的公开房间列表与消息加载动作，依赖 SubscriptionBadge 呈现付费房间标记
+ * [INPUT]: 依赖 ui/chat store 的公开房间列表与路由导航动作，依赖 SubscriptionBadge 呈现付费房间标记
  * [OUTPUT]: 对外提供 PublicRoomList 组件，渲染游客可浏览的公开房间列表
  * [POS]: dashboard 左侧公开房间列表视图，被游客模式与 explore 相关入口复用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -23,24 +23,18 @@ export default function PublicRoomList() {
   const {
     publicRooms,
     publicRoomsLoading,
-    messages,
-    loadRoomMessages,
     loadPublicRooms,
     addRecentPublicRoom,
   } = useDashboardChatStore(useShallow((state) => ({
     publicRooms: state.publicRooms,
     publicRoomsLoading: state.publicRoomsLoading,
-    messages: state.messages,
-    loadRoomMessages: state.loadRoomMessages,
     loadPublicRooms: state.loadPublicRooms,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
-  const { focusedRoomId, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(
+  const { focusedRoomId, startPrimaryNavigation } = useDashboardUIStore(
     useShallow((state) => ({
       focusedRoomId: state.focusedRoomId,
-      setFocusedRoomId: state.setFocusedRoomId,
-      setOpenedRoomId: state.setOpenedRoomId,
-      setSidebarTab: state.setSidebarTab,
+      startPrimaryNavigation: state.startPrimaryNavigation,
     })),
   );
 
@@ -62,16 +56,12 @@ export default function PublicRoomList() {
 
   const handleSelect = (roomId: string) => {
     const room = publicRooms.find((item) => item.room_id === roomId);
-    setFocusedRoomId(roomId);
-    setOpenedRoomId(roomId);
-    setSidebarTab("messages");
-    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+    const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+    startPrimaryNavigation("messages", path);
     if (room) {
       addRecentPublicRoom(room);
     }
-    if (!messages[roomId]) {
-      void loadRoomMessages(roomId);
-    }
+    router.push(path);
   };
 
   return (
