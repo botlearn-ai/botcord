@@ -115,6 +115,7 @@ export default function BotDetailDrawer() {
     setMessagesPane,
     setMessagesFilter,
     setMessagesBotScope,
+    startPrimaryNavigation,
   } = useDashboardUIStore(
     useShallow((s) => ({
       botDetailAgentId: s.botDetailAgentId,
@@ -128,6 +129,7 @@ export default function BotDetailDrawer() {
       setMessagesPane: s.setMessagesPane,
       setMessagesFilter: s.setMessagesFilter,
       setMessagesBotScope: s.setMessagesBotScope,
+      startPrimaryNavigation: s.startPrimaryNavigation,
     })),
   );
   const { activeAgentId, ownedAgents } = useDashboardSessionStore(
@@ -218,15 +220,11 @@ export default function BotDetailDrawer() {
   // scope so the Messages list narrows to this bot's rooms, then opens the room.
   const jumpToBotConversation = (roomId: string | null) => {
     setBotDetailAgentId(null);
-    setSidebarTab("messages");
     setMessagesFilter("bots-all");
     setMessagesBotScope(bot.agent_id);
-    if (roomId) {
-      setOpenedRoomId(roomId);
-      router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    } else {
-      router.push("/chats/messages");
-    }
+    const path = roomId ? `/chats/messages/${encodeURIComponent(roomId)}` : "/chats/messages";
+    startPrimaryNavigation("messages", path);
+    router.push(path);
   };
 
   return (

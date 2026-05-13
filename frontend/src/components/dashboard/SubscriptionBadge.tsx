@@ -66,14 +66,12 @@ export default function SubscriptionBadge({
     activeIdentityType: state.activeIdentity?.type ?? null,
   })));
   const isAgentMode = activeIdentityType === "agent" && !!activeAgentId;
-  const { joinRoom, loadRoomMessages } = useDashboardChatStore(useShallow((state) => ({
+  const { joinRoom } = useDashboardChatStore(useShallow((state) => ({
     joinRoom: state.joinRoom,
-    loadRoomMessages: state.loadRoomMessages,
   })));
-  const { setOpenedRoomId, setFocusedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
-    setOpenedRoomId: state.setOpenedRoomId,
-    setFocusedRoomId: state.setFocusedRoomId,
+  const { setSidebarTab, startPrimaryNavigation } = useDashboardUIStore(useShallow((state) => ({
     setSidebarTab: state.setSidebarTab,
+    startPrimaryNavigation: state.startPrimaryNavigation,
   })));
   const {
     getActiveSubscription,
@@ -190,11 +188,9 @@ export default function SubscriptionBadge({
       }
       if (roomId) {
         await joinRoom(roomId);
-        setFocusedRoomId(roomId);
-        setOpenedRoomId(roomId);
-        setSidebarTab("messages");
-        loadRoomMessages(roomId);
-        router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+        const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+        startPrimaryNavigation("messages", path);
+        router.push(path);
       }
       setShowModal(false);
     } catch (err) {

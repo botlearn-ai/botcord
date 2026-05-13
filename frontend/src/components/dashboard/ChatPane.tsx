@@ -49,16 +49,12 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const { contactsView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
+  const { contactsView, startPrimaryNavigation } = useDashboardUIStore(useShallow((state) => ({
     contactsView: state.contactsView,
-    setFocusedRoomId: state.setFocusedRoomId,
-    setOpenedRoomId: state.setOpenedRoomId,
-    setSidebarTab: state.setSidebarTab,
+    startPrimaryNavigation: state.startPrimaryNavigation,
   })));
-  const { overview, messages, loadRoomMessages, selectAgent, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, selectAgent, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
-    messages: state.messages,
-    loadRoomMessages: state.loadRoomMessages,
     selectAgent: state.selectAgent,
     refreshOverview: state.refreshOverview,
   })));
@@ -155,13 +151,9 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
         : filteredContacts;
 
   const openJoinedRoom = (roomId: string) => {
-    setFocusedRoomId(roomId);
-    setOpenedRoomId(roomId);
-    setSidebarTab("messages");
-    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    if (!messages[roomId]) {
-      void loadRoomMessages(roomId);
-    }
+    const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+    startPrimaryNavigation("messages", path);
+    startTransition(() => router.push(path));
   };
 
   return (
@@ -416,16 +408,12 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     exploreView,
     resetMessagesGroupingForRoomOpen,
     setExploreView,
-    setFocusedRoomId,
-    setOpenedRoomId,
-    setSidebarTab,
+    startPrimaryNavigation,
   } = useDashboardUIStore(useShallow((state) => ({
     exploreView: state.exploreView,
     resetMessagesGroupingForRoomOpen: state.resetMessagesGroupingForRoomOpen,
     setExploreView: state.setExploreView,
-    setFocusedRoomId: state.setFocusedRoomId,
-    setOpenedRoomId: state.setOpenedRoomId,
-    setSidebarTab: state.setSidebarTab,
+    startPrimaryNavigation: state.startPrimaryNavigation,
   })));
   const {
     publicRooms,
@@ -434,11 +422,9 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     publicAgentsLoading,
     publicHumans,
     publicHumansLoading,
-    messages,
     loadPublicRooms,
     loadPublicAgents,
     loadPublicHumans,
-    loadRoomMessages,
     selectAgent,
     addRecentPublicRoom,
   } = useDashboardChatStore(useShallow((state) => ({
@@ -448,11 +434,9 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     publicAgentsLoading: state.publicAgentsLoading,
     publicHumans: state.publicHumans,
     publicHumansLoading: state.publicHumansLoading,
-    messages: state.messages,
     loadPublicRooms: state.loadPublicRooms,
     loadPublicAgents: state.loadPublicAgents,
     loadPublicHumans: state.loadPublicHumans,
-    loadRoomMessages: state.loadRoomMessages,
     selectAgent: state.selectAgent,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
@@ -486,15 +470,11 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   );
 
   const openRoomFromExplore = (room: PublicRoom) => {
+    const path = `/chats/messages/${encodeURIComponent(room.room_id)}`;
     resetMessagesGroupingForRoomOpen();
-    setFocusedRoomId(room.room_id);
-    setOpenedRoomId(room.room_id);
-    setSidebarTab("messages");
-    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    startPrimaryNavigation("messages", path);
     addRecentPublicRoom(room);
-    if (!messages[room.room_id]) {
-      void loadRoomMessages(room.room_id);
-    }
+    startTransition(() => router.push(path));
   };
 
   const openHumanOwnerFromAgent = async (humanId: string) => {

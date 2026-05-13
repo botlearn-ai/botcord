@@ -97,8 +97,7 @@ export default function ContactsDetailPane() {
   const selectedContactKey = useDashboardUIStore((s) => s.selectedContactKey);
   const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const setPeerBotAgentId = useDashboardUIStore((s) => s.setPeerBotAgentId);
-  const setSidebarTab = useDashboardUIStore((s) => s.setSidebarTab);
-  const setOpenedRoomId = useDashboardUIStore((s) => s.setOpenedRoomId);
+  const startPrimaryNavigation = useDashboardUIStore((s) => s.startPrimaryNavigation);
   const { ownedAgents, humanRooms } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents, humanRooms: s.humanRooms })),
   );
@@ -202,13 +201,9 @@ export default function ContactsDetailPane() {
         roomId = dm?.room_id ?? null;
       }
     }
-    setSidebarTab("messages");
-    if (roomId) {
-      setOpenedRoomId(roomId);
-      router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    } else {
-      router.push("/chats/messages");
-    }
+    const path = roomId ? `/chats/messages/${encodeURIComponent(roomId)}` : "/chats/messages";
+    startPrimaryNavigation("messages", path);
+    router.push(path);
   };
 
   return (
