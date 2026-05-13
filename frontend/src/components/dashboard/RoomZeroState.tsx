@@ -55,12 +55,13 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
       })),
     );
 
-  const { setFocusedRoomId, setOpenedRoomId, setSidebarTab, setMessagesPane } = useDashboardUIStore(
+  const { setFocusedRoomId, setOpenedRoomId, setSidebarTab, setMessagesPane, setMessagesFilter } = useDashboardUIStore(
     useShallow((state) => ({
       setFocusedRoomId: state.setFocusedRoomId,
       setOpenedRoomId: state.setOpenedRoomId,
       setSidebarTab: state.setSidebarTab,
       setMessagesPane: state.setMessagesPane,
+      setMessagesFilter: state.setMessagesFilter,
     })),
   );
 
@@ -68,6 +69,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
     setShowCreateRoom(false);
     setSidebarTab("messages");
     setMessagesPane("room");
+    setMessagesFilter("self-all");
     setFocusedRoomId(room.room_id);
     setOpenedRoomId(room.room_id);
     router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
