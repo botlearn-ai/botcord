@@ -55,6 +55,12 @@ export interface BotCordChannelClient {
     text: string,
     options?: { replyTo?: string; topic?: string },
   ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
+  sendTypedMessage?(
+    to: string,
+    type: "result" | "error",
+    text: string,
+    options?: { replyTo?: string; topic?: string },
+  ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
   getHubUrl(): string;
   onTokenRefresh?: (token: string, expiresAt: number) => void;
 }
@@ -804,7 +810,10 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       const options: { replyTo?: string; topic?: string } = {};
       if (message.replyTo) options.replyTo = message.replyTo;
       if (message.threadId) options.topic = message.threadId;
-      const resp = await client.sendMessage(message.conversationId, message.text, options);
+      const resp =
+        message.type === "error" && client.sendTypedMessage
+          ? await client.sendTypedMessage(message.conversationId, "error", message.text, options)
+          : await client.sendMessage(message.conversationId, message.text, options);
       const providerMessageId =
         (resp && typeof resp.hub_msg_id === "string" && resp.hub_msg_id) ||
         (resp && typeof (resp as { message_id?: unknown }).message_id === "string"

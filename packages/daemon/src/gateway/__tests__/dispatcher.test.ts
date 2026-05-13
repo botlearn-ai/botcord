@@ -492,6 +492,7 @@ describe("Dispatcher", () => {
     await dispatcher.handle(makeEnvelope({ id: "msg_error" }));
 
     expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error");
     expect(channel.sends[0].message.text).toContain("missing openclawAgent");
   });
@@ -1256,6 +1257,7 @@ describe("Dispatcher", () => {
 
     await dispatcher.handle(makeEnvelope({ id: "m1" }));
     expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error");
     expect(channel.sends[0].message.text).toContain("boom");
     expect(store.all().length).toBe(0);
@@ -1921,6 +1923,7 @@ describe("Dispatcher", () => {
       await p;
       expect(runtime.calls[0].signal.aborted).toBe(true);
       expect(channel.sends.length).toBe(1);
+      expect(channel.sends[0].message.type).toBe("error");
       expect(channel.sends[0].message.text).toMatch(/Runtime timeout/);
       expect(channel.sends[0].message.conversationId).toBe("rm_g_other");
       expect(channel.sends[0].message.replyTo).toBe("m_to");
@@ -1941,6 +1944,7 @@ describe("Dispatcher", () => {
       }),
     );
     expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error: boom");
     expect(channel.sends[0].message.conversationId).toBe("rm_g_other");
     expect(channel.sends[0].message.replyTo).toBe("m_err");

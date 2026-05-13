@@ -187,6 +187,7 @@ export interface GatewayOutboundMessage {
   accountId: string;
   conversationId: string;
   threadId?: string | null;
+  type?: "message" | "error";
   text: string;
   attachments?: GatewayOutboundAttachment[];
   replyTo?: string | null;
