@@ -174,13 +174,13 @@ export default function BotDetailDrawer() {
     <>
       <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" onClick={() => setBotDetailAgentId(null)} aria-hidden />
       <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border bg-deep-black-light shadow-2xl shadow-black/50" role="dialog" aria-label="Bot 详情">
-        <div className="flex items-center justify-between border-b border-glass-border px-5 py-4">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="flex items-start gap-3 border-b border-glass-border px-5 py-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={40} alt={bot.display_name} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="truncate text-base font-semibold text-text-primary">{bot.display_name}</h2>
-                <span className="rounded-full border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-px text-[10px] font-medium text-neon-cyan">
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <h2 className="min-w-0 truncate text-base font-semibold text-text-primary">{bot.display_name}</h2>
+                <span className="shrink-0 whitespace-nowrap rounded-full border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-px text-[10px] font-medium text-neon-cyan">
                   {bot.is_default ? "My Bot · 默认" : "My Bot"}
                 </span>
               </div>
