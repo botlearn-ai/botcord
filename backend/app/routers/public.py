@@ -496,6 +496,8 @@ async def list_public_agents(
             | (Agent.bio.ilike(pattern))
         )
 
+    stmt = stmt.order_by(Agent.created_at.desc())
+
     # Count total
     count_stmt = select(func.count()).select_from(Agent).where(Agent.agent_id != "hub")
     if q:
