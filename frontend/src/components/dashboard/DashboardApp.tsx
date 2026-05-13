@@ -270,8 +270,14 @@ export default function DashboardApp() {
         const opensUserChat =
           tab === "user-chat"
           || subtab === USER_CHAT_SUBTAB
-          || (roomIdFromSubtab !== null && roomIdFromSubtab === uiStore.userChatRoomId);
+          || (roomIdFromSubtab !== null && (
+            roomIdFromSubtab === uiStore.userChatRoomId
+            || roomIdFromSubtab.startsWith("rm_oc_")
+          ));
         if (opensUserChat) {
+          if (roomIdFromSubtab?.startsWith("rm_oc_") && uiStore.userChatRoomId !== roomIdFromSubtab) {
+            uiStore.setUserChatRoomId(roomIdFromSubtab);
+          }
           if (uiStore.messagesPane !== "user-chat") uiStore.setMessagesPane("user-chat");
           if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
           if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
@@ -314,6 +320,7 @@ export default function DashboardApp() {
     uiStore.sidebarTab,
     uiStore.messagesPane,
     uiStore.userChatRoomId,
+    uiStore.userChatAgentId,
     uiStore.exploreView,
     uiStore.contactsView,
     uiStore.setFocusedRoomId,
@@ -321,6 +328,7 @@ export default function DashboardApp() {
     uiStore.setSidebarTab,
     uiStore.clearPrimaryNavigation,
     uiStore.setMessagesPane,
+    uiStore.setUserChatRoomId,
     uiStore.setExploreView,
     uiStore.setContactsView,
     chatStore.getRoomSummary,
@@ -913,6 +921,7 @@ export default function DashboardApp() {
         chatStore.closeAgentCardState();
         uiStore.setSidebarTab("messages");
         uiStore.setMessagesPane("user-chat");
+        uiStore.setUserChatAgentId(agentId);
         uiStore.setFocusedRoomId(null);
         uiStore.setOpenedRoomId(null);
         if (agentId !== sessionStore.activeAgentId) {
@@ -1038,7 +1047,7 @@ export default function DashboardApp() {
           <MyBotsPanel />
         ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
           <div className="h-full min-w-0">
-            <UserChatPane />
+            <UserChatPane agentId={uiStore.userChatAgentId} />
           </div>
         ) : (
           <div className="flex h-full min-w-0">

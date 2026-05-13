@@ -38,7 +38,7 @@ import MessagesPanel from "./MessagesPanel";
 import WalletPanel from "./WalletPanel";
 import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
-import { humansApi } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
@@ -155,6 +155,8 @@ export default function Sidebar({
     startPrimaryNavigation: s.startPrimaryNavigation,
     setMessagesPane: s.setMessagesPane,
     setMessagesFilter: s.setMessagesFilter,
+    setUserChatRoomId: s.setUserChatRoomId,
+    setUserChatAgentId: s.setUserChatAgentId,
     setExploreView: s.setExploreView,
     setContactsView: s.setContactsView,
     setSidebarWidth: s.setSidebarWidth,
@@ -443,10 +445,22 @@ export default function Sidebar({
             setShowCreateBot(false);
             setCreateBotForDaemonId(null);
             await sessionStore.refreshUserProfile();
-            uiStore.setSidebarTab("bots");
-            useDashboardUIStore.getState().setSelectedBotAgentId(agentId);
+            uiStore.setSidebarTab("messages");
+            uiStore.setMessagesPane("user-chat");
+            uiStore.setUserChatAgentId(agentId);
+            uiStore.setFocusedRoomId(null);
+            uiStore.setOpenedRoomId(null);
             onMobileSecondaryClose?.();
-            startTransition(() => { router.push(`/chats/bots/${encodeURIComponent(agentId)}`); });
+            try {
+              const room = await api.getUserChatRoom(agentId);
+              uiStore.setUserChatRoomId(room.room_id);
+              startTransition(() => {
+                router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+              });
+            } catch (error) {
+              console.error("[Sidebar] getUserChatRoom after create failed:", error);
+              startTransition(() => { router.push(USER_CHAT_ROUTE); });
+            }
           }}
         />
       )}
