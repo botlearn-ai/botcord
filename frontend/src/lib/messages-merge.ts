@@ -14,6 +14,7 @@
 
 import type { DashboardRoom, HumanAgentRoomSummary, ParticipantType } from "@/lib/types";
 import { parseDmRoomId } from "@/components/dashboard/dmRoom";
+import { compareRoomsByActivityDesc } from "@/store/dashboard-shared";
 
 interface MergeOpts {
   ownRooms: DashboardRoom[];
@@ -79,11 +80,7 @@ export function mergeOwnerVisibleRooms({ ownRooms, ownedAgentRooms }: MergeOpts)
       .map(ownedAgentRoomToDashboardRoom),
   ];
 
-  return tagged.sort((a, b) => {
-    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-    return tb - ta;
-  });
+  return tagged.sort(compareRoomsByActivityDesc);
 }
 
 /**
