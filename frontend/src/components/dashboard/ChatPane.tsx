@@ -9,10 +9,10 @@
 
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
-import { chatPane, exploreUi, sidebar } from '@/lib/i18n/translations/dashboard';
+import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { Bot, Loader2, MessageSquare, User, Users } from "lucide-react";
+import { Bot, Eye, Loader2, MessageSquare, User, Users } from "lucide-react";
 import {
   buildVisibleMessageRooms,
   isRoomOwnedByCurrentViewer,
@@ -59,7 +59,6 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const tSidebar = sidebar[locale];
   const { contactsView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
     contactsView: state.contactsView,
     setFocusedRoomId: state.setFocusedRoomId,
@@ -175,20 +174,9 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
     }
   };
 
-  const switchContactsView = (view: "requests" | "agents" | "rooms" | "created") => {
-    useDashboardUIStore.getState().setContactsView(view);
-    router.push(`/chats/contacts/${view}`);
-  };
-  const mobileContactsBtn = (active: boolean) =>
-    `whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-      active
-        ? "border-neon-cyan/60 bg-neon-cyan/15 text-neon-cyan"
-        : "border-glass-border bg-glass-bg text-text-secondary hover:text-text-primary"
-    }`;
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
-      <div className="border-b border-glass-border px-5 py-4 max-md:px-4 max-md:py-3">
+      <div className="border-b border-glass-border px-5 py-4">
         <h2 className="text-base font-semibold text-text-primary">
           {isRequestsView
             ? t.contactRequests
@@ -198,7 +186,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                 ? t.createdRooms
                 : t.contacts}
         </h2>
-        <p className="mt-1 text-xs text-text-secondary max-md:hidden">
+        <p className="mt-1 text-xs text-text-secondary">
           {isRequestsView
             ? t.reviewRequests
             : isRoomsView
@@ -207,12 +195,6 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                 ? t.roomsCreatedByMe
                 : t.yourAgentContacts}
         </p>
-        <div className="mt-3 flex flex-nowrap gap-1.5 overflow-x-auto md:hidden">
-          <button type="button" onClick={() => switchContactsView("requests")} className={mobileContactsBtn(isRequestsView)}>{tSidebar.friendRequests}</button>
-          <button type="button" onClick={() => switchContactsView("agents")} className={mobileContactsBtn(!isRequestsView && !isRoomsView && !isCreatedView)}>{tSidebar.myFriends}</button>
-          <button type="button" onClick={() => switchContactsView("rooms")} className={mobileContactsBtn(isRoomsView)}>{tSidebar.joinedRooms}</button>
-          <button type="button" onClick={() => switchContactsView("created")} className={mobileContactsBtn(isCreatedView)}>{tSidebar.createdRooms}</button>
-        </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <div className="min-w-[240px] max-w-xl flex-1">
             <SearchBar
@@ -542,7 +524,7 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-deep-black">
-      <div className="mx-auto w-full max-w-5xl px-6 pt-8 max-md:px-4 max-md:pt-5">
+      <div className="mx-auto w-full max-w-5xl px-6 pt-8">
         <h1 className="text-2xl font-semibold text-text-primary">
           {locale === "zh" ? "发现" : "Explore"}
         </h1>
@@ -575,7 +557,7 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-6 py-6 max-md:px-4">
+      <div className="mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-6 py-6">
         {loading ? (
           <GridSkeletonCards />
         ) : isRoomsView ? (
@@ -642,54 +624,70 @@ type MessagesFilter =
   | "bots-bot-human"
   | "bots-group";
 
-type EmptyBucket = "all" | "bots" | "humans" | "groups";
-
-const filterToBucket: Record<MessagesFilter, EmptyBucket> = {
-  "self-all": "all",
-  "self-my-bot": "bots",
-  "self-third-bot": "bots",
-  "self-human": "humans",
-  "self-group": "groups",
-  "bots-all": "all",
-  "bots-bot-bot": "bots",
-  "bots-bot-human": "humans",
-  "bots-group": "groups",
-};
-
-const messagesEmptyByFilter: Record<EmptyBucket, {
+const messagesEmptyByFilter: Record<MessagesFilter, {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
   hint: string;
 }> = {
-  all: {
+  "self-all": {
     icon: MessageSquare,
     title: "选择一个对话",
-    description: "从左侧列表选一条对话开始 — Bot、真人、群聊都在这里。",
-    hint: "提示：用左侧分组在「我参与的对话」和「Bot 监控」之间切换。",
+    description: "从左侧列表选一条对话开始 — 这里是你直接参与的所有会话。",
+    hint: "想看你的 Bot 在干什么？切到「Bot 监控」分组。",
   },
-  bots: {
+  "self-my-bot": {
     icon: Bot,
-    title: "和你的 Bot 聊一聊",
-    description: "左侧是你与每个 Bot 的私聊，点开就可以发消息。",
-    hint: "想发现更多 Bot？去「发现」标签浏览公开 agents。",
+    title: "和你自己的 Bot 聊一聊",
+    description: "左侧是你和你托管的 Bot 之间的主控通道。",
+    hint: "在「我的 Bots」标签可以管理这些 Bot。",
   },
-  humans: {
+  "self-third-bot": {
+    icon: Bot,
+    title: "和第三方 Bot 聊一聊",
+    description: "左侧是你在用别人 Bot 服务的私聊记录。",
+    hint: "去「发现」→ Bot 浏览更多公开 Agent。",
+  },
+  "self-human": {
     icon: User,
     title: "和真人聊一聊",
     description: "左侧是你与真实联系人的私聊。",
-    hint: "想认识更多人？去「发现」→ 公开 Human。",
+    hint: "想认识更多人？去「发现」→ 真人。",
   },
-  groups: {
+  "self-group": {
     icon: Users,
     title: "选一个群开始",
     description: "你已加入的群聊都列在左侧，点击进入即可发言。",
-    hint: "想找新的群？去「发现」→ 公开房间。",
+    hint: "想找新的群？去「发现」→ 群组。",
+  },
+  "bots-all": {
+    icon: Eye,
+    title: "看看你的 Bot 在干什么",
+    description: "这里是你托管的 Bot 自己参与的所有对话 — 你是 owner，只读观察。",
+    hint: "点开一条会话，可以看完整对话流。",
+  },
+  "bots-bot-bot": {
+    icon: Bot,
+    title: "Bot ↔ Bot 的自主对话",
+    description: "你的 Bot 在跟其他 Bot 协作 / 协商 / 转交任务的记录。",
+    hint: "Owner 视角只读 — 不能代为发言。",
+  },
+  "bots-bot-human": {
+    icon: User,
+    title: "你的 Bot 跟真人的对话",
+    description: "你的 Bot 在替你应对真人请求 — 看它说得怎么样。",
+    hint: "Owner 视角只读 — 不能代为发言。",
+  },
+  "bots-group": {
+    icon: Users,
+    title: "你的 Bot 加入的群",
+    description: "Bot 在公开 / 私有群里的活动。",
+    hint: "Owner 视角只读 — 不能代为发言。",
   },
 };
 
 function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
-  const config = messagesEmptyByFilter[filterToBucket[filter]];
+  const config = messagesEmptyByFilter[filter] ?? messagesEmptyByFilter["self-all"];
   const Icon = config.icon;
   return (
     <div className="w-full max-w-md text-center">
@@ -728,9 +726,6 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     recentVisitedRooms: state.recentVisitedRooms,
     getRoomSummary: state.getRoomSummary,
   })));
-  const openedRoomMemberVersion = useDashboardChatStore(
-    (state) => openedRoomId ? (state.roomMemberVersions[openedRoomId] ?? 0) : 0,
-  );
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms }),
     [overview, recentVisitedRooms, token, humanRooms],
@@ -759,7 +754,7 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     return () => {
       cancelled = true;
     };
-  }, [openedRoomId, openedRoomMemberVersion]);
+  }, [openedRoomId]);
 
   if (sidebarTab === "explore") {
     return <ExploreMainPane onHumanOpen={onHumanOpen} />;
@@ -778,6 +773,7 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   }
 
   const openedRoom = openedRoomId ? getRoomSummary(openedRoomId) : null;
+  const originAgent = openedRoom?._originAgent ?? null;
   const joinedRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
   const joinedHumanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
   const isHumanView = viewMode === "human";
@@ -816,11 +812,10 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
       </div>
       {openedRoomId && !isPaidAndNotJoined && (
         <>
-          {openedRoom?._originAgent ? (
+          {originAgent ? (
             <div className="border-t border-glass-border bg-glass-bg/30 px-4 py-2.5">
               <p className="text-center text-xs text-text-secondary/70">
-                <span className="mr-1">🔒</span>
-                由 {openedRoom._originAgent.display_name} 代为发言 · 你是 owner，可观察不可发
+                由 {originAgent.display_name} 代为发言 · 你是 owner，可观察不可发
               </p>
             </div>
           ) : isGuest ? (

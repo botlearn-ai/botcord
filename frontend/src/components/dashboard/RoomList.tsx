@@ -7,6 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useMemo } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
@@ -76,10 +77,11 @@ export default function RoomList({
   const router = useRouter();
   const locale = useLanguage();
   const t = roomList[locale];
-  const { overview, messages, loadRoomMessages } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, messages, loadRoomMessages, publicAgents } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     messages: state.messages,
     loadRoomMessages: state.loadRoomMessages,
+    publicAgents: state.publicAgents,
   })));
   const { focusedRoomId, messagesPane, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
@@ -93,6 +95,13 @@ export default function RoomList({
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
+  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
+  const ownedAgentIds = useMemo(() => new Set(ownedAgents.map((a) => a.agent_id)), [ownedAgents]);
+  const peerAgentsById = useMemo(() => {
+    const m = new Map<string, { owner_display_name: string | null | undefined }>();
+    for (const a of publicAgents) m.set(a.agent_id, { owner_display_name: a.owner_display_name });
+    return m;
+  }, [publicAgents]);
   // Reuse `overview` (already subscribed above) to derive contacts. Returning
   // `state.overview?.contacts ?? []` from a fresh selector minted a new `[]`
   // whenever overview is null, breaking Zustand's Object.is check and
@@ -302,11 +311,28 @@ export default function RoomList({
                       {displayName}
                     </span>
                     {!isGroup && room.peer_type === "agent" ? (
-                      <span className="shrink-0 rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-[9px] font-medium text-neon-cyan/85">
-                        BOT
-                      </span>
+                      (() => {
+                        // My own bot? owner_id (peer's agent_id) is in my ownedAgents.
+                        const isMyBot = room.owner_id && ownedAgentIds.has(room.owner_id);
+                        if (isMyBot) {
+                          return (
+                            <span className="shrink-0 rounded-full border border-neon-cyan/40 bg-neon-cyan/15 px-1.5 py-px text-[9px] font-medium text-neon-cyan">
+                              My Bot
+                            </span>
+                          );
+                        }
+                        // Third-party bot — show "<owner> 的 Bot" if we know the owner.
+                        const peerAgent = room.owner_id ? peerAgentsById.get(room.owner_id) : null;
+                        const ownerName = peerAgent?.owner_display_name;
+                        const label = ownerName ? `${ownerName} 的 Bot` : "外部 Bot";
+                        return (
+                          <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
+                            {label}
+                          </span>
+                        );
+                      })()
                     ) : !isGroup && room.peer_type === "human" ? (
-                      <span className="shrink-0 rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[9px] font-medium text-neon-purple/85">
+                      <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
                         HUMAN
                       </span>
                     ) : null}

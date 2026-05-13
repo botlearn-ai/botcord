@@ -10,7 +10,6 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import { humanRoomToDashboardRoom } from "@/store/dashboard-shared";
 
 function Section({
   title,
@@ -135,7 +134,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
     (c) => (c.peer_type ?? "agent") === "agent" && !ownedAgentIds.has(c.contact_agent_id),
   );
   const humanContacts = contacts.filter((c) => c.peer_type === "human");
-  const rooms = overview?.rooms || humanRooms.map(humanRoomToDashboardRoom);
+  const rooms = overview?.rooms || humanRooms || [];
   const groups = rooms.filter((r) => (r.member_count ?? 0) > 2);
 
   const openRequests = () => {
@@ -191,7 +190,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
               key={`owned-${agent.agent_id}`}
               avatar={<BotAvatar agentId={agent.agent_id} size={32} alt={agent.display_name} />}
               name={agent.display_name}
-              subtitle="我的 Bot"
+              subtitle={agent.is_default ? "默认 · 我的 Bot" : "我的 Bot"}
               online={agent.ws_online}
               active={isActive("agent", agent.agent_id)}
               onClick={() => selectAgent(agent.agent_id)}

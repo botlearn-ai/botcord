@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar as sidebarI18n } from "@/lib/i18n/translations/dashboard";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -27,6 +28,8 @@ import { usePresenceStore } from "@/store/usePresenceStore";
 import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
+import BotDetailDrawer from "./BotDetailDrawer";
+import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import HomePanel from "./HomePanel";
@@ -168,7 +171,7 @@ export default function DashboardApp() {
     let cancelled = false;
 
     const syncSession = async (
-      session: { access_token?: string } | null,
+      session: Pick<Session, "access_token"> | null,
       source: "getSession" | "authEvent",
       event?: string,
     ) => {
@@ -197,7 +200,7 @@ export default function DashboardApp() {
       await syncSession(session, "getSession");
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
       void syncSession(session, "authEvent", _event);
     });
 
@@ -516,7 +519,7 @@ export default function DashboardApp() {
       anchors.forEach(([topic, anchor]) => {
         const anchorId = anchor.id;
         const channel = supabase.channel(topic, { config: { private: true } })
-        .on("broadcast", { event: "*" }, ({ payload }) => {
+        .on("broadcast", { event: "*" }, ({ payload }: { payload: unknown }) => {
           const realtimeEvent = payload as RealtimeMetaEvent;
           // Backend populates ``agent_id`` with the recipient participant id
           // (``ag_*`` OR ``hu_*``) — topic dispatch in the backend already
@@ -558,7 +561,7 @@ export default function DashboardApp() {
           }
           void realtimeStore.syncRealtimeEvent(realtimeEvent);
         })
-        .subscribe((status) => {
+        .subscribe((status: string) => {
           console.info("[BotCord][Realtime] channel status", {
             topic,
             status,
@@ -1012,6 +1015,8 @@ export default function DashboardApp() {
         )}
       </div>
       <StripeReturnBanner />
+      <BotDetailDrawer />
+      <PeerBotDetailDrawer />
       {shouldShowAgentGate ? (
         <AgentGateModal
           onAgentReady={async (agentId) => {

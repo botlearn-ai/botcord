@@ -7,9 +7,8 @@
  *   - the row can render a "via <bot>" hint
  *   - the chat pane can render a read-only banner when opened
  *
- * Origin determination comes from `/api/humans/me/agent-rooms`: any room in
- * that list is visible because one or more owned bots participates in it.
- * Rooms not in that list are treated as the human owner's own.
+ * Origin determination comes from `/api/humans/me/agent-rooms`. Rooms not in
+ * that source are treated as the human owner's own.
  */
 
 import type { DashboardRoom, HumanAgentRoomSummary, ParticipantType } from "@/lib/types";
@@ -26,16 +25,7 @@ function originFor(room: HumanAgentRoomSummary): { agent_id: string; display_nam
   return bot ? { agent_id: bot.agent_id, display_name: bot.display_name } : null;
 }
 
-/**
- * Infer the DM peer's participant type for an owned-bot DM room.
- *
- * `HumanAgentRoomSummary` doesn't carry peer_type, but DM rooms (`rm_dm_*`)
- * encode both participant ids in the room_id with `ag_` / `hu_` prefixes.
- * For DMs we resolve the non-bot side; for groups peer_type is irrelevant.
- */
-function inferPeerTypeForOwnedAgentRoom(
-  room: HumanAgentRoomSummary,
-): ParticipantType | undefined {
+function inferPeerTypeForOwnedAgentRoom(room: HumanAgentRoomSummary): ParticipantType | undefined {
   if ((room.member_count ?? 0) > 2) return undefined;
   const parsed = parseDmRoomId(room.room_id);
   if (!parsed) return undefined;
@@ -71,26 +61,25 @@ export function ownedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): Dash
   };
 }
 
-export function mergeOwnerVisibleRooms({ ownRooms, ownedAgentRooms }: MergeOpts): DashboardRoom[] {
+export function mergeOwnerVisibleRooms({ ownedAgentRooms, ownRooms }: MergeOpts): DashboardRoom[] {
   const seen = new Set(ownRooms.map((room) => room.room_id));
-  const tagged = [
+  return [
     ...ownRooms,
     ...ownedAgentRooms
       .filter((room) => !seen.has(room.room_id))
       .map(ownedAgentRoomToDashboardRoom),
-  ];
-
-  return tagged.sort(compareRoomsByActivityDesc);
+  ].sort(compareRoomsByActivityDesc);
 }
 
 /**
- * Messages filter taxonomy. Two parent buckets — `self` (the human owner is a
- * participant; can send) and `bots` (an owned bot is the participant; the
- * owner observes). Each parent has an `*-all` aggregate.
+ * Messages filter taxonomy. Two parent buckets — "self" (I am the participant)
+ * and "bots" (one of my owned bots is the participant; I observe). Each parent
+ * has an `*-all` private-chat aggregate that's the default leaf inside it.
  *
- * This is a pure **filter** over a single unified data set — not a role
- * switch. Whether a conversation is read-only is determined per-room
- * (`_originAgent` presence), not by which filter is active.
+ * Important: this is a pure **filter** over a single unified data set —
+ * NOT a role-switch. The owner identity never changes; whether a conversation
+ * is read-only is determined per-room (`_originAgent` presence), not by
+ * which filter is active.
  */
 export type MessagesFilterKey =
   | "self-all"
@@ -103,34 +92,66 @@ export type MessagesFilterKey =
   | "bots-bot-human"
   | "bots-group";
 
+function isPrivateMessageRoom(room: Pick<DashboardRoom, "room_id">): boolean {
+  return room.room_id.startsWith("rm_dm_");
+}
+
+function hasOwnedAgentParticipant(room: Pick<DashboardRoom, "owner_id" | "room_id">, ownedAgentIds: Set<string>): boolean {
+  if (ownedAgentIds.has(room.owner_id)) return true;
+  const parsed = parseDmRoomId(room.room_id);
+  if (parsed && (ownedAgentIds.has(parsed.a) || ownedAgentIds.has(parsed.b))) return true;
+  return [...ownedAgentIds].some((agentId) => room.room_id.includes(agentId));
+}
+
+function inferDmPeerType(
+  room: Pick<DashboardRoom, "room_id" | "peer_type" | "_originAgent">,
+): ParticipantType | undefined {
+  if (room.peer_type) return room.peer_type;
+  const parsed = parseDmRoomId(room.room_id);
+  if (!parsed) return undefined;
+
+  const aIsHuman = parsed.a.startsWith("hu_");
+  const bIsHuman = parsed.b.startsWith("hu_");
+  if (aIsHuman && bIsHuman) return "human";
+  if (!aIsHuman && !bIsHuman) return "agent";
+
+  // For observed bot rooms, peer_type means "who my bot is talking to".
+  // Mixed ag/hu DMs are therefore bot-human conversations.
+  if (room._originAgent) return "human";
+
+  // For the human owner's own mixed DM, the peer is the agent endpoint.
+  return "agent";
+}
+
 /**
- * Classify a single room into its most-specific filter bucket.
+ * Classify a single room into its most-specific filter bucket. Used both for
+ * filtering the visible list and for computing sidebar counts.
  *
- * - `_originAgent` present → owned bot's conversation (observer)
- * - DM (member_count ≤ 2) → split by peer type / ownership
- * - Group (member_count > 2) → `*-group`
- *
- * `selfMyBotRoomIds` is the set of room_ids returned by
- * `/api/humans/me/agent-rooms`. A DM that the human participates in AND that
- * one of their owned bots also participates in is the human ↔ own-bot case.
+ * - `_originAgent` present → bot's conversation (observer mode for the owner)
+ * - DM (`rm_dm_*`) → split by peer type
+ *   - peer_type === "agent" + peer is an owned bot → self-my-bot
+ *   - peer_type === "agent" + peer is NOT an owned bot → self-third-bot
+ *   - peer_type === "human" → self-human
+ * - Non-DM room → *-group
  */
 export function classifyMessagesRoom(
   room: import("@/lib/types").DashboardRoom,
-  selfMyBotRoomIds: Set<string>,
+  ownedAgentIds: Set<string>,
 ): MessagesFilterKey {
   const isObserver = !!room._originAgent;
-  const isGroup = (room.member_count ?? 0) > 2;
+  const isPrivateChat = isPrivateMessageRoom(room);
+  const dmPeerType = isPrivateChat ? inferDmPeerType(room) : undefined;
 
   if (isObserver) {
-    if (isGroup) return "bots-group";
-    if (room.peer_type === "human") return "bots-bot-human";
+    if (!isPrivateChat) return "bots-group";
+    if (dmPeerType === "human") return "bots-bot-human";
     return "bots-bot-bot";
   }
 
-  if (isGroup) return "self-group";
-  if (room.peer_type === "human") return "self-human";
-  // Agent peer: distinguish my-owned bot vs a third-party bot.
-  if (selfMyBotRoomIds.has(room.room_id)) return "self-my-bot";
+  if (!isPrivateChat) return "self-group";
+  if (dmPeerType === "human") return "self-human";
+  // Agent peer: did I bring this bot into existence (my owned bot)?
+  if (hasOwnedAgentParticipant(room, ownedAgentIds)) return "self-my-bot";
   return "self-third-bot";
 }
 
@@ -138,17 +159,21 @@ export function classifyMessagesRoom(
 export function applyMessagesFilter(
   rooms: import("@/lib/types").DashboardRoom[],
   filter: MessagesFilterKey,
-  selfMyBotRoomIds: Set<string>,
+  ownedAgentIds: Set<string>,
 ): import("@/lib/types").DashboardRoom[] {
-  if (filter === "self-all") return rooms.filter((r) => !r._originAgent);
-  if (filter === "bots-all") return rooms.filter((r) => !!r._originAgent);
-  return rooms.filter((r) => classifyMessagesRoom(r, selfMyBotRoomIds) === filter);
+  if (filter === "self-all") {
+    return rooms.filter((r) => !r._originAgent && isPrivateMessageRoom(r));
+  }
+  if (filter === "bots-all") {
+    return rooms.filter((r) => !!r._originAgent && isPrivateMessageRoom(r));
+  }
+  return rooms.filter((r) => classifyMessagesRoom(r, ownedAgentIds) === filter);
 }
 
 /** Count per filter key for sidebar badges. */
 export function countMessagesByFilter(
   rooms: import("@/lib/types").DashboardRoom[],
-  selfMyBotRoomIds: Set<string>,
+  ownedAgentIds: Set<string>,
 ): Record<MessagesFilterKey, number> {
   const counts: Record<MessagesFilterKey, number> = {
     "self-all": 0,
@@ -162,10 +187,10 @@ export function countMessagesByFilter(
     "bots-group": 0,
   };
   for (const room of rooms) {
-    const key = classifyMessagesRoom(room, selfMyBotRoomIds);
+    const key = classifyMessagesRoom(room, ownedAgentIds);
     counts[key] += 1;
-    if (key.startsWith("self-")) counts["self-all"] += 1;
-    else counts["bots-all"] += 1;
+    if (key.startsWith("self-") && key !== "self-group") counts["self-all"] += 1;
+    else if (key.startsWith("bots-") && key !== "bots-group") counts["bots-all"] += 1;
   }
   return counts;
 }
