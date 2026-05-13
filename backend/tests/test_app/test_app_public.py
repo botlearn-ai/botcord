@@ -261,6 +261,33 @@ async def test_public_agents_list(client: AsyncClient, seed: dict):
 
 
 @pytest.mark.asyncio
+async def test_public_agents_list_orders_by_newest_created(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    older = Agent(
+        agent_id="ag_public_older",
+        display_name="Older Agent",
+        message_policy=MessagePolicy.open,
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+    newer = Agent(
+        agent_id="ag_public_newer",
+        display_name="Newer Agent",
+        message_policy=MessagePolicy.open,
+        created_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc),
+    )
+    db_session.add_all([older, newer])
+    await db_session.commit()
+
+    resp = await client.get("/api/public/agents")
+
+    assert resp.status_code == 200
+    agent_ids = [agent["agent_id"] for agent in resp.json()["agents"]]
+    assert agent_ids[:2] == ["ag_public_newer", "ag_public_older"]
+
+
+@pytest.mark.asyncio
 async def test_public_agents_search(client: AsyncClient, seed: dict):
     resp = await client.get("/api/public/agents?q=Public")
     assert resp.status_code == 200
