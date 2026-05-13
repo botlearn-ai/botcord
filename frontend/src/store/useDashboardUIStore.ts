@@ -32,6 +32,9 @@ export interface DashboardUIState {
   /** Right-side drawer: selected bot agent_id in the My Bots → Bots view. */
   botDetailAgentId: string | null;
   setBotDetailAgentId: (id: string | null) => void;
+  /** Optional tab to focus when the bot drawer opens (e.g. wallet from overview). */
+  botDetailInitialTab: string | null;
+  openBotDetail: (id: string, initialTab?: string | null) => void;
   /** Right-side drawer for peer (non-owned) bots — shows public info only. */
   peerBotAgentId: string | null;
   setPeerBotAgentId: (id: string | null) => void;
@@ -84,6 +87,9 @@ export interface DashboardUIState {
   setMessagesGroupingOpen: (open: boolean) => void;
   setMessagesSearchOpen: (open: boolean) => void;
   setMessagesBotScope: (scope: DashboardUIState["messagesBotScope"]) => void;
+  /** Hides all wallet amounts behind a placeholder (default true). Toggle via the eye button on the wallet page. */
+  walletAmountsHidden: boolean;
+  toggleWalletAmountsHidden: () => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
   setSelectedContactKey: (key: DashboardUIState["selectedContactKey"]) => void;
@@ -115,6 +121,7 @@ const initialUIState = {
   myBotsTab: "bots" as DashboardUIState["myBotsTab"],
   selectedDeviceId: null as string | null,
   botDetailAgentId: null as string | null,
+  botDetailInitialTab: null as string | null,
   peerBotAgentId: null as string | null,
   messagesPane: "room" as const,
   messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
@@ -122,6 +129,7 @@ const initialUIState = {
   messagesGroupingOpen: true,
   messagesSearchOpen: false,
   messagesBotScope: "all" as DashboardUIState["messagesBotScope"],
+  walletAmountsHidden: true,
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
   selectedContactKey: null as DashboardUIState["selectedContactKey"],
@@ -145,7 +153,13 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   setSelectedDeviceId: (selectedDeviceId) =>
     set((state) => (state.selectedDeviceId === selectedDeviceId ? state : { selectedDeviceId })),
   setBotDetailAgentId: (botDetailAgentId) =>
-    set((state) => (state.botDetailAgentId === botDetailAgentId ? state : { botDetailAgentId })),
+    set((state) =>
+      state.botDetailAgentId === botDetailAgentId
+        ? state
+        : { botDetailAgentId, botDetailInitialTab: null },
+    ),
+  openBotDetail: (id, initialTab = null) =>
+    set({ botDetailAgentId: id, botDetailInitialTab: initialTab }),
   setPeerBotAgentId: (peerBotAgentId) =>
     set((state) => (state.peerBotAgentId === peerBotAgentId ? state : { peerBotAgentId })),
   setSelectedBotAgentId: (selectedBotAgentId) =>
@@ -168,6 +182,8 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.messagesSearchOpen === messagesSearchOpen ? state : { messagesSearchOpen })),
   setMessagesBotScope: (messagesBotScope) =>
     set((state) => (state.messagesBotScope === messagesBotScope ? state : { messagesBotScope })),
+  toggleWalletAmountsHidden: () =>
+    set((state) => ({ walletAmountsHidden: !state.walletAmountsHidden })),
   setExploreView: (exploreView) =>
     set((state) => (state.exploreView === exploreView ? state : { exploreView })),
   setContactsView: (contactsView) =>

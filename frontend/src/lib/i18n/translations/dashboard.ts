@@ -1071,6 +1071,24 @@ export const walletPanel: TranslationMap<{
   viewingWalletFor: string
   youHuman: string
   botPrefix: string
+  pageSubtitle: string
+  totalDisposable: string
+  humanShare: string
+  botShare: string
+  botShareCount: string
+  botBalances: string
+  noBots: string
+  recentTransactions: string
+  recentTransactionsHint: string
+  loadMore: string
+  loadingMore: string
+  noTransactions: string
+  txTopup: string
+  txTransfer: string
+  txWithdrawal: string
+  txSubscription: string
+  txOther: string
+  fromAccount: string
 }> = {
   en: {
     wallet: 'Wallet',
@@ -1102,6 +1120,24 @@ export const walletPanel: TranslationMap<{
     viewingWalletFor: 'Viewing',
     youHuman: 'You (Human)',
     botPrefix: 'Bot',
+    pageSubtitle: 'Manage your disposable coins across yourself and your bots.',
+    totalDisposable: 'Total disposable',
+    humanShare: 'You (Human)',
+    botShare: 'Bots',
+    botShareCount: '{count} bots',
+    botBalances: 'Bot balances',
+    noBots: 'No owned bots yet.',
+    recentTransactions: 'Recent transactions',
+    recentTransactionsHint: 'Combined across all your accounts',
+    loadMore: 'Load more',
+    loadingMore: 'Loading...',
+    noTransactions: 'No transactions yet.',
+    txTopup: 'Top-up',
+    txTransfer: 'Transfer',
+    txWithdrawal: 'Withdrawal',
+    txSubscription: 'Subscription',
+    txOther: 'Other',
+    fromAccount: 'From account',
   },
   zh: {
     wallet: '钱包',
@@ -1133,6 +1169,24 @@ export const walletPanel: TranslationMap<{
     viewingWalletFor: '查看',
     youHuman: '我（Human）',
     botPrefix: 'Bot',
+    pageSubtitle: '管理你和 Bot 的可支配 coin · 一站式充值、转账、提现',
+    totalDisposable: '总可支配',
+    humanShare: '我（人）',
+    botShare: 'Bot',
+    botShareCount: '{count} 个',
+    botBalances: 'Bot 余额',
+    noBots: '还没有自有 Bot。',
+    recentTransactions: '最近交易',
+    recentTransactionsHint: '合并所有账户的最近交易',
+    loadMore: '加载更多',
+    loadingMore: '加载中...',
+    noTransactions: '暂无交易记录。',
+    txTopup: '充值',
+    txTransfer: '转账',
+    txWithdrawal: '提现',
+    txSubscription: '订阅',
+    txOther: '其他',
+    fromAccount: '账户',
   },
 }
 
@@ -1232,6 +1286,16 @@ export const transferDialog: TranslationMap<{
   groupMyBots: string
   groupContacts: string
   groupHumanSelf: string
+  fromLabel: string
+  toLabel: string
+  availableLabel: string
+  changeRecipient: string
+  enterCustomIdLabel: string
+  enterCustomIdHint: string
+  quickAmounts: string
+  maxAmount: string
+  insufficient: string
+  submitWithAmount: string
 }> = {
   en: {
     transfer: 'Transfer',
@@ -1252,6 +1316,16 @@ export const transferDialog: TranslationMap<{
     groupMyBots: 'My Bots',
     groupContacts: 'Contacts',
     groupHumanSelf: 'Me (Human)',
+    fromLabel: 'From',
+    toLabel: 'To',
+    availableLabel: 'Available',
+    changeRecipient: 'Change',
+    enterCustomIdLabel: 'Enter another Agent ID',
+    enterCustomIdHint: 'ag_... or hu_...',
+    quickAmounts: 'Quick',
+    maxAmount: 'Max',
+    insufficient: 'Insufficient balance',
+    submitWithAmount: 'Send {amount} COIN',
   },
   zh: {
     transfer: '转账',
@@ -1272,6 +1346,16 @@ export const transferDialog: TranslationMap<{
     groupMyBots: '我的 Bot',
     groupContacts: '联系人',
     groupHumanSelf: '我（Human）',
+    fromLabel: '从',
+    toLabel: '到',
+    availableLabel: '可用',
+    changeRecipient: '换',
+    enterCustomIdLabel: '输入其他 Agent ID',
+    enterCustomIdHint: 'ag_... 或 hu_...',
+    quickAmounts: '快速',
+    maxAmount: '全部',
+    insufficient: '余额不足',
+    submitWithAmount: '转账 {amount} COIN',
   },
 }
 
