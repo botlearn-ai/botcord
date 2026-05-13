@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Trash2,
   User,
+  Wallet as WalletIcon,
   X,
 } from "lucide-react";
 import { useShallow } from "zustand/shallow";
@@ -36,11 +37,13 @@ import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
 import BotAvatar from "./BotAvatar";
 import { CompositeAvatar } from "./CompositeAvatar";
+import BotWalletTab from "./BotWalletTab";
 
-type TabKey = "overview" | "profile" | "policy" | "auto" | "gateways" | "files";
+type TabKey = "overview" | "profile" | "policy" | "auto" | "gateways" | "files" | "wallet";
 
 const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "overview", label: "概览", icon: Eye },
+  { key: "wallet", label: "钱包", icon: WalletIcon },
   { key: "profile", label: "资料", icon: User },
   { key: "policy", label: "对话与回复", icon: MessageSquare },
   { key: "auto", label: "自主", icon: Bot },
@@ -102,6 +105,7 @@ export default function BotDetailDrawer() {
   const router = useRouter();
   const {
     botDetailAgentId,
+    botDetailInitialTab,
     setBotDetailAgentId,
     setSelectedDeviceId,
     setSidebarTab,
@@ -114,6 +118,7 @@ export default function BotDetailDrawer() {
   } = useDashboardUIStore(
     useShallow((s) => ({
       botDetailAgentId: s.botDetailAgentId,
+      botDetailInitialTab: s.botDetailInitialTab,
       setBotDetailAgentId: s.setBotDetailAgentId,
       setSelectedDeviceId: s.setSelectedDeviceId,
       setSidebarTab: s.setSidebarTab,
@@ -145,10 +150,16 @@ export default function BotDetailDrawer() {
   const [tab, setTab] = useState<TabKey>("overview");
   const [stats, setStats] = useState<ActivityStats | null>(null);
 
-  // Reset state when opening on a different bot.
+  // Reset state when opening on a different bot. Honour an optional
+  // initial-tab hint when the drawer is opened via openBotDetail() (e.g.
+  // from the wallet overview's bot row).
   useEffect(() => {
-    setTab("overview");
-  }, [botDetailAgentId]);
+    if (botDetailInitialTab && TABS.some((t) => t.key === botDetailInitialTab)) {
+      setTab(botDetailInitialTab as TabKey);
+    } else {
+      setTab("overview");
+    }
+  }, [botDetailAgentId, botDetailInitialTab]);
 
   useEffect(() => {
     if (!botDetailAgentId) {
@@ -303,6 +314,7 @@ export default function BotDetailDrawer() {
           {tab === "auto" && <AgentSchedulesTab agentId={bot.agent_id} />}
           {tab === "gateways" && <AgentChannelsTab agentId={bot.agent_id} />}
           {tab === "files" && <FilesTab agentId={bot.agent_id} />}
+          {tab === "wallet" && <BotWalletTab agentId={bot.agent_id} displayName={bot.display_name} />}
         </div>
       </aside>
     </>

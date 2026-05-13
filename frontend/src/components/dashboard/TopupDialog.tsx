@@ -8,6 +8,7 @@ import type { StripePackageItem } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { saveStripeTopupContext } from "@/lib/stripe-topup-context";
 import { Loader2 } from "lucide-react";
+import WalletAccountSelector from "./WalletAccountSelector";
 
 function formatCoin(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -32,7 +33,13 @@ interface TopupDialogProps {
 export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
   const locale = useLanguage();
   const t = topupDialog[locale];
+  const human = useDashboardSessionStore((s) => s.human);
   const isAuthed = useDashboardSessionStore((state) => state.sessionMode !== "guest");
+  // Selected destination account — defaults to the explicit viewer, otherwise "我".
+  const [selectedViewer, setSelectedViewer] = useState<ActiveIdentity | null>(() => {
+    if (viewer) return viewer;
+    return human?.human_id ? { type: "human", id: human.human_id } : null;
+  });
   const [packages, setPackages] = useState<StripePackageItem[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [packagesError, setPackagesError] = useState("");
@@ -76,11 +83,11 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
         package_code: activePackage.package_code,
         idempotency_key: crypto.randomUUID(),
         quantity,
-      }, viewer);
+      }, selectedViewer);
       // Stash the viewer so StripeReturnBanner can poll status against the
       // same owner after Stripe redirects back (the URL only carries the
       // session_id; backend get_checkout_status requires a matching owner).
-      saveStripeTopupContext(res.checkout_session_id, viewer ?? null);
+      saveStripeTopupContext(res.checkout_session_id, selectedViewer ?? null);
       window.location.assign(res.checkout_url);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -98,22 +105,25 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-glass-bg p-6 backdrop-blur-xl"
+        className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-glass-border bg-glass-bg backdrop-blur-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 rounded p-1 text-text-secondary hover:text-text-primary"
+          className="absolute right-4 top-4 z-10 rounded p-1 text-text-secondary hover:text-text-primary"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M4 4l8 8M12 4l-8 8" />
           </svg>
         </button>
 
-        <div className="mb-5">
+        <div className="shrink-0 px-6 pt-6 pb-3">
           <h3 className="text-lg font-semibold text-text-primary">{t.recharge}</h3>
           <p className="text-xs text-text-secondary">{t.description}</p>
         </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
+        <WalletAccountSelector value={selectedViewer} onChange={setSelectedViewer} />
 
         {packagesLoading ? (
           <div className="py-8 text-center text-sm text-text-secondary animate-pulse">
@@ -231,21 +241,26 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
             ) : null}
 
             {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-
-            <button
-              onClick={handleCheckout}
-              disabled={!activePackage || submitting}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/30 bg-neon-green/10 py-2.5 font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-40"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {submitting ? t.redirectingToStripe : `${t.continueToPayment}${activePackage ? ` • $${formatFiat(totalFiat)}` : ""}`}
-            </button>
           </>
         )}
 
         <p className="mt-3 text-center text-[10px] text-text-secondary/60">
           {t.securePayment}
         </p>
+        </div>
+
+        {!packagesLoading && !packagesError && packages.length > 0 ? (
+          <div className="shrink-0 border-t border-glass-border bg-glass-bg/40 px-6 py-4">
+            <button
+              onClick={handleCheckout}
+              disabled={!activePackage || submitting}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/30 bg-neon-green/10 py-2.5 font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-40"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {submitting ? t.redirectingToStripe : `${t.continueToPayment}${activePackage ? ` • $${formatFiat(totalFiat)}` : ""}`}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

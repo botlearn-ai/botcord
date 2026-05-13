@@ -135,32 +135,25 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         </div>
         {!isGuest && (
           <div className="flex items-center gap-1">
-            <button
+            <TooltipIconButton
+              label={locale === "zh" ? "搜索消息" : "Search messages"}
               onClick={() => setMessagesSearchOpen(!messagesSearchOpen)}
-              title="搜索消息"
-              aria-label="搜索消息"
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
-                messagesSearchOpen ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
-              }`}
+              active={messagesSearchOpen}
             >
               <Search className="h-4 w-4" />
-            </button>
-            <button
+            </TooltipIconButton>
+            <TooltipIconButton
+              label={locale === "zh" ? "邀请好友" : "Invite friend"}
               onClick={onAddFriend}
-              title="邀请好友"
-              aria-label="邀请好友"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
             >
               <UserPlus className="h-4 w-4" />
-            </button>
-            <button
+            </TooltipIconButton>
+            <TooltipIconButton
+              label={locale === "zh" ? "新建会话" : "New conversation"}
               onClick={onCreateRoom}
-              title="新建会话"
-              aria-label="新建会话"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
             >
               <MessageSquarePlus className="h-4 w-4" />
-            </button>
+            </TooltipIconButton>
           </div>
         )}
       </div>
@@ -239,6 +232,38 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function TooltipIconButton({
+  label,
+  onClick,
+  active = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="group relative">
+      <button
+        onClick={onClick}
+        aria-label={label}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
+          active ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
+        }`}
+      >
+        {children}
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-glass-border bg-deep-black px-2 py-0.5 text-[11px] text-text-primary opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+      >
+        {label}
+      </span>
     </div>
   );
 }
