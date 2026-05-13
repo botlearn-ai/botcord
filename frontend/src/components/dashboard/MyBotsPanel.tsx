@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bot, Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api } from "@/lib/api";
-import type { ActivityStats } from "@/lib/types";
+import type { ActivityStats, UserAgent } from "@/lib/types";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import BotAvatar from "./BotAvatar";
 import MyDevicesView from "./MyDevicesView";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
+import { useMockBotsStore } from "@/store/useMockBotsStore";
 
 const SUB_TABS = [
   { key: "bots" as const, label: "我的 Bots" },
@@ -21,6 +22,23 @@ export default function MyBotsPanel() {
   const [showAddDevice, setShowAddDevice] = useState(false);
   const { ownedAgents } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents })),
+  );
+  const mockCreatedBots = useMockBotsStore((s) => s.bots);
+  const combinedBots = useMemo<UserAgent[]>(
+    () => [
+      ...mockCreatedBots.map((bot, idx) => ({
+        agent_id: bot.id,
+        display_name: bot.name,
+        bio: bot.bio,
+        avatar_url: null,
+        is_default: idx === 0 && ownedAgents.length === 0,
+        claimed_at: new Date().toISOString(),
+        ws_online: true,
+        daemon_instance_id: bot.deviceId,
+      })),
+      ...ownedAgents,
+    ],
+    [mockCreatedBots, ownedAgents],
   );
   const { myBotsTab, setMyBotsTab, openCreateBotModal, setSelectedDeviceId } = useDashboardUIStore(
     useShallow((s) => ({
@@ -89,7 +107,7 @@ export default function MyBotsPanel() {
           )}
         </div>
 
-        {myBotsTab === "bots" ? <BotsView ownedAgents={ownedAgents} openCreateBotModal={openCreateBotModal} /> : <MyDevicesView />}
+        {myBotsTab === "bots" ? <BotsView ownedAgents={combinedBots} openCreateBotModal={openCreateBotModal} /> : <MyDevicesView />}
       </div>
       {showAddDevice ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddDevice(false)}>
