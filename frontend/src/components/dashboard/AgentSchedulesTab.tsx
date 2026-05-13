@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CirclePlay, Clock, Loader2, Pause, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { CirclePlay, Clock, Loader2, Pause, Pencil, Play, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 
 interface AgentSchedulesTabProps {
@@ -41,6 +41,7 @@ const WEEKDAYS = [
   { value: 6, label: "周日" },
 ];
 const TIME_PATTERN = /^\d{2}:\d{2}$/;
+type ScheduleMode = "every" | "daily" | "weekly";
 
 function formatTime(value?: string | null): string {
   if (!value) return "未安排";
@@ -87,14 +88,15 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [name, setName] = useState("botcord-auto");
-  const [scheduleMode, setScheduleMode] = useState<"every" | "daily" | "weekly">("every");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("every");
   const [everyMinutes, setEveryMinutes] = useState(30);
   const [time, setTime] = useState("09:00");
   const [weekdays, setWeekdays] = useState<number[]>([0]);
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
 
-  const canCreate = useMemo(
+  const canSaveForm = useMemo(
     () =>
       name.trim().length > 0 &&
       message.trim().length > 0 &&
@@ -131,30 +133,68 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   }
 
   useEffect(() => {
+    resetForm();
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
 
-  async function createSchedule() {
-    if (!canCreate) return;
+  function resetForm() {
+    setEditingScheduleId(null);
+    setName("botcord-auto");
+    setScheduleMode("every");
+    setEveryMinutes(30);
+    setTime("09:00");
+    setWeekdays([0]);
+    setMessage(DEFAULT_MESSAGE);
+  }
+
+  function buildScheduleBody() {
+    const timezone = timezoneValue();
+    return {
+      name: name.trim(),
+      schedule:
+        scheduleMode === "every"
+          ? { kind: "every" as const, every_ms: everyMinutes * 60 * 1000 }
+          : scheduleMode === "daily"
+            ? { kind: "calendar" as const, frequency: "daily" as const, time, timezone }
+            : { kind: "calendar" as const, frequency: "weekly" as const, time, timezone, weekdays },
+      payload: { kind: "agent_turn" as const, message: message.trim() },
+    };
+  }
+
+  function startEdit(schedule: AgentSchedule) {
+    setEditingScheduleId(schedule.id);
+    setName(schedule.name);
+    setMessage(schedule.payload.message);
+    if (schedule.schedule.kind === "every") {
+      setScheduleMode("every");
+      setEveryMinutes(Math.max(5, Math.round(schedule.schedule.every_ms / 60000)));
+      return;
+    }
+    setTime(schedule.schedule.time);
+    if (schedule.schedule.frequency === "daily") {
+      setScheduleMode("daily");
+      return;
+    }
+    setScheduleMode("weekly");
+    setWeekdays(schedule.schedule.weekdays.length > 0 ? schedule.schedule.weekdays : [0]);
+  }
+
+  async function saveSchedule() {
+    if (!canSaveForm) return;
     setSaving(true);
     setError(null);
     try {
-      const timezone = timezoneValue();
-      await userApi.createAgentSchedule(agentId, {
-        name: name.trim(),
-        enabled: true,
-        schedule:
-          scheduleMode === "every"
-            ? { kind: "every", every_ms: everyMinutes * 60 * 1000 }
-            : scheduleMode === "daily"
-              ? { kind: "calendar", frequency: "daily", time, timezone }
-              : { kind: "calendar", frequency: "weekly", time, timezone, weekdays },
-        payload: { kind: "agent_turn", message: message.trim() },
-      });
+      const body = buildScheduleBody();
+      if (editingScheduleId) {
+        await userApi.updateAgentSchedule(agentId, editingScheduleId, body);
+      } else {
+        await userApi.createAgentSchedule(agentId, { ...body, enabled: true });
+      }
+      resetForm();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败");
+      setError(err instanceof Error ? err.message : (editingScheduleId ? "保存失败" : "创建失败"));
     } finally {
       setSaving(false);
     }
@@ -178,6 +218,9 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
     setError(null);
     try {
       await userApi.deleteAgentSchedule(agentId, scheduleId);
+      if (editingScheduleId === scheduleId) {
+        resetForm();
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
@@ -229,10 +272,98 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
         </div>
       ) : null}
 
+      {schedules.length === 0 && !loading ? (
+        <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
+          暂无 schedule
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {schedules.map((schedule) => {
+            const lastRun = runsBySchedule[schedule.id]?.[0];
+            return (
+              <section key={schedule.id} className="rounded-xl border border-glass-border bg-glass-bg/40 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-text-secondary" />
+                      <h4 className="truncate text-sm font-semibold text-text-primary">{schedule.name}</h4>
+                      <span className={`rounded border px-1.5 py-0.5 text-[10px] ${schedule.enabled ? "border-green-400/20 text-green-300" : "border-glass-border text-text-secondary"}`}>
+                        {schedule.enabled ? "启用" : "暂停"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      {scheduleLabel(schedule.schedule)} · 下次 {formatTime(schedule.next_fire_at)}
+                    </p>
+                    <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{schedule.payload.message}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(schedule)}
+                      disabled={saving}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
+                      title="编辑"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void patchSchedule(schedule.id, { enabled: !schedule.enabled })}
+                      disabled={saving}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
+                      title={schedule.enabled ? "暂停" : "恢复"}
+                    >
+                      {schedule.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void runSchedule(schedule.id)}
+                      disabled={saving}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
+                      title="立即运行"
+                    >
+                      <CirclePlay className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteSchedule(schedule.id)}
+                      disabled={saving}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-60"
+                      title="删除"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                {lastRun ? (
+                  <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${statusClass(lastRun.status)}`}>
+                    最近运行：{lastRun.status} · {formatTime(lastRun.completed_at || lastRun.scheduled_for)}
+                    {lastRun.error ? ` · ${lastRun.error}` : ""}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      )}
+
       <section className="rounded-xl border border-glass-border bg-glass-bg/40 p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-medium text-text-primary">
-          <Plus className="h-4 w-4" />
-          新建 schedule
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+            {editingScheduleId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {editingScheduleId ? "编辑 schedule" : "新建 schedule"}
+          </div>
+          {editingScheduleId ? (
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={saving}
+              className="inline-flex items-center gap-1 rounded-lg border border-glass-border bg-deep-black/40 px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-60"
+            >
+              <X className="h-3.5 w-3.5" />
+              取消
+            </button>
+          ) : null}
         </div>
         <div className="grid gap-3">
           <input
@@ -308,81 +439,21 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
           />
           <button
             type="button"
-            onClick={() => void createSchedule()}
-            disabled={!canCreate}
+            onClick={() => void saveSchedule()}
+            disabled={!canSaveForm}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-semibold text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-60"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            创建
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : editingScheduleId ? (
+              <Pencil className="h-4 w-4" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {editingScheduleId ? "保存" : "创建"}
           </button>
         </div>
       </section>
-
-      {schedules.length === 0 && !loading ? (
-        <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
-          暂无 schedule
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {schedules.map((schedule) => {
-            const lastRun = runsBySchedule[schedule.id]?.[0];
-            return (
-              <section key={schedule.id} className="rounded-xl border border-glass-border bg-glass-bg/40 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-text-secondary" />
-                      <h4 className="truncate text-sm font-semibold text-text-primary">{schedule.name}</h4>
-                      <span className={`rounded border px-1.5 py-0.5 text-[10px] ${schedule.enabled ? "border-green-400/20 text-green-300" : "border-glass-border text-text-secondary"}`}>
-                        {schedule.enabled ? "启用" : "暂停"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-text-secondary">
-                      {scheduleLabel(schedule.schedule)} · 下次 {formatTime(schedule.next_fire_at)}
-                    </p>
-                    <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{schedule.payload.message}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => void patchSchedule(schedule.id, { enabled: !schedule.enabled })}
-                      disabled={saving}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
-                      title={schedule.enabled ? "暂停" : "恢复"}
-                    >
-                      {schedule.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void runSchedule(schedule.id)}
-                      disabled={saving}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
-                      title="立即运行"
-                    >
-                      <CirclePlay className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteSchedule(schedule.id)}
-                      disabled={saving}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-60"
-                      title="删除"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-                {lastRun ? (
-                  <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${statusClass(lastRun.status)}`}>
-                    最近运行：{lastRun.status} · {formatTime(lastRun.completed_at || lastRun.scheduled_for)}
-                    {lastRun.error ? ` · ${lastRun.error}` : ""}
-                  </div>
-                ) : null}
-              </section>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
