@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Bot, Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api } from "@/lib/api";
-import type { ActivityStats } from "@/lib/types";
+import type { ActivityStats, UserAgent } from "@/lib/types";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import BotAvatar from "./BotAvatar";
 import MyDevicesView from "./MyDevicesView";
