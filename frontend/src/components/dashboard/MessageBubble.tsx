@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Bot, MoreHorizontal, User } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, MoreHorizontal, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
@@ -47,6 +47,64 @@ const showMessageStatus = (() => {
   const v = raw.trim().toLowerCase();
   return !(v === "0" || v === "false" || v === "off" || v === "no");
 })();
+
+const COLLAPSE_TEXT_LENGTH = 700;
+const COLLAPSE_LINE_COUNT = 10;
+
+function shouldCollapseMessage(text: string): boolean {
+  return text.length > COLLAPSE_TEXT_LENGTH || text.split(/\r\n|\r|\n/).length > COLLAPSE_LINE_COUNT;
+}
+
+function CollapsibleMessageBody({
+  text,
+  children,
+  expandLabel,
+  collapseLabel,
+}: {
+  text: string;
+  children: ReactNode;
+  expandLabel: string;
+  collapseLabel: string;
+}) {
+  const canCollapse = shouldCollapseMessage(text);
+  const [expanded, setExpanded] = useState(false);
+
+  if (!canCollapse) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div>
+      <div className={`relative ${expanded ? "" : "max-h-48 overflow-hidden"}`}>
+        {children}
+        {!expanded && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-zinc-950/95 via-zinc-950/70 to-transparent" />
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((value) => !value);
+        }}
+        className="mt-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan/80"
+        aria-expanded={expanded}
+      >
+        {expanded ? (
+          <>
+            <ChevronUp className="h-3.5 w-3.5" />
+            {collapseLabel}
+          </>
+        ) : (
+          <>
+            <ChevronDown className="h-3.5 w-3.5" />
+            {expandLabel}
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
 
 function useStateConfig() {
   const locale = useLanguage();
@@ -289,6 +347,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
+  const locale = useLanguage();
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const requestOpenHuman = useDashboardUIStore((state) => state.requestOpenHuman);
   const stateConfig = useStateConfig();
@@ -457,18 +516,24 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
         ) : (
           displayText && (
-            <MarkdownContent
-              content={displayText}
-              mentionCandidates={mentionCandidates}
-              renderMention={({ id, label }) => (
-                <MentionChip
-                  id={id}
-                  label={label}
-                  onSelectAgent={selectAgent}
-                  onSelectHuman={requestOpenHuman}
-                />
-              )}
-            />
+            <CollapsibleMessageBody
+              text={displayText}
+              expandLabel={locale === "zh" ? "展开全文" : "Show more"}
+              collapseLabel={locale === "zh" ? "收起" : "Show less"}
+            >
+              <MarkdownContent
+                content={displayText}
+                mentionCandidates={mentionCandidates}
+                renderMention={({ id, label }) => (
+                  <MentionChip
+                    id={id}
+                    label={label}
+                    onSelectAgent={selectAgent}
+                    onSelectHuman={requestOpenHuman}
+                  />
+                )}
+              />
+            </CollapsibleMessageBody>
           )
         )}
 
