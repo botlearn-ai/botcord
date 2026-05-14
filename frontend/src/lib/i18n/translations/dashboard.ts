@@ -2251,9 +2251,15 @@ export const createAgentDialog: TranslationMap<{
   openActivate: string
   refreshDaemons: string
   runtimeLabel: string
+  runtimeAvailable: string
   noRuntimesDetected: string
   probeRuntimes: string
   runtimeUnavailable: string
+  runtimeUnavailableGroup: string
+  runtimeFound: (count: number) => string
+  runtimeUnavailableCount: (count: number) => string
+  showUnavailable: string
+  hideUnavailable: string
   runtimeNotSupported: string
   openclawSubagentLabel: string
   openclawSubagentInfo: string
@@ -2295,9 +2301,15 @@ export const createAgentDialog: TranslationMap<{
     openActivate: 'Open activation page',
     refreshDaemons: 'Refresh devices',
     runtimeLabel: 'Runtime environment',
+    runtimeAvailable: 'Available',
     noRuntimesDetected: 'No runtimes detected on this machine.',
     probeRuntimes: 'Detect available runtimes',
     runtimeUnavailable: 'unavailable',
+    runtimeUnavailableGroup: 'Not available',
+    runtimeFound: (count) => `${count} found`,
+    runtimeUnavailableCount: (count) => `${count} runtime${count === 1 ? '' : 's'}`,
+    showUnavailable: 'Show',
+    hideUnavailable: 'Hide',
     runtimeNotSupported: 'not yet supported',
     openclawSubagentLabel: 'Subagent',
     openclawSubagentInfo: 'Select a subagent profile from this gateway. Leave it blank to use the main agent configured as defaultAgent.',
@@ -2339,9 +2351,15 @@ export const createAgentDialog: TranslationMap<{
     openActivate: '打开授权页面',
     refreshDaemons: '刷新设备列表',
     runtimeLabel: '运行环境',
+    runtimeAvailable: '可用',
     noRuntimesDetected: '这台机器还没有可用于创建 Agent 的运行环境。',
     probeRuntimes: '检测可用运行环境',
     runtimeUnavailable: '不可用',
+    runtimeUnavailableGroup: '不可用',
+    runtimeFound: (count) => `找到 ${count} 个`,
+    runtimeUnavailableCount: (count) => `${count} 个运行环境`,
+    showUnavailable: '展开',
+    hideUnavailable: '收起',
     runtimeNotSupported: '暂不支持',
     openclawSubagentLabel: '子 Agent（可选）',
     openclawSubagentInfo: '选择这个网关里的子 Agent。留空时，会使用网关配置里的主 Agent（defaultAgent）。',
