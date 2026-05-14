@@ -25,6 +25,7 @@ import {
 
 /** Exponential backoff plan for transient disconnects. */
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
+const RECONNECT_JITTER_RATIO = 0.25;
 /**
  * Keepalive cadence. Has to stay below the smallest idle-timeout in any
  * intermediary on the daemon → Hub WS path. Cloudflare and AWS ALB both
@@ -53,6 +54,11 @@ export function controlSigningInput(
     ts: typeof frame.ts === "number" ? frame.ts : 0,
   };
   return jcsCanonicalize(obj) ?? "{}";
+}
+
+function withReconnectJitter(delayMs: number): { delayMs: number; jitterMs: number } {
+  const jitterMs = Math.floor(Math.random() * delayMs * RECONNECT_JITTER_RATIO);
+  return { delayMs: delayMs + jitterMs, jitterMs };
 }
 
 /** Handler invoked for each inbound frame. Return value is the ack payload. */
@@ -110,6 +116,7 @@ export class ControlChannel {
   private readonly seenFrameIds: string[] = [];
   private connectInflight: Promise<void> | null = null;
   private connected = false;
+  private connectionSeq = 0;
 
   constructor(opts: ControlChannelOptions) {
     this.auth = opts.auth;
@@ -220,6 +227,20 @@ export class ControlChannel {
   private async connect(): Promise<void> {
     const record = this.auth.current;
     if (!record) throw new Error("control-channel: no user-auth");
+    const current = this.ws;
+    if (
+      current &&
+      (current.readyState === WebSocket.CONNECTING || current.readyState === WebSocket.OPEN)
+    ) {
+      daemonLog.debug("control-channel connect skipped (socket already active)", {
+        readyState: current.readyState,
+      });
+      return;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
 
     const accessToken = await this.auth.ensureAccessToken();
     const url = buildDaemonWebSocketUrl(
@@ -229,6 +250,7 @@ export class ControlChannel {
     );
     daemonLog.info("control-channel connecting", { url });
 
+    const connectionId = ++this.connectionSeq;
     const ws = new this.webSocketCtor(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -237,6 +259,15 @@ export class ControlChannel {
     await new Promise<void>((resolve, reject) => {
       const onOpen = (): void => {
         ws.removeListener("error", onError);
+        if (this.stopRequested || this.ws !== ws || connectionId !== this.connectionSeq) {
+          try {
+            ws.close(1000, "stale control-channel connection");
+          } catch {
+            // ignore
+          }
+          resolve();
+          return;
+        }
         this.connected = true;
         this.reconnectAttempts = 0;
         daemonLog.info("control-channel connected", { url });
@@ -245,14 +276,21 @@ export class ControlChannel {
       };
       const onError = (err: Error): void => {
         ws.removeListener("open", onOpen);
+        if (this.ws !== ws || connectionId !== this.connectionSeq) {
+          resolve();
+          return;
+        }
         reject(err);
       };
       ws.once("open", onOpen);
       ws.once("error", onError);
     });
 
-    ws.on("message", (data) => this.onMessage(data));
-    ws.on("close", (code, reason) => this.onClose(code, reason));
+    ws.on("message", (data) => {
+      if (this.ws !== ws || connectionId !== this.connectionSeq) return;
+      void this.onMessage(data);
+    });
+    ws.on("close", (code, reason) => this.onClose(code, reason, ws, connectionId));
     ws.on("error", (err) =>
       daemonLog.warn("control-channel error", {
         error: err instanceof Error ? err.message : String(err),
@@ -292,8 +330,12 @@ export class ControlChannel {
     }
   }
 
-  private onClose(code: number, reason: Buffer): void {
+  private onClose(code: number, reason: Buffer, ws?: WebSocket, connectionId?: number): void {
     const reasonText = reason?.toString() || "";
+    if (ws && (this.ws !== ws || connectionId !== this.connectionSeq)) {
+      daemonLog.debug("control-channel stale close ignored", { code, reason: reasonText });
+      return;
+    }
     this.connected = false;
     this.stopKeepalive();
     this.ws = null;
@@ -314,6 +356,14 @@ export class ControlChannel {
 
   private scheduleReconnect(err?: unknown): void {
     if (this.stopRequested) return;
+    if (this.reconnectTimer) return;
+    const current = this.ws;
+    if (
+      current &&
+      (current.readyState === WebSocket.CONNECTING || current.readyState === WebSocket.OPEN)
+    ) {
+      return;
+    }
     if (err instanceof AuthRefreshRejectedError) {
       this.stopRequested = true;
       daemonLog.warn("control-channel: refresh rejected; halting reconnect (re-login required)", {
@@ -323,20 +373,23 @@ export class ControlChannel {
     }
     const attempt = this.reconnectAttempts;
     this.reconnectAttempts = attempt + 1;
-    const delay = this.backoff[Math.min(attempt, this.backoff.length - 1)];
+    const baseDelayMs = this.backoff[Math.min(attempt, this.backoff.length - 1)];
+    const { delayMs, jitterMs } = withReconnectJitter(baseDelayMs);
     if (err) {
       daemonLog.warn("control-channel reconnect scheduled", {
-        delayMs: delay,
+        delayMs,
+        baseDelayMs,
+        jitterMs,
         error: err instanceof Error ? err.message : String(err),
       });
     } else {
-      daemonLog.info("control-channel reconnect scheduled", { delayMs: delay });
+      daemonLog.info("control-channel reconnect scheduled", { delayMs, baseDelayMs, jitterMs });
     }
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.stopRequested) return;
       this.connect().catch((err) => this.scheduleReconnect(err));
-    }, delay);
+    }, delayMs);
   }
 
   private async onMessage(data: WebSocket.RawData): Promise<void> {

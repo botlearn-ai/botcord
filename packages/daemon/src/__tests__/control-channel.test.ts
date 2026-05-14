@@ -322,6 +322,43 @@ describe("ControlChannel — REVOKE frame (plan §6.3)", () => {
   });
 });
 
+describe("ControlChannel — reconnect scheduling", () => {
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+  });
+
+  it("adds jitter and coalesces duplicate close events into one reconnect", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(1);
+    const auth = new UserAuthManager({
+      record: makeAuthRecord(),
+      file: "/tmp/never-written-user-auth.json",
+    });
+    const ctor = makeFakeCtor();
+    const ch = new ControlChannel({
+      auth,
+      handle: () => ({ ok: true }),
+      webSocketCtor: ctor as unknown as typeof import("ws").default,
+      hubPublicKey: null,
+      backoffMs: [25],
+    });
+    await ch.start();
+    const ws = FakeWebSocket.instances[0];
+
+    ws.emit("close", 1012, Buffer.from(""));
+    ws.emit("close", 1012, Buffer.from(""));
+
+    // Base delay is 25ms; with random=1 and 25% jitter the actual delay is
+    // 31ms. Duplicate close events should still leave only one timer queued.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    randomSpy.mockRestore();
+    await ch.stop();
+  });
+});
+
 afterEach(() => {
   FakeWebSocket.instances.length = 0;
 });

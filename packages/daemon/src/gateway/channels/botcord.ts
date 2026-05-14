@@ -25,6 +25,7 @@ import { sanitizeUntrustedContent } from "./sanitize.js";
 import { revokeAgent } from "../../provision.js";
 
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
+const RECONNECT_JITTER_RATIO = 0.25;
 const KEEPALIVE_INTERVAL = 20_000;
 const MAX_AUTH_FAILURES = 5;
 const SEEN_MESSAGES_CAP = 500;
@@ -32,6 +33,11 @@ const OWNER_CHAT_PREFIX = "rm_oc_";
 const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
 const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
+
+function withReconnectJitter(delayMs: number): { delayMs: number; jitterMs: number } {
+  const jitterMs = Math.floor(Math.random() * delayMs * RECONNECT_JITTER_RATIO);
+  return { delayMs: delayMs + jitterMs, jitterMs };
+}
 
 type InboxDrainTrigger =
   | "ws_auth_ok"
@@ -477,6 +483,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     let reconnectTimer: NodeJS.Timeout | null = null;
     let keepaliveTimer: NodeJS.Timeout | null = null;
     let reconnectAttempt = 0;
+    let connectionSeq = 0;
     let consecutiveAuthFailures = 0;
     let running = true;
     let permanentStopping = false;
@@ -603,23 +610,36 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
 
     function scheduleReconnect() {
       if (!running) return;
-      const delay =
+      if (reconnectTimer) return;
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        return;
+      }
+      const baseDelayMs =
         RECONNECT_BACKOFF[Math.min(reconnectAttempt, RECONNECT_BACKOFF.length - 1)];
+      const { delayMs, jitterMs } = withReconnectJitter(baseDelayMs);
       reconnectAttempt += 1;
       markStatus({
         connected: false,
         restartPending: true,
         reconnectAttempts: reconnectAttempt,
       });
-      log.info("botcord ws reconnect scheduled", { delayMs: delay, attempt: reconnectAttempt });
+      log.info("botcord ws reconnect scheduled", {
+        delayMs,
+        baseDelayMs,
+        jitterMs,
+        attempt: reconnectAttempt,
+      });
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         void connect();
-      }, delay);
+      }, delayMs);
     }
 
     async function connect() {
       if (!running) return;
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        return;
+      }
       const agentId = options.agentId;
       markStatus({ connected: false, restartPending: false });
       if (pendingRefresh) {
@@ -644,8 +664,11 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       const url = buildHubWebSocketUrl(hubUrl);
       log.info("botcord ws connecting", { url, agentId });
 
+      const connectionId = ++connectionSeq;
+      let socket: WebSocket;
       try {
-        ws = new wsCtor(url);
+        socket = new wsCtor(url);
+        ws = socket;
       } catch (err) {
         log.error("botcord ws construct failed", { agentId, err: String(err) });
         markStatus({ lastError: String(err) });
@@ -653,11 +676,20 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         return;
       }
 
-      ws.on("open", () => {
-        ws!.send(JSON.stringify({ type: "auth", token }));
+      socket.on("open", () => {
+        if (!running || ws !== socket || connectionId !== connectionSeq) {
+          try {
+            socket.close();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        socket.send(JSON.stringify({ type: "auth", token }));
       });
 
-      ws.on("message", (data: WebSocket.RawData) => {
+      socket.on("message", (data: WebSocket.RawData) => {
+        if (ws !== socket || connectionId !== connectionSeq) return;
         let msg: { type?: string; agent_id?: string } | null = null;
         try {
           msg = JSON.parse(String(data));
@@ -677,10 +709,11 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           });
           log.info("botcord ws authenticated", { agentId: msg.agent_id });
           void fireInbox("ws_auth_ok");
+          if (keepaliveTimer) clearInterval(keepaliveTimer);
           keepaliveTimer = setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
+            if (ws === socket && socket.readyState === WebSocket.OPEN) {
               try {
-                ws.send(JSON.stringify({ type: "ping" }));
+                socket.send(JSON.stringify({ type: "ping" }));
               } catch {
                 // ignore
               }
@@ -696,10 +729,15 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         }
       });
 
-      ws.on("close", (code: number, reason: Buffer) => {
+      socket.on("close", (code: number, reason: Buffer) => {
         const reasonStr = reason?.toString() || "";
+        if (ws !== socket || connectionId !== connectionSeq) {
+          log.debug("botcord ws stale close ignored", { agentId, code, reason: reasonStr });
+          return;
+        }
         log.info("botcord ws closed", { agentId, code, reason: reasonStr });
         clearTimers();
+        ws = null;
         markStatus({ connected: false });
         if (!running) {
           if (permanentStopping) return;
@@ -740,7 +778,8 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         scheduleReconnect();
       });
 
-      ws.on("error", (err: Error) => {
+      socket.on("error", (err: Error) => {
+        if (ws !== socket || connectionId !== connectionSeq) return;
         log.warn("botcord ws error", { agentId, err: String(err) });
         markStatus({ lastError: String(err) });
       });
