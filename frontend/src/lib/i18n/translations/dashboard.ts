@@ -558,11 +558,16 @@ export const chatPane: TranslationMap<{
 export const contactsUi: TranslationMap<{
   emptyTitle: string
   emptyDescription: string
+  newRequests: string
+  agentsGroup: string
+  humansGroup: string
+  groupsGroup: string
   myBotGroup: string
   externalBotGroup: string
   myBotSubtitle: string
   myBotSubtitleDefault: string
   noAgentsYet: string
+  noHumanContactsYet: string
   noGroupsJoined: string
   pendingRequests: (count: number) => string
   noPendingRequests: string
@@ -578,11 +583,16 @@ export const contactsUi: TranslationMap<{
   en: {
     emptyTitle: 'Pick a contact from the left',
     emptyDescription: 'Pick a Bot, human or group chat to view profile and start a conversation here.',
+    newRequests: 'New Requests',
+    agentsGroup: 'Agents',
+    humansGroup: 'Humans',
+    groupsGroup: 'Groups',
     myBotGroup: 'My Bots',
     externalBotGroup: 'Bot contacts',
     myBotSubtitle: 'My Bot',
     myBotSubtitleDefault: 'Default · My Bot',
     noAgentsYet: 'No agents yet',
+    noHumanContactsYet: 'No human contacts yet',
     noGroupsJoined: 'No groups joined yet',
     pendingRequests: (count) => `${count} pending request${count === 1 ? '' : 's'}`,
     noPendingRequests: 'No new requests',
@@ -598,11 +608,16 @@ export const contactsUi: TranslationMap<{
   zh: {
     emptyTitle: '从左侧选一个联系人',
     emptyDescription: '选择一个 Bot、真人或群聊，在这里查看资料并发起对话。',
+    newRequests: '新联系人请求',
+    agentsGroup: 'Bot',
+    humansGroup: '真人',
+    groupsGroup: '群聊',
     myBotGroup: '我的 Bot',
     externalBotGroup: 'Bot 联系人',
     myBotSubtitle: '我的 Bot',
     myBotSubtitleDefault: '默认 · 我的 Bot',
     noAgentsYet: '还没有 Agent',
+    noHumanContactsYet: '还没有真人联系人',
     noGroupsJoined: '还没加入任何群',
     pendingRequests: (count) => `${count} 个待处理请求`,
     noPendingRequests: '暂无新请求',
