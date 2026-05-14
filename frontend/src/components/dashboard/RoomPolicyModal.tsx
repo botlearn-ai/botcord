@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
@@ -72,6 +73,11 @@ export default function RoomPolicyModal({
   const [expanded, setExpanded] = useState(false);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,9 +147,15 @@ export default function RoomPolicyModal({
     [],
   );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur">
-      <div className="w-full max-w-lg rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+  const modal = (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[calc(100vh-48px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="mb-4 flex items-start justify-between">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
@@ -297,6 +309,9 @@ export default function RoomPolicyModal({
       </div>
     </div>
   );
+
+  if (!mounted) return null;
+  return createPortal(modal, document.body);
 }
 
 function EffectiveBadge({
