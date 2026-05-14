@@ -113,7 +113,13 @@ export default function BotDetailDrawer() {
   );
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const daemons = useDaemonStore((s) => s.daemons);
-  const ownedAgentRooms = useDashboardChatStore((s) => s.ownedAgentRooms);
+  const { loadOwnedAgentRooms, ownedAgentRooms, upsertOptimisticOwnerChatRoom } = useDashboardChatStore(
+    useShallow((s) => ({
+      loadOwnedAgentRooms: s.loadOwnedAgentRooms,
+      ownedAgentRooms: s.ownedAgentRooms,
+      upsertOptimisticOwnerChatRoom: s.upsertOptimisticOwnerChatRoom,
+    })),
+  );
 
   const open = botDetailAgentId !== null;
   const bot = botDetailAgentId ? ownedAgents.find((a) => a.agent_id === botDetailAgentId) ?? null : null;
@@ -181,9 +187,12 @@ export default function BotDetailDrawer() {
     setMessagesPane("user-chat");
     setFocusedRoomId(null);
     setOpenedRoomId(null);
+    upsertOptimisticOwnerChatRoom(bot);
     try {
       const room = await api.getUserChatRoom(agentId);
+      upsertOptimisticOwnerChatRoom(bot, room.room_id);
       setUserChatRoomId(room.room_id);
+      void loadOwnedAgentRooms();
     } catch (error) {
       console.error("[BotDetailDrawer] getUserChatRoom failed:", error);
     }
