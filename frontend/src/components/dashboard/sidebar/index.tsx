@@ -341,7 +341,6 @@ export default function Sidebar({
         <div className="flex flex-1 flex-col items-center gap-1 pt-1 max-md:min-w-0 max-md:flex-row max-md:justify-around max-md:pt-0">
           {navItems.map((item) => {
             const isActive = uiStore.sidebarTab === item.key;
-            const isExplore = item.key === "explore";
             const requiresLogin = isGuest && (item.key === "contacts" || item.key === "activity");
             let badge: ReactNode = null;
             if (item.key === "messages" && unreadMessageCount > 0 && !requiresLogin) {
@@ -363,7 +362,7 @@ export default function Sidebar({
                 key={item.key}
                 onClick={() => navigatePrimaryTab(item.key)}
                 active={isActive}
-                activeTone={isExplore ? "purple" : "cyan"}
+                activeTone="cyan"
                 badge={badge}
                 disabled={requiresLogin}
                 icon={item.icon}
