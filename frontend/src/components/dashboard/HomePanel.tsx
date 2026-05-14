@@ -161,7 +161,7 @@ function InlineTooltip({
   );
 }
 
-function BotOnboardingSteps({
+export function BotOnboardingSteps({
   hasOnlineDaemon,
   daemonLoading,
   onConnectDevice,
@@ -356,7 +356,7 @@ function TerminalHowToPopover() {
   );
 }
 
-function DeviceConnectModal({
+export function DeviceConnectModal({
   connected,
   connectedActionLabel = "Create a new bot",
   daemonLoading,
