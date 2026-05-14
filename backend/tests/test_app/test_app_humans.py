@@ -285,6 +285,89 @@ async def test_human_member_of_room_owned_by_their_agent_sees_owner_role(
 
 
 @pytest.mark.asyncio
+async def test_human_effective_role_uses_highest_owned_bot_role(
+    client, seed, db_session: AsyncSession
+):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    admin_bot = Agent(
+        agent_id="ag_aliceadmin",
+        display_name="Alice Admin Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+        claimed_at=now,
+    )
+    member_bot = Agent(
+        agent_id="ag_alicemem01",
+        display_name="Alice Member Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+        claimed_at=now,
+    )
+    room = Room(
+        room_id="rm_role_merge",
+        name="Role Merge",
+        description="",
+        owner_id="ag_external01",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+        default_invite=False,
+    )
+    db_session.add_all([
+        Agent(
+            agent_id="ag_external01",
+            display_name="External",
+            message_policy=MessagePolicy.open,
+        ),
+        admin_bot,
+        member_bot,
+        room,
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id="rm_role_merge",
+            agent_id="ag_external01",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id="rm_role_merge",
+            agent_id="ag_aliceadmin",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.admin,
+        ),
+        RoomMember(
+            room_id="rm_role_merge",
+            agent_id="ag_alicemem01",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id="rm_role_merge",
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    listing = await client.get("/api/humans/me/rooms", headers=headers)
+    assert listing.status_code == 200
+    listed = {r["room_id"]: r for r in listing.json()["rooms"]}
+    assert listed["rm_role_merge"]["my_role"] == "admin"
+
+    patch = await client.patch(
+        "/api/humans/me/rooms/rm_role_merge",
+        headers=headers,
+        json={"description": "updated as inherited admin"},
+    )
+    assert patch.status_code == 200, patch.text
+    assert patch.json()["my_role"] == "admin"
+
+
+@pytest.mark.asyncio
 async def test_list_owned_agent_rooms_excludes_current_human_rooms(
     client, seed, db_session: AsyncSession
 ):
