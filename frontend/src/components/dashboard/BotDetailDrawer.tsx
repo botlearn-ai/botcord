@@ -90,6 +90,7 @@ export default function BotDetailDrawer() {
     setSidebarTab,
     setFocusedRoomId,
     setOpenedRoomId,
+    setUserChatAgentId,
     setUserChatRoomId,
     setMessagesPane,
     setMessagesFilter,
@@ -104,6 +105,7 @@ export default function BotDetailDrawer() {
       setSidebarTab: s.setSidebarTab,
       setFocusedRoomId: s.setFocusedRoomId,
       setOpenedRoomId: s.setOpenedRoomId,
+      setUserChatAgentId: s.setUserChatAgentId,
       setUserChatRoomId: s.setUserChatRoomId,
       setMessagesPane: s.setMessagesPane,
       setMessagesFilter: s.setMessagesFilter,
@@ -185,6 +187,8 @@ export default function BotDetailDrawer() {
     setBotDetailAgentId(null);
     setSidebarTab("messages");
     setMessagesPane("user-chat");
+    setUserChatAgentId(agentId);
+    setUserChatRoomId(null);
     setFocusedRoomId(null);
     setOpenedRoomId(null);
     upsertOptimisticOwnerChatRoom(bot);
