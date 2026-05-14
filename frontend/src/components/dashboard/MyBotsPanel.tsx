@@ -11,13 +11,15 @@ import MyDevicesView from "./MyDevicesView";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
-
-const SUB_TABS = [
-  { key: "bots" as const, label: "我的 Bots" },
-  { key: "devices" as const, label: "我的设备" },
-];
+import { useLanguage } from "@/lib/i18n";
+import { myBotsPanel as myBotsPanelI18n } from "@/lib/i18n/translations/dashboard";
 
 export default function MyBotsPanel() {
+  const t = myBotsPanelI18n[useLanguage()];
+  const SUB_TABS = [
+    { key: "bots" as const, label: t.botsTabLabel },
+    { key: "devices" as const, label: t.devicesTabLabel },
+  ];
   const [showAddDevice, setShowAddDevice] = useState(false);
   const { ownedAgents } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents })),
@@ -41,11 +43,9 @@ export default function MyBotsPanel() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-text-primary">我的 Bots</h1>
+          <h1 className="text-2xl font-semibold text-text-primary">{t.pageTitle}</h1>
           <p className="mt-1 text-sm text-text-secondary/70">
-            {myBotsTab === "bots"
-              ? "查看你托管的每只 Bot 的状态与活跃情况"
-              : "管理运行 Bot 的本地设备 · 一台设备可以托管多个 Bot"}
+            {myBotsTab === "bots" ? t.botsSubtitle : t.devicesSubtitle}
           </p>
         </div>
 
@@ -76,7 +76,7 @@ export default function MyBotsPanel() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               <Plus className="h-4 w-4" />
-              创建 Bot
+              {t.createBot}
             </button>
           ) : (
             <button
@@ -84,7 +84,7 @@ export default function MyBotsPanel() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               <Plus className="h-4 w-4" />
-              添加设备
+              {t.addDevice}
             </button>
           )}
         </div>
@@ -98,17 +98,17 @@ export default function MyBotsPanel() {
               type="button"
               onClick={() => setShowAddDevice(false)}
               className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
-              aria-label="关闭"
+              aria-label={t.closeDialog}
             >
               ×
             </button>
             <DaemonInstallCommand
               labels={{
-                title: "安装并启动 BotCord Daemon",
-                hint: "在你的设备上运行以下命令以完成连接",
-                copy: "复制",
-                copied: "已复制",
-                refresh: "刷新",
+                title: t.daemonInstallTitle,
+                hint: t.daemonInstallHint,
+                copy: t.daemonCopy,
+                copied: t.daemonCopied,
+                refresh: t.daemonRefresh,
               }}
               onRefresh={() => void refreshDaemons()}
             />
@@ -126,6 +126,7 @@ function BotsView({
   ownedAgents: ReturnType<typeof useDashboardSessionStore.getState>["ownedAgents"];
   openCreateBotModal: () => void;
 }) {
+  const t = myBotsPanelI18n[useLanguage()];
   const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const [statsById, setStatsById] = useState<Record<string, ActivityStats>>({});
 
@@ -153,14 +154,14 @@ function BotsView({
       {ownedAgents.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-glass-border bg-deep-black-light/50 px-8 py-16 text-center">
           <Bot className="h-10 w-10 text-text-secondary/50" />
-          <p className="mt-3 text-sm font-medium text-text-primary">你还没有 Bot</p>
-          <p className="mt-1 text-xs text-text-secondary/70">创建第一个 Bot 开始你的 A2A 之旅</p>
+          <p className="mt-3 text-sm font-medium text-text-primary">{t.noBotsTitle}</p>
+          <p className="mt-1 text-xs text-text-secondary/70">{t.noBotsDescription}</p>
           <button
             onClick={() => openCreateBotModal()}
             className="mt-6 inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
           >
             <Plus className="h-4 w-4" />
-            创建 Bot
+            {t.createBot}
           </button>
         </div>
       ) : (
@@ -193,12 +194,12 @@ function BotsView({
                       </span>
                       {agent.is_default ? (
                         <span className="rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[10px] text-neon-purple">
-                          默认
+                          {t.defaultBadge}
                         </span>
                       ) : null}
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-text-secondary/70">
-                      {agent.bio || "暂无简介"}
+                      {agent.bio || t.noBio}
                     </p>
                     <div className="mt-2 font-mono text-[11px] text-text-secondary/55">
                       {agent.agent_id}
@@ -208,21 +209,21 @@ function BotsView({
 
                 {stats ? (
                   <div className="grid grid-cols-4 gap-2 border-t border-glass-border pt-3">
-                    <Stat label="7d 消息" value={stats.messages_sent + stats.messages_received} />
-                    <Stat label="活跃房间" value={stats.active_rooms} />
-                    <Stat label="打开话题" value={stats.topics_open} />
-                    <Stat label="完成话题" value={stats.topics_completed} />
+                    <Stat label={t.stats7dMessages} value={stats.messages_sent + stats.messages_received} />
+                    <Stat label={t.statsActiveRooms} value={stats.active_rooms} />
+                    <Stat label={t.statsOpenTopics} value={stats.topics_open} />
+                    <Stat label={t.statsCompletedTopics} value={stats.topics_completed} />
                   </div>
                 ) : null}
 
                 {stats ? (
                   <div className="mt-3 flex items-center justify-between border-t border-glass-border pt-2 text-[11px] text-text-secondary/55">
-                    <span>{stats.messages_sent} 发送 / {stats.messages_received} 接收</span>
-                    <span>点击查看详情 →</span>
+                    <span>{t.sentReceived(stats.messages_sent, stats.messages_received)}</span>
+                    <span>{t.viewDetails}</span>
                   </div>
                 ) : (
                   <div className="mt-3 flex justify-end border-t border-glass-border pt-2 text-[11px] text-text-secondary/55">
-                    点击查看详情 →
+                    {t.viewDetails}
                   </div>
                 )}
               </button>

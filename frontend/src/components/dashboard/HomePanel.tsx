@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { buildDaemonStartCommand } from "@/components/daemon/DaemonInstallCommand";
+import { useLanguage } from "@/lib/i18n";
+import { homePanel as homePanelI18n } from "@/lib/i18n/translations/dashboard";
 import { api } from "@/lib/api";
 import type { ActivityStats, PublicRoom, UserAgent } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -44,6 +46,7 @@ function SectionHeader({
   onShowAll?: () => void;
   icon?: React.ReactNode;
 }) {
+  const t = homePanelI18n[useLanguage()];
   return (
     <div className="mb-3 flex items-end justify-between gap-4">
       <div className="flex items-center gap-2">
@@ -58,7 +61,7 @@ function SectionHeader({
           onClick={onShowAll}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
         >
-          查看全部 <ArrowRight className="h-3 w-3" />
+          {t.viewAll} <ArrowRight className="h-3 w-3" />
         </button>
       ) : null}
     </div>
@@ -71,6 +74,7 @@ function statTotal(stats: AgentStats): number | string {
 }
 
 function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: AgentStats; onClick: () => void }) {
+  const t = homePanelI18n[useLanguage()];
   const online = bot.ws_online;
   return (
     <button
@@ -89,16 +93,17 @@ function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: Agent
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <Stat label="7d 消息" value={statTotal(stats)} />
-        <Stat label="活跃房间" value={stats?.active_rooms ?? "—"} />
-        <Stat label="打开话题" value={stats?.topics_open ?? "—"} />
-        <Stat label="完成话题" value={stats?.topics_completed ?? "—"} />
+        <Stat label={t.stats7dMessages} value={statTotal(stats)} />
+        <Stat label={t.statsActiveRooms} value={stats?.active_rooms ?? "—"} />
+        <Stat label={t.statsOpenTopics} value={stats?.topics_open ?? "—"} />
+        <Stat label={t.statsCompletedTopics} value={stats?.topics_completed ?? "—"} />
       </div>
     </button>
   );
 }
 
 function CreateNewBotCard({ onClick }: { onClick: () => void }) {
+  const t = homePanelI18n[useLanguage()];
   return (
     <button
       type="button"
@@ -109,7 +114,7 @@ function CreateNewBotCard({ onClick }: { onClick: () => void }) {
         <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-glass-bg/45 text-text-secondary">
           <Plus className="h-5 w-5" />
         </div>
-        <h3 className="text-sm font-medium text-text-secondary">Create a new bot</h3>
+        <h3 className="text-sm font-medium text-text-secondary">{t.createNewBot}</h3>
       </div>
     </button>
   );
@@ -128,16 +133,19 @@ function InlineTooltip({
   label,
   children,
   widthClass = "w-64",
+  noWrap = false,
 }: {
   label: string;
   children: ReactNode;
   widthClass?: string;
+  noWrap?: boolean;
 }) {
+  const sizeClass = noWrap ? "w-auto whitespace-nowrap" : widthClass;
   return (
     <span className="group relative inline-flex focus:outline-none" tabIndex={0}>
       {children}
       <span
-        className={`pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-lg border border-glass-border bg-deep-black px-3 py-2 text-left text-xs font-normal leading-relaxed text-text-secondary opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${widthClass}`}
+        className={`pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-lg border border-glass-border bg-deep-black px-3 py-2 text-left text-xs font-normal leading-relaxed text-text-secondary opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${sizeClass}`}
       >
         {label}
       </span>
@@ -156,6 +164,7 @@ function BotOnboardingSteps({
   onConnectDevice: () => void;
   onCreateBot: () => void;
 }) {
+  const t = homePanelI18n[useLanguage()];
   const createButton = (
     <button
       type="button"
@@ -168,7 +177,7 @@ function BotOnboardingSteps({
       }`}
     >
       {hasOnlineDaemon ? <Plus className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-      创建 Bot
+      {t.createBot}
     </button>
   );
 
@@ -186,16 +195,16 @@ function BotOnboardingSteps({
                   <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/30 text-[11px] font-semibold text-neon-cyan">
                     1
                   </span>
-                  <h3 className="text-base font-semibold text-text-primary">接入设备</h3>
+                  <h3 className="text-base font-semibold text-text-primary">{t.connectDevice}</h3>
                   <InlineTooltip
-                    label="支持 MacOS 和 Linux 系统，暂不支持 Windows 设备"
+                    label={t.connectDeviceTooltip}
                     widthClass="w-72"
                   >
                     <Info className="h-4 w-4 text-text-secondary/70 transition-colors group-hover:text-neon-cyan group-focus-visible:text-neon-cyan" />
                   </InlineTooltip>
                 </div>
                 <p className="mt-2 text-sm text-text-secondary/70">
-                  让 BotCord 在你的设备上托管 Bot
+                  {t.connectDeviceSubtitle}
                 </p>
               </div>
             </div>
@@ -207,7 +216,7 @@ function BotOnboardingSteps({
               ) : (
                 <span className="h-2.5 w-2.5 rounded-full border border-text-secondary/60" />
               )}
-              {hasOnlineDaemon ? "设备已接入，可以创建 Bot" : daemonLoading ? "正在检查设备状态..." : "尚未接入设备"}
+              {hasOnlineDaemon ? t.deviceConnected : daemonLoading ? t.deviceChecking : t.deviceNotConnected}
             </div>
           </div>
           <div>
@@ -216,7 +225,7 @@ function BotOnboardingSteps({
               onClick={onConnectDevice}
               className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
-              接入设备
+              {t.connectDevice}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -233,10 +242,10 @@ function BotOnboardingSteps({
                   <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-purple/35 text-[11px] font-semibold text-neon-purple">
                     2
                   </span>
-                  <h3 className="text-base font-semibold text-text-primary">创建 Bot</h3>
+                  <h3 className="text-base font-semibold text-text-primary">{t.createBot}</h3>
                 </div>
                 <p className="mt-2 text-sm text-text-secondary/70">
-                  给你的 Agent 一个全网唯一的身份
+                  {t.createBotSubtitle}
                 </p>
               </div>
             </div>
@@ -246,14 +255,14 @@ function BotOnboardingSteps({
               ) : (
                 <Lock className="h-4 w-4 text-text-secondary/55" />
               )}
-              {hasOnlineDaemon ? "已解锁创建流程" : "接入设备后解锁"}
+              {hasOnlineDaemon ? t.createUnlocked : t.createLocked}
             </div>
           </div>
           <div>
             {hasOnlineDaemon ? (
               createButton
             ) : (
-              <InlineTooltip label="请先接入设备" widthClass="w-36">
+              <InlineTooltip label={t.connectDeviceFirst} noWrap>
                 {createButton}
               </InlineTooltip>
             )}
@@ -624,6 +633,7 @@ function PersonCard({
   avatarUrl?: string | null;
   onClick: () => void;
 }) {
+  const t = homePanelI18n[useLanguage()];
   return (
     <button
       type="button"
@@ -651,13 +661,15 @@ function PersonCard({
           </span>
         </div>
       </div>
-      <p className="line-clamp-2 min-h-[2rem] text-xs text-text-secondary/70">{bio || "暂无简介"}</p>
+      <p className="line-clamp-2 min-h-[2rem] text-xs text-text-secondary/70">{bio || t.noBio}</p>
     </button>
   );
 }
 
 export default function HomePanel() {
   const router = useRouter();
+  const locale = useLanguage();
+  const t = homePanelI18n[locale];
   const { displayName, ownedAgents } = useDashboardSessionStore(
     useShallow((s) => ({
       displayName: s.human?.display_name || s.user?.display_name || "there",
@@ -760,20 +772,20 @@ export default function HomePanel() {
       <div className="mx-auto max-w-5xl px-6 pb-10 pt-16">
         <div className="mb-10">
           <h1 className="text-4xl font-semibold tracking-tight text-text-primary">
-            早安，{displayName} 👋
+            {t.greetings.morning}, {displayName} 👋
           </h1>
           <p className="mt-3 text-base text-text-secondary/70">
-            看看你的 Bots 今天的表现，再发现一些有趣的房间和人。
+            {t.homeSubtitle}
           </p>
         </div>
 
         <section className="mb-10">
           <SectionHeader
             icon={<Bot className="h-4 w-4 text-neon-cyan" />}
-            title="我的 Bots · 活跃概览"
+            title={t.myBotsOverviewTitle}
             subtitle={hasBotsForPreview
-              ? "过去 7 天的消息、参与房间与话题数据"
-              : "你还没有 Bot — 创建一个开始你的 A2A 之旅"}
+              ? t.myBotsOverviewSubtitle
+              : t.myBotsEmptySubtitle}
             onShowAll={hasBotsForPreview ? () => router.push("/chats/bots") : undefined}
           />
           {hasBotsForPreview ? (
@@ -815,8 +827,8 @@ export default function HomePanel() {
         <section className="mb-10">
           <SectionHeader
             icon={<TrendingUp className="h-4 w-4 text-neon-cyan" />}
-            title="热门房间"
-            subtitle="此刻最活跃的公开房间"
+            title={t.trendingRoomsTitle}
+            subtitle={t.trendingRoomsSubtitle}
             onShowAll={() => router.push("/chats/explore/rooms")}
           />
           {trendingRooms.length > 0 ? (
@@ -835,7 +847,7 @@ export default function HomePanel() {
             </div>
           ) : (
             <p className="rounded-2xl border border-glass-border bg-deep-black-light/40 px-4 py-6 text-sm text-text-secondary/70">
-              暂无公开房间。
+              {t.noPublicRooms}
             </p>
           )}
         </section>
@@ -843,8 +855,8 @@ export default function HomePanel() {
         <section className="mb-10">
           <SectionHeader
             icon={<Sparkles className="h-4 w-4 text-neon-cyan" />}
-            title="热门 Agents"
-            subtitle="社区里的公开 Bot"
+            title={t.trendingAgentsTitle}
+            subtitle={t.trendingAgentsSubtitle}
             onShowAll={() => router.push("/chats/explore/agents")}
           />
           {publicAgents.length > 0 ? (
@@ -858,14 +870,14 @@ export default function HomePanel() {
                   online={agent.online}
                   agentId={agent.agent_id}
                   avatarUrl={agent.avatar_url}
-                  subtitle={agent.owner_display_name ? `${agent.owner_display_name} 的 Bot` : "BOT"}
+                  subtitle={agent.owner_display_name ? t.botOf(agent.owner_display_name) : t.botFallbackLabel}
                   onClick={() => void selectAgent(agent.agent_id)}
                 />
               ))}
             </div>
           ) : (
             <p className="rounded-2xl border border-glass-border bg-deep-black-light/40 px-4 py-6 text-sm text-text-secondary/70">
-              暂无公开 Bot。
+              {t.noPublicBots}
             </p>
           )}
         </section>
@@ -873,8 +885,8 @@ export default function HomePanel() {
         <section className="mb-6">
           <SectionHeader
             icon={<Users className="h-4 w-4 text-neon-cyan" />}
-            title="热门 Humans"
-            subtitle="活跃在 BotCord 的真人"
+            title={t.trendingHumansTitle}
+            subtitle={t.trendingHumansSubtitle}
             onShowAll={() => router.push("/chats/explore/humans")}
           />
           {publicHumans.length > 0 ? (
@@ -883,7 +895,7 @@ export default function HomePanel() {
                 <PersonCard
                   key={human.human_id}
                   name={human.display_name}
-                  bio={human.created_at ? `加入于 ${new Date(human.created_at).toLocaleDateString("zh-CN")}` : null}
+                  bio={human.created_at ? t.joinedOn(new Date(human.created_at).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US")) : null}
                   badge="HUMAN"
                   avatarUrl={human.avatar_url}
                   subtitle="HUMAN"
@@ -893,7 +905,7 @@ export default function HomePanel() {
             </div>
           ) : (
             <p className="rounded-2xl border border-glass-border bg-deep-black-light/40 px-4 py-6 text-sm text-text-secondary/70">
-              暂无公开 Human。
+              {t.noPublicHumans}
             </p>
           )}
         </section>

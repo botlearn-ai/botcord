@@ -9,7 +9,7 @@
 
 import { useMemo } from "react";
 import { useLanguage } from '@/lib/i18n';
-import { roomList } from '@/lib/i18n/translations/dashboard';
+import { roomList, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
@@ -78,6 +78,7 @@ export default function RoomList({
   const router = useRouter();
   const locale = useLanguage();
   const t = roomList[locale];
+  const tGroup = messagesGrouping[locale];
   const { overview, messages, loadRoomMessages, publicAgents } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     messages: state.messages,
@@ -343,7 +344,7 @@ export default function RoomList({
                         // Third-party bot — show "<owner> 的 Bot" if we know the owner.
                         const peerAgent = room.owner_id ? peerAgentsById.get(room.owner_id) : null;
                         const ownerName = peerAgent?.owner_display_name;
-                        const label = ownerName ? `${ownerName} 的 Bot` : "外部 Bot";
+                        const label = ownerName ? tGroup.ownedBotOf(ownerName) : tGroup.externalBot;
                         return (
                           <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
                             {label}

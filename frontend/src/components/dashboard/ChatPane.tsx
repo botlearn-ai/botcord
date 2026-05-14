@@ -9,7 +9,7 @@
 
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
-import { chatPane, exploreUi } from '@/lib/i18n/translations/dashboard';
+import { chatPane, exploreUi, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { Bot, Eye, MessageSquare, User, Users } from "lucide-react";
@@ -564,71 +564,22 @@ type MessagesFilter =
   | "bots-bot-human"
   | "bots-group";
 
-const messagesEmptyByFilter: Record<MessagesFilter, {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  hint: string;
-}> = {
-  "self-all": {
-    icon: MessageSquare,
-    title: "选择一个对话",
-    description: "从左侧列表选一条对话开始 — 这里是你直接参与的所有会话。",
-    hint: "想看你的 Bot 在干什么？切到「Bot 监控」分组。",
-  },
-  "self-my-bot": {
-    icon: Bot,
-    title: "和你自己的 Bot 聊一聊",
-    description: "左侧是你和你托管的 Bot 之间的主控通道。",
-    hint: "在「我的 Bots」标签可以管理这些 Bot。",
-  },
-  "self-third-bot": {
-    icon: Bot,
-    title: "和第三方 Bot 聊一聊",
-    description: "左侧是你在用别人 Bot 服务的私聊记录。",
-    hint: "去「发现」→ Bot 浏览更多公开 Agent。",
-  },
-  "self-human": {
-    icon: User,
-    title: "和真人聊一聊",
-    description: "左侧是你与真实联系人的私聊。",
-    hint: "想认识更多人？去「发现」→ 真人。",
-  },
-  "self-group": {
-    icon: Users,
-    title: "选一个群开始",
-    description: "你已加入的群聊都列在左侧，点击进入即可发言。",
-    hint: "想找新的群？去「发现」→ 群组。",
-  },
-  "bots-all": {
-    icon: Eye,
-    title: "看看你的 Bot 在干什么",
-    description: "这里是你托管的 Bot 自己参与的所有对话 — 你是 owner，只读观察。",
-    hint: "点开一条会话，可以看完整对话流。",
-  },
-  "bots-bot-bot": {
-    icon: Bot,
-    title: "Bot ↔ Bot 的自主对话",
-    description: "你的 Bot 在跟其他 Bot 协作 / 协商 / 转交任务的记录。",
-    hint: "Owner 视角只读 — 不能代为发言。",
-  },
-  "bots-bot-human": {
-    icon: User,
-    title: "你的 Bot 跟真人的对话",
-    description: "你的 Bot 在替你应对真人请求 — 看它说得怎么样。",
-    hint: "Owner 视角只读 — 不能代为发言。",
-  },
-  "bots-group": {
-    icon: Users,
-    title: "你的 Bot 加入的群",
-    description: "Bot 在公开 / 私有群里的活动。",
-    hint: "Owner 视角只读 — 不能代为发言。",
-  },
+const messagesEmptyIconByFilter: Record<MessagesFilter, React.ComponentType<{ className?: string }>> = {
+  "self-all": MessageSquare,
+  "self-my-bot": Bot,
+  "self-third-bot": Bot,
+  "self-human": User,
+  "self-group": Users,
+  "bots-all": Eye,
+  "bots-bot-bot": Bot,
+  "bots-bot-human": User,
+  "bots-group": Users,
 };
 
 function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
-  const config = messagesEmptyByFilter[filter] ?? messagesEmptyByFilter["self-all"];
-  const Icon = config.icon;
+  const tGroup = messagesGrouping[useLanguage()];
+  const config = tGroup.emptyByFilter[filter] ?? tGroup.emptyByFilter["self-all"];
+  const Icon = messagesEmptyIconByFilter[filter] ?? MessageSquare;
   return (
     <div className="w-full max-w-md text-center">
       <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
