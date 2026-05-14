@@ -60,7 +60,7 @@ export default function MessagesBotScopeDropdown({ rooms }: Props) {
           active={messagesBotScope === agent.agent_id}
           count={counts[agent.agent_id] ?? 0}
           onClick={() => setMessagesBotScope(agent.agent_id)}
-          avatar={<BotAvatar agentId={agent.agent_id} size={36} alt={agent.display_name} />}
+          avatar={<BotAvatar agentId={agent.agent_id} avatarUrl={agent.avatar_url} size={36} alt={agent.display_name} />}
         />
       ))}
     </div>
