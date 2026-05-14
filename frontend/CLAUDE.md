@@ -202,4 +202,12 @@ STRIPE_TOPUP_CURRENCY=usd
 STRIPE_TOPUP_PACKAGES=[...]
 BIND_PROOF_SECRET=...
 SHOW_MESSAGE_STATUS=true
+NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX   # Google Analytics 4 measurement ID; leave empty to disable
 ```
+
+## Analytics
+
+The site exposes two parallel analytics pipelines, both wired in `src/app/layout.tsx`:
+
+- **Vercel Analytics** (`@vercel/analytics/next`): zero-config, always on in production.
+- **Google Analytics 4** (`src/components/analytics/GoogleAnalytics.tsx` + `src/lib/analytics.ts`): loads `gtag.js` via `next/script` only when `NEXT_PUBLIC_GA_ID` is set; ships with App Router page-view tracking via `usePathname` + `useSearchParams`. Use the helpers in `src/lib/analytics.ts` (`trackEvent`, `trackPageView`, `setUserId`, `setUserProperties`) for custom event instrumentation — they no-op when GA is disabled, so call sites do not need to guard.
