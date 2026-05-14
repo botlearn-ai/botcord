@@ -13,7 +13,7 @@ import { roomList, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
-import { ContactInfo, DashboardRoom } from "@/lib/types";
+import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
 import { humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -36,6 +36,10 @@ interface RoomListProps {
 
 const USER_CHAT_PATH = "/chats/messages/__user-chat__";
 const EMPTY_CONTACTS: ContactInfo[] = [];
+
+function latestPreviewMessage(messages: DashboardMessage[] | undefined): DashboardMessage | null {
+  return messages?.findLast((m) => m.type !== "ack" && m.type !== "result" && m.type !== "error") ?? null;
+}
 
 function buildRoomAvatarLabel(roomName: string): string {
   const normalized = roomName.trim();
@@ -79,11 +83,17 @@ export default function RoomList({
   const locale = useLanguage();
   const t = roomList[locale];
   const tGroup = messagesGrouping[locale];
-  const { overview, messages, publicAgents } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, publicAgents } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
-    messages: state.messages,
     publicAgents: state.publicAgents,
   })));
+  const cachedLatestMessages = useDashboardChatStore(useShallow((state) => {
+    const latestByRoom: Record<string, DashboardMessage | null> = {};
+    for (const [roomId, roomMessages] of Object.entries(state.messages)) {
+      latestByRoom[roomId] = latestPreviewMessage(roomMessages);
+    }
+    return latestByRoom;
+  }));
   const { focusedRoomId, messagesPane, userChatAgentId, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane, setUserChatAgentId } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
     messagesPane: state.messagesPane,
@@ -274,11 +284,7 @@ export default function RoomList({
         const isSelected = ownerChatAgentId
           ? messagesPane === "user-chat" && ownerChatAgentId === (userChatAgentId || activeAgentId)
           : messagesPane === "room" && focusedRoomId === room.room_id;
-        const roomMessages = messages[room.room_id] || [];
-        // Find the latest real message (skip ack/result/error receipts)
-        const cachedLatestMessage = roomMessages.findLast(
-          (m) => m.type !== "ack" && m.type !== "result" && m.type !== "error",
-        );
+        const cachedLatestMessage = cachedLatestMessages[room.room_id] ?? null;
         // Preview text and sender must come from the same source to stay consistent
         let previewText: string;
         let previewSender: string;

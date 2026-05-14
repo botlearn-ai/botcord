@@ -15,7 +15,6 @@ import { Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import type { DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
-import { api } from "@/lib/api";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -54,6 +53,9 @@ interface TopicGroup {
 type TimelineItem =
   | { kind: "message"; message: DashboardMessage }
   | { kind: "topic"; group: TopicGroup };
+
+const EMPTY_MESSAGES: DashboardMessage[] = [];
+const EMPTY_ROOM_MEMBERS: PublicRoomMember[] = [];
 
 function buildTimelineItems(
   messages: DashboardMessage[],
@@ -317,13 +319,16 @@ export default function MessageList() {
     openedRoomId: state.openedRoomId,
     setOpenedTopicId: state.setOpenedTopicId,
   })));
-  const { messagesByRoom, messagesLoading, messagesHasMore, loadMoreMessages, overview } = useDashboardChatStore(
+  const roomId = openedRoomId;
+  const { messages, isRoomMessagesLoading, hasMore, loadMoreMessages, overview, roomMembers, loadRoomMembers } = useDashboardChatStore(
     useShallow((state) => ({
-      messagesByRoom: state.messages,
-      messagesLoading: state.messagesLoading,
-      messagesHasMore: state.messagesHasMore,
+      messages: roomId ? (state.messages[roomId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
+      isRoomMessagesLoading: roomId ? (state.messagesLoading[roomId] ?? false) : false,
+      hasMore: roomId ? (state.messagesHasMore[roomId] ?? false) : false,
       loadMoreMessages: state.loadMoreMessages,
       overview: state.overview,
+      roomMembers: roomId ? (state.roomMembersByRoom[roomId] ?? EMPTY_ROOM_MEMBERS) : EMPTY_ROOM_MEMBERS,
+      loadRoomMembers: state.loadRoomMembers,
     })),
   );
   const { publicRoomDetails, publicRooms, recentVisitedRooms } = useDashboardChatStore(useShallow((state) => ({
@@ -337,17 +342,12 @@ export default function MessageList() {
   const prevLengthRef = useRef(0);
   const isLoadingMore = useRef(false);
   const [showNewMessagesBanner, setShowNewMessagesBanner] = useState(false);
-  const [roomMembers, setRoomMembers] = useState<PublicRoomMember[]>([]);
   const showBannerRef = useRef(false);
   const wasNearBottomRef = useRef(true);
 
-  const roomId = openedRoomId;
-  const messages = roomId ? messagesByRoom[roomId] || [] : [];
   const roomMemberVersion = useDashboardChatStore(
     (state) => roomId ? (state.roomMemberVersions[roomId] ?? 0) : 0,
   );
-  const isRoomMessagesLoading = roomId ? messagesLoading[roomId] ?? false : false;
-  const hasMore = roomId ? messagesHasMore[roomId] ?? false : false;
   const currentAgentId = overview?.agent?.agent_id;
   const currentRoom = useMemo(() => {
     if (!roomId) return null;
@@ -378,23 +378,9 @@ export default function MessageList() {
   }, [overview?.agent, overview?.contacts, roomMembers]);
 
   useEffect(() => {
-    if (!roomId) {
-      setRoomMembers([]);
-      return;
-    }
-    let cancelled = false;
-    api.getRoomMembers(roomId)
-      .catch(() => api.getPublicRoomMembers(roomId))
-      .then((result) => {
-        if (!cancelled) setRoomMembers(result.members);
-      })
-      .catch(() => {
-        if (!cancelled) setRoomMembers([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [roomId, roomMemberVersion]);
+    if (!roomId) return;
+    void loadRoomMembers(roomId);
+  }, [roomId, roomMemberVersion, loadRoomMembers]);
 
   const commitRoomSeen = useCallback((targetRoomId: string) => {
     const joinedRoom = overview?.rooms.find((room) => room.room_id === targetRoomId);
@@ -404,14 +390,14 @@ export default function MessageList() {
     void markRoomSeen(
       targetRoomId,
       getLatestSeenAtForRoom(targetRoomId, {
-        messages: messagesByRoom,
-        overview,
-        publicRoomDetails,
-        publicRooms,
-        recentVisitedRooms,
+        messages: useDashboardChatStore.getState().messages,
+        overview: useDashboardChatStore.getState().overview,
+        publicRoomDetails: useDashboardChatStore.getState().publicRoomDetails,
+        publicRooms: useDashboardChatStore.getState().publicRooms,
+        recentVisitedRooms: useDashboardChatStore.getState().recentVisitedRooms,
       }),
     );
-  }, [markRoomSeen, messagesByRoom, overview, publicRoomDetails, publicRooms, recentVisitedRooms]);
+  }, [markRoomSeen, overview]);
 
   useEffect(() => {
     setOpenedTopicId(null);
