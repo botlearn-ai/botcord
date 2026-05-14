@@ -7,7 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bot,
@@ -384,6 +384,35 @@ export default function CreateAgentDialog({
     (!needsHermesProfile || !!selectedHermesProfile) &&
     !submitting;
 
+  const selectedRuntimeDetails: ReactNode = needsOpenclawGateway ? (
+    <OpenclawGatewayPicker
+      runtime={selectedRuntime}
+      selectedGateway={selectedGateway}
+      onSelectGateway={(g) => {
+        setSelectedGateway(g);
+        setSelectedOpenclawAgent(null);
+      }}
+      selectedAgent={selectedOpenclawAgent}
+      onSelectAgent={setSelectedOpenclawAgent}
+      labels={{
+        subagentLabel: t.openclawSubagentLabel,
+        subagentInfo: t.openclawSubagentInfo,
+        subagentPlaceholder: t.openclawSubagentPlaceholder,
+        noProfiles: t.openclawNoProfiles,
+        selectProfile: t.openclawSelectProfile,
+        boundProfiles: t.openclawBoundProfiles,
+      }}
+      disabled={submitting}
+    />
+  ) : needsHermesProfile ? (
+    <HermesProfilePicker
+      runtime={selectedRuntime}
+      selectedProfile={selectedHermesProfile}
+      onSelect={setSelectedHermesProfile}
+      disabled={submitting}
+    />
+  ) : null;
+
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
@@ -491,6 +520,7 @@ export default function CreateAgentDialog({
               daemon={selectedDaemon}
               selectedRuntimeId={selectedRuntimeId}
               onSelect={setSelectedRuntimeId}
+              selectedRuntimeDetails={selectedRuntimeDetails}
               refreshing={
                 !!selectedDaemon &&
                 refreshingRuntimesId === selectedDaemon.id
@@ -506,37 +536,6 @@ export default function CreateAgentDialog({
               }}
               disabled={submitting}
             />
-
-            {needsOpenclawGateway && (
-              <OpenclawGatewayPicker
-                runtime={selectedRuntime}
-                selectedGateway={selectedGateway}
-                onSelectGateway={(g) => {
-                  setSelectedGateway(g);
-                  setSelectedOpenclawAgent(null);
-                }}
-                selectedAgent={selectedOpenclawAgent}
-                onSelectAgent={setSelectedOpenclawAgent}
-                labels={{
-                  subagentLabel: t.openclawSubagentLabel,
-                  subagentInfo: t.openclawSubagentInfo,
-                  subagentPlaceholder: t.openclawSubagentPlaceholder,
-                  noProfiles: t.openclawNoProfiles,
-                  selectProfile: t.openclawSelectProfile,
-                  boundProfiles: t.openclawBoundProfiles,
-                }}
-                disabled={submitting}
-              />
-            )}
-
-            {needsHermesProfile && (
-              <HermesProfilePicker
-                runtime={selectedRuntime}
-                selectedProfile={selectedHermesProfile}
-                onSelect={setSelectedHermesProfile}
-                disabled={submitting}
-              />
-            )}
 
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -637,6 +636,7 @@ function RuntimePicker({
   daemon,
   selectedRuntimeId,
   onSelect,
+  selectedRuntimeDetails,
   refreshing,
   onRefresh,
   disabled,
@@ -645,6 +645,7 @@ function RuntimePicker({
   daemon: DaemonInstance | null;
   selectedRuntimeId: string | null;
   onSelect: (id: string) => void;
+  selectedRuntimeDetails: ReactNode;
   refreshing: boolean;
   onRefresh: () => void;
   disabled: boolean;
@@ -689,16 +690,21 @@ function RuntimePicker({
         </div>
       ) : (
         <div className="grid gap-2">
-          {sortedRuntimes.map((r) => (
-            <RuntimeCard
-              key={r.id}
-              runtime={r}
-              selected={selectedRuntimeId === r.id}
-              disabled={disabled || !r.available}
-              onClick={() => r.available && onSelect(r.id)}
-              unavailableLabel={labels.unavailable}
-            />
-          ))}
+          {sortedRuntimes.map((r) => {
+            const selected = selectedRuntimeId === r.id;
+            return (
+              <div key={r.id} className="space-y-2">
+                <RuntimeCard
+                  runtime={r}
+                  selected={selected}
+                  disabled={disabled || !r.available}
+                  onClick={() => r.available && onSelect(r.id)}
+                  unavailableLabel={labels.unavailable}
+                />
+                {selected && r.available && selectedRuntimeDetails}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
