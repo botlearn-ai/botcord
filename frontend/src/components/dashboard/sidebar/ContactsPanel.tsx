@@ -231,7 +231,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           {ownedAgents.map((agent) => (
             <ListRow
               key={`owned-${agent.agent_id}`}
-              avatar={<BotAvatar agentId={agent.agent_id} size={32} alt={agent.display_name} />}
+              avatar={<BotAvatar agentId={agent.agent_id} avatarUrl={agent.avatar_url} size={32} alt={agent.display_name} />}
               name={agent.display_name}
               subtitle={agent.is_default ? t.myBotSubtitleDefault : t.myBotSubtitle}
               online={agent.ws_online}
@@ -246,7 +246,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           {agentContacts.map((c) => (
             <ListRow
               key={`agent-${c.contact_agent_id}`}
-              avatar={<BotAvatar agentId={c.contact_agent_id} size={32} alt={c.display_name} />}
+              avatar={<BotAvatar agentId={c.contact_agent_id} avatarUrl={c.avatar_url} size={32} alt={c.display_name} />}
               name={c.alias || c.display_name}
               subtitle={c.alias ? c.display_name : c.contact_agent_id}
               online={c.online}
