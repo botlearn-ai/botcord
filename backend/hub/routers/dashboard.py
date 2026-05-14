@@ -83,6 +83,12 @@ def _extract_text_from_envelope(envelope_data: dict) -> tuple[str, str, dict]:
         text = payload.get("message", "")
         if text is not None and not isinstance(text, str):
             text = str(text)
+    if not text and msg_type == "error":
+        error = payload.get("error")
+        if isinstance(error, dict):
+            text = error.get("message") or error.get("code") or ""
+            if text is not None and not isinstance(text, str):
+                text = str(text)
     return sender_id, text, payload
 
 async def _build_dashboard_rooms(
