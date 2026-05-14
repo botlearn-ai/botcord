@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/ui/chat/contact store 与 RoomHeader/MessageList/PaidRoomPreview/ExploreEntityCard 等内容组件
+ * [INPUT]: 依赖 session/ui/chat/contact store、可选路由 tab 覆盖值与 RoomHeader/MessageList/PaidRoomPreview/ExploreEntityCard 等内容组件
  * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图，并把公开目录搜索委托给远端查询
  * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -41,6 +41,7 @@ import ContactsDetailPane from "./ContactsDetailPane";
 import { DashboardMainSkeleton } from "./DashboardTabSkeleton";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
+type ChatPaneTab = "messages" | "contacts" | "explore";
 
 function GridSkeletonCards() {
   return <DashboardMainSkeleton variant="explore" />;
@@ -348,6 +349,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
 
 interface ChatPaneProps {
   onHumanOpen?: (human: PublicHumanProfile) => void;
+  sidebarTabOverride?: ChatPaneTab;
 }
 
 function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
@@ -594,7 +596,7 @@ function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
   );
 }
 
-export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
+export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPaneProps) {
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
@@ -618,6 +620,7 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     recentVisitedRooms: state.recentVisitedRooms,
     getRoomSummary: state.getRoomSummary,
   })));
+  const effectiveSidebarTab = sidebarTabOverride ?? sidebarTab;
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms }),
     [overview, recentVisitedRooms, token, humanRooms],
@@ -648,11 +651,11 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     };
   }, [openedRoomId]);
 
-  if (sidebarTab === "explore") {
+  if (effectiveSidebarTab === "explore") {
     return <ExploreMainPane onHumanOpen={onHumanOpen} />;
   }
 
-  if (sidebarTab === "contacts") {
+  if (effectiveSidebarTab === "contacts") {
     if (contactsView === "requests") {
       return <ContactRequestsInbox initialTab="received" />;
     }
