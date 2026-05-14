@@ -188,6 +188,98 @@ async def test_missing_active_agent_without_human_membership(client: AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_human_send_inherits_highest_owned_bot_role(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    user = (
+        await db_session.execute(select(User).where(User.id == uuid.UUID(seed["uid1"])))
+    ).scalar_one()
+    room = Room(
+        room_id="rm_human_inherit",
+        name="Inherited",
+        description="",
+        owner_id=seed["agent3"],
+        visibility=RoomVisibility.public,
+        join_policy=RoomJoinPolicy.open,
+        default_send=False,
+    )
+    db_session.add(room)
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(room_id=room.room_id, agent_id=seed["agent3"], role=RoomRole.owner),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=seed["agent1"],
+            participant_type=ParticipantType.agent,
+            role=RoomRole.admin,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=user.human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+            can_send=False,
+        ),
+    ])
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_human_inherit/send",
+        headers={"Authorization": f"Bearer {seed['token1']}"},
+        json={"text": "inherited admin can send"},
+    )
+    assert r.status_code == 202, r.text
+
+
+@pytest.mark.asyncio
+async def test_active_agent_send_inherits_sibling_owned_bot_role(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    sibling = Agent(
+        agent_id="ag_user1adm",
+        display_name="Alice Admin Sibling",
+        message_policy=MessagePolicy.open,
+        user_id=uuid.UUID(seed["uid1"]),
+        claimed_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    room = Room(
+        room_id="rm_sibling_role",
+        name="Sibling Role",
+        description="",
+        owner_id=seed["agent3"],
+        visibility=RoomVisibility.public,
+        join_policy=RoomJoinPolicy.open,
+        default_send=False,
+    )
+    db_session.add_all([sibling, room])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(room_id=room.room_id, agent_id=seed["agent3"], role=RoomRole.owner),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=seed["agent1"],
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+            can_send=False,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id="ag_user1adm",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.admin,
+        ),
+    ])
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_sibling_role/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "sibling admin can send"},
+    )
+    assert r.status_code == 202, r.text
+
+
+@pytest.mark.asyncio
 async def test_active_agent_not_owned(client: AsyncClient, seed: dict):
     # token1 is Alice; ag_user2___ belongs to Bob
     r = await client.post(

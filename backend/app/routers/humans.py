@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
+from app.auth_room import effective_human_room_role, load_owned_agent_ids
 from app.routers.dashboard import _build_rooms_from_sql
 from hub.database import get_db
 from hub.enums import (
@@ -328,29 +329,29 @@ async def _load_owned_agent_ids(db: AsyncSession, user_id: UUID | None) -> set[s
     owns a room should see ``my_role == "owner"`` and pass owner-only gates
     on that room. Mirrors :func:`app.auth_room.viewer_can_admin_room`.
     """
-    if user_id is None:
-        return set()
-    result = await db.execute(select(Agent.agent_id).where(Agent.user_id == user_id))
-    return {row[0] for row in result.all()}
+    return await load_owned_agent_ids(db, user_id)
 
 
-def _effective_human_role(
+async def _effective_human_role(
+    db: AsyncSession,
     role: RoomRole | str,
     room: Room,
+    user_id: UUID | None,
     owned_agent_ids: set[str],
 ) -> RoomRole | str:
-    """Promote ``role`` to ``owner`` when the human owns the room's agent owner.
+    """Return the strongest role held by the Human or any owned bot.
 
-    Returning ``RoomRole.owner`` instead of mutating DB state keeps the
-    serialiser output and the in-process permission gates aligned without
-    rewriting room_members rows.
+    Returning an effective role instead of mutating DB state keeps the
+    serialiser output and permission gates aligned without rewriting
+    ``room_members`` rows.
     """
-    if (
-        room.owner_type == ParticipantType.agent
-        and room.owner_id in owned_agent_ids
-    ):
-        return RoomRole.owner
-    return role
+    return await effective_human_room_role(
+        db,
+        room=room,
+        human_role=role,
+        user_id=user_id,
+        owned_agent_ids=owned_agent_ids,
+    ) or role
 
 
 def _serialize_human_room_summary(
@@ -650,16 +651,20 @@ async def list_human_rooms(
         member_counts = {room_id: int(count or 0) for room_id, count in count_result.all()}
         previews_by_room = await _build_member_previews(db, room_ids)
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
-    rooms = [
-        _serialize_human_room_summary(
-            room,
-            _effective_human_role(role, room, owned_agent_ids),
-            member_count=member_counts.get(room.room_id, 0),
-            members_preview=previews_by_room.get(room.room_id)
-            if member_counts.get(room.room_id, 0) > 2 else None,
+    rooms = []
+    for room, role in rows:
+        effective_role = await _effective_human_role(
+            db, role, room, ctx.user_id, owned_agent_ids
         )
-        for room, role in rows
-    ]
+        rooms.append(
+            _serialize_human_room_summary(
+                room,
+                effective_role,
+                member_count=member_counts.get(room.room_id, 0),
+                members_preview=previews_by_room.get(room.room_id)
+                if member_counts.get(room.room_id, 0) > 2 else None,
+            )
+        )
     return HumanRoomListResponse(rooms=rooms)
 
 
@@ -1133,7 +1138,9 @@ async def create_room_invite_as_human(
     if inviter is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
-    effective_role = _effective_human_role(inviter.role, room, owned_agent_ids)
+    effective_role = await _effective_human_role(
+        db, inviter.role, room, ctx.user_id, owned_agent_ids
+    )
     if effective_role not in (RoomRole.owner, RoomRole.admin) and not bool(
         inviter.can_invite or room.default_invite
     ):
@@ -1212,7 +1219,9 @@ async def invite_room_member_as_human(
     if inviter is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
-    effective_role = _effective_human_role(inviter.role, room, owned_agent_ids)
+    effective_role = await _effective_human_role(
+        db, inviter.role, room, ctx.user_id, owned_agent_ids
+    )
     can_invite = (
         effective_role in (RoomRole.owner, RoomRole.admin)
         or inviter.can_invite
@@ -1476,7 +1485,9 @@ async def update_room_settings_as_human(
     user = await _load_human(db, ctx)
     room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
-    effective_role = _effective_human_role(caller.role, room, owned_agent_ids)
+    effective_role = await _effective_human_role(
+        db, caller.role, room, ctx.user_id, owned_agent_ids
+    )
     if effective_role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Only owner or admin can update room settings")
 
@@ -1589,7 +1600,11 @@ async def dissolve_room_as_human(
 ):
     user = await _load_human(db, ctx)
     room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
-    if caller.role != RoomRole.owner:
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = await _effective_human_role(
+        db, caller.role, room, ctx.user_id, owned_agent_ids
+    )
+    if effective_role != RoomRole.owner:
         raise HTTPException(status_code=403, detail="Only the room owner can dissolve this room")
 
     # Pre-cancel subscriptions bound to this room — see hub dissolve route.
@@ -1633,7 +1648,11 @@ async def transfer_room_ownership_as_human(
     user = await _load_human(db, ctx)
     me = user.human_id
     room, caller = await _load_room_member_as_caller(db, room_id, me, lock=True)
-    if caller.role != RoomRole.owner:
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = await _effective_human_role(
+        db, caller.role, room, ctx.user_id, owned_agent_ids
+    )
+    if effective_role != RoomRole.owner:
         raise HTTPException(status_code=403, detail="Only the room owner can transfer ownership")
 
     new_owner_id = body.new_owner_id
@@ -1662,7 +1681,13 @@ async def transfer_room_ownership_as_human(
                 detail="Target must hold an active subscription to own this room",
             )
 
-    caller.role = RoomRole.member
+    outgoing_owner_member = caller
+    if room.owner_id != caller.agent_id:
+        current_owner_member = await _find_room_member(db, room_id, room.owner_id)
+        if current_owner_member is not None:
+            outgoing_owner_member = current_owner_member
+
+    outgoing_owner_member.role = RoomRole.member
     new_owner_member.role = RoomRole.owner
     room.owner_id = new_owner_id
     room.owner_type = new_owner_type
@@ -1684,8 +1709,12 @@ async def promote_member_as_human(
 ):
     """Promote/demote a member. Human owner only. Matches hub's `promote`."""
     user = await _load_human(db, ctx)
-    _, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
-    if caller.role != RoomRole.owner:
+    room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = await _effective_human_role(
+        db, caller.role, room, ctx.user_id, owned_agent_ids
+    )
+    if effective_role != RoomRole.owner:
         raise HTTPException(status_code=403, detail="Only the room owner can promote or demote")
 
     target_type = _split_prefix(body.participant_id)
@@ -1721,8 +1750,12 @@ async def remove_member_as_human(
     """Remove a member. Human owner/admin only. Mirrors hub's remove_member,
     but accepts both ``ag_*`` and ``hu_*`` targets."""
     user = await _load_human(db, ctx)
-    _, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
-    if caller.role not in (RoomRole.owner, RoomRole.admin):
+    room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = await _effective_human_role(
+        db, caller.role, room, ctx.user_id, owned_agent_ids
+    )
+    if effective_role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Owner or admin required")
 
     target_type = _split_prefix(participant_id)
@@ -1731,7 +1764,7 @@ async def remove_member_as_human(
         raise HTTPException(status_code=404, detail="Member not found in room")
     if target.role == RoomRole.owner:
         raise HTTPException(status_code=400, detail="Cannot remove the room owner")
-    if target.role == RoomRole.admin and caller.role != RoomRole.owner:
+    if target.role == RoomRole.admin and effective_role != RoomRole.owner:
         raise HTTPException(status_code=403, detail="Only the owner can remove admins")
 
     removed_id = target.agent_id
@@ -1791,8 +1824,12 @@ async def set_member_permissions_as_human(
 ):
     """Set per-member permission overrides. Human owner/admin only."""
     user = await _load_human(db, ctx)
-    _, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
-    if caller.role not in (RoomRole.owner, RoomRole.admin):
+    room, caller = await _load_room_member_as_caller(db, room_id, user.human_id, lock=True)
+    owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_role = await _effective_human_role(
+        db, caller.role, room, ctx.user_id, owned_agent_ids
+    )
+    if effective_role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Owner or admin required")
 
     target_type = _split_prefix(body.participant_id)
@@ -1801,7 +1838,7 @@ async def set_member_permissions_as_human(
         raise HTTPException(status_code=404, detail="Member not found in room")
     if target.role == RoomRole.owner:
         raise HTTPException(status_code=400, detail="Cannot modify the owner's permissions")
-    if target.role == RoomRole.admin and caller.role != RoomRole.owner:
+    if target.role == RoomRole.admin and effective_role != RoomRole.owner:
         raise HTTPException(status_code=403, detail="Only the owner can modify admin permissions")
 
     target.can_send = body.can_send
