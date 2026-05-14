@@ -18,6 +18,7 @@ import {
   type DaemonConfig,
 } from "./config.js";
 import { listDaemonLogFiles, LOG_FILE_PATH, type LogFileEntry } from "./log.js";
+import { listAcpTraceLogFiles, listRuntimeLogFiles } from "./acp-logs.js";
 import {
   channelsFromDaemonConfig,
   defaultHttpFetcher,
@@ -330,6 +331,8 @@ export async function createDiagnosticBundle(
   const snapshotFile = opts.snapshotFile ?? SNAPSHOT_PATH;
   const includeAllLogs = opts.includeAllLogs === true;
   const logs = bundledLogs(logFile, includeAllLogs);
+  const acpLogs = listAcpTraceLogFiles(includeAllLogs);
+  const runtimeLogs = listRuntimeLogFiles(includeAllLogs);
   mkdirSync(diagnosticsDir, { recursive: true, mode: 0o700 });
 
   const doctor = opts.doctor ?? await buildDoctorEntries();
@@ -350,6 +353,16 @@ export async function createDiagnosticBundle(
       path: entry.path,
       sizeBytes: entry.sizeBytes,
       active: entry.active,
+    })),
+    acpLogsBundled: acpLogs.map((entry) => ({
+      name: entry.name,
+      path: entry.path,
+      sizeBytes: entry.sizeBytes,
+    })),
+    runtimeLogsBundled: runtimeLogs.map((entry) => ({
+      name: entry.bundleName,
+      path: entry.path,
+      sizeBytes: entry.sizeBytes,
     })),
     logsBundleMode: includeAllLogs ? "all" : `active_plus_${DEFAULT_ROTATED_LOGS_IN_BUNDLE}_rotated`,
     diagnosticsDir,
@@ -375,6 +388,20 @@ export async function createDiagnosticBundle(
         data: log ?? `no log file at ${entry.path}\n`,
       });
     }
+  }
+  for (const entry of acpLogs) {
+    const log = safeReadText(entry.path);
+    entries.push({
+      name: `acp-logs/${entry.name.split(path.sep).join("/")}`,
+      data: log ?? `no ACP log file at ${entry.path}\n`,
+    });
+  }
+  for (const entry of runtimeLogs) {
+    const log = safeReadText(entry.path);
+    entries.push({
+      name: entry.bundleName,
+      data: log ?? `no runtime log file at ${entry.path}\n`,
+    });
   }
   const config = safeReadText(configFile);
   entries.push({

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createAcpTraceLogger, type AcpTraceLogger } from "../../acp-logs.js";
 import { consoleLogger } from "../log.js";
 import type {
   RuntimeAdapter,
@@ -37,6 +38,12 @@ const INITIALIZE_TIMEOUT_MS = 30_000;
 const PROMPT_ERROR_DRAIN_MS = 750;
 /** ACP protocol version this client targets. */
 export const ACP_PROTOCOL_VERSION = 1;
+
+function stringField(obj: unknown, key: string): string | undefined {
+  if (!obj || typeof obj !== "object") return undefined;
+  const value = (obj as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
 
 export interface AcpInitializeResult {
   protocolVersion?: number;
@@ -121,6 +128,7 @@ class AcpConnection {
       ): Promise<unknown> | unknown;
     },
     private readonly logId: string,
+    private readonly trace: AcpTraceLogger | null = null,
   ) {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.onStdout(chunk));
@@ -148,6 +156,7 @@ class AcpConnection {
     try {
       msg = JSON.parse(line);
     } catch {
+      this.trace?.write({ stream: "stdout_non_json", chunk: line });
       log.warn(`${this.logId} non-json acp line`, { line: line.slice(0, 200) });
       return;
     }
@@ -158,11 +167,26 @@ class AcpConnection {
       if (!pending) return;
       this.pending.delete(msg.id);
       if (msg.error) {
+        this.trace?.write({
+          stream: "rpc_in",
+          direction: "in",
+          id: msg.id,
+          status: "error",
+          code: typeof msg.error.code === "number" ? msg.error.code : undefined,
+          error: msg.error.message ?? "(no message)",
+        });
         const err = new Error(
           `acp error ${msg.error.code ?? "?"}: ${msg.error.message ?? "(no message)"}`,
         );
         pending.reject(err);
       } else {
+        this.trace?.write({
+          stream: "rpc_in",
+          direction: "in",
+          id: msg.id,
+          status: "response",
+          result: msg.result ?? null,
+        });
         pending.resolve(msg.result ?? null);
       }
       return;
@@ -170,8 +194,23 @@ class AcpConnection {
     if (typeof msg.method === "string") {
       // Server→client request (has `id`) or notification (no `id`)
       if (msg.id !== undefined) {
+        this.trace?.write({
+          stream: "rpc_in",
+          direction: "in",
+          id: msg.id,
+          method: msg.method,
+          status: "request",
+          params: msg.params,
+        });
         void this.handleServerRequest(msg.id, msg.method, msg.params);
       } else {
+        this.trace?.write({
+          stream: "rpc_in",
+          direction: "in",
+          method: msg.method,
+          status: "notification",
+          params: msg.params,
+        });
         try {
           this.handlers.onNotification(msg.method, msg.params);
         } catch (err) {
@@ -202,6 +241,15 @@ class AcpConnection {
     const reply = error
       ? { jsonrpc: "2.0", id, error }
       : { jsonrpc: "2.0", id, result: result ?? null };
+    this.trace?.write({
+      stream: "rpc_out",
+      direction: "out",
+      id,
+      status: error ? "error" : "response",
+      code: error?.code,
+      error: error?.message,
+      result: error ? undefined : result ?? null,
+    });
     this.writeMessage(reply);
   }
 
@@ -224,11 +272,26 @@ class AcpConnection {
         resolve: (v) => resolve(v as T),
         reject,
       });
+      this.trace?.write({
+        stream: "rpc_out",
+        direction: "out",
+        id,
+        method,
+        status: "request",
+        params,
+      });
       this.writeMessage({ jsonrpc: "2.0", id, method, params });
     });
   }
 
   notify(method: string, params: unknown): void {
+    this.trace?.write({
+      stream: "rpc_out",
+      direction: "out",
+      method,
+      status: "notification",
+      params,
+    });
     this.writeMessage({ jsonrpc: "2.0", method, params });
   }
 
@@ -326,6 +389,20 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       env: this.spawnEnv(opts),
       stdio: ["pipe", "pipe", "pipe"],
     }) as ChildProcessWithoutNullStreams;
+    const trace = createAcpTraceLogger({
+      runtime: this.id,
+      accountId: opts.accountId,
+      turnId: stringField(opts.context, "turnId"),
+      roomId: stringField(opts.context, "roomId"),
+      topicId: stringField(opts.context, "topicId") ?? null,
+      hermesProfile: opts.hermesProfile,
+      sessionId: opts.sessionId,
+    });
+    trace?.write({
+      stream: "child_start",
+      pid: child.pid,
+      params: { command: binary, args, cwd: opts.cwd },
+    });
 
     let killTimer: ReturnType<typeof setTimeout> | null = null;
     const onAbort = () => {
@@ -354,6 +431,7 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP);
+      trace?.write({ stream: "stderr", pid: child.pid, chunk });
     });
 
     const state: AcpRunState = {
@@ -417,10 +495,21 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
         },
       },
       this.id,
+      trace,
     );
 
     const childExit = new Promise<number>((resolve) => {
-      child.on("close", (code) => resolve(code ?? 0));
+      child.on("close", (code, signal) => {
+        trace?.write({ stream: "child_exit", pid: child.pid, code, signal });
+        resolve(code ?? 0);
+      });
+      child.on("error", (err) => {
+        trace?.write({
+          stream: "child_error",
+          pid: child.pid,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     });
 
     let newSessionId = opts.sessionId ?? "";
