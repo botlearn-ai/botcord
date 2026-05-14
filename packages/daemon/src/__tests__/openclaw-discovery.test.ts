@@ -156,6 +156,7 @@ describe("discoverLocalOpenclawGateways", () => {
 
     expect(found).toEqual([
       expect.objectContaining({
+        name: "qclaw-127-0-0-1-28789",
         url: "ws://127.0.0.1:28789",
         token: "qclaw-token",
         source: "config-file",
