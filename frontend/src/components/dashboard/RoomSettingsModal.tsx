@@ -179,7 +179,7 @@ export default function RoomSettingsModal({
   const leavingRoomId = useDashboardChatStore((s) => s.leavingRoomId);
   const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
   const humanId = useDashboardSessionStore((s) => s.human?.human_id ?? null);
-  const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
+  const sessionOwnedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const getActiveSubscription = useDashboardSubscriptionStore((s) => s.getActiveSubscription);
   const ensureSubscriptions = useDashboardSubscriptionStore((s) => s.ensureSubscriptions);
   const cancelSubscription = useDashboardSubscriptionStore((s) => s.cancelSubscription);
@@ -240,6 +240,7 @@ export default function RoomSettingsModal({
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [policyAgentId, setPolicyAgentId] = useState("");
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dissolving, setDissolving] = useState(false);
@@ -261,6 +262,18 @@ export default function RoomSettingsModal({
     );
   }, [memberQuery, members]);
   const availableProduct = ownedProducts.find((product) => product.status === "active") ?? ownedProducts[0] ?? null;
+  const roomMemberIds = useMemo(
+    () => new Set(members.map((member) => member.agent_id)),
+    [members],
+  );
+  const roomOwnedAgents = useMemo(
+    () => sessionOwnedAgents.filter((agent) => roomMemberIds.has(agent.agent_id)),
+    [roomMemberIds, sessionOwnedAgents],
+  );
+  const policyAgentOptions = useMemo(() => {
+    return roomOwnedAgents.length > 0 ? roomOwnedAgents : sessionOwnedAgents;
+  }, [roomOwnedAgents, sessionOwnedAgents]);
+  const selectedPolicyAgent = policyAgentOptions.find((agent) => agent.agent_id === policyAgentId) ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +297,15 @@ export default function RoomSettingsModal({
       cancelled = true;
     };
   }, [roomId, tm.loadMembersFailed]);
+
+  useEffect(() => {
+    setPolicyAgentId((current) => {
+      if (current && policyAgentOptions.some((agent) => agent.agent_id === current)) {
+        return current;
+      }
+      return policyAgentOptions[0]?.agent_id ?? "";
+    });
+  }, [policyAgentOptions]);
 
   useEffect(() => {
     if (!initialSubscriptionProductId) return;
@@ -856,25 +878,56 @@ export default function RoomSettingsModal({
               </div>
             </section>
 
-            {activeAgentId ? (
+            {sessionOwnedAgents.length > 0 ? (
               <section className="border-t border-glass-border/40 py-5">
-                <button
-                  type="button"
-                  onClick={() => setShowPolicyModal(true)}
-                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-3 text-left transition-colors hover:border-neon-cyan/40 hover:bg-glass-bg/60"
-                >
-                  <div className="min-w-0">
+                <div className="rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-3">
+                  <div className="mb-3">
                     <p className="text-sm font-semibold text-text-primary">
                       {locale === "zh" ? "本房间回复策略" : "Reply policy for this room"}
                     </p>
-                    <p className="mt-1 truncate text-xs text-text-secondary/70">
+                    <p className="mt-1 text-xs text-text-secondary/70">
                       {locale === "zh"
-                        ? "设置当前 Bot 在这个房间的应答规则"
-                        : "Configure how your active bot responds in this room"}
+                        ? "选择一个自己的 Bot，设置它在这个房间的应答规则"
+                        : "Choose one of your bots and configure how it responds in this room"}
                     </p>
                   </div>
-                  <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-text-secondary" />
-                </button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <select
+                      value={policyAgentId}
+                      onChange={(event) => setPolicyAgentId(event.target.value)}
+                      disabled={policyAgentOptions.length === 0}
+                      className="min-w-0 flex-1 rounded-lg border border-glass-border bg-deep-black px-2 py-2 text-sm text-text-primary"
+                    >
+                      {policyAgentOptions.length === 0 ? (
+                        <option value="">
+                          {locale === "zh" ? "这个房间没有你的 Bot" : "No owned bots in this room"}
+                        </option>
+                      ) : (
+                        policyAgentOptions.map((agent) => (
+                          <option key={agent.agent_id} value={agent.agent_id}>
+                            {agent.display_name} ({agent.agent_id})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowPolicyModal(true)}
+                      disabled={!policyAgentId}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {locale === "zh" ? "设置" : "Configure"}
+                      <ChevronDown className="h-4 w-4 shrink-0 -rotate-90" />
+                    </button>
+                  </div>
+                  {members.length > 0 && roomOwnedAgents.length === 0 ? (
+                    <p className="mt-2 text-xs text-text-secondary/70">
+                      {locale === "zh"
+                        ? "未检测到本房间里的自有 Bot；你仍可预先为自己的 Bot 设置规则。"
+                        : "No owned bot was detected in this room; you can still stage a policy for your bot."}
+                    </p>
+                  ) : null}
+                </div>
               </section>
             ) : null}
 
@@ -1202,9 +1255,10 @@ export default function RoomSettingsModal({
         />
       )}
 
-      {showPolicyModal && activeAgentId ? (
+      {showPolicyModal && selectedPolicyAgent ? (
         <RoomPolicyModal
-          agentId={activeAgentId}
+          agentId={selectedPolicyAgent.agent_id}
+          agentDisplayName={selectedPolicyAgent.display_name}
           roomId={roomId}
           onClose={() => setShowPolicyModal(false)}
         />
