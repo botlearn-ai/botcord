@@ -175,7 +175,7 @@ export default function ContactsDetailPane() {
     tag = { tone: "cyan", label: a.is_default ? t.myBotTagDefault : t.myBot };
     statusText = a.ws_online ? "● Online" : "● Offline";
     bio = a.bio ?? null;
-    avatar = <BotAvatar agentId={a.agent_id} size={96} alt={a.display_name} />;
+    avatar = <BotAvatar agentId={a.agent_id} avatarUrl={a.avatar_url} size={96} alt={a.display_name} />;
   } else if (target.kind === "agent-contact") {
     const c = target.contact;
     title = c.alias || c.display_name;
@@ -183,7 +183,7 @@ export default function ContactsDetailPane() {
     const ownerName = publicAgents.find((a) => a.agent_id === c.contact_agent_id)?.owner_display_name;
     tag = { tone: "gray", label: ownerName ? t.ownedBotOf(ownerName) : t.externalBot };
     statusText = c.online ? "● Online" : "● Offline";
-    avatar = <BotAvatar agentId={c.contact_agent_id} size={96} alt={c.display_name} />;
+    avatar = <BotAvatar agentId={c.contact_agent_id} avatarUrl={c.avatar_url} size={96} alt={c.display_name} />;
   } else if (target.kind === "human-contact") {
     const c = target.contact;
     title = c.alias || c.display_name;
