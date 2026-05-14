@@ -3,17 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import {
-  Bot,
   Eye,
   FileText,
   Loader2,
   MessageCircle,
-  MessageSquare,
   Pencil,
-  Plug,
   RefreshCw,
+  Settings2,
   Trash2,
-  User,
   Wallet as WalletIcon,
   X,
 } from "lucide-react";
@@ -39,16 +36,13 @@ import BotAvatar from "./BotAvatar";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotWalletTab from "./BotWalletTab";
 
-type TabKey = "overview" | "profile" | "policy" | "auto" | "gateways" | "files" | "wallet";
+type TabKey = "overview" | "wallet" | "settings" | "files";
 
 const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "overview", label: "概览", icon: Eye },
   { key: "wallet", label: "钱包", icon: WalletIcon },
-  { key: "profile", label: "资料", icon: User },
-  { key: "policy", label: "对话与回复", icon: MessageSquare },
-  { key: "auto", label: "自主", icon: Bot },
-  { key: "gateways", label: "接入", icon: Plug },
-  { key: "files", label: "文件/记忆", icon: FileText },
+  { key: "settings", label: "设置", icon: Settings2 },
+  { key: "files", label: "文件", icon: FileText },
 ];
 
 const CONTACT_OPTIONS: { value: ContactPolicy; label: string; hint: string }[] = [
@@ -99,7 +93,7 @@ interface BotFriendRoom {
 
 /**
  * Right-side drawer for a single owned bot.
- * 6 tabs: 概览 / 资料 / 对话与回复 / 自主 / 接入 / 文件/记忆.
+ * Top-level tabs keep the drawer compact: 概览 / 钱包 / 设置 / 文件.
  */
 export default function BotDetailDrawer() {
   const router = useRouter();
@@ -156,8 +150,13 @@ export default function BotDetailDrawer() {
   // initial-tab hint when the drawer is opened via openBotDetail() (e.g.
   // from the wallet overview's bot row).
   useEffect(() => {
+    const legacySettingsTabs = new Set(["policy", "auto", "gateways"]);
     if (botDetailInitialTab && TABS.some((t) => t.key === botDetailInitialTab)) {
       setTab(botDetailInitialTab as TabKey);
+    } else if (botDetailInitialTab === "profile") {
+      setTab("overview");
+    } else if (botDetailInitialTab && legacySettingsTabs.has(botDetailInitialTab)) {
+      setTab("settings");
     } else {
       setTab("overview");
     }
@@ -268,14 +267,14 @@ export default function BotDetailDrawer() {
         </div>
 
         {/* Tab strip */}
-        <div className="flex border-b border-glass-border overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="grid grid-cols-4 border-b border-glass-border">
           {TABS.map(({ key, label, icon: Icon }) => {
             const active = tab === key;
             return (
               <button
                 key={key}
                 onClick={() => setTab(key)}
-                className={`flex shrink-0 items-center gap-1.5 px-3.5 py-2.5 text-xs font-medium transition-colors ${
+                className={`flex min-w-0 items-center justify-center gap-1.5 px-2 py-2.5 text-xs font-medium transition-colors ${
                   active
                     ? "border-b-2 border-neon-cyan text-neon-cyan"
                     : "border-b-2 border-transparent text-text-secondary hover:text-text-primary"
@@ -304,13 +303,9 @@ export default function BotDetailDrawer() {
               onJumpToFriend={(friend) => jumpToBotConversation(friend.room.room_id)}
               onJumpToGroup={(group) => jumpToBotConversation(group.room_id)}
               onOpenChat={() => void openOwnerChat()}
-              onOpenSettings={() => setTab("profile")}
             />
           )}
-          {tab === "profile" && <ProfileTab agentId={bot.agent_id} initialName={bot.display_name} initialBio={bot.bio ?? ""} />}
-          {tab === "policy" && <PolicyTab agentId={bot.agent_id} />}
-          {tab === "auto" && <AgentSchedulesTab agentId={bot.agent_id} />}
-          {tab === "gateways" && <AgentChannelsTab agentId={bot.agent_id} />}
+          {tab === "settings" && <SettingsTab agentId={bot.agent_id} />}
           {tab === "files" && <FilesTab agentId={bot.agent_id} />}
           {tab === "wallet" && <BotWalletTab agentId={bot.agent_id} displayName={bot.display_name} />}
         </div>
@@ -354,7 +349,6 @@ function OverviewTab({
   onJumpToFriend,
   onJumpToGroup,
   onOpenChat,
-  onOpenSettings,
 }: {
   bot: { agent_id: string; display_name: string; bio?: string | null };
   stats: ActivityStats | null;
@@ -365,18 +359,10 @@ function OverviewTab({
   onJumpToFriend: (friend: BotFriendRoom) => void;
   onJumpToGroup: (group: HumanAgentRoomSummary) => void;
   onOpenChat: () => void;
-  onOpenSettings: () => void;
 }) {
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
-        <p className="font-mono text-[11px] text-text-secondary/55">{bot.agent_id}</p>
-        {bot.bio ? (
-          <p className="mt-2 text-sm text-text-primary/85">{bot.bio}</p>
-        ) : (
-          <p className="mt-2 text-xs text-text-secondary/55">暂无简介</p>
-        )}
-      </section>
+      <ProfileEditor agentId={bot.agent_id} initialName={bot.display_name} initialBio={bot.bio ?? ""} />
 
       {stats ? (
         <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
@@ -521,13 +507,6 @@ function OverviewTab({
             <MessageCircle className="h-3.5 w-3.5" />
             打开对话
           </button>
-          <button
-            onClick={onOpenSettings}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-2 text-xs font-medium text-text-secondary/80 transition-colors hover:text-text-primary"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            编辑资料
-          </button>
         </div>
       </section>
 
@@ -552,7 +531,7 @@ function OverviewTab({
 
 /* --------------------------- Profile --------------------------- */
 
-function ProfileTab({
+function ProfileEditor({
   agentId,
   initialName,
   initialBio,
@@ -587,51 +566,66 @@ function ProfileTab({
   };
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
-        <label className="mb-1 block text-xs text-text-secondary/65">显示名称</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={128}
-          className="w-full rounded-lg border border-glass-border bg-glass-bg/30 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
-        />
-        <label className="mb-1 mt-4 block text-xs text-text-secondary/65">简介</label>
-        <textarea
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          rows={4}
-          maxLength={4000}
-          placeholder="介绍这个 Bot（可选）"
-          className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg/30 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
-        />
-        <div className="mt-4 flex items-center justify-between">
-          <p className="font-mono text-[10px] text-text-secondary/55">{agentId}</p>
-          <button
-            onClick={() => void handleSave()}
-            disabled={!dirty || saving}
-            className="rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
-          >
-            {saving ? "保存中..." : saved ? "已保存 ✓" : "保存"}
-          </button>
-        </div>
-        {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
+    <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+        <Pencil className="h-3.5 w-3.5" />
+        资料
+      </div>
+      <label className="mb-1 block text-xs text-text-secondary/65">显示名称</label>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={128}
+        className="w-full rounded-lg border border-glass-border bg-glass-bg/30 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
+      />
+      <label className="mb-1 mt-4 block text-xs text-text-secondary/65">简介</label>
+      <textarea
+        value={bio}
+        onChange={(e) => setBio(e.target.value)}
+        rows={4}
+        maxLength={4000}
+        placeholder="介绍这个 Bot（可选）"
+        className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg/30 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
+      />
+      <div className="mt-4 flex items-center justify-between">
+        <p className="font-mono text-[10px] text-text-secondary/55">{agentId}</p>
+        <button
+          onClick={() => void handleSave()}
+          disabled={!dirty || saving}
+          className="rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
+        >
+          {saving ? "保存中..." : saved ? "已保存 ✓" : "保存"}
+        </button>
+      </div>
+      {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
+    </section>
+  );
+}
+
+/* --------------------------- Settings --------------------------- */
+
+function SettingsTab({ agentId }: { agentId: string }) {
+  return (
+    <div className="space-y-6">
+      <section className="space-y-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          对话与回复
+        </h3>
+        <PolicyTab agentId={agentId} />
       </section>
 
-      <section className="rounded-2xl border border-red-500/25 bg-red-500/5 p-4">
-        <button
-          onClick={() => {
-            if (window.confirm("确定要删除此 Bot 吗？")) {
-              void userApi.unbindAgent(agentId).then(() => window.location.reload());
-            }
-          }}
-          className="flex w-full items-center justify-between rounded-lg text-left text-xs text-red-300/85 transition-colors hover:text-red-200"
-        >
-          <span className="flex items-center gap-2">
-            <Trash2 className="h-3.5 w-3.5" />
-            删除此 Bot
-          </span>
-        </button>
+      <section className="space-y-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          自主
+        </h3>
+        <AgentSchedulesTab agentId={agentId} />
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          接入
+        </h3>
+        <AgentChannelsTab agentId={agentId} />
       </section>
     </div>
   );
