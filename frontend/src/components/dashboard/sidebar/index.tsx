@@ -17,7 +17,7 @@ import { common, nav } from "@/lib/i18n/translations/common";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
-import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useDashboardUIStore, type DashboardUIState } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardRealtimeStore } from "@/store/useDashboardRealtimeStore";
@@ -37,7 +37,6 @@ import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
-import { api } from "@/lib/api";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -113,12 +112,14 @@ interface SidebarProps {
   mobileHideSecondary?: boolean;
   mobileSecondaryOpen?: boolean;
   onMobileSecondaryClose?: () => void;
+  sidebarTabOverride?: DashboardUIState["sidebarTab"];
 }
 
 export default function Sidebar({
   mobileHideSecondary = false,
   mobileSecondaryOpen = false,
   onMobileSecondaryClose,
+  sidebarTabOverride,
 }: SidebarProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -271,10 +272,11 @@ export default function Sidebar({
   }, [unreadStore, visibleMessageRooms]);
 
   const pendingContactRequests = chatStore.overview?.pending_requests || 0;
+  const visibleSidebarTab = sidebarTabOverride ?? uiStore.sidebarTab;
   const secondaryPanelLoading = Boolean(
-    uiStore.pendingPrimaryNavigation && uiStore.pendingPrimaryNavigation.tab === uiStore.sidebarTab,
+    uiStore.pendingPrimaryNavigation && uiStore.pendingPrimaryNavigation.tab === visibleSidebarTab,
   );
-  const showMessagesGrouping = uiStore.sidebarTab === "messages" && !isGuest && uiStore.messagesGroupingOpen;
+  const showMessagesGrouping = visibleSidebarTab === "messages" && !isGuest && uiStore.messagesGroupingOpen;
 
   useEffect(() => {
     const prefetch = (path: string) => {
@@ -340,7 +342,7 @@ export default function Sidebar({
         </Link>
         <div className="flex flex-1 flex-col items-center gap-1 pt-1 max-md:min-w-0 max-md:flex-row max-md:justify-around max-md:pt-0">
           {navItems.map((item) => {
-            const isActive = uiStore.sidebarTab === item.key;
+            const isActive = visibleSidebarTab === item.key;
             const requiresLogin = isGuest && (item.key === "contacts" || item.key === "activity");
             let badge: ReactNode = null;
             if (item.key === "messages" && unreadMessageCount > 0 && !requiresLogin) {
@@ -432,22 +434,8 @@ export default function Sidebar({
             setShowCreateBot(false);
             setCreateBotForDaemonId(null);
             await sessionStore.refreshUserProfile();
-            uiStore.setSidebarTab("messages");
-            uiStore.setMessagesPane("user-chat");
             uiStore.setUserChatAgentId(agentId);
-            uiStore.setFocusedRoomId(null);
-            uiStore.setOpenedRoomId(null);
             onMobileSecondaryClose?.();
-            try {
-              const room = await api.getUserChatRoom(agentId);
-              uiStore.setUserChatRoomId(room.room_id);
-              startTransition(() => {
-                router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
-              });
-            } catch (error) {
-              console.error("[Sidebar] getUserChatRoom after create failed:", error);
-              startTransition(() => { router.push(USER_CHAT_ROUTE); });
-            }
           }}
         />
       )}
@@ -462,7 +450,7 @@ export default function Sidebar({
       )}
 
       {/* Secondary panel — hidden on Home, My Bots, Explore, Wallet (those pages get full width). */}
-      {uiStore.sidebarTab !== "home" && uiStore.sidebarTab !== "bots" && uiStore.sidebarTab !== "explore" && uiStore.sidebarTab !== "wallet" && (
+      {visibleSidebarTab !== "home" && visibleSidebarTab !== "bots" && visibleSidebarTab !== "explore" && visibleSidebarTab !== "wallet" && (
       <div
         className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
           mobileHideSecondary
@@ -484,10 +472,10 @@ export default function Sidebar({
           className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-neon-cyan/30 active:bg-neon-cyan/50 max-md:hidden"
         />
         {/* Outer panel header — hidden on messages tab; MessagesPanel owns its own column header (Feishu-style). */}
-        {uiStore.sidebarTab !== "messages" && (
+        {visibleSidebarTab !== "messages" && (
         <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-text-primary">{tabTitles[uiStore.sidebarTab]}</h2>
+            <h2 className="text-sm font-semibold text-text-primary">{tabTitles[visibleSidebarTab]}</h2>
             {isGuest && (
               <p className="truncate text-[10px] text-text-secondary/60">{t.browseAsGuest}</p>
             )}
@@ -503,7 +491,7 @@ export default function Sidebar({
               <X className="h-4 w-4" />
             </button>
           )}
-          {uiStore.sidebarTab === "contacts" && !isGuest && (
+          {visibleSidebarTab === "contacts" && !isGuest && (
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setShowAddFriend(true)}
@@ -528,7 +516,7 @@ export default function Sidebar({
           <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           {secondaryPanelLoading ? (
             <>
-              {uiStore.sidebarTab === "messages" ? (
+              {visibleSidebarTab === "messages" ? (
                 <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
                   <SkeletonBlock className="h-4 w-28" />
                   <div className="flex gap-1">
@@ -537,16 +525,16 @@ export default function Sidebar({
                   </div>
                 </div>
               ) : null}
-              <SidebarListSkeleton rows={uiStore.sidebarTab === "contacts" ? 9 : 7} />
+              <SidebarListSkeleton rows={visibleSidebarTab === "contacts" ? 9 : 7} />
             </>
-          ) : uiStore.sidebarTab === "messages" && (
+          ) : visibleSidebarTab === "messages" && (
             <MessagesPanel
               isGuest={isGuest}
               onCreateRoom={() => setShowCreateRoom(true)}
               onAddFriend={() => setShowAddFriend(true)}
             />
           )}
-          {!secondaryPanelLoading && uiStore.sidebarTab === "contacts" && (
+          {!secondaryPanelLoading && visibleSidebarTab === "contacts" && (
             <ContactsPanel onOpenAddFriend={() => setShowAddFriend(true)} />
           )}
           </div>

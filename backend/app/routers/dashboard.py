@@ -16,7 +16,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent, require_user, require_user_with_optional_agent
-from app.auth_room import resolve_provider_agent_for_room, viewer_can_admin_room
+from app.auth_room import (
+    effective_human_room_role,
+    effective_human_send_member,
+    resolve_provider_agent_for_room,
+    viewer_can_admin_room,
+)
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
 from hub.dashboard_message_shaping import (
@@ -112,6 +117,27 @@ class ChatAttachment(BaseModel):
 
 
 _RECEIPT_TYPES = frozenset({"ack", "result", "error"})
+
+
+async def _effective_dashboard_member_role(
+    db: AsyncSession,
+    *,
+    ctx: RequestContext,
+    room: Room,
+    member: RoomMember,
+) -> RoomRole:
+    """Resolve the strongest dashboard role for the signed-in viewer.
+
+    Dashboard requests are backed by a human user, so both human-anchored and
+    active-agent requests inherit the strongest role held by any bot owned by
+    the same user.
+    """
+    return await effective_human_room_role(
+        db,
+        room=room,
+        human_role=member.role,
+        user_id=ctx.user_id,
+    ) or member.role
 
 
 def _extract_text_preview(envelope_json: str) -> tuple[str, str | None, str]:
@@ -1848,6 +1874,10 @@ async def list_join_requests(
         viewer_id = ctx.human_id
         viewer_type = ParticipantType.human
 
+    room = await db.scalar(select(Room).where(Room.room_id == room_id))
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
     member_result = await db.execute(
         select(RoomMember).where(
             RoomMember.room_id == room_id,
@@ -1856,7 +1886,12 @@ async def list_join_requests(
         )
     )
     member = member_result.scalar_one_or_none()
-    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+    effective_role = (
+        await _effective_dashboard_member_role(db, ctx=ctx, room=room, member=member)
+        if member is not None
+        else None
+    )
+    if member is None or effective_role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Owner or admin required")
 
     # Resolve requester display name against both agents and users (by human_id).
@@ -1916,6 +1951,10 @@ async def accept_join_request(
         viewer_id = ctx.human_id
         viewer_type = ParticipantType.human
 
+    room = await db.scalar(select(Room).where(Room.room_id == room_id))
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
     member_result = await db.execute(
         select(RoomMember).where(
             RoomMember.room_id == room_id,
@@ -1924,7 +1963,12 @@ async def accept_join_request(
         )
     )
     member = member_result.scalar_one_or_none()
-    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+    effective_role = (
+        await _effective_dashboard_member_role(db, ctx=ctx, room=room, member=member)
+        if member is not None
+        else None
+    )
+    if member is None or effective_role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Owner or admin required")
 
     jr_result = await db.execute(
@@ -1939,9 +1983,7 @@ async def accept_join_request(
     if jr.status != RoomJoinRequestStatus.pending:
         raise HTTPException(status_code=409, detail="Request already resolved")
 
-    room_result = await db.execute(select(Room).where(Room.room_id == room_id))
-    room = room_result.scalar_one_or_none()
-    if room and room.max_members is not None:
+    if room.max_members is not None:
         count_result = await db.execute(
             select(func.count(RoomMember.id)).where(RoomMember.room_id == room_id)
         )
@@ -1991,6 +2033,10 @@ async def reject_join_request(
         viewer_id = ctx.human_id
         viewer_type = ParticipantType.human
 
+    room = await db.scalar(select(Room).where(Room.room_id == room_id))
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
     member_result = await db.execute(
         select(RoomMember).where(
             RoomMember.room_id == room_id,
@@ -1999,7 +2045,12 @@ async def reject_join_request(
         )
     )
     member = member_result.scalar_one_or_none()
-    if member is None or member.role not in (RoomRole.owner, RoomRole.admin):
+    effective_role = (
+        await _effective_dashboard_member_role(db, ctx=ctx, room=room, member=member)
+        if member is not None
+        else None
+    )
+    if member is None or effective_role not in (RoomRole.owner, RoomRole.admin):
         raise HTTPException(status_code=403, detail="Owner or admin required")
 
     jr_result = await db.execute(
@@ -2592,8 +2643,26 @@ async def human_room_send(
     if not room.allow_human_send:
         raise HTTPException(status_code=403, detail="Human send disabled for this room")
 
+    effective_member = await effective_human_send_member(
+        db,
+        room=room,
+        member=active_member,
+        user_id=ctx.user_id,
+    )
+    if effective_member is None:
+        raise HTTPException(status_code=403, detail="Sender cannot send in this room")
+    if effective_member.agent_id != active_member.agent_id:
+        effective_member = RoomMember(
+            room_id=active_member.room_id,
+            agent_id=active_member.agent_id,
+            participant_type=active_member.participant_type,
+            role=effective_member.role,
+            can_send=effective_member.can_send,
+            can_invite=effective_member.can_invite,
+        )
+
     # _can_send (step 6)
-    if not _room_can_send(room, active_member):
+    if not _room_can_send(room, effective_member):
         raise HTTPException(status_code=403, detail="Sender cannot send in this room")
 
     topic_id: str | None = None
@@ -2632,7 +2701,7 @@ async def human_room_send(
     if normalized_attachments:
         payload_for_checks["attachments"] = normalized_attachments
     try:
-        _check_slow_mode(room, active_member)
+        _check_slow_mode(room, effective_member)
         _check_duplicate_content(room_id, sender_id, payload_for_checks)
     except HTTPException:
         raise

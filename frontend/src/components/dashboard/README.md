@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-05-14: `DashboardShellSkeleton.tsx`、`DashboardApp.tsx`、`Sidebar.tsx` 与 `ChatPane.tsx` 改为按 `/chats` 当前路径推导首帧 tab；刷新 Home/Explore/Contacts/Wallet/My Bots 时不再误用 Messages 会话骨架或默认消息视图。
 - 2026-05-14: 移除 Messages 里的 Bot 身份切换能力；点击自有 Bot 私聊、Bot 详情私聊、联系人里的 owned-bot 私聊都不再重绑 chat store 或强制刷新消息列表。
 - 2026-05-13: `messages` 分组侧栏只在已登录状态展示；游客态保留公开消息列表，不再显示分组栏或展开分组按钮。
 - 2026-05-12: `/chats` 根入口默认选中 Home tab；消息入口仍使用 `/chats/messages`。

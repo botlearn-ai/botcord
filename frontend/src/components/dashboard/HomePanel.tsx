@@ -760,8 +760,10 @@ export default function HomePanel() {
     return () => window.clearInterval(id);
   }, []);
 
+  const previewOwnedAgents = useMemo(() => ownedAgents.slice(0, 5), [ownedAgents]);
+
   useEffect(() => {
-    const agentIds = ownedAgents.map((agent) => agent.agent_id);
+    const agentIds = previewOwnedAgents.map((agent) => agent.agent_id);
     if (agentIds.length === 0) {
       setStatsByAgent({});
       return;
@@ -777,14 +779,12 @@ export default function HomePanel() {
     return () => {
       cancelled = true;
     };
-  }, [ownedAgents]);
+  }, [previewOwnedAgents]);
 
   const trendingRooms = useMemo(
     () => [...publicRooms].sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")).slice(0, 4),
     [publicRooms],
   );
-  const previewOwnedAgents = ownedAgents.slice(0, 5);
-
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 pb-10 pt-16">

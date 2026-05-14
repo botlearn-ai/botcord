@@ -7,7 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bot,
@@ -489,6 +489,35 @@ export default function CreateAgentDialog({
     (!needsHermesProfile || !!selectedHermesProfile) &&
     !submitting;
 
+  const selectedRuntimeDetails: ReactNode = needsOpenclawGateway ? (
+    <OpenclawGatewayPicker
+      runtime={selectedRuntime}
+      selectedGateway={selectedGateway}
+      onSelectGateway={(g) => {
+        setSelectedGateway(g);
+        setSelectedOpenclawAgent(null);
+      }}
+      selectedAgent={selectedOpenclawAgent}
+      onSelectAgent={setSelectedOpenclawAgent}
+      labels={{
+        subagentLabel: t.openclawSubagentLabel,
+        subagentInfo: t.openclawSubagentInfo,
+        subagentPlaceholder: t.openclawSubagentPlaceholder,
+        noProfiles: t.openclawNoProfiles,
+        selectProfile: t.openclawSelectProfile,
+        boundProfiles: t.openclawBoundProfiles,
+      }}
+      disabled={submitting}
+    />
+  ) : needsHermesProfile ? (
+    <HermesProfilePicker
+      runtime={selectedRuntime}
+      selectedProfile={selectedHermesProfile}
+      onSelect={setSelectedHermesProfile}
+      disabled={submitting}
+    />
+  ) : null;
+
   return (
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
@@ -646,6 +675,7 @@ export default function CreateAgentDialog({
               daemon={selectedDaemon}
               selectedRuntimeId={selectedRuntimeId}
               onSelect={setSelectedRuntimeId}
+              selectedRuntimeDetails={selectedRuntimeDetails}
               refreshing={
                 !!selectedDaemon &&
                 refreshingRuntimesId === selectedDaemon.id
@@ -669,36 +699,6 @@ export default function CreateAgentDialog({
               disabled={submitting}
             />
 
-            {needsOpenclawGateway && (
-              <OpenclawGatewayPicker
-                runtime={selectedRuntime}
-                selectedGateway={selectedGateway}
-                onSelectGateway={(g) => {
-                  setSelectedGateway(g);
-                  setSelectedOpenclawAgent(null);
-                }}
-                selectedAgent={selectedOpenclawAgent}
-                onSelectAgent={setSelectedOpenclawAgent}
-                labels={{
-                  subagentLabel: t.openclawSubagentLabel,
-                  subagentInfo: t.openclawSubagentInfo,
-                  subagentPlaceholder: t.openclawSubagentPlaceholder,
-                  noProfiles: t.openclawNoProfiles,
-                  selectProfile: t.openclawSelectProfile,
-                  boundProfiles: t.openclawBoundProfiles,
-                }}
-                disabled={submitting}
-              />
-            )}
-
-            {needsHermesProfile && (
-              <HermesProfilePicker
-                runtime={selectedRuntime}
-                selectedProfile={selectedHermesProfile}
-                onSelect={setSelectedHermesProfile}
-                disabled={submitting}
-              />
-            )}
             </div>
 
             {hasExistingBots ? null : (
@@ -813,6 +813,7 @@ function RuntimePicker({
   daemon,
   selectedRuntimeId,
   onSelect,
+  selectedRuntimeDetails,
   refreshing,
   onRefresh,
   disabled,
@@ -821,6 +822,7 @@ function RuntimePicker({
   daemon: DaemonInstance | null;
   selectedRuntimeId: string | null;
   onSelect: (id: string) => void;
+  selectedRuntimeDetails: ReactNode;
   refreshing: boolean;
   onRefresh: () => void;
   disabled: boolean;
@@ -875,17 +877,22 @@ function RuntimePicker({
         <div className="grid gap-3">
           {availableRuntimes.length > 0 ? (
             <div className="grid gap-2">
-              {availableRuntimes.map((r) => (
-                <RuntimeCard
-                  key={r.id}
-                  runtime={r}
-                  selected={selectedRuntimeId === r.id}
-                  disabled={disabled}
-                  onClick={() => onSelect(r.id)}
-                  unavailableLabel={labels.unavailable}
-                  availableLabel={labels.runtimeAvailable}
-                />
-              ))}
+              {availableRuntimes.map((r) => {
+                const selected = selectedRuntimeId === r.id;
+                return (
+                  <div key={r.id} className="space-y-2">
+                    <RuntimeCard
+                      runtime={r}
+                      selected={selected}
+                      disabled={disabled}
+                      onClick={() => onSelect(r.id)}
+                      unavailableLabel={labels.unavailable}
+                      availableLabel={labels.runtimeAvailable}
+                    />
+                    {selected && selectedRuntimeDetails}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-4 text-center text-xs text-text-secondary">

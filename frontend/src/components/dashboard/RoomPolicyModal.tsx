@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
@@ -50,10 +51,12 @@ function snoozeMinutesUntilMidnight(): number {
 
 export default function RoomPolicyModal({
   agentId,
+  agentDisplayName,
   roomId,
   onClose,
 }: {
   agentId: string;
+  agentDisplayName?: string;
   roomId: string;
   onClose: () => void;
 }) {
@@ -72,6 +75,11 @@ export default function RoomPolicyModal({
   const [expanded, setExpanded] = useState(false);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,9 +149,15 @@ export default function RoomPolicyModal({
     [],
   );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur">
-      <div className="w-full max-w-lg rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+  const modal = (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[calc(100vh-48px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="mb-4 flex items-start justify-between">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
@@ -151,7 +165,8 @@ export default function RoomPolicyModal({
               <h2 className="text-base font-semibold text-text-primary">本房间回复策略</h2>
             </div>
             <p className="mt-0.5 text-xs text-text-secondary">
-              只控制这个 Bot 在当前房间是否被唤醒；不影响谁能发消息到房间。
+              只控制 {agentDisplayName ? `${agentDisplayName} ` : ""}({agentId})
+              在当前房间是否被唤醒；不影响谁能发消息到房间。
             </p>
           </div>
           <button
@@ -297,6 +312,9 @@ export default function RoomPolicyModal({
       </div>
     </div>
   );
+
+  if (!mounted) return null;
+  return createPortal(modal, document.body);
 }
 
 function EffectiveBadge({

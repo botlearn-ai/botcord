@@ -5,6 +5,7 @@ import { formatCoinAmount } from "./coin-format.js";
 type FollowUpDeliveryResult = {
   attempted: true;
   sent: boolean;
+  target_id?: string;
   hub_msg_id?: string;
   error?: string;
 };
@@ -62,12 +63,14 @@ export function formatFollowUpDeliverySummary(result: TransferResult): string {
 async function sendRecordMessage(
   client: BotCordClient,
   tx: WalletTransaction,
+  targetId?: string,
 ): Promise<FollowUpDeliveryResult> {
+  const messageTarget = targetId || tx.to_agent_id || "";
   try {
-    const response = await client.sendMessage(tx.to_agent_id || "", buildTransferRecordMessage(tx));
-    return { attempted: true, sent: true, hub_msg_id: response.hub_msg_id };
+    const response = await client.sendMessage(messageTarget, buildTransferRecordMessage(tx));
+    return { attempted: true, sent: true, target_id: messageTarget, hub_msg_id: response.hub_msg_id };
   } catch (err: any) {
-    return { attempted: true, sent: false, error: err?.message ?? String(err) };
+    return { attempted: true, sent: false, target_id: messageTarget, error: err?.message ?? String(err) };
   }
 }
 
@@ -81,10 +84,12 @@ export async function executeTransfer(
     reference_id?: string;
     metadata?: Record<string, unknown>;
     idempotency_key?: string;
+    record_message_target_id?: string;
   },
 ): Promise<TransferResult> {
-  const tx = await client.createTransfer(params);
-  const recordMessage = await sendRecordMessage(client, tx);
+  const { record_message_target_id: recordMessageTargetId, ...transferParams } = params;
+  const tx = await client.createTransfer(transferParams);
+  const recordMessage = await sendRecordMessage(client, tx, recordMessageTargetId);
 
   return {
     tx,

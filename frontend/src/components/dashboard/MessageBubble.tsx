@@ -370,6 +370,8 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text || errorMessage;
   const isErrorMessage = message.type === "error";
+  const errorTitle = locale === "zh" ? "运行错误" : "Runtime error";
+  const errorDetailsLabel = locale === "zh" ? "详情" : "Details";
   const timestampLabel = formatMessageTimestamp(message.created_at);
   const isOwn = typeof message.is_mine === "boolean" ? message.is_mine : isOwnProp;
   const isHuman = message.sender_kind === "human";
@@ -497,7 +499,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
       <div
         className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
           isErrorMessage
-            ? "border border-amber-400/25 bg-amber-400/10"
+            ? "border border-zinc-700/45 bg-zinc-900/35"
             : isOwn
               ? "border border-neon-cyan/30 bg-neon-cyan/5"
               : "border border-glass-border bg-glass-bg"
@@ -547,17 +549,17 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
               event.stopPropagation();
               setShowErrorDetails(true);
             }}
-            className="mt-2 flex w-full items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2.5 py-2 text-left transition-colors hover:bg-amber-400/15"
+            className="mt-1.5 flex w-full min-w-0 items-start gap-2 rounded-md border border-zinc-700/45 bg-zinc-900/35 px-2.5 py-2 text-left text-xs transition-colors hover:border-zinc-600/70 hover:bg-zinc-900/55"
           >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold uppercase tracking-wide text-amber-300">
-                Runtime error
+              <span className="block font-medium text-zinc-300/80">
+                {errorTitle}
               </span>
-              <span className="mt-1 line-clamp-3 block break-words text-sm leading-relaxed text-amber-100">
+              <span className="mt-0.5 block truncate text-zinc-500">
                 {displayText || "Runtime error"}
               </span>
-              <span className="mt-1 block text-xs text-amber-300/70">Details</span>
+              <span className="mt-1 block text-[11px] text-zinc-600">{errorDetailsLabel}</span>
             </span>
           </button>
         ) : transferInfo ? (
@@ -626,6 +628,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     )}
     {showErrorDetails && createPortal(
       <RuntimeErrorDetailsDialog
+        title={errorTitle}
         message={displayText || "Runtime error"}
         code={errorCode}
         payload={message.payload}

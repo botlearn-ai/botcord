@@ -17,6 +17,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import MessageBubble from "./MessageBubble";
 import RoomHumanComposer from "./RoomHumanComposer";
+import type { DashboardMessage } from "@/lib/types";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
   open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",    icon: "●" },
@@ -24,6 +25,8 @@ const topicStatusColors: Record<string, { color: string; icon: string }> = {
   failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",          icon: "✗" },
   expired:   { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30", icon: "⏱" },
 };
+
+const EMPTY_MESSAGES: DashboardMessage[] = [];
 
 export default function TopicDrawer() {
   const locale = useLanguage();
@@ -36,7 +39,9 @@ export default function TopicDrawer() {
       setOpenedTopicId: state.setOpenedTopicId,
     })),
   );
-  const messagesByRoom = useDashboardChatStore((s) => s.messages);
+  const messages = useDashboardChatStore(
+    (s) => openedRoomId ? (s.messages[openedRoomId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
+  );
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -45,8 +50,7 @@ export default function TopicDrawer() {
     if (!openedRoomId || !openedTopicId) {
       return { topicMessages: [], topicName: "", topicStatus: null as string | null, topicGoal: null as string | null };
     }
-    const all = messagesByRoom[openedRoomId] || [];
-    const filtered = all.filter((m) => m.topic_id === openedTopicId);
+    const filtered = messages.filter((m) => m.topic_id === openedTopicId);
     const first = filtered[0];
     return {
       topicMessages: filtered,
@@ -54,7 +58,7 @@ export default function TopicDrawer() {
       topicStatus: first?.topic_status || null,
       topicGoal: first?.topic_goal || null,
     };
-  }, [messagesByRoom, openedRoomId, openedTopicId]);
+  }, [messages, openedRoomId, openedTopicId]);
 
   useEffect(() => {
     if (openedTopicId) {

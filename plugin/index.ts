@@ -30,7 +30,7 @@ import {
   didBotCordSendSucceed,
   recordBotCordOutboundText,
 } from "./src/loop-risk.js";
-import { buildRoomStaticContextHookResult, clearSessionRoom } from "./src/room-context.js";
+import { buildRoomStaticContextHookResult, clearSessionRoom, getSessionRoom } from "./src/room-context.js";
 import { activeOwnerChatStreams } from "./src/owner-chat-stream.js";
 import { buildDynamicContext } from "./src/dynamic-context.js";
 import { BotCordClient } from "./src/client.js";
@@ -76,6 +76,20 @@ export default {
     api.registerTool(createScheduleTool() as any);
 
     // Hooks
+    api.on("before_tool_call", async (event: any, ctx: any) => {
+      if (ctx.toolName !== "botcord_payment") return;
+      if (event.params?.action !== "transfer") return;
+
+      const roomId = getSessionRoom(ctx.sessionKey)?.roomId;
+      if (!roomId?.startsWith("rm_")) return;
+
+      return {
+        params: {
+          __botcord_context_room_id: roomId,
+        },
+      };
+    });
+
     api.on("after_tool_call", async (event: any, ctx: any) => {
       // Stream tool blocks to Hub for active owner-chat sessions
       const stream = activeOwnerChatStreams.get(ctx.sessionKey);

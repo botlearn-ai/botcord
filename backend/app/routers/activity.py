@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import distinct, func, or_, select
+from sqlalchemy import distinct, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent, require_user_with_optional_agent
@@ -77,71 +77,138 @@ async def _activity_stats_for_agent(
     start: datetime.datetime,
     db: AsyncSession,
 ) -> dict[str, int]:
+    stats = await _activity_stats_for_agents([agent_id], start, db)
+    return stats[agent_id]
+
+
+def _empty_activity_stats() -> dict[str, int]:
+    return {
+        "messages_sent": 0,
+        "messages_received": 0,
+        "topics_open": 0,
+        "topics_completed": 0,
+        "active_rooms": 0,
+    }
+
+
+def _status_key(status: Any) -> str:
+    return status.value if hasattr(status, "value") else str(status)
+
+
+async def _activity_stats_for_agents(
+    agent_ids: list[str],
+    start: datetime.datetime,
+    db: AsyncSession,
+) -> dict[str, dict[str, int]]:
+    ids = list(dict.fromkeys(agent_id for agent_id in agent_ids if agent_id))
+    stats = {agent_id: _empty_activity_stats() for agent_id in ids}
+    if not ids:
+        return stats
+
     sent_result = await db.execute(
-        select(func.count(distinct(MessageRecord.msg_id))).where(
-            MessageRecord.sender_id == agent_id,
+        select(
+            MessageRecord.sender_id,
+            func.count(distinct(MessageRecord.msg_id)),
+        )
+        .where(
+            MessageRecord.sender_id.in_(ids),
             MessageRecord.created_at >= start,
             _not_owner_chat,
         )
+        .group_by(MessageRecord.sender_id)
     )
-    messages_sent = sent_result.scalar() or 0
+    for agent_id, count in sent_result.all():
+        stats[agent_id]["messages_sent"] = count or 0
 
     received_result = await db.execute(
-        select(func.count()).select_from(MessageRecord).where(
-            MessageRecord.receiver_id == agent_id,
+        select(MessageRecord.receiver_id, func.count())
+        .select_from(MessageRecord)
+        .where(
+            MessageRecord.receiver_id.in_(ids),
             MessageRecord.created_at >= start,
             _not_owner_chat,
         )
+        .group_by(MessageRecord.receiver_id)
     )
-    messages_received = received_result.scalar() or 0
+    for agent_id, count in received_result.all():
+        stats[agent_id]["messages_received"] = count or 0
 
-    msg_topic_sub = (
-        select(distinct(MessageRecord.topic_id))
-        .where(
-            MessageRecord.topic_id.isnot(None),
-            or_(
-                MessageRecord.sender_id == agent_id,
-                MessageRecord.receiver_id == agent_id,
-            ),
-        )
-        .subquery()
-    )
-    topic_counts_result = await db.execute(
-        select(Topic.status, func.count().label("cnt"))
-        .where(
-            Topic.updated_at >= start,
-            or_(
-                Topic.creator_id == agent_id,
-                Topic.topic_id.in_(select(msg_topic_sub)),
-            ),
-        )
-        .group_by(Topic.status)
-    )
-    tc: dict[str, int] = {}
-    for row in topic_counts_result.all():
-        sv = row[0].value if hasattr(row[0], "value") else str(row[0])
-        tc[sv] = row[1]
-
-    active_rooms_result = await db.execute(
-        select(func.count(distinct(MessageRecord.room_id))).where(
+    active_room_rows = union_all(
+        select(
+            MessageRecord.sender_id.label("agent_id"),
+            MessageRecord.room_id.label("room_id"),
+        ).where(
+            MessageRecord.sender_id.in_(ids),
             MessageRecord.room_id.isnot(None),
             ~MessageRecord.room_id.startswith(_OWNER_CHAT_ROOM_PREFIX),
             MessageRecord.created_at >= start,
-            or_(
-                MessageRecord.sender_id == agent_id,
-                MessageRecord.receiver_id == agent_id,
-            ),
-        )
+        ),
+        select(
+            MessageRecord.receiver_id.label("agent_id"),
+            MessageRecord.room_id.label("room_id"),
+        ).where(
+            MessageRecord.receiver_id.in_(ids),
+            MessageRecord.room_id.isnot(None),
+            ~MessageRecord.room_id.startswith(_OWNER_CHAT_ROOM_PREFIX),
+            MessageRecord.created_at >= start,
+        ),
+    ).subquery()
+    active_rooms_result = await db.execute(
+        select(
+            active_room_rows.c.agent_id,
+            func.count(distinct(active_room_rows.c.room_id)),
+        ).group_by(active_room_rows.c.agent_id)
     )
-    active_rooms = active_rooms_result.scalar() or 0
+    for agent_id, count in active_rooms_result.all():
+        stats[agent_id]["active_rooms"] = count or 0
 
-    return {
-        "messages_sent": messages_sent,
-        "messages_received": messages_received,
-        "topics_open": tc.get("open", 0),
-        "topics_completed": tc.get("completed", 0),
-        "active_rooms": active_rooms,
-    }
+    topic_rows = union_all(
+        select(
+            Topic.creator_id.label("agent_id"),
+            Topic.topic_id.label("topic_id"),
+            Topic.status.label("status"),
+        ).where(
+            Topic.creator_id.in_(ids),
+            Topic.updated_at >= start,
+        ),
+        select(
+            MessageRecord.sender_id.label("agent_id"),
+            MessageRecord.topic_id.label("topic_id"),
+            Topic.status.label("status"),
+        )
+        .join(Topic, Topic.topic_id == MessageRecord.topic_id)
+        .where(
+            MessageRecord.sender_id.in_(ids),
+            MessageRecord.topic_id.isnot(None),
+            Topic.updated_at >= start,
+        ),
+        select(
+            MessageRecord.receiver_id.label("agent_id"),
+            MessageRecord.topic_id.label("topic_id"),
+            Topic.status.label("status"),
+        )
+        .join(Topic, Topic.topic_id == MessageRecord.topic_id)
+        .where(
+            MessageRecord.receiver_id.in_(ids),
+            MessageRecord.topic_id.isnot(None),
+            Topic.updated_at >= start,
+        ),
+    ).subquery()
+    topic_counts_result = await db.execute(
+        select(
+            topic_rows.c.agent_id,
+            topic_rows.c.status,
+            func.count(distinct(topic_rows.c.topic_id)),
+        ).group_by(topic_rows.c.agent_id, topic_rows.c.status)
+    )
+    for agent_id, status, count in topic_counts_result.all():
+        key = _status_key(status)
+        if key == "open":
+            stats[agent_id]["topics_open"] = count or 0
+        elif key == "completed":
+            stats[agent_id]["topics_completed"] = count or 0
+
+    return stats
 
 
 @router.get("/activity/stats")
@@ -183,9 +250,7 @@ async def get_activity_stats_batch(
         raise HTTPException(status_code=403, detail="Agent not owned by user")
 
     start = _period_start(period)
-    stats: dict[str, dict[str, int]] = {}
-    for agent_id in requested_ids:
-        stats[agent_id] = await _activity_stats_for_agent(agent_id, start, db)
+    stats = await _activity_stats_for_agents(requested_ids, start, db)
     return {"stats": stats}
 
 

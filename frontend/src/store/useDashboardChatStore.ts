@@ -14,13 +14,16 @@ import type {
   DashboardRoom,
   DiscoverRoom,
   HumanAgentRoomSummary,
+  PublicRoomMember,
   PublicHumanProfile,
   PublicRoom,
   RealtimeMetaEvent,
+  UserAgent,
 } from "@/lib/types";
 import { api, humansApi } from "@/lib/api";
 import {
   buildVisibleMessageRooms,
+  compareRoomsByActivityDesc,
   roomMessagesInFlight,
   roomMessagesReloadPending,
   roomPollInFlight,
@@ -35,6 +38,7 @@ let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
 const emptyRoomMessageSnapshot = new Map<string, string | null>();
+const roomMembersInFlight = new Map<string, Promise<PublicRoomMember[]>>();
 
 function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -79,6 +83,83 @@ function getRoomMessageSnapshot(room: DashboardRoom | null): string | null {
   return room?.last_message_at ?? null;
 }
 
+function ownerChatRoomIdForOptimistic(agentId: string): string {
+  return `rm_oc_pending_${agentId}`;
+}
+
+function isOwnerChatSummary(room: Pick<HumanAgentRoomSummary, "room_id">): boolean {
+  return room.room_id.startsWith("rm_oc_");
+}
+
+function ownerChatAgentId(room: HumanAgentRoomSummary): string | null {
+  if (!isOwnerChatSummary(room)) return null;
+  return room.bots[0]?.agent_id ?? null;
+}
+
+function buildOptimisticOwnerChatRoom(
+  agent: Pick<UserAgent, "agent_id" | "display_name">,
+  roomId?: string | null,
+  existing?: HumanAgentRoomSummary,
+): HumanAgentRoomSummary {
+  const now = new Date().toISOString();
+  return {
+    ...existing,
+    room_id: roomId || ownerChatRoomIdForOptimistic(agent.agent_id),
+    name: existing?.name || agent.display_name || agent.agent_id,
+    description: existing?.description ?? null,
+    rule: existing?.rule ?? null,
+    owner_id: agent.agent_id,
+    visibility: existing?.visibility || "private",
+    join_policy: existing?.join_policy || "invite_only",
+    member_count: existing?.member_count ?? 1,
+    created_at: existing?.created_at ?? now,
+    required_subscription_product_id: existing?.required_subscription_product_id ?? null,
+    last_message_preview: existing?.last_message_preview ?? null,
+    last_message_at: existing?.last_message_at ?? now,
+    last_sender_name: existing?.last_sender_name ?? null,
+    allow_human_send: existing?.allow_human_send ?? true,
+    members_preview: existing?.members_preview ?? null,
+    bots: existing?.bots ?? [{
+      agent_id: agent.agent_id,
+      display_name: agent.display_name || agent.agent_id,
+      role: "owner",
+    }],
+  };
+}
+
+function mergeOptimisticOwnerChatRooms(
+  rooms: HumanAgentRoomSummary[],
+  optimisticByAgent: Record<string, HumanAgentRoomSummary>,
+): HumanAgentRoomSummary[] {
+  const optimisticRooms = Object.values(optimisticByAgent);
+  if (optimisticRooms.length === 0) return rooms;
+
+  const optimisticAgentIds = new Set(optimisticRooms.map((room) => room.bots[0]?.agent_id).filter(Boolean));
+  const baseRooms = rooms.filter((room) => {
+    const agentId = ownerChatAgentId(room);
+    return !agentId || !optimisticAgentIds.has(agentId);
+  });
+  return [...baseRooms, ...optimisticRooms].sort(compareRoomsByActivityDesc);
+}
+
+function reconcileOptimisticOwnerChatRooms(
+  serverRooms: HumanAgentRoomSummary[],
+  optimisticByAgent: Record<string, HumanAgentRoomSummary>,
+): Record<string, HumanAgentRoomSummary> {
+  if (Object.keys(optimisticByAgent).length === 0) return optimisticByAgent;
+
+  const serverOwnerChatAgents = new Set(
+    serverRooms
+      .map(ownerChatAgentId)
+      .filter((agentId): agentId is string => Boolean(agentId)),
+  );
+  const next = { ...optimisticByAgent };
+  for (const agentId of serverOwnerChatAgents) {
+    delete next[agentId];
+  }
+  return next;
+}
+
 export function mapOwnedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
   return ownedAgentRoomToDashboardRoom(room);
 }
@@ -90,6 +171,8 @@ interface DashboardChatState {
   messages: Record<string, DashboardMessage[]>;
   messagesLoading: Record<string, boolean>;
   messagesHasMore: Record<string, boolean>;
+  roomMembersByRoom: Record<string, PublicRoomMember[]>;
+  roomMembersLoading: Record<string, boolean>;
   error: string | null;
   selectedAgentId: string | null;
   selectedAgentLoading: boolean;
@@ -113,6 +196,7 @@ interface DashboardChatState {
   publicHumansLoaded: boolean;
   recentVisitedRooms: PublicRoom[];
   ownedAgentRooms: HumanAgentRoomSummary[];
+  optimisticOwnerChatRooms: Record<string, HumanAgentRoomSummary>;
   ownedAgentRoomsLoading: boolean;
   ownedAgentRoomsLoaded: boolean;
   roomMemberVersions: Record<string, number>;
@@ -131,9 +215,10 @@ interface DashboardChatState {
   bumpRoomMembersVersion: (roomId: string) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
-  loadRoomMessages: (roomId: string) => Promise<void>;
+  loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
   pollNewMessages: (roomId: string, opts?: { expectedHubMsgId?: string | null; retries?: number }) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
+  loadRoomMembers: (roomId: string, opts?: { force?: boolean }) => Promise<PublicRoomMember[]>;
   selectAgent: (agentId: string) => Promise<void>;
   searchAgents: (q: string) => Promise<void>;
   refreshOverview: (opts?: { reloadOpenedRoom?: boolean }) => Promise<void>;
@@ -145,6 +230,7 @@ interface DashboardChatState {
   loadPublicAgents: (q?: string) => Promise<void>;
   loadPublicHumans: (q?: string) => Promise<void>;
   loadOwnedAgentRooms: () => Promise<void>;
+  upsertOptimisticOwnerChatRoom: (agent: Pick<UserAgent, "agent_id" | "display_name">, roomId?: string | null) => void;
 }
 
 const initialChatState = {
@@ -154,6 +240,8 @@ const initialChatState = {
   messages: {},
   messagesLoading: {},
   messagesHasMore: {},
+  roomMembersByRoom: {},
+  roomMembersLoading: {},
   error: null,
   selectedAgentId: null,
   selectedAgentLoading: false,
@@ -177,6 +265,7 @@ const initialChatState = {
   publicHumansLoaded: false,
   recentVisitedRooms: [],
   ownedAgentRooms: [],
+  optimisticOwnerChatRooms: {},
   ownedAgentRoomsLoading: false,
   ownedAgentRoomsLoaded: false,
   roomMemberVersions: {},
@@ -190,6 +279,8 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || Object.keys(state.messages).length > 0
     || Object.keys(state.messagesLoading).length > 0
     || Object.keys(state.messagesHasMore).length > 0
+    || Object.keys(state.roomMembersByRoom).length > 0
+    || Object.keys(state.roomMembersLoading).length > 0
     || state.error !== null
     || state.selectedAgentId !== null
     || state.selectedAgentLoading
@@ -203,6 +294,7 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || state.leavingRoomId !== null
     || state.publicRoomsLoading
     || state.publicAgentsLoading
+    || Object.keys(state.optimisticOwnerChatRooms).length > 0
     || state.ownedAgentRoomsLoading
   );
 }
@@ -336,15 +428,20 @@ export const useDashboardChatStore = create<DashboardChatState>()(
 
       bumpRoomMembersVersion: (roomId) =>
         set((state) => ({
+          roomMembersByRoom: Object.fromEntries(
+            Object.entries(state.roomMembersByRoom).filter(([key]) => key !== roomId),
+          ),
           roomMemberVersions: {
             ...state.roomMemberVersions,
             [roomId]: (state.roomMemberVersions[roomId] ?? 0) + 1,
           },
         })),
 
-      loadRoomMessages: async (roomId: string) => {
+      loadRoomMessages: async (roomId: string, opts) => {
         if (roomMessagesInFlight.has(roomId)) {
-          roomMessagesReloadPending.add(roomId);
+          if (opts?.force) {
+            roomMessagesReloadPending.add(roomId);
+          }
           return;
         }
         set((state) => ({
@@ -371,7 +468,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             messagesLoading: { ...state.messagesLoading, [roomId]: false },
           }));
           if (roomMessagesReloadPending.delete(roomId)) {
-            void get().loadRoomMessages(roomId);
+            void get().loadRoomMessages(roomId, { force: true });
           }
         }
       },
@@ -388,14 +485,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             const currentSnapshot = getRoomMessageSnapshot(get().getRoomSummary(roomId));
             const previousSnapshot = emptyRoomMessageSnapshot.get(roomId);
             if (opts?.expectedHubMsgId || previousSnapshot !== currentSnapshot) {
-              await get().loadRoomMessages(roomId);
+              await get().loadRoomMessages(roomId, { force: Boolean(opts?.expectedHubMsgId) });
             }
           } else {
             const newestPersisted = [...existing].reverse().find(
               (m) => m.hub_msg_id && !m.hub_msg_id.startsWith("tmp_"),
             );
             if (!newestPersisted) {
-              await get().loadRoomMessages(roomId);
+              await get().loadRoomMessages(roomId, { force: Boolean(opts?.expectedHubMsgId) });
               return;
             }
             const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50 });
@@ -457,6 +554,43 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         } catch (error) {
           console.error("[ChatStore] Failed to load more messages:", error);
         }
+      },
+
+      loadRoomMembers: async (roomId: string, opts) => {
+        const cached = get().roomMembersByRoom[roomId];
+        if (cached && !opts?.force) return cached;
+
+        const inFlight = roomMembersInFlight.get(roomId);
+        if (inFlight && !opts?.force) return inFlight;
+
+        const request = (async () => {
+          set((state) => ({
+            roomMembersLoading: { ...state.roomMembersLoading, [roomId]: true },
+          }));
+          try {
+            const result = await api.getRoomMembers(roomId).catch(() => api.getPublicRoomMembers(roomId));
+            set((state) => ({
+              roomMembersByRoom: { ...state.roomMembersByRoom, [roomId]: result.members },
+            }));
+            return result.members;
+          } catch (error) {
+            console.error("[ChatStore] Failed to load room members:", error);
+            set((state) => ({
+              roomMembersByRoom: { ...state.roomMembersByRoom, [roomId]: [] },
+            }));
+            return [];
+          } finally {
+            roomMembersInFlight.delete(roomId);
+            set((state) => {
+              const next = { ...state.roomMembersLoading };
+              delete next[roomId];
+              return { roomMembersLoading: next };
+            });
+          }
+        })();
+
+        roomMembersInFlight.set(roomId, request);
+        return request;
       },
 
       selectAgent: async (agentId: string) => {
@@ -575,10 +709,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             const messages = { ...state.messages };
             const messagesLoading = { ...state.messagesLoading };
             const messagesHasMore = { ...state.messagesHasMore };
+            const roomMembersByRoom = { ...state.roomMembersByRoom };
+            const roomMembersLoading = { ...state.roomMembersLoading };
             delete messages[roomId];
             delete messagesLoading[roomId];
             delete messagesHasMore[roomId];
-            return { leavingRoomId: null, messages, messagesLoading, messagesHasMore };
+            delete roomMembersByRoom[roomId];
+            delete roomMembersLoading[roomId];
+            return { leavingRoomId: null, messages, messagesLoading, messagesHasMore, roomMembersByRoom, roomMembersLoading };
           });
           const ui = useDashboardUIStore.getState();
           if (ui.openedRoomId === roomId || ui.focusedRoomId === roomId) {
@@ -672,8 +810,13 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         set({ ownedAgentRoomsLoading: true });
         try {
           const result = await humansApi.listAgentRooms();
+          const optimisticOwnerChatRooms = reconcileOptimisticOwnerChatRooms(
+            result.rooms,
+            get().optimisticOwnerChatRooms,
+          );
           set({
-            ownedAgentRooms: result.rooms,
+            ownedAgentRooms: mergeOptimisticOwnerChatRooms(result.rooms, optimisticOwnerChatRooms),
+            optimisticOwnerChatRooms,
             ownedAgentRoomsLoading: false,
             ownedAgentRoomsLoaded: true,
           });
@@ -686,6 +829,25 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
       },
 
+      upsertOptimisticOwnerChatRoom: (agent, roomId) => {
+        set((state) => {
+          const existingOwnerChatRoom = state.ownedAgentRooms.find((room) => ownerChatAgentId(room) === agent.agent_id);
+          const optimisticRoom = roomId || !existingOwnerChatRoom
+            ? buildOptimisticOwnerChatRoom(agent, roomId, existingOwnerChatRoom)
+            : existingOwnerChatRoom;
+          const optimisticOwnerChatRooms = {
+            ...state.optimisticOwnerChatRooms,
+            [agent.agent_id]: optimisticRoom,
+          };
+          return {
+            optimisticOwnerChatRooms,
+            ownedAgentRooms: mergeOptimisticOwnerChatRooms(
+              state.ownedAgentRooms,
+              optimisticOwnerChatRooms,
+            ),
+          };
+        });
+      },
     }),
     {
       name: "dashboard-chat-storage",

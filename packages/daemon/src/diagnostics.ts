@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, hostname, platform, release, arch } from "node:os";
 import path from "node:path";
 import { Buffer } from "node:buffer";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import {
   AUTH_EXPIRED_FLAG_PATH,
@@ -12,6 +14,7 @@ import {
 import {
   CONFIG_FILE_PATH,
   PID_PATH,
+  SESSIONS_PATH,
   SNAPSHOT_PATH,
   loadConfig,
   saveConfig,
@@ -38,12 +41,31 @@ import {
 const DIAGNOSTICS_DIR = path.join(homedir(), ".botcord", "diagnostics");
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const DEFAULT_ROTATED_LOGS_IN_BUNDLE = 5;
+const require = createRequire(import.meta.url);
+const MODULE_PATH = fileURLToPath(import.meta.url);
+const ENV_ALLOWLIST = new Set([
+  "NODE_ENV",
+  "PATH",
+  "BOTCORD_HUB",
+  "BOTCORD_DAEMON_HOME",
+  "BOTCORD_DAEMON_CONFIG",
+  "BOTCORD_DAEMON_LOG",
+  "BOTCORD_DAEMON_SNAPSHOT_INTERVAL_MS",
+  "BOTCORD_HERMES_AGENT_BIN",
+  "BOTCORD_CLAUDE_CODE_BIN",
+  "BOTCORD_CODEX_BIN",
+  "BOTCORD_GEMINI_BIN",
+  "BOTCORD_DEEPSEEK_TUI_BIN",
+  "BOTCORD_KIMI_CLI_BIN",
+  "OPENCLAW_ACP_URL",
+]);
 
 export interface CreateDiagnosticBundleOptions {
   diagnosticsDir?: string;
   logFile?: string;
   configFile?: string;
   snapshotFile?: string;
+  sessionsFile?: string;
   doctor?: { text: string; json: unknown };
   includeAllLogs?: boolean;
 }
@@ -87,6 +109,81 @@ function safeReadText(file: string): string | null {
   } catch (err) {
     return `read failed: ${err instanceof Error ? err.message : String(err)}\n`;
   }
+}
+
+function readJsonFile(file: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function findDaemonPackageJson(startFile: string): Record<string, unknown> | null {
+  let dir = path.dirname(startFile);
+  for (let i = 0; i < 6; i += 1) {
+    const candidate = path.join(dir, "package.json");
+    const parsed = readJsonFile(candidate);
+    if (parsed?.name === "@botcord/daemon") return parsed;
+    const next = path.dirname(dir);
+    if (next === dir) break;
+    dir = next;
+  }
+  return null;
+}
+
+function readInstalledPackageVersion(packageJsonSpecifier: string): string | null {
+  try {
+    const pkgPath = require.resolve(packageJsonSpecifier);
+    const parsed = readJsonFile(pkgPath);
+    return typeof parsed?.version === "string" ? parsed.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function daemonRuntimeSummary(): Record<string, unknown> {
+  const pkg = findDaemonPackageJson(MODULE_PATH);
+  const version = typeof pkg?.version === "string" ? pkg.version : null;
+  const startedAtMs = Date.now() - Math.round(process.uptime() * 1000);
+  return {
+    packageName: typeof pkg?.name === "string" ? pkg.name : "@botcord/daemon",
+    version,
+    modulePath: MODULE_PATH,
+    entrypoint: process.argv[1] ?? null,
+    execPath: process.execPath,
+    argv: process.argv.map((arg) => redact(arg)),
+    execArgv: process.execArgv.map((arg) => redact(arg)),
+    cwd: process.cwd(),
+    pid: process.pid,
+    ppid: process.ppid,
+    uptimeSec: Math.round(process.uptime()),
+    startedAt: new Date(startedAtMs).toISOString(),
+    versions: {
+      node: process.version,
+      v8: process.versions.v8,
+      uv: process.versions.uv,
+      openssl: process.versions.openssl,
+    },
+    packages: {
+      "@botcord/daemon": version,
+      "@botcord/cli": readInstalledPackageVersion("@botcord/cli/package.json"),
+      "@botcord/protocol-core": readInstalledPackageVersion("@botcord/protocol-core/package.json"),
+    },
+  };
+}
+
+function safeEnvironmentSummary(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!value) continue;
+    if (!ENV_ALLOWLIST.has(key) && !key.startsWith("BOTCORD_DAEMON_")) continue;
+    out[key] = redact(value);
+  }
+  return out;
 }
 
 function readUserAuthSummary(): Record<string, unknown> | null {
@@ -329,6 +426,7 @@ export async function createDiagnosticBundle(
   const logFile = opts.logFile ?? LOG_FILE_PATH;
   const configFile = opts.configFile ?? CONFIG_FILE_PATH;
   const snapshotFile = opts.snapshotFile ?? SNAPSHOT_PATH;
+  const sessionsFile = opts.sessionsFile ?? SESSIONS_PATH;
   const includeAllLogs = opts.includeAllLogs === true;
   const logs = bundledLogs(logFile, includeAllLogs);
   const acpLogs = listAcpTraceLogFiles(includeAllLogs);
@@ -343,9 +441,12 @@ export async function createDiagnosticBundle(
     release: release(),
     arch: arch(),
     node: process.version,
+    daemon: daemonRuntimeSummary(),
+    environment: safeEnvironmentSummary(),
     pidPath: PID_PATH,
     pid: process.pid,
     configPath: configFile,
+    sessionsPath: sessionsFile,
     snapshotPath: snapshotFile,
     logPath: logFile,
     logsBundled: logs.map((entry) => ({
@@ -412,6 +513,11 @@ export async function createDiagnosticBundle(
   entries.push({
     name: "snapshot.json",
     data: snapshot ?? `no snapshot file at ${snapshotFile}\n`,
+  });
+  const sessions = safeReadText(sessionsFile);
+  entries.push({
+    name: "sessions.json.redacted",
+    data: sessions ?? `no sessions file at ${sessionsFile}\n`,
   });
 
   const zip = createZip(entries);

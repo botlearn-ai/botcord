@@ -78,6 +78,11 @@ function sanitizeTransferResult(transfer: any): any {
   };
 }
 
+function internalContextRoomId(args: any): string | undefined {
+  const roomId = args?.__botcord_context_room_id;
+  return typeof roomId === "string" && roomId.startsWith("rm_") ? roomId : undefined;
+}
+
 function formatTransaction(tx: any): string {
   const lines = [
     `Transaction: ${tx.tx_id}`,
@@ -333,6 +338,7 @@ export function createPaymentTool(opts?: { name?: string; description?: string }
               reference_id: args.reference_id,
               metadata: args.metadata,
               idempotency_key: args.idempotency_key,
+              record_message_target_id: internalContextRoomId(args),
             });
             return {
               result: `${formatTransaction(transfer.tx)}\n${formatFollowUpDeliverySummary(transfer)}`,
