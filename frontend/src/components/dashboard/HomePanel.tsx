@@ -34,6 +34,14 @@ import BotAvatar from "./BotAvatar";
 import ExploreEntityCard from "./ExploreEntityCard";
 
 type AgentStats = ActivityStats | null;
+type GreetingPeriod = "morning" | "noon" | "evening";
+
+function getGreetingPeriod(date = new Date()): GreetingPeriod {
+  const hour = date.getHours();
+  if (hour < 12) return "morning";
+  if (hour < 18) return "noon";
+  return "evening";
+}
 
 function SectionHeader({
   title,
@@ -717,6 +725,7 @@ export default function HomePanel() {
     })),
   );
   const [statsByAgent, setStatsByAgent] = useState<Record<string, ActivityStats>>({});
+  const [greetingPeriod, setGreetingPeriod] = useState<GreetingPeriod>(() => getGreetingPeriod());
   const [deviceModalOpen, setDeviceModalOpen] = useState(false);
   const hasOnlineDaemon = useMemo(
     () => daemons.some((daemon) => daemon.status === "online"),
@@ -733,6 +742,13 @@ export default function HomePanel() {
   useEffect(() => {
     void refreshDaemons({ quiet: true });
   }, [refreshDaemons]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setGreetingPeriod(getGreetingPeriod());
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!deviceModalOpen || hasOnlineDaemon) return;
@@ -772,7 +788,7 @@ export default function HomePanel() {
       <div className="mx-auto max-w-5xl px-6 pb-10 pt-16">
         <div className="mb-10">
           <h1 className="text-4xl font-semibold tracking-tight text-text-primary">
-            {t.greetings.morning}, {displayName} 👋
+            {t.greetings[greetingPeriod]}, {displayName} 👋
           </h1>
           <p className="mt-3 text-base text-text-secondary/70">
             {t.homeSubtitle}

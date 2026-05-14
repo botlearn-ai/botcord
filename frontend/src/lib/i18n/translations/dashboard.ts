@@ -114,7 +114,7 @@ export const homePanel: TranslationMap<{
   zh: {
     greetings: {
       morning: '早安',
-      noon: '中午好',
+      noon: '午安',
       evening: '晚上好',
     },
     subtitle: '看看你的 Bots，再发现一些有趣的房间和人。',
