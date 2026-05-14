@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   Bot,
   Check,
+  ChevronDown,
   Info,
   Loader2,
   Plus,
@@ -386,21 +387,28 @@ export default function CreateAgentDialog({
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-agent-title"
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-glass-border bg-deep-black-light p-4 shadow-2xl sm:p-5"
+      >
         <button
+          type="button"
           onClick={onClose}
           disabled={submitting}
+          aria-label={t.cancel}
           className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="mb-5 pr-8">
-          <h3 className="flex items-center gap-2 text-xl font-bold text-text-primary">
+        <div className="mb-4 pr-8">
+          <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-bold text-text-primary">
             <Bot className="h-5 w-5 text-neon-cyan" />
             {t.title}
           </h3>
-          <p className="mt-2 text-sm text-text-secondary">{t.description}</p>
+          <p className="mt-1.5 text-sm text-text-secondary">{t.description}</p>
         </div>
 
         {!loaded && loading ? (
@@ -442,9 +450,9 @@ export default function CreateAgentDialog({
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
+          <div className="space-y-3.5">
+            <section>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
                 <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
                   {t.daemonLabel}
                 </label>
@@ -457,27 +465,32 @@ export default function CreateAgentDialog({
                     setAddingDevice(true);
                   }}
                   disabled={submitting}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-neon-cyan/80 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
                 >
                   <Plus className="h-3 w-3" />
                   {t.addDeviceLabel}
                 </button>
               </div>
               {onlineDaemons.length > 1 ? (
-                <select
-                  value={selectedDaemonId ?? ""}
-                  onChange={(e) => setSelectedDaemonId(e.target.value)}
-                  disabled={submitting}
-                  className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
-                >
-                  {onlineDaemons.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.label || d.id}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Server className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neon-cyan" />
+                  <select
+                    value={selectedDaemonId ?? ""}
+                    onChange={(e) => setSelectedDaemonId(e.target.value)}
+                    disabled={submitting}
+                    className="h-11 w-full appearance-none rounded-xl border border-glass-border bg-deep-black py-0 pl-9 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                  >
+                    {onlineDaemons.map((d, index) => (
+                      <option key={d.id} value={d.id}>
+                        {d.label || d.id}
+                        {index === onlineDaemons.length - 1 ? " · latest" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                </div>
               ) : selectedDaemon ? (
-                <div className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">
+                <div className="flex h-11 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-xs text-text-secondary">
                   <Server className="h-3.5 w-3.5 text-neon-cyan" />
                   <span className="text-text-primary">
                     {selectedDaemon.label || selectedDaemon.id}
@@ -485,7 +498,7 @@ export default function CreateAgentDialog({
                   <span className="ml-auto inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
                 </div>
               ) : null}
-            </div>
+            </section>
 
             <RuntimePicker
               daemon={selectedDaemon}
@@ -500,9 +513,15 @@ export default function CreateAgentDialog({
               }}
               labels={{
                 runtimeLabel: t.runtimeLabel,
+                runtimeAvailable: t.runtimeAvailable,
                 noRuntimesDetected: t.noRuntimesDetected,
                 probeRuntimes: t.probeRuntimes,
                 unavailable: t.runtimeUnavailable,
+                runtimeUnavailableGroup: t.runtimeUnavailableGroup,
+                runtimeFound: t.runtimeFound,
+                runtimeUnavailableCount: t.runtimeUnavailableCount,
+                showUnavailable: t.showUnavailable,
+                hideUnavailable: t.hideUnavailable,
               }}
               disabled={submitting}
             />
@@ -538,8 +557,8 @@ export default function CreateAgentDialog({
               />
             )}
 
-            <div>
-              <div className="mb-1.5 flex items-center justify-between gap-3">
+            <section>
+              <div className="mb-1 flex items-center justify-between gap-3">
                 <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
                   {t.nameLabel}
                 </label>
@@ -554,6 +573,9 @@ export default function CreateAgentDialog({
                   <Sparkles className="h-3.5 w-3.5" />
                 </button>
               </div>
+              <p className="mb-1.5 text-xs leading-5 text-text-secondary">
+                {t.nameHint}
+              </p>
               <input
                 type="text"
                 value={name}
@@ -569,31 +591,28 @@ export default function CreateAgentDialog({
                 }}
                 placeholder={t.namePlaceholder}
                 disabled={submitting}
-                className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="h-10 w-full rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
                 maxLength={64}
               />
-              <p className="mt-1.5 text-xs leading-5 text-text-secondary">
-                {t.nameHint}
-              </p>
-            </div>
+            </section>
 
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+            <section>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
                 {t.bioLabel}
               </label>
+              <p className="mb-1.5 text-xs leading-5 text-text-secondary">
+                {t.bioHint}
+              </p>
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 placeholder={t.bioPlaceholder}
                 disabled={submitting}
                 rows={2}
-                className="w-full resize-none rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="h-16 w-full resize-none rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
                 maxLength={240}
               />
-              <p className="mt-1.5 text-xs leading-5 text-text-secondary">
-                {t.bioHint}
-              </p>
-            </div>
+            </section>
           </div>
         )}
 
@@ -604,8 +623,9 @@ export default function CreateAgentDialog({
         )}
 
         {!showEmptyState && !addingDevice && loaded && (
-          <div className="mt-6 flex items-center justify-end gap-3">
+          <div className="mt-5 flex items-center justify-end gap-3">
             <button
+              type="button"
               onClick={onClose}
               disabled={submitting}
               className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
@@ -613,9 +633,10 @@ export default function CreateAgentDialog({
               {t.cancel}
             </button>
             <button
+              type="button"
               onClick={() => void handleSubmit()}
               disabled={!canSubmit}
-              className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? (
                 <>
@@ -650,21 +671,26 @@ function RuntimePicker({
   disabled: boolean;
   labels: {
     runtimeLabel: string;
+    runtimeAvailable: string;
     noRuntimesDetected: string;
     probeRuntimes: string;
     unavailable: string;
+    runtimeUnavailableGroup: string;
+    runtimeFound: (count: number) => string;
+    runtimeUnavailableCount: (count: number) => string;
+    showUnavailable: string;
+    hideUnavailable: string;
   };
 }) {
   const runtimes = daemon?.runtimes ?? [];
-  const sortedRuntimes = [...runtimes].sort((a, b) => {
-    if (a.available === b.available) return 0;
-    return a.available ? -1 : 1;
-  });
+  const availableRuntimes = runtimes.filter((runtime) => runtime.available);
+  const unavailableRuntimes = runtimes.filter((runtime) => !runtime.available);
   const hasAny = runtimes.length > 0;
+  const [unavailableExpanded, setUnavailableExpanded] = useState(false);
 
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between">
+    <section>
+      <div className="mb-2 flex items-center justify-between gap-3">
         <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
           {labels.runtimeLabel}
         </label>
@@ -688,20 +714,80 @@ function RuntimePicker({
           {labels.noRuntimesDetected}
         </div>
       ) : (
-        <div className="grid gap-2">
-          {sortedRuntimes.map((r) => (
-            <RuntimeCard
-              key={r.id}
-              runtime={r}
-              selected={selectedRuntimeId === r.id}
-              disabled={disabled || !r.available}
-              onClick={() => r.available && onSelect(r.id)}
-              unavailableLabel={labels.unavailable}
-            />
-          ))}
+        <div className="grid gap-3">
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-neon-green/80">
+                {labels.runtimeAvailable}
+              </span>
+              <span className="text-[11px] text-text-secondary/55">
+                {labels.runtimeFound(availableRuntimes.length)}
+              </span>
+            </div>
+            {availableRuntimes.length > 0 ? (
+              <div className="grid gap-2">
+                {availableRuntimes.map((r) => (
+                  <RuntimeCard
+                    key={r.id}
+                    runtime={r}
+                    selected={selectedRuntimeId === r.id}
+                    disabled={disabled}
+                    onClick={() => onSelect(r.id)}
+                    unavailableLabel={labels.unavailable}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-4 text-center text-xs text-text-secondary">
+                {labels.noRuntimesDetected}
+              </div>
+            )}
+          </div>
+
+          {unavailableRuntimes.length > 0 ? (
+            <div>
+              <button
+                type="button"
+                aria-expanded={unavailableExpanded}
+                onClick={() => setUnavailableExpanded((expanded) => !expanded)}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+              >
+                <span>
+                  <span className="font-semibold uppercase tracking-wider">
+                    {labels.runtimeUnavailableGroup}
+                  </span>
+                  <span className="ml-2 text-text-secondary/60">
+                    {labels.runtimeUnavailableCount(unavailableRuntimes.length)}
+                  </span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-neon-cyan/80">
+                  {unavailableExpanded ? labels.hideUnavailable : labels.showUnavailable}
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform ${
+                      unavailableExpanded ? "rotate-180" : ""
+                    }`}
+                  />
+                </span>
+              </button>
+              {unavailableExpanded ? (
+                <div className="mt-2 grid gap-2">
+                  {unavailableRuntimes.map((r) => (
+                    <RuntimeCard
+                      key={r.id}
+                      runtime={r}
+                      selected={false}
+                      disabled
+                      onClick={() => undefined}
+                      unavailableLabel={labels.unavailable}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -719,12 +805,12 @@ function RuntimeCard({
   unavailableLabel: string;
 }) {
   const base =
-    "flex items-start gap-2 rounded-xl border px-3 py-2 text-left transition-colors";
+    "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors";
   const state = !runtime.available
-    ? "cursor-not-allowed border-glass-border bg-glass-bg/30 text-text-tertiary"
+    ? "cursor-not-allowed border-glass-border bg-glass-bg/35 text-text-secondary/75"
     : selected
-      ? "border-neon-cyan bg-neon-cyan/10 text-text-primary"
-      : "border-glass-border bg-deep-black text-text-primary hover:border-neon-cyan/50 hover:bg-glass-bg";
+      ? "border-neon-cyan bg-neon-cyan/15 text-text-primary"
+      : "border-glass-border bg-deep-black text-text-primary hover:border-neon-cyan/45 hover:bg-neon-cyan/10";
   return (
     <button
       type="button"
@@ -734,17 +820,17 @@ function RuntimeCard({
       title={runtime.path || runtime.error || runtime.id}
     >
       <span
-        className={`mt-0.5 inline-block h-2 w-2 flex-shrink-0 rounded-full ${
-          runtime.available ? "bg-neon-green" : "bg-zinc-500"
+        className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+          runtime.available ? "bg-neon-green" : "bg-text-secondary/55"
         }`}
       />
-      <span className="flex-1 min-w-0">
-        <span className="block truncate font-mono text-xs">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-mono text-[13px] leading-5">
           {runtime.id}
           {runtime.version ? ` @ ${runtime.version}` : ""}
         </span>
         {!runtime.available && (
-          <span className="mt-0.5 block truncate text-[10px] text-text-tertiary">
+          <span className="mt-0.5 block text-xs leading-4 text-text-secondary">
             {runtime.error || unavailableLabel}
           </span>
         )}
@@ -796,26 +882,31 @@ function OpenclawGatewayPicker({
     );
   }
   return (
-    <div className="space-y-2">
+    <section className="ml-5 border-l border-neon-cyan/25 pl-4">
+      <div className="rounded-xl border border-glass-border bg-glass-bg/30 p-2.5">
+        <div className="grid gap-2.5">
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
           Gateway
         </label>
-        <select
-          disabled={disabled}
-          value={selectedGateway ?? ""}
-          onChange={(e) => onSelectGateway(e.target.value || null)}
-          className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
-        >
-          <option value="" disabled>
-            Select a gateway
-          </option>
-          {endpoints.map((e) => (
-            <option key={e.name} value={e.name} disabled={!e.reachable}>
-              {e.name} — {e.url} {e.reachable ? `(${e.version ?? "ok"})` : `✗ ${e.error ?? "unreachable"}`}
+        <div className="relative">
+          <select
+            disabled={disabled}
+            value={selectedGateway ?? ""}
+            onChange={(e) => onSelectGateway(e.target.value || null)}
+            className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+          >
+            <option value="" disabled>
+              Select a gateway
             </option>
-          ))}
-        </select>
+            {endpoints.map((e) => (
+              <option key={e.name} value={e.name} disabled={!e.reachable}>
+                {e.name} — {e.url} {e.reachable ? `(${e.version ?? "ok"})` : `✗ ${e.error ?? "unreachable"}`}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+        </div>
         {reachable.length === 0 && (
           <p className="mt-1 text-[11px] text-orange-400">
             No reachable gateways. Check tokens, daemon network access, or refresh runtimes.
@@ -823,8 +914,8 @@ function OpenclawGatewayPicker({
         )}
       </div>
       <div>
-        <div className="mb-1.5 flex items-center gap-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        <div className="mb-1 flex items-center gap-2">
+          <label className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
             {labels.subagentLabel}
           </label>
           <span
@@ -842,29 +933,32 @@ function OpenclawGatewayPicker({
             value={selectedAgent ?? ""}
             placeholder={labels.subagentPlaceholder}
             onChange={(e) => onSelectAgent(e.target.value.trim() || null)}
-            className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
+            className="h-10 w-full rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
           />
         ) : (
-          <select
-            disabled={disabled || !selectedGateway || availableAgents.length === 0}
-            value={selectedAgent ?? ""}
-            onChange={(e) => onSelectAgent(e.target.value || null)}
-            className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
-          >
-            <option value="" disabled>
-              {availableAgents.length === 0 ? labels.noProfiles : labels.selectProfile}
-            </option>
-            {availableAgents.map((a) => {
-              const label =
-                (a.name && a.name !== a.id ? `${a.name} (${a.id})` : a.id) +
-                (a.model?.name ? ` — ${a.model.name}` : "");
-              return (
-                <option key={a.id} value={a.id}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
+          <div className="relative">
+            <select
+              disabled={disabled || !selectedGateway || availableAgents.length === 0}
+              value={selectedAgent ?? ""}
+              onChange={(e) => onSelectAgent(e.target.value || null)}
+              className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+            >
+              <option value="" disabled>
+                {availableAgents.length === 0 ? labels.noProfiles : labels.selectProfile}
+              </option>
+              {availableAgents.map((a) => {
+                const label =
+                  (a.name && a.name !== a.id ? `${a.name} (${a.id})` : a.id) +
+                  (a.model?.name ? ` — ${a.model.name}` : "");
+                return (
+                  <option key={a.id} value={a.id}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+          </div>
         )}
         {boundCount > 0 && (
           <p className="mt-1 text-[11px] text-text-tertiary">
@@ -872,7 +966,9 @@ function OpenclawGatewayPicker({
           </p>
         )}
       </div>
-    </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -902,38 +998,41 @@ function HermesProfilePicker({
   }
   const allOccupied = profiles.every((p) => !!p.occupiedBy);
   return (
-    <div>
+    <section>
       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
         Hermes profile
       </label>
-      <select
-        disabled={disabled}
-        value={selectedProfile ?? ""}
-        onChange={(e) => onSelect(e.target.value || null)}
-        className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary"
-      >
-        <option value="" disabled>
-          Select a profile
-        </option>
-        {profiles.map((p) => {
-          const occupied = !!p.occupiedBy;
-          const labelParts: string[] = [p.name];
-          if (p.isDefault) labelParts.push("(default)");
-          if (p.modelName) labelParts.push(`— ${p.modelName}`);
-          if (occupied) {
-            labelParts.push(
-              `· bound to ${p.occupiedByName ?? p.occupiedBy ?? "another agent"}`,
+      <div className="relative">
+        <select
+          disabled={disabled}
+          value={selectedProfile ?? ""}
+          onChange={(e) => onSelect(e.target.value || null)}
+          className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+        >
+          <option value="" disabled>
+            Select a profile
+          </option>
+          {profiles.map((p) => {
+            const occupied = !!p.occupiedBy;
+            const labelParts: string[] = [p.name];
+            if (p.isDefault) labelParts.push("(default)");
+            if (p.modelName) labelParts.push(`— ${p.modelName}`);
+            if (occupied) {
+              labelParts.push(
+                `· bound to ${p.occupiedByName ?? p.occupiedBy ?? "another agent"}`,
+              );
+            } else if (p.isActive) {
+              labelParts.push("· active");
+            }
+            return (
+              <option key={p.name} value={p.name} disabled={occupied}>
+                {labelParts.join(" ")}
+              </option>
             );
-          } else if (p.isActive) {
-            labelParts.push("· active");
-          }
-          return (
-            <option key={p.name} value={p.name} disabled={occupied}>
-              {labelParts.join(" ")}
-            </option>
-          );
-        })}
-      </select>
+          })}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+      </div>
       <p className="mt-1 text-[11px] text-text-tertiary">
         BotCord agent attaches to this profile&apos;s{" "}
         <code className="font-mono">HERMES_HOME</code>; sessions, memory and
@@ -946,7 +1045,7 @@ function HermesProfilePicker({
           on this device and refresh.
         </p>
       )}
-    </div>
+    </section>
   );
 }
 
