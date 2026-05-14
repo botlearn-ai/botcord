@@ -307,6 +307,34 @@ function loadOrInitConfig(args: ParsedArgs): DaemonConfig {
   }
 }
 
+async function refreshDiscoveredOpenclawGateways(
+  cfg: DaemonConfig,
+  source: string,
+): Promise<DaemonConfig> {
+  if (!openclawDiscoveryConfigEnabled(cfg)) return cfg;
+  try {
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: cfg.openclawDiscovery?.searchPaths,
+      defaultPorts: cfg.openclawDiscovery?.defaultPorts,
+      timeoutMs: 500,
+    });
+    const merged = mergeOpenclawGateways(cfg, found);
+    if (!merged.changed) return cfg;
+    saveConfig(merged.cfg);
+    log.info("openclaw discovery: gateways merged", {
+      source,
+      added: merged.added.map((g) => ({ name: g.name, url: g.url })),
+    });
+    return merged.cfg;
+  } catch (err) {
+    log.warn("openclaw discovery failed; continuing", {
+      source,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return cfg;
+  }
+}
+
 /**
  * Read the current user-auth record without throwing on parse / permission
  * errors — those are returned as `null` so the caller treats them like a
@@ -566,27 +594,7 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
 
 async function cmdStart(args: ParsedArgs): Promise<void> {
   let cfg = loadOrInitConfig(args);
-  if (openclawDiscoveryConfigEnabled(cfg)) {
-    try {
-      const found = await discoverLocalOpenclawGateways({
-        searchPaths: cfg.openclawDiscovery?.searchPaths,
-        defaultPorts: cfg.openclawDiscovery?.defaultPorts,
-        timeoutMs: 500,
-      });
-      const merged = mergeOpenclawGateways(cfg, found);
-      if (merged.changed) {
-        cfg = merged.cfg;
-        saveConfig(cfg);
-        log.info("openclaw discovery: gateways merged", {
-          added: merged.added.map((g) => ({ name: g.name, url: g.url })),
-        });
-      }
-    } catch (err) {
-      log.warn("openclaw discovery failed; continuing", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  cfg = await refreshDiscoveredOpenclawGateways(cfg, "start");
   // Foreground is now the default. --background (alias -d) detaches.
   // --foreground is still accepted (no-op) for backwards compatibility and
   // is also what the detached child re-execs itself with.
@@ -1373,8 +1381,8 @@ async function cmdDoctor(args: ParsedArgs): Promise<void> {
   let cfgForEndpoints: import("./config.js").DaemonConfig | null = null;
   try {
     const cfg = loadConfig();
-    cfgForEndpoints = cfg;
-    channels = channelsFromDaemonConfig(cfg);
+    cfgForEndpoints = await refreshDiscoveredOpenclawGateways(cfg, "doctor");
+    channels = channelsFromDaemonConfig(cfgForEndpoints);
   } catch {
     channels = [];
   }
