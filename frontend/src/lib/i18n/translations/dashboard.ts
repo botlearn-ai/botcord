@@ -26,6 +26,7 @@ export const homePanel: TranslationMap<{
   publicBotsSubtitle: string
   trendingHumansTitle: string
   publicHumansSubtitle: string
+  emptyHeroEta: string
   noBio: string
   statsSent: string
   statsReceived: string
@@ -72,6 +73,7 @@ export const homePanel: TranslationMap<{
     noBotTitle: 'No hosted Bots yet',
     noBotDescription: 'Bots are your A2A agents on BotCord. After you create your first one, its status will appear here.',
     createFirstBot: 'Create your first Bot',
+    emptyHeroEta: '~2 min · Connect device → Create Bot',
     trendingRoomsTitle: 'Trending Rooms',
     publicRoomsSubtitle: 'Public rooms',
     trendingAgentsTitle: 'Trending Agents',
@@ -124,6 +126,7 @@ export const homePanel: TranslationMap<{
     noBotTitle: '还没托管任何 Bot',
     noBotDescription: 'Bot 是你在 BotCord 上的 A2A 代理。创建第一个之后，这里会展示它的状态。',
     createFirstBot: '创建你的第一个 Bot',
+    emptyHeroEta: '约 2 分钟 · 接入设备 → 创建 Bot',
     trendingRoomsTitle: '热门房间',
     publicRoomsSubtitle: '公开房间',
     trendingAgentsTitle: '热门 Agents',
@@ -2239,9 +2242,17 @@ export const createAgentDialog: TranslationMap<{
   menuLabel: string
   title: string
   description: string
+  stepDeviceLabel: string
+  stepBotLabel: string
+  step1Title: string
+  step1Description: string
+  step2Description: string
+  runtimeSectionLabel: string
+  identitySectionLabel: string
   daemonLabel: string
   noDaemonTitle: string
   noDaemonHint: string
+  runtimeLabelWithCount: (count: number) => string
   addDeviceLabel: string
   addDeviceTitle: string
   addDeviceHint: string
@@ -2287,8 +2298,15 @@ export const createAgentDialog: TranslationMap<{
 }> = {
   en: {
     menuLabel: 'Create Agent',
-    title: 'Create Agent',
-    description: 'Select or create an agent from your machine.',
+    title: 'Create Bot',
+    description: 'Give your Bot a runtime and an identity.',
+    stepDeviceLabel: 'Connect device',
+    stepBotLabel: 'Create Bot',
+    step1Title: 'Connect device',
+    step1Description: 'Run BotCord on your computer so it can host your Bots.',
+    step2Description: 'Pick where it runs, then give it a name.',
+    runtimeSectionLabel: 'Where it runs',
+    identitySectionLabel: 'Bot identity',
     daemonLabel: 'Machine',
     noDaemonTitle: 'No device connected',
     noDaemonHint: 'Run the command below on your computer to install BotCord — once it connects, it will show up here automatically.',
@@ -2301,9 +2319,10 @@ export const createAgentDialog: TranslationMap<{
     openActivate: 'Open activation page',
     refreshDaemons: 'Refresh devices',
     runtimeLabel: 'Runtime environment',
+    runtimeLabelWithCount: (count: number) => `Runtime environment (${count} available)`,
     runtimeAvailable: 'Available',
     noRuntimesDetected: 'No runtimes detected on this machine.',
-    probeRuntimes: 'Detect available runtimes',
+    probeRuntimes: 'Refresh',
     runtimeUnavailable: 'unavailable',
     runtimeUnavailableGroup: 'Not available',
     runtimeFound: (count) => `${count} found`,
@@ -2337,8 +2356,15 @@ export const createAgentDialog: TranslationMap<{
   },
   zh: {
     menuLabel: '创建 Agent',
-    title: '创建 Agent',
-    description: '选择一台机器，并在它的运行环境里创建 Agent。',
+    title: '创建 Bot',
+    description: '为你的 Bot 选好运行环境，再给它起个名字。',
+    stepDeviceLabel: '接入设备',
+    stepBotLabel: '创建 Bot',
+    step1Title: '接入设备',
+    step1Description: '在你的电脑上运行 BotCord，这样它就能托管你的 Bot。',
+    step2Description: '选择运行环境，然后给 Bot 起个名字。',
+    runtimeSectionLabel: '运行环境',
+    identitySectionLabel: 'Bot 身份',
     daemonLabel: '机器',
     noDaemonTitle: '未连接设备',
     noDaemonHint: '在你的电脑上运行下面的命令安装并启动 BotCord，连接成功后会自动出现在这里。',
@@ -2351,9 +2377,10 @@ export const createAgentDialog: TranslationMap<{
     openActivate: '打开授权页面',
     refreshDaemons: '刷新设备列表',
     runtimeLabel: '运行环境',
+    runtimeLabelWithCount: (count: number) => `运行环境（${count} 个可用）`,
     runtimeAvailable: '可用',
     noRuntimesDetected: '这台机器还没有可用于创建 Agent 的运行环境。',
-    probeRuntimes: '检测可用运行环境',
+    probeRuntimes: '刷新',
     runtimeUnavailable: '不可用',
     runtimeUnavailableGroup: '不可用',
     runtimeFound: (count) => `找到 ${count} 个`,

@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import type { ActivityStats } from "@/lib/types";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import BotAvatar from "./BotAvatar";
-import { BotOnboardingSteps, DeviceConnectModal } from "./HomePanel";
+import { BotEmptyHero } from "./HomePanel";
 import MyDevicesView from "./MyDevicesView";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -22,7 +22,6 @@ export default function MyBotsPanel() {
     { key: "devices" as const, label: t.devicesTabLabel },
   ];
   const [showAddDevice, setShowAddDevice] = useState(false);
-  const [deviceModalOpen, setDeviceModalOpen] = useState(false);
   const { ownedAgents } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents })),
   );
@@ -39,28 +38,9 @@ export default function MyBotsPanel() {
     void useDaemonStore.getState().refresh();
   }, []);
 
-  const { daemons, daemonLoading, refreshDaemons } = useDaemonStore(
-    useShallow((s) => ({
-      daemons: s.daemons,
-      daemonLoading: s.loading,
-      refreshDaemons: s.refresh,
-    })),
-  );
-  const hasOnlineDaemon = daemons.some((daemon) => daemon.status === "online");
-
-  useEffect(() => {
-    if (!deviceModalOpen || hasOnlineDaemon) return;
-    const id = window.setInterval(() => {
-      void refreshDaemons({ quiet: true });
-    }, 3_000);
-    return () => window.clearInterval(id);
-  }, [deviceModalOpen, hasOnlineDaemon, refreshDaemons]);
+  const refreshDaemons = useDaemonStore((s) => s.refresh);
 
   function handleCreateBot() {
-    if (!hasOnlineDaemon) {
-      setDeviceModalOpen(true);
-      return;
-    }
     openCreateBotModal();
   }
 
@@ -117,27 +97,12 @@ export default function MyBotsPanel() {
         {myBotsTab === "bots" ? (
           <BotsView
             ownedAgents={ownedAgents}
-            hasOnlineDaemon={hasOnlineDaemon}
-            daemonLoading={daemonLoading}
-            onConnectDevice={() => setDeviceModalOpen(true)}
             onCreateBot={handleCreateBot}
           />
         ) : (
           <MyDevicesView />
         )}
       </div>
-      {deviceModalOpen ? (
-        <DeviceConnectModal
-          connected={hasOnlineDaemon}
-          daemonLoading={daemonLoading}
-          onClose={() => setDeviceModalOpen(false)}
-          onCreateBot={() => {
-            setDeviceModalOpen(false);
-            openCreateBotModal();
-          }}
-          onRefreshDaemons={() => void refreshDaemons({ quiet: true })}
-        />
-      ) : null}
       {showAddDevice ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddDevice(false)}>
           <div className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -168,15 +133,9 @@ export default function MyBotsPanel() {
 
 function BotsView({
   ownedAgents,
-  hasOnlineDaemon,
-  daemonLoading,
-  onConnectDevice,
   onCreateBot,
 }: {
   ownedAgents: ReturnType<typeof useDashboardSessionStore.getState>["ownedAgents"];
-  hasOnlineDaemon: boolean;
-  daemonLoading: boolean;
-  onConnectDevice: () => void;
   onCreateBot: () => void;
 }) {
   const t = myBotsPanelI18n[useLanguage()];
@@ -205,12 +164,7 @@ function BotsView({
   return (
     <>
       {ownedAgents.length === 0 ? (
-        <BotOnboardingSteps
-          hasOnlineDaemon={hasOnlineDaemon}
-          daemonLoading={daemonLoading}
-          onConnectDevice={onConnectDevice}
-          onCreateBot={onCreateBot}
-        />
+        <BotEmptyHero onCreateBot={onCreateBot} />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {ownedAgents.map((agent) => {

@@ -13,14 +13,19 @@ import {
   Bot,
   Check,
   ChevronDown,
+  Code2,
+  Feather,
+  Gem,
   Info,
   Loader2,
+  Network,
   Plus,
   RefreshCcw,
   Server,
   Sparkles,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { createAgentDialog } from "@/lib/i18n/translations/dashboard";
 import { pickRandomAgentIdentity } from "@/lib/random-agent-identity";
@@ -30,6 +35,7 @@ import {
   type DaemonInstance,
   type DaemonRuntime,
 } from "@/store/useDaemonStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import {
   useOpenclawHostStore,
   OpenclawProvisionError,
@@ -38,6 +44,7 @@ import {
 } from "@/store/useOpenclawHostStore";
 import InstallCommandPanel from "./InstallCommandPanel";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
+import { DeviceConnectPanel } from "./HomePanel";
 
 interface CreateAgentDialogProps {
   onClose: () => void;
@@ -109,6 +116,74 @@ function applyRuntimeSupport(
   return out;
 }
 
+function WizardStepper({
+  current,
+  deviceDone,
+  step1Label,
+  step2Label,
+}: {
+  current: 1 | 2;
+  deviceDone: boolean;
+  step1Label: string;
+  step2Label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <StepperPill
+        index={1}
+        label={step1Label}
+        state={deviceDone ? "done" : current === 1 ? "active" : "upcoming"}
+      />
+      <div
+        className={`h-px w-8 ${deviceDone ? "bg-neon-cyan/40" : "bg-glass-border"}`}
+      />
+      <StepperPill
+        index={2}
+        label={step2Label}
+        state={current === 2 ? "active" : deviceDone ? "upcoming" : "locked"}
+      />
+    </div>
+  );
+}
+
+function StepperPill({
+  index,
+  label,
+  state,
+}: {
+  index: number;
+  label: string;
+  state: "active" | "done" | "upcoming" | "locked";
+}) {
+  const isActive = state === "active";
+  const isDone = state === "done";
+  const isLocked = state === "locked";
+  const badgeClass = isDone
+    ? "border-neon-cyan bg-neon-cyan text-deep-black"
+    : isActive
+      ? "border-neon-cyan bg-neon-cyan/20 text-neon-cyan"
+      : isLocked
+        ? "border-glass-border text-text-tertiary"
+        : "border-glass-border text-text-secondary";
+  const labelClass = isActive
+    ? "text-text-primary"
+    : isDone
+      ? "text-text-primary/85"
+      : isLocked
+        ? "text-text-tertiary"
+        : "text-text-secondary";
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold ${badgeClass}`}
+      >
+        {isDone ? <Check className="h-3 w-3" /> : index}
+      </span>
+      <span className={`text-xs font-medium ${labelClass}`}>{label}</span>
+    </div>
+  );
+}
+
 export default function CreateAgentDialog({
   onClose,
   onSuccess,
@@ -117,6 +192,9 @@ export default function CreateAgentDialog({
   const locale = useLanguage();
   const t = createAgentDialog[locale];
 
+  const hasExistingBots = useDashboardSessionStore(
+    (s) => s.ownedAgents.length > 0,
+  );
   const daemons = useDaemonStore((s) => s.daemons);
   const loading = useDaemonStore((s) => s.loading);
   const loaded = useDaemonStore((s) => s.loaded);
@@ -140,6 +218,8 @@ export default function CreateAgentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingDevice, setAddingDevice] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
+  const prevHadOnlineRef = useRef<boolean | null>(null);
   const addDeviceExistingIdsRef = useRef<Set<string>>(new Set());
   const autoFilledNameRef = useRef<string | null>(null);
   const lastRandomIdxRef = useRef<number | undefined>(undefined);
@@ -156,6 +236,30 @@ export default function CreateAgentDialog({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !submitting) onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, submitting]);
+
+  // Brief celebratory state when a daemon transitions from offline to online
+  // while the user is staring at step 1. Without this, the dialog snaps to
+  // step 2 with no acknowledgement that the device just connected.
+  useEffect(() => {
+    if (!loaded) return;
+    const hasOnline = onlineDaemons.length > 0;
+    const prev = prevHadOnlineRef.current;
+    if (prev === false && hasOnline) {
+      setJustConnected(true);
+      const t = window.setTimeout(() => setJustConnected(false), 1500);
+      prevHadOnlineRef.current = hasOnline;
+      return () => window.clearTimeout(t);
+    }
+    prevHadOnlineRef.current = hasOnline;
+  }, [loaded, onlineDaemons.length]);
 
   // Auto-select first online daemon once the list arrives.
   // If a preselectedDaemonId was provided, use that instead.
@@ -280,7 +384,7 @@ export default function CreateAgentDialog({
     setSelectedHermesProfile((active ?? firstFree)?.name ?? null);
   }, [selectedRuntime, selectedRuntimeId, selectedHermesProfile]);
 
-  const showEmptyState = loaded && onlineDaemons.length === 0;
+  const showEmptyState = onlineDaemons.length === 0 && !loading;
   const trimmedName = name.trim();
 
   // Auto-detect daemon coming online while user stares at the install command.
@@ -386,60 +490,87 @@ export default function CreateAgentDialog({
     !submitting;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !submitting) onClose();
+      }}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-agent-title"
-        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-glass-border bg-deep-black-light p-4 shadow-2xl sm:p-5"
+        className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl"
       >
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={submitting}
-          aria-label={t.cancel}
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        <div className="mb-4 pr-8">
-          <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-bold text-text-primary">
-            <Bot className="h-5 w-5 text-neon-cyan" />
-            {t.title}
-          </h3>
-          <p className="mt-1.5 text-sm text-text-secondary">{t.description}</p>
-        </div>
+        {(() => {
+          const onStep1 = showEmptyState || addingDevice;
+          const currentStep: 1 | 2 = onStep1 ? 1 : 2;
+          return (
+            <>
+              <div className="flex shrink-0 items-center gap-3 border-b border-glass-border/40 px-4 py-3 sm:px-5">
+                <div className="min-w-0 flex-1">
+                  {hasExistingBots ? (
+                    <h3
+                      id="create-agent-title"
+                      className="flex items-center gap-2 text-base font-semibold text-text-primary"
+                    >
+                      <Bot className="h-4 w-4 text-neon-cyan" />
+                      {t.title}
+                    </h3>
+                  ) : (
+                    <WizardStepper
+                      current={currentStep}
+                      deviceDone={!onStep1}
+                      step1Label={t.stepDeviceLabel}
+                      step2Label={t.stepBotLabel}
+                    />
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={submitting}
+                  aria-label={t.cancel}
+                  className="shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+              {!hasExistingBots && !onStep1 && (
+                <div className="mb-4">
+                  <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-bold text-text-primary">
+                    <Bot className="h-5 w-5 text-neon-cyan" />
+                    {t.title}
+                  </h3>
+                  <p className="mt-1.5 text-sm text-text-secondary">{t.step2Description}</p>
+                </div>
+              )}
 
         {!loaded && loading ? (
           <div className="flex items-center justify-center py-10 text-text-secondary">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : showEmptyState ? (
-          <DaemonInstallCommand
-            busy={loading}
-            onRefresh={() => void refresh()}
-            labels={{
-              title: t.noDaemonTitle,
-              hint: t.noDaemonHint,
-              copy: t.copy,
-              copied: t.copied,
-              refresh: t.refreshDaemons,
-            }}
+          <DeviceConnectPanel
+            connected={false}
+            daemonLoading={loading}
+            onRefreshDaemons={() => void refresh()}
           />
+        ) : justConnected ? (
+          <div className="animate-in fade-in duration-200 flex flex-col items-center gap-3 py-10 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full border border-neon-green/40 bg-neon-green/10 text-neon-green">
+              <Check className="h-6 w-6" />
+            </span>
+            <div className="text-base font-semibold text-text-primary">
+              {locale === "zh" ? "设备已就绪" : "Device connected"}
+            </div>
+            <div className="text-xs text-text-secondary">
+              {locale === "zh" ? "正在为你打开 Bot 创建表单…" : "Opening Bot setup…"}
+            </div>
+          </div>
         ) : addingDevice ? (
           <div className="space-y-4">
-            <DaemonInstallCommand
-              busy={loading}
-              onRefresh={() => void refresh()}
-              labels={{
-                title: t.addDeviceTitle,
-                hint: t.addDeviceHint,
-                copy: t.copy,
-                copied: t.copied,
-                refresh: t.refreshDaemons,
-              }}
-            />
             <button
               type="button"
               onClick={() => setAddingDevice(false)}
@@ -448,12 +579,23 @@ export default function CreateAgentDialog({
               <ArrowLeft className="h-3.5 w-3.5" />
               {t.backLabel}
             </button>
+            <DeviceConnectPanel
+              connected={false}
+              daemonLoading={loading}
+              onRefreshDaemons={() => void refresh()}
+            />
           </div>
         ) : (
-          <div className="space-y-3.5">
+          <div className="space-y-4">
+            {hasExistingBots ? null : (
+              <div className="text-base font-semibold text-neon-cyan/85">
+                {t.runtimeSectionLabel}
+              </div>
+            )}
+            <div className={hasExistingBots ? "space-y-3.5" : "space-y-3.5 rounded-2xl border border-glass-border/60 bg-glass-bg/20 p-3.5"}>
             <section>
               <div className="mb-1.5 flex items-center justify-between gap-3">
-                <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
                   {t.daemonLabel}
                 </label>
                 <button
@@ -513,6 +655,7 @@ export default function CreateAgentDialog({
               }}
               labels={{
                 runtimeLabel: t.runtimeLabel,
+                runtimeLabelWithCount: t.runtimeLabelWithCount,
                 runtimeAvailable: t.runtimeAvailable,
                 noRuntimesDetected: t.noRuntimesDetected,
                 probeRuntimes: t.probeRuntimes,
@@ -556,10 +699,17 @@ export default function CreateAgentDialog({
                 disabled={submitting}
               />
             )}
+            </div>
 
+            {hasExistingBots ? null : (
+              <div className="text-base font-semibold text-neon-cyan/85">
+                {t.identitySectionLabel}
+              </div>
+            )}
+            <div className={hasExistingBots ? "space-y-3.5" : "space-y-3.5 rounded-2xl border border-glass-border/60 bg-glass-bg/20 p-3.5"}>
             <section>
               <div className="mb-1 flex items-center justify-between gap-3">
-                <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
                   {t.nameLabel}
                 </label>
                 <button
@@ -597,7 +747,7 @@ export default function CreateAgentDialog({
             </section>
 
             <section>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+              <label className="mb-1 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
                 {t.bioLabel}
               </label>
               <p className="mb-1.5 text-xs leading-5 text-text-secondary">
@@ -613,6 +763,7 @@ export default function CreateAgentDialog({
                 maxLength={240}
               />
             </section>
+            </div>
           </div>
         )}
 
@@ -621,34 +772,38 @@ export default function CreateAgentDialog({
             {error}
           </p>
         )}
+              </div>
 
-        {!showEmptyState && !addingDevice && loaded && (
-          <div className="mt-5 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
-            >
-              {t.cancel}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={!canSubmit}
-              className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t.submitting}
-                </>
-              ) : (
-                t.submit
+              {!showEmptyState && !addingDevice && loaded && (
+                <div className="flex shrink-0 items-center justify-end gap-3 border-t border-glass-border/40 px-4 py-3 sm:px-5">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    disabled={submitting}
+                    className="rounded-xl border border-glass-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmit()}
+                    disabled={!canSubmit}
+                    className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm font-bold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t.submitting}
+                      </>
+                    ) : (
+                      t.submit
+                    )}
+                  </button>
+                </div>
               )}
-            </button>
-          </div>
-        )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
@@ -671,6 +826,7 @@ function RuntimePicker({
   disabled: boolean;
   labels: {
     runtimeLabel: string;
+    runtimeLabelWithCount: (count: number) => string;
     runtimeAvailable: string;
     noRuntimesDetected: string;
     probeRuntimes: string;
@@ -691,19 +847,21 @@ function RuntimePicker({
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-3">
-        <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-          {labels.runtimeLabel}
+        <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
+          {hasAny
+            ? labels.runtimeLabelWithCount(availableRuntimes.length)
+            : labels.runtimeLabel}
         </label>
         <button
           type="button"
           onClick={onRefresh}
           disabled={refreshing || disabled || !daemon}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg px-2 py-0.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
         >
           {refreshing ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
-            <RefreshCcw className="h-3.5 w-3.5" />
+            <RefreshCcw className="h-3 w-3" />
           )}
           {labels.probeRuntimes}
         </button>
@@ -715,34 +873,25 @@ function RuntimePicker({
         </div>
       ) : (
         <div className="grid gap-3">
-          <div>
-            <div className="mb-1.5 flex items-center justify-between gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-neon-green/80">
-                {labels.runtimeAvailable}
-              </span>
-              <span className="text-[11px] text-text-secondary/55">
-                {labels.runtimeFound(availableRuntimes.length)}
-              </span>
+          {availableRuntimes.length > 0 ? (
+            <div className="grid gap-2">
+              {availableRuntimes.map((r) => (
+                <RuntimeCard
+                  key={r.id}
+                  runtime={r}
+                  selected={selectedRuntimeId === r.id}
+                  disabled={disabled}
+                  onClick={() => onSelect(r.id)}
+                  unavailableLabel={labels.unavailable}
+                  availableLabel={labels.runtimeAvailable}
+                />
+              ))}
             </div>
-            {availableRuntimes.length > 0 ? (
-              <div className="grid gap-2">
-                {availableRuntimes.map((r) => (
-                  <RuntimeCard
-                    key={r.id}
-                    runtime={r}
-                    selected={selectedRuntimeId === r.id}
-                    disabled={disabled}
-                    onClick={() => onSelect(r.id)}
-                    unavailableLabel={labels.unavailable}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-4 text-center text-xs text-text-secondary">
-                {labels.noRuntimesDetected}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-4 text-center text-xs text-text-secondary">
+              {labels.noRuntimesDetected}
+            </div>
+          )}
 
           {unavailableRuntimes.length > 0 ? (
             <div>
@@ -791,18 +940,58 @@ function RuntimePicker({
   );
 }
 
+type RuntimeLogoEntry =
+  | { kind: "img"; src: string; classes: string }
+  | { kind: "icon"; Icon: LucideIcon; classes: string };
+
+const RUNTIME_LOGO: Record<string, RuntimeLogoEntry> = {
+  "claude-code": { kind: "img", src: "/runtime-logos/Claude.png", classes: "border-glass-border bg-glass-bg/40" },
+  codex: { kind: "img", src: "/runtime-logos/Codex.png", classes: "border-glass-border bg-glass-bg/40" },
+  gemini: { kind: "img", src: "/runtime-logos/Gemini.png", classes: "border-glass-border bg-glass-bg/40" },
+  "openclaw-acp": { kind: "img", src: "/runtime-logos/Openclaw.png", classes: "border-glass-border bg-glass-bg/40" },
+  qclaw: { kind: "img", src: "/runtime-logos/Qclaw.png", classes: "border-glass-border bg-glass-bg/40" },
+  "hermes-agent": { kind: "img", src: "/runtime-logos/Hermes.png", classes: "border-glass-border bg-glass-bg/40" },
+};
+
+function RuntimeLogo({ runtimeId, dimmed }: { runtimeId: string; dimmed?: boolean }) {
+  const entry: RuntimeLogoEntry = RUNTIME_LOGO[runtimeId] ?? {
+    kind: "icon",
+    Icon: Bot,
+    classes: "border-glass-border bg-glass-bg/40 text-text-secondary",
+  };
+  if (entry.kind === "img") {
+    return (
+      <span
+        className={`relative block h-7 w-7 shrink-0 overflow-hidden rounded-lg ${dimmed ? "opacity-50" : ""}`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={entry.src} alt="" className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${entry.classes} ${dimmed ? "opacity-50" : ""}`}
+    >
+      <entry.Icon className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
 function RuntimeCard({
   runtime,
   selected,
   disabled,
   onClick,
   unavailableLabel,
+  availableLabel,
 }: {
   runtime: DaemonRuntime;
   selected: boolean;
   disabled: boolean;
   onClick: () => void;
   unavailableLabel: string;
+  availableLabel?: string;
 }) {
   const base =
     "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors";
@@ -819,15 +1008,18 @@ function RuntimeCard({
       className={`${base} ${state}`}
       title={runtime.path || runtime.error || runtime.id}
     >
-      <span
-        className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-          runtime.available ? "bg-neon-green" : "bg-text-secondary/55"
-        }`}
-      />
+      <RuntimeLogo runtimeId={runtime.id} dimmed={!runtime.available} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-mono text-[13px] leading-5">
-          {runtime.id}
-          {runtime.version ? ` @ ${runtime.version}` : ""}
+        <span className="flex items-center gap-2 truncate font-mono text-[13px] leading-5">
+          <span className="truncate">
+            {runtime.id}
+            {runtime.version ? ` @ ${runtime.version}` : ""}
+          </span>
+          {runtime.available && availableLabel ? (
+            <span className="shrink-0 rounded border border-neon-green/30 bg-neon-green/10 px-1 py-px font-sans text-[9px] font-semibold uppercase tracking-wide text-neon-green">
+              {availableLabel}
+            </span>
+          ) : null}
         </span>
         {!runtime.available && (
           <span className="mt-0.5 block text-xs leading-4 text-text-secondary">
@@ -999,7 +1191,7 @@ function HermesProfilePicker({
   const allOccupied = profiles.every((p) => !!p.occupiedBy);
   return (
     <section>
-      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+      <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
         Hermes profile
       </label>
       <div className="relative">
@@ -1186,7 +1378,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
           OpenClaw host
         </label>
         <div className="grid grid-cols-1 gap-2">
@@ -1222,7 +1414,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
       </div>
 
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
           Agent name
         </label>
         <input
@@ -1237,7 +1429,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
       </div>
 
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
           Bio (optional)
         </label>
         <textarea
