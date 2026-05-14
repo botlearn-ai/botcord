@@ -14,6 +14,7 @@ import type {
   DashboardRoom,
   DiscoverRoom,
   HumanAgentRoomSummary,
+  PublicRoomMember,
   PublicHumanProfile,
   PublicRoom,
   RealtimeMetaEvent,
@@ -35,6 +36,7 @@ let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
 const emptyRoomMessageSnapshot = new Map<string, string | null>();
+const roomMembersInFlight = new Map<string, Promise<PublicRoomMember[]>>();
 
 function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -91,6 +93,8 @@ interface DashboardChatState {
   messages: Record<string, DashboardMessage[]>;
   messagesLoading: Record<string, boolean>;
   messagesHasMore: Record<string, boolean>;
+  roomMembersByRoom: Record<string, PublicRoomMember[]>;
+  roomMembersLoading: Record<string, boolean>;
   error: string | null;
   selectedAgentId: string | null;
   selectedAgentLoading: boolean;
@@ -133,9 +137,10 @@ interface DashboardChatState {
   bumpRoomMembersVersion: (roomId: string) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
-  loadRoomMessages: (roomId: string) => Promise<void>;
+  loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
   pollNewMessages: (roomId: string, opts?: { expectedHubMsgId?: string | null; retries?: number }) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
+  loadRoomMembers: (roomId: string, opts?: { force?: boolean }) => Promise<PublicRoomMember[]>;
   selectAgent: (agentId: string) => Promise<void>;
   searchAgents: (q: string) => Promise<void>;
   refreshOverview: (opts?: { reloadOpenedRoom?: boolean }) => Promise<void>;
@@ -158,6 +163,8 @@ const initialChatState = {
   messages: {},
   messagesLoading: {},
   messagesHasMore: {},
+  roomMembersByRoom: {},
+  roomMembersLoading: {},
   error: null,
   selectedAgentId: null,
   selectedAgentLoading: false,
@@ -194,6 +201,8 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || Object.keys(state.messages).length > 0
     || Object.keys(state.messagesLoading).length > 0
     || Object.keys(state.messagesHasMore).length > 0
+    || Object.keys(state.roomMembersByRoom).length > 0
+    || Object.keys(state.roomMembersLoading).length > 0
     || state.error !== null
     || state.selectedAgentId !== null
     || state.selectedAgentLoading
@@ -354,15 +363,20 @@ export const useDashboardChatStore = create<DashboardChatState>()(
 
       bumpRoomMembersVersion: (roomId) =>
         set((state) => ({
+          roomMembersByRoom: Object.fromEntries(
+            Object.entries(state.roomMembersByRoom).filter(([key]) => key !== roomId),
+          ),
           roomMemberVersions: {
             ...state.roomMemberVersions,
             [roomId]: (state.roomMemberVersions[roomId] ?? 0) + 1,
           },
         })),
 
-      loadRoomMessages: async (roomId: string) => {
+      loadRoomMessages: async (roomId: string, opts) => {
         if (roomMessagesInFlight.has(roomId)) {
-          roomMessagesReloadPending.add(roomId);
+          if (opts?.force) {
+            roomMessagesReloadPending.add(roomId);
+          }
           return;
         }
         set((state) => ({
@@ -389,7 +403,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             messagesLoading: { ...state.messagesLoading, [roomId]: false },
           }));
           if (roomMessagesReloadPending.delete(roomId)) {
-            void get().loadRoomMessages(roomId);
+            void get().loadRoomMessages(roomId, { force: true });
           }
         }
       },
@@ -406,14 +420,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             const currentSnapshot = getRoomMessageSnapshot(get().getRoomSummary(roomId));
             const previousSnapshot = emptyRoomMessageSnapshot.get(roomId);
             if (opts?.expectedHubMsgId || previousSnapshot !== currentSnapshot) {
-              await get().loadRoomMessages(roomId);
+              await get().loadRoomMessages(roomId, { force: Boolean(opts?.expectedHubMsgId) });
             }
           } else {
             const newestPersisted = [...existing].reverse().find(
               (m) => m.hub_msg_id && !m.hub_msg_id.startsWith("tmp_"),
             );
             if (!newestPersisted) {
-              await get().loadRoomMessages(roomId);
+              await get().loadRoomMessages(roomId, { force: Boolean(opts?.expectedHubMsgId) });
               return;
             }
             const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50 });
@@ -475,6 +489,43 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         } catch (error) {
           console.error("[ChatStore] Failed to load more messages:", error);
         }
+      },
+
+      loadRoomMembers: async (roomId: string, opts) => {
+        const cached = get().roomMembersByRoom[roomId];
+        if (cached && !opts?.force) return cached;
+
+        const inFlight = roomMembersInFlight.get(roomId);
+        if (inFlight && !opts?.force) return inFlight;
+
+        const request = (async () => {
+          set((state) => ({
+            roomMembersLoading: { ...state.roomMembersLoading, [roomId]: true },
+          }));
+          try {
+            const result = await api.getRoomMembers(roomId).catch(() => api.getPublicRoomMembers(roomId));
+            set((state) => ({
+              roomMembersByRoom: { ...state.roomMembersByRoom, [roomId]: result.members },
+            }));
+            return result.members;
+          } catch (error) {
+            console.error("[ChatStore] Failed to load room members:", error);
+            set((state) => ({
+              roomMembersByRoom: { ...state.roomMembersByRoom, [roomId]: [] },
+            }));
+            return [];
+          } finally {
+            roomMembersInFlight.delete(roomId);
+            set((state) => {
+              const next = { ...state.roomMembersLoading };
+              delete next[roomId];
+              return { roomMembersLoading: next };
+            });
+          }
+        })();
+
+        roomMembersInFlight.set(roomId, request);
+        return request;
       },
 
       selectAgent: async (agentId: string) => {
@@ -593,10 +644,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             const messages = { ...state.messages };
             const messagesLoading = { ...state.messagesLoading };
             const messagesHasMore = { ...state.messagesHasMore };
+            const roomMembersByRoom = { ...state.roomMembersByRoom };
+            const roomMembersLoading = { ...state.roomMembersLoading };
             delete messages[roomId];
             delete messagesLoading[roomId];
             delete messagesHasMore[roomId];
-            return { leavingRoomId: null, messages, messagesLoading, messagesHasMore };
+            delete roomMembersByRoom[roomId];
+            delete roomMembersLoading[roomId];
+            return { leavingRoomId: null, messages, messagesLoading, messagesHasMore, roomMembersByRoom, roomMembersLoading };
           });
           const ui = useDashboardUIStore.getState();
           if (ui.openedRoomId === roomId || ui.focusedRoomId === roomId) {

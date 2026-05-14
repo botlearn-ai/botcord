@@ -633,19 +633,14 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   // session — realtime presence events only fire on online/offline edges.
   useEffect(() => {
     if (!openedRoomId) return;
-    let cancelled = false;
-    api.getRoomMembers(openedRoomId)
-      .catch(() => api.getPublicRoomMembers(openedRoomId))
-      .then((result) => {
-        if (cancelled) return;
+    void useDashboardChatStore.getState()
+      .loadRoomMembers(openedRoomId)
+      .then((members) => {
         usePresenceStore.getState().seed(
-          result.members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
+          members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
         );
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
   }, [openedRoomId]);
 
   if (sidebarTab === "explore") {

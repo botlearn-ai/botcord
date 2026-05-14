@@ -298,6 +298,9 @@ export default function DashboardApp() {
           if (!knownRoom) {
             void chatStore.loadPublicRoomDetail(roomIdFromPath);
           }
+          if (chatStore.messagesLoading[roomIdFromPath]) {
+            return;
+          }
           if (!chatStore.messages[roomIdFromPath]) {
             void chatStore.loadRoomMessages(roomIdFromPath);
           } else {
