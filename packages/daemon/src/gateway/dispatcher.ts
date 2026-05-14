@@ -1329,16 +1329,34 @@ export class Dispatcher {
 
       if (!result) return;
 
+      const replyText = (result.text || "").trim();
+      const finalTextField = truncateTextField(result.text || "");
+
       // Persist session before reply so next turn sees the new id even if send fails.
       //
       // Adapter contract:
-      //   result.newSessionId truthy  → upsert the entry
-      //   result.newSessionId empty + had-inbound-sessionId + result.error
-      //                               → the prior session is dead (e.g. Claude Code
-      //                                 "--resume <missing-uuid>"); delete the entry so
+      //   had-inbound-sessionId + result.error + no reply text
+      //                               → the prior session is suspect/dead; delete it so
       //                                 we don't keep resuming a stale id every turn
+      //                                 even when the adapter echoes that id back
+      //   result.newSessionId truthy  → upsert the entry
       //   otherwise                   → no-op (e.g. codex intentionally never persists)
-      if (result.newSessionId) {
+      if (sessionId && result.error && !replyText) {
+        try {
+          await this.sessionStore.delete(key);
+          this.log.info("dispatcher: dropped stale runtime session", {
+            key,
+            prevRuntimeSessionId: sessionId,
+            nextRuntimeSessionId: result.newSessionId || null,
+            error: result.error,
+          });
+        } catch (err) {
+          this.log.warn("dispatcher: session-store.delete failed", {
+            key,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } else if (result.newSessionId) {
         const session: GatewaySessionEntry = {
           key,
           runtime: route.runtime,
@@ -1380,9 +1398,6 @@ export class Dispatcher {
           });
         }
       }
-
-      const replyText = (result.text || "").trim();
-      const finalTextField = truncateTextField(result.text || "");
 
       if (!replyText) {
         if (result.error) {
