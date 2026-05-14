@@ -182,7 +182,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-text-primary">New Requests</span>
+            <span className="text-sm font-medium text-text-primary">{t.newRequests}</span>
             {pending.length > 0 ? (
               <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
                 {pending.length}
@@ -199,7 +199,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
 
       <div className="flex-1 overflow-y-auto">
         {/* Agents */}
-        <Section title="Agents" count={ownedAgents.length + agentContacts.length}>
+        <Section title={t.agentsGroup} count={ownedAgents.length + agentContacts.length}>
           {/* Sub-group: my owned bots */}
           {ownedAgents.length > 0 ? (
             <SubGroupHeader title={t.myBotGroup} count={ownedAgents.length} />
@@ -236,9 +236,9 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
         </Section>
 
         {/* Humans */}
-        <Section title="Humans" count={humanContacts.length}>
+        <Section title={t.humansGroup} count={humanContacts.length}>
           {humanContacts.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-text-secondary/50">No human contacts yet</p>
+            <p className="px-3 py-3 text-xs text-text-secondary/50">{t.noHumanContactsYet}</p>
           ) : (
             humanContacts.map((c) => (
               <ListRow
@@ -255,7 +255,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
         </Section>
 
         {/* Groups */}
-        <Section title="Groups" count={groups.length}>
+        <Section title={t.groupsGroup} count={groups.length}>
           {groups.length === 0 ? (
             <p className="px-3 py-3 text-xs text-text-secondary/50">{t.noGroupsJoined}</p>
           ) : (
