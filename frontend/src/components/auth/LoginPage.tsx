@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") || "/chats/messages";
+  const nextPath = searchParams.get("next") || "/chats/home";
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
