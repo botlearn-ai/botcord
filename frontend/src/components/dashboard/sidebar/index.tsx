@@ -37,7 +37,7 @@ import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
-import { api, humansApi } from "@/lib/api";
+import { api } from "@/lib/api";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -170,7 +170,6 @@ export default function Sidebar({
   const chatStore = useDashboardChatStore(useShallow((s) => ({
     overview: s.overview,
     recentVisitedRooms: s.recentVisitedRooms,
-    switchActiveAgent: s.switchActiveAgent,
   })));
   const unreadStore = useDashboardUnreadStore(useShallow((s) => ({
     optimisticUnreadRoomIds: s.optimisticUnreadRoomIds,
@@ -182,7 +181,6 @@ export default function Sidebar({
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [refreshingBots, setRefreshingBots] = useState(false);
   const [createBotForDaemonId, setCreateBotForDaemonId] = useState<string | null>(null);
-  const [agentsWithApprovals, setAgentsWithApprovals] = useState<Set<string>>(new Set());
 
   const showCreateBot = uiStore.createBotModalOpen;
   const setShowCreateBot = (v: boolean) => v ? uiStore.openCreateBotModal() : uiStore.closeCreateBotModal();
@@ -289,22 +287,6 @@ export default function Sidebar({
     prefetch("/chats/wallet");
     prefetch("/chats/activity");
   }, [router, uiStore.contactsView, uiStore.exploreView]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchApprovals = async () => {
-      try {
-        const res = await humansApi.listPendingApprovals();
-        if (!cancelled) {
-          setAgentsWithApprovals(new Set(res.approvals.map((a: { agent_id: string }) => a.agent_id)));
-        }
-      } catch {
-        // non-fatal
-      }
-    };
-    void fetchApprovals();
-    return () => { cancelled = true; };
-  }, []);
 
   const showLoginModal = () => router.push("/login");
 
@@ -416,12 +398,7 @@ export default function Sidebar({
             <>
               <AccountMenu
                 user={sessionStore.user}
-                agents={sessionStore.ownedAgents}
-                activeAgentId={sessionStore.activeAgentId}
                 pendingRequests={chatStore.overview?.pending_requests || 0}
-                agentsWithApprovals={agentsWithApprovals}
-                onSwitchAgent={chatStore.switchActiveAgent}
-                onOpenCreateBot={() => setShowCreateBot(true)}
                 onLogout={handleLogout}
               />
             </>

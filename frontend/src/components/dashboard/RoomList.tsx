@@ -84,9 +84,10 @@ export default function RoomList({
     messages: state.messages,
     publicAgents: state.publicAgents,
   })));
-  const { focusedRoomId, messagesPane, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane, setUserChatAgentId } = useDashboardUIStore(useShallow((state) => ({
+  const { focusedRoomId, messagesPane, userChatAgentId, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane, setUserChatAgentId } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
     messagesPane: state.messagesPane,
+    userChatAgentId: state.userChatAgentId,
     closeMobileSidebar: state.closeMobileSidebar,
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
@@ -94,7 +95,6 @@ export default function RoomList({
     setUserChatAgentId: state.setUserChatAgentId,
   })));
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
-  const switchActiveAgent = useDashboardSessionStore((state) => state.switchActiveAgent);
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
   const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
@@ -143,9 +143,6 @@ export default function RoomList({
   const handleSelect = async (room: DashboardRoom) => {
     if (isOwnerChatRoom(room.room_id)) {
       const agentId = room._originAgent?.agent_id || room.owner_id;
-      if (agentId && agentId !== activeAgentId) {
-        await switchActiveAgent(agentId);
-      }
       setUserChatAgentId(agentId || null);
       setMessagesPane("user-chat");
       setFocusedRoomId(null);
@@ -261,7 +258,7 @@ export default function RoomList({
       {rooms.map((room) => {
         const ownerChatAgentId = isOwnerChatRoom(room.room_id) ? room._originAgent?.agent_id || room.owner_id : null;
         const isSelected = ownerChatAgentId
-          ? messagesPane === "user-chat" && ownerChatAgentId === activeAgentId
+          ? messagesPane === "user-chat" && ownerChatAgentId === (userChatAgentId || activeAgentId)
           : messagesPane === "room" && focusedRoomId === room.room_id;
         const roomMessages = messages[room.room_id] || [];
         // Find the latest real message (skip ack/result/error receipts)

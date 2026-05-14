@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import type { UserAgent, UserProfile } from "@/lib/types";
+import type { UserProfile } from "@/lib/types";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { LogOut, Pencil, Settings } from "lucide-react";
 import HumanProfileEditModal from "./HumanProfileEditModal";
@@ -20,12 +20,7 @@ import { useShallow } from "zustand/react/shallow";
 
 interface AccountMenuProps {
   user: UserProfile | null;
-  agents: UserAgent[];
-  activeAgentId: string | null;
   pendingRequests: number;
-  agentsWithApprovals?: Set<string>;
-  onSwitchAgent: (agentId: string) => Promise<void> | void;
-  onOpenCreateBot: () => void;
   onLogout: () => void;
 }
 

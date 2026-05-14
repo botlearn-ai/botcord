@@ -82,8 +82,8 @@ import { createClient } from "@/lib/supabase/client";
 import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
 
 /**
- * [INPUT]: Supabase client-side SDK for auth tokens, browser fetch, local active-agent state
- * [OUTPUT]: api/userApi request wrappers, ApiError class, active-agent utilities
+ * [INPUT]: Supabase client-side SDK for auth tokens and browser fetch
+ * [OUTPUT]: api/userApi request wrappers, ApiError class, legacy agent-selection utilities
  * [POS]: frontend data access layer — all calls go directly to the backend Hub API
  * [PROTOCOL]: update this header on changes, then check README.md
  */

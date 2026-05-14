@@ -5,7 +5,7 @@
 成员清单
 useAppStore.ts: 全局轻量 UI 状态（语言等），独立于 dashboard 业务域。  
 dashboard-shared.ts: dashboard 多 store 共享的房间摘要、时间比较与增量拉取辅助函数。  
-useDashboardSessionStore.ts: Session 业务域 store，负责登录态、用户资料、活跃 agent 与鉴权初始化。  
+useDashboardSessionStore.ts: Session 业务域 store，负责登录态、用户资料、Human 身份与鉴权初始化。
 useDashboardUIStore.ts: 纯界面状态 store，负责 tab、消息特殊入口选择、房间焦点、右侧面板与 Agent 卡片开合。  
 useDashboardChatStore.ts: Chat 数据 store，负责 overview、消息缓存、房间成员刷新版本、公开目录远端搜索结果与 Agent 卡片数据。  
 useDashboardRealtimeStore.ts: Realtime 协调 store，负责 Supabase channel 连接状态与“事件 -> 最小同步”决策。  
@@ -25,18 +25,19 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 
 开发规范
 - 新增业务状态优先放到对应业务 store，不再向 `DashboardApp` 回灌跨域字段。
-- 跨域依赖只能读取必要上下文（如 token/activeAgentId），避免双向循环调用。
-- 任何跨域状态重置（如 agent 切换、退出登录）必须在聚合层显式同步。
-- `useDashboardChatStore.ts` 的会话列表缓存必须绑定当前 active agent；身份切换后先换真相源，再清空上一身份残留，不能让 recents/overview 跨 agent 泄漏。
+- 跨域依赖只能读取必要上下文（如 token/Human identity），避免双向循环调用。
+- 任何跨域状态重置（如退出登录）必须在聚合层显式同步。
+- `useDashboardChatStore.ts` 的会话列表缓存绑定 Human 视角；选择某个 Bot 的私聊只写入 UI 目标，不允许重置 overview/messages。
 - Supabase realtime 在线时，消息更新必须走 `useDashboardRealtimeStore.ts` 的同步动作；不要重新引入组件级定时轮询制造第二数据入口。
 - 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地未读数量只能做短暂覆盖，不能替代后端状态。
 
 变更日志
+- 2026-05-14: 移除 dashboard 前端的 Bot 身份切换能力；`userChatAgentId` 只作为 owner-chat 目标，`useDashboardChatStore.ts` 不再按 Bot 边界清空消息列表。
 - 2026-05-11: `useDashboardRealtimeStore.ts` 在 `room_member_added/room_member_removed` 事件后推进 `useDashboardChatStore.ts` 的房间成员刷新版本，打开中的房间会重新拉取成员，让 @ 候选人与 presence 种子及时包含新成员。
 - 2026-04-28: overview 房间摘要新增 `unread_count`，Messages 一级 tab 与 room 列表使用数量徽标替代未读蓝点。
 - 2026-04-24: `dashboard-shared.ts` 新增统一房间活跃度排序 helper，消息列表与联系人房间视图都以 `last_message_at -> created_at` 同一规则排序，消除重复排序逻辑漂移。
 - 2026-04-24: `useDashboardChatStore.ts` 的公开目录加载动作开始接收 `q` 并做请求序号保护，公开社区搜索不再依赖首屏缓存，也不会被旧请求回写覆盖。
-- 2026-04-08: `useDashboardChatStore.ts` 新增 `boundAgentId` 边界，claim/切换身份后会先切 active agent 再硬刷新，并在 agent 不一致时清空上一身份的会话缓存，修复 `/chats` 继续进入仍显示旧身份与旧会话列表残留的问题。
+- 2026-04-08: 历史上 `useDashboardChatStore.ts` 曾新增 Bot 边界缓存重置；2026-05-14 已移除该策略，Messages 统一回到 Human 视角缓存。
 - 2026-04-07: `useDashboardContactStore.ts` 的联系人请求提交/处理状态细化为“按目标 agent 跟踪发送中”和“按 request + action 跟踪处理中”，让按钮 loading 能准确落在真正正在执行的那一项上。
 - 2026-03-25: `useDashboardUIStore.ts` 新增 `messagesPane`，把“固定私聊入口”和普通房间选择拆开，避免再用一级 tab 承载同属 `messages` 域的特殊会话。
 - 2026-03-22: 新增 `useDashboardSubscriptionStore.ts`，把付费房间的订阅状态从 `SubscriptionBadge.tsx` 组件内缓存上收回到业务 store，统一支撑 Header join、订阅弹窗与成员面板底部的退订动作。
