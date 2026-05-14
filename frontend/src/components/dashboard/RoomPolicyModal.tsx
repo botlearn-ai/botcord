@@ -50,10 +50,12 @@ function snoozeMinutesUntilMidnight(): number {
 
 export default function RoomPolicyModal({
   agentId,
+  agentDisplayName,
   roomId,
   onClose,
 }: {
   agentId: string;
+  agentDisplayName?: string;
   roomId: string;
   onClose: () => void;
 }) {
@@ -151,7 +153,8 @@ export default function RoomPolicyModal({
               <h2 className="text-base font-semibold text-text-primary">本房间回复策略</h2>
             </div>
             <p className="mt-0.5 text-xs text-text-secondary">
-              只控制这个 Bot 在当前房间是否被唤醒；不影响谁能发消息到房间。
+              只控制 {agentDisplayName ? `${agentDisplayName} ` : ""}({agentId})
+              在当前房间是否被唤醒；不影响谁能发消息到房间。
             </p>
           </div>
           <button
