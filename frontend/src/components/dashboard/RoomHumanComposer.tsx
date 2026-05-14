@@ -22,13 +22,14 @@ const ROOM_MENTION_SOURCES = ["roomMembers"] as const;
 const PREFILL_ROOM_COMPOSER_EVENT = "botcord:prefill-room-composer";
 
 interface RoomTransferDialogProps {
+  roomId: string;
   members: PublicRoomMember[];
   senderIdentity: ActiveIdentity | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function RoomTransferDialog({ members, senderIdentity, onClose, onSuccess }: RoomTransferDialogProps) {
+function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSuccess }: RoomTransferDialogProps) {
   const locale = useLanguage();
   const t = transferDialog[locale];
   const senderId = senderIdentity?.id ?? "";
@@ -86,6 +87,7 @@ function RoomTransferDialog({ members, senderIdentity, onClose, onSuccess }: Roo
         to_agent_id: recipientId,
         amount_minor: String(amountCoin * 100),
         memo: memo.trim() || undefined,
+        room_id: roomId,
         idempotency_key: crypto.randomUUID(),
       }, senderIdentity);
       onSuccess();
@@ -414,6 +416,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       {error && <p className="text-[11px] text-red-400">{error}</p>}
       {transferOpen ? (
         <RoomTransferDialog
+          roomId={roomId}
           members={members}
           senderIdentity={senderIdentity}
           onClose={() => setTransferOpen(false)}

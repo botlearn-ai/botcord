@@ -792,6 +792,7 @@ export interface CreateTransferRequest {
   to_agent_id: string;
   amount_minor: string;
   memo?: string;
+  room_id?: string;
   idempotency_key: string;
 }
 

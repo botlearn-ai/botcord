@@ -13,14 +13,20 @@ import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from unittest.mock import AsyncMock
 
 from hub.models import (
     Agent,
     Base,
+    MessageRecord,
     MessagePolicy,
+    ParticipantType,
     Role,
+    Room,
+    RoomMember,
+    RoomRole,
     User,
     UserRole,
     WalletAccount,
@@ -238,6 +244,66 @@ async def test_human_to_agent_transfer(client, seed):
         headers={"Authorization": f"Bearer {seed['token']}"},
     )
     assert resp.json()["available_balance_minor"] == "1500"
+
+
+@pytest.mark.asyncio
+async def test_room_transfer_records_notice_message(client, db_session, seed):
+    """A room-scoped wallet transfer posts a transfer record into that room."""
+    room_id = "rm_wallet_notice"
+    db_session.add(Room(
+        room_id=room_id,
+        name="Wallet Notice Room",
+        owner_id=seed["human_id"],
+        owner_type=ParticipantType.human,
+    ))
+    db_session.add_all([
+        RoomMember(
+            room_id=room_id,
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id=room_id,
+            agent_id=seed["agent_id"],
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    await client.post(
+        "/api/wallet/transfers?as=agent",
+        headers={
+            "Authorization": f"Bearer {seed['token']}",
+            "X-Active-Agent": seed["agent_id"],
+        },
+        json={"to_agent_id": seed["human_id"], "amount_minor": "2000"},
+    )
+
+    resp = await client.post(
+        "/api/wallet/transfers?as=human",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={
+            "to_agent_id": seed["agent_id"],
+            "amount_minor": "500",
+            "room_id": room_id,
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    tx = resp.json()
+    records = list((await db_session.execute(
+        select(MessageRecord).where(
+            MessageRecord.room_id == room_id,
+            MessageRecord.source_type == "wallet_transfer_notice",
+        )
+    )).scalars().all())
+    assert len(records) == 2
+    assert {record.receiver_id for record in records} == {seed["human_id"], seed["agent_id"]}
+    assert records[0].envelope_json
+    assert "[BotCord Transfer]" in records[0].envelope_json
+    assert tx["tx_id"] in records[0].envelope_json
 
 
 @pytest.mark.asyncio
