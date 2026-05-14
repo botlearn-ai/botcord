@@ -63,15 +63,18 @@ export default function LoginPage() {
         router.push(nextPath);
       }
     } else {
-      const { error } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
-        },
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+        }),
       });
-      if (error) {
-        setError(error.message);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { message?: string; error?: string };
+        setError(body.message || body.error || "Sign up failed");
       } else {
         setMessage(t.checkEmail.replace("{email}", normalizedEmail));
       }
