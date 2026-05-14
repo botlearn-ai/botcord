@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 zustand 保存 dashboard 会话状态，依赖 @/lib/api 与 active-agent 工具完成用户身份解析
+ * [INPUT]: 依赖 zustand 保存 dashboard 会话状态，依赖 @/lib/api 完成用户身份解析
  * [OUTPUT]: 对外提供 useDashboardSessionStore 会话域状态仓库与鉴权相关异步动作
  * [POS]: frontend dashboard 的 session 主域，负责登录态、用户资料、活跃 agent 与准入模式
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -10,8 +10,6 @@ import type { HumanInfo, HumanRoomSummary, UserProfile, UserAgent } from "@/lib/
 import {
   humansApi,
   userApi,
-  getActiveAgentId,
-  setActiveAgentId as persistActiveAgentId,
   setStoredActiveIdentity,
 } from "@/lib/api";
 import { usePresenceStore } from "./usePresenceStore";
@@ -58,7 +56,6 @@ interface DashboardSessionState {
   setAuthResolved: (resolved: boolean) => void;
   setToken: (token: string | null) => void;
   setUser: (user: UserProfile) => void;
-  setActiveAgentId: (agentId: string | null) => void;
   setViewMode: (mode: "human" | "agent") => void;
   setActiveIdentity: (identity: ActiveIdentity | null) => void;
   resetSessionState: () => void;
@@ -66,7 +63,6 @@ interface DashboardSessionState {
   refreshUserProfile: () => Promise<void>;
   refreshHumanRooms: () => Promise<void>;
   removeAgent: (agentId: string) => void;
-  switchActiveAgent: (agentId: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -90,11 +86,7 @@ function deriveIdentityFromHuman(human: HumanInfo | null): ActiveIdentity | null
 
 let authInitRequestId = 0;
 
-function resolveStoredActiveAgentId(user: UserProfile): string | null {
-  const savedAgentId = getActiveAgentId();
-  if (savedAgentId && user.agents.some((agent) => agent.agent_id === savedAgentId)) {
-    return savedAgentId;
-  }
+function resolveDefaultAgentId(user: UserProfile): string | null {
   const defaultAgent = user.agents.find((agent) => agent.is_default) || user.agents[0];
   return defaultAgent?.agent_id ?? null;
 }
@@ -112,7 +104,6 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
   setToken: (token) => {
     if (!token) {
       authInitRequestId += 1;
-      persistActiveAgentId(null);
       setStoredActiveIdentity(null);
       set({
         ...initialSessionState,
@@ -122,17 +113,16 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       return;
     }
 
-    const activeAgentId = get().activeAgentId || getActiveAgentId();
     const activeIdentity = deriveIdentityFromHuman(get().human);
     setStoredActiveIdentity(activeIdentity);
     set({
       authResolved: true,
       authBootstrapping: false,
       token,
-      activeAgentId,
+      activeAgentId: get().activeAgentId,
       activeIdentity,
       viewMode: "human",
-      sessionMode: resolveSessionMode(token, activeAgentId),
+      sessionMode: resolveSessionMode(token, get().activeAgentId),
     });
   },
 
@@ -154,17 +144,6 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         user: state.user ? { ...state.user, display_name: human.display_name, avatar_url: human.avatar_url } : state.user,
         activeIdentity,
         viewMode: "human",
-      };
-    }),
-
-  setActiveAgentId: (agentId) =>
-    set((state) => {
-      persistActiveAgentId(agentId);
-      return {
-        activeAgentId: agentId,
-        activeIdentity: state.activeIdentity,
-        viewMode: "human",
-        sessionMode: resolveSessionMode(state.token, agentId),
       };
     }),
 
@@ -195,7 +174,6 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
 
   resetSessionState: () => {
     authInitRequestId += 1;
-    persistActiveAgentId(null);
     setStoredActiveIdentity(null);
     set({ ...initialSessionState });
   },
@@ -229,8 +207,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       if (requestId !== authInitRequestId) {
         return;
       }
-      const activeId = resolveStoredActiveAgentId(user);
-      persistActiveAgentId(activeId);
+      const activeId = resolveDefaultAgentId(user);
       const activeIdentity = deriveIdentityFromHuman(human);
       setStoredActiveIdentity(activeIdentity);
       syncOwnedAgentsPresence(user.agents);
@@ -252,7 +229,6 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         return;
       }
       if (err?.status === 401 || err?.status === 403) {
-        persistActiveAgentId(null);
         setStoredActiveIdentity(null);
         set({
           ...initialSessionState,
@@ -261,7 +237,6 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
         });
         return;
       }
-      persistActiveAgentId(null);
       setStoredActiveIdentity(null);
       set({
         authResolved: true,
@@ -288,8 +263,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
   refreshUserProfile: async () => {
     try {
       const user = await userApi.getMe({ force: true });
-      const activeAgentId = resolveStoredActiveAgentId(user);
-      persistActiveAgentId(activeAgentId);
+      const activeAgentId = resolveDefaultAgentId(user);
       syncOwnedAgentsPresence(user.agents);
       set((state) => {
         const nextIdentity = deriveIdentityFromHuman(state.human);
@@ -314,7 +288,6 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     const newActiveId = agentId === activeAgentId
       ? (remaining.find((a) => a.is_default) || remaining[0])?.agent_id ?? null
       : activeAgentId;
-    persistActiveAgentId(newActiveId);
     set({
       ownedAgents: remaining,
       activeAgentId: newActiveId,
@@ -324,19 +297,8 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
     });
   },
 
-  switchActiveAgent: async (agentId: string) => {
-    persistActiveAgentId(agentId);
-    set((state) => ({
-      activeAgentId: agentId,
-      activeIdentity: state.activeIdentity,
-      viewMode: "human",
-      sessionMode: resolveSessionMode(state.token, agentId),
-    }));
-  },
-
   logout: () => {
     authInitRequestId += 1;
-    persistActiveAgentId(null);
     setStoredActiveIdentity(null);
     usePresenceStore.getState().reset();
     set({

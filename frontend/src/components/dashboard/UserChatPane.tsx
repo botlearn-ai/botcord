@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Bot, Loader2, MessageSquare, AlertCircle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User } from "lucide-react";
+import { ArrowLeft, Bot, Loader2, MessageSquare, AlertCircle, AlertTriangle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
@@ -25,6 +25,7 @@ import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import StreamBlocksView from "./StreamBlocksView";
+import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
 
@@ -94,6 +95,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [initializingRoom, setInitializingRoom] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
+  const [errorDetailsId, setErrorDetailsId] = useState<string | null>(null);
   const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -383,6 +385,16 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
         {messages.map((msg) => {
           const isUser = msg.sender === "user";
           const isNotification = msg.type === "notification";
+          const isErrorMessage = msg.type === "error";
+          const errorPayload =
+            msg.payload?.error && typeof msg.payload.error === "object"
+              ? msg.payload.error as Record<string, unknown>
+              : null;
+          const errorCode = typeof errorPayload?.code === "string" ? errorPayload.code : null;
+          const errorText =
+            typeof errorPayload?.message === "string"
+              ? errorPayload.message
+              : msg.text || "Runtime error";
 
           // --- Notification ---
           if (isNotification) {
@@ -397,6 +409,58 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                     </div>
                   </div>
                 </div>
+              </div>
+            );
+          }
+
+          if (isErrorMessage) {
+            return (
+              <div key={msg.clientId} className="space-y-1.5">
+                <div className="flex justify-start">
+                  <div className="max-w-[75%] rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300">
+                        <Bot className="h-2.5 w-2.5" />
+                      </span>
+                      <span className="text-xs font-medium text-zinc-300">{msg.senderName}</span>
+                      {chatAgentId && (
+                        <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setErrorDetailsId(msg.clientId)}
+                      className="flex w-full items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2.5 py-2 text-left transition-colors hover:bg-amber-400/15"
+                    >
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-amber-300">
+                          Runtime error
+                        </span>
+                        <span className="mt-1 line-clamp-3 block break-words text-sm leading-relaxed text-amber-100">
+                          {errorText}
+                        </span>
+                        <span className="mt-1 block text-xs text-amber-300/70">Details</span>
+                      </span>
+                    </button>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="text-[10px] text-zinc-500">
+                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span className="rounded bg-amber-400/10 px-1 font-mono text-[10px] text-amber-300/80">
+                        error
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {errorDetailsId === msg.clientId && (
+                  <RuntimeErrorDetailsDialog
+                    message={errorText}
+                    code={errorCode}
+                    payload={msg.payload}
+                    onClose={() => setErrorDetailsId(null)}
+                  />
+                )}
               </div>
             );
           }

@@ -121,22 +121,20 @@ export default function ContactsDetailPane() {
     setUserChatRoomId: s.setUserChatRoomId,
     startPrimaryNavigation: s.startPrimaryNavigation,
   })));
-  const { ownedAgents, humanRooms, activeAgentId, refreshHumanRooms } = useDashboardSessionStore(
+  const { ownedAgents, humanRooms, refreshHumanRooms } = useDashboardSessionStore(
     useShallow((s) => ({
       ownedAgents: s.ownedAgents,
       humanRooms: s.humanRooms,
-      activeAgentId: s.activeAgentId,
       refreshHumanRooms: s.refreshHumanRooms,
     })),
   );
-  const { overview, publicAgents, refreshOverview, loadRoomMessages, setError, switchActiveAgent } = useDashboardChatStore(
+  const { overview, publicAgents, refreshOverview, loadRoomMessages, setError } = useDashboardChatStore(
     useShallow((s) => ({
       overview: s.overview,
       publicAgents: s.publicAgents,
       refreshOverview: s.refreshOverview,
       loadRoomMessages: s.loadRoomMessages,
       setError: s.setError,
-      switchActiveAgent: s.switchActiveAgent,
     })),
   );
 
@@ -231,9 +229,6 @@ export default function ContactsDetailPane() {
     try {
       if (target.kind === "owned-bot") {
         const agentId = target.agent.agent_id;
-        if (agentId !== activeAgentId) {
-          await switchActiveAgent(agentId);
-        }
         const room = await api.getUserChatRoom(agentId);
         setMessagesPane("user-chat");
         setUserChatAgentId(agentId);

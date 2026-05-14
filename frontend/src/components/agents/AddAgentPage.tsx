@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 userApi 的 issueBindTicket / getBindTicketStatus / revokeBindTicket，依赖 next 路由跳转新 agent
+ * [INPUT]: 依赖 userApi 的 issueBindTicket / getBindTicketStatus / revokeBindTicket，依赖 next 路由跳转新 bot 私聊
  * [OUTPUT]: 对外提供 AddAgentPage，承接 dashboard "Add Agent to OpenClaw" 入口
  * [POS]: /agents/add 落地页，展示一次性 install 命令并轮询 install-claim 完成态
  * [PROTOCOL]: 变更时更新此头部
@@ -10,8 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, RefreshCw, Trash2 } from "lucide-react";
-import { setActiveAgentId, userApi, ApiError } from "@/lib/api";
-import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { userApi, ApiError } from "@/lib/api";
 import type {
   BindTicketResponse,
   BindTicketStatusResponse,
@@ -29,9 +28,6 @@ function formatRemaining(secondsLeft: number): string {
 
 export default function AddAgentPage() {
   const router = useRouter();
-  const setSessionActiveAgentId = useDashboardSessionStore(
-    (state) => state.setActiveAgentId,
-  );
 
   const [intendedName, setIntendedName] = useState("");
   const [issuing, setIssuing] = useState(false);
@@ -184,13 +180,11 @@ export default function AddAgentPage() {
   // Auto-jump to the new agent once it is claimed.
   useEffect(() => {
     if (status !== "claimed" || !claimedAgentId) return;
-    setActiveAgentId(claimedAgentId);
-    setSessionActiveAgentId(claimedAgentId);
     const timeout = window.setTimeout(() => {
-      router.replace("/chats/messages/__user-chat__");
+      router.replace(`/chats/messages/__user-chat__?agent_id=${encodeURIComponent(claimedAgentId)}`);
     }, 1500);
     return () => window.clearTimeout(timeout);
-  }, [status, claimedAgentId, router, setSessionActiveAgentId]);
+  }, [status, claimedAgentId, router]);
 
   const copy = useCallback(async () => {
     if (!ticket?.install_command) return;
