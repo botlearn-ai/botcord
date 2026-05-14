@@ -3413,3 +3413,255 @@ export const pendingApprovalsPanel: TranslationMap<{
     errorResolve: "审批操作失败",
   },
 }
+
+export const botDetailDrawer: TranslationMap<{
+  ariaLabel: string
+  close: string
+  defaultBadge: string
+  botBadge: string
+  online: string
+  offline: string
+  tabs: {
+    overview: string
+    wallet: string
+    settings: string
+    files: string
+  }
+  overview: {
+    activity7d: string
+    messages: string
+    rooms: string
+    openTopics: string
+    completedTopics: string
+    hostedDevice: string
+    view: string
+    noDevice: string
+    friends: (count: number) => string
+    moreFriends: (count: number) => string
+    noFriends: string
+    groups: (count: number) => string
+    members: (count: number) => string
+    moreGroups: (count: number) => string
+    noGroups: string
+    openChat: string
+    deleteBot: string
+    deleteConfirm: string
+  }
+  profile: {
+    title: string
+    displayName: string
+    bio: string
+    bioPlaceholder: string
+    save: string
+    saving: string
+    saved: string
+    saveFailed: string
+  }
+  settings: {
+    conversation: string
+    autonomy: string
+    channels: string
+    saveFailed: string
+    saving: string
+    contactTitle: string
+    contactDescription: string
+    allowAgentSender: string
+    allowHumanSender: string
+    roomInvite: string
+    defaultReplyTitle: string
+    defaultReplyDescription: string
+    keywords: string
+    keywordPlaceholder: string
+    dmAlwaysReply: string
+    contactOptions: Record<'open' | 'contacts_only' | 'whitelist' | 'closed', { label: string; hint: string }>
+    roomInviteOptions: Record<'open' | 'contacts_only' | 'closed', { label: string }>
+    attentionOptions: Record<'always' | 'mention_only' | 'keyword' | 'muted', { label: string; hint: string }>
+  }
+  files: {
+    title: string
+    subtitle: string
+    refresh: string
+    daemonUnavailable: string
+    loadFailed: string
+    empty: string
+    tooLarge: string
+    previewTooLarge: string
+  }
+}> = {
+  en: {
+    ariaLabel: 'Bot details',
+    close: 'Close',
+    defaultBadge: 'My Bot · Default',
+    botBadge: 'My Bot',
+    online: 'Online',
+    offline: 'Offline',
+    tabs: {
+      overview: 'Overview',
+      wallet: 'Wallet',
+      settings: 'Settings',
+      files: 'Files',
+    },
+    overview: {
+      activity7d: '7-day activity',
+      messages: 'Messages',
+      rooms: 'Rooms',
+      openTopics: 'Open',
+      completedTopics: 'Done',
+      hostedDevice: 'Hosted device',
+      view: 'View',
+      noDevice: 'No device linked',
+      friends: (count) => `Friends · ${count}`,
+      moreFriends: (count) => `${count} more`,
+      noFriends: 'No friends yet',
+      groups: (count) => `Joined groups · ${count}`,
+      members: (count) => `${count} members`,
+      moreGroups: (count) => `${count} more groups`,
+      noGroups: 'Not in any groups yet',
+      openChat: 'Open chat',
+      deleteBot: 'Delete this Bot',
+      deleteConfirm: 'Delete this Bot?',
+    },
+    profile: {
+      title: 'Profile',
+      displayName: 'Display name',
+      bio: 'Bio',
+      bioPlaceholder: 'Introduce this Bot (optional)',
+      save: 'Save',
+      saving: 'Saving...',
+      saved: 'Saved',
+      saveFailed: 'Failed to save',
+    },
+    settings: {
+      conversation: 'Conversation and replies',
+      autonomy: 'Autonomy',
+      channels: 'Channels',
+      saveFailed: 'Failed to save',
+      saving: 'Saving...',
+      contactTitle: 'Who can contact me',
+      contactDescription: 'Controls conversations and room invitations from other Agents or human users.',
+      allowAgentSender: 'Allow direct messages from other agents',
+      allowHumanSender: 'Allow messages from human users',
+      roomInvite: 'Room invitations',
+      defaultReplyTitle: 'Default reply policy',
+      defaultReplyDescription: 'Daemon attention: whether room messages should wake the LLM.',
+      keywords: 'Keywords',
+      keywordPlaceholder: 'Type a keyword and press Enter',
+      dmAlwaysReply: 'Direct messages are not affected by this setting and always reply.',
+      contactOptions: {
+        open: { label: 'Open', hint: 'Anyone can contact me' },
+        contacts_only: { label: 'Contacts only', hint: 'Contacts or members in the same room' },
+        whitelist: { label: 'Allowlist', hint: 'Contacts only (strict)' },
+        closed: { label: 'Closed', hint: 'Reject all new conversations; contact requests are still allowed' },
+      },
+      roomInviteOptions: {
+        open: { label: 'Open' },
+        contacts_only: { label: 'Contacts only' },
+        closed: { label: 'Closed' },
+      },
+      attentionOptions: {
+        always: { label: 'All', hint: 'Wake and reply to any message in a room' },
+        mention_only: { label: 'Mentions only', hint: 'Wake only when mentioned' },
+        keyword: { label: 'Keywords', hint: 'Wake only when a keyword matches' },
+        muted: { label: 'Muted', hint: 'Do not reply proactively in rooms' },
+      },
+    },
+    files: {
+      title: 'Runtime files',
+      subtitle: "This Agent's local files",
+      refresh: 'Refresh',
+      daemonUnavailable: 'Daemon is offline or this Agent is not hosted by a daemon',
+      loadFailed: 'Failed to load files',
+      empty: 'No files to display',
+      tooLarge: 'Too large',
+      previewTooLarge: 'File exceeds the preview size limit',
+    },
+  },
+  zh: {
+    ariaLabel: 'Bot 详情',
+    close: '关闭',
+    defaultBadge: 'My Bot · 默认',
+    botBadge: 'My Bot',
+    online: 'Online',
+    offline: 'Offline',
+    tabs: {
+      overview: '概览',
+      wallet: '钱包',
+      settings: '设置',
+      files: '文件',
+    },
+    overview: {
+      activity7d: '7 天活跃',
+      messages: '消息',
+      rooms: '房间',
+      openTopics: '打开',
+      completedTopics: '完成',
+      hostedDevice: '托管设备',
+      view: '查看',
+      noDevice: '未关联任何设备',
+      friends: (count) => `好友 · ${count}`,
+      moreFriends: (count) => `还有 ${count} 位`,
+      noFriends: '还没有好友',
+      groups: (count) => `加入的群 · ${count}`,
+      members: (count) => `${count} 成员`,
+      moreGroups: (count) => `还有 ${count} 个群`,
+      noGroups: '还没加入任何群',
+      openChat: '打开对话',
+      deleteBot: '删除此 Bot',
+      deleteConfirm: '确定要删除此 Bot 吗？',
+    },
+    profile: {
+      title: '资料',
+      displayName: '显示名称',
+      bio: '简介',
+      bioPlaceholder: '介绍这个 Bot（可选）',
+      save: '保存',
+      saving: '保存中...',
+      saved: '已保存',
+      saveFailed: '保存失败',
+    },
+    settings: {
+      conversation: '对话与回复',
+      autonomy: '自主',
+      channels: '接入',
+      saveFailed: '保存失败',
+      saving: '保存中...',
+      contactTitle: '谁能联系我',
+      contactDescription: '是否接受来自其他 Agent 或人类用户的对话与加入房间邀请。',
+      allowAgentSender: '接受其他 agent 直接对话',
+      allowHumanSender: '接受人类用户对话',
+      roomInvite: '加入房间邀请',
+      defaultReplyTitle: '默认回复策略',
+      defaultReplyDescription: 'Daemon 注意力：房间里收到消息后是否唤醒 LLM。',
+      keywords: '关键词',
+      keywordPlaceholder: '输入关键词后按回车添加',
+      dmAlwaysReply: '私聊不受此设置影响，始终回复',
+      contactOptions: {
+        open: { label: '公开', hint: '任何人都可以联系我' },
+        contacts_only: { label: '仅联系人', hint: '联系人或同房间成员' },
+        whitelist: { label: '白名单', hint: '仅联系人（严格）' },
+        closed: { label: '关闭', hint: '拒绝所有新对话（联系人申请仍可发起）' },
+      },
+      roomInviteOptions: {
+        open: { label: '公开' },
+        contacts_only: { label: '仅联系人' },
+        closed: { label: '关闭' },
+      },
+      attentionOptions: {
+        always: { label: '全部', hint: '房间里收到任何消息都唤醒回复' },
+        mention_only: { label: '仅被@', hint: '只在被 @ 时唤醒' },
+        keyword: { label: '关键词', hint: '命中关键词才唤醒' },
+        muted: { label: '静音', hint: '房间不主动回复' },
+      },
+    },
+    files: {
+      title: '运行时文件',
+      subtitle: '当前 Agent 的本地文件',
+      refresh: '刷新',
+      daemonUnavailable: 'Daemon 未在线或此 Agent 未由 daemon 托管',
+      loadFailed: '读取文件失败',
+      empty: '没有可显示的文件',
+      tooLarge: '过大',
+      previewTooLarge: '文件超过预览大小限制',
+    },
+  },
+}
