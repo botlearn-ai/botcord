@@ -7,10 +7,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, Search, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
+import DashboardMultiSelect from "./DashboardMultiSelect";
 import type { ContactInfo, UserAgent } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -44,7 +45,6 @@ export default function AddRoomMemberModal({
   const contacts = useDashboardChatStore((state) => state.overview?.contacts) ?? EMPTY_CONTACTS;
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents) ?? EMPTY_AGENTS;
 
-  const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,26 +72,9 @@ export default function AddRoomMemberModal({
       });
     }
 
-    const normalized = query.trim().toLowerCase();
     return Array.from(merged.values())
-      .filter((candidate) => {
-        if (!normalized) return true;
-        return (
-          candidate.displayName.toLowerCase().includes(normalized)
-          || candidate.participantId.toLowerCase().includes(normalized)
-        );
-      })
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
-  }, [contacts, existingMemberIds, ownedAgents, query]);
-
-  const toggleCandidate = (participantId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(participantId)) next.delete(participantId);
-      else next.add(participantId);
-      return next;
-    });
-  };
+  }, [contacts, existingMemberIds, ownedAgents]);
 
   const handleAddMembers = async () => {
     if (selectedIds.size === 0 || saving) return;
@@ -138,17 +121,6 @@ export default function AddRoomMemberModal({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-2 rounded border border-glass-border bg-glass-bg px-3">
-            <Search className="h-4 w-4 text-text-secondary/70" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t.searchAddableMembers}
-              className="w-full bg-transparent py-2.5 text-sm text-text-primary outline-none"
-            />
-          </div>
-
           <div className="flex items-center justify-between text-xs text-text-secondary">
             <span>{t.addMemberSelectableCount.replace("{count}", String(selectedIds.size))}</span>
             <span>{t.addMemberCandidateCount.replace("{count}", String(candidates.length))}</span>
@@ -159,43 +131,21 @@ export default function AddRoomMemberModal({
               {t.noAddableMembers}
             </div>
           ) : (
-            <div className="max-h-80 overflow-y-auto rounded border border-glass-border">
-              {candidates.map((candidate) => {
-                const checked = selectedIds.has(candidate.participantId);
-                return (
-                  <label
-                    key={candidate.participantId}
-                    className={`flex cursor-pointer items-center gap-3 border-b border-glass-border/60 px-4 py-3 text-sm last:border-b-0 ${
-                      checked ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleCandidate(candidate.participantId)}
-                      className="accent-neon-cyan"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-text-primary">{candidate.displayName}</span>
-                        <span
-                          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                            candidate.source === "owned_agent"
-                              ? "bg-neon-cyan/10 text-neon-cyan"
-                              : "bg-neon-green/10 text-neon-green"
-                          }`}
-                        >
-                          {candidate.source === "owned_agent" ? t.addMemberSourceOwnedAgent : t.addMemberSourceFriend}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/70">
-                        {candidate.participantId}
-                      </p>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
+            <DashboardMultiSelect
+              value={Array.from(selectedIds)}
+              onChange={(next) => setSelectedIds(new Set(next))}
+              options={candidates.map((candidate) => ({
+                value: candidate.participantId,
+                label: candidate.displayName,
+                sublabel: candidate.participantId,
+                badge: candidate.source === "owned_agent" ? t.addMemberSourceOwnedAgent : t.addMemberSourceFriend,
+                tone: candidate.source === "owned_agent" ? "cyan" : "green",
+              }))}
+              placeholder={t.addMembersAction}
+              searchPlaceholder={t.searchAddableMembers}
+              emptyLabel={t.noAddableMembers}
+              selectedLabel={(count) => t.addMemberSelectableCount.replace("{count}", String(count))}
+            />
           )}
         </div>
 
