@@ -234,8 +234,8 @@ export default function CreateAgentDialog({
   }
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!loaded && !loading) void refresh();
+  }, [loaded, loading, refresh]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
