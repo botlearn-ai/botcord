@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, FileArchive, Loader2, MessageSquare, Search, Users, User, X } from "lucide-react";
+import { FileArchive, Loader2, MessageSquare, Users, User, X } from "lucide-react";
 import { api, getActiveIdentity } from "@/lib/api";
 import type { Attachment } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import DashboardMultiSelect from "./DashboardMultiSelect";
 import { useShallow } from "zustand/react/shallow";
 
 interface ForwardTarget {
@@ -33,7 +34,6 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
   const router = useRouter();
   const { setOpenedRoomId } = useDashboardUIStore(useShallow((s) => ({ setOpenedRoomId: s.setOpenedRoomId })));
 
@@ -66,24 +66,6 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
         sublabel: r.room_id,
       })),
   ];
-
-  const targets = useMemo(() => {
-    if (!query.trim()) return allTargets;
-    const q = query.toLowerCase();
-    return allTargets.filter(
-      (t) => t.label.toLowerCase().includes(q) || t.sublabel?.toLowerCase().includes(q)
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, allTargets.length]);
-
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const handleSend = async () => {
     if (selected.size === 0 || sending) return;
@@ -161,19 +143,6 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative mx-4 mt-3">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500 pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索联系人或房间..."
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-500 focus:border-cyan-500/50 focus:outline-none"
-            autoFocus
-          />
-        </div>
-
         {/* Quote / file preview */}
         <div className="mx-4 mt-3 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-2">
           {sourceFile ? (
@@ -193,37 +162,35 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
           )}
         </div>
 
-        {/* Target list */}
-        <div className="max-h-64 overflow-y-auto px-4 py-2 space-y-1">
-          {targets.length === 0 && (
-            <p className="py-6 text-center text-xs text-zinc-500">暂无可用目标</p>
-          )}
-          {targets.map((t) => {
-            const isSelected = selected.has(t.id);
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => toggle(t.id)}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                  isSelected ? "bg-cyan-500/15 text-cyan-200" : "text-zinc-300 hover:bg-zinc-800"
-                }`}
-              >
-                {t.kind === "room" ? (
-                  <Users className="h-3.5 w-3.5 shrink-0 text-neon-purple/70" />
-                ) : t.kind === "agent" ? (
-                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-neon-cyan/70" />
-                ) : (
-                  <User className="h-3.5 w-3.5 shrink-0 text-neon-green/70" />
-                )}
-                <span className="flex-1 truncate text-xs font-medium">{t.label}</span>
-                {t.sublabel && (
-                  <span className="shrink-0 font-mono text-[10px] text-zinc-500 truncate max-w-[100px]">{t.sublabel}</span>
-                )}
-                {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-cyan-400" />}
-              </button>
-            );
-          })}
+        {/* Target selector */}
+        <div className="px-4 py-3">
+          <DashboardMultiSelect
+            value={Array.from(selected)}
+            onChange={(next) => setSelected(new Set(next))}
+            placeholder="选择发送目标"
+            searchPlaceholder="搜索联系人或房间..."
+            emptyLabel="暂无可用目标"
+            selectedLabel={(count) => (count > 0 ? `已选 ${count} 个` : "未选择")}
+            groups={[
+              {
+                options: allTargets.map((target) => ({
+                  value: target.id,
+                  label: target.label,
+                  sublabel: target.sublabel,
+                  badge: target.kind === "room" ? "Room" : target.kind === "agent" ? "Bot" : "Contact",
+                  tone: target.kind === "room" ? "purple" : target.kind === "agent" ? "cyan" : "green",
+                  icon:
+                    target.kind === "room" ? (
+                      <Users className="h-3.5 w-3.5 text-neon-purple/70" />
+                    ) : target.kind === "agent" ? (
+                      <MessageSquare className="h-3.5 w-3.5 text-neon-cyan/70" />
+                    ) : (
+                      <User className="h-3.5 w-3.5 text-neon-green/70" />
+                    ),
+                })),
+              },
+            ]}
+          />
         </div>
 
         {/* Footer */}

@@ -8,13 +8,14 @@
  */
 
 import { useMemo, useState } from "react";
-import { Loader2, Search } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { createRoomModal } from "@/lib/i18n/translations/dashboard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import DashboardMultiSelect, { type DashboardMultiSelectGroup } from "./DashboardMultiSelect";
 import type { ContactInfo, HumanRoomSummary } from "@/lib/types";
 
 const EMPTY_CONTACTS: ContactInfo[] = [];
@@ -44,37 +45,37 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [memberQuery, setMemberQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const filteredContacts = useMemo(() => {
-    const q = memberQuery.trim().toLowerCase();
-    if (!q) return contacts;
-    return contacts.filter((c) =>
-      c.display_name.toLowerCase().includes(q) ||
-      c.contact_agent_id.toLowerCase().includes(q) ||
-      (c.alias ?? "").toLowerCase().includes(q),
-    );
-  }, [contacts, memberQuery]);
-
-  const filteredBots = useMemo(() => {
-    const q = memberQuery.trim().toLowerCase();
-    if (!q) return ownedAgents;
-    return ownedAgents.filter((a) =>
-      a.display_name.toLowerCase().includes(q) ||
-      a.agent_id.toLowerCase().includes(q),
-    );
-  }, [ownedAgents, memberQuery]);
-
-  function toggleMember(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const memberGroups = useMemo<DashboardMultiSelectGroup[]>(() => {
+    const groups: DashboardMultiSelectGroup[] = [];
+    if (ownedAgents.length > 0) {
+      groups.push({
+        label: t.myBotsLabel,
+        options: ownedAgents.map((agent) => ({
+          value: agent.agent_id,
+          label: agent.display_name,
+          sublabel: agent.agent_id,
+          badge: "Bot",
+          tone: "cyan",
+        })),
+      });
+    }
+    if (contacts.length > 0) {
+      groups.push({
+        label: t.contactsLabel,
+        options: contacts.map((contact) => ({
+          value: contact.contact_agent_id,
+          label: contact.alias || contact.display_name,
+          sublabel: contact.contact_agent_id,
+          badge: "Contact",
+          tone: "green",
+        })),
+      });
+    }
+    return groups;
+  }, [contacts, ownedAgents, t.contactsLabel, t.myBotsLabel]);
 
   async function handleCreate() {
     const trimmed = name.trim();
@@ -172,97 +173,15 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
                   {t.noContacts}
                 </p>
               ) : (
-                <>
-                  <div className="mb-2 flex items-center gap-2 rounded border border-glass-border bg-glass-bg px-2">
-                    <Search className="h-3.5 w-3.5 text-text-secondary/70" />
-                    <input
-                      value={memberQuery}
-                      onChange={(e) => setMemberQuery(e.target.value)}
-                      placeholder={t.searchMembers}
-                      className="w-full bg-transparent py-1.5 text-xs text-text-primary outline-none"
-                    />
-                  </div>
-
-                  {ownedAgents.length > 0 && (
-                    <div className="mb-2">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary/60">
-                        {t.myBotsLabel}
-                      </p>
-                      <div className="max-h-40 overflow-y-auto rounded border border-glass-border">
-                        {filteredBots.length === 0 ? (
-                          <p className="px-3 py-2 text-[11px] text-text-secondary/60">
-                            {t.noBotsMatch}
-                          </p>
-                        ) : (
-                          filteredBots.map((a) => {
-                            const checked = selected.has(a.agent_id);
-                            return (
-                              <label
-                                key={a.agent_id}
-                                className={`flex cursor-pointer items-center gap-2 border-b border-glass-border/60 px-3 py-2 text-xs last:border-b-0 ${
-                                  checked ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleMember(a.agent_id)}
-                                  className="accent-neon-cyan"
-                                />
-                                <span className="flex-1 truncate text-text-primary">
-                                  {a.display_name}
-                                </span>
-                                <span className="font-mono text-[10px] text-text-secondary/70">
-                                  {a.agent_id}
-                                </span>
-                              </label>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {contacts.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary/60">
-                        {t.contactsLabel}
-                      </p>
-                      <div className="max-h-40 overflow-y-auto rounded border border-glass-border">
-                        {filteredContacts.length === 0 ? (
-                          <p className="px-3 py-2 text-[11px] text-text-secondary/60">
-                            {t.noContactsMatch}
-                          </p>
-                        ) : (
-                          filteredContacts.map((c: ContactInfo) => {
-                            const checked = selected.has(c.contact_agent_id);
-                            return (
-                              <label
-                                key={c.contact_agent_id}
-                                className={`flex cursor-pointer items-center gap-2 border-b border-glass-border/60 px-3 py-2 text-xs last:border-b-0 ${
-                                  checked ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleMember(c.contact_agent_id)}
-                                  className="accent-neon-cyan"
-                                />
-                                <span className="flex-1 truncate text-text-primary">
-                                  {c.alias || c.display_name}
-                                </span>
-                                <span className="font-mono text-[10px] text-text-secondary/70">
-                                  {c.contact_agent_id}
-                                </span>
-                              </label>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </>
+                <DashboardMultiSelect
+                  value={Array.from(selected)}
+                  onChange={(next) => setSelected(new Set(next))}
+                  groups={memberGroups}
+                  placeholder={t.membersLabel}
+                  searchPlaceholder={t.searchMembers}
+                  emptyLabel={`${t.noBotsMatch} ${t.noContactsMatch}`}
+                  selectedLabel={(count) => (count > 0 ? `${count} ${t.selected}` : t.selected)}
+                />
               )}
             </div>
           </section>
