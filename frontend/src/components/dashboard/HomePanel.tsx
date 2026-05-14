@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "nextjs-toploader/app";
 import {
   ArrowRight,
@@ -161,6 +162,38 @@ function InlineTooltip({
   );
 }
 
+export function BotEmptyHero({ onCreateBot }: { onCreateBot: () => void }) {
+  const t = homePanelI18n[useLanguage()];
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-dashed border-glass-border bg-deep-black-light/40">
+      <div className="pointer-events-none absolute -left-12 -top-16 h-48 w-48 rounded-full bg-neon-cyan/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-12 -bottom-16 h-48 w-48 rounded-full bg-neon-purple/10 blur-3xl" />
+      <div className="relative flex flex-col items-center gap-5 px-6 py-12 text-center sm:py-14">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
+          <Bot className="h-7 w-7" />
+        </div>
+        <div className="max-w-md space-y-2">
+          <h3 className="text-xl font-semibold text-text-primary">
+            {t.noBotTitle}
+          </h3>
+          <p className="text-sm leading-relaxed text-text-secondary/80">
+            {t.noBotDescription}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCreateBot}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/15 px-5 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/25"
+        >
+          <Plus className="h-4 w-4" />
+          {t.createFirstBot}
+        </button>
+        <p className="text-[11px] text-text-tertiary">{t.emptyHeroEta}</p>
+      </div>
+    </div>
+  );
+}
+
 export function BotOnboardingSteps({
   hasOnlineDaemon,
   daemonLoading,
@@ -281,7 +314,45 @@ export function BotOnboardingSteps({
   );
 }
 
-function TerminalHowToPopover() {
+function TerminalHowToButton() {
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const popoverRef = useRef<HTMLSpanElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    function place() {
+      const el = triggerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const W = 320; // matches w-80
+      const margin = 8;
+      let left = rect.right + margin;
+      if (left + W > window.innerWidth - margin) {
+        left = Math.max(margin, rect.right - W);
+      }
+      const H = popoverRef.current?.getBoundingClientRect().height ?? 400;
+      // Center popover vertically on the trigger, then clamp to viewport.
+      let top = rect.top + rect.height / 2 - H / 2;
+      if (top + H > window.innerHeight - margin) {
+        top = window.innerHeight - H - margin;
+      }
+      if (top < margin) top = margin;
+      setPos({ top, left });
+    }
+    place();
+    // Re-place once the popover renders so its measured height kicks in.
+    const raf = requestAnimationFrame(place);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
+
   const steps = [
     {
       title: "Open Terminal",
@@ -298,7 +369,44 @@ function TerminalHowToPopover() {
   ];
 
   return (
-    <span className="pointer-events-none absolute right-0 top-full z-[95] mt-2 w-80 rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left opacity-0 shadow-2xl shadow-black/50 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:left-full sm:right-auto sm:top-0 sm:ml-3 sm:mt-0">
+    <span
+      ref={triggerRef}
+      className="relative inline-flex w-fit shrink-0"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan focus:outline-none focus:ring-2 focus:ring-neon-cyan/35"
+      >
+        <Info className="h-3.5 w-3.5" />
+        How to run it?
+      </button>
+      {open && pos && typeof document !== "undefined"
+        ? createPortal(
+            <TerminalHowToPopoverBody ref={popoverRef} steps={steps} top={pos.top} left={pos.left} />,
+            document.body,
+          )
+        : null}
+    </span>
+  );
+}
+
+const TerminalHowToPopoverBody = forwardRef<
+  HTMLSpanElement,
+  {
+    steps: Array<{ title: string; body: string }>;
+    top: number;
+    left: number;
+  }
+>(function TerminalHowToPopoverBody({ steps, top, left }, ref) {
+  return (
+    <span
+      ref={ref}
+      style={{ top, left }}
+      className="pointer-events-none fixed z-[200] w-80 rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left shadow-2xl shadow-black/50">
       <span className="block border-b border-glass-border pb-3">
         <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan">
           <Terminal className="h-3.5 w-3.5" />
@@ -354,27 +462,23 @@ function TerminalHowToPopover() {
       </span>
     </span>
   );
+});
+
+function TerminalWord({ children }: { children: ReactNode }) {
+  return <span className="font-semibold text-neon-cyan">{children}</span>;
 }
 
-export function DeviceConnectModal({
+export function DeviceConnectPanel({
   connected,
-  connectedActionLabel = "Create a new bot",
   daemonLoading,
-  title = "Connect Device",
-  description = "Connect a device, then BotCord can host Bots on it.",
-  onClose,
-  onCreateBot,
   onRefreshDaemons,
 }: {
   connected: boolean;
-  connectedActionLabel?: string;
   daemonLoading: boolean;
-  title?: string;
-  description?: string;
-  onClose: () => void;
-  onCreateBot: () => void;
   onRefreshDaemons: () => void;
 }) {
+  const locale = useLanguage();
+  const isZh = locale === "zh";
   const [installToken, setInstallToken] = useState<string | undefined>();
   const [tokenLoading, setTokenLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -399,16 +503,6 @@ export function DeviceConnectModal({
     // Run once when the modal opens; the Refresh button handles retries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      onClose();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
 
   async function refreshInstallCommand(): Promise<void> {
     setTokenLoading(true);
@@ -452,62 +546,26 @@ export function DeviceConnectModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-deep-black/80 px-4 py-6 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="connect-device-title"
-        className="w-full max-w-xl rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl shadow-black/40"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-glass-border px-5 py-4">
-          <div>
-            <h3 id="connect-device-title" className="text-base font-semibold text-text-primary">
-              {title}
-            </h3>
-            <p className="mt-1 text-sm text-text-secondary/70">
-              {description}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-4 px-5 py-5">
+    <div className="space-y-4">
           <div className="rounded-2xl border border-glass-border bg-glass-bg/25 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neon-cyan/70">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/60">
                   Install command
                 </div>
                 <h4 className="text-sm font-semibold leading-snug text-text-primary">
-                  Run this command in your computer's Terminal
+                  {isZh ? (
+                    <>在你的电脑的<TerminalWord>终端</TerminalWord>里运行此命令</>
+                  ) : (
+                    <>Run this command in your computer's <TerminalWord>Terminal</TerminalWord></>
+                  )}
                 </h4>
                 <p className="mt-1 text-xs text-text-secondary/70">
                   Once it connects, it will show up here automatically.
                 </p>
               </div>
 
-              <span className="group relative inline-flex w-fit shrink-0">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan focus:outline-none focus:ring-2 focus:ring-neon-cyan/35"
-                >
-                  <Info className="h-3.5 w-3.5" />
-                  How to run it?
-                </button>
-                <TerminalHowToPopover />
-              </span>
+              <TerminalHowToButton />
             </div>
 
             <div className="mt-4 overflow-hidden rounded-xl border border-glass-border bg-deep-black">
@@ -553,54 +611,9 @@ export function DeviceConnectModal({
             </div>
           </div>
 
-          <div className="rounded-xl border border-glass-border bg-glass-bg/35 p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-text-primary">
-              {deviceConnected ? (
-                <CheckCircle2 className="h-4 w-4 text-neon-green" />
-              ) : (
-                <span className="h-2.5 w-2.5 rounded-full border border-text-secondary/70" />
-              )}
-              {deviceConnected
-                ? "Device connected"
-                : "Waiting for your device..."}
-            </div>
-            <div className="ml-5 space-y-1">
-              <div className="flex items-center gap-2 text-sm text-text-secondary">
-                {deviceConnected ? (
-                  <Check className="h-4 w-4 text-neon-green" />
-                ) : daemonLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />
-                ) : (
-                  <span className="h-2 w-2 rounded-full border border-text-secondary/70" />
-                )}
-                {deviceConnected
-                  ? "Ready to host Bots"
-                  : "Listening for connections"}
-              </div>
-              <p className="max-w-sm text-xs text-text-secondary/70">
-                {deviceConnected
-                  ? "You can close this dialog and create your Bot."
-                  : "This page will update automatically once your device connects."}
-              </p>
-            </div>
-          </div>
-
-          {deviceConnected ? (
-            <div className="flex justify-end border-t border-glass-border pt-4">
-              <button
-                type="button"
-                onClick={onCreateBot}
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/45 bg-neon-cyan/10 px-5 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/20"
-              >
-                <Plus className="h-4 w-4" />
-                {connectedActionLabel}
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 border-t border-glass-border pt-4 text-sm text-text-secondary/70 sm:flex-row sm:items-center sm:justify-between">
-              <span>
-                Already running BotCord on this machine?
-              </span>
+          {!deviceConnected && (
+            <div className="flex flex-col gap-3 text-sm text-text-secondary/70 sm:flex-row sm:items-center sm:justify-between">
+              <span>Already running BotCord on this machine?</span>
               <button
                 type="button"
                 onClick={handleRefresh}
@@ -616,8 +629,6 @@ export function DeviceConnectModal({
               </button>
             </div>
           )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -726,7 +737,6 @@ export default function HomePanel() {
   );
   const [statsByAgent, setStatsByAgent] = useState<Record<string, ActivityStats>>({});
   const [greetingPeriod, setGreetingPeriod] = useState<GreetingPeriod>(() => getGreetingPeriod());
-  const [deviceModalOpen, setDeviceModalOpen] = useState(false);
   const hasOnlineDaemon = useMemo(
     () => daemons.some((daemon) => daemon.status === "online"),
     [daemons],
@@ -749,14 +759,6 @@ export default function HomePanel() {
     }, 60_000);
     return () => window.clearInterval(id);
   }, []);
-
-  useEffect(() => {
-    if (!deviceModalOpen || hasOnlineDaemon) return;
-    const id = window.setInterval(() => {
-      void refreshDaemons({ quiet: true });
-    }, 3_000);
-    return () => window.clearInterval(id);
-  }, [deviceModalOpen, hasOnlineDaemon, refreshDaemons]);
 
   const previewOwnedAgents = useMemo(() => ownedAgents.slice(0, 5), [ownedAgents]);
 
@@ -815,28 +817,11 @@ export default function HomePanel() {
                 />
               ))}
               <CreateNewBotCard
-                onClick={() => {
-                  if (!hasOnlineDaemon) {
-                    setDeviceModalOpen(true);
-                    return;
-                  }
-                  openCreateBotModal();
-                }}
+                onClick={() => openCreateBotModal()}
               />
             </div>
           ) : (
-            <BotOnboardingSteps
-              hasOnlineDaemon={hasOnlineDaemon}
-              daemonLoading={daemonLoading}
-              onConnectDevice={() => setDeviceModalOpen(true)}
-              onCreateBot={() => {
-                if (!hasOnlineDaemon) {
-                  setDeviceModalOpen(true);
-                  return;
-                }
-                openCreateBotModal();
-              }}
-            />
+            <BotEmptyHero onCreateBot={() => openCreateBotModal()} />
           )}
         </section>
 
@@ -926,18 +911,6 @@ export default function HomePanel() {
           )}
         </section>
       </div>
-      {deviceModalOpen ? (
-        <DeviceConnectModal
-          connected={hasOnlineDaemon}
-          daemonLoading={daemonLoading}
-          onClose={() => setDeviceModalOpen(false)}
-          onCreateBot={() => {
-            setDeviceModalOpen(false);
-            openCreateBotModal();
-          }}
-          onRefreshDaemons={() => void refreshDaemons({ quiet: true })}
-        />
-      ) : null}
     </div>
   );
 }
