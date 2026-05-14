@@ -84,13 +84,14 @@ export default function RoomList({
     loadRoomMessages: state.loadRoomMessages,
     publicAgents: state.publicAgents,
   })));
-  const { focusedRoomId, messagesPane, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane } = useDashboardUIStore(useShallow((state) => ({
+  const { focusedRoomId, messagesPane, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane, setUserChatAgentId } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
     messagesPane: state.messagesPane,
     closeMobileSidebar: state.closeMobileSidebar,
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
     setMessagesPane: state.setMessagesPane,
+    setUserChatAgentId: state.setUserChatAgentId,
   })));
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const switchActiveAgent = useDashboardSessionStore((state) => state.switchActiveAgent);
@@ -145,6 +146,7 @@ export default function RoomList({
       if (agentId && agentId !== activeAgentId) {
         await switchActiveAgent(agentId);
       }
+      setUserChatAgentId(agentId || null);
       setMessagesPane("user-chat");
       setFocusedRoomId(null);
       setOpenedRoomId(null);
@@ -177,6 +179,7 @@ export default function RoomList({
   const handleSelectUserChat = () => {
     if (!showUserChatEntry) return;
     setMessagesPane("user-chat");
+    setUserChatAgentId(null);
     setFocusedRoomId(null);
     setOpenedRoomId(null);
     closeMobileSidebar();
