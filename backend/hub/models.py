@@ -479,6 +479,8 @@ class MessageRecord(Base):
         UniqueConstraint("msg_id", "receiver_id"),
         Index("ix_message_records_retry", "state", "next_retry_at"),
         Index("ix_message_records_room_id_created_at_id", "room_id", "created_at", "id"),
+        Index("ix_message_records_sender_created_room", "sender_id", "created_at", "room_id"),
+        Index("ix_message_records_receiver_created_room", "receiver_id", "created_at", "room_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -721,6 +723,7 @@ class Topic(Base):
     __tablename__ = "topics"
     __table_args__ = (
         UniqueConstraint("room_id", "title", name="uq_topic_room_title"),
+        Index("ix_topics_creator_updated_status", "creator_id", "updated_at", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
