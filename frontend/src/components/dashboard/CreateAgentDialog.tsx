@@ -263,6 +263,30 @@ export default function CreateAgentDialog({
     prevHadOnlineRef.current = hasOnline;
   }, [loaded, onlineDaemons.length]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !submitting) onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, submitting]);
+
+  // Brief celebratory state when a daemon transitions from offline to online
+  // while the user is staring at step 1. Without this, the dialog snaps to
+  // step 2 with no acknowledgement that the device just connected.
+  useEffect(() => {
+    if (!loaded) return;
+    const hasOnline = onlineDaemons.length > 0;
+    const prev = prevHadOnlineRef.current;
+    if (prev === false && hasOnline) {
+      setJustConnected(true);
+      const t = window.setTimeout(() => setJustConnected(false), 1500);
+      prevHadOnlineRef.current = hasOnline;
+      return () => window.clearTimeout(t);
+    }
+    prevHadOnlineRef.current = hasOnline;
+  }, [loaded, onlineDaemons.length]);
+
   // Auto-select first online daemon once the list arrives.
   // If a preselectedDaemonId was provided, use that instead.
   useEffect(() => {
