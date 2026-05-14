@@ -270,10 +270,7 @@ export default function RoomSettingsModal({
     () => sessionOwnedAgents.filter((agent) => roomMemberIds.has(agent.agent_id)),
     [roomMemberIds, sessionOwnedAgents],
   );
-  const policyAgentOptions = useMemo(() => {
-    return roomOwnedAgents.length > 0 ? roomOwnedAgents : sessionOwnedAgents;
-  }, [roomOwnedAgents, sessionOwnedAgents]);
-  const selectedPolicyAgent = policyAgentOptions.find((agent) => agent.agent_id === policyAgentId) ?? null;
+  const selectedPolicyAgent = roomOwnedAgents.find((agent) => agent.agent_id === policyAgentId) ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -300,12 +297,12 @@ export default function RoomSettingsModal({
 
   useEffect(() => {
     setPolicyAgentId((current) => {
-      if (current && policyAgentOptions.some((agent) => agent.agent_id === current)) {
+      if (current && roomOwnedAgents.some((agent) => agent.agent_id === current)) {
         return current;
       }
-      return policyAgentOptions[0]?.agent_id ?? "";
+      return roomOwnedAgents[0]?.agent_id ?? "";
     });
-  }, [policyAgentOptions]);
+  }, [roomOwnedAgents]);
 
   useEffect(() => {
     if (!initialSubscriptionProductId) return;
@@ -895,15 +892,15 @@ export default function RoomSettingsModal({
                     <select
                       value={policyAgentId}
                       onChange={(event) => setPolicyAgentId(event.target.value)}
-                      disabled={policyAgentOptions.length === 0}
+                      disabled={roomOwnedAgents.length === 0}
                       className="min-w-0 flex-1 rounded-lg border border-glass-border bg-deep-black px-2 py-2 text-sm text-text-primary"
                     >
-                      {policyAgentOptions.length === 0 ? (
+                      {roomOwnedAgents.length === 0 ? (
                         <option value="">
-                          {locale === "zh" ? "这个房间没有你的 Bot" : "No owned bots in this room"}
+                          {locale === "zh" ? "当前群里没有你的 Bot" : "No owned bots in this room"}
                         </option>
                       ) : (
-                        policyAgentOptions.map((agent) => (
+                        roomOwnedAgents.map((agent) => (
                           <option key={agent.agent_id} value={agent.agent_id}>
                             {agent.display_name} ({agent.agent_id})
                           </option>
@@ -923,8 +920,8 @@ export default function RoomSettingsModal({
                   {members.length > 0 && roomOwnedAgents.length === 0 ? (
                     <p className="mt-2 text-xs text-text-secondary/70">
                       {locale === "zh"
-                        ? "未检测到本房间里的自有 Bot；你仍可预先为自己的 Bot 设置规则。"
-                        : "No owned bot was detected in this room; you can still stage a policy for your bot."}
+                        ? "只能设置已经在当前群里的自有 Bot。"
+                        : "Only owned bots that are already in this room can be configured."}
                     </p>
                   ) : null}
                 </div>
