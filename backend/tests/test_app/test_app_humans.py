@@ -368,6 +368,135 @@ async def test_human_effective_role_uses_highest_owned_bot_role(
 
 
 @pytest.mark.asyncio
+async def test_human_invite_uses_owned_bot_invite_override(
+    client, seed, db_session: AsyncSession
+):
+    owned_bot = Agent(
+        agent_id="ag_inviteok01",
+        display_name="Invite Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    target = Agent(
+        agent_id="ag_invitetgt1",
+        display_name="Invite Target",
+        message_policy=MessagePolicy.open,
+    )
+    owner = Agent(
+        agent_id="ag_invowner1",
+        display_name="Room Owner",
+        message_policy=MessagePolicy.open,
+    )
+    room = Room(
+        room_id="rm_invite_override",
+        name="Invite Override",
+        description="",
+        owner_id=owner.agent_id,
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+        default_invite=False,
+    )
+    db_session.add_all([owned_bot, target, owner, room])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=owner.agent_id,
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=owned_bot.agent_id,
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+            can_invite=True,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+            can_invite=False,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/humans/me/rooms/rm_invite_override/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": target.agent_id},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["participant_id"] == target.agent_id
+
+
+@pytest.mark.asyncio
+async def test_human_invite_respects_owned_bot_explicit_invite_deny(
+    client, seed, db_session: AsyncSession
+):
+    owned_bot = Agent(
+        agent_id="ag_invdeny01",
+        display_name="Invite Denied Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    target = Agent(
+        agent_id="ag_invdenyt1",
+        display_name="Invite Denied Target",
+        message_policy=MessagePolicy.open,
+    )
+    owner = Agent(
+        agent_id="ag_invowner2",
+        display_name="Room Owner",
+        message_policy=MessagePolicy.open,
+    )
+    room = Room(
+        room_id="rm_invite_deny",
+        name="Invite Deny",
+        description="",
+        owner_id=owner.agent_id,
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+        default_invite=False,
+    )
+    db_session.add_all([owned_bot, target, owner, room])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=owner.agent_id,
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=owned_bot.agent_id,
+            participant_type=ParticipantType.agent,
+            role=RoomRole.admin,
+            can_invite=False,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+            can_invite=False,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/humans/me/rooms/rm_invite_deny/members",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+        json={"participant_id": target.agent_id},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_list_owned_agent_rooms_excludes_current_human_rooms(
     client, seed, db_session: AsyncSession
 ):

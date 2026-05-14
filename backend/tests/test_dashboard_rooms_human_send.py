@@ -280,6 +280,51 @@ async def test_active_agent_send_inherits_sibling_owned_bot_role(
 
 
 @pytest.mark.asyncio
+async def test_human_send_respects_owned_bot_explicit_send_deny(
+    client: AsyncClient, seed: dict, db_session: AsyncSession
+):
+    user = (
+        await db_session.execute(select(User).where(User.id == uuid.UUID(seed["uid1"])))
+    ).scalar_one()
+    room = Room(
+        room_id="rm_admin_send_deny",
+        name="Admin Deny",
+        description="",
+        owner_id=seed["agent3"],
+        visibility=RoomVisibility.public,
+        join_policy=RoomJoinPolicy.open,
+        default_send=False,
+    )
+    db_session.add(room)
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(room_id=room.room_id, agent_id=seed["agent3"], role=RoomRole.owner),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=seed["agent1"],
+            participant_type=ParticipantType.agent,
+            role=RoomRole.admin,
+            can_send=False,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=user.human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+            can_send=False,
+        ),
+    ])
+    await db_session.commit()
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_admin_send_deny/send",
+        headers={"Authorization": f"Bearer {seed['token1']}"},
+        json={"text": "denied"},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_active_agent_not_owned(client: AsyncClient, seed: dict):
     # token1 is Alice; ag_user2___ belongs to Bob
     r = await client.post(

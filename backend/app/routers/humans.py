@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
-from app.auth_room import effective_human_room_role, load_owned_agent_ids
+from app.auth_room import effective_human_can_invite, effective_human_room_role, load_owned_agent_ids
 from app.routers.dashboard import _build_rooms_from_sql
 from hub.database import get_db
 from hub.enums import (
@@ -1138,12 +1138,14 @@ async def create_room_invite_as_human(
     if inviter is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
-    effective_role = await _effective_human_role(
-        db, inviter.role, room, ctx.user_id, owned_agent_ids
+    can_invite = await effective_human_can_invite(
+        db,
+        room=room,
+        member=inviter,
+        user_id=ctx.user_id,
+        owned_agent_ids=owned_agent_ids,
     )
-    if effective_role not in (RoomRole.owner, RoomRole.admin) and not bool(
-        inviter.can_invite or room.default_invite
-    ):
+    if not can_invite:
         raise HTTPException(
             status_code=403,
             detail="You do not have invite permission",
@@ -1219,13 +1221,12 @@ async def invite_room_member_as_human(
     if inviter is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
-    effective_role = await _effective_human_role(
-        db, inviter.role, room, ctx.user_id, owned_agent_ids
-    )
-    can_invite = (
-        effective_role in (RoomRole.owner, RoomRole.admin)
-        or inviter.can_invite
-        or room.default_invite
+    can_invite = await effective_human_can_invite(
+        db,
+        room=room,
+        member=inviter,
+        user_id=ctx.user_id,
+        owned_agent_ids=owned_agent_ids,
     )
     if not can_invite:
         raise HTTPException(status_code=403, detail="You don't have permission to invite members")

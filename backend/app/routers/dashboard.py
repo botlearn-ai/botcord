@@ -16,7 +16,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_active_agent, require_user, require_user_with_optional_agent
-from app.auth_room import effective_human_room_role, resolve_provider_agent_for_room, viewer_can_admin_room
+from app.auth_room import (
+    effective_human_room_role,
+    effective_human_send_member,
+    resolve_provider_agent_for_room,
+    viewer_can_admin_room,
+)
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
 from hub.dashboard_message_shaping import (
@@ -2638,18 +2643,22 @@ async def human_room_send(
     if not room.allow_human_send:
         raise HTTPException(status_code=403, detail="Human send disabled for this room")
 
-    effective_role = await _effective_dashboard_member_role(
-        db, ctx=ctx, room=room, member=active_member
+    effective_member = await effective_human_send_member(
+        db,
+        room=room,
+        member=active_member,
+        user_id=ctx.user_id,
     )
-    effective_member = active_member
-    if effective_role != active_member.role:
+    if effective_member is None:
+        raise HTTPException(status_code=403, detail="Sender cannot send in this room")
+    if effective_member.agent_id != active_member.agent_id:
         effective_member = RoomMember(
             room_id=active_member.room_id,
             agent_id=active_member.agent_id,
             participant_type=active_member.participant_type,
-            role=effective_role,
-            can_send=None,
-            can_invite=None,
+            role=effective_member.role,
+            can_send=effective_member.can_send,
+            can_invite=effective_member.can_invite,
         )
 
     # _can_send (step 6)
