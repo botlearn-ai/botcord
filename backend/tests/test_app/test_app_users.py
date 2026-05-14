@@ -84,7 +84,7 @@ async def seed_user(db_session: AsyncSession):
         avatar_url="https://example.com/avatar.png",
         status="active",
         supabase_user_id=supabase_uuid,
-        max_agents=10,
+        max_agents=30,
     )
     db_session.add(user)
 
@@ -142,7 +142,7 @@ async def test_get_me(client: AsyncClient, seed_user: dict):
     assert len(data["agents"]) == 1
     assert data["agents"][0]["agent_id"] == "ag_testuser001"
     assert data["agents"][0]["is_default"] is True
-    assert data["max_agents"] == 10
+    assert data["max_agents"] == 30
 
 
 @pytest.mark.asyncio

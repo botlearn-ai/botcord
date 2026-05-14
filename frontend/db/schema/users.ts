@@ -7,7 +7,7 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   status: varchar("status", { length: 20 }).default("active").notNull(),
   supabaseUserId: uuid("supabase_user_id").notNull().unique(),
-  maxAgents: integer("max_agents").default(10).notNull(),
+  maxAgents: integer("max_agents").default(30).notNull(),
   bannedAt: timestamp("banned_at", { withTimezone: true }),
   banReason: text("ban_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

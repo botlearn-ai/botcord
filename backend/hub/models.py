@@ -1084,7 +1084,7 @@ class User(Base):
         index=True,
         default=generate_human_id,
     )
-    max_agents: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    max_agents: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     banned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ban_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
