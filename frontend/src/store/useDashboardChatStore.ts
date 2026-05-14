@@ -17,10 +17,12 @@ import type {
   PublicHumanProfile,
   PublicRoom,
   RealtimeMetaEvent,
+  UserAgent,
 } from "@/lib/types";
 import { api, humansApi } from "@/lib/api";
 import {
   buildVisibleMessageRooms,
+  compareRoomsByActivityDesc,
   roomMessagesInFlight,
   roomMessagesReloadPending,
   roomPollInFlight,
@@ -79,6 +81,83 @@ function getRoomMessageSnapshot(room: DashboardRoom | null): string | null {
   return room?.last_message_at ?? null;
 }
 
+function ownerChatRoomIdForOptimistic(agentId: string): string {
+  return `rm_oc_pending_${agentId}`;
+}
+
+function isOwnerChatSummary(room: Pick<HumanAgentRoomSummary, "room_id">): boolean {
+  return room.room_id.startsWith("rm_oc_");
+}
+
+function ownerChatAgentId(room: HumanAgentRoomSummary): string | null {
+  if (!isOwnerChatSummary(room)) return null;
+  return room.bots[0]?.agent_id ?? null;
+}
+
+function buildOptimisticOwnerChatRoom(
+  agent: Pick<UserAgent, "agent_id" | "display_name">,
+  roomId?: string | null,
+  existing?: HumanAgentRoomSummary,
+): HumanAgentRoomSummary {
+  const now = new Date().toISOString();
+  return {
+    ...existing,
+    room_id: roomId || ownerChatRoomIdForOptimistic(agent.agent_id),
+    name: existing?.name || agent.display_name || agent.agent_id,
+    description: existing?.description ?? null,
+    rule: existing?.rule ?? null,
+    owner_id: agent.agent_id,
+    visibility: existing?.visibility || "private",
+    join_policy: existing?.join_policy || "invite_only",
+    member_count: existing?.member_count ?? 1,
+    created_at: existing?.created_at ?? now,
+    required_subscription_product_id: existing?.required_subscription_product_id ?? null,
+    last_message_preview: existing?.last_message_preview ?? null,
+    last_message_at: existing?.last_message_at ?? now,
+    last_sender_name: existing?.last_sender_name ?? null,
+    allow_human_send: existing?.allow_human_send ?? true,
+    members_preview: existing?.members_preview ?? null,
+    bots: existing?.bots ?? [{
+      agent_id: agent.agent_id,
+      display_name: agent.display_name || agent.agent_id,
+      role: "owner",
+    }],
+  };
+}
+
+function mergeOptimisticOwnerChatRooms(
+  rooms: HumanAgentRoomSummary[],
+  optimisticByAgent: Record<string, HumanAgentRoomSummary>,
+): HumanAgentRoomSummary[] {
+  const optimisticRooms = Object.values(optimisticByAgent);
+  if (optimisticRooms.length === 0) return rooms;
+
+  const optimisticAgentIds = new Set(optimisticRooms.map((room) => room.bots[0]?.agent_id).filter(Boolean));
+  const baseRooms = rooms.filter((room) => {
+    const agentId = ownerChatAgentId(room);
+    return !agentId || !optimisticAgentIds.has(agentId);
+  });
+  return [...baseRooms, ...optimisticRooms].sort(compareRoomsByActivityDesc);
+}
+
+function reconcileOptimisticOwnerChatRooms(
+  serverRooms: HumanAgentRoomSummary[],
+  optimisticByAgent: Record<string, HumanAgentRoomSummary>,
+): Record<string, HumanAgentRoomSummary> {
+  if (Object.keys(optimisticByAgent).length === 0) return optimisticByAgent;
+
+  const serverOwnerChatAgents = new Set(
+    serverRooms
+      .map(ownerChatAgentId)
+      .filter((agentId): agentId is string => Boolean(agentId)),
+  );
+  const next = { ...optimisticByAgent };
+  for (const agentId of serverOwnerChatAgents) {
+    delete next[agentId];
+  }
+  return next;
+}
+
 export function mapOwnedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): DashboardRoom {
   return ownedAgentRoomToDashboardRoom(room);
 }
@@ -113,6 +192,7 @@ interface DashboardChatState {
   publicHumansLoaded: boolean;
   recentVisitedRooms: PublicRoom[];
   ownedAgentRooms: HumanAgentRoomSummary[];
+  optimisticOwnerChatRooms: Record<string, HumanAgentRoomSummary>;
   ownedAgentRoomsLoading: boolean;
   ownedAgentRoomsLoaded: boolean;
   roomMemberVersions: Record<string, number>;
@@ -145,6 +225,7 @@ interface DashboardChatState {
   loadPublicAgents: (q?: string) => Promise<void>;
   loadPublicHumans: (q?: string) => Promise<void>;
   loadOwnedAgentRooms: () => Promise<void>;
+  upsertOptimisticOwnerChatRoom: (agent: Pick<UserAgent, "agent_id" | "display_name">, roomId?: string | null) => void;
 }
 
 const initialChatState = {
@@ -177,6 +258,7 @@ const initialChatState = {
   publicHumansLoaded: false,
   recentVisitedRooms: [],
   ownedAgentRooms: [],
+  optimisticOwnerChatRooms: {},
   ownedAgentRoomsLoading: false,
   ownedAgentRoomsLoaded: false,
   roomMemberVersions: {},
@@ -203,6 +285,7 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || state.leavingRoomId !== null
     || state.publicRoomsLoading
     || state.publicAgentsLoading
+    || Object.keys(state.optimisticOwnerChatRooms).length > 0
     || state.ownedAgentRoomsLoading
   );
 }
@@ -672,8 +755,13 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         set({ ownedAgentRoomsLoading: true });
         try {
           const result = await humansApi.listAgentRooms();
+          const optimisticOwnerChatRooms = reconcileOptimisticOwnerChatRooms(
+            result.rooms,
+            get().optimisticOwnerChatRooms,
+          );
           set({
-            ownedAgentRooms: result.rooms,
+            ownedAgentRooms: mergeOptimisticOwnerChatRooms(result.rooms, optimisticOwnerChatRooms),
+            optimisticOwnerChatRooms,
             ownedAgentRoomsLoading: false,
             ownedAgentRoomsLoaded: true,
           });
@@ -686,6 +774,25 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
       },
 
+      upsertOptimisticOwnerChatRoom: (agent, roomId) => {
+        set((state) => {
+          const existingOwnerChatRoom = state.ownedAgentRooms.find((room) => ownerChatAgentId(room) === agent.agent_id);
+          const optimisticRoom = roomId || !existingOwnerChatRoom
+            ? buildOptimisticOwnerChatRoom(agent, roomId, existingOwnerChatRoom)
+            : existingOwnerChatRoom;
+          const optimisticOwnerChatRooms = {
+            ...state.optimisticOwnerChatRooms,
+            [agent.agent_id]: optimisticRoom,
+          };
+          return {
+            optimisticOwnerChatRooms,
+            ownedAgentRooms: mergeOptimisticOwnerChatRooms(
+              state.ownedAgentRooms,
+              optimisticOwnerChatRooms,
+            ),
+          };
+        });
+      },
     }),
     {
       name: "dashboard-chat-storage",

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardOverview } from "@/lib/types";
+import type { DashboardOverview, HumanAgentRoomSummary } from "@/lib/types";
 
 const mocks = vi.hoisted(() => ({
   getRoomMessages: vi.fn(),
   leaveRoom: vi.fn(),
   getOverview: vi.fn(),
   getPublicRoom: vi.fn(),
+  listAgentRooms: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -15,7 +16,9 @@ vi.mock("@/lib/api", () => ({
     getOverview: mocks.getOverview,
     getPublicRoom: mocks.getPublicRoom,
   },
-  humansApi: {},
+  humansApi: {
+    listAgentRooms: mocks.listAgentRooms,
+  },
   getActiveAgentId: vi.fn(() => null),
   setActiveAgentId: vi.fn(),
   getStoredActiveIdentity: vi.fn(() => null),
@@ -57,13 +60,39 @@ function makeOverview(lastMessageAt: string | null = null): DashboardOverview {
   };
 }
 
+function makeOwnedAgentRoom(overrides: Partial<HumanAgentRoomSummary> = {}): HumanAgentRoomSummary {
+  return {
+    room_id: "rm_oc_real",
+    name: "Owned bot",
+    description: null,
+    rule: null,
+    owner_id: "ag_bot",
+    visibility: "private",
+    join_policy: "invite_only",
+    member_count: 1,
+    created_at: "2026-05-14T00:00:00.000Z",
+    required_subscription_product_id: null,
+    last_message_preview: null,
+    last_message_at: "2026-05-14T00:00:00.000Z",
+    last_sender_name: null,
+    allow_human_send: true,
+    members_preview: null,
+    bots: [{ agent_id: "ag_bot", display_name: "Owned bot", role: "owner" }],
+    ...overrides,
+  };
+}
+
 describe("useDashboardChatStore message polling", () => {
   beforeEach(() => {
     mocks.getRoomMessages.mockReset();
     mocks.leaveRoom.mockReset();
     mocks.getOverview.mockReset();
     mocks.getPublicRoom.mockReset();
-    useDashboardSessionStore.setState({ token: "test-token" });
+    mocks.listAgentRooms.mockReset();
+    useDashboardSessionStore.setState({
+      token: "test-token",
+      activeIdentity: { type: "human", id: "hu_1" },
+    });
     useDashboardUIStore.setState({
       focusedRoomId: null,
       openedRoomId: null,
@@ -77,8 +106,13 @@ describe("useDashboardChatStore message polling", () => {
       messages: {},
       messagesLoading: {},
       messagesHasMore: {},
+      ownedAgentRooms: [],
+      optimisticOwnerChatRooms: {},
     });
-    useDashboardSessionStore.setState({ token: "token" });
+    useDashboardSessionStore.setState({
+      token: "token",
+      activeIdentity: { type: "human", id: "hu_1" },
+    });
   });
 
   it("does not refetch a room already loaded as empty when the room snapshot is unchanged", async () => {
@@ -158,5 +192,61 @@ describe("useDashboardChatStore message polling", () => {
     expect(useDashboardChatStore.getState().error).toBeNull();
     expect(useDashboardChatStore.getState().overviewRefreshing).toBe(false);
     expect(useDashboardChatStore.getState().overviewErrored).toBe(false);
+  });
+
+  it("inserts an optimistic owner-chat room immediately", () => {
+    useDashboardChatStore.getState().upsertOptimisticOwnerChatRoom({
+      agent_id: "ag_bot",
+      display_name: "Owned bot",
+    });
+
+    const state = useDashboardChatStore.getState();
+    expect(state.ownedAgentRooms).toHaveLength(1);
+    expect(state.ownedAgentRooms[0]).toMatchObject({
+      room_id: "rm_oc_pending_ag_bot",
+      name: "Owned bot",
+      owner_id: "ag_bot",
+      bots: [{ agent_id: "ag_bot", display_name: "Owned bot", role: "owner" }],
+    });
+  });
+
+  it("reconciles an optimistic owner-chat room when the backend returns the real room", async () => {
+    useDashboardChatStore.getState().upsertOptimisticOwnerChatRoom({
+      agent_id: "ag_bot",
+      display_name: "Owned bot",
+    });
+    mocks.listAgentRooms.mockResolvedValue({
+      rooms: [makeOwnedAgentRoom({ room_id: "rm_oc_real_123" })],
+    });
+
+    await useDashboardChatStore.getState().loadOwnedAgentRooms();
+
+    const state = useDashboardChatStore.getState();
+    expect(state.optimisticOwnerChatRooms).toEqual({});
+    expect(state.ownedAgentRooms.map((room) => room.room_id)).toEqual(["rm_oc_real_123"]);
+  });
+
+  it("does not wipe an existing owner-chat preview when reopening the same bot chat", () => {
+    useDashboardChatStore.setState({
+      ownedAgentRooms: [
+        makeOwnedAgentRoom({
+          room_id: "rm_oc_existing",
+          last_message_preview: "existing preview",
+          last_sender_name: "Owned bot",
+        }),
+      ],
+      optimisticOwnerChatRooms: {},
+    });
+
+    useDashboardChatStore.getState().upsertOptimisticOwnerChatRoom({
+      agent_id: "ag_bot",
+      display_name: "Owned bot",
+    });
+
+    expect(useDashboardChatStore.getState().ownedAgentRooms[0]).toMatchObject({
+      room_id: "rm_oc_existing",
+      last_message_preview: "existing preview",
+      last_sender_name: "Owned bot",
+    });
   });
 });

@@ -901,8 +901,17 @@ export default function DashboardApp() {
         uiStore.setUserChatAgentId(agentId);
         uiStore.setFocusedRoomId(null);
         uiStore.setOpenedRoomId(null);
+        chatStore.upsertOptimisticOwnerChatRoom({
+          agent_id: selectedAgentForCard.agent_id,
+          display_name: selectedAgentForCard.display_name || selectedAgentForCard.agent_id,
+        });
         api.getUserChatRoom(agentId).then((room) => {
+          chatStore.upsertOptimisticOwnerChatRoom({
+            agent_id: selectedAgentForCard.agent_id,
+            display_name: selectedAgentForCard.display_name || selectedAgentForCard.agent_id,
+          }, room.room_id);
           uiStore.setUserChatRoomId(room.room_id);
+          void chatStore.loadOwnedAgentRooms();
         }).catch((error) => {
           console.error("[DashboardApp] getUserChatRoom failed:", error);
         });
