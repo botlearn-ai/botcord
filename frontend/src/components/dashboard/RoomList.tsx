@@ -100,9 +100,14 @@ export default function RoomList({
   const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
   const ownedAgentIds = useMemo(() => new Set(ownedAgents.map((a) => a.agent_id)), [ownedAgents]);
+  const ownedAgentAvatarsById = useMemo(() => {
+    const m = new Map<string, string | null | undefined>();
+    for (const a of ownedAgents) m.set(a.agent_id, a.avatar_url);
+    return m;
+  }, [ownedAgents]);
   const peerAgentsById = useMemo(() => {
-    const m = new Map<string, { owner_display_name: string | null | undefined }>();
-    for (const a of publicAgents) m.set(a.agent_id, { owner_display_name: a.owner_display_name });
+    const m = new Map<string, { owner_display_name: string | null | undefined; avatar_url: string | null | undefined }>();
+    for (const a of publicAgents) m.set(a.agent_id, { owner_display_name: a.owner_display_name, avatar_url: a.avatar_url });
     return m;
   }, [publicAgents]);
   // Reuse `overview` (already subscribed above) to derive contacts. Returning
@@ -110,6 +115,15 @@ export default function RoomList({
   // whenever overview is null, breaking Zustand's Object.is check and
   // triggering React error #185 (max update depth).
   const contacts = overview?.contacts ?? EMPTY_CONTACTS;
+  const agentContactAvatarsById = useMemo(() => {
+    const m = new Map<string, string | null | undefined>();
+    for (const c of contacts) {
+      if (c.peer_type === "agent" || !c.contact_agent_id.startsWith("hu_")) {
+        m.set(c.contact_agent_id, c.avatar_url);
+      }
+    }
+    return m;
+  }, [contacts]);
   const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
@@ -288,6 +302,12 @@ export default function RoomList({
         const isGroup = (room.member_count ?? 0) > 2;
         const isUnread = isRoomUnread(room.room_id, room.has_unread);
         const unreadCount = isUnread ? Math.max(1, room.unread_count ?? 1) : 0;
+        const agentAvatarUrl = room.owner_id
+          ? ownedAgentAvatarsById.get(room.owner_id)
+            ?? agentContactAvatarsById.get(room.owner_id)
+            ?? peerAgentsById.get(room.owner_id)?.avatar_url
+            ?? null
+          : null;
 
         return (
           <div
@@ -311,7 +331,7 @@ export default function RoomList({
                   totalMembers={room.member_count ?? room.members_preview.length}
                 />
               ) : !isGroup && room.peer_type === "agent" ? (
-                <BotAvatar agentId={room.owner_id} size={40} alt={displayName} shape="rounded" />
+                <BotAvatar agentId={room.owner_id} avatarUrl={agentAvatarUrl} size={40} alt={displayName} shape="rounded" />
               ) : (
                 <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${avatarTone} text-sm font-semibold text-text-primary`}>
                   {avatarLabel}
