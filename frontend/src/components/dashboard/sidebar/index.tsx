@@ -37,7 +37,6 @@ import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
-import { api } from "@/lib/api";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -432,22 +431,8 @@ export default function Sidebar({
             setShowCreateBot(false);
             setCreateBotForDaemonId(null);
             await sessionStore.refreshUserProfile();
-            uiStore.setSidebarTab("messages");
-            uiStore.setMessagesPane("user-chat");
             uiStore.setUserChatAgentId(agentId);
-            uiStore.setFocusedRoomId(null);
-            uiStore.setOpenedRoomId(null);
             onMobileSecondaryClose?.();
-            try {
-              const room = await api.getUserChatRoom(agentId);
-              uiStore.setUserChatRoomId(room.room_id);
-              startTransition(() => {
-                router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
-              });
-            } catch (error) {
-              console.error("[Sidebar] getUserChatRoom after create failed:", error);
-              startTransition(() => { router.push(USER_CHAT_ROUTE); });
-            }
           }}
         />
       )}
