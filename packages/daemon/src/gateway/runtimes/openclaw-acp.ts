@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createAcpTraceLogger, type AcpTraceLogger } from "../../acp-logs.js";
 import {
   readCommandVersion,
   resolveCommandOnPath,
@@ -51,6 +52,7 @@ interface AcpProcessHandle {
    */
   spawnedUrl: string;
   spawnedToken: string | undefined;
+  trace: AcpTraceLogger | null;
 }
 
 interface PendingCall {
@@ -450,11 +452,23 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
     const command = resolveOpenclawCommand() ?? "openclaw";
     const args = ["acp", "--url", gateway.url];
     if (gateway.token) args.push("--token", gateway.token);
+    const accountId = key.split("::", 1)[0];
+    const trace = createAcpTraceLogger({
+      runtime: acpRuntimeLogName(gateway),
+      accountId,
+      gatewayName: gateway.name,
+      gatewayUrl: gateway.url,
+    });
 
     const child = this.spawnFn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
     }) as ChildProcessWithoutNullStreams;
+    trace?.write({
+      stream: "child_start",
+      pid: child.pid,
+      params: { command, args, gateway: gateway.name },
+    });
 
     const handle: AcpProcessHandle = {
       child,
@@ -468,19 +482,27 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       closed: false,
       spawnedUrl: gateway.url,
       spawnedToken: gateway.token,
+      trace,
     };
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => onStdoutChunk(handle, chunk));
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
+      trace?.write({ stream: "stderr", pid: child.pid, chunk });
       log.debug("openclaw-acp.stderr", { key, chunk: chunk.slice(0, 500) });
     });
     child.on("exit", (code, signal) => {
+      trace?.write({ stream: "child_exit", pid: child.pid, code, signal });
       shutdownHandle(handle, `exit code=${code ?? "null"} signal=${signal ?? "null"}`);
       ACP_POOL.delete(key);
     });
     child.on("error", (err) => {
+      trace?.write({
+        stream: "child_error",
+        pid: child.pid,
+        error: err instanceof Error ? err.message : String(err),
+      });
       log.warn("openclaw-acp.child-error", {
         key,
         error: err instanceof Error ? err.message : String(err),
@@ -538,6 +560,16 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
 // JSON-RPC stdio plumbing
 // ---------------------------------------------------------------------------
 
+function acpRuntimeLogName(gateway: NonNullable<RuntimeRunOptions["gateway"]>): string {
+  if (gateway.name.toLowerCase().includes("qclaw")) return "qclaw-acp";
+  try {
+    if (new URL(gateway.url).port === "28789") return "qclaw-acp";
+  } catch {
+    // Fall back to OpenClaw.
+  }
+  return "openclaw-acp";
+}
+
 function onStdoutChunk(handle: AcpProcessHandle, chunk: string): void {
   handle.buffer += chunk;
   let idx: number;
@@ -557,6 +589,7 @@ function onStdoutChunk(handle: AcpProcessHandle, chunk: string): void {
         error: err instanceof Error ? err.message : String(err),
         line: line.slice(0, 200),
       });
+      handle.trace?.write({ stream: "stdout_non_json", chunk: line });
       continue;
     }
     routeMessage(handle, msg);
@@ -571,14 +604,36 @@ function routeMessage(handle: AcpProcessHandle, msg: any): void {
     handle.pending.delete(id);
     if (msg.error) {
       const message = formatRpcError(msg.error);
+      handle.trace?.write({
+        stream: "rpc_in",
+        direction: "in",
+        id,
+        status: "error",
+        code: typeof msg.error.code === "number" ? msg.error.code : undefined,
+        error: message,
+      });
       pending.reject(new Error(message));
     } else {
+      handle.trace?.write({
+        stream: "rpc_in",
+        direction: "in",
+        id,
+        status: "response",
+        result: msg.result ?? null,
+      });
       pending.resolve(msg.result);
     }
     return;
   }
   // Notification.
   if (msg?.method && msg?.params) {
+    handle.trace?.write({
+      stream: "rpc_in",
+      direction: "in",
+      method: msg.method,
+      status: "notification",
+      params: msg.params,
+    });
     const sid = msg.params?.sessionId;
     if (typeof sid === "string") {
       const sub = handle.subscribers.get(sid);
@@ -604,6 +659,14 @@ function sendRequest(
   return new Promise((resolve, reject) => {
     const id = handle.nextId++;
     handle.pending.set(id, { resolve, reject, method });
+    handle.trace?.write({
+      stream: "rpc_out",
+      direction: "out",
+      id,
+      method,
+      status: "request",
+      params,
+    });
     const frame = JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n";
     try {
       handle.child.stdin.write(frame);
@@ -620,6 +683,13 @@ function sendNotification(
   params: any,
 ): void {
   if (handle.closed) return;
+  handle.trace?.write({
+    stream: "rpc_out",
+    direction: "out",
+    method,
+    status: "notification",
+    params,
+  });
   const frame = JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n";
   try {
     handle.child.stdin.write(frame);

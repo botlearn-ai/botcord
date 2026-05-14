@@ -1200,6 +1200,14 @@ export class Dispatcher {
           systemContext,
           onBlock,
           onStatus,
+          context: {
+            turnId,
+            messageId: msg.id,
+            roomId: msg.conversation.id,
+            topicId: msg.conversation.threadId ?? null,
+            channel: msg.channel,
+            conversationKind: msg.conversation.kind,
+          },
           gateway: route.gateway,
           ...(route.hermesProfile ? { hermesProfile: route.hermesProfile } : {}),
         });
