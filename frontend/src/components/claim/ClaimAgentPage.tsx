@@ -9,8 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { setActiveAgentId, userApi } from "@/lib/api";
-import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { userApi } from "@/lib/api";
 
 interface ClaimAgentPageProps {
   claimCode: string;
@@ -27,7 +26,6 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const continuePath = searchParams.get("next") || "/chats/messages/__user-chat__";
-  const setSessionActiveAgentId = useDashboardSessionStore((state) => state.setActiveAgentId);
 
   const [loading, setLoading] = useState(false);
   const [claimed, setClaimed] = useState<ClaimedAgent | null>(null);
@@ -126,9 +124,8 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
             </p>
             <button
               onClick={() => {
-                setActiveAgentId(claimed.agent_id);
-                setSessionActiveAgentId(claimed.agent_id);
-                window.location.replace(continuePath);
+                const separator = continuePath.includes("?") ? "&" : "?";
+                window.location.replace(`${continuePath}${separator}agent_id=${encodeURIComponent(claimed.agent_id)}`);
               }}
               className="mt-4 rounded-lg border border-green-500/50 bg-green-500/20 px-4 py-2 text-sm font-medium text-green-100 hover:bg-green-500/30"
             >

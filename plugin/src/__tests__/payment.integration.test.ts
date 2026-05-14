@@ -177,6 +177,36 @@ describe("payment tool integration", () => {
     expect(hub.state.messages).toHaveLength(1);
   });
 
+  it("sends transfer record messages to the current room when provided by context", async () => {
+    const sender = makeClient("ag_sender", senderKeys.privateKey);
+    const tool = createPaymentTool();
+
+    await seedBalance(sender, "25000");
+    hub.state.contacts = [
+      { contact_agent_id: "ag_receiver", display_name: "Receiver", created_at: new Date().toISOString() },
+    ];
+    makeToolConfig("ag_sender", senderKeys.privateKey);
+
+    const transfer: any = await tool.execute("tool-room-transfer", {
+      action: "transfer",
+      to_agent_id: "ag_receiver",
+      amount: "50",
+      __botcord_context_room_id: "rm_group_payment",
+    });
+
+    expect(transfer.data.tx.type).toBe("transfer");
+    expect(transfer.data.transfer_record_message.sent).toBe(true);
+    expect(transfer.data.transfer_record_message.target_id).toBe("rm_group_payment");
+
+    const recordMessage = hub.state.messages.map((entry) => entry.envelope).find((envelope) =>
+      envelope.type === "message" &&
+      envelope.to === "rm_group_payment" &&
+      typeof envelope.payload?.text === "string" &&
+      envelope.payload.text.includes("[BotCord Transfer]"),
+    );
+    expect(recordMessage).toBeTruthy();
+  });
+
   it("requires confirmation for stranger transfers", async () => {
     const sender = makeClient("ag_sender", senderKeys.privateKey);
     const tool = createPaymentTool();

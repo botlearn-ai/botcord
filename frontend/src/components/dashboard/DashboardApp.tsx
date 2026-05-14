@@ -93,7 +93,6 @@ export default function DashboardApp() {
   const locale = useLanguage();
   const tSidebar = sidebarI18n[locale];
   const tChatPane = chatPaneI18n[locale];
-  const recoveredAgentRef = useRef<string | null>(null);
   // Wallet is keyed on the active identity (agent OR human), since both
   // can own a wallet (`backend/app/routers/wallet.py:_resolve_owner`).
   const walletBoundIdentityRef = useRef<string | null>(null);
@@ -102,9 +101,8 @@ export default function DashboardApp() {
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
+  const userChatAgentIdFromQuery = searchParams.get("agent_id");
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
-  const fallbackAgent =
-    sessionStore.ownedAgents.find((agent) => agent.is_default) ?? sessionStore.ownedAgents[0] ?? null;
   // Human-first: never force-block on "no agent". Authed users always proceed
   // into /chats as their Human identity; creating an Agent is a later,
   // optional CTA. AgentGateModal is kept for manual entry points (account
@@ -277,6 +275,10 @@ export default function DashboardApp() {
             || roomIdFromSubtab.startsWith("rm_oc_")
           ));
         if (opensUserChat) {
+          const agentIdFromQuery = searchParams.get("agent_id");
+          if (agentIdFromQuery && uiStore.userChatAgentId !== agentIdFromQuery) {
+            uiStore.setUserChatAgentId(agentIdFromQuery);
+          }
           if (roomIdFromSubtab?.startsWith("rm_oc_") && uiStore.userChatRoomId !== roomIdFromSubtab) {
             uiStore.setUserChatRoomId(roomIdFromSubtab);
           }
@@ -334,37 +336,16 @@ export default function DashboardApp() {
     uiStore.clearPrimaryNavigation,
     uiStore.setMessagesPane,
     uiStore.setUserChatRoomId,
+    uiStore.setUserChatAgentId,
     uiStore.setExploreView,
     uiStore.setContactsView,
+    searchParams,
     chatStore.getRoomSummary,
     chatStore.discoverRooms,
     chatStore.messages,
     chatStore.loadPublicRoomDetail,
     chatStore.loadRoomMessages,
     chatStore.pollNewMessages,
-  ]);
-
-  useEffect(() => {
-    if (
-      !sessionStore.authResolved
-      || sessionStore.sessionMode !== "authed-no-agent"
-      || sessionStore.activeAgentId
-      || !fallbackAgent
-    ) {
-      if (sessionStore.sessionMode !== "authed-no-agent") {
-        recoveredAgentRef.current = null;
-      }
-      return;
-    }
-    if (recoveredAgentRef.current === fallbackAgent.agent_id) return;
-    recoveredAgentRef.current = fallbackAgent.agent_id;
-    void chatStore.switchActiveAgent(fallbackAgent.agent_id);
-  }, [
-    sessionStore.authResolved,
-    sessionStore.sessionMode,
-    sessionStore.activeAgentId,
-    fallbackAgent,
-    chatStore.switchActiveAgent,
   ]);
 
   useEffect(() => {
@@ -408,10 +389,6 @@ export default function DashboardApp() {
       return;
     }
 
-    if (chatStore.boundAgentId !== sessionStore.activeAgentId) {
-      chatStore.bindToActiveAgent(sessionStore.activeAgentId);
-    }
-
     if (walletBoundIdentityRef.current !== walletIdentityKey) {
       walletBoundIdentityRef.current = walletIdentityKey;
       walletStore.resetWalletState();
@@ -437,8 +414,6 @@ export default function DashboardApp() {
     sessionStore.activeAgentId,
     sessionStore.activeIdentity,
     uiStore.sidebarTab,
-    chatStore.boundAgentId,
-    chatStore.bindToActiveAgent,
     uiStore.resetUIState,
     chatStore.overview,
     chatStore.overviewRefreshing,
@@ -929,11 +904,17 @@ export default function DashboardApp() {
         uiStore.setUserChatAgentId(agentId);
         uiStore.setFocusedRoomId(null);
         uiStore.setOpenedRoomId(null);
-        if (agentId !== sessionStore.activeAgentId) {
-          await chatStore.switchActiveAgent(agentId);
-        }
+        chatStore.upsertOptimisticOwnerChatRoom({
+          agent_id: selectedAgentForCard.agent_id,
+          display_name: selectedAgentForCard.display_name || selectedAgentForCard.agent_id,
+        });
         api.getUserChatRoom(agentId).then((room) => {
+          chatStore.upsertOptimisticOwnerChatRoom({
+            agent_id: selectedAgentForCard.agent_id,
+            display_name: selectedAgentForCard.display_name || selectedAgentForCard.agent_id,
+          }, room.room_id);
           uiStore.setUserChatRoomId(room.room_id);
+          void chatStore.loadOwnedAgentRooms();
         }).catch((error) => {
           console.error("[DashboardApp] getUserChatRoom failed:", error);
         });
@@ -1057,7 +1038,7 @@ export default function DashboardApp() {
           />
         ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
           <div className="h-full min-w-0">
-            <UserChatPane agentId={uiStore.userChatAgentId} />
+            <UserChatPane agentId={uiStore.userChatAgentId || userChatAgentIdFromQuery} />
           </div>
         ) : (
           <div className="flex h-full min-w-0">
@@ -1081,7 +1062,7 @@ export default function DashboardApp() {
         <AgentGateModal
           onAgentReady={async (agentId) => {
             await sessionStore.refreshUserProfile();
-            await chatStore.switchActiveAgent(agentId);
+            uiStore.setUserChatAgentId(agentId);
           }}
         />
       ) : null}

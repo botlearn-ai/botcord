@@ -82,6 +82,46 @@ describe("messages merge filters", () => {
     ).toEqual([ownRoom.room_id]);
   });
 
+  it("keeps shared owner-and-bot groups in both self and bot monitoring buckets", () => {
+    const ownGroup = makeRoom({
+      room_id: "rm_shared_group",
+      name: "Shared group",
+      member_count: 3,
+      owner_id: "hu_owner",
+      owner_type: "human",
+      last_message_at: "2026-05-13T08:00:00Z",
+    });
+    const ownedAgentGroup = makeOwnedAgentRoom({
+      room_id: "rm_shared_group",
+      name: "Shared group",
+      owner_id: "hu_owner",
+      member_count: 3,
+      last_message_at: "2026-05-13T08:00:00Z",
+      bots: [{ agent_id: "ag_bot", display_name: "My Bot", role: "member" }],
+    });
+    const rooms = mergeOwnerVisibleRooms({
+      ownRooms: [ownGroup],
+      ownedAgentRooms: [ownedAgentGroup],
+    });
+    const ownedAgentIds = new Set(["ag_bot"]);
+
+    expect(rooms).toHaveLength(2);
+    expect(rooms.filter((room) => room.room_id === "rm_shared_group" && !room._originAgent)).toHaveLength(1);
+    expect(rooms.filter((room) => room.room_id === "rm_shared_group" && room._originAgent?.agent_id === "ag_bot")).toHaveLength(1);
+    expect(applyMessagesFilter(rooms, "self-group", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_shared_group",
+    ]);
+    expect(applyMessagesFilter(rooms, "bots-group", ownedAgentIds).map((room) => room.room_id)).toEqual([
+      "rm_shared_group",
+    ]);
+    expect(countMessagesByFilter(rooms, ownedAgentIds)).toMatchObject({
+      "self-all": 1,
+      "self-group": 1,
+      "bots-all": 1,
+      "bots-group": 1,
+    });
+  });
+
   it("keeps non-DM rooms out of private-chat child buckets but includes them in all buckets", () => {
     const ownGroup = makeRoom({
       room_id: "rm_small_room",

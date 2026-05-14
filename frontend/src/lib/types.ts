@@ -230,6 +230,7 @@ export interface OwnerChatMessage {
 
   sender: "user" | "agent";
   text: string;
+  payload?: Record<string, unknown>;
   attachments?: Attachment[];
   /** Embedded execution blocks (empty for user messages). */
   streamBlocks: StreamBlockEntry[];
@@ -239,7 +240,7 @@ export interface OwnerChatMessage {
 
   createdAt: string;
   senderName: string;
-  type: "message" | "notification";
+  type: "message" | "notification" | "error";
 
   /** Original text payload for retry (may differ from display text for file-only sends). */
   sendText?: string;
@@ -260,12 +261,18 @@ export function dashboardMsgToOwnerChat(
     hubMsgId: msg.hub_msg_id,
     sender: isUser ? "user" : "agent",
     text: msg.text || "",
+    payload: msg.payload,
     attachments: (msg.payload?.attachments as Attachment[] | undefined) ?? undefined,
     streamBlocks: [],
     status: "delivered",
     createdAt: msg.created_at,
     senderName: isUser ? "You" : (msg.sender_name || agentName),
-    type: msg.type === "notification" ? "notification" : "message",
+    type:
+      msg.type === "notification"
+        ? "notification"
+        : msg.type === "error"
+          ? "error"
+          : "message",
   };
 }
 
@@ -785,6 +792,7 @@ export interface CreateTransferRequest {
   to_agent_id: string;
   amount_minor: string;
   memo?: string;
+  room_id?: string;
   idempotency_key: string;
 }
 

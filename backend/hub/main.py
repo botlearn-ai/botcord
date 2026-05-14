@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from hub.i18n import I18nHTTPException, detect_locale, get_hint, get_message
 
@@ -149,8 +150,16 @@ if hub_config.SENTRY_DSN:
     sentry_sdk.init(
         dsn=hub_config.SENTRY_DSN,
         environment=hub_config.ENVIRONMENT_TAG,
+        release=hub_config.SENTRY_RELEASE,
         traces_sample_rate=hub_config.SENTRY_TRACES_SAMPLE_RATE,
         send_default_pii=True,
+        integrations=[
+            LoggingIntegration(
+                level=hub_config.SENTRY_LOG_BREADCRUMB_LEVEL,
+                event_level=hub_config.SENTRY_LOG_EVENT_LEVEL,
+                sentry_logs_level=hub_config.SENTRY_LOGS_LEVEL,
+            )
+        ],
     )
 
 app = FastAPI(title="BotCord Hub", version="1.0.1", lifespan=lifespan)

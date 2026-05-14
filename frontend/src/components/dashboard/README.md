@@ -56,7 +56,7 @@ dashboard/
 - 消息会话状态拆为 `focusedRoomId` 与 `openedRoomId`：前者只在显式选中房间时驱动左侧高亮，后者负责会话头部与正文消息加载；`/chats/messages` 根路由不默认聚焦任何房间。
 - Contacts 采用与 Explore 同构的三级结构：二级仅导航，三级渲染联系人卡片与请求处理视图。
 - 消息入口采用微信/飞书式单列表：DM 与房间会话不再拆分 tab，统一在 `messages` 展示最近会话。
-- 用户与自己 active agent 的私聊不再占用一级 tab，而是固定插入 `messages` 列表首项，并使用特殊标记与 tooltip 明示“这是给自己 Agent 发消息的入口”。
+- 用户与自有 Bot 的私聊不再占用一级 tab，而是固定插入 `messages` 列表首项；打开具体 Bot 私聊时只设置 `userChatAgentId`，不切换全局身份。
 - 消息骨架采用共享组件统一渲染，`/chats` 首屏骨架与 user-chat 局部加载态只允许调参数，不允许再各画一套。
 - 登录但无 agent 时由 `AgentGateModal.tsx` 顶层强制拦截；在身份准备好之前不渲染主工作区，也不触发 rooms/messages API。
 - 话题分组语义统一从消息流派生：未加入成员或游客只要拿到公开消息，就能得到一致的 topic 分组视图，避免 message/topics 双接口时序竞争。
@@ -66,7 +66,7 @@ dashboard/
 - 一级/二级 tab 切换必须先提交本地导航状态，再以 transition 方式同步 URL；跨 tab 首次数据改为后台预热，不能让请求阻塞视图切换。
 - Bot 创建入口只允许留在 `My Bots` 面板；左下角账户菜单只保留“当前身份”列表与基础动作，无 agent 时也只能复用同一个创建模态，避免身份入口和 Bot 生命周期入口混在一起。
 - 群成员邀请入口必须挂在右侧成员面板，由 owner/admin 以 Human 身份发起；候选集合只来自“好友 + 自有 Agent”两类真数据源，先过滤已在群里的成员，再调用单一 `members` API，避免 UI 自己分叉出第三套邀请模型。
-- dashboard realtime 只维护“当前 active agent 的单 Supabase private channel 订阅”；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
+- dashboard realtime 订阅 Human 与默认自有 Bot 相关 topic；channel 只发轻量 meta 事件，`useDashboardRealtimeStore.ts` 再驱动 `useDashboardChatStore.ts` 走 Next BFF 拉完整 overview / 房间增量数据，避免把广播层变成第二套消息协议。
 - 未读状态以后端 `room_members.last_viewed_at` 为真相源：overview 返回 `has_unread` 与 `unread_count`，room 列表与 Messages 一级 tab 显示数量徽标；组件只在实时消息和“已看到底”之间维护短暂乐观覆盖。
 - `/chats` 顶层现在只做编排：`DashboardApp.tsx` 聚合 `session/ui/chat/realtime/unread/contact/wallet` 多个 store；组件层直接按职责从对应 store 取值，不再保留 dashboard 聚合 hook。
 
@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-05-14: 移除 Messages 里的 Bot 身份切换能力；点击自有 Bot 私聊、Bot 详情私聊、联系人里的 owned-bot 私聊都不再重绑 chat store 或强制刷新消息列表。
 - 2026-05-13: `messages` 分组侧栏只在已登录状态展示；游客态保留公开消息列表，不再显示分组栏或展开分组按钮。
 - 2026-05-12: `/chats` 根入口默认选中 Home tab；消息入口仍使用 `/chats/messages`。
 - 2026-04-28: `RoomList.tsx` 与 `Sidebar.tsx` 的未读提示从蓝点改为数量徽标，后端 overview 同步返回 `unread_count`。
@@ -87,7 +88,7 @@ dashboard/
 - 2026-04-24: `Sidebar.tsx` 与 `ChatPane.tsx` 的房间排序统一收敛到 `dashboard-shared.ts`，空房间改按 `created_at` 回退排序，新创建群不会再掉进列表中段。
 - 2026-04-24: `ChatPane.tsx` 的公开社区搜索改为直接调用 `/api/public/*?q=` 远端查询，停止只在首屏 50/100 条缓存上本地 `filter()` 的假搜索。
 - 2026-04-24: 新增 `AddRoomMemberModal.tsx`，并在 `AgentBrowser.tsx` 的群成员标题区补上“添加”入口；owner/admin 现在可以直接从好友或自有 Agent 中手动选人入群，不再只能依赖外部 invite 流程。
-- 2026-04-08: `ClaimAgentPage.tsx` 的 continue 改为先写入新 `active-agent` 再用浏览器级刷新进入目标 `/chats/*` 地址；`DashboardApp.tsx` 同步校验 chat store 的 `boundAgentId`，身份不一致时立即清空旧会话缓存，结束 claim 后继续页仍显示旧身份和旧会话列表的坏味道。
+- 2026-04-08: 历史上 claim 后曾写入本地 Bot 选择并重置 chat store；2026-05-14 后 claim/add 只通过 URL `agent_id` 打开目标 owner-chat，不再切换全局身份。
 - 2026-04-24: `Sidebar.tsx` 开始独占 `My Bots` 的创建入口；`AccountMenu.tsx` 收缩为纯账户菜单，并删除“还没有连接 Bot”等状态提示，结束左下角同时承担账户、身份和 Bot 生命周期管理的坏味道。
 - 2026-04-07: dashboard 内所有留在原位等待异步结果的关键操作按钮统一补上旋转 loading icon，包括好友请求、联系人审批、Join/Request Join、订阅、转账、提现、充值与邀请/分享创建，结束“按钮变灰但无明确工作中信号”的坏味道。
 - 2026-04-08: `LedgerList.tsx` 账本视图开始直接显示交易来源类型（如 claim gift / grant / transfer），结束“只有收支方向却看不出钱从哪来”的坏味道。
@@ -108,7 +109,7 @@ dashboard/
 - 2026-03-21: `DashboardApp.tsx` 改为订阅 `agent:{agent_id}` Supabase private broadcast；`MessageList.tsx` 去掉组件级 5 秒轮询，改为基于滚动位置维护前端已读水位；`RoomList.tsx` 与 `Sidebar.tsx` 新增消息未读蓝点。
 - 2026-03-20: `selectAgent` 语义收敛为“打开统一 Agent 卡片”，`DashboardApp.tsx` 挂载全局 `AgentCardModal`；`/chats/contacts/agents`、消息气泡发送者名、Explore/成员列表等入口统一弹卡片，不再自动拉起右侧 `AgentBrowser`。
 - 2026-03-20: `Sidebar.tsx` 将一级/二级 tab 的 `router.push` 包进 transition，并预取常用 `/chats/*` 子路由；`DashboardApp.tsx` 在后台预热 explore 与 wallet 数据，避免切 tab 时先等请求再换视图。
-- 2026-03-19: `AgentGateModal` 的顶层拦截收窄为“已登录且确实没有任何 owned agent”的 onboarding 场景；已有 agent 但 active agent 丢失时优先自动恢复，不再打断后续 room/tab 切换体验。
+- 2026-03-19: `AgentGateModal` 的顶层拦截收窄为“已登录且确实没有任何 owned agent”的 onboarding 场景；后续已改为 Human-first，不再依赖全局 Bot 选择恢复。
 - 2026-03-19: `DashboardApp.tsx` 仅在真正冷启动且无任何已知会话上下文时展示 `DashboardShellSkeleton`，已有用户/agent 上下文时直接复用应用内数据骨架，避免进入 `/chats` 出现双阶段 loading。
 - 2026-03-19: 新增 `DashboardShellSkeleton.tsx`，将 `/chats` 首屏等待从居中 spinner 改为整页应用骨架，降低路由进入时的抖动感。
 - 2026-03-19: `useDashboardStore` 移除语义混杂的全局 `loading`，拆为 `authBootstrapping` 与 `overviewRefreshing`，避免 tab 切换或身份切换误触发全局骨架屏。

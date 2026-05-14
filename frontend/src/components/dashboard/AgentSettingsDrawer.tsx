@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Trash2, User, UserRound, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { botDetailDrawer } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import {
   usePolicyStore,
@@ -27,27 +28,8 @@ interface AgentSettingsDrawerProps {
   onSaved?: () => void;
 }
 
-const CONTACT_OPTIONS: { value: ContactPolicy; label: string; hint: string }[] = [
-  { value: "open", label: "所有人可私聊", hint: "任何未被屏蔽的 Agent 或 Human 都能直接发起对话" },
-  { value: "contacts_only", label: "联系人 + 同房间成员", hint: "联系人可以私聊；同一房间成员也可以发起私聊" },
-  { value: "whitelist", label: "仅联系人白名单", hint: "只有联系人列表中的对象可以直接私聊" },
-  { value: "closed", label: "只收联系申请", hint: "拒绝普通私聊；未被屏蔽的人仍可发送联系申请" },
-];
-
-const ROOM_INVITE_OPTIONS: { value: RoomInvitePolicy; label: string; hint: string }[] = [
-  { value: "open", label: "任何人可邀请", hint: "未被屏蔽的对象都可以邀请此 Bot 加入房间" },
-  { value: "contacts_only", label: "仅联系人可邀请", hint: "只有联系人可以邀请此 Bot 加入房间" },
-  { value: "closed", label: "不接受邀请", hint: "拒绝新的房间邀请" },
-];
-
-const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
-  { value: "always", label: "所有房间消息", hint: "非私聊房间内收到任何消息都唤醒 Bot" },
-  { value: "mention_only", label: "仅 @ 我", hint: "只有被 @ 或被明确点名时才唤醒" },
-  { value: "muted", label: "默认静音", hint: "房间消息默认不唤醒 Bot" },
-  { value: "keyword", label: "关键词命中", hint: "消息包含关键词时才唤醒" },
-];
-
 type Tab = "profile" | "policy" | "schedules" | "gateways" | "files";
+type BotDetailDrawerCopy = typeof botDetailDrawer["en"];
 
 interface AgentRuntimeFile {
   id: string;
@@ -120,10 +102,14 @@ function KeywordChips({
   value,
   onChange,
   disabled,
+  emptyLabel,
+  placeholder,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
   disabled?: boolean;
+  emptyLabel: string;
+  placeholder: string;
 }) {
   const [draft, setDraft] = useState("");
 
@@ -146,7 +132,7 @@ function KeywordChips({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
         {value.length === 0 ? (
-          <span className="text-xs text-text-tertiary">尚未配置关键词</span>
+          <span className="text-xs text-text-tertiary">{emptyLabel}</span>
         ) : (
           value.map((kw) => (
             <span
@@ -178,7 +164,7 @@ function KeywordChips({
         }}
         onBlur={() => add(draft)}
         disabled={disabled}
-        placeholder="输入关键词后按回车添加"
+        placeholder={placeholder}
         className="rounded-xl border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-neon-cyan/40 focus:outline-none disabled:opacity-50"
       />
     </div>
@@ -196,6 +182,32 @@ function scopeLabel(scope: AgentRuntimeFile["scope"]): string {
   if (scope === "hermes") return "Hermes";
   if (scope === "openclaw") return "OpenClaw";
   return "Workspace";
+}
+
+function contactOptions(t: BotDetailDrawerCopy): { value: ContactPolicy; label: string; hint: string }[] {
+  return [
+    { value: "open", ...t.settings.contactOptions.open },
+    { value: "contacts_only", ...t.settings.contactOptions.contacts_only },
+    { value: "whitelist", ...t.settings.contactOptions.whitelist },
+    { value: "closed", ...t.settings.contactOptions.closed },
+  ];
+}
+
+function roomInviteOptions(t: BotDetailDrawerCopy): { value: RoomInvitePolicy; label: string; hint?: string }[] {
+  return [
+    { value: "open", ...t.settings.roomInviteOptions.open },
+    { value: "contacts_only", ...t.settings.roomInviteOptions.contacts_only },
+    { value: "closed", ...t.settings.roomInviteOptions.closed },
+  ];
+}
+
+function attentionOptions(t: BotDetailDrawerCopy): { value: AttentionMode; label: string; hint: string }[] {
+  return [
+    { value: "always", ...t.settings.attentionOptions.always },
+    { value: "mention_only", ...t.settings.attentionOptions.mention_only },
+    { value: "muted", ...t.settings.attentionOptions.muted },
+    { value: "keyword", ...t.settings.attentionOptions.keyword },
+  ];
 }
 
 function SummaryTile({
@@ -237,6 +249,33 @@ export default function AgentSettingsDrawer({
   onSaved,
 }: AgentSettingsDrawerProps) {
   const locale = useLanguage();
+  const t = botDetailDrawer[locale];
+  const contactPolicyOptions = contactOptions(t);
+  const roomInvitePolicyOptions = roomInviteOptions(t);
+  const attentionPolicyOptions = attentionOptions(t);
+  const labels = {
+    avatar: locale === "zh" ? "头像" : "Avatar",
+    chooseAvatar: locale === "zh" ? "选择头像" : "Choose avatar",
+    saveProfile: locale === "zh" ? "保存资料" : "Save profile",
+    deleteAgent: locale === "zh" ? "删除 Agent" : "Delete Agent",
+    policyTab: locale === "zh" ? "权限与回复" : "Permissions",
+    filesTab: locale === "zh" ? "文件/记忆" : "Files / Memory",
+    directContact: locale === "zh" ? "直接联系" : "Direct contact",
+    allowedSources: locale === "zh" ? "允许来源" : "Allowed sources",
+    allOff: locale === "zh" ? "全部关闭" : "All off",
+    contactMe: locale === "zh" ? "直接联系我" : "Contact me directly",
+    contactMeDesc: locale === "zh"
+      ? "Hub 准入权限：控制谁可以把私聊消息送到这个 Bot。Blocklist 仍然拥有最高优先级。"
+      : "Hub admission policy: controls who can deliver direct messages to this Bot. Blocklist still has the highest priority.",
+    senderTypes: locale === "zh" ? "允许的发送者类型" : "Allowed sender types",
+    agentSenderHint: locale === "zh" ? "其他 bot / agent" : "other bots / agents",
+    humanSenderHint: locale === "zh" ? "人类用户 / dashboard" : "human users / dashboard",
+    inviteMe: locale === "zh" ? "谁能邀请我进房间" : "Who can invite me to rooms",
+    keywordEmpty: locale === "zh" ? "尚未配置关键词" : "No keywords configured",
+    dmReplyNote: locale === "zh"
+      ? "私聊 DM 当前强制始终唤醒；房间消息会先看房间级覆盖，没有覆盖时继承这里的默认策略。"
+      : "DMs always wake the Bot. Room messages use room-level overrides first, then inherit this default policy.",
+  };
   const refreshUserProfile = useDashboardSessionStore((s) => s.refreshUserProfile);
 
   const [tab, setTab] = useState<Tab>("profile");
@@ -274,7 +313,7 @@ export default function AgentSettingsDrawer({
       await refreshUserProfile();
       onSaved?.();
     } catch (err: any) {
-      setProfileError(err?.message || "保存失败");
+      setProfileError(err?.message || t.profile.saveFailed);
     } finally {
       setProfileSaving(false);
     }
@@ -326,10 +365,10 @@ export default function AgentSettingsDrawer({
             : typeof detail === "string"
               ? detail
               : typeof detail?.code === "string"
-                ? detail.code
+                  ? detail.code
                 : res.status === 409
-                  ? "Daemon 未在线或此 Agent 未由 daemon 托管"
-                  : "读取文件失败";
+                  ? t.files.daemonUnavailable
+                  : t.files.loadFailed;
         throw new Error(msg);
       }
       const data = (await res.json()) as AgentRuntimeFilesResponse;
@@ -341,12 +380,12 @@ export default function AgentSettingsDrawer({
       );
       setFilesLoaded(true);
     } catch (err) {
-      setFilesError(err instanceof Error ? err.message : "读取文件失败");
+      setFilesError(err instanceof Error ? err.message : t.files.loadFailed);
       setFilesLoaded(true);
     } finally {
       setFilesLoading(false);
     }
-  }, [agentId]);
+  }, [agentId, t.files.daemonUnavailable, t.files.loadFailed]);
 
   useEffect(() => {
     if (tab === "files" && !filesLoaded && !filesLoading) {
@@ -404,14 +443,14 @@ export default function AgentSettingsDrawer({
                 <FileText className="h-3.5 w-3.5" />
               )}
               {t === "profile"
-                  ? "资料"
+                  ? botDetailDrawer[locale].profile.title
                 : t === "policy"
-                  ? "权限与回复"
-                  : t === "schedules"
-                    ? "自主"
+                  ? labels.policyTab
+                : t === "schedules"
+                    ? botDetailDrawer[locale].settings.autonomy
                     : t === "gateways"
-                      ? "接入"
-                      : "文件/记忆"}
+                      ? botDetailDrawer[locale].settings.channels
+                      : labels.filesTab}
             </button>
           ))}
         </div>
@@ -422,7 +461,7 @@ export default function AgentSettingsDrawer({
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-xs font-medium text-text-secondary">
-                  头像
+                  {labels.avatar}
                 </label>
                 <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
                   {AGENT_AVATAR_URLS.map((url) => {
@@ -438,7 +477,7 @@ export default function AgentSettingsDrawer({
                             ? "border-neon-cyan ring-2 ring-neon-cyan/30"
                             : "border-glass-border hover:border-neon-cyan/50"
                         }`}
-                        aria-label="选择头像"
+                        aria-label={labels.chooseAvatar}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={url} alt="" className="h-full w-full object-cover" />
@@ -450,7 +489,7 @@ export default function AgentSettingsDrawer({
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-text-secondary">
-                  显示名称
+                  {t.profile.displayName}
                 </label>
                 <input
                   type="text"
@@ -464,7 +503,7 @@ export default function AgentSettingsDrawer({
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-text-secondary">
-                  简介
+                  {t.profile.bio}
                 </label>
                 <textarea
                   value={bioVal}
@@ -472,7 +511,7 @@ export default function AgentSettingsDrawer({
                   disabled={profileSaving}
                   rows={4}
                   maxLength={4000}
-                  placeholder="介绍这个 Agent（可选）"
+                  placeholder={t.profile.bioPlaceholder}
                   className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
                 />
               </div>
@@ -492,10 +531,10 @@ export default function AgentSettingsDrawer({
                 {profileSaving ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    保存中...
+                    {t.profile.saving}
                   </>
                 ) : (
-                  "保存资料"
+                  labels.saveProfile
                 )}
               </button>
 
@@ -507,7 +546,7 @@ export default function AgentSettingsDrawer({
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
                 >
                   <Trash2 className="h-4 w-4" />
-                  删除 Agent
+                  {labels.deleteAgent}
                 </button>
               </div>
             </div>
@@ -538,36 +577,36 @@ export default function AgentSettingsDrawer({
                   <div className="grid gap-3">
                     <SummaryTile
                       icon={<Shield className="h-4 w-4" />}
-                      label="直接联系"
-                      value={CONTACT_OPTIONS.find((o) => o.value === policy.contact_policy)?.label ?? policy.contact_policy}
+                      label={labels.directContact}
+                      value={contactPolicyOptions.find((o) => o.value === policy.contact_policy)?.label ?? policy.contact_policy}
                       tone="cyan"
                     />
                     <SummaryTile
                       icon={<UserRound className="h-4 w-4" />}
-                      label="允许来源"
+                      label={labels.allowedSources}
                       value={[
                         policy.allow_agent_sender ? "Agent" : null,
                         policy.allow_human_sender ? "Human" : null,
-                      ].filter(Boolean).join(" + ") || "全部关闭"}
+                      ].filter(Boolean).join(" + ") || labels.allOff}
                       tone={policy.allow_agent_sender || policy.allow_human_sender ? "green" : "red"}
                     />
                     <SummaryTile
                       icon={<Bell className="h-4 w-4" />}
-                      label="默认房间回复"
-                      value={ATTENTION_OPTIONS.find((o) => o.value === policy.default_attention)?.label ?? policy.default_attention}
+                      label={t.settings.defaultReplyTitle}
+                      value={attentionPolicyOptions.find((o) => o.value === policy.default_attention)?.label ?? policy.default_attention}
                       tone={policy.default_attention === "muted" ? "yellow" : "cyan"}
                     />
                   </div>
 
                   <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
-                    <h3 className="mb-1 text-sm font-semibold text-text-primary">直接联系我</h3>
+                    <h3 className="mb-1 text-sm font-semibold text-text-primary">{labels.contactMe}</h3>
                     <p className="mb-4 text-xs text-text-secondary">
-                      Hub 准入权限：控制谁可以把私聊消息送到这个 Bot。Blocklist 仍然拥有最高优先级。
+                      {labels.contactMeDesc}
                     </p>
                     <RadioGroup
                       name={`contact_policy_${agentId}`}
                       value={policy.contact_policy}
-                      options={CONTACT_OPTIONS}
+                      options={contactPolicyOptions}
                       onChange={(v) => void applyPolicy({ contact_policy: v })}
                       disabled={policySaving}
                     />
@@ -575,12 +614,12 @@ export default function AgentSettingsDrawer({
                     <div className="mt-5 rounded-xl border border-glass-border bg-deep-black/20 p-3">
                       <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
                         <Bot className="h-3.5 w-3.5" />
-                        允许的发送者类型
+                        {labels.senderTypes}
                       </div>
                       <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
                         <span>
                           Agent
-                          <span className="ml-2 text-xs text-text-secondary">其他 bot / agent</span>
+                          <span className="ml-2 text-xs text-text-secondary">{labels.agentSenderHint}</span>
                         </span>
                         <input
                           type="checkbox"
@@ -593,7 +632,7 @@ export default function AgentSettingsDrawer({
                       <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
                         <span>
                           Human
-                          <span className="ml-2 text-xs text-text-secondary">人类用户 / dashboard</span>
+                          <span className="ml-2 text-xs text-text-secondary">{labels.humanSenderHint}</span>
                         </span>
                         <input
                           type="checkbox"
@@ -607,12 +646,12 @@ export default function AgentSettingsDrawer({
 
                     <div className="mt-5">
                       <div className="mb-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
-                        谁能邀请我进房间
+                        {labels.inviteMe}
                       </div>
                       <RadioGroup
                         name={`room_invite_policy_${agentId}`}
                         value={policy.room_invite_policy}
-                        options={ROOM_INVITE_OPTIONS}
+                        options={roomInvitePolicyOptions}
                         onChange={(v) => void applyPolicy({ room_invite_policy: v })}
                         disabled={policySaving}
                       />
@@ -620,36 +659,38 @@ export default function AgentSettingsDrawer({
                   </section>
 
                   <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
-                    <h3 className="mb-1 text-sm font-semibold text-text-primary">默认房间回复</h3>
+                    <h3 className="mb-1 text-sm font-semibold text-text-primary">{t.settings.defaultReplyTitle}</h3>
                     <p className="mb-4 text-xs text-text-secondary">
-                      Daemon 注意力策略：消息已进入 inbox 后，是否值得唤醒 Bot。单个房间可以覆盖。
+                      {t.settings.defaultReplyDescription}
                     </p>
                     <RadioGroup
                       name={`default_attention_${agentId}`}
                       value={policy.default_attention}
-                      options={ATTENTION_OPTIONS}
+                      options={attentionPolicyOptions}
                       onChange={(v) => void applyPolicy({ default_attention: v })}
                       disabled={policySaving}
                     />
                     {policy.default_attention === "keyword" && (
                       <div className="mt-4">
-                        <div className="mb-2 text-xs text-text-secondary">关键词</div>
+                        <div className="mb-2 text-xs text-text-secondary">{t.settings.keywords}</div>
                         <KeywordChips
                           value={policy.attention_keywords}
                           onChange={(next) => void applyPolicy({ attention_keywords: next })}
                           disabled={policySaving}
+                          emptyLabel={labels.keywordEmpty}
+                          placeholder={t.settings.keywordPlaceholder}
                         />
                       </div>
                     )}
                     <p className="mt-4 rounded-lg border border-glass-border/60 bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">
-                      私聊 DM 当前强制始终唤醒；房间消息会先看房间级覆盖，没有覆盖时继承这里的默认策略。
+                      {labels.dmReplyNote}
                     </p>
                   </section>
 
                   {policySaving && (
                     <div className="flex items-center gap-2 text-xs text-text-secondary">
                       <Loader2 className="h-3 w-3 animate-spin" />
-                      保存中…
+                      {t.settings.saving}
                     </div>
                   )}
                 </>
@@ -665,9 +706,9 @@ export default function AgentSettingsDrawer({
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-text-primary">运行时文件</h3>
+                  <h3 className="text-sm font-semibold text-text-primary">{t.files.title}</h3>
                   <p className="truncate text-xs text-text-secondary">
-                    {runtimeLabel ? runtimeLabel : "当前 Agent 的本地文件"}
+                    {runtimeLabel ? runtimeLabel : t.files.subtitle}
                   </p>
                 </div>
                 <button
@@ -675,7 +716,7 @@ export default function AgentSettingsDrawer({
                   onClick={() => void loadRuntimeFiles()}
                   disabled={filesLoading}
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border bg-glass-bg text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
-                  title="刷新"
+                  title={t.files.refresh}
                 >
                   {filesLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -699,7 +740,7 @@ export default function AgentSettingsDrawer({
                 </div>
               ) : runtimeFiles.length === 0 ? (
                 <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
-                  没有可显示的文件
+                  {t.files.empty}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -728,7 +769,7 @@ export default function AgentSettingsDrawer({
                           </div>
                           {file.truncated ? (
                             <span className="shrink-0 rounded border border-yellow-400/30 px-1.5 py-0.5 text-[10px] text-yellow-300">
-                              过大
+                              {t.files.tooLarge}
                             </span>
                           ) : null}
                         </button>
@@ -747,7 +788,7 @@ export default function AgentSettingsDrawer({
                         {selectedFile.error
                           ? selectedFile.error
                           : selectedFile.truncated
-                            ? "文件超过预览大小限制"
+                            ? t.files.previewTooLarge
                             : selectedFile.content ?? ""}
                       </pre>
                     </section>

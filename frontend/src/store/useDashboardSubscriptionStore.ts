@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 zustand 保存订阅域状态，依赖 @/lib/api 发起订阅查询/订阅/退订请求，依赖 session store 提供当前 active agent
+ * [INPUT]: 依赖 zustand 保存订阅域状态，依赖 @/lib/api 发起订阅查询/订阅/退订请求，依赖 session store 提供当前身份上下文
  * [OUTPUT]: 对外提供 useDashboardSubscriptionStore 订阅业务域仓库与订阅生命周期动作
  * [POS]: frontend dashboard 的订阅真相源，统一管理当前 agent 的订阅列表与商品级订阅状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md

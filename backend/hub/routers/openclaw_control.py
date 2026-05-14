@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import jwt as pyjwt
+import sentry_sdk
 from fastapi import (
     APIRouter,
     Depends,
@@ -166,6 +167,10 @@ class _HostRegistry:
             current = self._by_instance.get(conn.host_instance_id)
             if current is conn:
                 self._by_instance.pop(conn.host_instance_id, None)
+
+    async def active_count(self) -> int:
+        async with self._lock:
+            return len(self._by_instance)
 
     def get(self, host_instance_id: str) -> _HostConn | None:
         return self._by_instance.get(host_instance_id)
@@ -773,7 +778,21 @@ async def openclaw_control_ws(ws: WebSocket) -> None:
         pending_acks={},
     )
     previous = await _REGISTRY.register(conn)
+    active_count = await _REGISTRY.active_count()
+    logger.info(
+        "openclaw WS registered: instance=%s owner=%s active_openclaw_ws=%d displaced_existing=%s",
+        host_instance_id,
+        owner_user_id,
+        active_count,
+        previous is not None,
+    )
     if previous is not None:
+        logger.warning(
+            "openclaw WS displacing previous connection: instance=%s owner=%s active_openclaw_ws=%d",
+            host_instance_id,
+            owner_user_id,
+            active_count,
+        )
         try:
             await previous.ws.close(code=4001, reason="displaced by new connection")
         except Exception:
@@ -812,9 +831,34 @@ async def openclaw_control_ws(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.info("openclaw WS disconnect: instance=%s", host_instance_id)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("openclaw WS error: instance=%s err=%s", host_instance_id, exc)
+        active_count = await _REGISTRY.active_count()
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("ws.endpoint", "openclaw_control")
+            scope.set_tag("openclaw_host_instance_id", host_instance_id)
+            scope.set_context(
+                "ws_connections",
+                {
+                    "active_openclaw_ws": active_count,
+                    "owner_user_id": owner_user_id,
+                },
+            )
+            logger.error(
+                "openclaw WS error: instance=%s owner=%s active_openclaw_ws=%d err=%s",
+                host_instance_id,
+                owner_user_id,
+                active_count,
+                exc,
+                exc_info=True,
+            )
     finally:
         await _REGISTRY.unregister(conn)
+        active_count = await _REGISTRY.active_count()
+        logger.info(
+            "openclaw WS unregistered: instance=%s owner=%s active_openclaw_ws=%d",
+            host_instance_id,
+            owner_user_id,
+            active_count,
+        )
         for fut in conn.pending_acks.values():
             if not fut.done():
                 fut.set_exception(RuntimeError("host disconnected"))

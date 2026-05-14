@@ -37,7 +37,6 @@ import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
-import { api, humansApi } from "@/lib/api";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -170,7 +169,6 @@ export default function Sidebar({
   const chatStore = useDashboardChatStore(useShallow((s) => ({
     overview: s.overview,
     recentVisitedRooms: s.recentVisitedRooms,
-    switchActiveAgent: s.switchActiveAgent,
   })));
   const unreadStore = useDashboardUnreadStore(useShallow((s) => ({
     optimisticUnreadRoomIds: s.optimisticUnreadRoomIds,
@@ -182,7 +180,6 @@ export default function Sidebar({
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [refreshingBots, setRefreshingBots] = useState(false);
   const [createBotForDaemonId, setCreateBotForDaemonId] = useState<string | null>(null);
-  const [agentsWithApprovals, setAgentsWithApprovals] = useState<Set<string>>(new Set());
 
   const showCreateBot = uiStore.createBotModalOpen;
   const setShowCreateBot = (v: boolean) => v ? uiStore.openCreateBotModal() : uiStore.closeCreateBotModal();
@@ -290,22 +287,6 @@ export default function Sidebar({
     prefetch("/chats/activity");
   }, [router, uiStore.contactsView, uiStore.exploreView]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchApprovals = async () => {
-      try {
-        const res = await humansApi.listPendingApprovals();
-        if (!cancelled) {
-          setAgentsWithApprovals(new Set(res.approvals.map((a: { agent_id: string }) => a.agent_id)));
-        }
-      } catch {
-        // non-fatal
-      }
-    };
-    void fetchApprovals();
-    return () => { cancelled = true; };
-  }, []);
-
   const showLoginModal = () => router.push("/login");
 
   const navigatePrimaryTab = (tab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots") => {
@@ -359,7 +340,6 @@ export default function Sidebar({
         <div className="flex flex-1 flex-col items-center gap-1 pt-1 max-md:min-w-0 max-md:flex-row max-md:justify-around max-md:pt-0">
           {navItems.map((item) => {
             const isActive = uiStore.sidebarTab === item.key;
-            const isExplore = item.key === "explore";
             const requiresLogin = isGuest && (item.key === "contacts" || item.key === "activity");
             let badge: ReactNode = null;
             if (item.key === "messages" && unreadMessageCount > 0 && !requiresLogin) {
@@ -381,7 +361,7 @@ export default function Sidebar({
                 key={item.key}
                 onClick={() => navigatePrimaryTab(item.key)}
                 active={isActive}
-                activeTone={isExplore ? "purple" : "cyan"}
+                activeTone="cyan"
                 badge={badge}
                 disabled={requiresLogin}
                 icon={item.icon}
@@ -416,12 +396,7 @@ export default function Sidebar({
             <>
               <AccountMenu
                 user={sessionStore.user}
-                agents={sessionStore.ownedAgents}
-                activeAgentId={sessionStore.activeAgentId}
                 pendingRequests={chatStore.overview?.pending_requests || 0}
-                agentsWithApprovals={agentsWithApprovals}
-                onSwitchAgent={chatStore.switchActiveAgent}
-                onOpenCreateBot={() => setShowCreateBot(true)}
                 onLogout={handleLogout}
               />
             </>
@@ -456,22 +431,8 @@ export default function Sidebar({
             setShowCreateBot(false);
             setCreateBotForDaemonId(null);
             await sessionStore.refreshUserProfile();
-            uiStore.setSidebarTab("messages");
-            uiStore.setMessagesPane("user-chat");
             uiStore.setUserChatAgentId(agentId);
-            uiStore.setFocusedRoomId(null);
-            uiStore.setOpenedRoomId(null);
             onMobileSecondaryClose?.();
-            try {
-              const room = await api.getUserChatRoom(agentId);
-              uiStore.setUserChatRoomId(room.room_id);
-              startTransition(() => {
-                router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
-              });
-            } catch (error) {
-              console.error("[Sidebar] getUserChatRoom after create failed:", error);
-              startTransition(() => { router.push(USER_CHAT_ROUTE); });
-            }
           }}
         />
       )}

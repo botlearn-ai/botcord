@@ -121,22 +121,22 @@ export default function ContactsDetailPane() {
     setUserChatRoomId: s.setUserChatRoomId,
     startPrimaryNavigation: s.startPrimaryNavigation,
   })));
-  const { ownedAgents, humanRooms, activeAgentId, refreshHumanRooms } = useDashboardSessionStore(
+  const { ownedAgents, humanRooms, refreshHumanRooms } = useDashboardSessionStore(
     useShallow((s) => ({
       ownedAgents: s.ownedAgents,
       humanRooms: s.humanRooms,
-      activeAgentId: s.activeAgentId,
       refreshHumanRooms: s.refreshHumanRooms,
     })),
   );
-  const { overview, publicAgents, refreshOverview, loadRoomMessages, setError, switchActiveAgent } = useDashboardChatStore(
+  const { overview, publicAgents, refreshOverview, loadOwnedAgentRooms, loadRoomMessages, setError, upsertOptimisticOwnerChatRoom } = useDashboardChatStore(
     useShallow((s) => ({
       overview: s.overview,
       publicAgents: s.publicAgents,
       refreshOverview: s.refreshOverview,
+      loadOwnedAgentRooms: s.loadOwnedAgentRooms,
       loadRoomMessages: s.loadRoomMessages,
       setError: s.setError,
-      switchActiveAgent: s.switchActiveAgent,
+      upsertOptimisticOwnerChatRoom: s.upsertOptimisticOwnerChatRoom,
     })),
   );
 
@@ -231,10 +231,10 @@ export default function ContactsDetailPane() {
     try {
       if (target.kind === "owned-bot") {
         const agentId = target.agent.agent_id;
-        if (agentId !== activeAgentId) {
-          await switchActiveAgent(agentId);
-        }
+        upsertOptimisticOwnerChatRoom(target.agent);
         const room = await api.getUserChatRoom(agentId);
+        upsertOptimisticOwnerChatRoom(target.agent, room.room_id);
+        void loadOwnedAgentRooms();
         setMessagesPane("user-chat");
         setUserChatAgentId(agentId);
         setUserChatRoomId(room.room_id);

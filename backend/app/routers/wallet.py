@@ -6,17 +6,23 @@ wallet to operate on. ``as=agent`` still requires the
 ``X-Active-Agent`` header; ``as=human`` uses ``ctx.human_id``.
 """
 
+import datetime
 import json
 import logging
+import time
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user_with_optional_agent
 from hub import config as hub_config
 from hub.database import get_db
-from hub.models import WithdrawalRequest
+from hub.id_generators import generate_hub_msg_id
+from hub.models import MessageRecord, MessageState, RoomMember, WithdrawalRequest
+from hub.routers.hub import build_message_realtime_event, notify_inbox
 from hub.services import wallet as wallet_svc
 from hub.services import stripe_topup as stripe_svc
 from hub.wallet_schemas import (
@@ -39,6 +45,10 @@ from hub.wallet_schemas import (
 _logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/wallet", tags=["app-wallet"])
+
+
+class AppTransferRequest(TransferRequest):
+    room_id: str | None = Field(default=None, description="Room where the transfer notice should be posted")
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +102,116 @@ def _tx_response(tx) -> dict:
         "updated_at": tx.updated_at,
         "completed_at": tx.completed_at,
     }
+
+
+def _format_coin_amount(amount_minor: int | str) -> str:
+    try:
+        minor = int(amount_minor)
+    except (TypeError, ValueError):
+        minor = 0
+    return f"{minor / 100:.2f} COIN"
+
+
+async def _record_room_transfer_notice(
+    db: AsyncSession,
+    *,
+    room_id: str,
+    from_owner_id: str,
+    to_owner_id: str,
+    tx,
+) -> None:
+    members_result = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id)
+    )
+    members = list(members_result.scalars().all())
+    member_ids = {member.agent_id for member in members}
+    if from_owner_id not in member_ids:
+        raise HTTPException(status_code=403, detail="Sender is not a room member")
+    if to_owner_id not in member_ids:
+        raise HTTPException(status_code=400, detail="Recipient is not a room member")
+
+    amount = _format_coin_amount(tx.amount_minor)
+    payload = {
+        "text": "\n".join([
+            "[BotCord Transfer]",
+            "Status: completed",
+            f"Transaction: {tx.tx_id}",
+            f"Amount: {amount}",
+            f"Asset: {tx.asset_code}",
+            f"From: {from_owner_id}",
+            f"To: {to_owner_id}",
+            f"Created: {tx.created_at}",
+        ]),
+        "event": "wallet_transfer_notice",
+        "tx_id": tx.tx_id,
+        "amount_minor": str(tx.amount_minor),
+        "asset_code": tx.asset_code,
+        "from_agent_id": from_owner_id,
+        "to_agent_id": to_owner_id,
+    }
+    envelope_data = {
+        "v": "a2a/0.1",
+        "msg_id": str(uuid.uuid4()),
+        "ts": int(time.time()),
+        "from": from_owner_id,
+        "to": room_id,
+        "type": "message",
+        "reply_to": None,
+        "ttl_sec": 3600,
+        "payload": payload,
+        "payload_hash": "",
+        "sig": {"alg": "ed25519", "key_id": "wallet", "value": ""},
+    }
+    envelope_json = json.dumps(envelope_data)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    receiver_ids = [member.agent_id for member in members if not member.muted]
+    first_hub_msg_id: str | None = None
+    receiver_hub_msg_ids: dict[str, str] = {}
+
+    for receiver_id in receiver_ids:
+        hub_msg_id = generate_hub_msg_id()
+        if first_hub_msg_id is None:
+            first_hub_msg_id = hub_msg_id
+        receiver_hub_msg_ids[receiver_id] = hub_msg_id
+        db.add(
+            MessageRecord(
+                hub_msg_id=hub_msg_id,
+                msg_id=envelope_data["msg_id"],
+                sender_id=from_owner_id,
+                receiver_id=receiver_id,
+                room_id=room_id,
+                state=MessageState.queued,
+                envelope_json=envelope_json,
+                ttl_sec=3600,
+                created_at=now,
+                source_type="wallet_transfer_notice",
+                source_session_kind="room_human",
+            )
+        )
+
+    await db.flush()
+
+    for receiver_id in receiver_ids:
+        try:
+            await notify_inbox(
+                receiver_id,
+                db=db,
+                realtime_event=build_message_realtime_event(
+                    type="message",
+                    agent_id=receiver_id,
+                    sender_id=from_owner_id,
+                    room_id=room_id,
+                    hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
+                    created_at=now,
+                    payload=payload,
+                    source_type="wallet_transfer_notice",
+                ),
+            )
+        except Exception as exc:
+            _logger.error(
+                "Wallet transfer room notice notify failed receiver=%s room=%s err=%s",
+                receiver_id, room_id, exc, exc_info=True,
+            )
 
 
 def _topup_response(topup, tx) -> dict:
@@ -186,7 +306,7 @@ async def get_wallet_ledger(
 
 @router.post("/transfers", status_code=201)
 async def create_transfer(
-    body: TransferRequest,
+    body: AppTransferRequest,
     as_: str = Query(default="agent", alias="as"),
     ctx: RequestContext = Depends(require_user_with_optional_agent),
     db: AsyncSession = Depends(get_db),
@@ -197,6 +317,15 @@ async def create_transfer(
         raise HTTPException(status_code=400, detail="Invalid amount_minor")
 
     from_owner_id = _resolve_owner(ctx, as_)
+    if body.room_id:
+        members_result = await db.execute(
+            select(RoomMember.agent_id).where(RoomMember.room_id == body.room_id)
+        )
+        member_ids = {row[0] for row in members_result.all()}
+        if from_owner_id not in member_ids:
+            raise HTTPException(status_code=403, detail="Sender is not a room member")
+        if body.to_agent_id not in member_ids:
+            raise HTTPException(status_code=400, detail="Recipient is not a room member")
 
     try:
         tx = await wallet_svc.create_transfer(
@@ -210,6 +339,14 @@ async def create_transfer(
             metadata=body.metadata,
             idempotency_key=body.idempotency_key,
         )
+        if body.room_id:
+            await _record_room_transfer_notice(
+                db,
+                room_id=body.room_id,
+                from_owner_id=from_owner_id,
+                to_owner_id=body.to_agent_id,
+                tx=tx,
+            )
         await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖分享/邀请 API 读取邀请预览，依赖 Supabase session 与本地 active agent 判断用户是否可直接兑换
+ * [INPUT]: 依赖分享/邀请 API 读取邀请预览，依赖 Supabase session 与用户资料判断用户是否可直接兑换
  * [OUTPUT]: 对外提供 InviteLinkView 组件，负责好友/群邀请页的预览、兑换与续接跳转
  * [POS]: marketing invite 页面主体，统一承接 `/i/[inviteCode]` 的公开入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { api, ApiError, getActiveAgentId, userApi } from "@/lib/api";
+import { api, ApiError, userApi } from "@/lib/api";
 import type { InvitePreviewResponse } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/i18n";
@@ -56,8 +56,7 @@ export default function InviteLinkView({ inviteCode }: { inviteCode: string }) {
         try {
           const me = await userApi.getMe({ force: true });
           if (cancelled) return;
-          const activeAgentId = getActiveAgentId();
-          const isReady = Boolean(activeAgentId && me.agents.some((agent) => agent.agent_id === activeAgentId));
+          const isReady = me.agents.length > 0;
           setAuthMode(isReady ? "authed-ready" : "authed-no-agent");
         } catch {
           if (!cancelled) setAuthMode("guest");

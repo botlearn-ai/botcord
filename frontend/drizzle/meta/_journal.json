@@ -36,6 +36,13 @@
       "when": 1774003202000,
       "tag": "0005_add_agent_avatar_url",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774003203000,
+      "tag": "0006_set_user_max_agents_30",
+      "breakpoints": true
     }
   ]
 }
