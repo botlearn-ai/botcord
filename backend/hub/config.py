@@ -175,6 +175,29 @@ ENVIRONMENT_TAG: str = os.getenv("ENVIRONMENT_TAG", "prod")
 # ---------------------------------------------------------------------------
 SENTRY_DSN: str | None = os.getenv("SENTRY_DSN")
 SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
+SENTRY_RELEASE: str | None = os.getenv("SENTRY_RELEASE")
+
+
+def _parse_log_level_env(name: str, default: str) -> int | None:
+    raw = os.getenv(name, default).strip()
+    if raw.lower() in {"", "none", "off"}:
+        return None
+    if raw.isdigit():
+        return int(raw)
+    level = getattr(logging, raw.upper(), None)
+    if isinstance(level, int):
+        return level
+    _logger.warning("Invalid %s=%r; falling back to %s", name, raw, default)
+    return getattr(logging, default)
+
+
+SENTRY_LOG_BREADCRUMB_LEVEL: int | None = _parse_log_level_env(
+    "SENTRY_LOG_BREADCRUMB_LEVEL", "INFO"
+)
+SENTRY_LOG_EVENT_LEVEL: int | None = _parse_log_level_env(
+    "SENTRY_LOG_EVENT_LEVEL", "ERROR"
+)
+SENTRY_LOGS_LEVEL: int | None = _parse_log_level_env("SENTRY_LOGS_LEVEL", "INFO")
 
 # ---------------------------------------------------------------------------
 # Daemon control plane
