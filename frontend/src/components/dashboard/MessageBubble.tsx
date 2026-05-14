@@ -3,8 +3,9 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Bot, ChevronDown, ChevronUp, MoreHorizontal, User } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, ChevronUp, MoreHorizontal, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
+import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
@@ -347,6 +348,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const locale = useLanguage();
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const publicHumans = useDashboardChatStore((state) => state.publicHumans);
@@ -354,8 +356,20 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const user = useDashboardSessionStore((state) => state.user);
   const requestOpenHuman = useDashboardUIStore((state) => state.requestOpenHuman);
   const stateConfig = useStateConfig();
+  const errorPayload =
+    message.payload?.error && typeof message.payload.error === "object"
+      ? message.payload.error as Record<string, unknown>
+      : null;
+  const errorMessage =
+    typeof errorPayload?.message === "string"
+      ? errorPayload.message
+      : typeof errorPayload?.code === "string"
+        ? errorPayload.code
+        : "";
+  const errorCode = typeof errorPayload?.code === "string" ? errorPayload.code : null;
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
-  const displayText = typeof textContent === "string" ? textContent : message.text;
+  const displayText = typeof textContent === "string" ? textContent : message.text || errorMessage;
+  const isErrorMessage = message.type === "error";
   const timestampLabel = formatMessageTimestamp(message.created_at);
   const isOwn = typeof message.is_mine === "boolean" ? message.is_mine : isOwnProp;
   const isHuman = message.sender_kind === "human";
@@ -482,9 +496,11 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
       {!isOwn && sideAvatar}
       <div
         className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
-          isOwn
-            ? "border border-neon-cyan/30 bg-neon-cyan/5"
-            : "border border-glass-border bg-glass-bg"
+          isErrorMessage
+            ? "border border-amber-400/25 bg-amber-400/10"
+            : isOwn
+              ? "border border-neon-cyan/30 bg-neon-cyan/5"
+              : "border border-glass-border bg-glass-bg"
         }`}
       >
         <div
@@ -524,7 +540,27 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           </div>
         )}
 
-        {transferInfo ? (
+        {isErrorMessage ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setShowErrorDetails(true);
+            }}
+            className="mt-2 flex w-full items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2.5 py-2 text-left transition-colors hover:bg-amber-400/15"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-amber-300">
+                Runtime error
+              </span>
+              <span className="mt-1 line-clamp-3 block break-words text-sm leading-relaxed text-amber-100">
+                {displayText || "Runtime error"}
+              </span>
+              <span className="mt-1 block text-xs text-amber-300/70">Details</span>
+            </span>
+          </button>
+        ) : transferInfo ? (
           <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
         ) : (
           displayText && (
@@ -587,6 +623,15 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     </div>
     {forwardQuote && (
       <ForwardModal quoteText={forwardQuote} onClose={() => setForwardQuote(null)} />
+    )}
+    {showErrorDetails && createPortal(
+      <RuntimeErrorDetailsDialog
+        message={displayText || "Runtime error"}
+        code={errorCode}
+        payload={message.payload}
+        onClose={() => setShowErrorDetails(false)}
+      />,
+      document.body,
     )}
     </>
   );
