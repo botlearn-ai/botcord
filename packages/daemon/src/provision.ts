@@ -49,6 +49,11 @@ import {
   prepareGatewayProfile,
 } from "./daemon-config-map.js";
 import {
+  discoverLocalOpenclawGateways,
+  mergeOpenclawGateways,
+  openclawDiscoveryConfigEnabled,
+} from "./openclaw-discovery.js";
+import {
   agentHomeDir,
   agentStateDir,
   agentWorkspaceDir,
@@ -324,9 +329,10 @@ export function createProvisioner(opts: ProvisionerOptions): (
       case CONTROL_FRAME_TYPES.LIST_RUNTIMES: {
         // Async path so the openclaw-acp endpoints get probed inline; gateway
         // / WS errors are swallowed inside `collectRuntimeSnapshotAsync`.
-        let cfgForProbe: { openclawGateways?: any[] } | undefined;
+        let cfgForProbe: DaemonConfig | undefined;
         try {
           cfgForProbe = loadConfig();
+          cfgForProbe = await refreshDiscoveredOpenclawGateways(cfgForProbe);
         } catch {
           cfgForProbe = undefined;
         }
@@ -426,6 +432,31 @@ export function createProvisioner(opts: ProvisionerOptions): (
         };
     }
   };
+}
+
+async function refreshDiscoveredOpenclawGateways(cfg: DaemonConfig): Promise<DaemonConfig> {
+  if (!openclawDiscoveryConfigEnabled(cfg)) return cfg;
+  try {
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: cfg.openclawDiscovery?.searchPaths,
+      defaultPorts: cfg.openclawDiscovery?.defaultPorts,
+      timeoutMs: 500,
+    });
+    const merged = mergeOpenclawGateways(cfg, found);
+    if (!merged.changed) return cfg;
+    saveConfig(merged.cfg);
+    daemonLog.info("openclaw discovery: gateways merged", {
+      source: "list_runtimes",
+      added: merged.added.map((g) => ({ name: g.name, url: g.url })),
+    });
+    return merged.cfg;
+  } catch (err) {
+    daemonLog.warn("openclaw discovery failed; continuing", {
+      source: "list_runtimes",
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return cfg;
+  }
 }
 
 interface WakeAgentParams {

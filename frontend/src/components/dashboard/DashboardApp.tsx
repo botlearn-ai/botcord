@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
-import { sidebar as sidebarI18n } from "@/lib/i18n/translations/dashboard";
+import { sidebar as sidebarI18n, chatPane as chatPaneI18n } from "@/lib/i18n/translations/dashboard";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
 import { createClient } from "@/lib/supabase/client";
@@ -32,6 +32,7 @@ import BotDetailDrawer from "./BotDetailDrawer";
 import DeviceDetailDrawer from "./DeviceDetailDrawer";
 import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
+import ContactRequestsInbox from "./ContactRequestsInbox";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import DashboardTabSkeleton from "./DashboardTabSkeleton";
 import HomePanel from "./HomePanel";
@@ -91,6 +92,7 @@ export default function DashboardApp() {
   const supabase = useMemo(() => createClient(), []);
   const locale = useLanguage();
   const tSidebar = sidebarI18n[locale];
+  const tChatPane = chatPaneI18n[locale];
   const recoveredAgentRef = useRef<string | null>(null);
   // Wallet is keyed on the active identity (agent OR human), since both
   // can own a wallet (`backend/app/routers/wallet.py:_resolve_owner`).
@@ -270,8 +272,14 @@ export default function DashboardApp() {
         const opensUserChat =
           tab === "user-chat"
           || subtab === USER_CHAT_SUBTAB
-          || (roomIdFromSubtab !== null && roomIdFromSubtab === uiStore.userChatRoomId);
+          || (roomIdFromSubtab !== null && (
+            roomIdFromSubtab === uiStore.userChatRoomId
+            || roomIdFromSubtab.startsWith("rm_oc_")
+          ));
         if (opensUserChat) {
+          if (roomIdFromSubtab?.startsWith("rm_oc_") && uiStore.userChatRoomId !== roomIdFromSubtab) {
+            uiStore.setUserChatRoomId(roomIdFromSubtab);
+          }
           if (uiStore.messagesPane !== "user-chat") uiStore.setMessagesPane("user-chat");
           if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
           if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
@@ -314,6 +322,7 @@ export default function DashboardApp() {
     uiStore.sidebarTab,
     uiStore.messagesPane,
     uiStore.userChatRoomId,
+    uiStore.userChatAgentId,
     uiStore.exploreView,
     uiStore.contactsView,
     uiStore.setFocusedRoomId,
@@ -321,6 +330,7 @@ export default function DashboardApp() {
     uiStore.setSidebarTab,
     uiStore.clearPrimaryNavigation,
     uiStore.setMessagesPane,
+    uiStore.setUserChatRoomId,
     uiStore.setExploreView,
     uiStore.setContactsView,
     chatStore.getRoomSummary,
@@ -913,6 +923,7 @@ export default function DashboardApp() {
         chatStore.closeAgentCardState();
         uiStore.setSidebarTab("messages");
         uiStore.setMessagesPane("user-chat");
+        uiStore.setUserChatAgentId(agentId);
         uiStore.setFocusedRoomId(null);
         uiStore.setOpenedRoomId(null);
         if (agentId !== sessionStore.activeAgentId) {
@@ -1036,9 +1047,14 @@ export default function DashboardApp() {
           <WalletPanel />
         ) : uiStore.sidebarTab === "bots" ? (
           <MyBotsPanel />
+        ) : uiStore.sidebarTab === "messages" && uiStore.messagesShowRequests ? (
+          <ContactRequestsInbox
+            title={tChatPane.contactRequests}
+            hideTabs
+          />
         ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
           <div className="h-full min-w-0">
-            <UserChatPane />
+            <UserChatPane agentId={uiStore.userChatAgentId} />
           </div>
         ) : (
           <div className="flex h-full min-w-0">

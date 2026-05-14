@@ -346,6 +346,7 @@ export function mergeOpenclawGateways(
 
 function discoverFromConfigDir(root: string): DiscoveredOpenclawGateway[] {
   const dir = expandHome(root);
+  const rootIsQclaw = path.basename(dir) === ".qclaw";
   let names: string[];
   try {
     names = readdirSync(dir);
@@ -362,8 +363,9 @@ function discoverFromConfigDir(root: string): DiscoveredOpenclawGateway[] {
       const raw = readFileSync(file, "utf8");
       const parsed = name.endsWith(".json") ? parseJsonConfig(raw) : parseTomlConfig(raw);
       if (!parsed?.url) continue;
+      const namePrefix = rootIsQclaw || name.toLowerCase() === "qclaw.json" ? "qclaw" : "openclaw";
       const item: DiscoveredOpenclawGateway = {
-        name: nameFromUrl(parsed.url),
+        name: nameFromUrl(parsed.url, namePrefix),
         url: parsed.url,
         source: "config-file",
       };
@@ -487,11 +489,20 @@ function dedupeDiscovered(items: DiscoveredOpenclawGateway[]): DiscoveredOpencla
   for (const item of items) {
     const key = normalizeUrlKey(item.url);
     const prev = byUrl.get(key);
-    if (!prev || priority[item.source] > priority[prev.source] || hasMoreAuth(item, prev)) {
+    if (
+      !prev ||
+      priority[item.source] > priority[prev.source] ||
+      hasMoreAuth(item, prev) ||
+      prefersQclawName(item, prev)
+    ) {
       byUrl.set(key, item);
     }
   }
   return [...byUrl.values()];
+}
+
+function prefersQclawName(a: DiscoveredOpenclawGateway, b: DiscoveredOpenclawGateway): boolean {
+  return a.name.startsWith("qclaw-") && !b.name.startsWith("qclaw-");
 }
 
 function hasMoreAuth(a: DiscoveredOpenclawGateway, b: DiscoveredOpenclawGateway): boolean {
@@ -499,13 +510,13 @@ function hasMoreAuth(a: DiscoveredOpenclawGateway, b: DiscoveredOpenclawGateway)
   return score(a) > score(b);
 }
 
-function nameFromUrl(raw: string): string {
+function nameFromUrl(raw: string, prefix = "openclaw"): string {
   try {
     const u = new URL(raw);
     const base = `${u.hostname}-${u.port || (u.protocol === "wss:" ? "443" : "80")}`;
-    return `openclaw-${base.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
+    return `${prefix}-${base.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
   } catch {
-    return "openclaw-local";
+    return `${prefix}-local`;
   }
 }
 

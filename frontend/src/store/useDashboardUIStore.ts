@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand 保存 dashboard 纯界面状态，不直接持有远端数据与同步逻辑
- * [OUTPUT]: 对外提供 useDashboardUIStore，管理路由同构 tab、房间焦点与 Agent 卡片开合状态
+ * [OUTPUT]: 对外提供 useDashboardUIStore，管理路由同构 tab、房间焦点、Messages 请求视图与 Agent 卡片开合状态
  * [POS]: frontend dashboard 的 UI 域状态源，负责界面导航与模态/面板控制
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -12,6 +12,8 @@ export interface DashboardUIState {
   openedRoomId: string | null;
   /** Separate slot for the user-chat pane so it doesn't clobber openedRoomId. */
   userChatRoomId: string | null;
+  /** Agent currently targeted by the user-chat pane; independent from activeAgentId. */
+  userChatAgentId: string | null;
   rightPanelOpen: boolean;
   agentCardOpen: boolean;
   /** Dispatch slot: a component requests opening the HumanCardModal for a given human. */
@@ -33,6 +35,9 @@ export interface DashboardUIState {
   /** Right-side drawer: selected bot agent_id in the My Bots → Bots view. */
   botDetailAgentId: string | null;
   setBotDetailAgentId: (id: string | null) => void;
+  /** Optional tab to focus when the bot drawer opens (e.g. wallet from overview). */
+  botDetailInitialTab: string | null;
+  openBotDetail: (id: string, initialTab?: string | null) => void;
   /** Right-side drawer for peer (non-owned) bots — shows public info only. */
   peerBotAgentId: string | null;
   setPeerBotAgentId: (id: string | null) => void;
@@ -62,6 +67,13 @@ export interface DashboardUIState {
   messagesScope: { type: "human" } | { type: "agent"; id: string };
   /** Whether the identity-grouping sidebar in Messages is expanded. */
   messagesGroupingOpen: boolean;
+  /**
+   * When true, Messages tab swaps its main pane to the contact-request inbox.
+   * The sidebar surfaces a "申请" row only when there are pending received
+   * requests; clicking it sets this flag. Picking any room filter resets it.
+   */
+  messagesShowRequests: boolean;
+  setMessagesShowRequests: (open: boolean) => void;
   /** Whether the inline search field in the Messages panel is visible. */
   messagesSearchOpen: boolean;
   /**
@@ -78,6 +90,7 @@ export interface DashboardUIState {
   setFocusedRoomId: (roomId: string | null) => void;
   setOpenedRoomId: (roomId: string | null) => void;
   setUserChatRoomId: (roomId: string | null) => void;
+  setUserChatAgentId: (agentId: string | null) => void;
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
   startPrimaryNavigation: (tab: DashboardUIState["sidebarTab"], path: string) => void;
   clearPrimaryNavigation: () => void;
@@ -87,6 +100,10 @@ export interface DashboardUIState {
   setMessagesGroupingOpen: (open: boolean) => void;
   setMessagesSearchOpen: (open: boolean) => void;
   setMessagesBotScope: (scope: DashboardUIState["messagesBotScope"]) => void;
+  resetMessagesGroupingForRoomOpen: () => void;
+  /** Hides all wallet amounts behind a placeholder (default true). Toggle via the eye button on the wallet page. */
+  walletAmountsHidden: boolean;
+  toggleWalletAmountsHidden: () => void;
   setExploreView: (view: DashboardUIState["exploreView"]) => void;
   setContactsView: (view: DashboardUIState["contactsView"]) => void;
   setSelectedContactKey: (key: DashboardUIState["selectedContactKey"]) => void;
@@ -108,6 +125,7 @@ const initialUIState = {
   focusedRoomId: null,
   openedRoomId: null,
   userChatRoomId: null,
+  userChatAgentId: null,
   rightPanelOpen: false,
   agentCardOpen: false,
   pendingHumanOpen: null as { humanId: string; displayName: string } | null,
@@ -119,13 +137,16 @@ const initialUIState = {
   myBotsTab: "bots" as DashboardUIState["myBotsTab"],
   selectedDeviceId: null as string | null,
   botDetailAgentId: null as string | null,
+  botDetailInitialTab: null as string | null,
   peerBotAgentId: null as string | null,
   messagesPane: "room" as const,
   messagesFilter: "self-all" as DashboardUIState["messagesFilter"],
   messagesScope: { type: "human" as const } as DashboardUIState["messagesScope"],
   messagesGroupingOpen: true,
+  messagesShowRequests: false,
   messagesSearchOpen: false,
   messagesBotScope: "all" as DashboardUIState["messagesBotScope"],
+  walletAmountsHidden: true,
   exploreView: "rooms" as const,
   contactsView: "agents" as const,
   selectedContactKey: null as DashboardUIState["selectedContactKey"],
@@ -139,9 +160,18 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   setFocusedRoomId: (focusedRoomId) =>
     set((state) => (state.focusedRoomId === focusedRoomId ? state : { focusedRoomId })),
   setOpenedRoomId: (openedRoomId) =>
-    set((state) => (state.openedRoomId === openedRoomId ? state : { openedRoomId })),
+    set((state) => {
+      return state.openedRoomId === openedRoomId
+        && (!openedRoomId || !state.messagesShowRequests)
+        ? state
+        : openedRoomId
+          ? { openedRoomId, messagesShowRequests: false }
+          : { openedRoomId };
+    }),
   setUserChatRoomId: (userChatRoomId) =>
     set((state) => (state.userChatRoomId === userChatRoomId ? state : { userChatRoomId })),
+  setUserChatAgentId: (userChatAgentId) =>
+    set((state) => (state.userChatAgentId === userChatAgentId ? state : { userChatAgentId })),
   setSidebarTab: (sidebarTab) =>
     set((state) => (
       state.sidebarTab === sidebarTab
@@ -156,15 +186,39 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   setSelectedDeviceId: (selectedDeviceId) =>
     set((state) => (state.selectedDeviceId === selectedDeviceId ? state : { selectedDeviceId })),
   setBotDetailAgentId: (botDetailAgentId) =>
-    set((state) => (state.botDetailAgentId === botDetailAgentId ? state : { botDetailAgentId })),
+    set((state) =>
+      state.botDetailAgentId === botDetailAgentId
+        ? state
+        : { botDetailAgentId, botDetailInitialTab: null },
+    ),
+  openBotDetail: (id, initialTab = null) =>
+    set({ botDetailAgentId: id, botDetailInitialTab: initialTab }),
   setPeerBotAgentId: (peerBotAgentId) =>
     set((state) => (state.peerBotAgentId === peerBotAgentId ? state : { peerBotAgentId })),
   setSelectedBotAgentId: (selectedBotAgentId) =>
     set((state) => (state.selectedBotAgentId === selectedBotAgentId ? state : { selectedBotAgentId })),
   setMessagesPane: (messagesPane) =>
-    set((state) => (state.messagesPane === messagesPane ? state : { messagesPane })),
+    set((state) => {
+      const clearsRequests = messagesPane === "user-chat";
+      if (state.messagesPane === messagesPane && (!clearsRequests || !state.messagesShowRequests)) {
+        return state;
+      }
+      return clearsRequests
+        ? { messagesPane, messagesShowRequests: false }
+        : { messagesPane };
+    }),
   setMessagesFilter: (messagesFilter) =>
-    set((state) => (state.messagesFilter === messagesFilter ? state : { messagesFilter })),
+    set((state) =>
+      state.messagesFilter === messagesFilter
+        ? state
+        : { messagesFilter, messagesShowRequests: false },
+    ),
+  setMessagesShowRequests: (messagesShowRequests) =>
+    set((state) =>
+      state.messagesShowRequests === messagesShowRequests
+        ? state
+        : { messagesShowRequests },
+    ),
   setMessagesScope: (messagesScope) =>
     set((state) => {
       const a = state.messagesScope;
@@ -179,6 +233,24 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
     set((state) => (state.messagesSearchOpen === messagesSearchOpen ? state : { messagesSearchOpen })),
   setMessagesBotScope: (messagesBotScope) =>
     set((state) => (state.messagesBotScope === messagesBotScope ? state : { messagesBotScope })),
+  resetMessagesGroupingForRoomOpen: () =>
+    set((state) => {
+      const next = {
+        messagesFilter: initialUIState.messagesFilter,
+        messagesScope: initialUIState.messagesScope,
+        messagesBotScope: initialUIState.messagesBotScope,
+      };
+      if (
+        state.messagesFilter === next.messagesFilter
+        && state.messagesScope.type === "human"
+        && state.messagesBotScope === next.messagesBotScope
+      ) {
+        return state;
+      }
+      return next;
+    }),
+  toggleWalletAmountsHidden: () =>
+    set((state) => ({ walletAmountsHidden: !state.walletAmountsHidden })),
   setExploreView: (exploreView) =>
     set((state) => (state.exploreView === exploreView ? state : { exploreView })),
   setContactsView: (contactsView) =>

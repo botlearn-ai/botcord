@@ -183,6 +183,33 @@ describe("HermesAgentAdapter", () => {
     expect(res.error).toBeUndefined();
   });
 
+  it("drains late assistant text after a prompt RPC error before closing stdin", async () => {
+    const script = makeAcpServer(
+      "late-after-error.js",
+      `
+        if (msg.method === "initialize") {
+          reply(msg, { protocolVersion: 1 });
+        } else if (msg.method === "session/new") {
+          reply(msg, { sessionId: "sess-late-error" });
+        } else if (msg.method === "session/prompt") {
+          err(msg, -32603, "Internal error");
+          setTimeout(() => {
+            notify("session/update", {
+              sessionId: msg.params.sessionId,
+              update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "late but valid" } }
+            });
+            process.exit(0);
+          }, 25);
+        }
+      `,
+    );
+
+    const res = await runAdapter(script);
+    expect(res.newSessionId).toBe("sess-late-error");
+    expect(res.text).toBe("late but valid");
+    expect(res.error).toContain("acp error -32603");
+  });
+
   it("owner trust → request_permission selects an allow_* option", async () => {
     const script = makeAcpServer(
       "perm-allow.js",

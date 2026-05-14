@@ -358,6 +358,12 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
 
       if (!finalText) {
         const stopReason = pickStopReason(promptResult);
+        if (!stopReason || stopReason === "end_turn") {
+          return {
+            text: "",
+            newSessionId: acpSessionId,
+          };
+        }
         const warningTail = handle.nonJsonStdoutTail.slice(-8).join("\n").trim();
         const detail = warningTail ? `; stdout: ${truncateDetail(warningTail, 1000)}` : "";
         const reason = stopReason ? `prompt stopped: ${stopReason}` : "empty assistant response";

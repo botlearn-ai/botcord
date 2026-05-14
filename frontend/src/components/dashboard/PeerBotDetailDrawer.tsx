@@ -30,12 +30,11 @@ function formatDate(iso?: string): string {
  */
 export default function PeerBotDetailDrawer() {
   const router = useRouter();
-  const { peerBotAgentId, setPeerBotAgentId, setSidebarTab, setOpenedRoomId } = useDashboardUIStore(
+  const { peerBotAgentId, setPeerBotAgentId, startPrimaryNavigation } = useDashboardUIStore(
     useShallow((s) => ({
       peerBotAgentId: s.peerBotAgentId,
       setPeerBotAgentId: s.setPeerBotAgentId,
-      setSidebarTab: s.setSidebarTab,
-      setOpenedRoomId: s.setOpenedRoomId,
+      startPrimaryNavigation: s.startPrimaryNavigation,
     })),
   );
   const { overview, publicAgents } = useDashboardChatStore(
@@ -75,13 +74,9 @@ export default function PeerBotDetailDrawer() {
       (r) => r.owner_id === agentId && (r.peer_type ?? r.owner_type) === "agent",
     );
     setPeerBotAgentId(null);
-    setSidebarTab("messages");
-    if (dm) {
-      setOpenedRoomId(dm.room_id);
-      router.push(`/chats/messages/${encodeURIComponent(dm.room_id)}`);
-    } else {
-      router.push("/chats/messages");
-    }
+    const path = dm ? `/chats/messages/${encodeURIComponent(dm.room_id)}` : "/chats/messages";
+    startPrimaryNavigation("messages", path);
+    router.push(path);
   };
 
   const handleAddContact = async () => {

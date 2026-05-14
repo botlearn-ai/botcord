@@ -12,7 +12,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Bell, Info, Loader2, PanelLeftOpen, Plus, Settings, Share2, X } from "lucide-react";
+import { ArrowLeft, Info, Loader2, PanelLeftOpen, Settings, Share2, UserPlus, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -22,16 +22,17 @@ import SubscriptionBadge from "./SubscriptionBadge";
 import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
-import RoomPolicyModal from "./RoomPolicyModal";
 import AddRoomMemberModal from "./AddRoomMemberModal";
 import { dmPeerId, resolveDmDisplayName } from "./dmRoom";
+
+const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
+const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
 
 export default function RoomHeader() {
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
   const [showRulePopover, setShowRulePopover] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [addMemberExistingIds, setAddMemberExistingIds] = useState<string[]>([]);
   const [addMemberLoading, setAddMemberLoading] = useState(false);
@@ -110,7 +111,7 @@ export default function RoomHeader() {
   const canInvite = isHumanView
     ? isOwnerOrAdmin || (Boolean(myRole) && Boolean(humanRoom?.default_invite))
     : (authRoom?.can_invite ?? true);
-  const canAddMembers = activeIdentity?.type === "human" && isOwnerOrAdmin && isJoined && !isDMRoom && !isOwnerChatRoom;
+  const canAddMembers = activeIdentity?.type === "human" && canInvite && isJoined && !isDMRoom && !isOwnerChatRoom;
   const roleLabel = myRole
     ? locale === "zh"
       ? `你是 ${myRole}`
@@ -204,6 +205,22 @@ export default function RoomHeader() {
       setShowAddMemberModal(true);
     }
   }, [activeAgentId, addMemberLoading, humanId, room?.room_id]);
+
+  useEffect(() => {
+    const openAddMember = () => {
+      if (canAddMembers) void handleOpenAddMemberModal();
+    };
+    const openSettings = () => {
+      setShowSettingsModal(true);
+    };
+
+    window.addEventListener(OPEN_ROOM_ADD_MEMBER_EVENT, openAddMember);
+    window.addEventListener(OPEN_ROOM_SETTINGS_EVENT, openSettings);
+    return () => {
+      window.removeEventListener(OPEN_ROOM_ADD_MEMBER_EVENT, openAddMember);
+      window.removeEventListener(OPEN_ROOM_SETTINGS_EVENT, openSettings);
+    };
+  }, [canAddMembers, handleOpenAddMemberModal]);
 
   if (!room) return null;
 
@@ -421,22 +438,9 @@ export default function RoomHeader() {
                 className={iconBtn}
                 aria-label={locale === "zh" ? "添加房间成员" : "Add members"}
               >
-                {addMemberLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {addMemberLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
               </button>
               <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
-            </span>
-          )}
-          {isAuthedReady && activeAgentId && isJoined && !isOwnerChatRoom && (
-            <span className="group relative">
-              <button
-                onClick={() => setShowPolicyModal(true)}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-neon-cyan/35 bg-neon-cyan/10 px-2.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-60 max-md:h-8 max-md:px-2 max-md:text-[11px]"
-                aria-label="本房间回复策略"
-              >
-                <Bell className="h-4 w-4 max-md:h-3.5 max-md:w-3.5" />
-                <span>本房间回复</span>
-              </button>
-              <span className={tooltipCls}>本房间回复策略</span>
             </span>
           )}
           {!isOwnerChatRoom && (
@@ -498,15 +502,7 @@ export default function RoomHeader() {
         />
       )}
 
-      {showPolicyModal && activeAgentId && openedRoomId && (
-        <RoomPolicyModal
-          agentId={activeAgentId}
-          roomId={openedRoomId}
-          onClose={() => setShowPolicyModal(false)}
-        />
-      )}
-
-      {showAddMemberModal && room?.room_id && (
+{showAddMemberModal && room?.room_id && (
         <AddRoomMemberModal
           roomId={room.room_id}
           existingMemberIds={addMemberExistingIds}

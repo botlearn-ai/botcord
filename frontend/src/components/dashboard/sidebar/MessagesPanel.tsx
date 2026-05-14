@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 // messagesFilter is in useDashboardUIStore so ChatPane can also read it.
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
@@ -10,8 +10,9 @@ import { buildVisibleMessageRooms, isOwnerChatRoom } from "@/store/dashboard-sha
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
-import { Bot, ChevronsRight, MessageSquarePlus, Plus, Search, UserPlus } from "lucide-react";
+import { Bot, ChevronsRight, MessageSquarePlus, Plus, Search, UserPlus, UserPlus2 } from "lucide-react";
 import MessagesBotScopeDropdown from "./MessagesBotScopeDropdown";
 import { applyMessagesFilter, mergeOwnerVisibleRooms } from "@/lib/messages-merge";
 import type { DashboardRoom } from "@/lib/types";
@@ -37,7 +38,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     humanRooms: s.humanRooms,
     ownedAgents: s.ownedAgents,
   })));
-  const { sidebarTab, openedRoomId, messagesPane, messagesFilter, messagesGroupingOpen, setMessagesGroupingOpen, messagesSearchOpen, setMessagesSearchOpen, messagesBotScope, openCreateBotModal } = useDashboardUIStore(useShallow((s) => ({
+  const { sidebarTab, openedRoomId, messagesPane, messagesFilter, messagesGroupingOpen, setMessagesGroupingOpen, messagesSearchOpen, setMessagesSearchOpen, messagesBotScope, openCreateBotModal, messagesShowRequests, setMessagesShowRequests, setFocusedRoomId, setOpenedRoomId, setOpenedTopicId } = useDashboardUIStore(useShallow((s) => ({
     sidebarTab: s.sidebarTab,
     openedRoomId: s.openedRoomId,
     messagesPane: s.messagesPane,
@@ -48,7 +49,22 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     setMessagesSearchOpen: s.setMessagesSearchOpen,
     messagesBotScope: s.messagesBotScope,
     openCreateBotModal: s.openCreateBotModal,
+    messagesShowRequests: s.messagesShowRequests,
+    setMessagesShowRequests: s.setMessagesShowRequests,
+    setFocusedRoomId: s.setFocusedRoomId,
+    setOpenedRoomId: s.setOpenedRoomId,
+    setOpenedTopicId: s.setOpenedTopicId,
   })));
+  const contactRequestsReceived = useDashboardContactStore((s) => s.contactRequestsReceived);
+  const loadContactRequests = useDashboardContactStore((s) => s.loadContactRequests);
+  const pendingRequests = useMemo(
+    () => contactRequestsReceived.filter((r) => r.state === "pending"),
+    [contactRequestsReceived],
+  );
+  const pendingRequestCount = pendingRequests.length;
+  useEffect(() => {
+    void loadContactRequests();
+  }, [loadContactRequests]);
   const { overview, messages, recentVisitedRooms, ownedAgentRooms } = useDashboardChatStore(useShallow((s) => ({
     overview: s.overview,
     messages: s.messages,
@@ -121,7 +137,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
       {/* Column header — peer-level to MessagesGroupingSidebar's header */}
       <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          {!messagesGroupingOpen ? (
+          {!isGuest && !messagesGroupingOpen ? (
             <button
               onClick={() => setMessagesGroupingOpen(true)}
               title="展开分组"
@@ -135,35 +151,61 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         </div>
         {!isGuest && (
           <div className="flex items-center gap-1">
-            <button
+            <TooltipIconButton
+              label={locale === "zh" ? "搜索消息" : "Search messages"}
               onClick={() => setMessagesSearchOpen(!messagesSearchOpen)}
-              title="搜索消息"
-              aria-label="搜索消息"
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
-                messagesSearchOpen ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
-              }`}
+              active={messagesSearchOpen}
             >
               <Search className="h-4 w-4" />
-            </button>
-            <button
+            </TooltipIconButton>
+            <TooltipIconButton
+              label={locale === "zh" ? "邀请好友" : "Invite friend"}
               onClick={onAddFriend}
-              title="邀请好友"
-              aria-label="邀请好友"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
             >
               <UserPlus className="h-4 w-4" />
-            </button>
-            <button
+            </TooltipIconButton>
+            <TooltipIconButton
+              label={locale === "zh" ? "新建会话" : "New conversation"}
               onClick={onCreateRoom}
-              title="新建会话"
-              aria-label="新建会话"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
             >
               <MessageSquarePlus className="h-4 w-4" />
-            </button>
+            </TooltipIconButton>
           </div>
         )}
       </div>
+      {pendingRequestCount > 0 ? (
+        <button
+          onClick={() => {
+            setMessagesShowRequests(true);
+            setFocusedRoomId(null);
+            setOpenedRoomId(null);
+            setOpenedTopicId(null);
+            startTransition(() => router.push("/chats/messages"));
+          }}
+          className={`flex items-center gap-3 border-b border-glass-border px-3 py-3 text-left transition-colors ${
+            messagesShowRequests ? "bg-neon-cyan/10" : "hover:bg-glass-bg/60"
+          }`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
+            <UserPlus2 className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className={`text-sm font-medium ${messagesShowRequests ? "text-neon-cyan" : "text-text-primary"}`}>
+                {locale === "zh" ? "新好友申请" : "New Requests"}
+              </span>
+              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
+                {pendingRequestCount}
+              </span>
+            </div>
+            <p className="truncate text-[11px] text-text-secondary/60">
+              {locale === "zh"
+                ? `${pendingRequestCount} 个待处理请求`
+                : `${pendingRequestCount} pending`}
+            </p>
+          </div>
+        </button>
+      ) : null}
       {messagesSearchOpen ? (
         <div className="border-b border-glass-border px-3 py-2">
           <SearchBar onSearch={setMessageQuery} placeholder={t.searchMessages} />
@@ -239,6 +281,38 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function TooltipIconButton({
+  label,
+  onClick,
+  active = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="group relative">
+      <button
+        onClick={onClick}
+        aria-label={label}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
+          active ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
+        }`}
+      >
+        {children}
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-glass-border bg-deep-black px-2 py-0.5 text-[11px] text-text-primary opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+      >
+        {label}
+      </span>
     </div>
   );
 }

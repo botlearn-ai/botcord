@@ -11,7 +11,9 @@ import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import SubscriptionBadge from "./SubscriptionBadge";
+import { PresenceDot } from "./PresenceDot";
 import { initialsFromName, themeFromRoomName } from "./roomVisualTheme";
+import { usePresenceStatus } from "@/store/usePresenceStore";
 
 type ExploreEntityCardProps =
   | {
@@ -72,6 +74,11 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
   const locale = useLanguage();
   const t = exploreUi[locale];
   const className = props.className || "";
+  const agentForPresence =
+    props.kind === "agent"
+      ? props.data || (props.id ? props.agentsById?.[props.id] : undefined)
+      : undefined;
+  const presence = usePresenceStatus(agentForPresence?.agent_id);
 
   const handleKeyActivate = (
     event: React.KeyboardEvent<HTMLDivElement>,
@@ -154,6 +161,8 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         ? t.personaOpen
         : t.personaContactsOnly;
     const hasOwner = Boolean(agent.owner_human_id && agent.owner_display_name);
+    const effectiveStatus = presence?.effectiveStatus ?? (agent.online ? "online" : "offline");
+    const online = effectiveStatus !== "offline";
 
     return (
       <div
@@ -173,7 +182,19 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-text-primary">{agent.display_name}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="min-w-0 truncate text-sm font-semibold text-text-primary">{agent.display_name}</p>
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-3 ${
+                  online
+                    ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+                    : "border-white/10 bg-white/5 text-text-secondary/60"
+                }`}
+              >
+                <PresenceDot agentId={agent.agent_id} fallback={agent.online} size="xs" />
+                {online ? t.online : t.offline}
+              </span>
+            </div>
             <p className="mt-0.5 text-[10px] text-neon-purple/90">{t.personaAgent} · {persona}</p>
           </div>
         </div>

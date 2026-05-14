@@ -7,7 +7,6 @@ import {
   Bot,
   Check,
   CheckCircle2,
-  ChevronDown,
   Copy,
   Info,
   Loader2,
@@ -31,7 +30,6 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
-import { useMockBotsStore, type MockCreatedBot, type MockCreatedBotDraft } from "@/store/useMockBotsStore";
 import BotAvatar from "./BotAvatar";
 import ExploreEntityCard from "./ExploreEntityCard";
 
@@ -353,30 +351,25 @@ function TerminalHowToPopover() {
 function DeviceConnectModal({
   connected,
   connectedActionLabel = "Create a new bot",
-  mockConnected,
   daemonLoading,
   title = "Connect Device",
   description = "Connect a device, then BotCord can host Bots on it.",
   onClose,
   onCreateBot,
-  onMockConnected,
   onRefreshDaemons,
 }: {
   connected: boolean;
   connectedActionLabel?: string;
-  mockConnected: boolean;
   daemonLoading: boolean;
   title?: string;
   description?: string;
   onClose: () => void;
   onCreateBot: () => void;
-  onMockConnected: () => void;
   onRefreshDaemons: () => void;
 }) {
   const [installToken, setInstallToken] = useState<string | undefined>();
   const [tokenLoading, setTokenLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [mockConnectionInProgress, setMockConnectionInProgress] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
 
   const loading = tokenLoading || daemonLoading;
@@ -385,8 +378,7 @@ function DeviceConnectModal({
     ? "Generating secure install command..."
     : command;
   const copyDisabled = tokenLoading;
-  const deviceConnected = connected || mockConnected;
-  const showConnectingMock = !connected && !mockConnected && mockConnectionInProgress;
+  const deviceConnected = connected;
 
   useEffect(() => {
     void refreshInstallCommand();
@@ -409,11 +401,6 @@ function DeviceConnectModal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
-
-  useEffect(() => {
-    if (!connected) return;
-    setMockConnectionInProgress(false);
-  }, [connected]);
 
   async function refreshInstallCommand(): Promise<void> {
     setTokenLoading(true);
@@ -454,13 +441,6 @@ function DeviceConnectModal({
   function handleRefresh() {
     void refreshInstallCommand();
     onRefreshDaemons();
-    if (connected) return;
-    if (mockConnectionInProgress) {
-      setMockConnectionInProgress(false);
-      onMockConnected();
-      return;
-    }
-    if (!mockConnected) setMockConnectionInProgress(true);
   }
 
   return (
@@ -569,23 +549,17 @@ function DeviceConnectModal({
             <div className="mb-3 flex items-center gap-2 text-sm font-medium text-text-primary">
               {deviceConnected ? (
                 <CheckCircle2 className="h-4 w-4 text-neon-green" />
-              ) : showConnectingMock ? (
-                <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />
               ) : (
                 <span className="h-2.5 w-2.5 rounded-full border border-text-secondary/70" />
               )}
               {deviceConnected
                 ? "Device connected"
-                : showConnectingMock
-                  ? "Device found — finishing connection"
-                  : "Waiting for your device..."}
+                : "Waiting for your device..."}
             </div>
             <div className="ml-5 space-y-1">
               <div className="flex items-center gap-2 text-sm text-text-secondary">
                 {deviceConnected ? (
                   <Check className="h-4 w-4 text-neon-green" />
-                ) : showConnectingMock ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />
                 ) : daemonLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />
                 ) : (
@@ -593,41 +567,13 @@ function DeviceConnectModal({
                 )}
                 {deviceConnected
                   ? "Ready to host Bots"
-                  : showConnectingMock
-                    ? "Completing secure pairing"
-                    : "Listening for connections"}
+                  : "Listening for connections"}
               </div>
               <p className="max-w-sm text-xs text-text-secondary/70">
                 {deviceConnected
                   ? "You can close this dialog and create your Bot."
-                  : showConnectingMock
-                    ? "We found a device running BotCord. Keep this window open while the hub confirms it."
-                    : "This page will update automatically once your device connects."}
+                  : "This page will update automatically once your device connects."}
               </p>
-              {showConnectingMock || mockConnected ? (
-                <div className="mt-3 grid gap-2 rounded-xl border border-glass-border/70 bg-deep-black/45 p-3">
-                  <div className="flex items-center gap-2 text-xs text-text-secondary">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-neon-green" />
-                    Device command completed
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-text-secondary">
-                    {mockConnected ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-neon-green" />
-                    ) : (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-neon-cyan" />
-                    )}
-                    Verifying this device
-                  </div>
-                  <div className={`flex items-center gap-2 text-xs ${mockConnected ? "text-text-secondary" : "text-text-secondary/60"}`}>
-                    {mockConnected ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-neon-green" />
-                    ) : (
-                      <span className="h-3.5 w-3.5 rounded-full border border-text-secondary/40" />
-                    )}
-                    Preparing Bot hosting
-                  </div>
-                </div>
-              ) : null}
             </div>
           </div>
 
@@ -645,9 +591,7 @@ function DeviceConnectModal({
           ) : (
             <div className="flex flex-col gap-3 border-t border-glass-border pt-4 text-sm text-text-secondary/70 sm:flex-row sm:items-center sm:justify-between">
               <span>
-                {showConnectingMock
-                  ? "Still connecting? Keep this window open."
-                  : "Already running BotCord on this machine?"}
+                Already running BotCord on this machine?
               </span>
               <button
                 type="button"
@@ -660,503 +604,11 @@ function DeviceConnectModal({
                 ) : (
                   <RefreshCcw className="h-3.5 w-3.5" />
                 )}
-                {showConnectingMock ? "Refresh again" : "Refresh"}
+                Refresh
               </button>
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-type MockRuntime = {
-  id: string;
-  label: string;
-  status: "available" | "unavailable" | "unsupported";
-  note?: string;
-};
-
-const mockLocalRuntimes: MockRuntime[] = [
-  {
-    id: "claude-code",
-    label: "claude-code @ 2.1.138 (Claude Code)",
-    status: "available",
-  },
-  {
-    id: "codex",
-    label: "codex @ codex-cli 0.130.0-alpha.5",
-    status: "available",
-  },
-  {
-    id: "openclaw-acp",
-    label: "openclaw-acp @ OpenClaw 2026.4.12 (1c0672b)",
-    status: "available",
-  },
-  {
-    id: "deepseek-tui",
-    label: "deepseek-tui",
-    status: "unavailable",
-    note: "unavailable",
-  },
-  {
-    id: "kimi-cli",
-    label: "kimi-cli",
-    status: "unavailable",
-    note: "unavailable",
-  },
-  {
-    id: "hermes-agent",
-    label: "hermes-agent",
-    status: "unavailable",
-    note: "unavailable",
-  },
-  {
-    id: "gemini",
-    label: "gemini @ 0.31.0",
-    status: "unsupported",
-    note: "not yet supported",
-  },
-];
-
-const mockAvailableRuntimes = mockLocalRuntimes.filter(
-  (runtime) => runtime.status === "available",
-);
-const mockUnavailableRuntimes = mockLocalRuntimes.filter(
-  (runtime) => runtime.status !== "available",
-);
-
-const mockOpenClawGateways = [
-  "openclaw-127-0-0-1-18789 — ws://127.0.0.1:18789 (2026.4.12)",
-  "openclaw-localhost-28789 — ws://127.0.0.1:28789 (QClaw)",
-];
-
-const mockOpenClawSubagents = ["main", "research", "operator"];
-
-const mockConnectedDevices = [
-  {
-    id: "macbook-pro-2",
-    label: "peiyingdeMacBook-Pro-2",
-    detail: "macOS · online",
-  },
-  {
-    id: "linux-runner",
-    label: "botcord-linux-runner",
-    detail: "Linux · online",
-  },
-];
-
-function MockRuntimeRow({
-  runtime,
-  selected,
-  onSelect,
-}: {
-  runtime: MockRuntime;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const available = runtime.status === "available";
-
-  return (
-    <button
-      type="button"
-      onClick={available ? onSelect : undefined}
-      disabled={!available}
-      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
-        selected
-          ? "border-neon-cyan bg-neon-cyan/15 text-text-primary"
-          : available
-            ? "border-glass-border bg-deep-black text-text-primary hover:border-neon-cyan/45 hover:bg-neon-cyan/10"
-            : "cursor-not-allowed border-glass-border bg-glass-bg/35 text-text-secondary/75"
-      }`}
-    >
-      <span
-        className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-          available ? "bg-neon-green" : "bg-text-secondary/55"
-        }`}
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-mono text-[13px] leading-5">
-          {runtime.label}
-        </span>
-        {runtime.note ? (
-          <span className="mt-0.5 block text-xs leading-4 text-text-secondary">
-            {runtime.note}
-          </span>
-        ) : null}
-      </span>
-      {selected ? <Check className="h-4 w-4 shrink-0 text-neon-cyan" /> : null}
-    </button>
-  );
-}
-
-function MockOpenClawDetails({
-  gateway,
-  subagent,
-  onGatewayChange,
-  onSubagentChange,
-}: {
-  gateway: string;
-  subagent: string;
-  onGatewayChange: (value: string) => void;
-  onSubagentChange: (value: string) => void;
-}) {
-  return (
-    <div className="ml-5 border-l border-neon-cyan/25 pl-4">
-      <div className="rounded-xl border border-glass-border bg-glass-bg/30 p-2.5">
-        <div className="grid gap-2.5">
-          <div>
-            <label
-              htmlFor="mock-openclaw-gateway"
-              className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary"
-            >
-              Gateway
-            </label>
-            <div className="relative">
-              <select
-                id="mock-openclaw-gateway"
-                value={gateway}
-                onChange={(event) => onGatewayChange(event.target.value)}
-                className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
-              >
-                {mockOpenClawGateways.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <label
-                htmlFor="mock-openclaw-subagent"
-                className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary"
-              >
-                Subagent
-              </label>
-              <InlineTooltip label="Choose the local OpenClaw subagent BotCord should bind to." widthClass="w-56">
-                <Info className="h-3.5 w-3.5 text-text-secondary/80 transition-colors group-hover:text-neon-cyan group-focus-visible:text-neon-cyan" />
-              </InlineTooltip>
-            </div>
-            <div className="relative">
-              <select
-                id="mock-openclaw-subagent"
-                value={subagent}
-                onChange={(event) => onSubagentChange(event.target.value)}
-                className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
-              >
-                {mockOpenClawSubagents.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MockCreateAgentDialog({
-  onClose,
-  onCreate,
-}: {
-  onClose: () => void;
-  onCreate: (bot: MockCreatedBotDraft) => void;
-}) {
-  const [agentName, setAgentName] = useState("");
-  const [agentBio, setAgentBio] = useState("");
-  const [devices, setDevices] = useState(mockConnectedDevices);
-  const [selectedDeviceId, setSelectedDeviceId] = useState(
-    mockConnectedDevices[mockConnectedDevices.length - 1].id,
-  );
-  const [addDeviceOpen, setAddDeviceOpen] = useState(false);
-  const [addDeviceConnected, setAddDeviceConnected] = useState(false);
-  const [selectedRuntimeId, setSelectedRuntimeId] = useState("claude-code");
-  const [selectedGateway, setSelectedGateway] = useState(mockOpenClawGateways[0]);
-  const [selectedSubagent, setSelectedSubagent] = useState(mockOpenClawSubagents[0]);
-  const [unavailableExpanded, setUnavailableExpanded] = useState(false);
-  const fallbackBotName = "Research assistant";
-
-  function closeAddDevice(): void {
-    setAddDeviceOpen(false);
-    setAddDeviceConnected(false);
-  }
-
-  function useAddedDevice(): void {
-    const nextIndex = devices.length + 1;
-    const nextDevice = {
-      id: `added-device-${nextIndex}`,
-      label: `botcord-device-${nextIndex}`,
-      detail: "macOS · online",
-    };
-    setDevices((currentDevices) => [...currentDevices, nextDevice]);
-    setSelectedDeviceId(nextDevice.id);
-    closeAddDevice();
-  }
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      onClose();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="mock-create-agent-title"
-        className="relative max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-glass-border bg-deep-black-light p-4 shadow-2xl sm:p-5"
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        <div className="mb-4 pr-8">
-          <h3
-            id="mock-create-agent-title"
-            className="flex items-center gap-2 text-xl font-bold text-text-primary"
-          >
-            <Bot className="h-5 w-5 text-neon-cyan" />
-            Create Bot
-          </h3>
-          <p className="mt-1.5 text-sm text-text-secondary">
-            Select a device and create a Bot.
-          </p>
-        </div>
-
-        <div className="space-y-3.5">
-          <section>
-            <div className="mb-1.5 flex items-center justify-between gap-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                Device
-              </h4>
-              <button
-                type="button"
-                onClick={() => {
-                  setAddDeviceConnected(false);
-                  setAddDeviceOpen(true);
-                }}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-neon-cyan/80 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
-              >
-                <Plus className="h-3 w-3" />
-                Add Device
-              </button>
-            </div>
-            <div className="relative">
-              <Server className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neon-cyan" />
-              <select
-                value={selectedDeviceId}
-                onChange={(event) => setSelectedDeviceId(event.target.value)}
-                className="h-11 w-full appearance-none rounded-xl border border-glass-border bg-deep-black py-0 pl-9 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
-              >
-                {devices.map((device, index) => (
-                  <option key={device.id} value={device.id}>
-                    {device.label} — {device.detail}
-                    {index === devices.length - 1 ? " · latest" : ""}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-            </div>
-          </section>
-
-          <section>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Bot Runtime
-                </h4>
-              </div>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan"
-              >
-                <RefreshCcw className="h-3.5 w-3.5" />
-                Detect available runtimes
-              </button>
-            </div>
-            <div className="grid gap-3">
-              <div>
-                <div className="mb-1.5 flex items-center justify-between gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-neon-green/80">
-                    Available
-                  </span>
-                  <span className="text-[11px] text-text-secondary/55">
-                    {mockAvailableRuntimes.length} found
-                  </span>
-                </div>
-                <div className="grid gap-2">
-                  {mockAvailableRuntimes.map((runtime) => (
-                    <div key={runtime.id} className="grid gap-2">
-                      <MockRuntimeRow
-                        runtime={runtime}
-                        selected={selectedRuntimeId === runtime.id}
-                        onSelect={() => setSelectedRuntimeId(runtime.id)}
-                      />
-                      {runtime.id === "openclaw-acp" && selectedRuntimeId === runtime.id ? (
-                        <MockOpenClawDetails
-                          gateway={selectedGateway}
-                          subagent={selectedSubagent}
-                          onGatewayChange={setSelectedGateway}
-                          onSubagentChange={setSelectedSubagent}
-                        />
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <button
-                  type="button"
-                  aria-expanded={unavailableExpanded}
-                  onClick={() => setUnavailableExpanded((expanded) => !expanded)}
-                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
-                >
-                  <span>
-                    <span className="font-semibold uppercase tracking-wider">
-                      Not available
-                    </span>
-                    <span className="ml-2 text-text-secondary/60">
-                      {mockUnavailableRuntimes.length} runtimes
-                    </span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-[11px] text-neon-cyan/80">
-                    {unavailableExpanded ? "Hide" : "Show"}
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${
-                        unavailableExpanded ? "rotate-180" : ""
-                      }`}
-                    />
-                  </span>
-                </button>
-                {unavailableExpanded ? (
-                  <div className="mt-2 grid gap-2">
-                    {mockUnavailableRuntimes.map((runtime) => (
-                      <MockRuntimeRow
-                        key={runtime.id}
-                        runtime={runtime}
-                        selected={false}
-                        onSelect={() => undefined}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <label
-                htmlFor="mock-agent-name"
-                className="text-xs font-semibold uppercase tracking-wider text-text-secondary"
-              >
-                Name
-              </label>
-              <button
-                type="button"
-                aria-label="Suggest a name"
-                className="inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <p className="mb-1.5 text-xs leading-5 text-text-secondary">
-              This is the BotCord display name. Everyone in group chats can see it.
-            </p>
-            <input
-              id="mock-agent-name"
-              type="text"
-              value={agentName}
-              onChange={(event) => setAgentName(event.target.value)}
-              placeholder="Enter a name, e.g. Research assistant"
-              maxLength={64}
-              className="h-10 w-full rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
-            />
-          </section>
-
-          <section>
-            <label
-              htmlFor="mock-agent-bio"
-              className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary"
-            >
-              Bio
-            </label>
-            <p className="mb-1.5 text-xs leading-5 text-text-secondary">
-              Describe this Bot&apos;s traits and purpose. Everyone can see this bio.
-            </p>
-            <textarea
-              id="mock-agent-bio"
-              value={agentBio}
-              onChange={(event) => setAgentBio(event.target.value)}
-              placeholder="Tell us what this Bot does (optional)"
-              rows={2}
-              maxLength={240}
-              className="h-16 w-full resize-none rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
-            />
-          </section>
-        </div>
-
-        <div className="mt-5 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onCreate({
-                name: agentName.trim() || fallbackBotName,
-                bio: agentBio.trim() || null,
-                runtimeId: selectedRuntimeId,
-                deviceId: selectedDeviceId,
-              });
-            }}
-            className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20"
-          >
-            Create
-          </button>
-        </div>
-        {addDeviceOpen ? (
-          <DeviceConnectModal
-            connected={false}
-            connectedActionLabel="Use this device"
-            mockConnected={addDeviceConnected}
-            daemonLoading={false}
-            title="Add Device"
-            description="Connect another device, then choose it for this Bot."
-            onClose={closeAddDevice}
-            onCreateBot={useAddedDevice}
-            onMockConnected={() => setAddDeviceConnected(true)}
-            onRefreshDaemons={() => undefined}
-          />
-        ) : null}
       </div>
     </div>
   );
@@ -1249,10 +701,11 @@ export default function HomePanel() {
       selectAgent: s.selectAgent,
     })),
   );
-  const { openCreateBotModal, requestOpenHuman, setBotDetailAgentId } = useDashboardUIStore(
+  const { openCreateBotModal, requestOpenHuman, resetMessagesGroupingForRoomOpen, setBotDetailAgentId } = useDashboardUIStore(
     useShallow((s) => ({
       openCreateBotModal: s.openCreateBotModal,
       requestOpenHuman: s.requestOpenHuman,
+      resetMessagesGroupingForRoomOpen: s.resetMessagesGroupingForRoomOpen,
       setBotDetailAgentId: s.setBotDetailAgentId,
     })),
   );
@@ -1265,16 +718,11 @@ export default function HomePanel() {
   );
   const [statsByAgent, setStatsByAgent] = useState<Record<string, ActivityStats>>({});
   const [deviceModalOpen, setDeviceModalOpen] = useState(false);
-  const [mockDeviceConnected, setMockDeviceConnected] = useState(false);
-  const [mockCreateAgentOpen, setMockCreateAgentOpen] = useState(false);
-  const mockCreatedBots = useMockBotsStore((s) => s.bots);
-  const addMockBot = useMockBotsStore((s) => s.addBot);
   const hasOnlineDaemon = useMemo(
     () => daemons.some((daemon) => daemon.status === "online"),
     [daemons],
   );
-  const deviceConnectedForPreview = hasOnlineDaemon || mockDeviceConnected;
-  const hasBotsForPreview = ownedAgents.length > 0 || mockCreatedBots.length > 0;
+  const hasBotsForPreview = ownedAgents.length > 0;
 
   useEffect(() => {
     if (!publicRoomsLoaded) void loadPublicRooms();
@@ -1285,12 +733,6 @@ export default function HomePanel() {
   useEffect(() => {
     void refreshDaemons({ quiet: true });
   }, [refreshDaemons]);
-
-  useEffect(() => {
-    if (!hasOnlineDaemon) return;
-    setMockDeviceConnected(false);
-    setMockCreateAgentOpen(false);
-  }, [hasOnlineDaemon]);
 
   useEffect(() => {
     if (!deviceModalOpen || hasOnlineDaemon) return;
@@ -1323,35 +765,7 @@ export default function HomePanel() {
     () => [...publicRooms].sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")).slice(0, 4),
     [publicRooms],
   );
-  const mockBotAgents = useMemo<UserAgent[]>(
-    () =>
-      mockCreatedBots.map((bot) => ({
-        agent_id: bot.id,
-        display_name: bot.name,
-        bio: bot.bio,
-        avatar_url: null,
-        is_default: mockCreatedBots[0]?.id === bot.id,
-        claimed_at: new Date().toISOString(),
-        ws_online: true,
-        daemon_instance_id: bot.deviceId,
-      })),
-    [mockCreatedBots],
-  );
-  const visibleMockBotAgents = mockBotAgents.slice(0, 5);
-  const previewOwnedAgents = ownedAgents.slice(
-    0,
-    Math.max(0, 5 - visibleMockBotAgents.length),
-  );
-  const mockBotStats = useMemo<ActivityStats>(
-    () => ({
-      messages_sent: 0,
-      messages_received: 0,
-      topics_open: 0,
-      topics_completed: 0,
-      active_rooms: 0,
-    }),
-    [],
-  );
+  const previewOwnedAgents = ownedAgents.slice(0, 5);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -1376,14 +790,6 @@ export default function HomePanel() {
           />
           {hasBotsForPreview ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {visibleMockBotAgents.map((bot) => (
-                <BotActivityCard
-                  key={bot.agent_id}
-                  bot={bot}
-                  stats={mockBotStats}
-                  onClick={() => undefined}
-                />
-              ))}
               {previewOwnedAgents.map((bot) => (
                 <BotActivityCard
                   key={bot.agent_id}
@@ -1394,9 +800,8 @@ export default function HomePanel() {
               ))}
               <CreateNewBotCard
                 onClick={() => {
-                  if (mockDeviceConnected || mockCreatedBots.length > 0 || !hasOnlineDaemon) {
-                    setMockDeviceConnected(true);
-                    setMockCreateAgentOpen(true);
+                  if (!hasOnlineDaemon) {
+                    setDeviceModalOpen(true);
                     return;
                   }
                   openCreateBotModal();
@@ -1405,12 +810,12 @@ export default function HomePanel() {
             </div>
           ) : (
             <BotOnboardingSteps
-              hasOnlineDaemon={deviceConnectedForPreview}
+              hasOnlineDaemon={hasOnlineDaemon}
               daemonLoading={daemonLoading}
               onConnectDevice={() => setDeviceModalOpen(true)}
               onCreateBot={() => {
-                if (mockDeviceConnected && !hasOnlineDaemon) {
-                  setMockCreateAgentOpen(true);
+                if (!hasOnlineDaemon) {
+                  setDeviceModalOpen(true);
                   return;
                 }
                 openCreateBotModal();
@@ -1433,7 +838,10 @@ export default function HomePanel() {
                   key={room.room_id}
                   kind="room"
                   data={room}
-                  onRoomOpen={(r) => router.push(`/chats/messages/${encodeURIComponent(r.room_id)}`)}
+                  onRoomOpen={(r) => {
+                    resetMessagesGroupingForRoomOpen();
+                    router.push(`/chats/messages/${encodeURIComponent(r.room_id)}`);
+                  }}
                 />
               ))}
             </div>
@@ -1505,30 +913,13 @@ export default function HomePanel() {
       {deviceModalOpen ? (
         <DeviceConnectModal
           connected={hasOnlineDaemon}
-          mockConnected={mockDeviceConnected}
           daemonLoading={daemonLoading}
           onClose={() => setDeviceModalOpen(false)}
           onCreateBot={() => {
             setDeviceModalOpen(false);
-            if (mockDeviceConnected && !hasOnlineDaemon) {
-              setMockCreateAgentOpen(true);
-              return;
-            }
             openCreateBotModal();
           }}
-          onMockConnected={() => setMockDeviceConnected(true)}
           onRefreshDaemons={() => void refreshDaemons({ quiet: true })}
-        />
-      ) : null}
-      {mockCreateAgentOpen ? (
-        <MockCreateAgentDialog
-          onClose={() => setMockCreateAgentOpen(false)}
-          onCreate={(bot) => {
-            addMockBot(bot);
-            setMockDeviceConnected(true);
-            setMockCreateAgentOpen(false);
-            setDeviceModalOpen(false);
-          }}
         />
       ) : null}
     </div>

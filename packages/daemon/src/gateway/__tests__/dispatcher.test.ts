@@ -344,6 +344,32 @@ describe("Dispatcher", () => {
     expect(store.all().length).toBe(0);
   });
 
+  it("drops the stored session when a resumed turn errors without text even if the adapter returns the same id", async () => {
+    let callNo = 0;
+    const runtimeFactory: RuntimeFactory = () => {
+      callNo += 1;
+      if (callNo === 1) return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+      return new FakeRuntime({
+        reply: "",
+        newSessionId: "sid-1",
+        errorText: "acp error -32603: Internal error",
+      });
+    };
+    const { dispatcher, store, channel } = await scaffold({ runtimeFactory });
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_1", conversation: { id: "rm_x", kind: "direct" } }),
+    );
+    expect(store.all()[0].runtimeSessionId).toBe("sid-1");
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_2", conversation: { id: "rm_x", kind: "direct" } }),
+    );
+
+    expect(store.all().length).toBe(0);
+    expect(channel.sends[0].message.type).toBe("error");
+  });
+
   it("applies composeUserTurn before handing text to the runtime", async () => {
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
     const { store, dir } = await makeStore();
@@ -492,6 +518,7 @@ describe("Dispatcher", () => {
     await dispatcher.handle(makeEnvelope({ id: "msg_error" }));
 
     expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error");
     expect(channel.sends[0].message.text).toContain("missing openclawAgent");
   });
@@ -1256,6 +1283,7 @@ describe("Dispatcher", () => {
 
     await dispatcher.handle(makeEnvelope({ id: "m1" }));
     expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error");
     expect(channel.sends[0].message.text).toContain("boom");
     expect(store.all().length).toBe(0);
@@ -1921,6 +1949,7 @@ describe("Dispatcher", () => {
       await p;
       expect(runtime.calls[0].signal.aborted).toBe(true);
       expect(channel.sends.length).toBe(1);
+      expect(channel.sends[0].message.type).toBe("error");
       expect(channel.sends[0].message.text).toMatch(/Runtime timeout/);
       expect(channel.sends[0].message.conversationId).toBe("rm_g_other");
       expect(channel.sends[0].message.replyTo).toBe("m_to");
@@ -1941,6 +1970,7 @@ describe("Dispatcher", () => {
       }),
     );
     expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error: boom");
     expect(channel.sends[0].message.conversationId).toBe("rm_g_other");
     expect(channel.sends[0].message.replyTo).toBe("m_err");

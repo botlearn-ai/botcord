@@ -12,7 +12,7 @@ import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { Bot, Eye, Loader2, MessageSquare, User, Users } from "lucide-react";
+import { Bot, Eye, MessageSquare, User, Users } from "lucide-react";
 import {
   buildVisibleMessageRooms,
   isRoomOwnedByCurrentViewer,
@@ -24,6 +24,7 @@ import PaidRoomPreview from "./PaidRoomPreview";
 import RoomHumanComposer from "./RoomHumanComposer";
 import TopicDrawer from "./TopicDrawer";
 import FriendInviteModal from "./FriendInviteModal";
+import ContactRequestsInbox from "./ContactRequestsInbox";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import { PublicHumanProfile, PublicRoom } from "@/lib/types";
@@ -49,33 +50,21 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
   const router = useRouter();
   const locale = useLanguage();
   const t = chatPane[locale];
-  const { contactsView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
+  const { contactsView, startPrimaryNavigation } = useDashboardUIStore(useShallow((state) => ({
     contactsView: state.contactsView,
-    setFocusedRoomId: state.setFocusedRoomId,
-    setOpenedRoomId: state.setOpenedRoomId,
-    setSidebarTab: state.setSidebarTab,
+    startPrimaryNavigation: state.startPrimaryNavigation,
   })));
-  const { overview, messages, loadRoomMessages, selectAgent, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, selectAgent, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
-    messages: state.messages,
-    loadRoomMessages: state.loadRoomMessages,
     selectAgent: state.selectAgent,
     refreshOverview: state.refreshOverview,
   })));
   const {
-    contactRequestsLoading,
     contactRequestsReceived,
-    processingContactRequestId,
-    processingContactRequestAction,
     loadContactRequests,
-    respondContactRequest,
   } = useDashboardContactStore(useShallow((state) => ({
-    contactRequestsLoading: state.contactRequestsLoading,
     contactRequestsReceived: state.contactRequestsReceived,
-    processingContactRequestId: state.processingContactRequestId,
-    processingContactRequestAction: state.processingContactRequestAction,
     loadContactRequests: state.loadContactRequests,
-    respondContactRequest: state.respondContactRequest,
   })));
   const sessionMode = useDashboardSessionStore((state) => state.sessionMode);
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
@@ -155,13 +144,9 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
         : filteredContacts;
 
   const openJoinedRoom = (roomId: string) => {
-    setFocusedRoomId(roomId);
-    setOpenedRoomId(roomId);
-    setSidebarTab("messages");
-    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    if (!messages[roomId]) {
-      void loadRoomMessages(roomId);
-    }
+    const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+    startPrimaryNavigation("messages", path);
+    startTransition(() => router.push(path));
   };
 
   return (
@@ -212,52 +197,11 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
         </div>
       </div>
 
+      {isRequestsView ? (
+        <ContactRequestsInbox initialTab="received" />
+      ) : (
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        {isRequestsView ? (
-          contactRequestsLoading ? (
-            <DashboardMainSkeleton variant="contacts" />
-          ) : pageItems.length === 0 ? (
-            <p className="text-xs text-text-secondary">{t.noPendingRequests}</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {(pageItems as typeof filteredRequests).map((request) => {
-                const isProcessing = processingContactRequestId === request.id;
-                const isAccepting = isProcessing && processingContactRequestAction === "accept";
-                const isRejecting = isProcessing && processingContactRequestAction === "reject";
-
-                return (
-                  <div key={request.id} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
-                    <p className="truncate text-sm font-semibold text-text-primary">
-                      {request.from_display_name || request.from_agent_id}
-                    </p>
-                    <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{request.from_agent_id}</p>
-                    <p className="mt-2 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
-                      {request.message || t.noRequestMessage}
-                    </p>
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        onClick={() => respondContactRequest(request.id, "accept")}
-                        disabled={isProcessing}
-                        className="inline-flex items-center gap-1.5 rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
-                      >
-                        {isAccepting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                        {isAccepting ? t.accepting : t.accept}
-                      </button>
-                      <button
-                        onClick={() => respondContactRequest(request.id, "reject")}
-                        disabled={isProcessing}
-                        className="inline-flex items-center gap-1.5 rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
-                      >
-                        {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                        {isRejecting ? t.rejecting : t.reject}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )
-        ) : isRoomsView ? (
+        {isRoomsView ? (
           !overview ? (
             <DashboardMainSkeleton variant="contacts" />
           ) : pageItems.length === 0 ? (
@@ -395,6 +339,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
           </div>
         )}
       </div>
+      )}
 
       {showFriendInvite ? <FriendInviteModal onClose={() => setShowFriendInvite(false)} /> : null}
     </div>
@@ -412,12 +357,16 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   const { authResolved } = useDashboardSessionStore(useShallow((state) => ({
     authResolved: state.authResolved,
   })));
-  const { exploreView, setExploreView, setFocusedRoomId, setOpenedRoomId, setSidebarTab } = useDashboardUIStore(useShallow((state) => ({
+  const {
+    exploreView,
+    resetMessagesGroupingForRoomOpen,
+    setExploreView,
+    startPrimaryNavigation,
+  } = useDashboardUIStore(useShallow((state) => ({
     exploreView: state.exploreView,
+    resetMessagesGroupingForRoomOpen: state.resetMessagesGroupingForRoomOpen,
     setExploreView: state.setExploreView,
-    setFocusedRoomId: state.setFocusedRoomId,
-    setOpenedRoomId: state.setOpenedRoomId,
-    setSidebarTab: state.setSidebarTab,
+    startPrimaryNavigation: state.startPrimaryNavigation,
   })));
   const {
     publicRooms,
@@ -426,11 +375,9 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     publicAgentsLoading,
     publicHumans,
     publicHumansLoading,
-    messages,
     loadPublicRooms,
     loadPublicAgents,
     loadPublicHumans,
-    loadRoomMessages,
     selectAgent,
     addRecentPublicRoom,
   } = useDashboardChatStore(useShallow((state) => ({
@@ -440,11 +387,9 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     publicAgentsLoading: state.publicAgentsLoading,
     publicHumans: state.publicHumans,
     publicHumansLoading: state.publicHumansLoading,
-    messages: state.messages,
     loadPublicRooms: state.loadPublicRooms,
     loadPublicAgents: state.loadPublicAgents,
     loadPublicHumans: state.loadPublicHumans,
-    loadRoomMessages: state.loadRoomMessages,
     selectAgent: state.selectAgent,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
@@ -464,6 +409,14 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
       void loadPublicHumans(normalizedQuery);
     }
   }, [authResolved, isRoomsView, isAgentsView, isHumansView, query, loadPublicRooms, loadPublicAgents, loadPublicHumans]);
+
+  useEffect(() => {
+    if (publicAgents.length === 0) return;
+    usePresenceStore.getState().seed(
+      publicAgents.map((agent) => ({ agentId: agent.agent_id, online: Boolean(agent.online) })),
+    );
+  }, [publicAgents]);
+
   const publicRoomsById = useMemo(
     () => Object.fromEntries(publicRooms.map((room) => [room.room_id, room])),
     [publicRooms],
@@ -478,14 +431,11 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   );
 
   const openRoomFromExplore = (room: PublicRoom) => {
-    setFocusedRoomId(room.room_id);
-    setOpenedRoomId(room.room_id);
-    setSidebarTab("messages");
-    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    const path = `/chats/messages/${encodeURIComponent(room.room_id)}`;
+    resetMessagesGroupingForRoomOpen();
+    startPrimaryNavigation("messages", path);
     addRecentPublicRoom(room);
-    if (!messages[room.room_id]) {
-      void loadRoomMessages(room.room_id);
-    }
+    startTransition(() => router.push(path));
   };
 
   const openHumanOwnerFromAgent = async (humanId: string) => {
@@ -656,11 +606,12 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
     activeAgentId: state.activeAgentId,
     humanId: state.human?.human_id ?? null,
   })));
-  const { sidebarTab, focusedRoomId, openedRoomId, messagesFilter } = useDashboardUIStore(useShallow((state) => ({
+  const { sidebarTab, focusedRoomId, openedRoomId, messagesFilter, contactsView } = useDashboardUIStore(useShallow((state) => ({
     sidebarTab: state.sidebarTab,
     focusedRoomId: state.focusedRoomId,
     openedRoomId: state.openedRoomId,
     messagesFilter: state.messagesFilter,
+    contactsView: state.contactsView,
   })));
   const { overview, recentVisitedRooms, getRoomSummary } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -702,6 +653,9 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   }
 
   if (sidebarTab === "contacts") {
+    if (contactsView === "requests") {
+      return <ContactRequestsInbox initialTab="received" />;
+    }
     return <ContactsDetailPane />;
   }
 

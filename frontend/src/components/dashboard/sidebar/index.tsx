@@ -35,11 +35,11 @@ import ContactsPanel from "./ContactsPanel";
 import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
-import WalletPanel from "./WalletPanel";
 import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
-import { humansApi } from "@/lib/api";
+import { api, humansApi } from "@/lib/api";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
+import { useAppStore } from "@/store/useAppStore";
 
 const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
 
@@ -127,6 +127,7 @@ export default function Sidebar({
   const tc = common[locale];
   const tNav = nav[locale];
   const tMsgHeader = messagesHeader[locale];
+  const setLanguage = useAppStore((s) => s.setLanguage);
 
   const sessionStore = useDashboardSessionStore(useShallow((s) => ({
     user: s.user,
@@ -155,6 +156,8 @@ export default function Sidebar({
     startPrimaryNavigation: s.startPrimaryNavigation,
     setMessagesPane: s.setMessagesPane,
     setMessagesFilter: s.setMessagesFilter,
+    setUserChatRoomId: s.setUserChatRoomId,
+    setUserChatAgentId: s.setUserChatAgentId,
     setExploreView: s.setExploreView,
     setContactsView: s.setContactsView,
     setSidebarWidth: s.setSidebarWidth,
@@ -273,6 +276,7 @@ export default function Sidebar({
   const secondaryPanelLoading = Boolean(
     uiStore.pendingPrimaryNavigation && uiStore.pendingPrimaryNavigation.tab === uiStore.sidebarTab,
   );
+  const showMessagesGrouping = uiStore.sidebarTab === "messages" && !isGuest && uiStore.messagesGroupingOpen;
 
   useEffect(() => {
     const prefetch = (path: string) => {
@@ -389,6 +393,16 @@ export default function Sidebar({
         </div>
 
         <div className="flex flex-col items-center gap-2 border-t border-glass-border pt-3 max-md:ml-2 max-md:border-l max-md:border-t-0 max-md:pl-2 max-md:pt-0">
+          <button
+            onClick={() => setLanguage(locale === "zh" ? "en" : "zh")}
+            aria-label="Toggle language"
+            className="flex h-10 w-12 items-center justify-center gap-0.5 rounded-xl text-[10px] font-medium leading-none transition-all duration-200 hover:bg-glass-bg max-md:w-10"
+          >
+            <span className={locale === "en" ? "text-text-primary" : "text-text-secondary/50"}>EN</span>
+            <span className="text-text-secondary/30">/</span>
+            <span className={locale === "zh" ? "text-text-primary" : "text-text-secondary/50"}>中</span>
+          </button>
+
           {isGuest ? (
             <button
               onClick={showLoginModal}
@@ -422,13 +436,12 @@ export default function Sidebar({
           onClose={() => setShowCreateRoom(false)}
           onCreated={(room) => {
             setShowCreateRoom(false);
-            uiStore.setSidebarTab("messages");
             uiStore.setMessagesPane("room");
             uiStore.setMessagesFilter("self-all");
-            uiStore.setFocusedRoomId(room.room_id);
-            uiStore.setOpenedRoomId(room.room_id);
+            const path = `/chats/messages/${encodeURIComponent(room.room_id)}`;
+            uiStore.startPrimaryNavigation("messages", path);
             onMobileSecondaryClose?.();
-            router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+            startTransition(() => { router.push(path); });
           }}
         />
       )}
@@ -443,10 +456,22 @@ export default function Sidebar({
             setShowCreateBot(false);
             setCreateBotForDaemonId(null);
             await sessionStore.refreshUserProfile();
-            uiStore.setSidebarTab("bots");
-            useDashboardUIStore.getState().setSelectedBotAgentId(agentId);
+            uiStore.setSidebarTab("messages");
+            uiStore.setMessagesPane("user-chat");
+            uiStore.setUserChatAgentId(agentId);
+            uiStore.setFocusedRoomId(null);
+            uiStore.setOpenedRoomId(null);
             onMobileSecondaryClose?.();
-            startTransition(() => { router.push(`/chats/bots/${encodeURIComponent(agentId)}`); });
+            try {
+              const room = await api.getUserChatRoom(agentId);
+              uiStore.setUserChatRoomId(room.room_id);
+              startTransition(() => {
+                router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+              });
+            } catch (error) {
+              console.error("[Sidebar] getUserChatRoom after create failed:", error);
+              startTransition(() => { router.push(USER_CHAT_ROUTE); });
+            }
           }}
         />
       )}
@@ -460,8 +485,8 @@ export default function Sidebar({
         />
       )}
 
-      {/* Secondary panel — hidden on Home, My Bots, and Explore (those pages get full width). */}
-      {uiStore.sidebarTab !== "home" && uiStore.sidebarTab !== "bots" && uiStore.sidebarTab !== "explore" && (
+      {/* Secondary panel — hidden on Home, My Bots, Explore, Wallet (those pages get full width). */}
+      {uiStore.sidebarTab !== "home" && uiStore.sidebarTab !== "bots" && uiStore.sidebarTab !== "explore" && uiStore.sidebarTab !== "wallet" && (
       <div
         className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
           mobileHideSecondary
@@ -471,7 +496,7 @@ export default function Sidebar({
             : "max-md:!w-full"
         }`}
         style={{
-          width: uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen
+          width: showMessagesGrouping
             ? uiStore.sidebarWidth + 200
             : uiStore.sidebarWidth,
           minWidth: SIDEBAR_MIN,
@@ -521,31 +546,23 @@ export default function Sidebar({
 
         {/* Panel content */}
         <div className="flex flex-1 min-h-0">
-          {!secondaryPanelLoading && uiStore.sidebarTab === "messages" && uiStore.messagesGroupingOpen && (
+          {!secondaryPanelLoading && showMessagesGrouping && (
             <MessagesGroupingSidebar />
           )}
-          <div className="flex-1 overflow-y-auto">
+          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           {secondaryPanelLoading ? (
-            uiStore.sidebarTab === "wallet" ? (
-              <div className="space-y-3 p-4">
-                <SkeletonBlock className="h-20 rounded-xl bg-glass-border/40" />
-                <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
-                <SkeletonBlock className="h-16 rounded-xl bg-glass-border/40" />
-              </div>
-            ) : (
-              <>
-                {uiStore.sidebarTab === "messages" ? (
-                  <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
-                    <SkeletonBlock className="h-4 w-28" />
-                    <div className="flex gap-1">
-                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                    </div>
+            <>
+              {uiStore.sidebarTab === "messages" ? (
+                <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
+                  <SkeletonBlock className="h-4 w-28" />
+                  <div className="flex gap-1">
+                    <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                    <SkeletonBlock className="h-8 w-8 rounded-lg" />
                   </div>
-                ) : null}
-                <SidebarListSkeleton rows={uiStore.sidebarTab === "contacts" ? 9 : 7} />
-              </>
-            )
+                </div>
+              ) : null}
+              <SidebarListSkeleton rows={uiStore.sidebarTab === "contacts" ? 9 : 7} />
+            </>
           ) : uiStore.sidebarTab === "messages" && (
             <MessagesPanel
               isGuest={isGuest}
@@ -555,9 +572,6 @@ export default function Sidebar({
           )}
           {!secondaryPanelLoading && uiStore.sidebarTab === "contacts" && (
             <ContactsPanel onOpenAddFriend={() => setShowAddFriend(true)} />
-          )}
-          {!secondaryPanelLoading && uiStore.sidebarTab === "wallet" && (
-            <WalletPanel isGuest={isGuest} onLogin={showLoginModal} />
           )}
           </div>
         </div>

@@ -285,6 +285,62 @@ async def test_dashboard_overview_includes_unread_count(
 
 
 @pytest.mark.asyncio
+async def test_dashboard_overview_includes_members_preview_for_group_room(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+):
+    db_session.add_all([
+        Agent(
+            agent_id="ag_groupmate01",
+            display_name="Group Mate",
+            message_policy=MessagePolicy.open,
+        ),
+        User(
+            id=uuid.uuid4(),
+            human_id="hu_groupmate01",
+            display_name="Human Mate",
+            avatar_url="https://example.test/human.png",
+            email="human@example.test",
+            status="active",
+            supabase_user_id=uuid.uuid4(),
+        ),
+    ])
+    await db_session.flush()
+    db_session.add_all([
+        RoomMember(
+            room_id="rm_testroom001",
+            agent_id="ag_groupmate01",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id="rm_testroom001",
+            agent_id="hu_groupmate01",
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/dashboard/overview",
+        headers={
+            "Authorization": f"Bearer {seed_data['token']}",
+            "X-Active-Agent": "ag_dashtest001",
+        },
+    )
+    assert resp.status_code == 200
+    room = resp.json()["rooms"][0]
+    assert room["member_count"] == 3
+    assert room["members_preview"] == [
+        {"agent_id": "ag_dashtest001", "avatar_url": None, "display_name": "Dashboard Agent"},
+        {"agent_id": "ag_groupmate01", "avatar_url": None, "display_name": "Group Mate"},
+        {"agent_id": None, "avatar_url": "https://example.test/human.png", "display_name": "Human Mate"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_dashboard_overview_human_mode(
     client: AsyncClient, seed_data: dict
 ):

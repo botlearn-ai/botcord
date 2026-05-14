@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { MessageCircle, Settings2, Share2, SlidersHorizontal, UserCircle, Users } from "lucide-react";
 import { useShallow } from "zustand/shallow";
+import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -72,11 +74,13 @@ function ActionButton({
   icon: Icon,
   label,
   onClick,
+  disabled = false,
   tone = "neutral",
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick?: () => void;
+  disabled?: boolean;
   tone?: "neutral" | "cyan";
 }) {
   const cls =
@@ -86,7 +90,8 @@ function ActionButton({
   return (
     <button
       onClick={onClick}
-      className={`flex h-20 w-28 flex-col items-center justify-center gap-2 rounded-2xl border transition-colors ${cls}`}
+      disabled={disabled}
+      className={`flex h-20 w-28 flex-col items-center justify-center gap-2 rounded-2xl border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${cls}`}
     >
       <Icon className="h-5 w-5" />
       <span className="text-xs font-medium">{label}</span>
@@ -97,16 +102,42 @@ function ActionButton({
 export default function ContactsDetailPane() {
   const router = useRouter();
   const t = contactsUiI18n[useLanguage()];
+  const [messageBusy, setMessageBusy] = useState(false);
   const selectedContactKey = useDashboardUIStore((s) => s.selectedContactKey);
   const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const setPeerBotAgentId = useDashboardUIStore((s) => s.setPeerBotAgentId);
-  const setSidebarTab = useDashboardUIStore((s) => s.setSidebarTab);
-  const setOpenedRoomId = useDashboardUIStore((s) => s.setOpenedRoomId);
-  const { ownedAgents, humanRooms } = useDashboardSessionStore(
-    useShallow((s) => ({ ownedAgents: s.ownedAgents, humanRooms: s.humanRooms })),
+  const {
+    setFocusedRoomId,
+    setOpenedRoomId,
+    setMessagesPane,
+    setUserChatAgentId,
+    setUserChatRoomId,
+    startPrimaryNavigation,
+  } = useDashboardUIStore(useShallow((s) => ({
+    setFocusedRoomId: s.setFocusedRoomId,
+    setOpenedRoomId: s.setOpenedRoomId,
+    setMessagesPane: s.setMessagesPane,
+    setUserChatAgentId: s.setUserChatAgentId,
+    setUserChatRoomId: s.setUserChatRoomId,
+    startPrimaryNavigation: s.startPrimaryNavigation,
+  })));
+  const { ownedAgents, humanRooms, activeAgentId, refreshHumanRooms } = useDashboardSessionStore(
+    useShallow((s) => ({
+      ownedAgents: s.ownedAgents,
+      humanRooms: s.humanRooms,
+      activeAgentId: s.activeAgentId,
+      refreshHumanRooms: s.refreshHumanRooms,
+    })),
   );
-  const { overview, publicAgents } = useDashboardChatStore(
-    useShallow((s) => ({ overview: s.overview, publicAgents: s.publicAgents })),
+  const { overview, publicAgents, refreshOverview, loadRoomMessages, setError, switchActiveAgent } = useDashboardChatStore(
+    useShallow((s) => ({
+      overview: s.overview,
+      publicAgents: s.publicAgents,
+      refreshOverview: s.refreshOverview,
+      loadRoomMessages: s.loadRoomMessages,
+      setError: s.setError,
+      switchActiveAgent: s.switchActiveAgent,
+    })),
   );
 
   const contacts = overview?.contacts || [];
@@ -136,7 +167,6 @@ export default function ContactsDetailPane() {
   let statusText = "";
   let avatar: React.ReactNode;
   let bio: string | null = null;
-  let messageRoomId: string | null = null;
 
   if (target.kind === "owned-bot") {
     const a = target.agent;
@@ -169,7 +199,6 @@ export default function ContactsDetailPane() {
     tag = { tone: "cyan", label: "GROUP" };
     statusText = t.memberCount(r.member_count ?? 0);
     bio = r.description || r.rule || null;
-    messageRoomId = r.room_id;
     const membersPreview = r.members_preview ?? [];
     avatar = membersPreview.length >= 2 ? (
       <div className="flex h-24 w-24 items-center justify-center">
@@ -186,31 +215,56 @@ export default function ContactsDetailPane() {
     );
   }
 
-  const handleMessage = () => {
-    let roomId = messageRoomId;
-    if (!roomId) {
-      // Resolve DM room by peer id (peer_type-aware) from the merged room list.
-      const peerId =
-        target.kind === "owned-bot"
-          ? target.agent.agent_id
-          : target.kind === "agent-contact" || target.kind === "human-contact"
-            ? target.contact.contact_agent_id
-            : null;
-      const peerType: "agent" | "human" | null =
-        target.kind === "human-contact" ? "human" : peerId ? "agent" : null;
-      if (peerId) {
-        const dm = rooms.find(
-          (r) => r.owner_id === peerId && (("peer_type" in r ? r.peer_type : undefined) ?? r.owner_type) === peerType,
-        );
-        roomId = dm?.room_id ?? null;
+  const openRoomPath = (roomId: string) => {
+    setMessagesPane("room");
+    setUserChatAgentId(null);
+    setFocusedRoomId(roomId);
+    setOpenedRoomId(roomId);
+    const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+    startPrimaryNavigation("messages", path);
+    router.push(path);
+  };
+
+  const handleMessage = async () => {
+    if (messageBusy) return;
+    setMessageBusy(true);
+    try {
+      if (target.kind === "owned-bot") {
+        const agentId = target.agent.agent_id;
+        if (agentId !== activeAgentId) {
+          await switchActiveAgent(agentId);
+        }
+        const room = await api.getUserChatRoom(agentId);
+        setMessagesPane("user-chat");
+        setUserChatAgentId(agentId);
+        setUserChatRoomId(room.room_id);
+        setFocusedRoomId(null);
+        setOpenedRoomId(null);
+        const path = `/chats/messages/${encodeURIComponent(room.room_id)}`;
+        startPrimaryNavigation("messages", path);
+        router.push(path);
+        return;
       }
-    }
-    setSidebarTab("messages");
-    if (roomId) {
-      setOpenedRoomId(roomId);
-      router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
-    } else {
-      router.push("/chats/messages");
+
+      if (target.kind === "group") {
+        openRoomPath(target.room.room_id);
+        return;
+      }
+
+      const peerId = target.contact.contact_agent_id;
+      const room = await api.openDmRoom(peerId);
+      await Promise.allSettled([
+        refreshOverview(),
+        refreshHumanRooms(),
+      ]);
+      openRoomPath(room.room_id);
+      loadRoomMessages(room.room_id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to open conversation";
+      console.error("[ContactsDetailPane] open message failed:", error);
+      setError(message);
+    } finally {
+      setMessageBusy(false);
     }
   };
 
@@ -235,7 +289,13 @@ export default function ContactsDetailPane() {
         ) : null}
 
         <div className="mt-8 flex items-center gap-3">
-          <ActionButton icon={MessageCircle} label="Message" tone="cyan" onClick={handleMessage} />
+          <ActionButton
+            icon={MessageCircle}
+            label={messageBusy ? t.openingMessage : t.message}
+            tone="cyan"
+            onClick={handleMessage}
+            disabled={messageBusy}
+          />
           {target.kind === "owned-bot" ? (
             <ActionButton
               icon={SlidersHorizontal}

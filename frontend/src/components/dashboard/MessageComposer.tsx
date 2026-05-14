@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent } from "react";
-import { Coins, FileText, FileUp, Plus, Send, X } from "lucide-react";
+import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
 
 interface PendingFile {
   file: File;
@@ -477,28 +477,54 @@ export default function MessageComposer({
             className="absolute left-0 right-12 bottom-full mb-1 z-20 max-h-56 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
             role="listbox"
           >
-            {suggestions.map((s, i) => (
-              <button
-                ref={(node) => { mentionOptionRefs.current[i] = node; }}
-                type="button"
-                key={s.agent_id}
-                role="option"
-                aria-selected={i === mentionIndex}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  commitMention(s);
-                }}
-                onMouseEnter={() => setMentionIndex(i)}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
-                  i === mentionIndex
-                    ? "bg-cyan-500/15 text-cyan-200"
-                    : "text-zinc-300 hover:bg-zinc-800"
-                }`}
-              >
-                <span className="truncate font-medium">{s.display_name}</span>
-                <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-500">{s.id ?? s.agent_id}</span>
-              </button>
-            ))}
+            {suggestions.map((s, i) => {
+              const kind = s.agent_id === "@all"
+                ? "all"
+                : s.agent_id.startsWith("ag_")
+                  ? "bot"
+                  : s.agent_id.startsWith("hu_")
+                    ? "user"
+                    : s.agent_id.startsWith("rm_")
+                      ? "room"
+                      : "other";
+              const KindIcon = kind === "bot" ? Bot : kind === "user" ? User : kind === "room" ? Hash : AtSign;
+              const iconClass = kind === "bot"
+                ? "text-cyan-400"
+                : kind === "user"
+                  ? "text-emerald-400"
+                  : kind === "room"
+                    ? "text-amber-400"
+                    : "text-zinc-400";
+              const kindLabel = kind === "bot" ? "Bot" : kind === "user" ? "User" : kind === "room" ? "Room" : kind === "all" ? "All" : "";
+              return (
+                <button
+                  ref={(node) => { mentionOptionRefs.current[i] = node; }}
+                  type="button"
+                  key={s.agent_id}
+                  role="option"
+                  aria-selected={i === mentionIndex}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    commitMention(s);
+                  }}
+                  onMouseEnter={() => setMentionIndex(i)}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                    i === mentionIndex
+                      ? "bg-cyan-500/15 text-cyan-200"
+                      : "text-zinc-300 hover:bg-zinc-800"
+                  }`}
+                >
+                  <KindIcon className={`h-3.5 w-3.5 shrink-0 ${iconClass}`} />
+                  <span className="truncate font-medium">{s.display_name}</span>
+                  {kindLabel && (
+                    <span className={`shrink-0 rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide ${iconClass} bg-zinc-800/60`}>
+                      {kindLabel}
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-500">{s.id ?? s.agent_id}</span>
+                </button>
+              );
+            })}
           </div>
         )}
         <button

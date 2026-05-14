@@ -427,6 +427,15 @@ export const chatPane: TranslationMap<{
   contactKindAgent: string
   unnamedHuman: string
   unnamedAgent: string
+  requestsRowLabel: string
+  requestsRowHint: string
+  requestsTabReceived: string
+  requestsTabSent: string
+  noSentRequests: string
+  sentRequestPending: string
+  sentRequestAccepted: string
+  sentRequestRejected: string
+  selectRequestHint: string
 }> = {
   en: {
     selectPublicRoom: 'Select a public room to browse messages',
@@ -476,6 +485,15 @@ export const chatPane: TranslationMap<{
     contactKindAgent: 'Agent',
     unnamedHuman: 'Unnamed Human',
     unnamedAgent: 'Unnamed Agent',
+    requestsRowLabel: 'Friend requests',
+    requestsRowHint: 'New incoming connection requests',
+    requestsTabReceived: 'Received',
+    requestsTabSent: 'Sent',
+    noSentRequests: 'You haven\'t sent any requests yet.',
+    sentRequestPending: 'Awaiting reply',
+    sentRequestAccepted: 'Accepted',
+    sentRequestRejected: 'Rejected',
+    selectRequestHint: 'Select a request from the list to review.',
   },
   zh: {
     selectPublicRoom: '选择一个公开房间浏览消息',
@@ -525,6 +543,15 @@ export const chatPane: TranslationMap<{
     contactKindAgent: 'Agent',
     unnamedHuman: '未命名真人',
     unnamedAgent: '未命名 Agent',
+    requestsRowLabel: '好友申请',
+    requestsRowHint: '新的入站联系请求',
+    requestsTabReceived: '收到',
+    requestsTabSent: '已发送',
+    noSentRequests: '你还没有发出任何申请。',
+    sentRequestPending: '等待回复',
+    sentRequestAccepted: '已接受',
+    sentRequestRejected: '已拒绝',
+    selectRequestHint: '从左侧列表选一条申请查看详情。',
   },
 }
 
@@ -544,6 +571,8 @@ export const contactsUi: TranslationMap<{
   myBot: string
   externalBot: string
   ownedBotOf: (ownerName: string) => string
+  message: string
+  openingMessage: string
   viewDetails: string
 }> = {
   en: {
@@ -562,6 +591,8 @@ export const contactsUi: TranslationMap<{
     myBot: 'My Bot',
     externalBot: 'External Bot',
     ownedBotOf: (ownerName) => `${ownerName}'s Bot`,
+    message: 'Message',
+    openingMessage: 'Opening...',
     viewDetails: 'View details',
   },
   zh: {
@@ -580,6 +611,8 @@ export const contactsUi: TranslationMap<{
     myBot: 'My Bot',
     externalBot: '外部 Bot',
     ownedBotOf: (ownerName) => `${ownerName} 的 Bot`,
+    message: '发消息',
+    openingMessage: '打开中...',
     viewDetails: '查看详情',
   },
 }
@@ -1197,6 +1230,8 @@ export const exploreUi: TranslationMap<{
   personaOpen: string
   personaContactsOnly: string
   personaFallbackBio: string
+  online: string
+  offline: string
   agentDetails: string
   humanDetails: string
   close: string
@@ -1246,6 +1281,8 @@ export const exploreUi: TranslationMap<{
     personaOpen: 'Open to all messages',
     personaContactsOnly: 'Contacts-first communication',
     personaFallbackBio: 'I am ready to collaborate and communicate with your bots.',
+    online: 'Online',
+    offline: 'Offline',
     agentDetails: 'Bot Details',
     humanDetails: 'Human Details',
     close: 'Close',
@@ -1295,6 +1332,8 @@ export const exploreUi: TranslationMap<{
     personaOpen: '开放接收所有消息',
     personaContactsOnly: '优先联系人沟通',
     personaFallbackBio: '我已准备好与你的 Bot 协作沟通。',
+    online: 'Online',
+    offline: 'Offline',
     agentDetails: 'Bot 详情',
     humanDetails: 'Human 详情',
     close: '关闭',
@@ -1449,6 +1488,24 @@ export const walletPanel: TranslationMap<{
   viewingWalletFor: string
   youHuman: string
   botPrefix: string
+  pageSubtitle: string
+  totalDisposable: string
+  humanShare: string
+  botShare: string
+  botShareCount: string
+  botBalances: string
+  noBots: string
+  recentTransactions: string
+  recentTransactionsHint: string
+  loadMore: string
+  loadingMore: string
+  noTransactions: string
+  txTopup: string
+  txTransfer: string
+  txWithdrawal: string
+  txSubscription: string
+  txOther: string
+  fromAccount: string
 }> = {
   en: {
     wallet: 'Wallet',
@@ -1480,6 +1537,24 @@ export const walletPanel: TranslationMap<{
     viewingWalletFor: 'Viewing',
     youHuman: 'You (Human)',
     botPrefix: 'Bot',
+    pageSubtitle: 'Manage your disposable coins across yourself and your bots.',
+    totalDisposable: 'Total disposable',
+    humanShare: 'You (Human)',
+    botShare: 'Bots',
+    botShareCount: '{count} bots',
+    botBalances: 'Bot balances',
+    noBots: 'No owned bots yet.',
+    recentTransactions: 'Recent transactions',
+    recentTransactionsHint: 'Combined across all your accounts',
+    loadMore: 'Load more',
+    loadingMore: 'Loading...',
+    noTransactions: 'No transactions yet.',
+    txTopup: 'Top-up',
+    txTransfer: 'Transfer',
+    txWithdrawal: 'Withdrawal',
+    txSubscription: 'Subscription',
+    txOther: 'Other',
+    fromAccount: 'From account',
   },
   zh: {
     wallet: '钱包',
@@ -1511,6 +1586,24 @@ export const walletPanel: TranslationMap<{
     viewingWalletFor: '查看',
     youHuman: '我（Human）',
     botPrefix: 'Bot',
+    pageSubtitle: '管理你和 Bot 的可支配 coin · 一站式充值、转账、提现',
+    totalDisposable: '总可支配',
+    humanShare: '我（人）',
+    botShare: 'Bot',
+    botShareCount: '{count} 个',
+    botBalances: 'Bot 余额',
+    noBots: '还没有自有 Bot。',
+    recentTransactions: '最近交易',
+    recentTransactionsHint: '合并所有账户的最近交易',
+    loadMore: '加载更多',
+    loadingMore: '加载中...',
+    noTransactions: '暂无交易记录。',
+    txTopup: '充值',
+    txTransfer: '转账',
+    txWithdrawal: '提现',
+    txSubscription: '订阅',
+    txOther: '其他',
+    fromAccount: '账户',
   },
 }
 
@@ -1610,6 +1703,16 @@ export const transferDialog: TranslationMap<{
   groupMyBots: string
   groupContacts: string
   groupHumanSelf: string
+  fromLabel: string
+  toLabel: string
+  availableLabel: string
+  changeRecipient: string
+  enterCustomIdLabel: string
+  enterCustomIdHint: string
+  quickAmounts: string
+  maxAmount: string
+  insufficient: string
+  submitWithAmount: string
 }> = {
   en: {
     transfer: 'Transfer',
@@ -1630,6 +1733,16 @@ export const transferDialog: TranslationMap<{
     groupMyBots: 'My Bots',
     groupContacts: 'Contacts',
     groupHumanSelf: 'Me (Human)',
+    fromLabel: 'From',
+    toLabel: 'To',
+    availableLabel: 'Available',
+    changeRecipient: 'Change',
+    enterCustomIdLabel: 'Enter another Agent ID',
+    enterCustomIdHint: 'ag_... or hu_...',
+    quickAmounts: 'Quick',
+    maxAmount: 'Max',
+    insufficient: 'Insufficient balance',
+    submitWithAmount: 'Send {amount} COIN',
   },
   zh: {
     transfer: '转账',
@@ -1650,6 +1763,16 @@ export const transferDialog: TranslationMap<{
     groupMyBots: '我的 Bot',
     groupContacts: '联系人',
     groupHumanSelf: '我（Human）',
+    fromLabel: '从',
+    toLabel: '到',
+    availableLabel: '可用',
+    changeRecipient: '换',
+    enterCustomIdLabel: '输入其他 Agent ID',
+    enterCustomIdHint: 'ag_... 或 hu_...',
+    quickAmounts: '快速',
+    maxAmount: '全部',
+    insufficient: '余额不足',
+    submitWithAmount: '转账 {amount} COIN',
   },
 }
 
@@ -1913,6 +2036,16 @@ export const messageList: TranslationMap<{
   topic: string
   viewThread: string
   moreInThread: string
+  emptyTitle: string
+  emptySoloDesc: string
+  emptyGroupDesc: string
+  emptyPromptLabel: string
+  emptyAddMember: string
+  emptyRoomSettings: string
+  emptyTryPrompt: string
+  emptyPromptPlan: string
+  emptyPromptSummary: string
+  emptyPromptRoles: string
 }> = {
   en: {
     open: 'Open',
@@ -1928,6 +2061,16 @@ export const messageList: TranslationMap<{
     topic: 'Topic',
     viewThread: 'View thread',
     moreInThread: 'more in thread',
+    emptyTitle: 'Start this room',
+    emptySoloDesc: 'Invite a Bot or teammate, set the room goal, then send a starter message.',
+    emptyGroupDesc: 'This room is ready. Send a starter message so the Bots know what to work on.',
+    emptyPromptLabel: 'Starter prompts',
+    emptyAddMember: 'Add Bot or member',
+    emptyRoomSettings: 'Room settings',
+    emptyTryPrompt: 'Use prompt',
+    emptyPromptPlan: '@all Help me turn this room into a working plan. Ask clarifying questions, then propose next steps.',
+    emptyPromptSummary: '@all Please introduce what you can help with in this room and suggest three useful tasks to start.',
+    emptyPromptRoles: '@all Based on this room goal, suggest roles, owners, and a first checklist.',
   },
   zh: {
     open: '进行中',
@@ -1943,6 +2086,16 @@ export const messageList: TranslationMap<{
     topic: '话题',
     viewThread: '查看话题',
     moreInThread: '条消息在话题中',
+    emptyTitle: '启动这个房间',
+    emptySoloDesc: '先邀请 Bot 或成员，设置房间目标，然后发一条开场消息。',
+    emptyGroupDesc: '房间已经准备好。发一条开场消息，让 Bot 知道要做什么。',
+    emptyPromptLabel: '开场 Prompt',
+    emptyAddMember: '添加 Bot 或成员',
+    emptyRoomSettings: '房间设置',
+    emptyTryPrompt: '使用',
+    emptyPromptPlan: '@all 帮我把这个房间变成可执行计划。先问必要的澄清问题，再给出下一步。',
+    emptyPromptSummary: '@all 请介绍你们在这个房间里能帮我做什么，并建议 3 个适合马上开始的任务。',
+    emptyPromptRoles: '@all 根据这个房间目标，建议分工、负责人和第一版 checklist。',
   },
 }
 

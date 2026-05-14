@@ -14,6 +14,7 @@ import {
   PID_PATH,
   SNAPSHOT_PATH,
   loadConfig,
+  saveConfig,
   type DaemonConfig,
 } from "./config.js";
 import { listDaemonLogFiles, LOG_FILE_PATH, type LogFileEntry } from "./log.js";
@@ -26,6 +27,12 @@ import {
   type DoctorRuntimeEntry,
 } from "./doctor.js";
 import { detectRuntimes } from "./adapters/runtimes.js";
+import { log as daemonLog } from "./log.js";
+import {
+  discoverLocalOpenclawGateways,
+  mergeOpenclawGateways,
+  openclawDiscoveryConfigEnabled,
+} from "./openclaw-discovery.js";
 
 const DIAGNOSTICS_DIR = path.join(homedir(), ".botcord", "diagnostics");
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -124,6 +131,7 @@ async function buildDoctorEntries(): Promise<{
   let cfgForEndpoints: DaemonConfig | null = null;
   try {
     cfgForEndpoints = loadConfig();
+    cfgForEndpoints = await refreshDiscoveredOpenclawGateways(cfgForEndpoints);
     channels = channelsFromDaemonConfig(cfgForEndpoints);
   } catch {
     channels = [];
@@ -145,6 +153,31 @@ async function buildDoctorEntries(): Promise<{
     timeoutMs: 5_000,
   });
   return { text: renderDoctor(input), json: input };
+}
+
+async function refreshDiscoveredOpenclawGateways(cfg: DaemonConfig): Promise<DaemonConfig> {
+  if (!openclawDiscoveryConfigEnabled(cfg)) return cfg;
+  try {
+    const found = await discoverLocalOpenclawGateways({
+      searchPaths: cfg.openclawDiscovery?.searchPaths,
+      defaultPorts: cfg.openclawDiscovery?.defaultPorts,
+      timeoutMs: 500,
+    });
+    const merged = mergeOpenclawGateways(cfg, found);
+    if (!merged.changed) return cfg;
+    saveConfig(merged.cfg);
+    daemonLog.info("openclaw discovery: gateways merged", {
+      source: "diagnostics",
+      added: merged.added.map((g) => ({ name: g.name, url: g.url })),
+    });
+    return merged.cfg;
+  } catch (err) {
+    daemonLog.warn("openclaw discovery failed; continuing", {
+      source: "diagnostics",
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return cfg;
+  }
 }
 
 function crc32(buf: Buffer): number {
