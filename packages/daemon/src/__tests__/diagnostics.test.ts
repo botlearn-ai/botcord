@@ -11,16 +11,22 @@ describe("diagnostics bundle", () => {
     const logFile = path.join(tmp, "daemon.log");
     const configFile = path.join(tmp, "config.json");
     const snapshotFile = path.join(tmp, "snapshot.json");
+    const sessionsFile = path.join(tmp, "sessions.json");
     const diagnosticsDir = path.join(tmp, "diagnostics");
     writeFileSync(logFile, 'Authorization: Bearer secret-token\n{"refreshToken":"drt_secret"}\n');
     writeFileSync(configFile, '{"token":"agent-secret","ok":true}\n');
     writeFileSync(snapshotFile, '{"version":1}\n');
+    writeFileSync(
+      sessionsFile,
+      '{"version":1,"entries":{"k":{"runtimeSessionId":"sess_1","token":"session-secret"}}}\n',
+    );
 
     const bundle = await createDiagnosticBundle({
       diagnosticsDir,
       logFile,
       configFile,
       snapshotFile,
+      sessionsFile,
       doctor: { text: "doctor ok", json: { ok: true } },
     });
     expect(bundle.filename).toMatch(/^botcord-daemon-diagnostics-.*\.zip$/);
@@ -42,12 +48,29 @@ describe("diagnostics bundle", () => {
     expect(listing).toContain("doctor.json");
     expect(listing).toContain("status.json");
     expect(listing).toContain("config.json.redacted");
+    expect(listing).toContain("sessions.json.redacted");
 
     const log = execFileSync("unzip", ["-p", bundle.path, "daemon.log"], {
       encoding: "utf8",
     });
     expect(log).toContain("Authorization: Bearer [REDACTED]");
     expect(log).toContain('"refreshToken":"[REDACTED]"');
+
+    const status = JSON.parse(execFileSync("unzip", ["-p", bundle.path, "status.json"], {
+      encoding: "utf8",
+    }));
+    expect(status.daemon.packageName).toBe("@botcord/daemon");
+    expect(status.daemon.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(status.daemon.entrypoint).toBeTruthy();
+    expect(status.daemon.packages["@botcord/daemon"]).toBe(status.daemon.version);
+    expect(status.environment.PATH).toBeTruthy();
+    expect(status.sessionsPath).toBe(sessionsFile);
+
+    const sessions = execFileSync("unzip", ["-p", bundle.path, "sessions.json.redacted"], {
+      encoding: "utf8",
+    });
+    expect(sessions).toContain('"runtimeSessionId":"sess_1"');
+    expect(sessions).toContain('"token":"[REDACTED]"');
   }, 20_000);
 
   it("bundles active log plus latest 5 rotated logs by default, or all with includeAllLogs", async () => {
