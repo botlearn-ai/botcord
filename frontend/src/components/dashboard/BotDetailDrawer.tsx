@@ -126,16 +126,9 @@ export default function BotDetailDrawer() {
       startPrimaryNavigation: s.startPrimaryNavigation,
     })),
   );
-  const { activeAgentId, ownedAgents } = useDashboardSessionStore(
-    useShallow((s) => ({ activeAgentId: s.activeAgentId, ownedAgents: s.ownedAgents })),
-  );
+  const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const daemons = useDaemonStore((s) => s.daemons);
-  const { ownedAgentRooms, switchActiveAgent } = useDashboardChatStore(
-    useShallow((s) => ({
-      ownedAgentRooms: s.ownedAgentRooms,
-      switchActiveAgent: s.switchActiveAgent,
-    })),
-  );
+  const ownedAgentRooms = useDashboardChatStore((s) => s.ownedAgentRooms);
 
   const open = botDetailAgentId !== null;
   const bot = botDetailAgentId ? ownedAgents.find((a) => a.agent_id === botDetailAgentId) ?? null : null;
@@ -203,9 +196,6 @@ export default function BotDetailDrawer() {
     setMessagesPane("user-chat");
     setFocusedRoomId(null);
     setOpenedRoomId(null);
-    if (agentId !== activeAgentId) {
-      await switchActiveAgent(agentId);
-    }
     try {
       const room = await api.getUserChatRoom(agentId);
       setUserChatRoomId(room.room_id);

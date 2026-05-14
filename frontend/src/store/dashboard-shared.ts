@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 dashboard 类型定义、@/lib/api 的 active-agent 工具与浏览器时间解析
+ * [INPUT]: 依赖 dashboard 类型定义、DM 解析工具与浏览器时间解析
  * [OUTPUT]: 对外提供 dashboard chat/unread/realtime store 共用的房间摘要、DM 类型推断、合并与时间比较工具
  * [POS]: frontend store 层的共享基础模块，负责消除多 store 拆分后的重复逻辑
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -13,7 +13,6 @@ import type {
   ParticipantType,
   PublicRoom,
 } from "@/lib/types";
-import { getActiveAgentId } from "@/lib/api";
 import { parseDmRoomId } from "@/components/dashboard/dmRoom";
 
 export const roomMessagesInFlight = new Set<string>();
@@ -38,10 +37,6 @@ export function toRoomSummary(room: PublicRoom): DashboardRoom {
     last_message_at: room.last_message_at,
     last_sender_name: room.last_sender_name,
   };
-}
-
-export function hasReadyActiveAgent(token: string | null, activeAgentId?: string | null): activeAgentId is string {
-  return Boolean(token && (activeAgentId || getActiveAgentId()));
 }
 
 export function getIsoTimestampValue(isoTime: string | null | undefined): number {

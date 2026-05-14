@@ -84,7 +84,6 @@ export function mapOwnedAgentRoomToDashboardRoom(room: HumanAgentRoomSummary): D
 }
 
 interface DashboardChatState {
-  boundAgentId: string | null;
   overviewRefreshing: boolean;
   overviewErrored: boolean;
   overview: DashboardOverview | null;
@@ -120,7 +119,6 @@ interface DashboardChatState {
 
   setError: (error: string | null) => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
-  bindToActiveAgent: (agentId: string | null) => void;
   resetChatState: () => void;
   logout: () => void;
   closeAgentCardState: () => void;
@@ -147,11 +145,9 @@ interface DashboardChatState {
   loadPublicAgents: (q?: string) => Promise<void>;
   loadPublicHumans: (q?: string) => Promise<void>;
   loadOwnedAgentRooms: () => Promise<void>;
-  switchActiveAgent: (agentId: string) => Promise<void>;
 }
 
 const initialChatState = {
-  boundAgentId: null,
   overviewRefreshing: false,
   overviewErrored: false,
   overview: null,
@@ -239,20 +235,6 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             ...state.recentVisitedRooms.filter((item) => item.room_id !== room.room_id),
           ].slice(0, 20),
         })),
-
-      bindToActiveAgent: (agentId) =>
-        set((state) => {
-          if (state.boundAgentId === agentId) {
-            return state;
-          }
-          return {
-            ...initialChatState,
-            boundAgentId: agentId,
-            publicRooms: state.publicRooms,
-            publicAgents: state.publicAgents,
-            publicRoomDetails: state.publicRoomDetails,
-          };
-        }),
 
       resetChatState: () =>
         set((state) => {
@@ -704,17 +686,10 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
       },
 
-      switchActiveAgent: async (agentId: string) => {
-        const { activeAgentId } = useDashboardSessionStore.getState();
-        if (agentId === activeAgentId) return;
-        get().bindToActiveAgent(agentId);
-        useDashboardSessionStore.getState().switchActiveAgent(agentId);
-      },
     }),
     {
       name: "dashboard-chat-storage",
       partialize: (state) => ({
-        boundAgentId: state.boundAgentId,
         recentVisitedRooms: state.recentVisitedRooms,
         publicRooms: state.publicRooms,
         publicAgents: state.publicAgents,
