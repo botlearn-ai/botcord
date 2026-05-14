@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext
-from hub.enums import ParticipantType, RoomRole
+from hub.enums import ParticipantType, RoomJoinPolicy, RoomRole, RoomVisibility
 from hub.models import Agent, Room, RoomMember
 
 
@@ -93,6 +93,108 @@ async def effective_human_room_role(
         candidates.extend(row[0] for row in result.all())
 
     return strongest_room_role(candidates)
+
+
+def room_member_can_send(room: Room, member: RoomMember) -> bool:
+    """Match hub room-send permission semantics for one member row."""
+    if member.role == RoomRole.owner:
+        return True
+    if member.can_send is not None:
+        return member.can_send
+    if member.role == RoomRole.admin:
+        return True
+    return room.default_send
+
+
+def room_member_can_invite(room: Room, member: RoomMember) -> bool:
+    """Match hub room-invite permission semantics for one member row."""
+    if member.role == RoomRole.owner:
+        return True
+    if room.visibility == RoomVisibility.public and room.join_policy == RoomJoinPolicy.open:
+        return True
+    if member.can_invite is not None:
+        return member.can_invite
+    if member.role == RoomRole.admin:
+        return True
+    return room.default_invite
+
+
+async def load_owned_agent_room_members(
+    db: AsyncSession,
+    *,
+    room: Room,
+    user_id,
+    owned_agent_ids: set[str] | None = None,
+) -> list[RoomMember]:
+    """Load room memberships for all bots owned by the user."""
+    owned_ids = owned_agent_ids
+    if owned_ids is None:
+        owned_ids = await load_owned_agent_ids(db, user_id)
+    if not owned_ids:
+        return []
+    result = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room.room_id,
+            RoomMember.participant_type == ParticipantType.agent,
+            RoomMember.agent_id.in_(owned_ids),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def effective_human_can_send(
+    db: AsyncSession,
+    *,
+    room: Room,
+    member: RoomMember,
+    user_id,
+    owned_agent_ids: set[str] | None = None,
+) -> bool:
+    """Return whether the user can send through any owned room identity."""
+    if room_member_can_send(room, member):
+        return True
+    owned_members = await load_owned_agent_room_members(
+        db, room=room, user_id=user_id, owned_agent_ids=owned_agent_ids
+    )
+    return any(room_member_can_send(room, owned_member) for owned_member in owned_members)
+
+
+async def effective_human_send_member(
+    db: AsyncSession,
+    *,
+    room: Room,
+    member: RoomMember,
+    user_id,
+    owned_agent_ids: set[str] | None = None,
+) -> RoomMember | None:
+    """Return the strongest owned member row that grants send permission."""
+    candidates = [member]
+    candidates.extend(
+        await load_owned_agent_room_members(
+            db, room=room, user_id=user_id, owned_agent_ids=owned_agent_ids
+        )
+    )
+    allowed = [candidate for candidate in candidates if room_member_can_send(room, candidate)]
+    if not allowed:
+        return None
+    return max(allowed, key=lambda candidate: _ROLE_RANK[_coerce_room_role(candidate.role) or RoomRole.member])
+
+
+async def effective_human_can_invite(
+    db: AsyncSession,
+    *,
+    room: Room,
+    member: RoomMember,
+    user_id,
+    owned_agent_ids: set[str] | None = None,
+) -> bool:
+    """Return whether the user can invite through any owned room identity."""
+    if room_member_can_invite(room, member):
+        return True
+    owned_members = await load_owned_agent_room_members(
+        db, room=room, user_id=user_id, owned_agent_ids=owned_agent_ids
+    )
+    return any(room_member_can_invite(room, owned_member) for owned_member in owned_members)
 
 
 async def viewer_can_admin_room(
