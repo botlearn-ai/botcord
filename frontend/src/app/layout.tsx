@@ -10,6 +10,7 @@ import { Analytics } from "@vercel/analytics/next";
 import NextTopLoader from "nextjs-toploader";
 import { inter, jetbrainsMono } from "@/lib/fonts";
 import { getAppBaseUrl } from "@/lib/share-metadata";
+import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -55,6 +56,7 @@ export default function RootLayout({
         />
         {children}
         <Analytics />
+        <GoogleAnalytics />
       </body>
     </html>
   );
