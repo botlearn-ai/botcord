@@ -9,6 +9,8 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import { countMessagesByFilter, mergeOwnerVisibleRooms, type MessagesFilterKey } from "@/lib/messages-merge";
+import { useLanguage } from "@/lib/i18n";
+import { messagesGrouping as messagesGroupingI18n } from "@/lib/i18n/translations/dashboard";
 
 interface FilterRow {
   key: MessagesFilterKey;
@@ -16,23 +18,22 @@ interface FilterRow {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const SELF_ROWS: FilterRow[] = [
-  { key: "self-all", label: "全部", icon: Inbox },
-  { key: "self-my-bot", label: "和我自己的 Bot", icon: Bot },
-  { key: "self-third-bot", label: "和别人的 Bot", icon: Bot },
-  { key: "self-human", label: "和真人", icon: User },
-  { key: "self-group", label: "我加入的群", icon: Users },
-];
-
-const BOTS_ROWS: FilterRow[] = [
-  { key: "bots-all", label: "全部", icon: Inbox },
-  { key: "bots-bot-bot", label: "Bot 和其他 Bot", icon: Bot },
-  { key: "bots-bot-human", label: "Bot 和真人", icon: UsersRound },
-  { key: "bots-group", label: "Bot 加入的群", icon: Users },
-];
-
 export default function MessagesGroupingSidebar() {
   const router = useRouter();
+  const t = messagesGroupingI18n[useLanguage()];
+  const SELF_ROWS: FilterRow[] = [
+    { key: "self-all", label: t.filterAll, icon: Inbox },
+    { key: "self-my-bot", label: t.filterSelfMyBot, icon: Bot },
+    { key: "self-third-bot", label: t.filterSelfThirdBot, icon: Bot },
+    { key: "self-human", label: t.filterSelfHuman, icon: User },
+    { key: "self-group", label: t.filterSelfGroup, icon: Users },
+  ];
+  const BOTS_ROWS: FilterRow[] = [
+    { key: "bots-all", label: t.filterAll, icon: Inbox },
+    { key: "bots-bot-bot", label: t.filterBotsBotBot, icon: Bot },
+    { key: "bots-bot-human", label: t.filterBotsBotHuman, icon: UsersRound },
+    { key: "bots-group", label: t.filterBotsGroup, icon: Users },
+  ];
   const { ownedAgents, token, humanRooms } = useDashboardSessionStore(
     useShallow((s) => ({
       ownedAgents: s.ownedAgents,
@@ -89,11 +90,11 @@ export default function MessagesGroupingSidebar() {
   return (
     <div className="flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border bg-deep-black/50">
       <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">{t.header}</span>
         <button
           onClick={() => setMessagesGroupingOpen(false)}
-          title="收起"
-          aria-label="收起"
+          title={t.collapse}
+          aria-label={t.collapse}
           className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
         >
           <ChevronsLeft className="h-3.5 w-3.5" />
@@ -102,8 +103,8 @@ export default function MessagesGroupingSidebar() {
 
       <div className="flex-1 overflow-y-auto py-1">
         <GroupHeader
-          title="我参与的对话"
-          subtitle="可以收发消息"
+          title={t.selfGroupTitle}
+          subtitle={t.selfGroupSubtitle}
           icon={User}
           count={counts["self-all"]}
           open={selfOpen}
@@ -126,8 +127,8 @@ export default function MessagesGroupingSidebar() {
         <div className="my-1 border-t border-glass-border/40" />
 
         <GroupHeader
-          title="Bot 监控"
-          subtitle="观察我的 bots 在干什么"
+          title={t.botsGroupTitle}
+          subtitle={t.botsGroupSubtitle}
           icon={Eye}
           count={counts["bots-all"]}
           open={botsOpen}

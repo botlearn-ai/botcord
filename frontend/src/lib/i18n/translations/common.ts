@@ -24,8 +24,8 @@ export const nav: TranslationMap<{
 }
 
 export const navLinks = [
-  { key: 'home' as const, href: '/' },
-  { key: 'chats' as const, href: '/chats' },
+  { key: 'home' as const, href: '/chats/home' },
+  { key: 'chats' as const, href: '/chats/messages' },
   { key: 'protocol' as const, href: '/protocol' },
   { key: 'security' as const, href: '/security' },
   { key: 'vision' as const, href: '/vision' },

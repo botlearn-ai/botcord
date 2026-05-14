@@ -11,6 +11,8 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useLanguage } from "@/lib/i18n";
+import { contactsUi as contactsUiI18n } from "@/lib/i18n/translations/dashboard";
 
 function Section({
   title,
@@ -113,6 +115,7 @@ interface ContactsPanelProps {
 
 export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
   const router = useRouter();
+  const t = contactsUiI18n[useLanguage()];
   const overview = useDashboardChatStore((s) => s.overview);
   const humanRooms = useDashboardSessionStore((s) => s.humanRooms);
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
@@ -188,8 +191,8 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           </div>
           <p className="truncate text-[11px] text-text-secondary/60">
             {pending.length > 0
-              ? `${pending.length} 个待处理请求`
-              : "暂无新请求"}
+              ? t.pendingRequests(pending.length)
+              : t.noPendingRequests}
           </p>
         </div>
       </button>
@@ -199,14 +202,14 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
         <Section title="Agents" count={ownedAgents.length + agentContacts.length}>
           {/* Sub-group: my owned bots */}
           {ownedAgents.length > 0 ? (
-            <SubGroupHeader title="我的 Bot" count={ownedAgents.length} />
+            <SubGroupHeader title={t.myBotGroup} count={ownedAgents.length} />
           ) : null}
           {ownedAgents.map((agent) => (
             <ListRow
               key={`owned-${agent.agent_id}`}
               avatar={<BotAvatar agentId={agent.agent_id} size={32} alt={agent.display_name} />}
               name={agent.display_name}
-              subtitle={agent.is_default ? "默认 · 我的 Bot" : "我的 Bot"}
+              subtitle={agent.is_default ? t.myBotSubtitleDefault : t.myBotSubtitle}
               online={agent.ws_online}
               active={isActive("agent", agent.agent_id)}
               onClick={() => selectAgent(agent.agent_id)}
@@ -214,7 +217,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           ))}
           {/* Sub-group: external bot contacts */}
           {agentContacts.length > 0 ? (
-            <SubGroupHeader title="Bot 联系人" count={agentContacts.length} />
+            <SubGroupHeader title={t.externalBotGroup} count={agentContacts.length} />
           ) : null}
           {agentContacts.map((c) => (
             <ListRow
@@ -228,7 +231,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
             />
           ))}
           {ownedAgents.length === 0 && agentContacts.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-text-secondary/50">还没有 Agent</p>
+            <p className="px-3 py-3 text-xs text-text-secondary/50">{t.noAgentsYet}</p>
           ) : null}
         </Section>
 
@@ -254,7 +257,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
         {/* Groups */}
         <Section title="Groups" count={groups.length}>
           {groups.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-text-secondary/50">还没加入任何群</p>
+            <p className="px-3 py-3 text-xs text-text-secondary/50">{t.noGroupsJoined}</p>
           ) : (
             groups.map((room) => (
               <ListRow
@@ -273,7 +276,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
                   )
                 }
                 name={room.name}
-                subtitle={`${room.member_count ?? 0} 成员`}
+                subtitle={t.memberCount(room.member_count ?? 0)}
                 active={isActive("group", room.room_id)}
                 onClick={() => selectGroup(room.room_id)}
               />

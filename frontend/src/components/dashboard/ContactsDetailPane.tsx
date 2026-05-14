@@ -6,6 +6,8 @@ import { useShallow } from "zustand/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useLanguage } from "@/lib/i18n";
+import { contactsUi as contactsUiI18n } from "@/lib/i18n/translations/dashboard";
 import type { DashboardRoom, ContactInfo, HumanRoomSummary, UserAgent } from "@/lib/types";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotAvatar from "./BotAvatar";
@@ -94,6 +96,7 @@ function ActionButton({
 
 export default function ContactsDetailPane() {
   const router = useRouter();
+  const t = contactsUiI18n[useLanguage()];
   const selectedContactKey = useDashboardUIStore((s) => s.selectedContactKey);
   const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const setPeerBotAgentId = useDashboardUIStore((s) => s.setPeerBotAgentId);
@@ -117,9 +120,9 @@ export default function ContactsDetailPane() {
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
             <UserCircle className="h-6 w-6 text-neon-cyan/80" />
           </div>
-          <h2 className="text-lg font-semibold text-text-primary">从左侧选一个联系人</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{t.emptyTitle}</h2>
           <p className="mt-2 text-sm text-text-secondary/70">
-            选择一个 Bot、真人或群聊，在这里查看资料并发起对话。
+            {t.emptyDescription}
           </p>
         </div>
       </div>
@@ -139,7 +142,7 @@ export default function ContactsDetailPane() {
     const a = target.agent;
     title = a.display_name;
     subtitle = a.agent_id;
-    tag = { tone: "cyan", label: a.is_default ? "My Bot · 默认" : "My Bot" };
+    tag = { tone: "cyan", label: a.is_default ? t.myBotTagDefault : t.myBot };
     statusText = a.ws_online ? "● Online" : "● Offline";
     bio = a.bio ?? null;
     avatar = <BotAvatar agentId={a.agent_id} size={96} alt={a.display_name} />;
@@ -148,7 +151,7 @@ export default function ContactsDetailPane() {
     title = c.alias || c.display_name;
     subtitle = c.contact_agent_id;
     const ownerName = publicAgents.find((a) => a.agent_id === c.contact_agent_id)?.owner_display_name;
-    tag = { tone: "gray", label: ownerName ? `${ownerName} 的 Bot` : "外部 Bot" };
+    tag = { tone: "gray", label: ownerName ? t.ownedBotOf(ownerName) : t.externalBot };
     statusText = c.online ? "● Online" : "● Offline";
     avatar = <BotAvatar agentId={c.contact_agent_id} size={96} alt={c.display_name} />;
   } else if (target.kind === "human-contact") {
@@ -164,7 +167,7 @@ export default function ContactsDetailPane() {
     title = r.name;
     subtitle = r.room_id;
     tag = { tone: "cyan", label: "GROUP" };
-    statusText = `${r.member_count ?? 0} 成员`;
+    statusText = t.memberCount(r.member_count ?? 0);
     bio = r.description || r.rule || null;
     messageRoomId = r.room_id;
     const membersPreview = r.members_preview ?? [];
@@ -236,13 +239,13 @@ export default function ContactsDetailPane() {
           {target.kind === "owned-bot" ? (
             <ActionButton
               icon={SlidersHorizontal}
-              label="查看详情"
+              label={t.viewDetails}
               onClick={() => setBotDetailAgentId(target.agent.agent_id)}
             />
           ) : target.kind === "agent-contact" ? (
             <ActionButton
               icon={SlidersHorizontal}
-              label="查看详情"
+              label={t.viewDetails}
               onClick={() => setPeerBotAgentId(target.contact.contact_agent_id)}
             />
           ) : null}

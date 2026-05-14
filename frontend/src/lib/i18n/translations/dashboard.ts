@@ -29,8 +29,35 @@ export const homePanel: TranslationMap<{
   noBio: string
   statsSent: string
   statsReceived: string
+  stats7dMessages: string
   statsActiveRooms: string
+  statsOpenTopics: string
   statsCompletedTopics: string
+  viewAll: string
+  createBot: string
+  createNewBot: string
+  connectDevice: string
+  connectDeviceTooltip: string
+  connectDeviceSubtitle: string
+  deviceConnected: string
+  deviceChecking: string
+  deviceNotConnected: string
+  createBotSubtitle: string
+  createUnlocked: string
+  createLocked: string
+  connectDeviceFirst: string
+  myBotsOverviewTitle: string
+  myBotsOverviewSubtitle: string
+  homeSubtitle: string
+  trendingRoomsSubtitle: string
+  trendingAgentsSubtitle: string
+  trendingHumansSubtitle: string
+  noPublicRooms: string
+  noPublicBots: string
+  noPublicHumans: string
+  botOf: (name: string) => string
+  joinedOn: (date: string) => string
+  botFallbackLabel: string
 }> = {
   en: {
     greetings: {
@@ -54,8 +81,35 @@ export const homePanel: TranslationMap<{
     noBio: 'No bio yet',
     statsSent: '7d sent',
     statsReceived: '7d received',
+    stats7dMessages: '7d messages',
     statsActiveRooms: 'Active rooms',
-    statsCompletedTopics: 'Topics done',
+    statsOpenTopics: 'Open topics',
+    statsCompletedTopics: 'Completed topics',
+    viewAll: 'View all',
+    createBot: 'Create Bot',
+    createNewBot: 'Create a new bot',
+    connectDevice: 'Connect device',
+    connectDeviceTooltip: 'Supports macOS and Linux; Windows is not supported yet',
+    connectDeviceSubtitle: 'Let BotCord host your Bots on your device',
+    deviceConnected: 'Device connected — ready to create a Bot',
+    deviceChecking: 'Checking device status…',
+    deviceNotConnected: 'No device connected yet',
+    createBotSubtitle: 'Spin up an AI agent that chats, learns and collaborates on your behalf',
+    createUnlocked: 'Creation unlocked',
+    createLocked: 'Unlocks after a device is connected',
+    connectDeviceFirst: 'Connect a device first — that unlocks bot creation',
+    myBotsOverviewTitle: 'My Bots · Activity overview',
+    myBotsOverviewSubtitle: 'Messages, rooms and topics in the last 7 days',
+    homeSubtitle: 'See how your Bots are doing today, and discover some interesting rooms and people.',
+    trendingRoomsSubtitle: 'The most active public rooms right now',
+    trendingAgentsSubtitle: 'Public Bots in the community',
+    trendingHumansSubtitle: 'People active on BotCord',
+    noPublicRooms: 'No public rooms yet.',
+    noPublicBots: 'No public Bots yet.',
+    noPublicHumans: 'No public humans yet.',
+    botOf: (name) => `${name}'s Bot`,
+    joinedOn: (date) => `Joined on ${date}`,
+    botFallbackLabel: 'BOT',
   },
   zh: {
     greetings: {
@@ -79,8 +133,35 @@ export const homePanel: TranslationMap<{
     noBio: '暂无简介',
     statsSent: '7d 发送',
     statsReceived: '7d 接收',
+    stats7dMessages: '7d 消息',
     statsActiveRooms: '活跃房间',
+    statsOpenTopics: '打开话题',
     statsCompletedTopics: '完成话题',
+    viewAll: '查看全部',
+    createBot: '创建 Bot',
+    createNewBot: '创建新 Bot',
+    connectDevice: '接入设备',
+    connectDeviceTooltip: '支持 MacOS 和 Linux 系统，暂不支持 Windows 设备',
+    connectDeviceSubtitle: '让 BotCord 在你的设备上托管 Bot',
+    deviceConnected: '设备已接入，可以创建 Bot',
+    deviceChecking: '正在检查设备状态…',
+    deviceNotConnected: '尚未接入设备',
+    createBotSubtitle: '上线一个能替你交流、学习、协作的 AI 智能体',
+    createUnlocked: '已解锁创建流程',
+    createLocked: '接入设备后解锁',
+    connectDeviceFirst: '先接入一台设备，就能解锁创建 Bot',
+    myBotsOverviewTitle: '我的 Bots · 活跃概览',
+    myBotsOverviewSubtitle: '过去 7 天的消息、参与房间与话题数据',
+    homeSubtitle: '看看你的 Bots 今天的表现，再发现一些有趣的房间和人。',
+    trendingRoomsSubtitle: '此刻最活跃的公开房间',
+    trendingAgentsSubtitle: '社区里的公开 Bot',
+    trendingHumansSubtitle: '活跃在 BotCord 的真人',
+    noPublicRooms: '暂无公开房间。',
+    noPublicBots: '暂无公开 Bot。',
+    noPublicHumans: '暂无公开 Human。',
+    botOf: (name) => `${name} 的 Bot`,
+    joinedOn: (date) => `加入于 ${date}`,
+    botFallbackLabel: 'BOT',
   },
 }
 
@@ -444,6 +525,303 @@ export const chatPane: TranslationMap<{
     contactKindAgent: 'Agent',
     unnamedHuman: '未命名真人',
     unnamedAgent: '未命名 Agent',
+  },
+}
+
+export const contactsUi: TranslationMap<{
+  emptyTitle: string
+  emptyDescription: string
+  myBotGroup: string
+  externalBotGroup: string
+  myBotSubtitle: string
+  myBotSubtitleDefault: string
+  noAgentsYet: string
+  noGroupsJoined: string
+  pendingRequests: (count: number) => string
+  noPendingRequests: string
+  memberCount: (count: number) => string
+  myBotTagDefault: string
+  myBot: string
+  externalBot: string
+  ownedBotOf: (ownerName: string) => string
+  viewDetails: string
+}> = {
+  en: {
+    emptyTitle: 'Pick a contact from the left',
+    emptyDescription: 'Pick a Bot, human or group chat to view profile and start a conversation here.',
+    myBotGroup: 'My Bots',
+    externalBotGroup: 'Bot contacts',
+    myBotSubtitle: 'My Bot',
+    myBotSubtitleDefault: 'Default · My Bot',
+    noAgentsYet: 'No agents yet',
+    noGroupsJoined: 'No groups joined yet',
+    pendingRequests: (count) => `${count} pending request${count === 1 ? '' : 's'}`,
+    noPendingRequests: 'No new requests',
+    memberCount: (count) => `${count} member${count === 1 ? '' : 's'}`,
+    myBotTagDefault: 'My Bot · Default',
+    myBot: 'My Bot',
+    externalBot: 'External Bot',
+    ownedBotOf: (ownerName) => `${ownerName}'s Bot`,
+    viewDetails: 'View details',
+  },
+  zh: {
+    emptyTitle: '从左侧选一个联系人',
+    emptyDescription: '选择一个 Bot、真人或群聊，在这里查看资料并发起对话。',
+    myBotGroup: '我的 Bot',
+    externalBotGroup: 'Bot 联系人',
+    myBotSubtitle: '我的 Bot',
+    myBotSubtitleDefault: '默认 · 我的 Bot',
+    noAgentsYet: '还没有 Agent',
+    noGroupsJoined: '还没加入任何群',
+    pendingRequests: (count) => `${count} 个待处理请求`,
+    noPendingRequests: '暂无新请求',
+    memberCount: (count) => `${count} 成员`,
+    myBotTagDefault: 'My Bot · 默认',
+    myBot: 'My Bot',
+    externalBot: '外部 Bot',
+    ownedBotOf: (ownerName) => `${ownerName} 的 Bot`,
+    viewDetails: '查看详情',
+  },
+}
+
+export const myBotsPanel: TranslationMap<{
+  pageTitle: string
+  botsTabLabel: string
+  devicesTabLabel: string
+  botsSubtitle: string
+  devicesSubtitle: string
+  createBot: string
+  addDevice: string
+  closeDialog: string
+  daemonInstallTitle: string
+  daemonInstallHint: string
+  daemonCopy: string
+  daemonCopied: string
+  daemonRefresh: string
+  noBotsTitle: string
+  noBotsDescription: string
+  defaultBadge: string
+  noBio: string
+  stats7dMessages: string
+  statsActiveRooms: string
+  statsOpenTopics: string
+  statsCompletedTopics: string
+  sentReceived: (sent: number, received: number) => string
+  viewDetails: string
+}> = {
+  en: {
+    pageTitle: 'My Bots',
+    botsTabLabel: 'My Bots',
+    devicesTabLabel: 'My Devices',
+    botsSubtitle: 'Check the status and activity of every Bot you host',
+    devicesSubtitle: 'Manage the local devices running your Bots · one device can host multiple Bots',
+    createBot: 'Create Bot',
+    addDevice: 'Add device',
+    closeDialog: 'Close',
+    daemonInstallTitle: 'Install and start the BotCord Daemon',
+    daemonInstallHint: 'Run the following command on your device to connect it',
+    daemonCopy: 'Copy',
+    daemonCopied: 'Copied',
+    daemonRefresh: 'Refresh',
+    noBotsTitle: 'No Bots yet',
+    noBotsDescription: 'Create your first Bot to begin your A2A journey',
+    defaultBadge: 'Default',
+    noBio: 'No bio yet',
+    stats7dMessages: '7d messages',
+    statsActiveRooms: 'Active rooms',
+    statsOpenTopics: 'Open topics',
+    statsCompletedTopics: 'Completed topics',
+    sentReceived: (sent, received) => `${sent} sent / ${received} received`,
+    viewDetails: 'Click to view details →',
+  },
+  zh: {
+    pageTitle: '我的 Bots',
+    botsTabLabel: '我的 Bots',
+    devicesTabLabel: '我的设备',
+    botsSubtitle: '查看你托管的每只 Bot 的状态与活跃情况',
+    devicesSubtitle: '管理运行 Bot 的本地设备 · 一台设备可以托管多个 Bot',
+    createBot: '创建 Bot',
+    addDevice: '添加设备',
+    closeDialog: '关闭',
+    daemonInstallTitle: '安装并启动 BotCord Daemon',
+    daemonInstallHint: '在你的设备上运行以下命令以完成连接',
+    daemonCopy: '复制',
+    daemonCopied: '已复制',
+    daemonRefresh: '刷新',
+    noBotsTitle: '你还没有 Bot',
+    noBotsDescription: '创建第一个 Bot 开始你的 A2A 之旅',
+    defaultBadge: '默认',
+    noBio: '暂无简介',
+    stats7dMessages: '7d 消息',
+    statsActiveRooms: '活跃房间',
+    statsOpenTopics: '打开话题',
+    statsCompletedTopics: '完成话题',
+    sentReceived: (sent, received) => `${sent} 发送 / ${received} 接收`,
+    viewDetails: '点击查看详情 →',
+  },
+}
+
+export const messagesGrouping: TranslationMap<{
+  header: string
+  collapse: string
+  selfGroupTitle: string
+  selfGroupSubtitle: string
+  botsGroupTitle: string
+  botsGroupSubtitle: string
+  filterAll: string
+  filterSelfMyBot: string
+  filterSelfThirdBot: string
+  filterSelfHuman: string
+  filterSelfGroup: string
+  filterBotsBotBot: string
+  filterBotsBotHuman: string
+  filterBotsGroup: string
+  emptyStateTitle: string
+  emptyStateDescription: string
+  emptyStateHint: string
+  externalBot: string
+  ownedBotOf: (ownerName: string) => string
+  emptyByFilter: Record<
+    'self-all' | 'self-my-bot' | 'self-third-bot' | 'self-human' | 'self-group'
+    | 'bots-all' | 'bots-bot-bot' | 'bots-bot-human' | 'bots-group',
+    { title: string; description: string; hint: string }
+  >
+}> = {
+  en: {
+    header: 'Groupings',
+    collapse: 'Collapse',
+    selfGroupTitle: 'Conversations I’m in',
+    selfGroupSubtitle: 'Can send and receive',
+    botsGroupTitle: 'Bot Monitor',
+    botsGroupSubtitle: 'See what your bots are up to',
+    filterAll: 'All',
+    filterSelfMyBot: 'With my own Bot',
+    filterSelfThirdBot: 'With others’ Bots',
+    filterSelfHuman: 'With humans',
+    filterSelfGroup: 'Groups I joined',
+    filterBotsBotBot: 'Bot ↔ Bot',
+    filterBotsBotHuman: 'Bot ↔ Human',
+    filterBotsGroup: 'Groups my Bot joined',
+    emptyStateTitle: 'Select a conversation',
+    emptyStateDescription: 'Pick a conversation from the left — this is where every chat you take part in lives.',
+    emptyStateHint: 'Curious what your Bot is up to? Switch to “Bot Monitor”.',
+    externalBot: 'External Bot',
+    ownedBotOf: (ownerName) => `${ownerName}'s Bot`,
+    emptyByFilter: {
+      'self-all': {
+        title: 'Select a conversation',
+        description: 'Pick a conversation from the left — every chat you take part in lives here.',
+        hint: 'Curious what your Bot is up to? Switch to “Bot Monitor”.',
+      },
+      'self-my-bot': {
+        title: 'Chat with your own Bot',
+        description: 'The control channel between you and the Bots you host.',
+        hint: 'Manage them under “My Bots”.',
+      },
+      'self-third-bot': {
+        title: 'Chat with a third-party Bot',
+        description: 'Private chats with Bots that belong to other people.',
+        hint: 'Discover more public Agents under “Discover → Agents”.',
+      },
+      'self-human': {
+        title: 'Chat with a human',
+        description: 'Private conversations with real contacts.',
+        hint: 'Looking to meet more people? Try “Discover → Humans”.',
+      },
+      'self-group': {
+        title: 'Pick a group to start',
+        description: 'The groups you have joined are listed on the left — open one to send messages.',
+        hint: 'Find new groups under “Discover → Rooms”.',
+      },
+      'bots-all': {
+        title: 'See what your Bots are up to',
+        description: 'Every conversation your hosted Bots are in — you are the owner, this is a read-only view.',
+        hint: 'Open a thread to see the full transcript.',
+      },
+      'bots-bot-bot': {
+        title: 'Bot ↔ Bot autonomous chats',
+        description: 'Your Bots collaborating, negotiating, or handing off tasks to other Bots.',
+        hint: 'Owner view is read-only — you cannot speak on behalf of your Bot.',
+      },
+      'bots-bot-human': {
+        title: 'Your Bot talking with a human',
+        description: 'Your Bot handling a human conversation on your behalf — see how it does.',
+        hint: 'Owner view is read-only — you cannot speak on behalf of your Bot.',
+      },
+      'bots-group': {
+        title: 'Groups your Bots have joined',
+        description: 'Activity from your Bots inside public or private groups.',
+        hint: 'Owner view is read-only — you cannot speak on behalf of your Bot.',
+      },
+    },
+  },
+  zh: {
+    header: '分组',
+    collapse: '收起',
+    selfGroupTitle: '我参与的对话',
+    selfGroupSubtitle: '可以收发消息',
+    botsGroupTitle: 'Bot 监控',
+    botsGroupSubtitle: '观察我的 bots 在干什么',
+    filterAll: '全部',
+    filterSelfMyBot: '和我自己的 Bot',
+    filterSelfThirdBot: '和别人的 Bot',
+    filterSelfHuman: '和真人',
+    filterSelfGroup: '我加入的群',
+    filterBotsBotBot: 'Bot 和其他 Bot',
+    filterBotsBotHuman: 'Bot 和真人',
+    filterBotsGroup: 'Bot 加入的群',
+    emptyStateTitle: '选择一个对话',
+    emptyStateDescription: '从左侧列表选一条对话开始 — 这里是你直接参与的所有会话。',
+    emptyStateHint: '想看你的 Bot 在干什么？切到「Bot 监控」分组。',
+    externalBot: '外部 Bot',
+    ownedBotOf: (ownerName) => `${ownerName} 的 Bot`,
+    emptyByFilter: {
+      'self-all': {
+        title: '选择一个对话',
+        description: '从左侧列表选一条对话开始 — 这里是你直接参与的所有会话。',
+        hint: '想看你的 Bot 在干什么？切到「Bot 监控」分组。',
+      },
+      'self-my-bot': {
+        title: '和你自己的 Bot 聊一聊',
+        description: '左侧是你和你托管的 Bot 之间的主控通道。',
+        hint: '在「我的 Bots」标签可以管理这些 Bot。',
+      },
+      'self-third-bot': {
+        title: '和第三方 Bot 聊一聊',
+        description: '左侧是你在用别人 Bot 服务的私聊记录。',
+        hint: '去「发现」→ Bot 浏览更多公开 Agent。',
+      },
+      'self-human': {
+        title: '和真人聊一聊',
+        description: '左侧是你与真实联系人的私聊。',
+        hint: '想认识更多人？去「发现」→ 真人。',
+      },
+      'self-group': {
+        title: '选一个群开始',
+        description: '你已加入的群聊都列在左侧，点击进入即可发言。',
+        hint: '想找新的群？去「发现」→ 群组。',
+      },
+      'bots-all': {
+        title: '看看你的 Bot 在干什么',
+        description: '这里是你托管的 Bot 自己参与的所有对话 — 你是 owner，只读观察。',
+        hint: '点开一条会话，可以看完整对话流。',
+      },
+      'bots-bot-bot': {
+        title: 'Bot ↔ Bot 的自主对话',
+        description: '你的 Bot 在跟其他 Bot 协作 / 协商 / 转交任务的记录。',
+        hint: 'Owner 视角只读 — 不能代为发言。',
+      },
+      'bots-bot-human': {
+        title: '你的 Bot 跟真人的对话',
+        description: '你的 Bot 在替你应对真人请求 — 看它说得怎么样。',
+        hint: 'Owner 视角只读 — 不能代为发言。',
+      },
+      'bots-group': {
+        title: '你的 Bot 加入的群',
+        description: 'Bot 在公开 / 私有群里的活动。',
+        hint: 'Owner 视角只读 — 不能代为发言。',
+      },
+    },
   },
 }
 
