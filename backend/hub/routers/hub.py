@@ -11,6 +11,7 @@ import uuid
 from typing import Any
 from collections import defaultdict, deque
 
+import sentry_sdk
 from cachetools import TTLCache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -105,6 +106,17 @@ _inbox_conditions: dict[str, asyncio.Condition] = {}
 # In-memory WebSocket connections: agent_id → set of WebSocket
 # ---------------------------------------------------------------------------
 _ws_connections: dict[str, set[WebSocket]] = {}
+
+
+def _ws_connection_counts(agent_id: str | None = None) -> dict[str, int]:
+    total_connections = sum(len(ws_set) for ws_set in _ws_connections.values())
+    counts = {
+        "total_connections": total_connections,
+        "total_agents": len(_ws_connections),
+    }
+    if agent_id is not None:
+        counts["agent_connections"] = len(_ws_connections.get(agent_id, set()))
+    return counts
 
 
 def is_agent_ws_online(agent_id: str) -> bool:
@@ -413,9 +425,22 @@ async def notify_inbox(
     notified = 0
     ws_set = _ws_connections.get(agent_id)
     if ws_set:
-        logger.info("notify_inbox: agent=%s ws_connections=%d", agent_id, len(ws_set))
+        counts = _ws_connection_counts(agent_id)
+        logger.info(
+            "notify_inbox: agent=%s ws_connections=%d total_ws_connections=%d total_ws_agents=%d",
+            agent_id,
+            len(ws_set),
+            counts["total_connections"],
+            counts["total_agents"],
+        )
     else:
-        logger.warning("notify_inbox: agent=%s no ws_connections", agent_id)
+        counts = _ws_connection_counts(agent_id)
+        logger.warning(
+            "notify_inbox: agent=%s no ws_connections total_ws_connections=%d total_ws_agents=%d",
+            agent_id,
+            counts["total_connections"],
+            counts["total_agents"],
+        )
     if ws_set:
         # Iterate a snapshot to avoid concurrent modification
         dead: list[WebSocket] = []
@@ -443,6 +468,16 @@ async def notify_inbox(
             ws_set.discard(ws)
         if not ws_set:
             _ws_connections.pop(agent_id, None)
+        if dead:
+            counts = _ws_connection_counts(agent_id)
+            logger.warning(
+                "notify_inbox: removed dead ws connections agent=%s dead_count=%d remaining_agent_ws=%d total_ws_connections=%d total_ws_agents=%d",
+                agent_id,
+                len(dead),
+                counts["agent_connections"],
+                counts["total_connections"],
+                counts["total_agents"],
+            )
 
     if db is not None and realtime_event is not None:
         await _publish_agent_realtime_event(db, realtime_event)
@@ -1890,7 +1925,7 @@ async def websocket_inbox(ws: WebSocket):
         try:
             agent_id = verify_agent_token(token)
         except Exception as exc:
-            logger.error("WebSocket auth failed: %s: %s", type(exc).__name__, exc)
+            logger.warning("WebSocket auth failed: %s: %s", type(exc).__name__, exc)
             await ws.close(code=4001, reason="Invalid token")
             return
 
@@ -1918,6 +1953,15 @@ async def websocket_inbox(ws: WebSocket):
         if agent_id not in _ws_connections:
             _ws_connections[agent_id] = set()
         _ws_connections[agent_id].add(ws)
+        counts = _ws_connection_counts(agent_id)
+        logger.info(
+            "WebSocket registered: agent=%s connection_id=%s agent_ws_connections=%d total_ws_connections=%d total_ws_agents=%d",
+            agent_id,
+            connection_id,
+            counts["agent_connections"],
+            counts["total_connections"],
+            counts["total_agents"],
+        )
 
         async def _presence_call(fn, *args, **kwargs):
             """Run a presence_service call in its own session and broadcast on change."""
@@ -1972,7 +2016,15 @@ async def websocket_inbox(ws: WebSocket):
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected: agent=%s", agent_id)
     except Exception as e:
-        logger.error("WebSocket error: agent=%s err=%s", agent_id, e, exc_info=True)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("ws.endpoint", "hub_inbox")
+            if agent_id:
+                scope.set_tag("agent_id", agent_id)
+            scope.set_context(
+                "ws_connections",
+                _ws_connection_counts(agent_id),
+            )
+            logger.error("WebSocket error: agent=%s err=%s", agent_id, e, exc_info=True)
     finally:
         # --- Cleanup ---
         if agent_id:
@@ -1981,6 +2033,15 @@ async def websocket_inbox(ws: WebSocket):
                 ws_set.discard(ws)
                 if not ws_set:
                     _ws_connections.pop(agent_id, None)
+            counts = _ws_connection_counts(agent_id)
+            logger.info(
+                "WebSocket unregistered: agent=%s connection_id=%s remaining_agent_ws=%d total_ws_connections=%d total_ws_agents=%d",
+                agent_id,
+                connection_id,
+                counts["agent_connections"],
+                counts["total_connections"],
+                counts["total_agents"],
+            )
             if connection_id is not None:
                 try:
                     async with async_session() as pdb:

@@ -11,6 +11,7 @@ import uuid
 from collections import deque
 from typing import Sequence
 
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -66,6 +67,17 @@ _oc_trace_block_count: dict[str, int] = {}
 # ---------------------------------------------------------------------------
 
 
+def _oc_ws_connection_counts(key: tuple[str, str] | None = None) -> dict[str, int]:
+    total_connections = sum(len(ws_set) for ws_set in _oc_ws_connections.values())
+    counts = {
+        "total_connections": total_connections,
+        "total_pairs": len(_oc_ws_connections),
+    }
+    if key is not None:
+        counts["pair_connections"] = len(_oc_ws_connections.get(key, set()))
+    return counts
+
+
 def _register_ws(user_id: str, agent_id: str, ws: WebSocket) -> None:
     key = (user_id, agent_id)
     if key not in _oc_ws_connections:
@@ -114,6 +126,17 @@ async def _send_to_oc_ws(
         ws_set.discard(ws)
     if not ws_set:
         _oc_ws_connections.pop(key, None)
+    if dead:
+        counts = _oc_ws_connection_counts(key)
+        logger.warning(
+            "Owner-chat WS removed dead connections: user=%s agent=%s dead_count=%d remaining_pair_ws=%d total_ws_connections=%d total_ws_pairs=%d",
+            user_id,
+            agent_id,
+            len(dead),
+            counts["pair_connections"],
+            counts["total_connections"],
+            counts["total_pairs"],
+        )
 
 
 def _cleanup_trace(trace_id: str) -> None:
@@ -267,7 +290,7 @@ async def owner_chat_ws(ws: WebSocket):
         try:
             supabase_uid = verify_supabase_token(token)
         except Exception as exc:
-            logger.error("Owner-chat WS auth failed: %s: %s", type(exc).__name__, exc)
+            logger.warning("Owner-chat WS auth failed: %s: %s", type(exc).__name__, exc)
             await ws.close(code=4001, reason="Invalid token")
             return
 
@@ -305,6 +328,15 @@ async def owner_chat_ws(ws: WebSocket):
 
         # --- Register connection ---
         _register_ws(user_id, agent_id, ws)
+        counts = _oc_ws_connection_counts((user_id, agent_id))
+        logger.info(
+            "Owner-chat WS registered: user=%s agent=%s pair_ws_connections=%d total_ws_connections=%d total_ws_pairs=%d",
+            user_id,
+            agent_id,
+            counts["pair_connections"],
+            counts["total_connections"],
+            counts["total_pairs"],
+        )
 
         # --- Main loop ---
         while True:
@@ -475,10 +507,39 @@ async def owner_chat_ws(ws: WebSocket):
     except WebSocketDisconnect:
         logger.info("Owner-chat WS disconnected: user=%s agent=%s", user_id, agent_id)
     except Exception as e:
-        logger.error("Owner-chat WS error: user=%s agent=%s err=%s", user_id, agent_id, e, exc_info=True)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("ws.endpoint", "owner_chat")
+            if user_id:
+                scope.set_tag("user_id", user_id)
+            if agent_id:
+                scope.set_tag("agent_id", agent_id)
+            scope.set_context(
+                "ws_connections",
+                (
+                    _oc_ws_connection_counts((user_id, agent_id))
+                    if user_id and agent_id
+                    else _oc_ws_connection_counts()
+                ),
+            )
+            logger.error(
+                "Owner-chat WS error: user=%s agent=%s err=%s",
+                user_id,
+                agent_id,
+                e,
+                exc_info=True,
+            )
     finally:
         if user_id and agent_id:
             _unregister_ws(user_id, agent_id, ws)
+            counts = _oc_ws_connection_counts((user_id, agent_id))
+            logger.info(
+                "Owner-chat WS unregistered: user=%s agent=%s remaining_pair_ws=%d total_ws_connections=%d total_ws_pairs=%d",
+                user_id,
+                agent_id,
+                counts["pair_connections"],
+                counts["total_connections"],
+                counts["total_pairs"],
+            )
 
 
 # ---------------------------------------------------------------------------
