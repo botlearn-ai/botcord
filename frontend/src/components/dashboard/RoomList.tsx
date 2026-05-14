@@ -79,10 +79,9 @@ export default function RoomList({
   const locale = useLanguage();
   const t = roomList[locale];
   const tGroup = messagesGrouping[locale];
-  const { overview, messages, loadRoomMessages, publicAgents } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, messages, publicAgents } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     messages: state.messages,
-    loadRoomMessages: state.loadRoomMessages,
     publicAgents: state.publicAgents,
   })));
   const { focusedRoomId, messagesPane, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane, setUserChatAgentId } = useDashboardUIStore(useShallow((state) => ({
@@ -161,9 +160,6 @@ export default function RoomList({
     setOpenedRoomId(room.room_id);
     closeMobileSidebar();
     router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
-    if (!messages[room.room_id]) {
-      loadRoomMessages(room.room_id);
-    }
   };
 
   const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, room: DashboardRoom) => {
