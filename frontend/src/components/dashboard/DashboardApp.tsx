@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
+ * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
  * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -45,6 +45,7 @@ import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
+type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -77,6 +78,21 @@ function getCurrentMessageRoomFromPath(pathname: string): string | null {
   return decodeRoomIdFromPath(subtab);
 }
 
+function getSidebarTabFromPathParts(parts: string[]): DashboardSidebarTab {
+  const tab = parts[1];
+  if (tab === "dm" || tab === "rooms" || tab === "messages" || tab === "user-chat") return "messages";
+  if (
+    tab === "contacts"
+    || tab === "explore"
+    || tab === "wallet"
+    || tab === "activity"
+    || tab === "bots"
+  ) {
+    return tab;
+  }
+  return "home";
+}
+
 export default function DashboardApp() {
   const sessionStore = useDashboardSessionStore();
   const uiStore = useDashboardUIStore();
@@ -101,6 +117,7 @@ export default function DashboardApp() {
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
+  const routeSidebarTab = useMemo(() => getSidebarTabFromPathParts(pathnameParts), [pathnameParts]);
   const userChatAgentIdFromQuery = searchParams.get("agent_id");
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
   // Human-first: never force-block on "no agent". Authed users always proceed
@@ -992,54 +1009,63 @@ export default function DashboardApp() {
   };
 
   const mobileShowsMain =
-    uiStore.sidebarTab === "contacts"
-    || uiStore.sidebarTab === "explore"
-    || uiStore.sidebarTab === "wallet"
-    || uiStore.sidebarTab === "activity"
-    || (uiStore.sidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
-    || (uiStore.sidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
+    routeSidebarTab === "contacts"
+    || routeSidebarTab === "explore"
+    || routeSidebarTab === "wallet"
+    || routeSidebarTab === "activity"
+    || (routeSidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
+    || (routeSidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
   const mobileHideSecondary =
-    uiStore.sidebarTab === "wallet"
-    || uiStore.sidebarTab === "activity"
-    || uiStore.sidebarTab === "explore"
-    || uiStore.sidebarTab === "contacts"
-    || (uiStore.sidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
-    || (uiStore.sidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
+    routeSidebarTab === "wallet"
+    || routeSidebarTab === "activity"
+    || routeSidebarTab === "explore"
+    || routeSidebarTab === "contacts"
+    || (routeSidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
+    || (routeSidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
   const primaryNavigationPending = Boolean(
     uiStore.pendingPrimaryNavigation && pathname !== uiStore.pendingPrimaryNavigation.path,
   );
+  const visibleSidebarTab = primaryNavigationPending
+    ? uiStore.pendingPrimaryNavigation?.tab ?? uiStore.sidebarTab
+    : routeSidebarTab;
 
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-deep-black max-md:flex-col-reverse">
       <Sidebar
+        sidebarTabOverride={visibleSidebarTab}
         mobileHideSecondary={mobileHideSecondary}
         mobileSecondaryOpen={uiStore.mobileSidebarOpen}
         onMobileSecondaryClose={uiStore.closeMobileSidebar}
       />
       <div className={mainPaneClass}>
         {primaryNavigationPending ? (
-          <DashboardTabSkeleton variant={uiStore.sidebarTab} />
-        ) : uiStore.sidebarTab === "home" ? (
+          <DashboardTabSkeleton variant={visibleSidebarTab} />
+        ) : visibleSidebarTab === "home" ? (
           <HomePanel />
-        ) : uiStore.sidebarTab === "activity" ? (
+        ) : visibleSidebarTab === "activity" ? (
           <ActivityPanel />
-        ) : uiStore.sidebarTab === "wallet" ? (
+        ) : visibleSidebarTab === "wallet" ? (
           <WalletPanel />
-        ) : uiStore.sidebarTab === "bots" ? (
+        ) : visibleSidebarTab === "bots" ? (
           <MyBotsPanel />
-        ) : uiStore.sidebarTab === "messages" && uiStore.messagesShowRequests ? (
+        ) : visibleSidebarTab === "messages" && uiStore.messagesShowRequests ? (
           <ContactRequestsInbox
             title={tChatPane.contactRequests}
             hideTabs
           />
-        ) : uiStore.sidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
+        ) : visibleSidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
           <div className="h-full min-w-0">
             <UserChatPane agentId={uiStore.userChatAgentId || userChatAgentIdFromQuery} />
           </div>
         ) : (
           <div className="flex h-full min-w-0">
             <ChatPane
+              sidebarTabOverride={
+                visibleSidebarTab === "contacts" || visibleSidebarTab === "explore"
+                  ? visibleSidebarTab
+                  : "messages"
+              }
               onHumanOpen={(human) => {
                 void handleOpenHumanCard({
                   humanId: human.human_id,
@@ -1047,7 +1073,7 @@ export default function DashboardApp() {
                 });
               }}
             />
-            {uiStore.sidebarTab !== "explore" && uiStore.rightPanelOpen && <AgentBrowser />}
+            {visibleSidebarTab !== "explore" && uiStore.rightPanelOpen && <AgentBrowser />}
           </div>
         )}
       </div>
