@@ -472,10 +472,12 @@ export function DeviceConnectPanel({
   connected,
   daemonLoading,
   onRefreshDaemons,
+  offlineDevices = false,
 }: {
   connected: boolean;
   daemonLoading: boolean;
   onRefreshDaemons: () => void;
+  offlineDevices?: boolean;
 }) {
   const locale = useLanguage();
   const isZh = locale === "zh";
@@ -491,6 +493,25 @@ export function DeviceConnectPanel({
     : command;
   const copyDisabled = tokenLoading;
   const deviceConnected = connected;
+  const panelTitle = offlineDevices
+    ? isZh
+      ? <>在你的电脑的<TerminalWord>终端</TerminalWord>里运行此命令重启 BotCord</>
+      : <>Run this command in your computer's <TerminalWord>Terminal</TerminalWord> to restart BotCord</>
+    : isZh
+      ? <>在你的电脑的<TerminalWord>终端</TerminalWord>里运行此命令</>
+      : <>Run this command in your computer's <TerminalWord>Terminal</TerminalWord></>;
+  const panelDescription = offlineDevices
+    ? isZh
+      ? "重启并连接成功后，会自动出现在这里。"
+      : "Once it restarts and reconnects, it will show up here automatically."
+    : "Once it connects, it will show up here automatically.";
+  const refreshPrompt = offlineDevices
+    ? isZh
+      ? "已经在设备上重启 BotCord？"
+      : "Already restarted BotCord on this device?"
+    : isZh
+      ? "已经在这台机器上运行 BotCord？"
+      : "Already running BotCord on this machine?";
 
   useEffect(() => {
     void refreshInstallCommand();
@@ -554,14 +575,10 @@ export function DeviceConnectPanel({
                   Install command
                 </div>
                 <h4 className="text-sm font-semibold leading-snug text-text-primary">
-                  {isZh ? (
-                    <>在你的电脑的<TerminalWord>终端</TerminalWord>里运行此命令</>
-                  ) : (
-                    <>Run this command in your computer's <TerminalWord>Terminal</TerminalWord></>
-                  )}
+                  {panelTitle}
                 </h4>
                 <p className="mt-1 text-xs text-text-secondary/70">
-                  Once it connects, it will show up here automatically.
+                  {panelDescription}
                 </p>
               </div>
 
@@ -613,7 +630,7 @@ export function DeviceConnectPanel({
 
           {!deviceConnected && (
             <div className="flex flex-col gap-3 text-sm text-text-secondary/70 sm:flex-row sm:items-center sm:justify-between">
-              <span>Already running BotCord on this machine?</span>
+              <span>{refreshPrompt}</span>
               <button
                 type="button"
                 onClick={handleRefresh}

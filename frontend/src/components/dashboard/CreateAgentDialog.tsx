@@ -207,6 +207,8 @@ export default function CreateAgentDialog({
     () => daemons.filter((d) => d.status === "online"),
     [daemons],
   );
+  const hasOfflineBoundDevices = daemons.some((d) => d.status === "offline");
+  const hasOnlyOfflineBoundDevices = loaded && hasOfflineBoundDevices && onlineDaemons.length === 0;
 
   const [selectedDaemonId, setSelectedDaemonId] = useState<string | null>(null);
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
@@ -534,13 +536,18 @@ export default function CreateAgentDialog({
         {(() => {
           const onStep1 = showEmptyState || addingDevice;
           const currentStep: 1 | 2 = onStep1 ? 1 : 2;
+          const showWizardHeader = !hasExistingBots || (onStep1 && hasOnlyOfflineBoundDevices);
+          const step1Title = hasOnlyOfflineBoundDevices ? t.step1OfflineTitle : t.step1Title;
+          const step1Description = hasOnlyOfflineBoundDevices
+            ? t.step1OfflineDescription
+            : t.step1Description;
           return (
             <>
               <div className="flex shrink-0 items-center gap-3 border-b border-glass-border/40 px-4 py-3 sm:px-5">
                 <div className="min-w-0 flex-1">
-                  {hasExistingBots ? (
+                  {!showWizardHeader ? (
                     <h3
-                      id="create-agent-title"
+                      id={onStep1 ? undefined : "create-agent-title"}
                       className="flex items-center gap-2 text-base font-semibold text-text-primary"
                     >
                       <Bot className="h-4 w-4 text-neon-cyan" />
@@ -566,6 +573,17 @@ export default function CreateAgentDialog({
                 </button>
               </div>
               <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+              {onStep1 && !addingDevice ? (
+                <div className="mb-4">
+                  <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-bold text-text-primary">
+                    <Server className="h-5 w-5 text-neon-cyan" />
+                    {step1Title}
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-6 text-text-secondary">
+                    {step1Description}
+                  </p>
+                </div>
+              ) : null}
               {!hasExistingBots && !onStep1 && (
                 <div className="mb-4">
                   <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-bold text-text-primary">
@@ -585,6 +603,7 @@ export default function CreateAgentDialog({
             connected={false}
             daemonLoading={loading}
             onRefreshDaemons={() => void refresh()}
+            offlineDevices={hasOnlyOfflineBoundDevices}
           />
         ) : justConnected ? (
           <div className="animate-in fade-in duration-200 flex flex-col items-center gap-3 py-10 text-center">
@@ -612,6 +631,7 @@ export default function CreateAgentDialog({
               connected={false}
               daemonLoading={loading}
               onRefreshDaemons={() => void refresh()}
+              offlineDevices={false}
             />
           </div>
         ) : (

@@ -2246,6 +2246,8 @@ export const createAgentDialog: TranslationMap<{
   stepBotLabel: string
   step1Title: string
   step1Description: string
+  step1OfflineTitle: string
+  step1OfflineDescription: string
   step2Description: string
   runtimeSectionLabel: string
   identitySectionLabel: string
@@ -2304,6 +2306,8 @@ export const createAgentDialog: TranslationMap<{
     stepBotLabel: 'Create Bot',
     step1Title: 'Connect device',
     step1Description: 'Run BotCord on your computer so it can host your Bots.',
+    step1OfflineTitle: 'No online device detected',
+    step1OfflineDescription: 'You already have devices bound, but none are online right now. Run the command below on your device to restart BotCord, then this dialog will continue automatically.',
     step2Description: 'Pick where it runs, then give it a name.',
     runtimeSectionLabel: 'Where it runs',
     identitySectionLabel: 'Bot identity',
@@ -2362,6 +2366,8 @@ export const createAgentDialog: TranslationMap<{
     stepBotLabel: '创建 Bot',
     step1Title: '接入设备',
     step1Description: '在你的电脑上运行 BotCord，这样它就能托管你的 Bot。',
+    step1OfflineTitle: '未检测到在线设备',
+    step1OfflineDescription: '你已经绑定过设备，但当前没有任何设备在线。请在设备上运行下面的命令重启 BotCord，恢复在线后会自动进入创建流程。',
     step2Description: '选择运行环境，然后给 Bot 起个名字。',
     runtimeSectionLabel: '运行环境',
     identitySectionLabel: 'Bot 身份',
