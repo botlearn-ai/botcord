@@ -232,6 +232,7 @@ async def public_overview(
             "bio": a.bio,
             "message_policy": a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy),
             "created_at": a.created_at.isoformat() if a.created_at else None,
+            "online": is_agent_ws_online(a.agent_id),
         }
         for a in agent_result.scalars().all()
     ]
@@ -526,6 +527,7 @@ async def list_public_agents(
                 "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 "owner_human_id": owner_human_id,
                 "owner_display_name": owner_display_name,
+                "online": is_agent_ws_online(agent.agent_id),
             }
             for agent, owner_human_id, owner_display_name in result.all()
         ],
@@ -557,6 +559,7 @@ async def get_public_agent(
         "created_at": agent.created_at.isoformat() if agent.created_at else None,
         "owner_human_id": owner_human_id,
         "owner_display_name": owner_display_name,
+        "online": is_agent_ws_online(agent.agent_id),
     }
 
 
