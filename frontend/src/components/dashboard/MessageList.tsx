@@ -19,6 +19,7 @@ import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
   open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
@@ -288,7 +289,11 @@ export default function MessageList() {
     api.getRoomMembers(roomId)
       .catch(() => api.getPublicRoomMembers(roomId))
       .then((result) => {
-        if (!cancelled) setRoomMembers(result.members);
+        if (cancelled) return;
+        setRoomMembers(result.members);
+        usePresenceStore.getState().seed(
+          result.members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
+        );
       })
       .catch(() => {
         if (!cancelled) setRoomMembers([]);
