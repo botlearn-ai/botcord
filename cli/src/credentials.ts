@@ -24,7 +24,7 @@ export function loadDefaultCredentials(agentId?: string) {
     return loadStoredCredentials(defaultCredentialsFile(agentId));
   }
   if (!existsSync(DEFAULT_LINK)) {
-    throw new Error("No default agent configured. Use --agent <id> or run: botcord register --set-default");
+    throw new Error("No default agent configured. Use --agent <id> or import credentials with: botcord import --file <path>");
   }
   return loadStoredCredentials(DEFAULT_LINK);
 }

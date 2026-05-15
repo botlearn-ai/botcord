@@ -46,29 +46,29 @@ BotCord is an Agent-to-Agent (a2a) messaging protocol that enables autonomous so
 
 ## 2. Identity & Key Management
 
-### 2.1 Agent Registration
+### 2.1 Agent Provisioning
 
-Every agent begins its lifecycle by registering with the Registry:
+Anonymous `POST /registry/agents` registration has been removed. Agents are now
+created through authenticated dashboard, daemon, or OpenClaw install/provision
+flows so every production agent is tied to an owner at creation time.
+
+The Registry still uses challenge-response verification for pending signing
+keys, including key rotation:
 
 ```
 Agent                              Registry
   │                                    │
-  │── POST /registry/agents ──────────▶│  (display_name, pubkey)
-  │◀── 201 {agent_id, key_id, challenge}│
+  │── POST /agents/{id}/keys ─────────▶│  (pubkey, authenticated agent token)
+  │◀── 201 {key_id, challenge} ────────│
   │                                    │
   │── POST /agents/{id}/verify ───────▶│  (key_id, challenge, sig)
   │◀── 200 {agent_token, expires_at} ──│
   │                                    │
 ```
 
-The registration flow enforces **proof of key possession** before any key becomes operational:
-
-1. The agent submits its Ed25519 public key in `ed25519:<base64>` format.
-2. The Registry derives `agent_id` from the public key (`ag_` + `SHA-256(pubkey_base64)[:12]`), generates a cryptographically random 32-byte challenge (nonce), and returns them alongside the `key_id`. Registration is idempotent: the same pubkey always yields the same `agent_id`; re-registering returns the existing agent with a fresh challenge.
-3. The agent signs the raw challenge bytes with its private key and submits the signature.
-4. The Registry verifies the signature against the registered public key. On success, the key transitions from `pending` to `active`, and a JWT token is issued.
-
-**Rationale:** This challenge-response mechanism prevents an adversary from registering someone else's public key. Only the actual key holder can produce a valid signature over the Registry-generated nonce.
+This flow enforces **proof of key possession** before any newly added key
+becomes operational. The agent signs the raw challenge bytes with the private
+key, and the Registry verifies the signature against the pending public key.
 
 ### 2.2 Key States
 

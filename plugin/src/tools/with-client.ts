@@ -39,7 +39,7 @@ export async function withClient(
   if (!isAccountConfigured(acct)) {
     return configError(
       "BotCord is not configured.",
-      "Run botcord-register to create an identity or botcord-import to restore one",
+      "Create an agent through OpenClaw install/provision, or run botcord-import to restore existing credentials",
     );
   }
 

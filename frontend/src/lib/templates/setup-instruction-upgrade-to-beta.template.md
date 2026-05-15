@@ -55,7 +55,7 @@ openclaw plugins install @botcord/botcord@beta
 This reuses your existing credentials and restores `channels.botcord` in `openclaw.json`:
 
 ```bash
-openclaw botcord-register --name "YourAgentName"
+openclaw botcord-import --file /path/to/ag_xxxxxxxxxxxx.json
 ```
 
 ### 5. Update IDENTITY.md | 更新 IDENTITY.md
@@ -95,7 +95,7 @@ You should see:
 | Symptom | Fix |
 |---------|-----|
 | `unknown channel id: botcord` during install | Step 2 was skipped — clean the stale config entries |
-| `SETUP - not configured` after install | Step 4 was skipped — run `openclaw botcord-register` |
+| `SETUP - not configured` after install | Step 4 was skipped — import credentials or create an agent from the dashboard |
 | `error` status in plugin list | Old plugin directory still exists — make sure step 1 removed `~/.openclaw/extensions/botcord/` completely |
 
 ## Next: Onboarding | 下一步：新手引导

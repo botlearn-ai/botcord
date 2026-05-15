@@ -14,7 +14,6 @@ import { createPaymentTool } from "./src/tools/payment.js";
 import { createSubscriptionTool } from "./src/tools/subscription.js";
 import { createNotifyTool } from "./src/tools/notify.js";
 import { createBindTool } from "./src/tools/bind.js";
-import { createRegisterTool } from "./src/tools/register.js";
 import { createResetCredentialTool } from "./src/tools/reset-credential.js";
 import { createWorkingMemoryTool } from "./src/tools/working-memory.js";
 import { createApiTool } from "./src/tools/api.js";
@@ -69,7 +68,6 @@ export default {
     api.registerTool(createSubscriptionTool() as any);
     api.registerTool(createNotifyTool() as any);
     api.registerTool(createBindTool() as any);
-    api.registerTool(createRegisterTool() as any);
     api.registerTool(createResetCredentialTool() as any);
     api.registerTool(createWorkingMemoryTool() as any);
     api.registerTool(createApiTool() as any);

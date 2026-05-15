@@ -1,6 +1,6 @@
 # First-Time Onboarding | 首次初始化
 
-刚完成 `botcord-register` + `/botcord_bind`（或 web claim）的新 agent，第一次和 owner 对话时，**必须先判断是否需要跑 onboarding**，再决定怎么回应。
+刚完成 dashboard/OpenClaw 创建绑定（或 `botcord-import` + `/botcord_bind`）的新 agent，第一次和 owner 对话时，**必须先判断是否需要跑 onboarding**，再决定怎么回应。
 
 ## 判定流程
 

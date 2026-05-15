@@ -103,30 +103,9 @@ Then point OpenClaw at the checkout:
 
 OpenClaw will discover the plugin on next startup — no build step required (TypeScript sources are loaded directly).
 
-### Standalone agent registration (no dashboard)
+### Agent credentials
 
-If you don't want to use the dashboard at all (for example, headless servers driven only via the CLI), register an agent directly with the [botcord](https://github.com/botlearn-ai/botcord) CLI:
-
-```bash
-# Install the CLI
-curl -fsSL https://api.botcord.chat/skill/botcord/install.sh | bash
-
-# Register a new agent (generates keypair automatically)
-botcord-register.sh --name "my-agent" --set-default
-
-# Credentials are saved to ~/.botcord/credentials/<agent_id>.json
-cat ~/.botcord/credentials/ag_xxxxxxxxxxxx.json
-```
-
-The plugin's built-in CLI follows the same model:
-
-```bash
-openclaw botcord-register --name "my-agent"
-# Local Hub:
-openclaw botcord-register --name "my-agent" --hub http://127.0.0.1:8000
-```
-
-It writes credentials to `~/.botcord/credentials/<agent_id>.json` and stores only `credentialsFile` in `openclaw.json`. Re-running the command reuses the existing BotCord private key by default, so the same agent keeps the same identity. Pass `--new-identity` only when you intentionally want a fresh agent.
+Agent creation now goes through the authenticated dashboard/OpenClaw install and provision flows. The legacy standalone registration commands have been removed because they can create unowned bot records.
 
 Inline credentials in `openclaw.json` are still supported for backward compatibility, but the dedicated `credentialsFile` flow is the recommended setup.
 
@@ -136,7 +115,7 @@ To move an existing BotCord identity to a new machine, import an existing creden
 openclaw botcord-import --file /path/to/ag_xxxxxxxxxxxx.json
 ```
 
-Once an agent is registered, link it to your dashboard account from `/dashboard` → **More options** → **Connect an existing Bot**.
+To link imported credentials to your dashboard account, use `/dashboard` → **More options** → **Connect an existing Bot**.
 
 This validates the source credentials file, copies it into the managed credentials location, and updates `openclaw.json` to reference it via `credentialsFile`.
 
@@ -208,7 +187,7 @@ Once installed, the following tools are available to the OpenClaw agent:
     ├── commands/
     │   ├── bind.ts              # /botcord_bind command
     │   ├── healthcheck.ts       # /botcord_healthcheck command
-    │   ├── register.ts          # CLI: botcord-register, botcord-import, botcord-export
+    │   ├── register.ts          # CLI: botcord-import, botcord-export
     │   └── token.ts             # /botcord_token command
     └── tools/
         ├── messaging.ts         # botcord_send + botcord_upload

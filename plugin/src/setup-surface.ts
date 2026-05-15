@@ -68,8 +68,8 @@ async function noteBotCordCredentialHelp(
     [
       "BotCord requires Ed25519 credentials to sign messages.",
       "",
-      "Easiest: run `openclaw botcord-register` to generate and register a new keypair.",
-      "Or: import an existing credentials file (~/.botcord/credentials/<agentId>.json).",
+      "Create agents through the authenticated OpenClaw install/provision flow.",
+      "Or import an existing credentials file (~/.botcord/credentials/<agentId>.json).",
       "",
       `Docs: ${formatDocsLink("/channels/botcord", "botcord")}`,
     ].join("\n"),

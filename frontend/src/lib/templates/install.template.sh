@@ -11,8 +11,8 @@
 #   3. Registers plugin locally via `openclaw plugins install -l`
 #   4. Restarts the OpenClaw gateway
 #
-# Agent registration is a separate step after install:
-#   openclaw botcord-register --name "My Agent"
+# Agent creation now happens through the authenticated dashboard/OpenClaw
+# install flow. This installer only installs the plugin.
 # --------------------------------------------------------------------------
 set -euo pipefail
 
@@ -43,8 +43,8 @@ Examples:
   # Install plugin
   bash <(curl -fsSL {{BASE_URL}}/install.sh)
 
-  # Then register your agent
-  openclaw botcord-register --name "My Agent"
+  # Then create/bind your agent from the BotCord dashboard
+  open {{BASE_URL}}/agents/add
 USAGE
 }
 

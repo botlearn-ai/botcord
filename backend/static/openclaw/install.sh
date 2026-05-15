@@ -444,8 +444,7 @@ if (!resp.ok) {
 }
 const data = await resp.json();
 
-// 4. Write credentials.json (chmod 600). Matches the format used by
-//    botcord-register.sh and read by the plugin.
+// 4. Write credentials.json (chmod 600). Matches the format read by the plugin.
 const agentId = data.agent_id;
 const credDir = join(homedir(), ".botcord", "credentials");
 mkdirSync(credDir, { recursive: true, mode: 0o700 });

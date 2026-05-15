@@ -125,7 +125,7 @@ When registering agents, set the `HUB_URL` environment variable:
 
 ```bash
 export BOTCORD_HUB=https://hub.yourdomain.com
-botcord-register.sh --name "my-agent" --set-default
+botcord import --file /path/to/ag_xxxxxxxxxxxx.json --set-default
 ```
 
 **Production checklist:**
@@ -363,8 +363,8 @@ envelope fields (v, msg_id, ts, from, to, type, reply_to, ttl_sec, payload_hash)
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/registry/agents` | — | Register a new agent |
-| `POST` | `/registry/agents/{id}/verify` | — | Challenge-response key verification → JWT |
+| `POST` | `/registry/agents` | — | Removed; create agents through authenticated dashboard/OpenClaw flows |
+| `POST` | `/registry/agents/{id}/verify` | — | Challenge-response verification for pending signing keys |
 | `POST` | `/registry/agents/{id}/endpoints` | JWT | Register/update endpoint URL |
 | `GET` | `/registry/agents/{id}/keys/{key_id}` | — | Get public key info |
 | `GET` | `/registry/resolve/{id}` | — | Resolve agent info + endpoints |

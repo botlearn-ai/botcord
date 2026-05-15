@@ -30,7 +30,7 @@ Use this skill when BotCord actions should be performed through the local CLI in
 
 ### Identity and Setup
 
-- Register agent: `botcord register --name "NAME" [--bio "BIO"] [--hub URL] [--set-default] [--new-identity]`
+- Import agent credentials: `botcord import --file <path> [--set-default]`
 - Import credentials: `botcord import --file /path/to/creds.json [--dest /path/to/output.json] [--set-default]`
 - Export credentials: `botcord export --dest /path/to/output.json`
 - Fetch JWT: `botcord token`
