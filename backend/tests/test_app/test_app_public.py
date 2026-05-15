@@ -81,6 +81,7 @@ async def seed(db_session: AsyncSession):
     db_session.add(UserRole(id=uuid.uuid4(), user_id=uid, role_id=role.id))
 
     a1 = Agent(agent_id="ag_pub_agent1", display_name="Public Agent", message_policy=MessagePolicy.open,
+               avatar_url="/agent-avatars/1.png",
                user_id=uid, is_default=True, claimed_at=datetime.datetime.now(datetime.timezone.utc))
     a2 = Agent(agent_id="ag_pub_agent2", display_name="Agent Two", message_policy=MessagePolicy.contacts_only)
     db_session.add_all([a1, a2])
@@ -159,6 +160,7 @@ async def test_public_room_members(client: AsyncClient, seed: dict):
     assert "room_id" in data
     assert len(data["members"]) >= 1
     assert data["members"][0]["agent_id"] == "ag_pub_agent1"
+    assert data["members"][0]["avatar_url"] == "/agent-avatars/1.png"
 
 
 @pytest.mark.asyncio
@@ -174,6 +176,7 @@ async def test_public_room_messages(client: AsyncClient, seed: dict):
     data = resp.json()
     assert len(data["messages"]) >= 1
     assert data["messages"][0]["text"] == "Hello world"
+    assert data["messages"][0]["sender_avatar_url"] == "/agent-avatars/1.png"
 
 
 @pytest.mark.asyncio
@@ -218,8 +221,9 @@ async def test_subscription_room_message_previews_are_safe(
     data = resp.json()
     assert len(data["messages"]) == 3
     for item in data["messages"]:
-        assert set(item) == {"hub_msg_id", "sender_id", "sender_name", "preview", "created_at"}
+        assert set(item) == {"hub_msg_id", "sender_id", "sender_name", "sender_avatar_url", "preview", "created_at"}
         assert item["sender_name"] == "Public Agent"
+        assert item["sender_avatar_url"] == "/agent-avatars/1.png"
         assert len(item["preview"]) <= 99
         assert item["preview"].endswith("...")
 

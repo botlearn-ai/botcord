@@ -52,6 +52,7 @@ class DashboardContactInfo(BaseModel):
     contact_agent_id: str
     alias: str | None = None
     display_name: str
+    avatar_url: str | None = None
     created_at: datetime.datetime
     online: bool = False
 

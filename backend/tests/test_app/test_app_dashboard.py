@@ -128,6 +128,7 @@ async def seed_data(db_session: AsyncSession):
     other_agent = Agent(
         agent_id="ag_other00001",
         display_name="Other Agent",
+        avatar_url="/agent-avatars/3.png",
         message_policy=MessagePolicy.contacts_only,
     )
     db_session.add(other_agent)
@@ -212,6 +213,7 @@ async def test_dashboard_overview(client: AsyncClient, seed_data: dict):
     assert len(data["contacts"]) == 1
     assert data["contacts"][0]["contact_agent_id"] == "ag_other00001"
     assert data["contacts"][0]["alias"] == "Other"
+    assert data["contacts"][0]["avatar_url"] == "/agent-avatars/3.png"
 
     # Pending requests
     assert data["pending_requests"] == 1
@@ -273,6 +275,11 @@ async def test_dashboard_overview_includes_unread_count(
     room = resp.json()["rooms"][0]
     assert room["has_unread"] is True
     assert room["unread_count"] == 2
+
+    messages_resp = await client.get("/api/dashboard/rooms/rm_testroom001/messages", headers=headers)
+    assert messages_resp.status_code == 200
+    by_id = {message["hub_msg_id"]: message for message in messages_resp.json()["messages"]}
+    assert by_id["hm_unread001"]["sender_avatar_url"] == "/agent-avatars/3.png"
 
     read_resp = await client.post("/api/dashboard/rooms/rm_testroom001/read", headers=headers)
     assert read_resp.status_code == 200

@@ -114,6 +114,7 @@ class HumanRoomListResponse(BaseModel):
 class HumanAgentRoomBot(BaseModel):
     agent_id: str
     display_name: str
+    avatar_url: str | None = None
     role: str
 
 
@@ -170,6 +171,8 @@ class UpdateHumanRoomSettingsBody(BaseModel):
 class HumanContactSummary(BaseModel):
     peer_id: str
     peer_type: Literal["agent", "human"]
+    display_name: str | None = None
+    avatar_url: str | None = None
     alias: str | None
     created_at: int
 
@@ -678,7 +681,7 @@ async def list_owned_agent_only_rooms(
     human_id = user.human_id
 
     agent_result = await db.execute(
-        select(Agent.agent_id, Agent.display_name)
+        select(Agent.agent_id, Agent.display_name, Agent.avatar_url)
         .where(Agent.user_id == ctx.user_id)
         .order_by(Agent.created_at)
     )
@@ -686,11 +689,11 @@ async def list_owned_agent_only_rooms(
     if not owned_agents:
         return HumanAgentRoomListResponse(rooms=[])
 
-    agent_names = {agent_id: display_name for agent_id, display_name in owned_agents}
+    agent_names = {agent_id: display_name for agent_id, display_name, _avatar_url in owned_agents}
     rooms_by_id: dict[str, dict] = {}
     bots_by_room: dict[str, dict[str, HumanAgentRoomBot]] = {}
 
-    for agent_id, display_name in owned_agents:
+    for agent_id, display_name, avatar_url in owned_agents:
         previews = await _build_rooms_from_sql(agent_id, db)
         for preview in previews:
             room_id = preview.get("room_id")
@@ -701,6 +704,7 @@ async def list_owned_agent_only_rooms(
             bots_by_room.setdefault(room_id, {})[agent_id] = HumanAgentRoomBot(
                 agent_id=agent_id,
                 display_name=display_name or agent_id,
+                avatar_url=avatar_url,
                 role=str(role),
             )
 
@@ -1871,19 +1875,31 @@ async def list_human_contacts(
     me = user.human_id
 
     result = await db.execute(
-        select(Contact)
+        select(
+            Contact,
+            Agent.display_name.label("agent_display_name"),
+            Agent.avatar_url.label("agent_avatar_url"),
+            User.display_name.label("human_display_name"),
+            User.avatar_url.label("human_avatar_url"),
+        )
+        .outerjoin(Agent, Agent.agent_id == Contact.contact_agent_id)
+        .outerjoin(User, User.human_id == Contact.contact_agent_id)
         .where(Contact.owner_id == me, Contact.owner_type == ParticipantType.human)
         .order_by(Contact.created_at.desc())
     )
-    contacts = [
-        HumanContactSummary(
-            peer_id=c.contact_agent_id,
-            peer_type=c.peer_type.value if hasattr(c.peer_type, "value") else str(c.peer_type),
-            alias=c.alias,
-            created_at=_ts(c.created_at),
+    contacts = []
+    for c, agent_name, agent_avatar, human_name, human_avatar in result.all():
+        is_human = c.peer_type == ParticipantType.human
+        contacts.append(
+            HumanContactSummary(
+                peer_id=c.contact_agent_id,
+                peer_type=c.peer_type.value if hasattr(c.peer_type, "value") else str(c.peer_type),
+                display_name=(human_name if is_human else agent_name) or c.contact_agent_id,
+                avatar_url=human_avatar if is_human else agent_avatar,
+                alias=c.alias,
+                created_at=_ts(c.created_at),
+            )
         )
-        for c in result.scalars().all()
-    ]
     return HumanContactListResponse(contacts=contacts)
 
 

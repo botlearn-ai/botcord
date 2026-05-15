@@ -27,7 +27,9 @@ from hub.database import get_db
 from hub.dashboard_message_shaping import (
     derive_sender_fields,
     load_agent_display_names,
+    load_agent_profiles,
     load_user_display_names,
+    load_user_profiles,
 )
 from hub.id_generators import generate_hub_msg_id, generate_join_request_id
 from hub.enums import SubscriptionProductStatus, SubscriptionStatus
@@ -2307,8 +2309,10 @@ async def get_room_messages(
     has_more = len(records) > limit
     records = records[:limit]
 
-    # Resolve sender names
-    sender_names = await load_agent_display_names(db, {r.sender_id for r in records})
+    # Resolve sender profiles
+    agent_profiles = await load_agent_profiles(db, {r.sender_id for r in records})
+    sender_names = {agent_id: profile[0] for agent_id, profile in agent_profiles.items()}
+    sender_avatars = {agent_id: profile[1] for agent_id, profile in agent_profiles.items()}
 
     # Resolve topic info
     topic_ids = {r.topic_id for r in records if r.topic_id}
@@ -2327,7 +2331,9 @@ async def get_room_messages(
         and r.source_user_id
     }
     human_user_ids.update(r.sender_id for r in records if (r.sender_id or "").startswith("hu_"))
-    user_name_map = await load_user_display_names(db, human_user_ids)
+    user_profiles = await load_user_profiles(db, human_user_ids)
+    user_name_map = {user_id: profile[0] for user_id, profile in user_profiles.items()}
+    user_avatar_map = {user_id: profile[1] for user_id, profile in user_profiles.items()}
 
     # Owner-chat rooms (rm_oc_*) are always viewed as the human owner — both
     # user-typed messages and the agent's replies share sender_id=agent_id, so
@@ -2341,7 +2347,9 @@ async def get_room_messages(
         extra = derive_sender_fields(
             rec,
             agent_name_map=sender_names,
+            agent_avatar_map=sender_avatars,
             user_name_map=user_name_map,
+            user_avatar_map=user_avatar_map,
             viewer_agent_id=viewer_agent_id,
             viewer_user_id=viewer_user_id,
         )
@@ -2966,10 +2974,12 @@ async def get_room_members(
             else str(m.participant_type)
         )
         display_name = (a.display_name if a else None) or (u.display_name if u else None) or m.agent_id
+        avatar_url = (a.avatar_url if a else None) or (u.avatar_url if u else None)
         members.append({
             "agent_id": m.agent_id,
             "participant_type": ptype,
             "display_name": display_name,
+            "avatar_url": avatar_url,
             "bio": a.bio if a else None,
             "message_policy": (
                 (a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy))

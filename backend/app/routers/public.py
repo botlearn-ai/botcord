@@ -311,6 +311,7 @@ async def get_public_room_members(
         {
             "agent_id": m.agent_id,
             "display_name": a.display_name if a else m.agent_id,
+            "avatar_url": a.avatar_url if a else None,
             "bio": a.bio if a else None,
             "message_policy": (a.message_policy.value if hasattr(a.message_policy, "value") else str(a.message_policy)) if a else None,
             "created_at": a.created_at.isoformat() if a and a.created_at else None,
@@ -377,12 +378,15 @@ async def get_public_room_messages(
     # Sender names
     sender_ids = {r.sender_id for r in records}
     sender_names: dict[str, str] = {}
+    sender_avatars: dict[str, str | None] = {}
     if sender_ids:
         name_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
+            select(Agent.agent_id, Agent.display_name, Agent.avatar_url)
             .where(Agent.agent_id.in_(sender_ids))
         )
-        sender_names = dict(name_result.all())
+        for agent_id, display_name, avatar_url in name_result.all():
+            sender_names[agent_id] = display_name
+            sender_avatars[agent_id] = avatar_url
 
     # Topic info
     topic_ids = {r.topic_id for r in records if r.topic_id}
@@ -401,6 +405,7 @@ async def get_public_room_messages(
             "msg_id": rec.msg_id,
             "sender_id": rec.sender_id,
             "sender_display_name": sender_names.get(rec.sender_id),
+            "sender_avatar_url": sender_avatars.get(rec.sender_id),
             "text": parsed["text"],
             "type": parsed["type"],
             "topic": rec.topic,
@@ -451,12 +456,15 @@ async def get_subscription_room_message_previews(
 
     sender_ids = {r.sender_id for r in records}
     sender_names: dict[str, str] = {}
+    sender_avatars: dict[str, str | None] = {}
     if sender_ids:
         name_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
+            select(Agent.agent_id, Agent.display_name, Agent.avatar_url)
             .where(Agent.agent_id.in_(sender_ids))
         )
-        sender_names = dict(name_result.all())
+        for agent_id, display_name, avatar_url in name_result.all():
+            sender_names[agent_id] = display_name
+            sender_avatars[agent_id] = avatar_url
 
     previews = []
     for rec in records:
@@ -468,6 +476,7 @@ async def get_subscription_room_message_previews(
             "hub_msg_id": rec.hub_msg_id,
             "sender_id": rec.sender_id,
             "sender_name": sender_names.get(rec.sender_id),
+            "sender_avatar_url": sender_avatars.get(rec.sender_id),
             "preview": preview,
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
         })

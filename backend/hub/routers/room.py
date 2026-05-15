@@ -198,6 +198,7 @@ def _build_room_response(room: Room) -> RoomResponse:
             RoomMemberResponse(
                 agent_id=m.agent_id,
                 display_name=m.agent.display_name if m.agent is not None else None,
+                avatar_url=m.agent.avatar_url if m.agent is not None else None,
                 role=m.role.value,
                 muted=m.muted,
                 can_send=m.can_send,
