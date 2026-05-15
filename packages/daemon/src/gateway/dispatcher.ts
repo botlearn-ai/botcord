@@ -37,6 +37,8 @@ const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
  * (or `botcord send` CLI via Bash) to actually deliver replies.
  */
 const OWNER_CHAT_ROOM_PREFIX = "rm_oc_";
+const TRANSCRIPT_BLOCK_RAW_LIMIT = 16 * 1024;
+const SECRET_KEY_RE = /token|secret|private.?key|api.?key|authorization|password/i;
 
 /** Maximum number of buffered serial entries per queue. Excess entries drop oldest. */
 const MAX_BATCH_BUFFER_ENTRIES = 40;
@@ -65,6 +67,62 @@ const TYPING_REFRESH_MS = 4000;
 
 /** LRU cap on the typing-recency map so long-running daemons don't grow unbounded. */
 const TYPING_RECENCY_CAP = 1024;
+
+function transcriptBlocksVerbose(): boolean {
+  return process.env.BOTCORD_TRANSCRIPT_BLOCKS === "verbose" ||
+    process.env.BOTCORD_TRACE_VERBOSE === "1";
+}
+
+function summarizeStreamBlock(block: StreamBlock): TranscriptBlockSummary {
+  const summary: TranscriptBlockSummary = { type: block.kind };
+  const raw = block.raw as {
+    text?: unknown;
+    name?: unknown;
+    update?: unknown;
+    params?: { update?: unknown };
+  } | null | undefined;
+  if (raw && typeof raw === "object") {
+    if (typeof raw.text === "string") summary.chars = raw.text.length;
+    if (typeof raw.name === "string") summary.name = raw.name;
+    const update = raw.params?.update ?? raw.update;
+    if (update && typeof update === "object") {
+      const u = update as Record<string, unknown>;
+      if (typeof u.sessionUpdate === "string" && !summary.name) summary.name = u.sessionUpdate;
+      const toolCall = u.toolCall;
+      if (toolCall && typeof toolCall === "object") {
+        const toolName = (toolCall as Record<string, unknown>).name;
+        if (typeof toolName === "string") summary.name = toolName;
+      }
+    }
+  }
+  return summary;
+}
+
+function redactAndCap(value: unknown, budget = TRANSCRIPT_BLOCK_RAW_LIMIT): unknown {
+  const seen = new WeakSet<object>();
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      return redactSecretString(v.length > budget ? `${v.slice(0, budget)}…` : v);
+    }
+    if (Array.isArray(v)) return v.slice(0, 50).map(walk);
+    if (!v || typeof v !== "object") return v;
+    if (seen.has(v)) return "[Circular]";
+    seen.add(v);
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(v as Record<string, unknown>).slice(0, 80)) {
+      out[key] = SECRET_KEY_RE.test(key) ? "[REDACTED]" : walk(child);
+    }
+    return out;
+  };
+  return walk(value);
+}
+
+function redactSecretString(value: string): string {
+  return value
+    .replace(/(Authorization:\s*Bearer\s+)[^\s"']+/gi, "$1[REDACTED]")
+    .replace(/\b(token=)[^\s"']+/gi, "$1[REDACTED]")
+    .replace(/\b(drt_|dit_|gho_)[A-Za-z0-9_-]+/g, "$1[REDACTED]");
+}
 
 /** Factory signature for building a runtime adapter at turn dispatch time. */
 export type RuntimeFactory = (
@@ -943,13 +1001,23 @@ export class Dispatcher {
     const canStream =
       streamable && typeof traceId === "string" && typeof channel.streamBlock === "function";
     const recordBlock = (block: StreamBlock): void => {
-      const summary: TranscriptBlockSummary = { type: block.kind };
-      const raw = block.raw as { text?: unknown; name?: unknown } | null | undefined;
-      if (raw && typeof raw === "object") {
-        if (typeof raw.text === "string") summary.chars = raw.text.length;
-        if (typeof raw.name === "string") summary.name = raw.name;
-      }
+      const summary = summarizeStreamBlock(block);
       slot.blocks.push(summary);
+      if (this.transcript.enabled) {
+        this.transcript.write({
+          ts: new Date().toISOString(),
+          kind: "block",
+          turnId,
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          runtime: route.runtime,
+          seq: block.seq,
+          blockType: block.kind,
+          summary,
+          ...(transcriptBlocksVerbose() ? { raw: redactAndCap(block.raw) } : {}),
+        });
+      }
     };
 
     // Owner-chat lifecycle state for typing/thinking. The dispatcher is the
@@ -1118,13 +1186,14 @@ export class Dispatcher {
         }
       : undefined;
 
-    const onBlock = canStream
+    const onBlock = (canStream || this.transcript.enabled)
       ? (block: StreamBlock) => {
           // Always record adapter-emitted blocks for transcript fidelity, even
           // after abort — the transcript reflects what the runtime emitted,
           // not what the dispatcher chose to forward.
           recordBlock(block);
           if (controller.signal.aborted) return;
+          if (!canStream) return;
           // Synthesize thinking.started before non-assistant blocks. After
           // we've seen any assistant_text, only `tool_use` may re-enter
           // thinking — terminal markers like `system`/`other` (codex
@@ -1144,7 +1213,7 @@ export class Dispatcher {
             thinkingActive = false;
             sawAssistantText = true;
           }
-          forwardBlockToChannel!(block);
+          forwardBlockToChannel?.(block);
         }
       : undefined;
 

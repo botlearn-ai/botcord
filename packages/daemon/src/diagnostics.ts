@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, hostname, platform, release, arch } from "node:os";
 import path from "node:path";
 import { Buffer } from "node:buffer";
@@ -22,6 +22,7 @@ import {
 } from "./config.js";
 import { listDaemonLogFiles, LOG_FILE_PATH, type LogFileEntry } from "./log.js";
 import { listAcpTraceLogFiles, listRuntimeLogFiles } from "./acp-logs.js";
+import { defaultTranscriptRoot } from "./gateway/transcript.js";
 import {
   channelsFromDaemonConfig,
   defaultHttpFetcher,
@@ -59,6 +60,9 @@ const ENV_ALLOWLIST = new Set([
   "BOTCORD_KIMI_CLI_BIN",
   "OPENCLAW_ACP_URL",
 ]);
+const TRANSCRIPT_LOG_DIAGNOSTICS_DEFAULT = 10;
+const TRANSCRIPT_LOG_DIAGNOSTICS_ALL = 50;
+const TRANSCRIPT_LOG_MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 export interface CreateDiagnosticBundleOptions {
   diagnosticsDir?: string;
@@ -416,6 +420,55 @@ function bundledLogs(logFile: string, includeAllLogs: boolean): LogFileEntry[] {
   ];
 }
 
+function listTranscriptLogFiles(includeAll: boolean): LogFileEntry[] {
+  const root = defaultTranscriptRoot();
+  const out: LogFileEntry[] = [];
+  collectTranscriptFiles(root, root, out, 5);
+  const limit = includeAll ? TRANSCRIPT_LOG_DIAGNOSTICS_ALL : TRANSCRIPT_LOG_DIAGNOSTICS_DEFAULT;
+  return out
+    .sort((a, b) => b.mtimeMs - a.mtimeMs || b.name.localeCompare(a.name))
+    .slice(0, limit);
+}
+
+function collectTranscriptFiles(
+  root: string,
+  dir: string,
+  out: LogFileEntry[],
+  maxDepth: number,
+): void {
+  if (maxDepth < 0) return;
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file = path.join(dir, name);
+    try {
+      const st = statSync(file);
+      if (st.isDirectory()) {
+        collectTranscriptFiles(root, file, out, maxDepth - 1);
+      } else if (
+        st.isFile() &&
+        name.endsWith(".jsonl") &&
+        file.includes(`${path.sep}transcripts${path.sep}`) &&
+        st.size <= TRANSCRIPT_LOG_MAX_FILE_BYTES
+      ) {
+        out.push({
+          path: file,
+          name: path.relative(root, file) || name,
+          sizeBytes: st.size,
+          mtimeMs: st.mtimeMs,
+          active: true,
+        });
+      }
+    } catch {
+      // ignore files that disappear while collecting diagnostics
+    }
+  }
+}
+
 export async function createDiagnosticBundle(
   opts: CreateDiagnosticBundleOptions = {},
 ): Promise<DiagnosticBundleResult> {
@@ -431,6 +484,7 @@ export async function createDiagnosticBundle(
   const logs = bundledLogs(logFile, includeAllLogs);
   const acpLogs = listAcpTraceLogFiles(includeAllLogs);
   const runtimeLogs = listRuntimeLogFiles(includeAllLogs);
+  const transcriptLogs = listTranscriptLogFiles(includeAllLogs);
   mkdirSync(diagnosticsDir, { recursive: true, mode: 0o700 });
 
   const doctor = opts.doctor ?? await buildDoctorEntries();
@@ -462,6 +516,11 @@ export async function createDiagnosticBundle(
     })),
     runtimeLogsBundled: runtimeLogs.map((entry) => ({
       name: entry.bundleName,
+      path: entry.path,
+      sizeBytes: entry.sizeBytes,
+    })),
+    transcriptLogsBundled: transcriptLogs.map((entry) => ({
+      name: entry.name,
       path: entry.path,
       sizeBytes: entry.sizeBytes,
     })),
@@ -502,6 +561,13 @@ export async function createDiagnosticBundle(
     entries.push({
       name: entry.bundleName,
       data: log ?? `no runtime log file at ${entry.path}\n`,
+    });
+  }
+  for (const entry of transcriptLogs) {
+    const log = safeReadText(entry.path);
+    entries.push({
+      name: `transcripts/${entry.name.split(path.sep).join("/")}`,
+      data: log ?? `no transcript log file at ${entry.path}\n`,
     });
   }
   const config = safeReadText(configFile);

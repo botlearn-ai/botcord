@@ -78,7 +78,8 @@ export interface GatewayBootOptions {
    * Tri-state convenience: if `transcript` is not provided, the gateway
    * constructs a writer using this flag plus `transcriptRootDir`. Use
    * {@link resolveTranscriptEnabled} to combine `BOTCORD_TRANSCRIPT` env with
-   * the persistent daemon-config flag.
+   * the persistent daemon-config flag. When omitted, transcripts are enabled
+   * by default.
    */
   transcriptEnabled?: boolean;
   /** Root directory for transcript files. Defaults to `~/.botcord/agents`. */
@@ -145,7 +146,7 @@ export class Gateway {
       opts.transcript
       ?? createTranscriptWriter({
         log: this.log,
-        enabled: opts.transcriptEnabled === true,
+        enabled: opts.transcriptEnabled,
         rootDir: opts.transcriptRootDir,
       });
 

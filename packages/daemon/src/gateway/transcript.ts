@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -14,6 +14,12 @@ export const TRANSCRIPT_TEXT_LIMIT = 32 * 1024;
 /** Soft cap on a single transcript file before rotation. */
 export const TRANSCRIPT_FILE_LIMIT = 8 * 1024 * 1024;
 
+/** Default retention window for transcript JSONL files. */
+export const TRANSCRIPT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Minimum interval between background transcript retention sweeps. */
+export const TRANSCRIPT_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 /** Default root directory for per-agent transcript trees. */
 export function defaultTranscriptRoot(): string {
   return path.join(homedir(), ".botcord", "agents");
@@ -26,6 +32,7 @@ export function defaultTranscriptRoot(): string {
 export type TranscriptRecordKind =
   | "inbound"
   | "dispatched"
+  | "block"
   | "compose_failed"
   | "outbound"
   | "turn_error"
@@ -63,6 +70,15 @@ export interface DispatchedTranscriptRecord extends TranscriptRecordBase {
   mergedFromTurnIds?: string[];
   runtime: string;
   truncated?: { composedText?: true };
+}
+
+export interface BlockTranscriptRecord extends TranscriptRecordBase {
+  kind: "block";
+  runtime: string;
+  seq: number;
+  blockType: string;
+  summary: TranscriptBlockSummary;
+  raw?: unknown;
 }
 
 export interface ComposeFailedTranscriptRecord extends TranscriptRecordBase {
@@ -122,6 +138,7 @@ export interface DroppedTranscriptRecord extends TranscriptRecordBase {
 export type TranscriptRecord =
   | InboundTranscriptRecord
   | DispatchedTranscriptRecord
+  | BlockTranscriptRecord
   | ComposeFailedTranscriptRecord
   | OutboundTranscriptRecord
   | TurnErrorTranscriptRecord
@@ -162,10 +179,14 @@ export interface CreateTranscriptWriterOptions {
   /** Defaults to `~/.botcord/agents`. */
   rootDir?: string;
   log: GatewayLogger;
-  /** Defaults to `false` — see design §6 (default-off). */
+  /** Defaults to `true`; pass `false` to disable persistence. */
   enabled?: boolean;
   /** Override file rotation threshold (bytes). Defaults to TRANSCRIPT_FILE_LIMIT. */
   maxFileBytes?: number;
+  /** Delete transcript JSONL files older than this. Defaults to 3 days. */
+  retentionMs?: number;
+  /** Minimum interval between retention sweeps. Defaults to 6 hours. */
+  cleanupIntervalMs?: number;
 }
 
 interface FileMeta {
@@ -188,17 +209,29 @@ class FsTranscriptWriter implements TranscriptWriter {
   readonly rootDir: string;
   private readonly log: GatewayLogger;
   private readonly maxFileBytes: number;
+  private readonly retentionMs: number;
+  private readonly cleanupIntervalMs: number;
   private readonly fileMeta = new Map<string, FileMeta>();
   private firstWriteAnnounced = false;
+  private lastCleanupAt = 0;
 
-  constructor(rootDir: string, log: GatewayLogger, maxFileBytes: number) {
+  constructor(
+    rootDir: string,
+    log: GatewayLogger,
+    maxFileBytes: number,
+    retentionMs: number,
+    cleanupIntervalMs: number,
+  ) {
     this.rootDir = rootDir;
     this.log = log;
     this.maxFileBytes = maxFileBytes;
+    this.retentionMs = retentionMs;
+    this.cleanupIntervalMs = cleanupIntervalMs;
   }
 
   write(rec: TranscriptRecord): void {
     try {
+      this.cleanupOldFiles();
       const file = transcriptFilePath(this.rootDir, rec.agentId, rec.roomId, rec.topicId);
       const dir = path.dirname(file);
       try {
@@ -264,16 +297,37 @@ class FsTranscriptWriter implements TranscriptWriter {
       });
     }
   }
+
+  private cleanupOldFiles(): void {
+    const now = Date.now();
+    if (now - this.lastCleanupAt < this.cleanupIntervalMs) return;
+    this.lastCleanupAt = now;
+    const cutoff = now - this.retentionMs;
+    const removed = cleanupTranscriptFiles(this.rootDir, cutoff);
+    if (removed > 0) {
+      this.log.info("transcript cleanup removed old files", {
+        dir: this.rootDir,
+        removed,
+        retentionMs: this.retentionMs,
+      });
+    }
+  }
 }
 
 export function createTranscriptWriter(
   opts: CreateTranscriptWriterOptions,
 ): TranscriptWriter {
   const rootDir = opts.rootDir ?? defaultTranscriptRoot();
-  const enabled = opts.enabled ?? false;
+  const enabled = opts.enabled ?? true;
   if (!enabled) return new NoopTranscriptWriter(rootDir);
   const maxBytes = opts.maxFileBytes ?? TRANSCRIPT_FILE_LIMIT;
-  return new FsTranscriptWriter(rootDir, opts.log, maxBytes);
+  return new FsTranscriptWriter(
+    rootDir,
+    opts.log,
+    maxBytes,
+    opts.retentionMs ?? TRANSCRIPT_RETENTION_MS,
+    opts.cleanupIntervalMs ?? TRANSCRIPT_CLEANUP_INTERVAL_MS,
+  );
 }
 
 /**
@@ -284,11 +338,47 @@ export function createTranscriptWriter(
  */
 export function resolveTranscriptEnabled(
   envVal: string | undefined,
-  configEnabled: boolean,
+  configEnabled: boolean | undefined,
 ): boolean {
   if (envVal === "1") return true;
   if (envVal === "0") return false;
-  return configEnabled;
+  return configEnabled ?? true;
+}
+
+export function cleanupTranscriptFiles(rootDir: string, cutoffMs: number): number {
+  let removed = 0;
+  const visit = (dir: string, depth: number): void => {
+    if (depth < 0) return;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const file = path.join(dir, entry);
+      try {
+        const st = statSync(file);
+        if (st.isDirectory()) {
+          visit(file, depth - 1);
+          continue;
+        }
+        if (
+          st.isFile() &&
+          entry.endsWith(".jsonl") &&
+          file.includes(`${path.sep}transcripts${path.sep}`) &&
+          st.mtimeMs < cutoffMs
+        ) {
+          rmSync(file, { force: true });
+          removed += 1;
+        }
+      } catch {
+        // ignore disappearing files and permission errors
+      }
+    }
+  };
+  visit(rootDir, 6);
+  return removed;
 }
 
 function formatStamp(d: Date): string {

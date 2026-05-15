@@ -35,7 +35,7 @@ interface AcpProcessHandle {
   /** Pending JSON-RPC requests keyed by id. */
   pending: Map<number, PendingCall>;
   /** Per-ACP-sessionId notification subscribers. */
-  subscribers: Map<string, (note: AcpNotification) => void>;
+  subscribers: Map<string, AcpSubscriber>;
   nextId: number;
   buffer: string;
   nonJsonStdoutTail: string[];
@@ -64,6 +64,18 @@ interface PendingCall {
 interface AcpNotification {
   method: string;
   params: any;
+}
+
+interface AcpTurnTraceContext {
+  turnId?: string;
+  messageId?: string;
+  roomId?: string;
+  topicId?: string | null;
+}
+
+interface AcpSubscriber {
+  notify: (note: AcpNotification) => void;
+  traceContext: AcpTurnTraceContext;
 }
 
 const ACP_POOL = new Map<string, AcpProcessHandle>();
@@ -183,6 +195,12 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       // synthetic test calls).
       conversationKey: stringField(opts.context, "conversationKey") ?? "default",
     });
+    const traceContext: AcpTurnTraceContext = {
+      turnId: stringField(opts.context, "turnId"),
+      messageId: stringField(opts.context, "messageId"),
+      roomId: stringField(opts.context, "roomId"),
+      topicId: nullableStringField(opts.context, "topicId"),
+    };
 
     const key = poolKey(opts.accountId, gateway.name);
     let handle: AcpProcessHandle;
@@ -273,7 +291,17 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
           throw new Error(`newSession failed: ${(err as Error).message}`);
         }
       }
-      handle.subscribers.set(acpSessionId, onNotification);
+      handle.subscribers.set(acpSessionId, { notify: onNotification, traceContext });
+      handle.trace?.write({
+        stream: "turn_context",
+        ...traceContext,
+        params: {
+          sessionId: acpSessionId,
+          sessionKey,
+          openclawAgent,
+          cwd: opts.cwd,
+        },
+      });
 
       if (opts.signal?.aborted) {
         return failResult(acpSessionId, "openclaw-acp: aborted before prompt");
@@ -308,7 +336,18 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
             });
             handle.subscribers.delete(acpSessionId);
             acpSessionId = fresh;
-            handle.subscribers.set(acpSessionId, onNotification);
+            handle.subscribers.set(acpSessionId, { notify: onNotification, traceContext });
+            handle.trace?.write({
+              stream: "turn_context",
+              ...traceContext,
+              params: {
+                sessionId: acpSessionId,
+                sessionKey,
+                openclawAgent,
+                cwd: opts.cwd,
+                recreatedFrom: oldSessionId,
+              },
+            });
             log.info("openclaw-acp.session-recreated", {
               accountId: opts.accountId,
               oldSessionId,
@@ -627,19 +666,20 @@ function routeMessage(handle: AcpProcessHandle, msg: any): void {
   }
   // Notification.
   if (msg?.method && msg?.params) {
+    const sid = msg.params?.sessionId;
+    const sub = typeof sid === "string" ? handle.subscribers.get(sid) : undefined;
     handle.trace?.write({
       stream: "rpc_in",
       direction: "in",
       method: msg.method,
       status: "notification",
+      ...(sub?.traceContext ?? {}),
       params: msg.params,
     });
-    const sid = msg.params?.sessionId;
     if (typeof sid === "string") {
-      const sub = handle.subscribers.get(sid);
       if (sub) {
         try {
-          sub({ method: msg.method, params: msg.params });
+          sub.notify({ method: msg.method, params: msg.params });
         } catch (err) {
           log.warn("openclaw-acp.subscriber-threw", {
             error: err instanceof Error ? err.message : String(err),
@@ -1023,6 +1063,16 @@ function isReasoningNarration(text: string): boolean {
 function stringField(bag: Record<string, unknown> | undefined, key: string): string | undefined {
   if (!bag) return undefined;
   const v = bag[key];
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+function nullableStringField(
+  bag: Record<string, unknown> | undefined,
+  key: string,
+): string | null | undefined {
+  if (!bag) return undefined;
+  const v = bag[key];
+  if (v === null) return null;
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 

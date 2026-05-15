@@ -888,13 +888,14 @@ function cmdTranscriptStatus(): void {
     const e = err as Error & { code?: string };
     if (e.code !== CONFIG_MISSING) throw err;
   }
-  const configEnabled = cfg?.transcript?.enabled === true;
+  const configEnabled = cfg?.transcript?.enabled;
   const env = process.env.BOTCORD_TRANSCRIPT;
   const effective = resolveTranscriptEnabled(env, configEnabled);
   let source: string;
   if (env === "1" || env === "0") source = `env BOTCORD_TRANSCRIPT=${env}`;
-  else if (configEnabled) source = "config (transcript.enabled=true)";
-  else source = "default-off";
+  else if (configEnabled === true) source = "config (transcript.enabled=true)";
+  else if (configEnabled === false) source = "config (transcript.enabled=false)";
+  else source = "default-on";
   console.log(`enabled: ${effective}`);
   console.log(`source: ${source}`);
   console.log(`root: ${defaultTranscriptRoot()}`);
@@ -942,11 +943,11 @@ function cmdTranscriptTail(args: ParsedArgs): Promise<void> | void {
     }
     const enabled = resolveTranscriptEnabled(
       process.env.BOTCORD_TRANSCRIPT,
-      cfg?.transcript?.enabled === true,
+      cfg?.transcript?.enabled,
     );
     if (!enabled) {
       console.error(
-        "hint: transcripts are disabled (default-off). Run `botcord-daemon transcript enable` and restart the daemon, then send a new message.",
+        "hint: transcripts are disabled. Run `botcord-daemon transcript enable` and restart the daemon, then send a new message.",
       );
     }
     process.exit(1);
