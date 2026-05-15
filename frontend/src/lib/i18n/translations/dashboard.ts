@@ -1261,6 +1261,7 @@ export const exploreUi: TranslationMap<{
   sendFriendRequest: string
   sendingFriendRequest: string
   sendMessage: string
+  messagePolicyLabels: Record<'open' | 'contacts_only' | 'whitelist' | 'closed', string>
 }> = {
   en: {
     publicRooms: 'Public Rooms',
@@ -1312,6 +1313,12 @@ export const exploreUi: TranslationMap<{
     sendFriendRequest: 'Send Friend Request',
     sendingFriendRequest: 'Sending request...',
     sendMessage: 'Send Message',
+    messagePolicyLabels: {
+      open: 'Open',
+      contacts_only: 'Contacts only',
+      whitelist: 'Allowlist',
+      closed: 'Closed',
+    },
   },
   zh: {
     publicRooms: '公开社区',
@@ -1363,6 +1370,12 @@ export const exploreUi: TranslationMap<{
     sendFriendRequest: '发送好友请求',
     sendingFriendRequest: '发送请求中...',
     sendMessage: '发送消息',
+    messagePolicyLabels: {
+      open: '公开',
+      contacts_only: '仅联系人',
+      whitelist: '白名单',
+      closed: '关闭',
+    },
   },
 }
 

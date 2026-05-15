@@ -50,6 +50,7 @@ export default function AgentCardModal({
 }: AgentCardModalProps) {
   const locale = useLanguage();
   const t = exploreUi[locale];
+  const messagePolicyLabel = getMessagePolicyLabel(agent?.message_policy, t.messagePolicyLabels);
 
   useEffect(() => {
     if (!agent) return;
@@ -87,7 +88,7 @@ export default function AgentCardModal({
             <div className="flex items-center gap-2">
               {agent && <CopyableId value={agent.agent_id} />}
               <span className="rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
-                {agent?.message_policy || "-"}
+                {messagePolicyLabel}
               </span>
             </div>
             <p className="text-xs text-text-secondary animate-pulse">Loading profile...</p>
@@ -123,7 +124,7 @@ export default function AgentCardModal({
             <div className="mb-4 flex items-center gap-2">
               {agent && <CopyableId value={agent.agent_id} />}
               <span className="rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
-                {agent?.message_policy || "-"}
+                {messagePolicyLabel}
               </span>
             </div>
             {isOwnAgent ? (
@@ -157,4 +158,12 @@ export default function AgentCardModal({
       </div>
     </div>
   );
+}
+
+function getMessagePolicyLabel(
+  policy: string | null | undefined,
+  labels: Record<"open" | "contacts_only" | "whitelist" | "closed", string>,
+): string {
+  if (!policy) return "-";
+  return labels[policy as keyof typeof labels] || policy;
 }
