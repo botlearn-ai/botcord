@@ -9,6 +9,8 @@ interface TransferInfo {
   asset: string;
   from: string;
   to: string;
+  from_label?: string;
+  to_label?: string;
   memo?: string;
   created_at?: string;
 }
@@ -60,6 +62,8 @@ export function parseTransferNotice(
       asset: String(payload.asset_code ?? "COIN"),
       from: String(payload.from_agent_id ?? ""),
       to: String(payload.to_agent_id ?? ""),
+      from_label: typeof payload.from_display_name === "string" ? payload.from_display_name : undefined,
+      to_label: typeof payload.to_display_name === "string" ? payload.to_display_name : undefined,
     };
   }
 
@@ -100,6 +104,18 @@ const statusStyles: Record<string, string> = {
   failed: "text-red-400 bg-red-400/10 border-red-400/30",
 };
 
+function TransferParty({ id, label }: { id: string; label?: string }) {
+  if (label && label !== id) {
+    return (
+      <span className="min-w-0 text-right">
+        <span className="block truncate text-text-primary/85">{label}</span>
+        <CopyableId value={id} />
+      </span>
+    );
+  }
+  return <CopyableId value={id} />;
+}
+
 export default function TransferCard({ info, isNotice }: { info: TransferInfo; isNotice?: boolean }) {
   const amountNum = parseFloat(info.amount);
   const amountDisplay = isNaN(amountNum) ? info.amount : `${amountNum.toFixed(2)} ${info.asset}`;
@@ -132,13 +148,13 @@ export default function TransferCard({ info, isNotice }: { info: TransferInfo; i
         {info.from && (
           <div className="flex items-center justify-between gap-2">
             <span className="shrink-0 text-text-secondary/60">From</span>
-            <CopyableId value={info.from} />
+            <TransferParty id={info.from} label={info.from_label} />
           </div>
         )}
         {info.to && (
           <div className="flex items-center justify-between gap-2">
             <span className="shrink-0 text-text-secondary/60">To</span>
-            <CopyableId value={info.to} />
+            <TransferParty id={info.to} label={info.to_label} />
           </div>
         )}
         {info.memo && (

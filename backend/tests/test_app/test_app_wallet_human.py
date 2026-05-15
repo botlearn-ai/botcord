@@ -134,6 +134,8 @@ async def seed(db_session: AsyncSession):
         "token": _make_token(str(supabase_uuid)),
         "agent_id": "ag_humanwal01",
         "human_id": user.human_id,
+        "user_id": str(user_id),
+        "user_name": user.display_name,
     }
 
 
@@ -296,13 +298,15 @@ async def test_room_transfer_records_notice_message(client, db_session, seed):
     records = list((await db_session.execute(
         select(MessageRecord).where(
             MessageRecord.room_id == room_id,
-            MessageRecord.source_type == "wallet_transfer_notice",
         )
     )).scalars().all())
     assert len(records) == 2
     assert {record.receiver_id for record in records} == {seed["human_id"], seed["agent_id"]}
+    assert {record.source_type for record in records} == {"dashboard_human_room"}
+    assert {record.source_user_id for record in records} == {seed["user_id"]}
     assert records[0].envelope_json
     assert "[BotCord Transfer]" in records[0].envelope_json
+    assert seed["user_name"] in records[0].envelope_json
     assert tx["tx_id"] in records[0].envelope_json
 
 

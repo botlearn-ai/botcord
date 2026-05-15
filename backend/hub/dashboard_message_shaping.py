@@ -39,10 +39,13 @@ async def load_user_profiles(
         return {}
     out: dict[str, tuple[str, str | None]] = {}
     uuid_ids: list[_uuid.UUID] = []
+    human_ids: list[str] = []
     for s in ids:
         try:
             uuid_ids.append(_uuid.UUID(str(s)))
         except (ValueError, TypeError):
+            if str(s).startswith("hu_"):
+                human_ids.append(str(s))
             continue
     if uuid_ids:
         try:
@@ -71,6 +74,17 @@ async def load_user_profiles(
                     "load_user_display_names: supabase_user_id fallback failed",
                     exc_info=True,
                 )
+    if human_ids:
+        try:
+            result = await db.execute(
+                select(User.human_id, User.display_name, User.avatar_url).where(
+                    User.human_id.in_(human_ids)
+                )
+            )
+            for human_id, name, avatar_url in result.all():
+                out[str(human_id)] = (name, avatar_url)
+        except Exception:
+            _logger.warning("load_user_display_names: human_id lookup failed", exc_info=True)
     return out
 
 
@@ -118,15 +132,21 @@ def derive_sender_fields(
     """
     source_type = rec.source_type or "agent"
     kind = sender_kind_for(source_type)
+    if kind != "human" and (rec.sender_id or "").startswith("hu_"):
+        kind = "human"
     source_user_id = rec.source_user_id
     source_user_name: str | None = None
     sender_avatar_url: str | None = None
     is_mine = False
 
     if kind == "human":
-        source_user_name = user_name_map.get(source_user_id) if source_user_id else None
+        source_user_name = (
+            user_name_map.get(source_user_id) if source_user_id else None
+        ) or user_name_map.get(rec.sender_id)
         display_sender_name = source_user_name or "User"
-        sender_avatar_url = user_avatar_map.get(source_user_id) if user_avatar_map and source_user_id else None
+        sender_avatar_url = (
+            user_avatar_map.get(source_user_id) if user_avatar_map and source_user_id else None
+        ) or (user_avatar_map.get(rec.sender_id) if user_avatar_map else None)
         if viewer_user_id and source_user_id and str(viewer_user_id) == str(source_user_id):
             is_mine = True
     else:

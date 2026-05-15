@@ -119,6 +119,8 @@ async def _record_room_transfer_notice(
     from_owner_id: str,
     to_owner_id: str,
     tx,
+    source_user_id: str | None = None,
+    source_user_name: str | None = None,
 ) -> None:
     members_result = await db.execute(
         select(RoomMember).where(RoomMember.room_id == room_id)
@@ -148,6 +150,7 @@ async def _record_room_transfer_notice(
         "asset_code": tx.asset_code,
         "from_agent_id": from_owner_id,
         "to_agent_id": to_owner_id,
+        "from_display_name": source_user_name,
     }
     envelope_data = {
         "v": "a2a/0.1",
@@ -184,7 +187,8 @@ async def _record_room_transfer_notice(
                 envelope_json=envelope_json,
                 ttl_sec=3600,
                 created_at=now,
-                source_type="wallet_transfer_notice",
+                source_type="dashboard_human_room" if source_user_id else "wallet_transfer_notice",
+                source_user_id=source_user_id,
                 source_session_kind="room_human",
             )
         )
@@ -204,7 +208,7 @@ async def _record_room_transfer_notice(
                     hub_msg_id=receiver_hub_msg_ids.get(receiver_id, first_hub_msg_id),
                     created_at=now,
                     payload=payload,
-                    source_type="wallet_transfer_notice",
+                    source_type="dashboard_human_room" if source_user_id else "wallet_transfer_notice",
                 ),
             )
         except Exception as exc:
@@ -346,6 +350,8 @@ async def create_transfer(
                 from_owner_id=from_owner_id,
                 to_owner_id=body.to_agent_id,
                 tx=tx,
+                source_user_id=str(ctx.user_id) if as_ == "human" else None,
+                source_user_name=ctx.user_display_name if as_ == "human" else None,
             )
         await db.commit()
     except ValueError as exc:
