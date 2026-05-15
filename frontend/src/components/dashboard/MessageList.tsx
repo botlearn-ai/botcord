@@ -19,6 +19,7 @@ import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
   open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
@@ -379,7 +380,13 @@ export default function MessageList() {
 
   useEffect(() => {
     if (!roomId) return;
-    void loadRoomMembers(roomId);
+    void loadRoomMembers(roomId)
+      .then((members) => {
+        usePresenceStore.getState().seed(
+          members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
+        );
+      })
+      .catch(() => {});
   }, [roomId, roomMemberVersion, loadRoomMembers]);
 
   const commitRoomSeen = useCallback((targetRoomId: string) => {

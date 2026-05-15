@@ -351,9 +351,12 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const locale = useLanguage();
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
+  const overview = useDashboardChatStore((state) => state.overview);
+  const publicAgents = useDashboardChatStore((state) => state.publicAgents);
   const publicHumans = useDashboardChatStore((state) => state.publicHumans);
   const human = useDashboardSessionStore((state) => state.human);
   const user = useDashboardSessionStore((state) => state.user);
+  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
   const requestOpenHuman = useDashboardUIStore((state) => state.requestOpenHuman);
   const stateConfig = useStateConfig();
   const errorPayload =
@@ -374,16 +377,24 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const errorDetailsLabel = locale === "zh" ? "详情" : "Details";
   const timestampLabel = formatMessageTimestamp(message.created_at);
   const isOwn = typeof message.is_mine === "boolean" ? message.is_mine : isOwnProp;
-  const isHuman = message.sender_kind === "human";
+  const isHuman = message.sender_kind === "human" || message.sender_id.startsWith("hu_");
   const senderDisplayName = message.display_sender_name || message.sender_name || message.sender_id;
+  const ownedAgent = ownedAgents.find((item) => item.agent_id === message.sender_id);
+  const currentAgent = overview?.agent?.agent_id === message.sender_id ? overview.agent : null;
+  const contactAgent = overview?.contacts.find((item) => item.contact_agent_id === message.sender_id);
+  const publicAgent = publicAgents.find((item) => item.agent_id === message.sender_id);
   const publicHuman = isHuman ? publicHumans.find((item) => item.human_id === message.sender_id) : null;
   const isCurrentHumanSender = isHuman && (
     message.sender_id === human?.human_id
     || (message.source_user_id && message.source_user_id === user?.id)
   );
-  const senderAvatarUrl = message.sender_avatar_url
+  const senderAvatarUrl = ownedAgent?.avatar_url
+    || currentAgent?.avatar_url
+    || contactAgent?.avatar_url
+    || publicAgent?.avatar_url
     || (isCurrentHumanSender ? human?.avatar_url || user?.avatar_url : null)
     || publicHuman?.avatar_url
+    || message.sender_avatar_url
     || null;
 
   if (message.type === "system") {

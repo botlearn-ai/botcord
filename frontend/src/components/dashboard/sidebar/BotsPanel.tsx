@@ -9,9 +9,9 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
 import { Bot, Plus, Settings2 } from "lucide-react";
-import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import DeviceSettingsModal from "./DeviceSettingsModal";
 import AgentSettingsDrawer from "@/components/dashboard/AgentSettingsDrawer";
+import AddDeviceDialog from "@/components/dashboard/AddDeviceDialog";
 import type { UserAgent } from "@/lib/types";
 
 interface AgentRowProps {
@@ -269,32 +269,7 @@ export default function BotsPanel({
       )}
 
       {/* Add Device modal */}
-      {showAddDevice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddDevice(false)}>
-          <div className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setShowAddDevice(false)}
-              className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-            </button>
-            <p className="mb-4 text-sm font-semibold text-text-primary">
-              {locale === "zh" ? "添加新设备" : "Add New Device"}
-            </p>
-            <DaemonInstallCommand
-              labels={{
-                title: locale === "zh" ? "安装并启动 BotCord Daemon" : "Install & Start BotCord Daemon",
-                hint: locale === "zh" ? "在你的设备上运行以下命令以完成连接" : "Run this command on your device to connect it",
-                copy: locale === "zh" ? "复制" : "Copy",
-                copied: locale === "zh" ? "已复制" : "Copied",
-                refresh: locale === "zh" ? "刷新" : "Refresh",
-              }}
-              onRefresh={() => void onRefreshDaemons()}
-            />
-          </div>
-        </div>
-      )}
+      {showAddDevice ? <AddDeviceDialog onClose={() => setShowAddDevice(false)} /> : null}
 
       {/* Device settings modal */}
       {deviceSettingsId && (
