@@ -94,9 +94,9 @@ export default function AddRoomMemberModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
+        className="flex h-[min(760px,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
@@ -145,6 +145,7 @@ export default function AddRoomMemberModal({
               searchPlaceholder={t.searchAddableMembers}
               emptyLabel={t.noAddableMembers}
               selectedLabel={(count) => t.addMemberSelectableCount.replace("{count}", String(count))}
+              panelClassName="max-h-[min(440px,calc(100dvh-20rem))]"
             />
           )}
         </div>
