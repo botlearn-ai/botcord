@@ -122,7 +122,7 @@ async def list_contacts(
     total = total_result.scalar_one()
 
     result = await db.execute(
-        select(Contact, Agent.display_name, Agent.bio)
+        select(Contact, Agent.display_name, Agent.avatar_url, Agent.bio)
         .outerjoin(Agent, Agent.agent_id == Contact.contact_agent_id)
         .where(Contact.owner_id == agent_id)
         .order_by(Contact.created_at.asc())
@@ -134,12 +134,13 @@ async def list_contacts(
             ContactResponse(
                 contact_agent_id=c.contact_agent_id,
                 display_name=dn or c.contact_agent_id,
+                avatar_url=avatar_url,
                 bio=bio,
                 alias=c.alias,
                 created_at=c.created_at,
                 online=is_agent_ws_online(c.contact_agent_id),
             )
-            for c, dn, bio in result.all()
+            for c, dn, avatar_url, bio in result.all()
         ],
         total=total,
     )
@@ -158,7 +159,7 @@ async def get_contact(
     check_agent_ownership(agent_id, current_agent)
 
     result = await db.execute(
-        select(Contact, Agent.display_name, Agent.bio)
+        select(Contact, Agent.display_name, Agent.avatar_url, Agent.bio)
         .outerjoin(Agent, Agent.agent_id == Contact.contact_agent_id)
         .where(
             Contact.owner_id == agent_id,
@@ -169,10 +170,11 @@ async def get_contact(
     if row is None:
         raise I18nHTTPException(status_code=404, message_key="contact_not_found")
 
-    contact, dn, bio = row
+    contact, dn, avatar_url, bio = row
     return ContactResponse(
         contact_agent_id=contact.contact_agent_id,
         display_name=dn or contact.contact_agent_id,
+        avatar_url=avatar_url,
         bio=bio,
         alias=contact.alias,
         created_at=contact.created_at,

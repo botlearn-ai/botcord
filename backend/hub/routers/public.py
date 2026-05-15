@@ -78,6 +78,7 @@ class PublicAgentsResponse(BaseModel):
 class PublicRoomMember(BaseModel):
     agent_id: str
     display_name: str
+    avatar_url: str | None = None
     bio: str | None = None
     message_policy: str
     created_at: datetime.datetime
@@ -581,6 +582,7 @@ async def public_room_members(
         select(
             RoomMember,
             Agent.display_name,
+            Agent.avatar_url,
             Agent.bio,
             Agent.message_policy,
             Agent.created_at,
@@ -596,6 +598,7 @@ async def public_room_members(
         PublicRoomMember(
             agent_id=member.agent_id,
             display_name=display_name or member.agent_id,
+            avatar_url=avatar_url,
             bio=bio,
             message_policy=(
                 message_policy.value
@@ -607,7 +610,7 @@ async def public_room_members(
             joined_at=_ensure_utc(member.joined_at),
             online=is_agent_ws_online(member.agent_id),
         )
-        for member, display_name, bio, message_policy, created_at in rows
+        for member, display_name, avatar_url, bio, message_policy, created_at in rows
     ]
 
     return PublicRoomMembersResponse(

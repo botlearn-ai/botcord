@@ -328,7 +328,7 @@ async def get_overview(
 
     # Contacts with display names
     contact_result = await db.execute(
-        select(Contact, Agent.display_name)
+        select(Contact, Agent.display_name, Agent.avatar_url)
         .outerjoin(Agent, Agent.agent_id == Contact.contact_agent_id)
         .where(Contact.owner_id == current_agent)
     )
@@ -337,10 +337,11 @@ async def get_overview(
             contact_agent_id=c.contact_agent_id,
             alias=c.alias,
             display_name=dn or c.contact_agent_id,
+            avatar_url=avatar_url,
             created_at=c.created_at,
             online=is_agent_ws_online(c.contact_agent_id),
         )
-        for c, dn in contact_result.all()
+        for c, dn, avatar_url in contact_result.all()
     ]
 
     # Pending contact request count

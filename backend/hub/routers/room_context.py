@@ -433,7 +433,7 @@ async def room_summary(
 
     # Members
     members_result = await db.execute(
-        select(RoomMember, Agent.display_name)
+        select(RoomMember, Agent.display_name, Agent.avatar_url)
         .join(Agent, Agent.agent_id == RoomMember.agent_id)
         .where(RoomMember.room_id == room_id)
     )
@@ -441,10 +441,11 @@ async def room_summary(
         RoomContextMember(
             agent_id=rm.agent_id,
             name=display_name,
+            avatar_url=avatar_url,
             role=rm.role.value,
             last_active=_utc(rm.last_viewed_at),
         )
-        for rm, display_name in members_result.all()
+        for rm, display_name, avatar_url in members_result.all()
     ]
 
     # Active topics

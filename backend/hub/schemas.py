@@ -390,6 +390,7 @@ class HistoryResponse(BaseModel):
 class ContactResponse(BaseModel):
     contact_agent_id: str
     display_name: str | None = None
+    avatar_url: str | None = None
     bio: str | None = None
     alias: str | None = None
     created_at: datetime.datetime
@@ -505,6 +506,7 @@ class SetMemberPermissionsRequest(BaseModel):
 class RoomMemberResponse(BaseModel):
     agent_id: str
     display_name: str | None = None
+    avatar_url: str | None = None
     role: str
     muted: bool
     can_send: bool | None = None
@@ -614,6 +616,7 @@ class DashboardContactInfo(BaseModel):
     contact_agent_id: str
     alias: str | None = None
     display_name: str
+    avatar_url: str | None = None
     created_at: datetime.datetime
 
 
@@ -693,6 +696,7 @@ class TopicListResponse(BaseModel):
 class RoomContextMember(BaseModel):
     agent_id: str
     name: str
+    avatar_url: str | None = None
     role: str
     last_active: datetime.datetime | None = None
 
