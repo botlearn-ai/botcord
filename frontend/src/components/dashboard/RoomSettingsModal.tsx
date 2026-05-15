@@ -21,6 +21,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import DashboardSelect from "./DashboardSelect";
 
 interface RoomSettingsModalProps {
   roomId: string;
@@ -889,24 +890,19 @@ export default function RoomSettingsModal({
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <select
-                      value={policyAgentId}
-                      onChange={(event) => setPolicyAgentId(event.target.value)}
+                    <DashboardSelect
+                      value={policyAgentId || null}
+                      onChange={(value) => setPolicyAgentId(value ?? "")}
                       disabled={roomOwnedAgents.length === 0}
-                      className="min-w-0 flex-1 rounded-lg border border-glass-border bg-deep-black px-2 py-2 text-sm text-text-primary"
-                    >
-                      {roomOwnedAgents.length === 0 ? (
-                        <option value="">
-                          {locale === "zh" ? "当前群里没有你的 Bot" : "No owned bots in this room"}
-                        </option>
-                      ) : (
-                        roomOwnedAgents.map((agent) => (
-                          <option key={agent.agent_id} value={agent.agent_id}>
-                            {agent.display_name} ({agent.agent_id})
-                          </option>
-                        ))
-                      )}
-                    </select>
+                      placeholder={locale === "zh" ? "当前群里没有你的 Bot" : "No owned bots in this room"}
+                      className="min-w-0 flex-1"
+                      buttonClassName="min-h-10 rounded-lg px-2 py-2 text-sm"
+                      options={roomOwnedAgents.map((agent) => ({
+                        value: agent.agent_id,
+                        label: agent.display_name,
+                        sublabel: agent.agent_id,
+                      }))}
+                    />
                     <button
                       type="button"
                       onClick={() => setShowPolicyModal(true)}
@@ -952,27 +948,35 @@ export default function RoomSettingsModal({
                   <div className="grid gap-4">
                     <label className="block">
                       <span className="mb-1.5 block text-xs text-text-secondary">{ta.visibilityLabel}</span>
-                      <select
+                      <DashboardSelect
                         disabled={!isOwner}
                         value={visibility}
-                        onChange={(e) => setVisibility(e.target.value)}
-                        className="w-full rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
-                      >
-                        <option value="private">{ta.visibilityPrivate}</option>
-                        <option value="public">{ta.visibilityPublic}</option>
-                      </select>
+                        onChange={(value) => {
+                          if (value) setVisibility(value);
+                        }}
+                        placeholder={ta.visibilityLabel}
+                        buttonClassName="bg-glass-bg"
+                        options={[
+                          { value: "private", label: ta.visibilityPrivate },
+                          { value: "public", label: ta.visibilityPublic },
+                        ]}
+                      />
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-xs text-text-secondary">{ta.joinPolicyLabel}</span>
-                      <select
+                      <DashboardSelect
                         disabled={!isOwner}
                         value={joinPolicy}
-                        onChange={(e) => setJoinPolicy(e.target.value)}
-                        className="w-full rounded-xl border border-glass-border bg-glass-bg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan/60 disabled:opacity-60"
-                      >
-                        <option value="invite_only">{ta.joinPolicyInviteOnly}</option>
-                        <option value="open">{ta.joinPolicyOpen}</option>
-                      </select>
+                        onChange={(value) => {
+                          if (value) setJoinPolicy(value);
+                        }}
+                        placeholder={ta.joinPolicyLabel}
+                        buttonClassName="bg-glass-bg"
+                        options={[
+                          { value: "invite_only", label: ta.joinPolicyInviteOnly },
+                          { value: "open", label: ta.joinPolicyOpen },
+                        ]}
+                      />
                     </label>
                   </div>
                   <div className="grid gap-3">
@@ -1112,23 +1116,19 @@ export default function RoomSettingsModal({
                           <label className="text-sm text-text-primary">
                             {ta.subscriptionProviderLabel ?? "Receiving bot"}
                           </label>
-                          <select
-                            value={providerAgentId}
-                            onChange={(e) => setProviderAgentId(e.target.value)}
+                          <DashboardSelect
+                            value={providerAgentId || null}
+                            onChange={(value) => setProviderAgentId(value ?? "")}
                             disabled={multiRoomBlocked || ownedAgents.length === 0}
-                            className="rounded-lg border border-glass-border bg-deep-black px-2 py-1 text-sm text-text-primary"
-                          >
-                            {ownedAgents.length === 0 && (
-                              <option value="">
-                                {ta.subscriptionProviderEmpty ?? "No bots available"}
-                              </option>
-                            )}
-                            {ownedAgents.map((agent) => (
-                              <option key={agent.agent_id} value={agent.agent_id}>
-                                {agent.display_name} ({agent.agent_id})
-                              </option>
-                            ))}
-                          </select>
+                            placeholder={ta.subscriptionProviderEmpty ?? "No bots available"}
+                            className="min-w-[240px] flex-1"
+                            buttonClassName="min-h-9 rounded-lg px-2 text-sm"
+                            options={ownedAgents.map((agent) => ({
+                              value: agent.agent_id,
+                              label: agent.display_name,
+                              sublabel: agent.agent_id,
+                            }))}
+                          />
                         </div>
                       )}
                       {subscriberCount !== null && (

@@ -12,6 +12,7 @@ import type { PublicRoomMember } from "@/lib/types";
 import { humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
+import DashboardSelect from "./DashboardSelect";
 
 interface Props {
   roomId: string;
@@ -83,17 +84,19 @@ export default function TransferOwnershipDialog({
               <span className="mb-1 block text-[11px] text-text-secondary">
                 {t.transferSelectLabel}
               </span>
-              <select
+              <DashboardSelect
                 value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value)}
-                className="w-full rounded border border-glass-border bg-deep-black px-2 py-1.5 text-xs text-text-primary"
-              >
-                {candidates.map((c) => (
-                  <option key={c.agent_id} value={c.agent_id}>
-                    {c.display_name} · {c.agent_id.startsWith("hu_") ? "H" : "A"} · {c.role}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => {
+                  if (value) setSelectedId(value);
+                }}
+                placeholder={t.transferSelectLabel}
+                buttonClassName="min-h-9 rounded px-2 text-xs"
+                options={candidates.map((c) => ({
+                  value: c.agent_id,
+                  label: c.display_name,
+                  sublabel: `${c.agent_id.startsWith("hu_") ? "H" : "A"} · ${c.role} · ${c.agent_id}`,
+                }))}
+              />
             </label>
 
             <label className="mb-3 block">

@@ -5,10 +5,10 @@ import { Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api } from "@/lib/api";
 import type { ActivityStats } from "@/lib/types";
-import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import BotAvatar from "./BotAvatar";
 import { BotEmptyHero } from "./HomePanel";
 import MyDevicesView from "./MyDevicesView";
+import AddDeviceDialog from "./AddDeviceDialog";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
@@ -37,8 +37,6 @@ export default function MyBotsPanel() {
   useEffect(() => {
     void useDaemonStore.getState().refresh();
   }, []);
-
-  const refreshDaemons = useDaemonStore((s) => s.refresh);
 
   function handleCreateBot() {
     openCreateBotModal();
@@ -103,30 +101,7 @@ export default function MyBotsPanel() {
           <MyDevicesView />
         )}
       </div>
-      {showAddDevice ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddDevice(false)}>
-          <div className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setShowAddDevice(false)}
-              className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
-              aria-label={t.closeDialog}
-            >
-              ×
-            </button>
-            <DaemonInstallCommand
-              labels={{
-                title: t.daemonInstallTitle,
-                hint: t.daemonInstallHint,
-                copy: t.daemonCopy,
-                copied: t.daemonCopied,
-                refresh: t.daemonRefresh,
-              }}
-              onRefresh={() => void refreshDaemons()}
-            />
-          </div>
-        </div>
-      ) : null}
+      {showAddDevice ? <AddDeviceDialog onClose={() => setShowAddDevice(false)} /> : null}
     </div>
   );
 }

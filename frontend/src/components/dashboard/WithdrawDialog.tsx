@@ -9,6 +9,7 @@ import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
 import WalletAccountSelector from "./WalletAccountSelector";
+import DashboardSelect from "./DashboardSelect";
 
 const MIN_WITHDRAWAL_MINOR = 1000 * 100;
 
@@ -187,15 +188,19 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
             <label className="mb-1 block text-xs font-medium text-text-secondary">
               {t.destinationType}
             </label>
-            <select
+            <DashboardSelect
               value={destinationType}
-              onChange={(e) => setDestinationType(e.target.value as "bank" | "usdt_trc20" | "paypal")}
-              className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary outline-none focus:border-neon-purple/50"
-            >
-              <option value="bank">{t.destinationTypeBank}</option>
-              <option value="usdt_trc20">{t.destinationTypeUsdt}</option>
-              <option value="paypal">{t.destinationTypePaypal}</option>
-            </select>
+              onChange={(value) => {
+                if (value) setDestinationType(value as "bank" | "usdt_trc20" | "paypal");
+              }}
+              placeholder={t.destinationType}
+              buttonClassName="min-h-11 bg-deep-black-light p-3 focus:border-neon-purple/50 focus:ring-neon-purple/40"
+              options={[
+                { value: "bank", label: t.destinationTypeBank },
+                { value: "usdt_trc20", label: t.destinationTypeUsdt },
+                { value: "paypal", label: t.destinationTypePaypal },
+              ]}
+            />
           </div>
 
           {destinationType === "bank" && (

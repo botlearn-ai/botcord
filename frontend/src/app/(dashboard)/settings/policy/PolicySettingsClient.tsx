@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, Bot, Loader2, MessageSquare, Shield, UserRound, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import type { UserAgent } from "@/lib/types";
+import DashboardSelect from "@/components/dashboard/DashboardSelect";
 import {
   usePolicyStore,
   type AgentPolicy,
@@ -264,18 +265,18 @@ export default function PolicySettingsClient() {
     }
     return (
       <label className="flex items-center gap-2 text-sm text-text-secondary">
-        Agent
-        <select
+        <span className="shrink-0">Agent</span>
+        <DashboardSelect
           value={selectedAgentId ?? ""}
-          onChange={(e) => setSelectedAgentId(e.target.value || null)}
-          className="rounded-lg border border-glass-border bg-deep-black/40 px-2 py-1 text-text-primary"
-        >
-          {agents.map((a) => (
-            <option key={a.agent_id} value={a.agent_id}>
-              {a.display_name}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => setSelectedAgentId(value || null)}
+          placeholder="选择 Agent"
+          className="min-w-48"
+          buttonClassName="min-h-8 rounded-lg bg-deep-black/40 px-2 text-xs"
+          options={agents.map((a) => ({
+            value: a.agent_id,
+            label: a.display_name,
+          }))}
+        />
       </label>
     );
   }, [agents, selectedAgentId]);

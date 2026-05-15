@@ -45,6 +45,7 @@ import {
 import InstallCommandPanel from "./InstallCommandPanel";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import { DeviceConnectPanel } from "./HomePanel";
+import DashboardSelect from "./DashboardSelect";
 
 interface CreateAgentDialogProps {
   onClose: () => void;
@@ -687,23 +688,20 @@ export default function CreateAgentDialog({
                 </button>
               </div>
               {onlineDaemons.length > 1 ? (
-                <div className="relative">
-                  <Server className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neon-cyan" />
-                  <select
-                    value={selectedDaemonId ?? ""}
-                    onChange={(e) => setSelectedDaemonId(e.target.value)}
-                    disabled={submitting}
-                    className="h-11 w-full appearance-none rounded-xl border border-glass-border bg-deep-black py-0 pl-9 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
-                  >
-                    {onlineDaemons.map((d, index) => (
-                      <option key={d.id} value={d.id}>
-                        {d.label || d.id}
-                        {index === onlineDaemons.length - 1 ? " · latest" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-                </div>
+                <DashboardSelect
+                  value={selectedDaemonId}
+                  onChange={(value) => {
+                    if (value) setSelectedDaemonId(value);
+                  }}
+                  disabled={submitting}
+                  placeholder={t.daemonLabel}
+                  leadingIcon={<Server className="h-3.5 w-3.5 text-neon-cyan" />}
+                  buttonClassName="min-h-11 pl-3"
+                  options={onlineDaemons.map((d, index) => ({
+                    value: d.id,
+                    label: `${d.label || d.id}${index === onlineDaemons.length - 1 ? " · latest" : ""}`,
+                  }))}
+                />
               ) : selectedDaemon ? (
                 <div className="flex h-11 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-xs text-text-secondary">
                   <Server className="h-3.5 w-3.5 text-neon-cyan" />
@@ -1133,22 +1131,18 @@ function OpenclawGatewayPicker({
           Gateway
         </label>
         <div className="relative">
-          <select
+          <DashboardSelect
             disabled={disabled}
             value={selectedGateway ?? ""}
-            onChange={(e) => onSelectGateway(e.target.value || null)}
-            className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
-          >
-            <option value="" disabled>
-              Select a gateway
-            </option>
-            {endpoints.map((e) => (
-              <option key={e.name} value={e.name} disabled={!e.reachable}>
-                {e.name} — {e.url} {e.reachable ? `(${e.version ?? "ok"})` : `✗ ${e.error ?? "unreachable"}`}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+            onChange={onSelectGateway}
+            placeholder="Select a gateway"
+            options={endpoints.map((e) => ({
+              value: e.name,
+              label: e.name,
+              sublabel: `${e.url} ${e.reachable ? `(${e.version ?? "ok"})` : `- ${e.error ?? "unreachable"}`}`,
+              disabled: !e.reachable,
+            }))}
+          />
         </div>
         {reachable.length === 0 && (
           <p className="mt-1 text-[11px] text-orange-400">
@@ -1180,27 +1174,21 @@ function OpenclawGatewayPicker({
           />
         ) : (
           <div className="relative">
-            <select
+            <DashboardSelect
               disabled={disabled || !selectedGateway || availableAgents.length === 0}
               value={selectedAgent ?? ""}
-              onChange={(e) => onSelectAgent(e.target.value || null)}
-              className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
-            >
-              <option value="" disabled>
-                {availableAgents.length === 0 ? labels.noProfiles : labels.selectProfile}
-              </option>
-              {availableAgents.map((a) => {
+              onChange={onSelectAgent}
+              placeholder={availableAgents.length === 0 ? labels.noProfiles : labels.selectProfile}
+              options={availableAgents.map((a) => {
                 const label =
                   (a.name && a.name !== a.id ? `${a.name} (${a.id})` : a.id) +
                   (a.model?.name ? ` — ${a.model.name}` : "");
-                return (
-                  <option key={a.id} value={a.id}>
-                    {label}
-                  </option>
-                );
+                return {
+                  value: a.id,
+                  label,
+                };
               })}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+            />
           </div>
         )}
         {boundCount > 0 && (
@@ -1246,35 +1234,30 @@ function HermesProfilePicker({
         Hermes profile
       </label>
       <div className="relative">
-        <select
+        <DashboardSelect
           disabled={disabled}
           value={selectedProfile ?? ""}
-          onChange={(e) => onSelect(e.target.value || null)}
-          className="h-10 w-full appearance-none rounded-xl border border-glass-border bg-deep-black px-3 pr-10 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
-        >
-          <option value="" disabled>
-            Select a profile
-          </option>
-          {profiles.map((p) => {
+          onChange={onSelect}
+          placeholder="Select a profile"
+          options={profiles.map((p) => {
             const occupied = !!p.occupiedBy;
             const labelParts: string[] = [p.name];
             if (p.isDefault) labelParts.push("(default)");
             if (p.modelName) labelParts.push(`— ${p.modelName}`);
+            const sublabelParts: string[] = [];
             if (occupied) {
-              labelParts.push(
-                `· bound to ${p.occupiedByName ?? p.occupiedBy ?? "another agent"}`,
-              );
+              sublabelParts.push(`bound to ${p.occupiedByName ?? p.occupiedBy ?? "another agent"}`);
             } else if (p.isActive) {
-              labelParts.push("· active");
+              sublabelParts.push("active");
             }
-            return (
-              <option key={p.name} value={p.name} disabled={occupied}>
-                {labelParts.join(" ")}
-              </option>
-            );
+            return {
+              value: p.name,
+              label: labelParts.join(" "),
+              sublabel: sublabelParts.join(" "),
+              disabled: occupied,
+            };
           })}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+        />
       </div>
       <p className="mt-1 text-[11px] text-text-tertiary">
         BotCord agent attaches to this profile&apos;s{" "}

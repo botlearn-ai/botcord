@@ -37,6 +37,7 @@ import AgentSchedulesTab from "./AgentSchedulesTab";
 import BotAvatar from "./BotAvatar";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotWalletTab from "./BotWalletTab";
+import DashboardSelect from "./DashboardSelect";
 
 type TabKey = "overview" | "wallet" | "settings" | "files";
 type BotDetailDrawerCopy = typeof botDetailDrawer["en"];
@@ -718,15 +719,18 @@ function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) 
           </label>
         </div>
         <label className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
-          {t.settings.roomInvite}
-          <select
+          <span className="shrink-0">{t.settings.roomInvite}</span>
+          <DashboardSelect
             value={policy.room_invite_policy}
-            onChange={(e) => void applyPolicy({ room_invite_policy: e.target.value as RoomInvitePolicy })}
+            onChange={(value) => {
+              if (value) void applyPolicy({ room_invite_policy: value as RoomInvitePolicy });
+            }}
             disabled={saving}
-            className="rounded-lg border border-glass-border bg-deep-black/40 px-2 py-1 text-text-primary"
-          >
-            {roomInviteOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
+            placeholder={t.settings.roomInvite}
+            className="min-w-40"
+            buttonClassName="min-h-8 rounded-lg bg-deep-black/40 px-2 text-xs"
+            options={roomInviteOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+          />
         </label>
       </section>
 

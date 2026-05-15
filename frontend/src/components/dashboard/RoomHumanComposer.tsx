@@ -12,6 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 import MessageComposer from "./MessageComposer";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { Loader2, X } from "lucide-react";
+import DashboardSelect from "./DashboardSelect";
 
 interface RoomHumanComposerProps {
   roomId: string;
@@ -126,16 +127,17 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
             <label className="mb-1 block text-xs font-medium text-text-secondary">
               {locale === "zh" ? "接收方" : "Recipient"}
             </label>
-            <select
-              value={recipientId}
-              onChange={(event) => setRecipientId(event.target.value)}
-              className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
-            >
-              <option value="">{recipientOptions.length > 0 ? t.pickRecipientDefault : (locale === "zh" ? "当前群没有可选接收方" : "No eligible recipients in this group")}</option>
-              {recipientOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
+            <DashboardSelect
+              value={recipientId || null}
+              onChange={(value) => setRecipientId(value ?? "")}
+              placeholder={recipientOptions.length > 0 ? t.pickRecipientDefault : (locale === "zh" ? "当前群没有可选接收方" : "No eligible recipients in this group")}
+              disabled={recipientOptions.length === 0}
+              buttonClassName="min-h-11 bg-deep-black-light p-3"
+              options={recipientOptions.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
+            />
           </div>
 
           <div>
