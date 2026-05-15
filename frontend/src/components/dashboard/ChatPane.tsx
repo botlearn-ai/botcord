@@ -725,27 +725,6 @@ export default function ChatPane({ onHumanOpen }: ChatPaneProps) {
   const isAuthedHuman = sessionMode === "authed-no-agent";
   const showLoginModal = () => router.push("/login");
 
-  // Seed presence for the opened room's members so MessageBubble's PresenceDot
-  // reflects real online state. Without this, senders that aren't the user's
-  // own agents stay "offline" until they happen to transition during the
-  // session — realtime presence events only fire on online/offline edges.
-  useEffect(() => {
-    if (!openedRoomId) return;
-    let cancelled = false;
-    api.getRoomMembers(openedRoomId)
-      .catch(() => api.getPublicRoomMembers(openedRoomId))
-      .then((result) => {
-        if (cancelled) return;
-        usePresenceStore.getState().seed(
-          result.members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [openedRoomId]);
-
   if (sidebarTab === "explore") {
     return <ExploreMainPane onHumanOpen={onHumanOpen} />;
   }

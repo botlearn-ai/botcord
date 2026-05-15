@@ -44,6 +44,7 @@ import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
+const MESSAGES_DIRECTORY_SYNC_INTERVAL_MS = 30_000;
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -99,6 +100,7 @@ export default function DashboardApp() {
   const subscriptionBoundAgentRef = useRef<string | null>(null);
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
+  const lastMessagesDirectorySyncRef = useRef(0);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
   const fallbackAgent =
@@ -333,7 +335,6 @@ export default function DashboardApp() {
     uiStore.setContactsView,
     chatStore.getRoomSummary,
     chatStore.discoverRooms,
-    chatStore.messages,
     chatStore.loadPublicRoomDetail,
     chatStore.loadRoomMessages,
     chatStore.pollNewMessages,
@@ -658,17 +659,26 @@ export default function DashboardApp() {
     let cancelled = false;
     let syncInFlight = false;
 
-    const syncMessagesPane = async () => {
+    const syncMessagesPane = async (opts?: { forceDirectory?: boolean }) => {
       if (cancelled || syncInFlight) return;
       syncInFlight = true;
       try {
         const { openedRoomId, messagesPane } = useDashboardUIStore.getState();
         const session = useDashboardSessionStore.getState();
         const chat = useDashboardChatStore.getState();
-        await Promise.all([
+        const now = Date.now();
+        const shouldSyncDirectory = Boolean(opts?.forceDirectory)
+          || now - lastMessagesDirectorySyncRef.current >= MESSAGES_DIRECTORY_SYNC_INTERVAL_MS;
+        if (shouldSyncDirectory) {
+          lastMessagesDirectorySyncRef.current = now;
+        }
+        const directorySync = shouldSyncDirectory ? [
           chat.refreshOverview(),
           session.human?.human_id ? session.refreshHumanRooms() : Promise.resolve(),
           session.activeIdentity?.type === "human" ? chat.loadOwnedAgentRooms() : Promise.resolve(),
+        ] : [];
+        await Promise.all([
+          ...directorySync,
           openedRoomId && messagesPane === "room"
             ? chat.pollNewMessages(openedRoomId)
             : Promise.resolve(),
@@ -681,16 +691,19 @@ export default function DashboardApp() {
     const intervalId = window.setInterval(syncMessagesPane, 5_000);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void syncMessagesPane();
+        void syncMessagesPane({ forceDirectory: true });
       }
     };
-    window.addEventListener("focus", syncMessagesPane);
+    const handleFocus = () => {
+      void syncMessagesPane({ forceDirectory: true });
+    };
+    window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
-      window.removeEventListener("focus", syncMessagesPane);
+      window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [
