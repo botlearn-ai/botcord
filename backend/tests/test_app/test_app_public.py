@@ -261,6 +261,28 @@ async def test_public_agents_list(client: AsyncClient, seed: dict):
 
 
 @pytest.mark.asyncio
+async def test_public_agents_list_includes_online(
+    client: AsyncClient,
+    seed: dict,
+    monkeypatch,
+):
+    import app.routers.public as public_mod
+
+    monkeypatch.setattr(
+        public_mod,
+        "is_agent_ws_online",
+        lambda agent_id: agent_id == "ag_pub_agent2",
+    )
+
+    resp = await client.get("/api/public/agents")
+
+    assert resp.status_code == 200
+    agents = {agent["agent_id"]: agent for agent in resp.json()["agents"]}
+    assert agents["ag_pub_agent1"]["online"] is False
+    assert agents["ag_pub_agent2"]["online"] is True
+
+
+@pytest.mark.asyncio
 async def test_public_agents_list_orders_by_newest_created(
     client: AsyncClient,
     db_session: AsyncSession,
@@ -303,6 +325,22 @@ async def test_public_agent_detail(client: AsyncClient, seed: dict):
     data = resp.json()
     assert data["agent_id"] == "ag_pub_agent1"
     assert data["display_name"] == "Public Agent"
+
+
+@pytest.mark.asyncio
+async def test_public_agent_detail_includes_online(
+    client: AsyncClient,
+    seed: dict,
+    monkeypatch,
+):
+    import app.routers.public as public_mod
+
+    monkeypatch.setattr(public_mod, "is_agent_ws_online", lambda _agent_id: True)
+
+    resp = await client.get("/api/public/agents/ag_pub_agent1")
+
+    assert resp.status_code == 200
+    assert resp.json()["online"] is True
 
 
 @pytest.mark.asyncio
