@@ -45,6 +45,7 @@ import ActivityPanel from "./ActivityPanel";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
 const MESSAGES_DIRECTORY_SYNC_INTERVAL_MS = 30_000;
+const ROOM_SWITCH_DIRECTORY_DEFER_MS = 5_000;
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -101,6 +102,7 @@ export default function DashboardApp() {
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
   const lastMessagesDirectorySyncRef = useRef(0);
+  const lastMessageRoomSwitchRef = useRef(0);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
   const fallbackAgent =
@@ -288,6 +290,10 @@ export default function DashboardApp() {
         if (uiStore.messagesPane !== "room") uiStore.setMessagesPane("room");
         const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
         if (roomIdFromPath) {
+          const isSwitchingRooms = uiStore.openedRoomId !== roomIdFromPath;
+          if (isSwitchingRooms) {
+            lastMessageRoomSwitchRef.current = Date.now();
+          }
           if (uiStore.focusedRoomId !== roomIdFromPath) uiStore.setFocusedRoomId(roomIdFromPath);
           if (uiStore.openedRoomId !== roomIdFromPath) uiStore.setOpenedRoomId(roomIdFromPath);
 
@@ -667,8 +673,12 @@ export default function DashboardApp() {
         const session = useDashboardSessionStore.getState();
         const chat = useDashboardChatStore.getState();
         const now = Date.now();
+        const recentlySwitchedRoom = now - lastMessageRoomSwitchRef.current < ROOM_SWITCH_DIRECTORY_DEFER_MS;
         const shouldSyncDirectory = Boolean(opts?.forceDirectory)
-          || now - lastMessagesDirectorySyncRef.current >= MESSAGES_DIRECTORY_SYNC_INTERVAL_MS;
+          || (
+            !recentlySwitchedRoom
+            && now - lastMessagesDirectorySyncRef.current >= MESSAGES_DIRECTORY_SYNC_INTERVAL_MS
+          );
         if (shouldSyncDirectory) {
           lastMessagesDirectorySyncRef.current = now;
         }

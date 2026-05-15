@@ -14,7 +14,6 @@ import { useShallow } from "zustand/react/shallow";
 import MessageBubble from "./MessageBubble";
 import type { DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
-import { api } from "@/lib/api";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -230,12 +229,13 @@ export default function MessageList() {
     openedRoomId: state.openedRoomId,
     setOpenedTopicId: state.setOpenedTopicId,
   })));
-  const { messagesByRoom, messagesLoading, messagesHasMore, loadMoreMessages, overview } = useDashboardChatStore(
+  const { messagesByRoom, messagesLoading, messagesHasMore, loadMoreMessages, loadRoomMembers, overview } = useDashboardChatStore(
     useShallow((state) => ({
       messagesByRoom: state.messages,
       messagesLoading: state.messagesLoading,
       messagesHasMore: state.messagesHasMore,
       loadMoreMessages: state.loadMoreMessages,
+      loadRoomMembers: state.loadRoomMembers,
       overview: state.overview,
     })),
   );
@@ -286,13 +286,12 @@ export default function MessageList() {
       return;
     }
     let cancelled = false;
-    api.getRoomMembers(roomId)
-      .catch(() => api.getPublicRoomMembers(roomId))
-      .then((result) => {
+    loadRoomMembers(roomId)
+      .then((members) => {
         if (cancelled) return;
-        setRoomMembers(result.members);
+        setRoomMembers(members);
         usePresenceStore.getState().seed(
-          result.members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
+          members.map((m) => ({ agentId: m.agent_id, online: Boolean(m.online) })),
         );
       })
       .catch(() => {
@@ -301,7 +300,7 @@ export default function MessageList() {
     return () => {
       cancelled = true;
     };
-  }, [roomId, roomMemberVersion]);
+  }, [roomId, roomMemberVersion, loadRoomMembers]);
 
   const commitRoomSeen = useCallback((targetRoomId: string) => {
     const joinedRoom = overview?.rooms.find((room) => room.room_id === targetRoomId);

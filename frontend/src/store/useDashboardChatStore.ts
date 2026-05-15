@@ -15,6 +15,7 @@ import type {
   DiscoverRoom,
   HumanAgentRoomSummary,
   PublicHumanProfile,
+  PublicRoomMember,
   PublicRoom,
   RealtimeMetaEvent,
 } from "@/lib/types";
@@ -35,6 +36,14 @@ let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
 const emptyRoomMessageSnapshot = new Map<string, string | null>();
+const ROOM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const roomMembersInFlight = new Map<string, Promise<PublicRoomMember[]>>();
+
+interface RoomMembersCacheEntry {
+  members: PublicRoomMember[];
+  version: number;
+  loadedAt: number;
+}
 
 function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -117,6 +126,7 @@ interface DashboardChatState {
   ownedAgentRoomsLoading: boolean;
   ownedAgentRoomsLoaded: boolean;
   roomMemberVersions: Record<string, number>;
+  roomMembersByRoom: Record<string, RoomMembersCacheEntry>;
 
   setError: (error: string | null) => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
@@ -131,6 +141,7 @@ interface DashboardChatState {
   replaceOverview: (overview: DashboardOverview) => void;
   patchRoom: (roomId: string, patch: Partial<DashboardRoom>) => void;
   bumpRoomMembersVersion: (roomId: string) => void;
+  loadRoomMembers: (roomId: string, opts?: { force?: boolean }) => Promise<PublicRoomMember[]>;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
   loadRoomMessages: (roomId: string) => Promise<void>;
@@ -184,6 +195,7 @@ const initialChatState = {
   ownedAgentRoomsLoading: false,
   ownedAgentRoomsLoaded: false,
   roomMemberVersions: {},
+  roomMembersByRoom: {},
 };
 
 function hasTransientChatState(state: DashboardChatState): boolean {
@@ -194,6 +206,7 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || Object.keys(state.messages).length > 0
     || Object.keys(state.messagesLoading).length > 0
     || Object.keys(state.messagesHasMore).length > 0
+    || Object.keys(state.roomMembersByRoom).length > 0
     || state.error !== null
     || state.selectedAgentId !== null
     || state.selectedAgentLoading
@@ -358,7 +371,54 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             ...state.roomMemberVersions,
             [roomId]: (state.roomMemberVersions[roomId] ?? 0) + 1,
           },
+          roomMembersByRoom: Object.fromEntries(
+            Object.entries(state.roomMembersByRoom).filter(([key]) => key !== roomId),
+          ),
         })),
+
+      loadRoomMembers: async (roomId, opts) => {
+        const state = get();
+        const version = state.roomMemberVersions[roomId] ?? 0;
+        const cached = state.roomMembersByRoom[roomId];
+        const now = Date.now();
+        if (
+          !opts?.force
+          && cached
+          && cached.version === version
+          && now - cached.loadedAt < ROOM_MEMBERS_CACHE_TTL_MS
+        ) {
+          return cached.members;
+        }
+
+        const inFlight = roomMembersInFlight.get(roomId);
+        if (inFlight && !opts?.force) return inFlight;
+
+        const request = api
+          .getRoomMembers(roomId)
+          .catch(() => api.getPublicRoomMembers(roomId))
+          .then((result) => {
+            const members = result.members;
+            set((current) => ({
+              roomMembersByRoom: {
+                ...current.roomMembersByRoom,
+                [roomId]: {
+                  members,
+                  version: current.roomMemberVersions[roomId] ?? 0,
+                  loadedAt: Date.now(),
+                },
+              },
+            }));
+            return members;
+          })
+          .finally(() => {
+            if (roomMembersInFlight.get(roomId) === request) {
+              roomMembersInFlight.delete(roomId);
+            }
+          });
+
+        roomMembersInFlight.set(roomId, request);
+        return request;
+      },
 
       loadRoomMessages: async (roomId: string) => {
         if (roomMessagesInFlight.has(roomId)) {
