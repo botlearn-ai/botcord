@@ -2326,6 +2326,7 @@ async def get_room_messages(
         if (r.source_type or "") in ("dashboard_human_room", "dashboard_user_chat")
         and r.source_user_id
     }
+    human_user_ids.update(r.sender_id for r in records if (r.sender_id or "").startswith("hu_"))
     user_name_map = await load_user_display_names(db, human_user_ids)
 
     # Owner-chat rooms (rm_oc_*) are always viewed as the human owner — both
@@ -3057,6 +3058,7 @@ async def create_share(
         r.source_user_id for r in records
         if (r.source_type or "") == "dashboard_human_room" and r.source_user_id
     }
+    share_human_user_ids.update(r.sender_id for r in records if (r.sender_id or "").startswith("hu_"))
     share_user_name_map = await load_user_display_names(db, share_human_user_ids)
 
     share = Share(

@@ -453,6 +453,7 @@ async def get_room_messages(
         rec.source_user_id for rec in rows
         if (rec.source_type or "") in HUMAN_SOURCE_TYPES and rec.source_user_id
     }
+    _human_user_ids.update(rec.sender_id for rec in rows if (rec.sender_id or "").startswith("hu_"))
     _user_profiles = await load_user_profiles(db, _human_user_ids)
     _user_name_map = {uid: profile[0] for uid, profile in _user_profiles.items()}
     _user_avatar_map = {uid: profile[1] for uid, profile in _user_profiles.items()}
