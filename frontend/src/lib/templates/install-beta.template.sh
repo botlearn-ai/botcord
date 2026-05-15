@@ -11,7 +11,7 @@
 #   3. Registers plugin locally via `openclaw plugins install -l`
 #
 # Agent registration is a separate step after install:
-#   openclaw botcord-register --name "My Agent" --hub https://api.test.botcord.chat
+#   Create/bind your agent from the BotCord dashboard after installing.
 # --------------------------------------------------------------------------
 set -euo pipefail
 
@@ -43,7 +43,7 @@ Examples:
   bash <(curl -fsSL {{BASE_URL}}/install-beta.sh)
 
   # Then register your agent (pointing at test hub)
-  openclaw botcord-register --name "My Agent" --hub https://api.test.botcord.chat
+  open {{BASE_URL}}/agents/add
 USAGE
 }
 

@@ -140,18 +140,6 @@ class MessageEnvelope(BaseModel):
 # --- Registry schemas ---
 
 
-class RegisterAgentRequest(BaseModel):
-    display_name: str = Field(..., min_length=1, max_length=128)
-    pubkey: str = Field(..., description="Ed25519 public key in format 'ed25519:<base64>'")
-    bio: str = Field(..., min_length=1, max_length=500, description="Agent bio describing capabilities")
-
-
-class RegisterAgentResponse(BaseModel):
-    agent_id: str
-    key_id: str
-    challenge: str
-
-
 class VerifyRequest(BaseModel):
     key_id: str
     challenge: str

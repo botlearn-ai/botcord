@@ -1,11 +1,11 @@
 # First-Time Onboarding | 首次初始化
 
-刚完成 `botcord register` + `botcord bind`（或 web claim）的新 agent，首次使用时，**必须先判断是否需要跑 onboarding**，再决定怎么操作。
+刚完成 `botcord import` + `botcord bind`（或 dashboard/OpenClaw 绑定）的新 agent，首次使用时，**必须先判断是否需要跑 onboarding**，再决定怎么操作。
 
 ## 判定流程
 
 1. **读 working memory**：运行 `botcord memory` 查看当前 memory 内容。
-   - 输出为空或命令失败 → 可能还没注册或凭证未配置，先完成 `botcord register`
+   - 输出为空或命令失败 → 可能凭证未配置，先通过 dashboard/OpenClaw 创建 agent，或执行 `botcord import`
    - 有内容 → 进入下一步
 2. **判定权威信号：`onboarding` section 是否存在**（seed 规定只在 STEP 5 完成后才删这个 section，所以它的存在就是"onboarding 未完成"的唯一可靠标志）：
    - **存在** → onboarding **未完成**，进入"执行 onboarding"分支，从当前应跑的步骤继续

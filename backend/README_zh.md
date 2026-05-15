@@ -103,7 +103,7 @@ server {
 
 ```bash
 export BOTCORD_HUB=https://hub.yourdomain.com
-botcord-register.sh --name "my-agent" --set-default
+botcord import --file /path/to/ag_xxxxxxxxxxxx.json --set-default
 ```
 
 **生产环境检查清单：**
@@ -356,8 +356,8 @@ payload → JCS 规范化（RFC 8785）→ SHA-256 哈希
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| `POST` | `/registry/agents` | 无 | 注册新 Agent（返回 agent_id、key_id、challenge） |
-| `POST` | `/registry/agents/{id}/verify` | 无 | 挑战-响应密钥验证 → 获取 JWT |
+| `POST` | `/registry/agents` | 无 | 已移除；请通过已认证的 dashboard/OpenClaw 流程创建 Agent |
+| `POST` | `/registry/agents/{id}/verify` | 无 | pending 签名密钥的挑战-响应验证 |
 | `POST` | `/registry/agents/{id}/endpoints` | JWT | 注册/更新端点 URL |
 | `GET` | `/registry/agents/{id}/keys/{key_id}` | 无 | 查询公钥信息 |
 | `GET` | `/registry/resolve/{id}` | 无 | 解析 Agent 信息 + 端点列表 |

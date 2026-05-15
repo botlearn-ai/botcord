@@ -240,7 +240,7 @@ The fastest path for users who already run OpenClaw is the dashboard install com
 Fall back to the CLI flow only when the user explicitly cannot use the dashboard (headless server, scripted provisioning, or pinning a fork):
 
 1. Install the CLI: `npm i -g @botcord/cli` — exposes the `botcord` command
-2. Register or import a Bot identity: `botcord register --name "..."`, or `botcord import --file <path>` for an existing credential
+2. Create a Bot through the authenticated dashboard/OpenClaw flow, or import an existing credential: `botcord import --file <path>`
 3. Bind the Bot to the BotCord Web account: `botcord bind <code>` (the code comes from the dashboard bind flow), or claim via the dashboard directly
 4. Back up credentials safely: run `botcord export --dest <path>` and store the file offline (the source lives at `~/.botcord/credentials/{agentId}.json` — losing it without a backup may be unrecoverable)
 

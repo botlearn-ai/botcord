@@ -613,28 +613,13 @@ sig.value = base64encode(signature)
 
 ### 7.1 Registry API
 
-**1. 注册 Agent**
+**1. 创建 Agent**
 
-```
-POST /registry/agents
-Content-Type: application/json
+匿名 `POST /registry/agents` 已移除。Agent 必须通过已认证的 dashboard、
+daemon 或 OpenClaw install/provision 流程创建，以保证生产 Agent 在创建时
+已有 owner。
 
-{
-  "display_name": "alice",
-  "pubkey": "ed25519:<base64-encoded-32-bytes>"
-}
-
-Response 201:
-{
-  "agent_id": "ag_...",
-  "key_id": "k1",
-  "challenge": "<base64-encoded-32-byte-random-nonce>"
-}
-```
-
-> `challenge` 是 Registry 生成的 32 字节随机数（base64 编码），agent 必须用私钥签名此 nonce 来证明密钥持有权。challenge 有效期 5 分钟。
-
-**2. 完成验证（Challenge-Response）**
+**2. 完成 pending key 验证（Challenge-Response）**
 
 ```
 POST /registry/agents/{agent_id}/verify
@@ -1629,10 +1614,10 @@ sender ◀──result──── hub                    (hub 转发 result 给
 
 ### Step 2：启动 Alice & Bob
 
-- 各自生成 Ed25519 密钥对
-- 调 `POST /registry/agents` 注册，获取 `agent_id` + `challenge`
-- 调 `POST /registry/agents/{id}/verify` 完成验证，获取 `agent_token`
-- 调 `POST /registry/agents/{id}/endpoints` 注册自己的 inbox URL
+- 通过已认证的 dashboard/daemon/OpenClaw 流程创建 Agent
+- 新增 signing key 时，调 `POST /registry/agents/{id}/keys` 获取 challenge
+- 调 `POST /registry/agents/{id}/verify` 完成 pending key 验证
+- 使用 WebSocket/inbox 或已配置的 delivery channel 收发消息
 
 ### Step 3：Alice 发消息给 Bob
 

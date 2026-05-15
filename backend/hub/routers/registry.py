@@ -17,13 +17,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import create_agent_token, get_current_agent
-from hub.agent_avatars import normalize_agent_avatar_url, random_agent_avatar_url
+from hub.agent_avatars import normalize_agent_avatar_url
 from hub.config import CHALLENGE_EXPIRE_MINUTES
 from hub import config as hub_config
 from hub.constants import DEFAULT_TTL_SEC, MIN_PLUGIN_VERSION, PROTOCOL_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import generate_challenge, verify_challenge_sig
 from hub.database import get_db
-from hub.id_generators import generate_agent_id, generate_endpoint_id, generate_hub_msg_id, generate_key_id
+from hub.id_generators import generate_endpoint_id, generate_hub_msg_id, generate_key_id
 from hub.models import Agent, Challenge, Endpoint, EndpointState, KeyState, MessageRecord, MessageState, SigningKey, UsedNonce
 from hub.schemas import (
     AddKeyRequest,
@@ -36,8 +36,6 @@ from hub.schemas import (
     EndpointProbeReport,
     EndpointResponse,
     KeyResponse,
-    RegisterAgentRequest,
-    RegisterAgentResponse,
     RegisterEndpointRequest,
     ResolveEndpointInfo,
     ResolveResponse,
@@ -56,98 +54,6 @@ router = APIRouter(prefix="/registry", tags=["registry"])
 
 def _generate_claim_code() -> str:
     return f"clm_{uuid.uuid4().hex}"
-
-
-@router.post("/agents", response_model=RegisterAgentResponse, status_code=201)
-async def register_agent(req: RegisterAgentRequest, db: AsyncSession = Depends(get_db)):
-    """Register a new agent. Returns agent_id, key_id, and a challenge nonce.
-
-    Idempotent: if the same pubkey is registered again, returns the existing
-    agent with a fresh challenge instead of creating a duplicate.
-    """
-    pubkey_b64 = parse_pubkey(req.pubkey)
-
-    agent_id = generate_agent_id(pubkey_b64)
-
-    # Check if this agent already exists (same pubkey → same agent_id)
-    existing_agent = await db.execute(
-        select(Agent).where(Agent.agent_id == agent_id)
-    )
-    if existing_agent.scalar_one_or_none() is not None:
-        # Agent exists — find the signing key for this pubkey
-        existing_key = await db.execute(
-            select(SigningKey).where(
-                SigningKey.agent_id == agent_id,
-                SigningKey.pubkey == req.pubkey,
-            )
-        )
-        sk = existing_key.scalar_one_or_none()
-        if sk is None:
-            raise I18nHTTPException(status_code=409, message_key="agent_id_collision")
-        # Issue a fresh challenge for re-verification
-        key_id = sk.key_id
-        challenge = generate_challenge()
-        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-            minutes=CHALLENGE_EXPIRE_MINUTES
-        )
-        db.add(Challenge(
-            agent_id=agent_id,
-            key_id=key_id,
-            challenge=challenge,
-            expires_at=expires_at,
-            used=False,
-        ))
-        # Update display_name if provided and different
-        agent_obj = (await db.execute(
-            select(Agent).where(Agent.agent_id == agent_id)
-        )).scalar_one()
-        if req.display_name and req.display_name != agent_obj.display_name:
-            agent_obj.display_name = req.display_name
-        if req.bio is not None:
-            agent_obj.bio = req.bio
-        if agent_obj.avatar_url is None:
-            agent_obj.avatar_url = random_agent_avatar_url()
-        await db.commit()
-        return RegisterAgentResponse(agent_id=agent_id, key_id=key_id, challenge=challenge)
-
-    # New agent — create records
-    key_id = generate_key_id()
-    challenge = generate_challenge()
-
-    agent = Agent(
-        agent_id=agent_id,
-        display_name=req.display_name,
-        bio=req.bio,
-        avatar_url=random_agent_avatar_url(),
-        claim_code=_generate_claim_code(),
-    )
-    db.add(agent)
-
-    signing_key = SigningKey(
-        agent_id=agent_id,
-        key_id=key_id,
-        pubkey=req.pubkey,
-        state=KeyState.pending,
-    )
-    db.add(signing_key)
-    # Flush Agent + SigningKey first so the FK on Challenge.key_id is satisfied
-    await db.flush()
-
-    expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-        minutes=CHALLENGE_EXPIRE_MINUTES
-    )
-    challenge_record = Challenge(
-        agent_id=agent_id,
-        key_id=key_id,
-        challenge=challenge,
-        expires_at=expires_at,
-        used=False,
-    )
-    db.add(challenge_record)
-
-    await db.commit()
-
-    return RegisterAgentResponse(agent_id=agent_id, key_id=key_id, challenge=challenge)
 
 
 @router.post("/agents/{agent_id}/verify", response_model=VerifyResponse)

@@ -87,6 +87,17 @@ async def _register_and_verify(client: AsyncClient, sk: SigningKey, pubkey_str: 
     return agent_id, key_id, token
 
 
+@pytest.mark.asyncio
+async def test_anonymous_agent_registration_route_removed():
+    """Production no longer exposes POST /registry/agents."""
+    from hub.main import app
+
+    assert not any(
+        route.path == "/registry/agents" and "POST" in getattr(route, "methods", set())
+        for route in app.routes
+    )
+
+
 def _auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
@@ -1616,5 +1627,3 @@ async def test_get_claim_link_forbidden_when_not_owner(client: AsyncClient):
         headers=_auth_header(token_2),
     )
     assert resp.status_code == 403
-
-

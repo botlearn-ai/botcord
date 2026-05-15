@@ -20,7 +20,7 @@
 #   matching the flow used by @tencent-weixin/openclaw-weixin-cli.
 #
 # Agent registration is a separate step after install:
-#   openclaw botcord-register --name "My Agent"
+#   Create/bind your agent from the BotCord dashboard after installing.
 # --------------------------------------------------------------------------
 set -euo pipefail
 
@@ -50,7 +50,7 @@ Examples:
   bash <(curl -fsSL {{BASE_URL}}/install-native.sh)
 
   # Then register your agent
-  openclaw botcord-register --name "My Agent"
+  open {{BASE_URL}}/agents/add
 USAGE
 }
 

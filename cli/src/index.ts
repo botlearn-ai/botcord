@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from "./args.js";
 import { outputError } from "./output.js";
-import { registerCommand } from "./commands/register.js";
 import { sendCommand } from "./commands/send.js";
 import { refreshCommand } from "./commands/refresh.js";
 import { resolveCommand } from "./commands/resolve.js";
@@ -33,7 +32,6 @@ const HELP = `botcord — BotCord CLI v${VERSION}
 Usage: botcord <command> [options]
 
 Commands:
-  register          Register a new agent
   send              Send a signed message
   upload            Upload files to the hub
   inbox             Poll inbox for new messages
@@ -88,9 +86,6 @@ async function main(): Promise<void> {
 
   try {
     switch (args.command) {
-      case "register":
-        await registerCommand(args);
-        break;
       case "send":
         await sendCommand(args, globalHub, globalAgent);
         break;
