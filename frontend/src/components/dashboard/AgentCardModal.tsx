@@ -15,6 +15,7 @@ import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { PresenceDot } from "./PresenceDot";
+import BotAvatar from "./BotAvatar";
 
 interface AgentCardModalProps {
   isOpen: boolean;
@@ -60,13 +61,18 @@ export default function AgentCardModal({
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5">
-        <div className="mb-3 flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <PresenceDot agentId={agent?.agent_id} fallback={agent?.online} size="md" />
-              <h3 className="text-base font-semibold text-text-primary">{agent?.display_name || "Agent"}</h3>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            {agent ? (
+              <BotAvatar agentId={agent.agent_id} size={44} alt={agent.display_name} />
+            ) : null}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <PresenceDot agentId={agent?.agent_id} fallback={agent?.online} size="md" />
+                <h3 className="truncate text-base font-semibold text-text-primary">{agent?.display_name || "Agent"}</h3>
+              </div>
+              <p className="mt-1 text-xs text-text-secondary">{t.agentDetails}</p>
             </div>
-            <p className="mt-1 text-xs text-text-secondary">{t.agentDetails}</p>
           </div>
           <button
             onClick={onClose}
