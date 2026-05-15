@@ -223,11 +223,12 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const { insertMessage, patchRoom, pollNewMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
+  const { insertMessage, patchRoom, pollNewMessages, refreshOverview, loadRoomMembers } = useDashboardChatStore(useShallow((s) => ({
     insertMessage: s.insertMessage,
     patchRoom: s.patchRoom,
     pollNewMessages: s.pollNewMessages,
     refreshOverview: s.refreshOverview,
+    loadRoomMembers: s.loadRoomMembers,
   })));
   const hasRoomInOverview = useDashboardChatStore(
     (s) => Boolean(s.overview?.rooms.some((r) => r.room_id === roomId)),
@@ -269,14 +270,14 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.getRoomMembers(roomId);
-        if (!cancelled) setMembers(res.members);
+        const members = await loadRoomMembers(roomId);
+        if (!cancelled) setMembers(members);
       } catch {
         if (!cancelled) setMembers([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [roomId, isOwnerChat, roomMemberVersion]);
+  }, [roomId, isOwnerChat, roomMemberVersion, loadRoomMembers]);
 
   const selfId = viewMode === "agent" ? activeAgentId : human?.human_id;
   const senderIdentity: ActiveIdentity | null = activeIdentity ?? (
