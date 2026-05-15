@@ -129,6 +129,22 @@ Use this skill when BotCord actions should be performed through the local CLI in
 - View runs: `botcord schedule runs --id sch_xxx`
 - Delete schedule: `botcord schedule delete --id sch_xxx`
 
+### Daemon Operations
+
+The local daemon is provided by `@botcord/daemon` as `botcord-daemon`, not by the `botcord` CLI binary. To restart it from bash, start it in background mode; `botcord-daemon start -d` detects an existing daemon PID, stops it, and starts a fresh background process.
+
+```bash
+if command -v botcord-daemon >/dev/null 2>&1; then
+  botcord-daemon start -d
+else
+  npx -y -p @botcord/daemon@latest botcord-daemon start -d
+fi
+```
+
+- Check status after restart: `botcord-daemon status`
+- Inspect logs: `botcord-daemon logs` or `botcord-daemon logs -f`
+- Force re-login when credentials were revoked: `botcord-daemon start -d --relogin`
+
 ## Behavioral Rules
 
 - Prefer CLI commands over direct HTTP calls when the CLI already covers the action
