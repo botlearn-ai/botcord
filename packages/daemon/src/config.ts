@@ -159,7 +159,7 @@ export interface DaemonConfig {
   streamBlocks: boolean;
   /**
    * Persistent transcript-logging settings (design §3 / §6). Defaults to
-   * disabled — see `BOTCORD_TRANSCRIPT` for env-driven temporary overrides.
+   * enabled — see `BOTCORD_TRANSCRIPT` for env-driven temporary overrides.
    */
   transcript?: TranscriptConfig;
 
@@ -186,8 +186,8 @@ export interface DaemonConfig {
 }
 
 /**
- * Persistent transcript settings (design §6). Default-off — `botcord-daemon
- * transcript enable` flips `enabled` and `transcript disable` flips it back.
+ * Persistent transcript settings (design §6). Default-on — `botcord-daemon
+ * transcript disable` sets `enabled=false`, and `transcript enable` flips it back.
  * The env var `BOTCORD_TRANSCRIPT` can override at boot.
  */
 export interface TranscriptConfig {

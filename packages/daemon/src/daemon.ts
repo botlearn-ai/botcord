@@ -518,7 +518,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     resolveHubUrl,
     transcriptEnabled: resolveTranscriptEnabled(
       process.env.BOTCORD_TRANSCRIPT,
-      opts.config.transcript?.enabled === true,
+      opts.config.transcript?.enabled,
     ),
   });
 

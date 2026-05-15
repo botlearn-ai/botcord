@@ -20,6 +20,7 @@ export type AcpTraceStream =
   | "child_error"
   | "stderr"
   | "stdout_non_json"
+  | "turn_context"
   | "rpc_in"
   | "rpc_out";
 
@@ -37,6 +38,10 @@ export interface AcpTraceMeta {
 
 export interface AcpTraceEvent {
   stream: AcpTraceStream;
+  turnId?: string;
+  messageId?: string;
+  roomId?: string;
+  topicId?: string | null;
   direction?: "in" | "out";
   pid?: number;
   id?: number | string;
@@ -132,9 +137,10 @@ function writeAcpTrace(
       ts: new Date().toISOString(),
       runtime: meta.runtime,
       accountId: meta.accountId,
-      turnId: meta.turnId,
-      roomId: meta.roomId,
-      topicId: meta.topicId ?? undefined,
+      turnId: event.turnId ?? meta.turnId,
+      messageId: event.messageId,
+      roomId: event.roomId ?? meta.roomId,
+      topicId: event.topicId ?? meta.topicId ?? undefined,
       gatewayName: meta.gatewayName,
       gatewayUrl: meta.gatewayUrl,
       hermesProfile: meta.hermesProfile,

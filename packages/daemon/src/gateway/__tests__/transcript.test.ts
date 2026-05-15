@@ -1,5 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,9 @@ import { Dispatcher, type RuntimeFactory } from "../dispatcher.js";
 import { SessionStore } from "../session-store.js";
 import {
   createTranscriptWriter,
+  cleanupTranscriptFiles,
   resolveTranscriptEnabled,
+  TRANSCRIPT_RETENTION_MS,
   TRANSCRIPT_TEXT_LIMIT,
   truncateTextField,
   type TranscriptRecord,
@@ -239,6 +241,10 @@ describe("resolveTranscriptEnabled", () => {
     expect(resolveTranscriptEnabled("yes", true)).toBe(true);
     expect(resolveTranscriptEnabled("yes", false)).toBe(false);
   });
+  it("defaults on when env and config are both unset", () => {
+    expect(resolveTranscriptEnabled(undefined, undefined)).toBe(true);
+    expect(resolveTranscriptEnabled("yes", undefined)).toBe(true);
+  });
 });
 
 describe("truncateTextField", () => {
@@ -458,6 +464,25 @@ describe("Dispatcher transcript integration", () => {
     expect(files.length).toBeGreaterThan(1);
     expect(files.some((f) => /_default\.\d{8}-\d{6}\.jsonl$/.test(f))).toBe(true);
     expect(files).toContain("_default.jsonl");
+  });
+
+  it("cleans transcript files older than the retention window", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "transcript-clean-"));
+    cleanups.push(() => rm(tmp, { recursive: true, force: true }));
+    const oldFile = transcriptFilePath(tmp, "ag_me", "rm_old", null);
+    const freshFile = transcriptFilePath(tmp, "ag_me", "rm_fresh", null);
+    await mkdir(path.dirname(oldFile), { recursive: true });
+    await mkdir(path.dirname(freshFile), { recursive: true });
+    await writeFile(oldFile, "{}\n", { mode: 0o600 });
+    await writeFile(freshFile, "{}\n", { mode: 0o600 });
+    const oldDate = new Date(Date.now() - TRANSCRIPT_RETENTION_MS - 60_000);
+    utimesSync(oldFile, oldDate, oldDate);
+
+    const removed = cleanupTranscriptFiles(tmp, Date.now() - TRANSCRIPT_RETENTION_MS);
+
+    expect(removed).toBe(1);
+    expect(existsSync(oldFile)).toBe(false);
+    expect(existsSync(freshFile)).toBe(true);
   });
 
   it("disabled writer does not create files", async () => {

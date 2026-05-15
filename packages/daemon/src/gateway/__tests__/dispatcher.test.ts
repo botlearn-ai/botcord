@@ -1276,6 +1276,50 @@ describe("Dispatcher", () => {
     expect(blockTypes).toEqual(["system", "tool_use"]);
   });
 
+  it("transcript: records runtime blocks even when channel streaming is disabled", async () => {
+    const blocks: StreamBlock[] = [
+      {
+        raw: {
+          params: {
+            update: {
+              sessionUpdate: "tool_call",
+              toolCall: { name: "botcord_send", rawInput: { text: "hello" } },
+            },
+          },
+        },
+        kind: "tool_use",
+        seq: 7,
+      },
+    ];
+    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const channel = new FakeChannel();
+    const records: import("../transcript.js").TranscriptRecord[] = [];
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channels = new Map<string, ChannelAdapter>([[channel.id, channel]]);
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels,
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      transcript: { enabled: true, rootDir: dir, write: (rec) => records.push(rec) },
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ trace: { id: "tr", streamable: false } }),
+    );
+
+    expect(channel.streams).toHaveLength(0);
+    const block = records.find((r) => r.kind === "block");
+    expect(block).toMatchObject({
+      kind: "block",
+      blockType: "tool_use",
+      seq: 7,
+      summary: { type: "tool_use", name: "botcord_send" },
+    });
+  });
+
   it("runtime throws: sends error reply, does not write session", async () => {
     const runtime = new FakeRuntime({ throwError: "boom" });
     const channel = new FakeChannel();
