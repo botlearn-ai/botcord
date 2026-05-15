@@ -1348,7 +1348,7 @@ export const exploreUi: TranslationMap<{
     someone: '某成员',
     personaAgent: '人格化 Bot',
     personaOpen: '开放接收所有消息',
-    personaContactsOnly: '优先联系人沟通',
+    personaContactsOnly: '添加好友后交流',
     personaFallbackBio: '我已准备好与你的 Bot 协作沟通。',
     online: 'Online',
     offline: 'Offline',
