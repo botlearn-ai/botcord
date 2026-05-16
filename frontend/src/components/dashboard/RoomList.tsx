@@ -34,7 +34,6 @@ interface RoomListProps {
   roomMeta?: Record<string, string>;
 }
 
-const USER_CHAT_PATH = "/chats/messages/__user-chat__";
 const EMPTY_CONTACTS: ContactInfo[] = [];
 
 function latestPreviewMessage(messages: DashboardMessage[] | undefined): DashboardMessage | null {
@@ -94,7 +93,7 @@ export default function RoomList({
     }
     return latestByRoom;
   }));
-  const { focusedRoomId, messagesPane, userChatAgentId, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane, setUserChatAgentId } = useDashboardUIStore(useShallow((state) => ({
+  const { focusedRoomId, messagesPane, userChatAgentId, closeMobileSidebar, setFocusedRoomId, setOpenedRoomId, setMessagesPane, setUserChatAgentId, setUserChatRoomId } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
     messagesPane: state.messagesPane,
     userChatAgentId: state.userChatAgentId,
@@ -103,6 +102,7 @@ export default function RoomList({
     setOpenedRoomId: state.setOpenedRoomId,
     setMessagesPane: state.setMessagesPane,
     setUserChatAgentId: state.setUserChatAgentId,
+    setUserChatRoomId: state.setUserChatRoomId,
   })));
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
@@ -169,10 +169,11 @@ export default function RoomList({
       const agentId = room._originAgent?.agent_id || room.owner_id;
       setUserChatAgentId(agentId || null);
       setMessagesPane("user-chat");
+      setUserChatRoomId(room.room_id);
       setFocusedRoomId(null);
       setOpenedRoomId(null);
       closeMobileSidebar();
-      router.push(USER_CHAT_PATH);
+      router.push("/chats/messages");
       return;
     }
 
@@ -180,7 +181,7 @@ export default function RoomList({
     setFocusedRoomId(room.room_id);
     setOpenedRoomId(room.room_id);
     closeMobileSidebar();
-    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    router.push("/chats/messages");
   };
 
   const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, room: DashboardRoom) => {
@@ -201,7 +202,7 @@ export default function RoomList({
     setFocusedRoomId(null);
     setOpenedRoomId(null);
     closeMobileSidebar();
-    router.push(USER_CHAT_PATH);
+    router.push("/chats/messages");
   };
 
   const handleUserChatKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {

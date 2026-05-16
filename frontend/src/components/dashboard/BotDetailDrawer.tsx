@@ -201,7 +201,7 @@ export default function BotDetailDrawer() {
     } catch (error) {
       console.error("[BotDetailDrawer] getUserChatRoom failed:", error);
     }
-    router.push("/chats/messages/__user-chat__");
+    router.push("/chats/messages");
   };
 
   // Jump to a conversation visible from THIS bot's perspective. Sets BOT 监控
@@ -210,7 +210,12 @@ export default function BotDetailDrawer() {
     setBotDetailAgentId(null);
     setMessagesFilter("bots-all");
     setMessagesBotScope(bot.agent_id);
-    const path = roomId ? `/chats/messages/${encodeURIComponent(roomId)}` : "/chats/messages";
+    const path = "/chats/messages";
+    if (roomId) {
+      setMessagesPane("room");
+      setFocusedRoomId(roomId);
+      setOpenedRoomId(roomId);
+    }
     startPrimaryNavigation("messages", path);
     router.push(path);
   };

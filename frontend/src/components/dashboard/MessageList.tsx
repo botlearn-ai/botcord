@@ -321,11 +321,13 @@ export default function MessageList() {
     setOpenedTopicId: state.setOpenedTopicId,
   })));
   const roomId = openedRoomId;
-  const { messages, isRoomMessagesLoading, hasMore, loadMoreMessages, overview, roomMembers, loadRoomMembers } = useDashboardChatStore(
+  const { messages, hasMessagesCache, isRoomMessagesLoading, hasMore, loadRoomMessages, loadMoreMessages, overview, roomMembers, loadRoomMembers } = useDashboardChatStore(
     useShallow((state) => ({
       messages: roomId ? (state.messages[roomId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
+      hasMessagesCache: roomId ? Object.prototype.hasOwnProperty.call(state.messages, roomId) : false,
       isRoomMessagesLoading: roomId ? (state.messagesLoading[roomId] ?? false) : false,
       hasMore: roomId ? (state.messagesHasMore[roomId] ?? false) : false,
+      loadRoomMessages: state.loadRoomMessages,
       loadMoreMessages: state.loadMoreMessages,
       overview: state.overview,
       roomMembers: roomId ? (state.roomMembersByRoom[roomId] ?? EMPTY_ROOM_MEMBERS) : EMPTY_ROOM_MEMBERS,
@@ -377,6 +379,13 @@ export default function MessageList() {
 
     return candidates;
   }, [overview?.agent, overview?.contacts, roomMembers]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    if (!hasMessagesCache && !isRoomMessagesLoading) {
+      void loadRoomMessages(roomId);
+    }
+  }, [roomId, hasMessagesCache, isRoomMessagesLoading, loadRoomMessages]);
 
   useEffect(() => {
     if (!roomId) return;

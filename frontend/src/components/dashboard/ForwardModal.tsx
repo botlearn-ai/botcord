@@ -35,7 +35,15 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const { setOpenedRoomId } = useDashboardUIStore(useShallow((s) => ({ setOpenedRoomId: s.setOpenedRoomId })));
+  const {
+    setFocusedRoomId,
+    setOpenedRoomId,
+    setMessagesPane,
+  } = useDashboardUIStore(useShallow((s) => ({
+    setFocusedRoomId: s.setFocusedRoomId,
+    setOpenedRoomId: s.setOpenedRoomId,
+    setMessagesPane: s.setMessagesPane,
+  })));
 
   const { ownedAgents, viewMode } = useDashboardSessionStore(
     useShallow((s) => ({ ownedAgents: s.ownedAgents, viewMode: s.viewMode }))
@@ -116,8 +124,10 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
       // Navigate to the forwarded conversation — if exactly one room target, open it directly
       if (openRoomIds.length === 1) {
         const roomId = openRoomIds[0];
+        setMessagesPane("room");
+        setFocusedRoomId(roomId);
         setOpenedRoomId(roomId);
-        router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+        router.push("/chats/messages");
       }
       setTimeout(onClose, 800);
     } catch (err: unknown) {

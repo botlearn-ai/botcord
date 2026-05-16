@@ -72,7 +72,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
     setMessagesFilter("self-all");
     setFocusedRoomId(room.room_id);
     setOpenedRoomId(room.room_id);
-    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    router.push("/chats/messages");
   };
 
   useEffect(() => {
@@ -97,17 +97,19 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
     setJoiningId(room.room_id);
     await joinRoom(room.room_id);
     setJoiningId(null);
+    setMessagesPane("room");
     setFocusedRoomId(room.room_id);
     setOpenedRoomId(room.room_id);
     setSidebarTab("messages");
-    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    router.push("/chats/messages");
   };
 
   const handleOpenRoom = (room: PublicRoom) => {
+    setMessagesPane("room");
     setFocusedRoomId(room.room_id);
     setOpenedRoomId(room.room_id);
     setSidebarTab("messages");
-    router.push(`/chats/messages/${encodeURIComponent(room.room_id)}`);
+    router.push("/chats/messages");
   };
 
   if (compact) {
