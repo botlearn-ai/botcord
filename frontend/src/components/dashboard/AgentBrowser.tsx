@@ -41,11 +41,13 @@ export default function AgentBrowser() {
     toggleRightPanel,
     setFocusedRoomId,
     setOpenedRoomId,
+    setMessagesPane,
   } = useDashboardUIStore(useShallow((state) => ({
     focusedRoomId: state.focusedRoomId,
     toggleRightPanel: state.toggleRightPanel,
     setFocusedRoomId: state.setFocusedRoomId,
     setOpenedRoomId: state.setOpenedRoomId,
+    setMessagesPane: state.setMessagesPane,
   })));
   const {
     messages,
@@ -167,9 +169,10 @@ export default function AgentBrowser() {
   };
 
   const openRoomConversation = (roomId: string) => {
+    setMessagesPane("room");
     setFocusedRoomId(roomId);
     setOpenedRoomId(roomId);
-    router.push(`/chats/messages/${encodeURIComponent(roomId)}`);
+    router.push("/chats/messages");
     if (!messages[roomId]) {
       void loadRoomMessages(roomId);
     }

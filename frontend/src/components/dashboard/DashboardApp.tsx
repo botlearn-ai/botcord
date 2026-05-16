@@ -286,15 +286,21 @@ export default function DashboardApp() {
 
       if (normalizedTab === "messages" || normalizedTab === "user-chat") {
         const roomIdFromSubtab = subtab && subtab !== USER_CHAT_SUBTAB ? decodeRoomIdFromPath(subtab) : null;
+        const agentIdFromQuery = searchParams.get("agent_id");
+        const paneFromQuery = searchParams.get("pane");
+        const shouldNormalizeMessagesUrl =
+          pathname !== "/chats/messages"
+          || searchParams.has("pane")
+          || searchParams.has("agent_id");
         const opensUserChat =
           tab === "user-chat"
+          || paneFromQuery === "user-chat"
           || subtab === USER_CHAT_SUBTAB
           || (roomIdFromSubtab !== null && (
             roomIdFromSubtab === uiStore.userChatRoomId
             || roomIdFromSubtab.startsWith("rm_oc_")
           ));
         if (opensUserChat) {
-          const agentIdFromQuery = searchParams.get("agent_id");
           if (agentIdFromQuery && uiStore.userChatAgentId !== agentIdFromQuery) {
             uiStore.setUserChatAgentId(agentIdFromQuery);
           }
@@ -304,11 +310,14 @@ export default function DashboardApp() {
           if (uiStore.messagesPane !== "user-chat") uiStore.setMessagesPane("user-chat");
           if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
           if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
+          if (shouldNormalizeMessagesUrl) {
+            router.replace("/chats/messages");
+          }
           return;
         }
-        if (uiStore.messagesPane !== "room") uiStore.setMessagesPane("room");
         const roomIdFromPath = subtab ? decodeRoomIdFromPath(subtab) : null;
         if (roomIdFromPath) {
+          if (uiStore.messagesPane !== "room") uiStore.setMessagesPane("room");
           if (uiStore.focusedRoomId !== roomIdFromPath) uiStore.setFocusedRoomId(roomIdFromPath);
           if (uiStore.openedRoomId !== roomIdFromPath) uiStore.setOpenedRoomId(roomIdFromPath);
 
@@ -319,6 +328,9 @@ export default function DashboardApp() {
           if (!knownRoom) {
             void chatStore.loadPublicRoomDetail(roomIdFromPath);
           }
+          if (shouldNormalizeMessagesUrl) {
+            router.replace("/chats/messages");
+          }
           if (chatStore.messagesLoading[roomIdFromPath]) {
             return;
           }
@@ -327,9 +339,6 @@ export default function DashboardApp() {
           } else {
             void chatStore.pollNewMessages(roomIdFromPath);
           }
-        } else {
-          if (uiStore.focusedRoomId !== null) uiStore.setFocusedRoomId(null);
-          if (uiStore.openedRoomId !== null) uiStore.setOpenedRoomId(null);
         }
       }
     } else if (uiStore.sidebarTab !== "home") {
@@ -358,6 +367,7 @@ export default function DashboardApp() {
     uiStore.setUserChatAgentId,
     uiStore.setExploreView,
     uiStore.setContactsView,
+    router,
     searchParams,
     chatStore.getRoomSummary,
     chatStore.discoverRooms,
@@ -892,7 +902,7 @@ export default function DashboardApp() {
     if (cachedRoom) {
       uiStore.setFocusedRoomId(cachedRoom.room_id);
       uiStore.setOpenedRoomId(cachedRoom.room_id);
-      router.push(`/chats/messages/${encodeURIComponent(cachedRoom.room_id)}`);
+      router.push("/chats/messages");
       return;
     }
 
@@ -909,13 +919,13 @@ export default function DashboardApp() {
       }
       uiStore.setFocusedRoomId(room_id);
       uiStore.setOpenedRoomId(room_id);
-      router.push(`/chats/messages/${encodeURIComponent(room_id)}`);
+      router.push("/chats/messages");
     } catch (error) {
       console.error("[DashboardApp] openDmRoom failed:", error);
       if (predictedRoomId) {
         uiStore.setFocusedRoomId(predictedRoomId);
         uiStore.setOpenedRoomId(predictedRoomId);
-        router.push(`/chats/messages/${encodeURIComponent(predictedRoomId)}`);
+        router.push("/chats/messages");
       } else {
         router.push("/chats/messages");
       }
@@ -948,7 +958,7 @@ export default function DashboardApp() {
         }).catch((error) => {
           console.error("[DashboardApp] getUserChatRoom failed:", error);
         });
-        router.push(`/chats/messages/${USER_CHAT_SUBTAB}`);
+        router.push("/chats/messages");
       })();
       return;
     }

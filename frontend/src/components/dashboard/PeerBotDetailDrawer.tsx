@@ -30,10 +30,20 @@ function formatDate(iso?: string): string {
  */
 export default function PeerBotDetailDrawer() {
   const router = useRouter();
-  const { peerBotAgentId, setPeerBotAgentId, startPrimaryNavigation } = useDashboardUIStore(
+  const {
+    peerBotAgentId,
+    setPeerBotAgentId,
+    setFocusedRoomId,
+    setOpenedRoomId,
+    setMessagesPane,
+    startPrimaryNavigation,
+  } = useDashboardUIStore(
     useShallow((s) => ({
       peerBotAgentId: s.peerBotAgentId,
       setPeerBotAgentId: s.setPeerBotAgentId,
+      setFocusedRoomId: s.setFocusedRoomId,
+      setOpenedRoomId: s.setOpenedRoomId,
+      setMessagesPane: s.setMessagesPane,
       startPrimaryNavigation: s.startPrimaryNavigation,
     })),
   );
@@ -74,7 +84,15 @@ export default function PeerBotDetailDrawer() {
       (r) => r.owner_id === agentId && (r.peer_type ?? r.owner_type) === "agent",
     );
     setPeerBotAgentId(null);
-    const path = dm ? `/chats/messages/${encodeURIComponent(dm.room_id)}` : "/chats/messages";
+    const path = "/chats/messages";
+    setMessagesPane("room");
+    if (dm) {
+      setFocusedRoomId(dm.room_id);
+      setOpenedRoomId(dm.room_id);
+    } else {
+      setFocusedRoomId(null);
+      setOpenedRoomId(null);
+    }
     startPrimaryNavigation("messages", path);
     router.push(path);
   };

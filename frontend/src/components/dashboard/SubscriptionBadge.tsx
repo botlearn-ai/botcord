@@ -69,8 +69,17 @@ export default function SubscriptionBadge({
   const { joinRoom } = useDashboardChatStore(useShallow((state) => ({
     joinRoom: state.joinRoom,
   })));
-  const { setSidebarTab, startPrimaryNavigation } = useDashboardUIStore(useShallow((state) => ({
+  const {
+    setSidebarTab,
+    setFocusedRoomId,
+    setOpenedRoomId,
+    setMessagesPane,
+    startPrimaryNavigation,
+  } = useDashboardUIStore(useShallow((state) => ({
     setSidebarTab: state.setSidebarTab,
+    setFocusedRoomId: state.setFocusedRoomId,
+    setOpenedRoomId: state.setOpenedRoomId,
+    setMessagesPane: state.setMessagesPane,
     startPrimaryNavigation: state.startPrimaryNavigation,
   })));
   const {
@@ -188,7 +197,10 @@ export default function SubscriptionBadge({
       }
       if (roomId) {
         await joinRoom(roomId);
-        const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+        const path = "/chats/messages";
+        setMessagesPane("room");
+        setFocusedRoomId(roomId);
+        setOpenedRoomId(roomId);
         startPrimaryNavigation("messages", path);
         router.push(path);
       }

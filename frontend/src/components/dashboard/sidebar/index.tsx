@@ -40,7 +40,6 @@ import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 
-const USER_CHAT_ROUTE = "/chats/messages/__user-chat__";
 
 function formatBadgeCount(count: number): string {
   return count > 99 ? "99+" : String(count);
@@ -297,14 +296,9 @@ export default function Sidebar({
       showLoginModal();
       return;
     }
-    const openedRoomPath = uiStore.openedRoomId
-      ? `/chats/messages/${encodeURIComponent(uiStore.openedRoomId)}`
-      : uiStore.messagesPane === "user-chat"
-        ? USER_CHAT_ROUTE
-        : "/chats/messages";
     const pathByTab: Record<typeof tab, string> = {
       home: "/chats/home",
-      messages: openedRoomPath,
+      messages: "/chats/messages",
       contacts: `/chats/contacts/${uiStore.contactsView}`,
       explore: `/chats/explore/${uiStore.exploreView}`,
       wallet: "/chats/wallet",
@@ -416,7 +410,9 @@ export default function Sidebar({
             setShowCreateRoom(false);
             uiStore.setMessagesPane("room");
             uiStore.setMessagesFilter("self-all");
-            const path = `/chats/messages/${encodeURIComponent(room.room_id)}`;
+            uiStore.setFocusedRoomId(room.room_id);
+            uiStore.setOpenedRoomId(room.room_id);
+            const path = "/chats/messages";
             uiStore.startPrimaryNavigation("messages", path);
             onMobileSecondaryClose?.();
             startTransition(() => { router.push(path); });

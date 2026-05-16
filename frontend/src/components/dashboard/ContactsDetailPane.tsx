@@ -220,7 +220,7 @@ export default function ContactsDetailPane() {
     setUserChatAgentId(null);
     setFocusedRoomId(roomId);
     setOpenedRoomId(roomId);
-    const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+    const path = "/chats/messages";
     startPrimaryNavigation("messages", path);
     router.push(path);
   };
@@ -240,7 +240,7 @@ export default function ContactsDetailPane() {
         setUserChatRoomId(room.room_id);
         setFocusedRoomId(null);
         setOpenedRoomId(null);
-        const path = `/chats/messages/${encodeURIComponent(room.room_id)}`;
+        const path = "/chats/messages";
         startPrimaryNavigation("messages", path);
         router.push(path);
         return;

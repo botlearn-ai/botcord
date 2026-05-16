@@ -31,9 +31,18 @@ export default function PublicRoomList() {
     loadPublicRooms: state.loadPublicRooms,
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
-  const { focusedRoomId, startPrimaryNavigation } = useDashboardUIStore(
+  const {
+    focusedRoomId,
+    setFocusedRoomId,
+    setOpenedRoomId,
+    setMessagesPane,
+    startPrimaryNavigation,
+  } = useDashboardUIStore(
     useShallow((state) => ({
       focusedRoomId: state.focusedRoomId,
+      setFocusedRoomId: state.setFocusedRoomId,
+      setOpenedRoomId: state.setOpenedRoomId,
+      setMessagesPane: state.setMessagesPane,
       startPrimaryNavigation: state.startPrimaryNavigation,
     })),
   );
@@ -56,7 +65,10 @@ export default function PublicRoomList() {
 
   const handleSelect = (roomId: string) => {
     const room = publicRooms.find((item) => item.room_id === roomId);
-    const path = `/chats/messages/${encodeURIComponent(roomId)}`;
+    const path = "/chats/messages";
+    setMessagesPane("room");
+    setFocusedRoomId(roomId);
+    setOpenedRoomId(roomId);
     startPrimaryNavigation("messages", path);
     if (room) {
       addRecentPublicRoom(room);
