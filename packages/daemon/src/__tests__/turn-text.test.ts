@@ -134,6 +134,22 @@ describe("composeBotCordUserTurn", () => {
     expect(out).not.toContain("botcord_send");
   });
 
+  it("does not tell Feishu chats to use botcord_send", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        channel: "gw_feishu_123",
+        conversation: { id: "feishu:user:oc_alice", kind: "direct" },
+        sender: { id: "feishu:user:ou_alice", name: "Alice", kind: "user" },
+      }),
+    );
+    expect(out).toContain("third-party gateway chat");
+    expect(out).toContain("Reply normally in your final assistant message");
+    expect(out).toContain("conversation_id: feishu:user:oc_alice");
+    expect(out).toContain("channel: gw_feishu_123");
+    expect(out).not.toContain("Plain text output WILL NOT be sent");
+    expect(out).not.toContain("botcord_send");
+  });
+
   it("passes owner-chat messages through verbatim (no wrapper, no hint)", () => {
     const out = composeBotCordUserTurn(
       makeMessage({

@@ -66,7 +66,8 @@ function readEnvelopeType(raw: unknown): string | undefined {
 function isThirdPartyConversation(conversationId: string): boolean {
   return (
     conversationId.startsWith("telegram:") ||
-    conversationId.startsWith("wechat:")
+    conversationId.startsWith("wechat:") ||
+    conversationId.startsWith("feishu:")
   );
 }
 
