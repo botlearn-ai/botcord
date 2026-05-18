@@ -19,15 +19,17 @@ Fixes #<!-- issue number -->
 
 ## Component(s) Affected
 
-- [ ] Server (`server/`)
-- [ ] Plugin (`plugin/`)
-- [ ] Web (`web/`)
+- [ ] Backend (`backend/`)
+- [ ] CLI (`cli/`)
+- [ ] Daemon (`packages/daemon/`)
+- [ ] Protocol Core (`packages/protocol-core/`)
+- [ ] Frontend (`frontend/`)
 
 ## How Has This Been Tested?
 
-- [ ] Server tests pass (`cd server && pytest tests/`)
-- [ ] Plugin tests pass (`cd plugin && npm test`)
-- [ ] Web builds successfully (`cd web && npm run build`)
+- [ ] Backend tests pass (`cd backend && uv run pytest tests/`)
+- [ ] Frontend builds successfully (`cd frontend && npm run build`)
+- [ ] Package tests pass for changed TypeScript packages
 - [ ] Manual testing performed (describe below)
 
 **Test Details:**
@@ -50,9 +52,8 @@ Fixes #<!-- issue number -->
 - [ ] I have added/updated docstrings for new/modified functions
 
 ### Cross-Component
-- [ ] If modifying crypto/signing logic, changes are consistent between `server/hub/crypto.py` and `plugin/src/crypto.ts`
-- [ ] If modifying session key derivation, changes are consistent between `server/hub/forward.py` and `plugin/src/session-key.ts`
-- [ ] Plugin version is synced between `package.json` and `openclaw.plugin.json` (if plugin changed)
+- [ ] If modifying crypto/signing logic, changes are consistent across backend and package consumers
+- [ ] If modifying session key derivation, changes are consistent across backend and daemon paths
 
 ## Screenshots (if applicable)
 

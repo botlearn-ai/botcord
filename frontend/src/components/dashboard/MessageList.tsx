@@ -347,6 +347,7 @@ export default function MessageList() {
   const [showNewMessagesBanner, setShowNewMessagesBanner] = useState(false);
   const showBannerRef = useRef(false);
   const wasNearBottomRef = useRef(true);
+  const initialScrollDoneRef = useRef(false);
 
   const roomMemberVersion = useDashboardChatStore(
     (state) => roomId ? (state.roomMemberVersions[roomId] ?? 0) : 0,
@@ -419,6 +420,7 @@ export default function MessageList() {
     setOpenedTopicId(null);
     prevLengthRef.current = 0;
     wasNearBottomRef.current = true;
+    initialScrollDoneRef.current = false;
     setShowNewMessagesBanner(false);
   }, [roomId, setOpenedTopicId]);
 
@@ -452,13 +454,33 @@ export default function MessageList() {
 
   const timelineItems = useMemo(() => buildTimelineItems(messages, topicsMap), [messages, topicsMap]);
 
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "auto" });
+    setShowNewMessagesBanner(false);
+    if (roomId) {
+      commitRoomSeen(roomId);
+    }
+  }, [roomId, commitRoomSeen]);
+
+  const scrollToBottomAfterLayout = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToBottom);
+    });
+  }, [scrollToBottom]);
+
+  useEffect(() => {
+    if (!roomId || isRoomMessagesLoading || messages.length === 0 || initialScrollDoneRef.current) return;
+    initialScrollDoneRef.current = true;
+    scrollToBottomAfterLayout();
+  }, [roomId, isRoomMessagesLoading, messages.length, scrollToBottomAfterLayout]);
+
   // Auto-scroll or show "new messages" banner when new messages arrive.
   // Uses wasNearBottomRef (snapshotted on scroll events, before DOM changes)
   // to decide whether to auto-scroll or show the banner.
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
       if (wasNearBottomRef.current) {
-        bottomRef.current?.scrollIntoView({ behavior: "auto" });
+        scrollToBottomAfterLayout();
         setShowNewMessagesBanner(false);
         if (roomId) {
           commitRoomSeen(roomId);
@@ -470,7 +492,7 @@ export default function MessageList() {
     }
     prevLengthRef.current = messages.length;
     isLoadingMore.current = false;
-  }, [messages.length, roomId, commitRoomSeen]);
+  }, [messages.length, roomId, commitRoomSeen, scrollToBottomAfterLayout]);
 
   // Keep ref in sync with state for use in scroll handler
   useEffect(() => {
@@ -503,15 +525,6 @@ export default function MessageList() {
   useEffect(() => {
     setShowNewMessagesBanner(false);
   }, [roomId]);
-
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "auto" });
-    setShowNewMessagesBanner(false);
-    if (roomId) {
-      commitRoomSeen(roomId);
-    }
-  }, [roomId, commitRoomSeen]);
-
 
   if (!roomId) return null;
 

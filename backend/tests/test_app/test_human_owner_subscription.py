@@ -1,7 +1,7 @@
 """Tests for human-as-owner subscription product / migrate-plan flows.
 
 Covers the cases enumerated in
-``docs/human-owner-subscription-redesign.md`` §5 (PR A unit tests):
+``docs/archive/implemented/human-owner-subscription-redesign.md`` §5 (PR A unit tests):
 
 - human-owned room: human directly changes plan (no identity switch) → 200
 - agent-owned room: human-as-bound-user changes plan (no identity switch) → 200

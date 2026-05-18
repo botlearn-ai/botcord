@@ -201,7 +201,7 @@ async def test_openclaw_install_claim_happy_path(
     agent = (
         await db_session.execute(select(Agent).where(Agent.agent_id == body["agent"]["id"]))
     ).scalar_one()
-    assert agent.hosting_kind == "plugin"
+    assert agent.hosting_kind == "openclaw"
     assert agent.openclaw_host_id == body["host"]["host_instance_id"]
     assert agent.user_id == fresh_user["user_id"]
     assert agent.is_default is True  # first agent for the user
@@ -295,7 +295,7 @@ async def test_openclaw_host_revoke_unbinds_all_agents_and_promotes_one_default(
         display_name="B",
         user_id=fresh_user["user_id"],
         is_default=False,
-        hosting_kind="plugin",
+        hosting_kind="openclaw",
         openclaw_host_id=host_id,
         status="active",
     )
@@ -377,7 +377,7 @@ async def test_openclaw_provision_rejects_wrong_agent_in_ack(
         display_name="stranger",
         user_id=stranger_id,
         is_default=False,
-        hosting_kind="plugin",
+        hosting_kind="openclaw",
         openclaw_host_id=None,
         status="active",
     )

@@ -402,7 +402,7 @@ async def test_agent_reply_to_owner_chat_creates_record(
         (owner_human_id, ParticipantType.human),
     }
 
-    # Agent sends a reply back to this room via /hub/send (simulating plugin reply)
+    # Agent sends a reply back to this room via /hub/send
     envelope = _build_envelope(
         sk=sk,
         key_id=key_id,
@@ -429,7 +429,7 @@ async def test_agent_reply_to_owner_chat_creates_record(
     assert record.sender_id == agent_id
     assert record.receiver_id == owner_human_id
     # Crucially: state is 'delivered' (not 'queued') so it never appears in
-    # inbox polling — the plugin must not re-process its own reply.
+    # inbox polling — the agent must not re-process its own reply.
     assert record.state.value == "delivered"
 
     # Verify the message does NOT appear in inbox (polling mode safety)

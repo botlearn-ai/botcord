@@ -3362,7 +3362,7 @@ async def send_chat_message(
     """Send a message from the dashboard user to their own agent.
 
     Creates a MessageRecord with source_type='dashboard_user_chat' and delivers
-    it into the agent's inbox so the plugin can pick it up.
+    it into the agent's inbox so the connected agent can pick it up.
     """
     import time
     import uuid
@@ -3447,7 +3447,7 @@ async def send_chat_message(
 
     await db.commit()
 
-    # Notify inbox listeners so the plugin picks up the message
+    # Notify inbox listeners so connected agents pick up the message
     await notify_inbox(
         agent_id,
         db=db,

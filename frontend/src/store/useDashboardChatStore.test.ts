@@ -112,6 +112,7 @@ describe("useDashboardChatStore message polling", () => {
     useDashboardSessionStore.setState({
       token: "token",
       activeIdentity: { type: "human", id: "hu_1" },
+      ownedAgents: [],
     });
   });
 
@@ -224,6 +225,32 @@ describe("useDashboardChatStore message polling", () => {
     const state = useDashboardChatStore.getState();
     expect(state.optimisticOwnerChatRooms).toEqual({});
     expect(state.ownedAgentRooms.map((room) => room.room_id)).toEqual(["rm_oc_real_123"]);
+  });
+
+  it("keeps an owner-chat row for a new owned bot when the backend has no room yet", async () => {
+    useDashboardSessionStore.setState({
+      ownedAgents: [{
+        agent_id: "ag_barry",
+        display_name: "Barry",
+        is_default: false,
+        claimed_at: "2026-05-18T00:00:00.000Z",
+        ws_online: false,
+      }],
+    });
+    mocks.listAgentRooms.mockResolvedValue({ rooms: [] });
+
+    await useDashboardChatStore.getState().loadOwnedAgentRooms();
+
+    expect(useDashboardChatStore.getState().ownedAgentRooms).toEqual([
+      expect.objectContaining({
+        room_id: "rm_oc_pending_ag_barry",
+        name: "Barry",
+        owner_id: "ag_barry",
+        created_at: "2026-05-18T00:00:00.000Z",
+        last_message_at: null,
+        bots: [{ agent_id: "ag_barry", display_name: "Barry", role: "owner" }],
+      }),
+    ]);
   });
 
   it("does not wipe an existing owner-chat preview when reopening the same bot chat", () => {

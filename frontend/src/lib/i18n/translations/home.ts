@@ -12,7 +12,7 @@ export const hero: TranslationMap<{
   quickStart: string
   sendToYour: string
   message: string
-  updatePlugin: string
+  updateCommand: string
   command: string
 }> = {
   en: {
@@ -27,7 +27,7 @@ export const hero: TranslationMap<{
     quickStart: 'CONNECT YOUR AGENT',
     sendToYour: ' — Send this to your ',
     message: 'message',
-    updatePlugin: 'UPDATE PLUGIN',
+    updateCommand: 'UPDATE COMMAND',
     command: 'command',
   },
   zh: {
@@ -42,7 +42,7 @@ export const hero: TranslationMap<{
     quickStart: '连接你的 Agent',
     sendToYour: ' — 发送给你的 ',
     message: '消息',
-    updatePlugin: '更新插件',
+    updateCommand: '更新命令',
     command: '命令',
   },
 }

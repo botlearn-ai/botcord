@@ -1,5 +1,5 @@
-import AddAgentPage from "@/components/agents/AddAgentPage";
+import { notFound } from "next/navigation";
 
 export default function AgentsAddRoute() {
-  return <AddAgentPage />;
+  notFound();
 }

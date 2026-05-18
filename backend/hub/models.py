@@ -69,7 +69,7 @@ class Agent(Base):
     __tablename__ = "agents"
     __table_args__ = (
         CheckConstraint(
-            "hosting_kind IS NULL OR hosting_kind IN ('daemon', 'plugin', 'cli')",
+            "hosting_kind IS NULL OR hosting_kind IN ('daemon', 'openclaw', 'cli')",
             name="ck_agents_hosting_kind",
         ),
     )
@@ -1367,11 +1367,11 @@ class DaemonInstallTicket(Base):
 
 
 class OpenclawHostInstance(Base):
-    """An OpenClaw VM/container hosting the BotCord plugin.
+    """An OpenClaw VM/container connected to BotCord.
 
     Mirrors :class:`DaemonInstance` semantics — long-lived control-plane
     row with refresh-token rotation. ``host_pubkey`` is the Ed25519 public
-    key the plugin generated locally during install-claim; the matching
+    key the host generated locally during install-claim; the matching
     private key never leaves the host.
     """
 
@@ -1668,7 +1668,7 @@ class AgentGatewayConnection(Base):
     Hub stores metadata only — provider, label, whitelists, baseUrl, splitAt,
     masked tokenPreview, status. Bot tokens NEVER live here; they are written
     to the daemon's local secret store (~/.botcord/daemon/gateways/{id}.json,
-    mode 0600). See ``docs/third-party-gateway-design.md`` § Hub / Backend.
+    mode 0600).
     """
 
     __tablename__ = "agent_gateway_connections"

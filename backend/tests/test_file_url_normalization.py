@@ -25,7 +25,7 @@ def test_normalize_absolute_same_host_is_idempotent():
 
 
 def test_normalize_rewrites_wrong_env_host():
-    """The original bug: LLM hallucinated api.test.botcord.chat while plugin
+    """The original bug: LLM hallucinated api.test.botcord.chat while the agent
     was on stable. Normalizer must anchor back to the trusted hub."""
     assert (
         normalize_file_url("https://api.test.botcord.chat/hub/files/f_xyz")

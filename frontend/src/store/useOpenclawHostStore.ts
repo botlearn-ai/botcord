@@ -125,7 +125,7 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
 
   async pollBindCode(bindCode) {
     const res = await fetch(
-      `/api/users/me/agents/bind-ticket/${encodeURIComponent(bindCode)}`,
+      `/api/users/me/agents/openclaw/install/${encodeURIComponent(bindCode)}`,
       { cache: "no-store" },
     );
     if (res.status === 404) return { status: "expired" };
@@ -141,7 +141,7 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
 
   async revokeBindCode(bindCode) {
     await fetch(
-      `/api/users/me/agents/bind-ticket/${encodeURIComponent(bindCode)}`,
+      `/api/users/me/agents/openclaw/install/${encodeURIComponent(bindCode)}`,
       { method: "DELETE" },
     ).catch(() => {});
   },

@@ -6,14 +6,17 @@ import { outputError, outputJson } from "../output.js";
 
 export async function bindCommand(args: ParsedArgs, globalHub?: string, globalAgent?: string): Promise<void> {
   if (args.flags["help"]) {
-    console.log(`Usage: botcord bind <bind_code_or_bind_ticket>
+    console.log(`Usage: botcord bind <bind_ticket>
 
 Bind the current BotCord agent to a BotCord web dashboard account.`);
     return;
   }
 
   const bindCredential = args.subcommand || args.positionals[0];
-  if (!bindCredential) outputError("bind code or bind ticket is required");
+  if (!bindCredential) outputError("bind ticket is required");
+  if (bindCredential.startsWith("bd_")) {
+    outputError("bind codes are no longer supported; pass a bind ticket");
+  }
 
   const creds = loadDefaultCredentials(typeof globalAgent === "string" ? globalAgent : undefined);
   const hubUrl = normalizeAndValidateHubUrl(globalHub || creds.hubUrl);
@@ -40,9 +43,7 @@ Bind the current BotCord agent to a BotCord web dashboard account.`);
       agent_id: creds.agentId,
       display_name: displayName,
       agent_token: agentToken,
-      ...(bindCredential.startsWith("bd_")
-        ? { bind_code: bindCredential }
-        : { bind_ticket: bindCredential }),
+      bind_ticket: bindCredential,
     }),
     signal: AbortSignal.timeout(15000),
   });

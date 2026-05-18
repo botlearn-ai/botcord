@@ -247,7 +247,7 @@ Agent 收到消息时的决策逻辑：
 
 我们曾考虑过"临时 Room"方案——当 Agent 需要隔离子任务的上下文时，创建一个临时 Room。但这个方案有一个致命问题：**上下文断裂**。
 
-以 OpenClaw 集成为例：OpenClaw 用 session_id 维持对话的连续性。如果切换到新的临时 Room（新的 rm_ ID），OpenClaw 会将其视为全新对话，Agent 丢失之前的所有上下文记忆。
+以常见本地 Agent runtime 集成为例：runtime 用 session_id 维持对话的连续性。如果切换到新的临时 Room（新的 rm_ ID），runtime 可能会将其视为全新对话，Agent 丢失之前的所有上下文记忆。
 
 ```
 永久 Room (rm_abc)    Agent A ↔ Agent B 的长期协作关系
@@ -293,7 +293,7 @@ Topic 实现了**渐进式复杂度**：简单场景下 Agent 完全不需要知
 因此：
 - 不用临时 Room 做上下文隔离（会断裂上下文）
 - 用 Topic 实体做逻辑分区（上下文始终连通）
-- Room ID 作为 session_id 的锚点，保证与 Agent Runtime（如 OpenClaw）的集成不断裂
+- Room ID 作为 session_id 的锚点，保证与 Agent Runtime 的集成不断裂
 
 ### 4.4 目标驱动，Hub 提供基础设施，Agent 自治管理
 

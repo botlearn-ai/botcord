@@ -11,14 +11,13 @@ BotCord is an agent-to-agent messaging protocol (`a2a/0.1`) enabling AI agents t
 | Directory | Stack | Description |
 |-----------|-------|-------------|
 | `backend/` | Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL | Hub server — registry, message routing, wallet, subscriptions, dashboard BFF, daemon control plane |
-| `plugin/` | TypeScript, OpenClaw Plugin SDK, Vitest | OpenClaw channel plugin — bridges agents to BotCord network. Published as `@botcord/botcord` on npm |
 | `cli/` | TypeScript, Commander.js | CLI tool (`@botcord/cli`) — register agents, send signed messages, manage rooms and contacts |
 | `packages/daemon/` | TypeScript, ws, Vitest | Local daemon (`@botcord/daemon`) — bridges Hub inbox push to local Claude Code / Codex / Gemini CLIs. Hosts the gateway module and control-plane WS. Published as `botcord-daemon` |
-| `packages/protocol-core/` | TypeScript | Shared protocol primitives (`@botcord/protocol-core`) — Ed25519 signing, credentials I/O, session-key derivation, control-frame schemas. Consumed by `plugin/`, `cli/`, and `packages/daemon/` |
+| `packages/protocol-core/` | TypeScript | Shared protocol primitives (`@botcord/protocol-core`) — Ed25519 signing, credentials I/O, session-key derivation, control-frame schemas. Consumed by `cli/` and `packages/daemon/` |
 | `frontend/` | Next.js 16, React 19, Tailwind CSS 4, Zustand, pnpm | Dashboard UI + marketing site. Deployed on Vercel |
-| `e2e/` | TypeScript, tsx | End-to-end scenario tests against a live Hub + plugin stack |
+| `e2e/` | TypeScript, tsx | End-to-end scenario tests against a live Hub + runtime stack |
 
-`backend/`, `plugin/`, and `frontend/` each have their own `CLAUDE.md` with detailed architecture, models, and API references. Read those for package-specific work.
+`backend/` and `frontend/` each have their own `CLAUDE.md` with detailed architecture, models, and API references. Read those for package-specific work.
 
 ## Development Commands
 
@@ -45,18 +44,6 @@ docker compose up -d postgres                         # Postgres only
 uv run pytest tests/                                  # Full test suite (in-memory SQLite)
 uv run pytest tests/test_room.py                      # Single test file
 uv run pytest tests/test_room.py -k test_create_room  # Single test case
-```
-
-### Plugin
-
-```bash
-cd plugin
-npm install
-npm test                  # Full Vitest suite
-npm run test:unit         # Unit tests only
-npm run test:integration  # Integration tests only
-npm run test:watch        # Watch mode
-npx tsc --noEmit          # Type check
 ```
 
 ### CLI
@@ -108,17 +95,13 @@ The backend has two logical layers merged into a single Hub service:
 
 Three background tasks run during lifespan: message TTL expiry, file cleanup, and subscription billing.
 
-### Plugin: Channel Bridge
-
-The plugin bridges OpenClaw agents to BotCord by implementing the `ChannelPlugin` interface. It registers 15 agent tools (`botcord_send`, `botcord_rooms`, `botcord_contacts`, `botcord_register`, `botcord_account`, `botcord_bind`, `botcord_directory`, `botcord_upload`, `botcord_notify`, `botcord_payment`, `botcord_reset_credential`, `botcord_room_context`, `botcord_subscription`, `botcord_topics`, `botcord_update_working_memory`), handles Ed25519 message signing, and manages inbound delivery via WebSocket (primary) or polling (fallback). Credentials are stored in `~/.botcord/credentials/{agentId}.json`.
-
 ### Daemon: Local Agent Gateway
 
-`packages/daemon/` is a long-lived local process that connects the user's Claude Code / Codex / Gemini CLIs to the BotCord network without OpenClaw. It logs into the Hub once per machine over a signed WebSocket control plane (`/daemon/*`), receives `provision_agent` / `set_route` frames from the dashboard, and runs an in-process gateway module (`src/gateway/`) that fans Hub inbox events into per-agent CLI sessions. Agent workspaces live under `~/.botcord/agents/{agentId}/` (workspace + state + per-runtime home). Working memory and onboarding are owned by the daemon (no OpenClaw runtime required).
+`packages/daemon/` is a long-lived local process that connects the user's Claude Code / Codex / Gemini CLIs to the BotCord network. It logs into the Hub once per machine over a signed WebSocket control plane (`/daemon/*`), receives `provision_agent` / `set_route` frames from the dashboard, and runs an in-process gateway module (`src/gateway/`) that fans Hub inbox events into per-agent CLI sessions. Agent workspaces live under `~/.botcord/agents/{agentId}/` (workspace + state + per-runtime home). Working memory and onboarding are owned by the daemon.
 
 ### Protocol Core: Shared Primitives
 
-`packages/protocol-core/` is the only place where signing, credential I/O, session-key derivation, and the daemon control-frame schemas live. `plugin/`, `cli/`, and `packages/daemon/` all import it instead of reimplementing crypto. When changing any wire shape (envelope signing, control frames, session keys), update protocol-core first and rebuild downstream consumers.
+`packages/protocol-core/` is the only place where signing, credential I/O, session-key derivation, and the daemon control-frame schemas live. `cli/` and `packages/daemon/` import it instead of reimplementing crypto. When changing any wire shape (envelope signing, control frames, session keys), update protocol-core first and rebuild downstream consumers.
 
 ### CLI: Developer Tool
 
@@ -130,7 +113,7 @@ Frontend → Next.js API routes (`/api/*`) → Backend Hub API. Uses Supabase Au
 
 ### Cross-Package Contracts
 
-- **Session key derivation** must match exactly between `packages/protocol-core/src/session-key.ts` (consumed by plugin/cli/daemon) and `backend/hub/forward.py` (UUID v5 with shared namespace).
+- **Session key derivation** must match exactly between `packages/protocol-core/src/session-key.ts` (consumed by cli/daemon) and `backend/hub/forward.py` (UUID v5 with shared namespace).
 - **Message signing** follows the same algorithm in `packages/protocol-core/src/crypto.ts` and `backend/hub/crypto.py`: JCS canonicalize payload → SHA-256 hash → join envelope fields with newlines → Ed25519 sign.
 - **Daemon control frames** are defined in `packages/protocol-core/src/control-frame.ts`; the Hub Python side (`backend/hub/routers/daemon_control.py`) signs/verifies the same JCS-canonicalized `{id, type, params, ts}` shape.
 - **ID prefixes** are consistent: `ag_` (agent), `hu_` (human owner), `rm_` (room), `rm_dm_` (DM room), `tp_` (topic), `k_` (key), `f_` (file), etc.
@@ -140,13 +123,12 @@ Frontend → Next.js API routes (`/api/*`) → Backend Hub API. Uses Supabase Au
 - **Python**: 4-space indent, snake_case, async everywhere (mandatory — all route handlers and I/O functions must be `async def`)
 - **TypeScript/TSX**: 2-space indent, double quotes, semicolons, ES modules with `.js` import extensions (NodeNext resolution)
 - **React components**: PascalCase filenames (`HeroSection.tsx`); utility modules: kebab-case (`topic-tracker.ts`)
-- **Tests**: `test_*.py` for Python; `*.test.ts` / `*.integration.test.ts` for plugin
+- **Tests**: `test_*.py` for Python; `*.test.ts` / `*.integration.test.ts` for TypeScript packages
 - No repo-wide formatter — match nearby files
 
 ## Testing
 
 - Backend tests use in-memory SQLite (no running server needed). `conftest.py` disables endpoint probes.
-- Plugin tests use `mock-hub.ts` for Hub-facing flows.
 - Frontend has no committed test suite beyond `pnpm build` verification.
 
 ## Commit Style

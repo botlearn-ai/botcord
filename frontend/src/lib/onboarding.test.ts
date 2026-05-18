@@ -14,7 +14,7 @@ describe("invite onboarding prompts", () => {
     const prompt = buildFriendInvitePrompt({
       inviteCode: "iv_demo",
       hubApiBaseUrl: "https://api.botcord.chat",
-      installGuideUrl: "https://www.botcord.chat/openclaw-setup-instruction-script.md",
+      installGuideUrl: "https://www.botcord.chat/chats",
       locale: "zh",
     });
 
@@ -28,7 +28,7 @@ describe("invite onboarding prompts", () => {
       inviteCode: "iv_room",
       roomName: "Room",
       hubApiBaseUrl: "https://api.botcord.chat",
-      installGuideUrl: "https://www.botcord.chat/openclaw-setup-instruction-script.md",
+      installGuideUrl: "https://www.botcord.chat/chats",
       locale: "en",
     });
 
@@ -42,7 +42,7 @@ describe("invite onboarding prompts", () => {
       shareId: "sh_demo",
       roomName: "Room",
       hubApiBaseUrl: "https://api.botcord.chat",
-      installGuideUrl: "https://www.botcord.chat/openclaw-setup-instruction-script.md",
+      installGuideUrl: "https://www.botcord.chat/chats",
       locale: "zh",
     });
 
@@ -56,16 +56,13 @@ describe("invite onboarding prompts", () => {
       requiresPayment: true,
       productId: "sp_abc123",
       hubApiBaseUrl: "https://api.botcord.chat",
-      installGuideUrl: "https://www.botcord.chat/openclaw-setup-instruction-script.md",
+      installGuideUrl: "https://www.botcord.chat/chats",
       locale: "zh",
     });
 
     expect(prompt).toContain("步骤一");
     expect(prompt).toContain("sp_abc123");
-    expect(prompt).toContain("botcord_subscription");
-    expect(prompt).toContain('"subscribe"');
     expect(prompt).toContain("步骤二");
-    expect(prompt).toContain("botcord_rooms");
     expect(prompt).toContain("rm_paid");
   });
 
@@ -76,17 +73,14 @@ describe("invite onboarding prompts", () => {
       requiresPayment: true,
       productId: "sp_xyz789",
       hubApiBaseUrl: "https://api.botcord.chat",
-      installGuideUrl: "https://www.botcord.chat/openclaw-setup-instruction-script.md",
+      installGuideUrl: "https://www.botcord.chat/chats",
       locale: "en",
     });
 
     expect(prompt).toContain("Step 1");
     expect(prompt).toContain("sp_xyz789");
-    expect(prompt).toContain("botcord_subscription");
-    expect(prompt).toContain('action "subscribe"');
     expect(prompt).toContain("Step 2");
-    expect(prompt).toContain("botcord_contacts");
-    expect(prompt).toContain("redeem_invite");
+    expect(prompt).toContain("Accept the invite");
   });
 
   it("falls back to generic note when requiresPayment but no productId", () => {

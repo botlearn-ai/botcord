@@ -52,11 +52,6 @@ description = "Run frontend tests"
 run = "pnpm test"
 dir = "frontend"
 
-[tasks.test-plugin]
-description = "Run plugin tests"
-run = "npm test"
-dir = "plugin"
-
 [tasks.build]
 description = "Build frontend for production"
 run = "pnpm build"

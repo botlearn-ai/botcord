@@ -5,7 +5,6 @@ import datetime
 import hashlib
 import json
 import logging
-import re
 import time
 import uuid
 from typing import Any
@@ -28,7 +27,6 @@ from hub.config import (
     PAIR_RATE_LIMIT_PER_MINUTE,
     RATE_LIMIT_PER_MINUTE,
 )
-from hub.constants import MIN_PLUGIN_VERSION, get_latest_plugin_version, is_below_min_version
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
 from hub.database import async_session, get_db
@@ -1026,7 +1024,7 @@ async def _send_room_message(
 
     # When the sender is the only member (or all others are muted/blocking),
     # receivers would be empty.  Create a self-delivery record so the message
-    # appears in room history, but skip inbox notification to avoid the plugin
+    # appears in room history, but skip inbox notification to avoid the agent
     # re-processing its own message.
     _self_delivery = False
     if not receivers:
@@ -1056,7 +1054,7 @@ async def _send_room_message(
         )
 
         # Self-delivery and owner-chat human-delivery records are marked as
-        # delivered immediately so they never appear in any plugin inbox poll.
+        # delivered immediately so they never appear in any agent inbox poll.
         _is_self_delivery = _self_delivery and receiver_id == envelope.from_
         _is_owner_chat_human_delivery = (
             is_owner_chat and receiver_id in owner_chat_human_receivers
@@ -1115,7 +1113,7 @@ async def _send_room_message(
             if _self_delivery and receiver_id == envelope.from_:
                 # Self-delivery: publish realtime event for the dashboard
                 # frontend but do NOT wake the agent's inbox/WS to avoid
-                # the plugin re-processing its own message.
+                # the agent re-processing its own message.
                 # Skip Supabase realtime for owner-chat rooms — the dedicated
                 # WS path handles delivery; publishing here would cause
                 # redundant polling from the Supabase realtime listener.
@@ -1144,7 +1142,7 @@ async def _send_room_message(
         )
 
     # Notify the sender's dashboard so the frontend refreshes in real-time
-    # when the agent posts via plugin/API. Skip if self-delivery already
+    # when the agent posts via API. Skip if self-delivery already
     # handled it above, and skip for DM where sender == receiver.
     if not _self_delivery and envelope.from_ not in receivers:
         sender_rt_event = build_message_realtime_event(
@@ -1813,7 +1811,7 @@ async def send_typing(
     """Broadcast a typing indicator to other members of a room.
 
     Ephemeral — no database writes.  Deduped by (agent, room) with a 2-second
-    TTL so the plugin's ~3-second keepalive doesn't flood downstream listeners.
+    TTL so a short keepalive doesn't flood downstream listeners.
     """
     # Rate limit — check window but don't append yet (only count successful requests)
     now = time.monotonic()
@@ -1872,7 +1870,7 @@ async def send_typing(
         except Exception as exc:
             logger.warning("typing realtime publish failed for %s: %s", target_id, exc)
 
-        # Direct WS push → peer agent plugin
+        # Direct WS push → peer agent
         ws_set = _ws_connections.get(target_id)
         if ws_set:
             payload = {
@@ -1953,24 +1951,11 @@ async def websocket_inbox(ws: WebSocket):
             await ws.close(code=4001, reason="Invalid token")
             return
 
-        raw_pv = auth_data.get("plugin_version")
-        plugin_version = re.sub(r"[^\w.\-]", "", str(raw_pv)[:20]) if raw_pv else None
-        if plugin_version and is_below_min_version(plugin_version):
-            logger.warning("WebSocket rejected: agent=%s plugin_version=%s below min=%s",
-                           agent_id, plugin_version, MIN_PLUGIN_VERSION)
-            await ws.close(
-                code=4010,
-                reason=f"Plugin {plugin_version} below minimum {MIN_PLUGIN_VERSION}. Please update.",
-            )
-            return
-
         await ws.send_json({
             "type": "auth_ok",
             "agent_id": agent_id,
-            "latest_plugin_version": get_latest_plugin_version(),
-            "min_plugin_version": MIN_PLUGIN_VERSION,
         })
-        logger.info("WebSocket connected: agent=%s plugin_version=%s", agent_id, plugin_version)
+        logger.info("WebSocket connected: agent=%s", agent_id)
 
         # --- Register this connection ---
         connection_id = f"ws_{uuid.uuid4().hex[:24]}"

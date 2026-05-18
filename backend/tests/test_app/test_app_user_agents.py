@@ -865,42 +865,6 @@ async def test_patch_agent_swallows_offline_daemon(
     assert resp.status_code == 200
 
 
-# ---------------------------------------------------------------------------
-# POST /api/users/me/agents/bind-ticket
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_bind_ticket_returns_valid_ticket(client: AsyncClient, seed_user: dict):
-    token = seed_user["token"]
-
-    resp = await client.post(
-        "/api/users/me/agents/bind-ticket",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-
-    assert "bind_ticket" in data
-    assert data["bind_code"].startswith("bd_")
-    assert "nonce" in data
-    assert "expires_at" in data
-    assert isinstance(data["expires_at"], int)
-
-    # Verify ticket structure: base64_payload.base64_signature
-    parts = data["bind_ticket"].split(".")
-    assert len(parts) == 2
-
-    # Decode and verify payload
-    payload_json = base64.urlsafe_b64decode(parts[0]).decode()
-    payload = json.loads(payload_json)
-    assert payload["uid"] == str(seed_user["user_id"])
-    assert payload["nonce"] == data["nonce"]
-    assert payload["exp"] == data["expires_at"]
-    assert "iat" in payload
-    assert "jti" in payload
-
-
 @pytest.mark.asyncio
 async def test_credential_reset_ticket_returns_valid_ticket(
     client: AsyncClient, seed_user: dict
@@ -925,35 +889,6 @@ async def test_credential_reset_ticket_returns_valid_ticket(
     assert payload["purpose"] == "credential_reset"
     assert payload["exp"] == data["expires_at"]
     assert "jti" in payload
-
-
-@pytest.mark.asyncio
-async def test_agent_bind_success_with_bind_code(
-    client: AsyncClient, seed_user_for_claim: dict
-):
-    token = seed_user_for_claim["token"]
-    issue = await client.post(
-        "/api/users/me/agents/bind-ticket",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert issue.status_code == 200
-    bind_code = issue.json()["bind_code"]
-
-    with _mock_verify_agent_control(True):
-        resp = await client.post(
-            "/api/users/me/agents/bind",
-            json={
-                "agent_id": "ag_bindcode001",
-                "display_name": "Bound By Code",
-                "agent_token": "tok_valid",
-                "bind_code": bind_code,
-            },
-        )
-
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["agent_id"] == "ag_bindcode001"
-    assert data["display_name"] == "Bound By Code"
 
 
 # ---------------------------------------------------------------------------
@@ -1426,77 +1361,6 @@ async def test_agent_bind_invalid_ticket(
     assert resp.status_code == 401
     detail = resp.json()["detail"].lower()
     assert "invalid" in detail or "expired" in detail
-
-
-@pytest.mark.asyncio
-async def test_agent_bind_invalid_bind_code(
-    client: AsyncClient, seed_user_for_claim: dict
-):
-    resp = await client.post(
-        "/api/users/me/agents/bind",
-        json={
-            "agent_id": "ag_bindagent003",
-            "display_name": "Bind Agent 3",
-            "agent_token": "tok_valid",
-            "bind_code": "bd_invalid",
-        },
-    )
-
-    assert resp.status_code == 401
-    assert "bind code" in resp.json()["detail"].lower()
-
-
-@pytest.mark.asyncio
-async def test_agent_bind_code_survives_failed_attempt(
-    client: AsyncClient, seed_user_for_claim: dict
-):
-    """bind_code should NOT be burned when a later verification step fails."""
-    token = seed_user_for_claim["token"]
-    issue = await client.post(
-        "/api/users/me/agents/bind-ticket",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    bind_code = issue.json()["bind_code"]
-
-    # First attempt: agent_token verification fails → 401, but bind_code survives
-    with _mock_verify_agent_control(False):
-        first = await client.post(
-            "/api/users/me/agents/bind",
-            json={
-                "agent_id": "ag_bindcodeburn1",
-                "display_name": "Burn Code",
-                "agent_token": "tok_bad",
-                "bind_code": bind_code,
-            },
-        )
-    assert first.status_code == 401
-
-    # Second attempt: same bind_code with valid token → should succeed
-    with _mock_verify_agent_control(True):
-        second = await client.post(
-            "/api/users/me/agents/bind",
-            json={
-                "agent_id": "ag_bindcodeburn1",
-                "display_name": "Burn Code",
-                "agent_token": "tok_valid",
-                "bind_code": bind_code,
-            },
-        )
-    assert second.status_code == 201
-
-    # Third attempt: bind_code now consumed → 401
-    with _mock_verify_agent_control(True):
-        third = await client.post(
-            "/api/users/me/agents/bind",
-            json={
-                "agent_id": "ag_bindcodeburn2",
-                "display_name": "Burn Code 2",
-                "agent_token": "tok_valid",
-                "bind_code": bind_code,
-            },
-        )
-    assert third.status_code == 401
-    assert "bind code" in third.json()["detail"].lower() or "consumed" in third.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

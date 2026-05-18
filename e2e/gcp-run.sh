@@ -302,8 +302,7 @@ for i in $(seq 1 "$INSTANCE_COUNT"); do
       \"allowInsecureAuth\": true,
       \"dangerouslyDisableDeviceAuth\": true
     }
-  },
-  \"plugins\": { \"entries\": {}, \"installs\": {} }
+  }
 }
 JSONEOF
 

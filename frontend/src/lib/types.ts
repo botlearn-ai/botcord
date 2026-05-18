@@ -205,7 +205,7 @@ export interface StreamBlockEntry {
   seq: number;
   block: {
     kind: string;
-    /** Legacy shape (plugin-driven): structured payload. */
+    /** Legacy shape: structured payload. */
     payload?: Record<string, unknown>;
     /** Current shape (daemon gateway): raw runtime event object. */
     raw?: unknown;
@@ -446,26 +446,6 @@ export interface CreateJoinRequestResponse {
   status: string;
   message: string | null;
   created_at: string | null;
-}
-
-export interface BindTicketResponse {
-  bind_code: string;
-  bind_ticket: string;
-  nonce: string;
-  expires_at: number;
-  install_command?: string;
-  intended_name?: string | null;
-}
-
-export type BindTicketStatusValue = "pending" | "claimed" | "expired" | "revoked";
-
-export interface BindTicketStatusResponse {
-  bind_code: string;
-  status: BindTicketStatusValue;
-  agent_id: string | null;
-  expires_at: string | null;
-  expires_at_ts: number | null;
-  claimed_at?: string | null;
 }
 
 export interface ResetTicketResponse {

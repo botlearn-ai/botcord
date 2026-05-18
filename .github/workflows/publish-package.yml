@@ -8,7 +8,6 @@ on:
         required: true
         type: choice
         options:
-          - plugin
           - cli
           - protocol-core
           - daemon
@@ -50,7 +49,6 @@ jobs:
           NPM_NAME=$(node -p "require('./package.json').name")
           echo "npm_name=$NPM_NAME" >> $GITHUB_OUTPUT
           case "$PKG" in
-            plugin) DISPLAY_NAME="Plugin" ;;
             cli) DISPLAY_NAME="CLI" ;;
             protocol-core) DISPLAY_NAME="Protocol Core" ;;
             daemon) DISPLAY_NAME="Daemon" ;;
@@ -79,12 +77,12 @@ jobs:
           fi
 
       - name: Override @botcord/protocol-core with local build
-        if: env.PKG == 'daemon' || env.PKG == 'plugin' || env.PKG == 'cli'
+        if: env.PKG == 'daemon' || env.PKG == 'cli'
         run: |
           rm -rf node_modules/@botcord/protocol-core
           mkdir -p node_modules/@botcord
           # daemon lives in packages/daemon → ../protocol-core
-          # plugin/cli live at repo root → ../packages/protocol-core
+          # cli lives at repo root → ../packages/protocol-core
           if [ -d ../protocol-core/dist ]; then
             cp -R ../protocol-core node_modules/@botcord/protocol-core
           else
@@ -97,7 +95,7 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        if: env.PKG == 'plugin' || env.PKG == 'daemon'
+        if: env.PKG == 'daemon'
         run: npm test
 
       - name: Configure git
@@ -155,18 +153,6 @@ jobs:
           fi
           printf 'new_version=%s\n' "$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Sync version to openclaw.plugin.json
-        if: env.PKG == 'plugin'
-        run: |
-          VERSION="${{ steps.bump.outputs.new_version }}"
-          VERSION="${VERSION#v}"
-          jq --arg v "$VERSION" '.version = $v' openclaw.plugin.json > tmp.json && mv tmp.json openclaw.plugin.json
-
-      - name: Set release channel in source
-        if: env.PKG == 'plugin' && github.event.inputs.channel == 'beta'
-        run: |
-          sed -i 's/RELEASE_CHANNEL: ReleaseChannel = "stable"/RELEASE_CHANNEL: ReleaseChannel = "beta"/' src/constants.ts
-
       - name: Publish to npm
         run: |
           if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
@@ -180,16 +166,11 @@ jobs:
       - name: Commit and tag
         if: github.event.inputs.channel == 'stable'
         run: |
-          if [ "$PKG" = "plugin" ]; then
-            git add package.json package-lock.json openclaw.plugin.json
-          else
-            git add package.json
-            if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
-              git add package-lock.json
-            fi
+          git add package.json
+          if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+            git add package-lock.json
           fi
           case "$PKG" in
-            plugin) TAG_PREFIX="" ;;
             cli) TAG_PREFIX="cli-" ;;
             protocol-core) TAG_PREFIX="protocol-core-" ;;
             daemon) TAG_PREFIX="daemon-" ;;

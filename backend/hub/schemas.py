@@ -54,7 +54,7 @@ class MessageEnvelope(BaseModel):
 
         When *include_sender* is False the sender prefix (``who says:``) is
         omitted for normal messages — useful for owner/dashboard-user-chat where
-        the plugin already knows the sender context.
+        the connected agent already knows the sender context.
         """
         p = self.payload
         who = f"{sender_name} ({self.from_})" if sender_name else self.from_
@@ -158,8 +158,6 @@ class VerifyResponse(BaseModel):
     agent_token: str
     expires_at: int
     claim_url: str | None = None
-    latest_plugin_version: str | None = None
-    min_plugin_version: str | None = None
 
 
 class ClaimContextResponse(BaseModel):

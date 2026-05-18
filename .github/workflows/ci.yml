@@ -40,7 +40,6 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/workflows/deploy-frontend.yml'
             packages:
-              - 'plugin/**'
               - 'cli/**'
               - 'packages/**'
               - '.github/workflows/ci.yml'
@@ -88,7 +87,7 @@ jobs:
       - name: Run vitest
         run: pnpm test -- --run
 
-  # ── Packages: protocol-core build, plugin tc+test, cli build ─────────────────
+  # ── Packages: protocol-core build, cli build ────────────────────────────────
   packages-ci:
     name: Packages CI
     runs-on: self-hosted
@@ -105,13 +104,6 @@ jobs:
         run: |
           npm install
           npm run build
-      - name: plugin typecheck + test
-        working-directory: plugin
-        run: |
-          npm install
-          npm install ../packages/protocol-core
-          npx tsc --noEmit
-          npm test
       - name: cli build
         working-directory: cli
         run: |

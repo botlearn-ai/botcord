@@ -115,7 +115,6 @@ class AgentBindBody(BaseModel):
     display_name: str
     agent_token: str
     bind_ticket: str | None = None
-    bind_code: str | None = None
 
 
 class ResetCredentialTicketResponse(BaseModel):
@@ -515,10 +514,6 @@ async def _peek_bind_code(code: str) -> str | None:
     return await _peek_short_code(code, "bind", "bind_ticket")
 
 
-async def _consume_bind_code(code: str) -> bool:
-    return await _consume_short_code(code, "bind")
-
-
 async def _revert_short_code_claim(
     code: str, kind: str, *, reopen: bool = False
 ) -> None:
@@ -584,8 +579,7 @@ async def _consume_short_code_with_claim(code: str, kind: str, agent_id: str) ->
     Atomically consumes any ``ShortCode`` row by ``(code, kind)`` and
     stamps ``payload_json.claimed_agent_id`` in the same transaction so
     polling readers never observe a "consumed but no agent" intermediate
-    state. Used by both the bind-ticket install path and the OpenClaw
-    install / provision claim paths.
+    state. Used by the OpenClaw install / provision claim paths.
     """
     async with _short_code_session_factory() as code_session:
         now = _utc_now()
@@ -637,17 +631,17 @@ async def _consume_short_code_with_claim(code: str, kind: str, agent_id: str) ->
 async def _consume_bind_code_with_claim(code: str, agent_id: str) -> bool:
     """Atomically consume a bind code AND stamp the resulting agent_id.
 
-    install-claim derives ``agent_id`` deterministically from the public
+    OpenClaw install-claim derives ``agent_id`` deterministically from the public
     key before it ever touches the short_code row, so we can write
     ``payload_json.claimed_agent_id`` in the same transaction that flips
     ``consumed_at`` to non-null. Doing it as two separate writes left a
-    race window where ``GET /bind-ticket/{code}`` between the consume and
+    race window where status polling between the consume and
     the metadata write saw a consumed row with no claimed_agent_id and
     reported it as ``revoked`` — terminal-looking — even though the
     agent was about to appear.
 
     Returns True on first-use, False if the code was already consumed,
-    expired, or unknown (semantics identical to ``_consume_bind_code``).
+    expired, or unknown.
     """
     return await _consume_short_code_with_claim(code, "bind", agent_id)
 
@@ -1190,219 +1184,6 @@ async def _push_update_agent_frame(
         )
 
 
-# ---------------------------------------------------------------------------
-# POST /api/users/me/agents/bind-ticket
-# ---------------------------------------------------------------------------
-
-
-class BindTicketBody(BaseModel):
-    intended_name: str | None = Field(default=None, max_length=128)
-
-
-def _build_install_command(bind_code: str, nonce: str) -> str:
-    base = HUB_PUBLIC_BASE_URL.rstrip("/")
-    return (
-        f"curl -fsSL {base}/openclaw/install.sh | bash -s -- "
-        f"--bind-code {bind_code} --bind-nonce {nonce}"
-    )
-
-
-@router.post("/me/agents/bind-ticket")
-async def create_bind_ticket(
-    body: BindTicketBody | None = None,
-    ctx: RequestContext = Depends(require_user),
-):
-    """Issue a one-time bind ticket for cryptographic agent binding.
-
-    Phase 1 onboarding: short TTL, per-user active-code cap, embeds
-    ``purpose=install_claim`` and a base64 32-byte nonce so the same code
-    can be redeemed by ``install-claim`` with an Ed25519 proof of possession.
-    """
-    intended_name = (body.intended_name.strip() if body and body.intended_name else None) or None
-
-    now = _utc_now()
-    exp = now + datetime.timedelta(minutes=BIND_TICKET_TTL_MINUTES)
-    # Base64 32-byte nonce so the install client can sign it as an Ed25519 challenge.
-    nonce = base64.b64encode(os.urandom(32)).decode()
-    jti = uuid4().hex
-    bind_code = f"bd_{uuid4().hex[:12]}"
-
-    # Cap concurrently active install codes per user.
-    async with _short_code_session_factory() as code_session:
-        active_count_result = await code_session.execute(
-            select(sa_func.count())
-            .select_from(ShortCode)
-            .where(
-                ShortCode.kind == "bind",
-                ShortCode.owner_user_id == ctx.user_id,
-                ShortCode.consumed_at.is_(None),
-                ShortCode.expires_at > now,
-            )
-        )
-        active_count = active_count_result.scalar_one()
-        if active_count >= MAX_ACTIVE_BIND_CODES_PER_USER:
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    f"Too many active bind codes (max {MAX_ACTIVE_BIND_CODES_PER_USER}); "
-                    "revoke or wait for one to expire"
-                ),
-            )
-
-    ticket_payload = {
-        "uid": str(ctx.user_id),
-        "purpose": "install_claim",
-        "nonce": nonce,
-        "iat": int(now.timestamp()),
-        "exp": int(exp.timestamp()),
-        "jti": jti,
-    }
-    if intended_name:
-        ticket_payload["intended_name"] = intended_name
-
-    ticket = _build_signed_ticket(ticket_payload)
-
-    short_code_payload: dict = {"bind_ticket": ticket}
-    if intended_name:
-        short_code_payload["intended_name"] = intended_name
-
-    short_code = ShortCode(
-        code=bind_code,
-        kind="bind",
-        owner_user_id=ctx.user_id,
-        payload_json=json.dumps(short_code_payload, separators=(",", ":"), sort_keys=True),
-        expires_at=exp,
-    )
-    async with _short_code_session_factory() as code_session:
-        code_session.add(short_code)
-        await code_session.commit()
-
-    install_command = _build_install_command(bind_code, nonce)
-
-    return {
-        "bind_code": bind_code,
-        "bind_ticket": ticket,
-        "nonce": nonce,
-        "expires_at": int(exp.timestamp()),
-        "install_command": install_command,
-        "intended_name": intended_name,
-    }
-
-
-# ---------------------------------------------------------------------------
-# GET /api/users/me/agents/bind-ticket/{code}  (owner-only polling)
-# ---------------------------------------------------------------------------
-
-
-@router.get("/me/agents/bind-ticket/{code}")
-async def get_bind_ticket_status(
-    code: str,
-    ctx: RequestContext = Depends(require_user),
-):
-    """Poll the status of a bind code issued by the current user.
-
-    Returns ``status`` ∈ {pending, claimed, expired} plus the resulting
-    ``agent_id`` once the install client has redeemed the code.
-    """
-    if not code.startswith("bd_"):
-        raise HTTPException(status_code=404, detail="Bind code not found")
-
-    async with _short_code_session_factory() as code_session:
-        result = await code_session.execute(
-            select(ShortCode).where(
-                ShortCode.code == code,
-                ShortCode.kind == "bind",
-                ShortCode.owner_user_id == ctx.user_id,
-            )
-        )
-        row = result.scalar_one_or_none()
-
-    if row is None:
-        raise HTTPException(status_code=404, detail="Bind code not found")
-
-    now = _utc_now()
-    expires_at = row.expires_at
-    if expires_at is not None and expires_at.tzinfo is None:
-        # SQLite stores naive datetimes; treat as UTC.
-        expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
-    expires_at_iso = expires_at.isoformat() if expires_at else None
-    expires_at_ts = int(expires_at.timestamp()) if expires_at else None
-
-    try:
-        payload = json.loads(row.payload_json) if row.payload_json else {}
-    except json.JSONDecodeError:
-        payload = {}
-
-    if row.consumed_at is not None:
-        claimed_agent_id = payload.get("claimed_agent_id")
-        # A consumed row without a recorded claimed_agent_id was revoked
-        # (or the post-claim metadata write failed). Either way it is
-        # terminal — surface it as "revoked" so polling stops without
-        # claiming there is an agent we can navigate to.
-        status = "claimed" if claimed_agent_id else "revoked"
-        return {
-            "bind_code": code,
-            "status": status,
-            "agent_id": claimed_agent_id,
-            "claimed_at": row.consumed_at.isoformat(),
-            "expires_at": expires_at_iso,
-            "expires_at_ts": expires_at_ts,
-        }
-    if expires_at is not None and expires_at <= now:
-        return {
-            "bind_code": code,
-            "status": "expired",
-            "agent_id": None,
-            "expires_at": expires_at_iso,
-            "expires_at_ts": expires_at_ts,
-        }
-    return {
-        "bind_code": code,
-        "status": "pending",
-        "agent_id": None,
-        "expires_at": expires_at_iso,
-        "expires_at_ts": expires_at_ts,
-    }
-
-
-# ---------------------------------------------------------------------------
-# DELETE /api/users/me/agents/bind-ticket/{code}  (owner revoke)
-# ---------------------------------------------------------------------------
-
-
-@router.delete("/me/agents/bind-ticket/{code}")
-async def revoke_bind_ticket(
-    code: str,
-    ctx: RequestContext = Depends(require_user),
-):
-    """Revoke a pending bind code owned by the current user."""
-    if not code.startswith("bd_"):
-        raise HTTPException(status_code=404, detail="Bind code not found")
-
-    now = _utc_now()
-    async with _short_code_session_factory() as code_session:
-        upd = await code_session.execute(
-            update(ShortCode)
-            .where(
-                ShortCode.code == code,
-                ShortCode.kind == "bind",
-                ShortCode.owner_user_id == ctx.user_id,
-                ShortCode.consumed_at.is_(None),
-            )
-            .values(
-                consumed_at=now,
-                use_count=ShortCode.max_uses,
-            )
-        )
-        if upd.rowcount == 0:
-            await code_session.rollback()
-            # Either not found or already consumed/expired — surface 404 so the
-            # caller treats it as terminal in either case.
-            raise HTTPException(status_code=404, detail="Bind code not found or already consumed")
-        await code_session.commit()
-    return {"ok": True}
-
-
 @router.post(
     "/me/agents/{agent_id}/credential-reset-ticket",
     response_model=ResetCredentialTicketResponse,
@@ -1614,18 +1395,10 @@ async def agent_bind(
     if not body.display_name:
         raise HTTPException(status_code=400, detail="display_name is required")
 
-    # --- resolve bind credential to real bind_ticket (peek, don't consume yet) ---
     bind_ticket = body.bind_ticket
-    has_bind_code = bool(body.bind_code)
-    if has_bind_code:
-        bind_ticket = await _peek_bind_code(body.bind_code)
-        if bind_ticket is None:
-            raise HTTPException(
-                status_code=401, detail="Invalid or expired bind code"
-            )
     if bind_ticket is None:
         raise HTTPException(
-            status_code=400, detail="bind_ticket or bind_code is required"
+            status_code=400, detail="bind_ticket is required"
         )
 
     # --- verify bind_ticket to extract user_id ---
@@ -1652,13 +1425,6 @@ async def agent_bind(
 
     # --- All validations passed, now consume the one-time credentials ---
 
-    # Consume bind_code (atomic UPDATE)
-    if has_bind_code:
-        if not await _consume_bind_code(body.bind_code):
-            raise HTTPException(
-                status_code=401, detail="Bind code already consumed (race condition)"
-            )
-
     # Consume jti (one-time use, DB-backed)
     if not await _consume_bind_ticket_jti(ticket_payload["jti"]):
         raise HTTPException(
@@ -1670,196 +1436,6 @@ async def agent_bind(
         db, user_id, body.agent_id, body.display_name, body.agent_token
     )
     return _agent_meta(agent)
-
-
-# ---------------------------------------------------------------------------
-# POST /api/users/me/agents/install-claim  (no JWT)
-# ---------------------------------------------------------------------------
-
-
-class InstallClaimProof(BaseModel):
-    nonce: str
-    sig: str
-
-
-class InstallClaimBody(BaseModel):
-    bind_code: str
-    pubkey: str
-    proof: InstallClaimProof
-    name: str | None = Field(default=None, max_length=128)
-
-
-def _generic_invalid_bind_code() -> HTTPException:
-    """Unauth claim path returns the same 400 for all bind-code-related failures.
-
-    Differentiating "not found" from "expired" from "already used" leaks
-    state to anyone holding a candidate code. Owner-visible state is
-    surfaced via the authenticated polling endpoint.
-    """
-    return HTTPException(status_code=400, detail="INVALID_BIND_CODE")
-
-
-@router.post("/me/agents/install-claim", status_code=201)
-async def install_claim(
-    body: InstallClaimBody,
-    db: AsyncSession = Depends(get_db),
-):
-    """Redeem an install bind code with an Ed25519 proof of possession.
-
-    No user JWT — the bind code is a bearer credential issued from the
-    dashboard. The Ed25519 proof binds the redemption to the keypair that
-    the install client locally generated, so the server can never derive
-    the private key and a leaked bind code cannot be used to register a
-    pubkey the attacker does not control.
-    """
-    # 1. Shape check
-    if not body.bind_code.startswith("bd_"):
-        raise _generic_invalid_bind_code()
-
-    # 2. Peek the ticket without consuming
-    bind_ticket = await _peek_bind_code(body.bind_code)
-    if bind_ticket is None:
-        raise _generic_invalid_bind_code()
-
-    # 3. Verify ticket signature + expiry
-    ticket_payload = _verify_bind_ticket(bind_ticket)
-    if ticket_payload is None:
-        raise _generic_invalid_bind_code()
-
-    if ticket_payload.get("purpose") != "install_claim":
-        raise _generic_invalid_bind_code()
-
-    uid_str = ticket_payload.get("uid")
-    if not uid_str:
-        raise _generic_invalid_bind_code()
-    try:
-        user_id = UUID(uid_str)
-    except ValueError:
-        raise _generic_invalid_bind_code()
-
-    ticket_nonce = ticket_payload.get("nonce")
-    if not isinstance(ticket_nonce, str) or not ticket_nonce:
-        raise _generic_invalid_bind_code()
-
-    # 4. Proof: nonce must match the ticket's nonce
-    if body.proof.nonce != ticket_nonce:
-        raise HTTPException(status_code=401, detail="INVALID_PROOF")
-
-    # 5. Validate pubkey format ("ed25519:<base64-32-bytes>")
-    pubkey = body.pubkey.strip()
-    try:
-        pubkey_b64 = parse_pubkey(pubkey)
-    except HTTPException:
-        raise HTTPException(status_code=400, detail="INVALID_PUBKEY")
-
-    # 6. Verify Ed25519 proof of possession
-    if not verify_challenge_sig(pubkey_b64, ticket_nonce, body.proof.sig):
-        raise HTTPException(status_code=401, detail="INVALID_PROOF")
-
-    # 7. Derive agent_id from pubkey
-    agent_id = generate_agent_id(pubkey_b64)
-
-    # 8. Pre-check pubkey not already in use by any active/pending key
-    dup_key_result = await db.execute(
-        select(SigningKey).where(
-            SigningKey.pubkey == pubkey,
-            SigningKey.state.in_((KeyState.active, KeyState.pending)),
-        )
-    )
-    if dup_key_result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=409, detail="PUBKEY_ALREADY_REGISTERED")
-
-    # If an Agent row already exists for this deterministic agent_id, the
-    # pubkey was already claimed in a prior install. Surface as conflict.
-    dup_agent_result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
-    if dup_agent_result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=409, detail="PUBKEY_ALREADY_REGISTERED")
-
-    # 9. Quota check on owning user
-    user_result = await db.execute(select(User).where(User.id == user_id))
-    user = user_result.scalar_one_or_none()
-    if user is None:
-        raise _generic_invalid_bind_code()
-    count_result = await db.execute(
-        select(sa_func.count()).select_from(Agent).where(Agent.user_id == user_id)
-    )
-    current_count = count_result.scalar_one()
-    if current_count >= user.max_agents:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Agent quota exceeded (max {user.max_agents})",
-        )
-    is_first = current_count == 0
-
-    # 10. Atomically consume the short_code AND stamp it with the
-    #     deterministic agent_id so polling never sees a "consumed but
-    #     no agent" intermediate state. If we lose the consume race,
-    #     surface as INVALID_BIND_CODE.
-    if not await _consume_bind_code_with_claim(body.bind_code, agent_id):
-        raise _generic_invalid_bind_code()
-
-    # 11. Burn the JTI (separate connection, commits independently).
-    if not await _consume_bind_ticket_jti(ticket_payload["jti"]):
-        # Code is already burned at this point; nothing to roll back.
-        raise _generic_invalid_bind_code()
-
-    # 12. Insert Agent + active SigningKey atomically.
-    intended_name = ticket_payload.get("intended_name") if isinstance(ticket_payload.get("intended_name"), str) else None
-    requested_name = (body.name.strip() if body.name else None) or None
-    display_name = requested_name or intended_name or agent_id
-
-    now = _utc_now()
-    agent_token, expires_at_ts = create_agent_token(agent_id)
-    token_expires_at = datetime.datetime.fromtimestamp(
-        expires_at_ts, tz=datetime.timezone.utc
-    )
-
-    key_id = generate_key_id()
-    agent = Agent(
-        agent_id=agent_id,
-        display_name=display_name,
-        avatar_url=random_agent_avatar_url(),
-        user_id=user_id,
-        agent_token=agent_token,
-        token_expires_at=token_expires_at,
-        is_default=is_first,
-        claimed_at=now,
-    )
-    signing_key = SigningKey(
-        agent_id=agent_id,
-        key_id=key_id,
-        pubkey=pubkey,
-        state=KeyState.active,
-    )
-    try:
-        async with db.begin_nested():
-            db.add(agent)
-            db.add(signing_key)
-    except IntegrityError:
-        # Another concurrent claim won. The bind code is already burned, so
-        # nothing further to do here — surface as conflict.
-        await db.rollback()
-        raise HTTPException(status_code=409, detail="PUBKEY_ALREADY_REGISTERED")
-
-    await _ensure_agent_owner_role(db, user_id)
-    await _maybe_grant_claim_gift(db, agent)
-
-    await db.commit()
-    await db.refresh(agent)
-
-    # claimed_agent_id was already written into short_code.payload_json
-    # by _consume_bind_code_with_claim above, so dashboard polling sees
-    # a fully consistent state without a "revoked" intermediate read.
-
-    return {
-        "agent_id": agent_id,
-        "key_id": key_id,
-        "agent_token": agent_token,
-        "token_expires_at": expires_at_ts,
-        "hub_url": HUB_PUBLIC_BASE_URL,
-        "ws_url": HUB_PUBLIC_BASE_URL.replace("https://", "wss://").replace("http://", "ws://") + "/ws",
-        "display_name": display_name,
-    }
 
 
 @router.post(
@@ -2447,6 +2023,123 @@ async def openclaw_install(
     )
 
 
+async def _load_openclaw_install_code(code: str, user_id: UUID) -> ShortCode:
+    if not code.startswith("bd_"):
+        raise HTTPException(status_code=404, detail="Bind code not found")
+
+    async with _short_code_session_factory() as code_session:
+        result = await code_session.execute(
+            select(ShortCode).where(
+                ShortCode.code == code,
+                ShortCode.kind == "bind",
+                ShortCode.owner_user_id == user_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bind code not found")
+
+    try:
+        payload = json.loads(row.payload_json) if row.payload_json else {}
+    except json.JSONDecodeError:
+        payload = {}
+
+    ticket = payload.get("bind_ticket")
+    if not isinstance(ticket, str):
+        raise HTTPException(status_code=404, detail="Bind code not found")
+    ticket_payload = _verify_bind_ticket(ticket)
+    if ticket_payload is None:
+        try:
+            ticket_payload = json.loads(base64.urlsafe_b64decode(ticket.split(".")[0]).decode())
+        except Exception:  # noqa: BLE001
+            ticket_payload = None
+    if ticket_payload is None or ticket_payload.get("purpose") != "openclaw_install":
+        raise HTTPException(status_code=404, detail="Bind code not found")
+
+    return row
+
+
+@router.get("/me/agents/openclaw/install/{code}")
+async def get_openclaw_install_status(
+    code: str,
+    ctx: RequestContext = Depends(require_user),
+):
+    """Poll an OpenClaw install code issued by the current user."""
+    row = await _load_openclaw_install_code(code, ctx.user_id)
+
+    now = _utc_now()
+    expires_at = row.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+    expires_at_iso = expires_at.isoformat() if expires_at else None
+    expires_at_ts = int(expires_at.timestamp()) if expires_at else None
+
+    try:
+        payload = json.loads(row.payload_json) if row.payload_json else {}
+    except json.JSONDecodeError:
+        payload = {}
+
+    if row.consumed_at is not None:
+        claimed_agent_id = payload.get("claimed_agent_id")
+        status = "claimed" if claimed_agent_id else "revoked"
+        return {
+            "bind_code": code,
+            "status": status,
+            "agent_id": claimed_agent_id,
+            "claimed_at": row.consumed_at.isoformat(),
+            "expires_at": expires_at_iso,
+            "expires_at_ts": expires_at_ts,
+        }
+
+    if expires_at is not None and expires_at <= now:
+        return {
+            "bind_code": code,
+            "status": "expired",
+            "agent_id": None,
+            "expires_at": expires_at_iso,
+            "expires_at_ts": expires_at_ts,
+        }
+
+    return {
+        "bind_code": code,
+        "status": "pending",
+        "agent_id": None,
+        "expires_at": expires_at_iso,
+        "expires_at_ts": expires_at_ts,
+    }
+
+
+@router.delete("/me/agents/openclaw/install/{code}")
+async def revoke_openclaw_install_code(
+    code: str,
+    ctx: RequestContext = Depends(require_user),
+):
+    """Revoke a pending OpenClaw install code owned by the current user."""
+    await _load_openclaw_install_code(code, ctx.user_id)
+
+    now = _utc_now()
+    async with _short_code_session_factory() as code_session:
+        upd = await code_session.execute(
+            update(ShortCode)
+            .where(
+                ShortCode.code == code,
+                ShortCode.kind == "bind",
+                ShortCode.owner_user_id == ctx.user_id,
+                ShortCode.consumed_at.is_(None),
+            )
+            .values(
+                consumed_at=now,
+                use_count=ShortCode.max_uses,
+            )
+        )
+        if upd.rowcount == 0:
+            await code_session.rollback()
+            raise HTTPException(status_code=404, detail="Bind code not found or already consumed")
+        await code_session.commit()
+    return {"ok": True}
+
+
 # ---- hosts CRUD -----------------------------------------------------------
 
 
@@ -2662,9 +2355,9 @@ class OpenclawProvisionResponse(BaseModel):
     is_default: bool
     # Forwarded from the host's provision-claim ack so the dashboard can
     # surface a "manually attach this agent in your OpenClaw config" warning
-    # when the plugin couldn't update ``~/.openclaw/openclaw.json`` itself
+    # when the host couldn't update ``~/.openclaw/openclaw.json`` itself
     # (multi-account guard, IO error, etc.). ``True`` means the new agent
-    # will auto-load on the host's next plugin reload; ``False`` means the
+    # will auto-load on the host's next reload; ``False`` means the
     # user (or follow-up automation) must take an action.
     config_patched: bool = True
     config_skip_reason: str | None = None

@@ -28,6 +28,6 @@ export const agents = pgTable(
     index("agents_user_id_idx").on(table.userId),
     index("ix_agents_daemon_instance").on(table.daemonInstanceId),
     uniqueIndex("agents_claim_code_unique").on(table.claimCode).where(sql`"claim_code" IS NOT NULL`),
-    check("ck_agents_hosting_kind", sql`${table.hostingKind} IS NULL OR ${table.hostingKind} IN ('daemon', 'plugin', 'cli')`),
+    check("ck_agents_hosting_kind", sql`${table.hostingKind} IS NULL OR ${table.hostingKind} IN ('daemon', 'openclaw', 'cli')`),
   ],
 );

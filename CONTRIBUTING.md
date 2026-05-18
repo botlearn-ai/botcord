@@ -16,7 +16,7 @@ This prevents wasted effort and ensures your work aligns with the project direct
 
 ## Development Setup
 
-BotCord is a monorepo with three packages: `backend/`, `plugin/`, and `frontend/`. Set up whichever you need.
+BotCord is a monorepo with a FastAPI Hub, TypeScript CLI/runtime packages, desktop shell, and frontend. Set up whichever part you need.
 
 ### Hub + dashboard (recommended)
 
@@ -39,16 +39,6 @@ cd backend
 uv run pytest tests/
 ```
 
-### Plugin (TypeScript / OpenClaw)
-
-There is no root `Makefile` target for the plugin yet. Use:
-
-```bash
-cd plugin
-npm install
-npm test
-```
-
 ### Without Make (manual)
 
 ```bash
@@ -65,12 +55,6 @@ cd frontend && pnpm install && pnpm dev
 - Use `httpx.AsyncClient` for outbound HTTP — never sync `requests`
 - Follow PEP 8 style guidelines
 - Add type hints to all function signatures
-
-### Plugin (TypeScript)
-
-- All imports use `.js` extensions (NodeNext module resolution)
-- Keep `package.json` and `openclaw.plugin.json` versions in sync
-- No build step — TypeScript is loaded directly by OpenClaw
 
 ### General
 

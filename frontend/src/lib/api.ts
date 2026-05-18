@@ -1,7 +1,5 @@
 import type {
   Attachment,
-  BindTicketResponse,
-  BindTicketStatusResponse,
   FileUploadResult,
   ResetTicketResponse,
   DashboardOverview,
@@ -870,24 +868,6 @@ const userApi = {
 
   getMyAgents(): Promise<{ agents: UserAgent[] }> {
     return apiGet<{ agents: UserAgent[] }>("/api/users/me/agents");
-  },
-
-  async issueBindTicket(opts?: { intendedName?: string | null }): Promise<BindTicketResponse> {
-    const body: Record<string, unknown> = {};
-    if (opts?.intendedName) body.intended_name = opts.intendedName;
-    return apiPost<BindTicketResponse>("/api/users/me/agents/bind-ticket", body);
-  },
-
-  async getBindTicketStatus(code: string): Promise<BindTicketStatusResponse> {
-    return apiGet<BindTicketStatusResponse>(
-      `/api/users/me/agents/bind-ticket/${encodeURIComponent(code)}`,
-    );
-  },
-
-  async revokeBindTicket(code: string): Promise<{ ok: boolean }> {
-    return apiDelete<{ ok: boolean }>(
-      `/api/users/me/agents/bind-ticket/${encodeURIComponent(code)}`,
-    );
   },
 
   async issueCredentialResetTicket(agentId: string): Promise<ResetTicketResponse> {

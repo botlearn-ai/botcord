@@ -68,7 +68,7 @@ def _ensure_share_active(share: Share) -> None:
 
 def _install_guide_url() -> str:
     base = FRONTEND_BASE_URL.rstrip("/")
-    return f"{base}/openclaw-setup-instruction-script.md"
+    return f"{base}/chats"
 
 
 def _http_token_hint(locale: Locale, hub_url: str) -> str:
@@ -88,23 +88,20 @@ def _http_token_hint(locale: Locale, hub_url: str) -> str:
 def _tiered_block(
     locale: Locale,
     *,
-    plugin: list[str] | None = None,
     cli: list[str] | None = None,
     http: list[str] | None = None,
 ) -> list[str]:
-    """Build a three-tier instruction block (Plugin > CLI > HTTP)."""
-    tiers = [(plugin, "plugin"), (cli, "cli"), (http, "http")]
+    """Build a tiered instruction block (CLI > HTTP)."""
+    tiers = [(cli, "cli"), (http, "http")]
     has_multiple = sum(1 for t, _ in tiers if t) > 1
     lines: list[str] = []
 
     labels = {
         "en": {
-            "plugin": "If BotCord Plugin (OpenClaw) is installed:",
             "cli": "If BotCord CLI is installed:",
             "http": "If neither is installed, use HTTP API directly:",
         },
         "zh": {
-            "plugin": "如果已安装 BotCord Plugin（OpenClaw 插件）：",
             "cli": "如果已安装 BotCord CLI（botcord 命令行）：",
             "http": "如果都没安装，通过 HTTP 请求完成：",
         },
@@ -200,7 +197,6 @@ async def prompt_share(
             lines.append("")
             lines.append(f"Step 1 — Subscribe to product {product_id}:")
             lines.extend(_tiered_block(loc,
-                plugin=[f'Use the botcord_subscription tool with action "subscribe" and product_id "{product_id}".'],
                 cli=[f"Subscribe: POST {subscribe_url}"],
                 http=[
                     f"Subscribe: POST {subscribe_url}",
@@ -224,7 +220,6 @@ async def prompt_share(
                 if not has_paid_steps:
                     http_lines.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
-                    plugin=[f'Use the botcord_contacts tool with action "redeem_invite" and invite_code "{invite_code}".'],
                     cli=[f"Redeem the invite: POST {redeem_url}"],
                     http=http_lines,
                 ))
@@ -244,7 +239,6 @@ async def prompt_share(
                 if not has_paid_steps:
                     share_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
-                    plugin=['Use the botcord_rooms tool with action "join" and the room_id from the share details.'],
                     cli=["Run: botcord room join --room <room_id> (get room_id from the share details above)."],
                     http=share_http,
                 ))
@@ -258,7 +252,6 @@ async def prompt_share(
                 if not has_paid_steps:
                     room_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
-                    plugin=[f'Use the botcord_rooms tool with action "join" and room_id "{resolved_room_id}".'],
                     cli=[f"Run: botcord room join --room {resolved_room_id}"],
                     http=room_http,
                 ))
@@ -277,7 +270,6 @@ async def prompt_share(
             lines.append("")
             lines.append(f"步骤一 — 订阅产品 {product_id}：")
             lines.extend(_tiered_block(loc,
-                plugin=[f'使用 botcord_subscription 工具，action 为 "subscribe"，product_id 为 "{product_id}"。'],
                 cli=[f"订阅：POST {subscribe_url}"],
                 http=[
                     f"订阅：POST {subscribe_url}",
@@ -301,7 +293,6 @@ async def prompt_share(
                 if not has_paid_steps:
                     zh_invite_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
-                    plugin=[f'使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "{invite_code}"。'],
                     cli=[f"兑换邀请：POST {redeem_url}"],
                     http=zh_invite_http,
                 ))
@@ -321,7 +312,6 @@ async def prompt_share(
                 if not has_paid_steps:
                     zh_share_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
-                    plugin=["使用 botcord_rooms 工具，action 为 \"join\"，room_id 从分享详情中获取。"],
                     cli=["执行命令：botcord room join --room <room_id>（room_id 从上面的分享详情中获取）。"],
                     http=zh_share_http,
                 ))
@@ -335,7 +325,6 @@ async def prompt_share(
                 if not has_paid_steps:
                     zh_room_http.append(_http_token_hint(loc, hub_url))
                 lines.extend(_tiered_block(loc,
-                    plugin=[f'使用 botcord_rooms 工具，action 为 "join"，room_id 为 "{resolved_room_id}"。'],
                     cli=[f"执行命令：botcord room join --room {resolved_room_id}"],
                     http=zh_room_http,
                 ))
@@ -379,7 +368,6 @@ async def prompt_friend_invite(
             f"Preview invite details: GET {preview_url}",
             "",
             _tiered_block("en",
-                plugin=[f'Use the botcord_contacts tool with action "redeem_invite" and invite_code "{invite_code}".'],
                 cli=[f"Redeem the invite: POST {redeem_url}"],
                 http=[
                     f"Accept the invite: POST {redeem_url}",
@@ -397,7 +385,6 @@ async def prompt_friend_invite(
             f"查看邀请详情：GET {preview_url}",
             "",
             _tiered_block("zh",
-                plugin=[f'使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "{invite_code}"。'],
                 cli=[f"兑换邀请：POST {redeem_url}"],
                 http=[
                     f"接受邀请：POST {redeem_url}",
@@ -439,7 +426,6 @@ async def prompt_self_join(
             f"Help me join this BotCord group: {room_name}",
             "",
             _tiered_block("en",
-                plugin=[f'Use the botcord_rooms tool with action "join" and room_id "{room_id}".'],
                 cli=[f"Run: botcord room join --room {room_id}"],
                 http=[
                     f"Join the group: POST {join_url}",
@@ -457,7 +443,6 @@ async def prompt_self_join(
             f"帮我加入这个 BotCord 群：{room_name}",
             "",
             _tiered_block("zh",
-                plugin=[f'使用 botcord_rooms 工具，action 为 "join"，room_id 为 "{room_id}"。'],
                 cli=[f"执行命令：botcord room join --room {room_id}"],
                 http=[
                     f"加入群：POST {join_url}",
@@ -493,7 +478,6 @@ async def prompt_create_room(
             "If I do not specify anything else, choose the safer defaults: private group, invite-only access, members can send messages, and regular members cannot invite others.",
             "",
             _tiered_block("en",
-                plugin=['Use the botcord_rooms tool with action "create".'],
                 cli=["Run: botcord room create --name <name> [--visibility private] [--join-policy invite_only]"],
                 http=[
                     f"Create the group: POST {hub_url}/hub/rooms",
@@ -512,7 +496,6 @@ async def prompt_create_room(
             "如果我没有特别说明，默认用更稳妥的方式创建：私有群、需要邀请才能加入、成员可以发言、普通成员不能继续拉人。",
             "",
             _tiered_block("zh",
-                plugin=["使用 botcord_rooms 工具，action 为 \"create\"。"],
                 cli=["执行命令：botcord room create --name <群名> [--visibility private] [--join-policy invite_only]"],
                 http=[
                     f"创建群：POST {hub_url}/hub/rooms",

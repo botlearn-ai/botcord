@@ -250,7 +250,7 @@ async def owner_chat_ws(ws: WebSocket):
       3. Server replies: {"type": "auth_ok", "agent_id": "...", "room_id": "..."}
       4. Client sends: {"type": "send", "text": "..."}
       5. Server echoes: {"type": "message", "sender": "user", ...}
-      6. Server streams: {"type": "stream_block", ...} from plugin
+      6. Server streams: {"type": "stream_block", ...} from connected agent
       7. Server delivers: {"type": "message", "sender": "agent", ...} for final reply
     """
     # W5: Check Origin header before accepting the upgrade.
@@ -459,7 +459,7 @@ async def owner_chat_ws(ws: WebSocket):
                     _oc_trace_subs[hub_msg_id] = (user_id, agent_id)
                     _oc_trace_block_count[hub_msg_id] = 0
 
-                    # Notify plugin inbox
+                    # Notify agent inbox
                     notified = await notify_inbox(
                         agent_id,
                         db=db,
@@ -480,7 +480,7 @@ async def owner_chat_ws(ws: WebSocket):
                     )
 
                     # If no active WS connections, spawn background retry so the
-                    # plugin picks up the message when it reconnects shortly.
+                    # the agent picks up the message when it reconnects shortly.
                     if notified == 0:
                         logger.warning(
                             "Owner-chat: no active WS for agent=%s, scheduling notify retry",
@@ -543,7 +543,7 @@ async def owner_chat_ws(ws: WebSocket):
 
 
 # ---------------------------------------------------------------------------
-# Stream block HTTP endpoint (called by plugin)
+# Stream block HTTP endpoint (called by connected agents)
 # ---------------------------------------------------------------------------
 
 
@@ -558,7 +558,7 @@ async def receive_stream_block(
     body: StreamBlockBody,
     agent_id: str = Depends(get_current_agent),
 ):
-    """Receive a streamed execution block from the plugin and forward to owner-chat WS."""
+    """Receive a streamed execution block from the connected agent and forward to owner-chat WS."""
     sub = _oc_trace_subs.get(body.trace_id)
     if not sub:
         return
@@ -584,7 +584,7 @@ async def receive_stream_block(
 
 
 # ---------------------------------------------------------------------------
-# Notify owner HTTP endpoint (called by plugin)
+# Notify owner HTTP endpoint (called by connected agents)
 # ---------------------------------------------------------------------------
 
 
@@ -605,7 +605,7 @@ async def notify_owner(
 ):
     """Push a notification to the agent's owner via owner-chat WebSocket.
 
-    The plugin calls this when the agent uses botcord_notify so the owner
+    The connected agent calls this when it uses botcord_notify so the owner
     also sees the notification in the dashboard chat, in addition to any
     external channel (Telegram, Discord, etc.).
 

@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 hub.auth 的 agent JWT 上下文与 invite_ops 共享逻辑完成邀请兑换
-[OUTPUT]: 对外提供 /hub/invites Hub 级路由，让 Plugin/CLI/HTTP 通过 agent token 兑换邀请
+[OUTPUT]: 对外提供 /hub/invites Hub 级路由，让 CLI/HTTP 通过 agent token 兑换邀请
 [POS]: hub 层邀请端点，与 app/routers/invites.py（BFF 层）共享核心逻辑
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """

@@ -1,5 +1,5 @@
 -- Third-party gateway (Telegram / WeChat / Feishu) connection metadata.
--- See docs/third-party-gateway-design.md "Hub / Backend 设计".
+-- Third-party gateway connection metadata.
 -- Hub stores metadata only (provider, label, whitelist, baseUrl, splitAt,
 -- tokenPreview, status). Bot tokens NEVER live here — they are written to
 -- the daemon's local secret store (~/.botcord/daemon/gateways/{id}.json).

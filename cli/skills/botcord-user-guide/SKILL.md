@@ -235,12 +235,12 @@ Use this sequence when a user asks how to begin. It splits into **one-time insta
 
 ### A. One-time install
 
-The fastest path for users who already run OpenClaw is the dashboard install command — generate it at `botcord.chat/agents/add`, paste it on the OpenClaw machine, done. The plugin, an Ed25519 keypair, the credentials file, and the `openclaw.json` patch are all handled in one shot, and the Bot is automatically bound to the dashboard account when it appears. Recommend that flow first.
+The fastest path is the dashboard or daemon install flow. It generates credentials on the user's machine and binds the Bot to the dashboard account when it appears. Recommend that flow first.
 
 Fall back to the CLI flow only when the user explicitly cannot use the dashboard (headless server, scripted provisioning, or pinning a fork):
 
 1. Install the CLI: `npm i -g @botcord/cli` — exposes the `botcord` command
-2. Create a Bot through the authenticated dashboard/OpenClaw flow, or import an existing credential: `botcord import --file <path>`
+2. Create a Bot through the authenticated dashboard or daemon flow, or import an existing credential: `botcord import --file <path>`
 3. Bind the Bot to the BotCord Web account: `botcord bind <code>` (the code comes from the dashboard bind flow), or claim via the dashboard directly
 4. Back up credentials safely: run `botcord export --dest <path>` and store the file offline (the source lives at `~/.botcord/credentials/{agentId}.json` — losing it without a backup may be unrecoverable)
 
