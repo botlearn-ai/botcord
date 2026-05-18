@@ -1,8 +1,9 @@
 /**
  * Working memory — persistent, account-scoped notes injected into every turn.
  *
- * Stored at `~/.botcord/agents/{agentId}/state/working-memory.json` (the
- * per-agent state dir owned by the daemon).
+ * Stored at `~/.botcord/memory/{agentId}/working-memory.json`, matching the
+ * @botcord/cli `botcord memory` command so writes made by an agent are visible
+ * to daemon context injection on the next turn.
  *
  * Ported from plugin/src/memory.ts (dropping workspace + OpenClaw runtime
  * branches) and plugin/src/memory-protocol.ts (prompt builder).
@@ -16,6 +17,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { agentStateDir } from "./agent-workspace.js";
 import { DAEMON_DIR_PATH } from "./config.js";
@@ -50,18 +52,21 @@ const RESERVED_TAGS_RE = /<\/?(?:current_memory|section_\w+)\b[^>]*>/gi;
 // ── Path resolution ────────────────────────────────────────────────
 
 /**
- * Canonical per-agent state directory. Returns the new location
- * (`~/.botcord/agents/{agentId}/state`). The legacy location under
- * `~/.botcord/daemon/memory/{agentId}` is migrated lazily on first read —
- * see §8 of the daemon-agent-workspace plan.
+ * Canonical per-agent memory directory. This intentionally matches
+ * @botcord/cli's `botcord memory` path so the CLI and daemon share one store.
  */
 export function resolveMemoryDir(agentId: string): string {
   if (!agentId) throw new Error("resolveMemoryDir: agentId is required");
+  return path.join(homedir(), ".botcord", "memory", agentId);
+}
+
+/** Previous daemon-owned location retained for one-shot migration on read. */
+function daemonStateMemoryDir(agentId: string): string {
   return agentStateDir(agentId);
 }
 
-/** Legacy location retained for one-shot migration on read. */
-function legacyMemoryDir(agentId: string): string {
+/** Older daemon location retained for one-shot migration on read. */
+function daemonLegacyMemoryDir(agentId: string): string {
   return path.join(DAEMON_DIR_PATH, "memory", agentId);
 }
 
@@ -69,8 +74,12 @@ function workingMemoryPath(agentId: string): string {
   return path.join(resolveMemoryDir(agentId), "working-memory.json");
 }
 
-function legacyWorkingMemoryPath(agentId: string): string {
-  return path.join(legacyMemoryDir(agentId), "working-memory.json");
+function daemonStateWorkingMemoryPath(agentId: string): string {
+  return path.join(daemonStateMemoryDir(agentId), "working-memory.json");
+}
+
+function daemonLegacyWorkingMemoryPath(agentId: string): string {
+  return path.join(daemonLegacyMemoryDir(agentId), "working-memory.json");
 }
 
 // Migration conflict warnings are emitted at most once per agent per
@@ -79,59 +88,63 @@ function legacyWorkingMemoryPath(agentId: string): string {
 const warnedMigrationConflict = new Set<string>();
 
 /**
- * Resolve the path to read from, migrating from the legacy location if
+ * Resolve the path to read from, migrating from daemon-only locations if
  * necessary. Returns the path the caller should read, or `null` when no
  * memory file exists anywhere.
- *
- * Migration branch (the `else if` on `legacyExists` below) is meant to be
- * deleted one release after this change ships; see plan §8 step 6.
  */
 function resolveReadPath(agentId: string): string | null {
-  const newPath = workingMemoryPath(agentId);
-  const oldPath = legacyWorkingMemoryPath(agentId);
-  const newExists = existsSync(newPath);
-  const oldExists = existsSync(oldPath);
+  const cliPath = workingMemoryPath(agentId);
+  const daemonStatePath = daemonStateWorkingMemoryPath(agentId);
+  const daemonLegacyPath = daemonLegacyWorkingMemoryPath(agentId);
+  const cliExists = existsSync(cliPath);
+  const daemonStateExists = existsSync(daemonStatePath);
+  const daemonLegacyExists = existsSync(daemonLegacyPath);
 
-  if (newExists) {
-    if (oldExists && !warnedMigrationConflict.has(agentId)) {
+  if (cliExists) {
+    if ((daemonStateExists || daemonLegacyExists) && !warnedMigrationConflict.has(agentId)) {
       warnedMigrationConflict.add(agentId);
-      daemonLog.warn("working-memory: both new and legacy paths exist; using new", {
+      daemonLog.warn("working-memory: both cli and daemon paths exist; using cli", {
         agentId,
-        oldPath,
-        newPath,
+        cliPath,
+        daemonStatePath,
+        daemonLegacyPath,
       });
     }
-    return newPath;
+    return cliPath;
   }
-  if (oldExists) {
+
+  const migrateFrom = daemonStateExists
+    ? daemonStatePath
+    : daemonLegacyExists
+      ? daemonLegacyPath
+      : null;
+  if (migrateFrom) {
     try {
-      mkdirSync(path.dirname(newPath), { recursive: true, mode: 0o700 });
+      mkdirSync(path.dirname(cliPath), { recursive: true, mode: 0o700 });
       try {
-        renameSync(oldPath, newPath);
+        renameSync(migrateFrom, cliPath);
       } catch (err) {
-        // EXDEV = legacy and new paths live on different filesystems
+        // EXDEV = old and canonical paths live on different filesystems
         // (bind mounts, tmpfs overlays). `renameSync` cannot cross fs
-        // boundaries, so fall back to copy + unlink. Without this, the
-        // next write would go to newPath while legacy still has the old
-        // payload — silent divergence the reviewer of §8 flagged.
+        // boundaries, so fall back to copy + unlink.
         if ((err as NodeJS.ErrnoException).code === "EXDEV") {
-          copyFileSync(oldPath, newPath);
-          unlinkSync(oldPath);
+          copyFileSync(migrateFrom, cliPath);
+          unlinkSync(migrateFrom);
         } else {
           throw err;
         }
       }
-      return newPath;
+      return cliPath;
     } catch (err) {
       const e = err as NodeJS.ErrnoException;
-      daemonLog.warn("working-memory: migration rename failed; reading legacy path", {
+      daemonLog.warn("working-memory: migration rename failed; reading daemon path", {
         agentId,
-        oldPath,
-        newPath,
+        oldPath: migrateFrom,
+        newPath: cliPath,
         code: e.code,
         error: e.message ?? String(err),
       });
-      return oldPath;
+      return migrateFrom;
     }
   }
   return null;

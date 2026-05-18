@@ -30,7 +30,11 @@ vi.mock("../log.js", () => ({
 const wm = await import("../working-memory.js");
 const { agentStateDir } = await import("../agent-workspace.js");
 
-function newPathFor(agentId: string): string {
+function cliPathFor(agentId: string): string {
+  return path.join(tmpHome, ".botcord", "memory", agentId, "working-memory.json");
+}
+
+function daemonStatePathFor(agentId: string): string {
   return path.join(agentStateDir(agentId), "working-memory.json");
 }
 
@@ -44,8 +48,14 @@ function writeLegacy(agentId: string, body: unknown): void {
   writeFileSync(p, JSON.stringify(body));
 }
 
-function writeNew(agentId: string, body: unknown): void {
-  const p = newPathFor(agentId);
+function writeDaemonState(agentId: string, body: unknown): void {
+  const p = daemonStatePathFor(agentId);
+  mkdirSync(path.dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(body));
+}
+
+function writeCli(agentId: string, body: unknown): void {
+  const p = cliPathFor(agentId);
   mkdirSync(path.dirname(p), { recursive: true });
   writeFileSync(p, JSON.stringify(body));
 }
@@ -79,9 +89,10 @@ describe("working-memory I/O", () => {
     expect(got?.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("writes land in the new state dir", () => {
+  it("writes land in the CLI-compatible memory dir", () => {
     wm.updateWorkingMemory("ag_new", { goal: "g" });
-    expect(existsSync(newPathFor("ag_new"))).toBe(true);
+    expect(existsSync(cliPathFor("ag_new"))).toBe(true);
+    expect(existsSync(daemonStatePathFor("ag_new"))).toBe(false);
     expect(existsSync(legacyPathFor("ag_new"))).toBe(false);
   });
 
@@ -136,34 +147,51 @@ describe("working-memory I/O", () => {
   });
 });
 
-describe("working-memory migration (§8)", () => {
-  it("reads from new path when present and ignores legacy", () => {
-    writeNew("ag_mig", { version: 2, sections: { notes: "fresh" }, updatedAt: "2026-01-01" });
+describe("working-memory migration", () => {
+  it("reads from CLI path when present and ignores daemon paths", () => {
+    writeCli("ag_mig", { version: 2, sections: { notes: "fresh" }, updatedAt: "2026-01-01" });
+    writeDaemonState("ag_mig", { version: 2, sections: { notes: "state" }, updatedAt: "2025-01-01" });
     writeLegacy("ag_mig", { version: 2, sections: { notes: "stale" }, updatedAt: "2024-01-01" });
 
     const got = wm.readWorkingMemory("ag_mig");
     expect(got?.sections.notes).toBe("fresh");
-    // Legacy is left in place when new wins; warning is emitted once.
+    // Old daemon paths are left in place when CLI wins; warning is emitted once.
+    expect(existsSync(daemonStatePathFor("ag_mig"))).toBe(true);
     expect(existsSync(legacyPathFor("ag_mig"))).toBe(true);
     expect(warnSpy).toHaveBeenCalled();
   });
 
-  it("renames legacy → new on first read when only legacy exists", () => {
+  it("renames daemon state → CLI path on first read when only daemon state exists", () => {
+    writeDaemonState("ag_onlystate", {
+      version: 2,
+      sections: { notes: "state notes" },
+      updatedAt: "2025-01-01",
+    });
+    expect(existsSync(cliPathFor("ag_onlystate"))).toBe(false);
+
+    const got = wm.readWorkingMemory("ag_onlystate");
+    expect(got?.sections.notes).toBe("state notes");
+
+    expect(existsSync(daemonStatePathFor("ag_onlystate"))).toBe(false);
+    expect(existsSync(cliPathFor("ag_onlystate"))).toBe(true);
+  });
+
+  it("renames legacy daemon memory → CLI path on first read when only legacy exists", () => {
     writeLegacy("ag_onlyold", {
       version: 2,
       sections: { notes: "old notes" },
       updatedAt: "2024-01-01",
     });
-    expect(existsSync(newPathFor("ag_onlyold"))).toBe(false);
+    expect(existsSync(cliPathFor("ag_onlyold"))).toBe(false);
 
     const got = wm.readWorkingMemory("ag_onlyold");
     expect(got?.sections.notes).toBe("old notes");
 
-    // Legacy moved away; new path now holds the data.
+    // Legacy moved away; CLI path now holds the data.
     expect(existsSync(legacyPathFor("ag_onlyold"))).toBe(false);
-    expect(existsSync(newPathFor("ag_onlyold"))).toBe(true);
+    expect(existsSync(cliPathFor("ag_onlyold"))).toBe(true);
 
-    // Subsequent reads come from new path — delete legacy dir tree to
+    // Subsequent reads come from CLI path — delete legacy dir tree to
     // prove no re-read falls through to it.
     const got2 = wm.readWorkingMemory("ag_onlyold");
     expect(got2?.sections.notes).toBe("old notes");
@@ -180,13 +208,13 @@ describe("working-memory migration (§8)", () => {
       updatedAt: "2024-01-01",
     });
 
-    // Plant a regular file where the new state *directory* would live, so
+    // Plant a regular file where the CLI memory *directory* would live, so
     // mkdirSync+renameSync inside the migration branch fails with ENOTDIR
-    // (the agent home's `state` path already exists as a file). The
+    // (`~/.botcord/memory/<agentId>` already exists as a file). The
     // migration path must log and fall back to reading the legacy file.
-    const home = path.join(tmpHome, ".botcord", "agents", "ag_renamefail");
+    const home = path.join(tmpHome, ".botcord", "memory");
     mkdirSync(home, { recursive: true });
-    writeFileSync(path.join(home, "state"), "not a dir");
+    writeFileSync(path.join(home, "ag_renamefail"), "not a dir");
 
     const got = wm.readWorkingMemory("ag_renamefail");
     expect(got?.sections.notes).toBe("still readable");
