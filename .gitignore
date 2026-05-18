@@ -2,6 +2,9 @@
 .vercel
 
 node_modules/
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
 # env files: ignore all, but keep example templates
 .env*
 !.env.example
