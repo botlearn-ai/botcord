@@ -106,6 +106,17 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const wasNearBottomRef = useRef(true);
   const [, forceRender] = useState(0);
 
+  const scrollToBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const scrollToBottomAfterLayout = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToBottom);
+    });
+  }, [scrollToBottom]);
+
   // WS hook authenticates the selected owner-chat target explicitly.
   const { wsClientRef, streamedTraceIds } = useOwnerChatWs({
     activeAgentId: chatAgentId,
@@ -143,6 +154,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           animatedRef.current.add(msg.clientId);
         }
         initialLoadRef.current = false;
+        scrollToBottomAfterLayout();
       } catch (err: any) {
         if (cancelled) return;
         setInitError(err?.message || "Failed to initialize chat");
@@ -158,19 +170,11 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   // ------ Scroll to bottom once initial messages render ------
   useEffect(() => {
     if (!loading && messages.length > 0 && prevLengthRef.current === 0) {
-      requestAnimationFrame(() => {
-        const el = scrollContainerRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
+      scrollToBottomAfterLayout();
     }
-  }, [loading, messages]);
+  }, [loading, messages.length, scrollToBottomAfterLayout]);
 
   // ------ Scroll helpers ------
-
-  const scrollToBottom = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, []);
 
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
