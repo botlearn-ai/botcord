@@ -87,9 +87,6 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
           activeIdentity?.type === "agent"
             ? activeIdentity.id
             : ownedAgents[0]?.agent_id;
-        if (!uploadAgentId) {
-          throw new Error("Choose or create an agent before sending files.");
-        }
         const res = await fetch(sourceFile.url, { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to prepare file for sending");
         const blob = await res.blob();

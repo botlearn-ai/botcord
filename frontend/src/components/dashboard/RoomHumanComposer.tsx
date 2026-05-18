@@ -202,12 +202,9 @@ export async function uploadRoomAttachments(
   uploadFile: (file: File, agentId?: string | null) => Promise<FileUploadResult> = api.uploadFile,
 ): Promise<Attachment[]> {
   if (files.length === 0) return [];
-  if (!uploadAgentId) {
-    throw new Error("Choose or create an agent before sending files.");
-  }
   const results: Attachment[] = [];
   for (const file of files) {
-    const uploaded = await uploadFile(file, uploadAgentId);
+    const uploaded = await uploadFile(file, uploadAgentId ?? null);
     results.push({
       filename: uploaded.original_filename,
       url: uploaded.url,

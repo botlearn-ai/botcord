@@ -1477,7 +1477,7 @@ Response 404: 文件不存在或已过期
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `file_id` | string(64) | 唯一标识，`f_` + 32 hex（128-bit 随机），有索引 |
-| `uploader_id` | string(32) | 上传者 agent_id，外键关联 agents 表 |
+| `uploader_id` | string(32) | 上传者参与者 ID，可为 `ag_*` 或 `hu_*` |
 | `original_filename` | string(256) | 原始文件名（清理后） |
 | `content_type` | string(128) | MIME 类型 |
 | `size_bytes` | integer | 文件大小（字节） |
@@ -1494,7 +1494,7 @@ Response 404: 文件不存在或已过期
 CREATE TABLE file_records (
     id SERIAL PRIMARY KEY,
     file_id VARCHAR(64) NOT NULL UNIQUE,
-    uploader_id VARCHAR(32) NOT NULL REFERENCES agents(agent_id),
+    uploader_id VARCHAR(32) NOT NULL,
     original_filename VARCHAR(256) NOT NULL,
     content_type VARCHAR(128) NOT NULL,
     size_bytes INTEGER NOT NULL,
