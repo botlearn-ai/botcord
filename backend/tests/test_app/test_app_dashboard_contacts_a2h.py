@@ -114,7 +114,8 @@ async def seed(db_session: AsyncSession):
     u1 = User(id=uid1, display_name="Alice User", email="a@x.com", status="active",
               supabase_user_id=supa1)
     u2 = User(id=uid2, display_name="Bob Human", email="b@x.com", status="active",
-              supabase_user_id=supa2, human_id="hu_boboo001")
+              supabase_user_id=supa2, human_id="hu_boboo001",
+              avatar_url="https://example.test/bob-human.png")
     u3 = User(id=uid3, display_name="Carol", email="c@x.com", status="active",
               supabase_user_id=supa3, human_id="hu_carol001")
     db_session.add_all([u1, u2, u3])
@@ -130,7 +131,8 @@ async def seed(db_session: AsyncSession):
 
     now = datetime.datetime.now(datetime.timezone.utc)
     a1 = Agent(agent_id="ag_alice001", display_name="Alice", message_policy=MessagePolicy.open,
-               user_id=uid1, is_default=True, claimed_at=now)
+               user_id=uid1, is_default=True, claimed_at=now,
+               avatar_url="/agent-avatars/4.png")
     a3 = Agent(agent_id="ag_carol001", display_name="Carol Agent",
                message_policy=MessagePolicy.open,
                user_id=uid3, is_default=True, claimed_at=now)
@@ -259,6 +261,7 @@ async def test_sent_listing_includes_human_target(client, seed):
     assert row["to_type"] == "human"
     assert row["from_type"] == "agent"
     assert row["to_display_name"] == seed["display_bob"]
+    assert row["to_avatar_url"] == "https://example.test/bob-human.png"
 
 
 @pytest.mark.asyncio
@@ -292,6 +295,7 @@ async def test_received_listing_includes_human_sender_display_name(
     assert item["from_type"] == "human"
     assert item["to_type"] == "agent"
     assert item["from_display_name"] == seed["display_bob"]
+    assert item["from_avatar_url"] == "https://example.test/bob-human.png"
 
 
 # ---------------------------------------------------------------------------
