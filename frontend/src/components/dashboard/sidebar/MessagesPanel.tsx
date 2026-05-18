@@ -6,7 +6,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { buildVisibleMessageRooms, isOwnerChatRoom } from "@/store/dashboard-shared";
+import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -31,8 +31,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   const locale = useLanguage();
   const t = sidebar[locale];
 
-  const { activeAgentId, sessionMode, token, humanRooms, ownedAgents } = useDashboardSessionStore(useShallow((s) => ({
-    activeAgentId: s.activeAgentId,
+  const { sessionMode, token, humanRooms, ownedAgents } = useDashboardSessionStore(useShallow((s) => ({
     sessionMode: s.sessionMode,
     token: s.token,
     humanRooms: s.humanRooms,
@@ -116,11 +115,6 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
       return searchHaystack.includes(normalizedMessageQuery);
     });
   }, [messages, normalizedMessageQuery, categorizedRooms]);
-
-  const includeUserChat = (messagesFilter === "self-all" || messagesFilter === "self-my-bot")
-    && !filteredMessageRooms.some(
-      (room) => isOwnerChatRoom(room.room_id) && room._originAgent?.agent_id === activeAgentId,
-    );
 
   // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
@@ -233,9 +227,9 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
             创建 Bot
           </button>
         </div>
-      ) : visibleMessageRooms.length === 0 && !activeAgentId ? (
+      ) : visibleMessageRooms.length === 0 ? (
         <RoomZeroState compact />
-      ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 && !activeAgentId ? (
+      ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 ? (
         <div className="px-4 py-6 text-center text-xs text-text-secondary">
           {t.noMessages}
         </div>
@@ -245,7 +239,6 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
             rooms={filteredMessageRooms}
             loading={showRoomListSkeleton}
             searchQuery={messageQuery}
-            includeUserChat={includeUserChat}
           />
           {!showOverviewSkeleton && !normalizedMessageQuery && filteredMessageRooms.length < 5 && (
             <div className="mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 bg-glass-bg/20 p-4">

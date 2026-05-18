@@ -198,7 +198,7 @@ describe("messages merge filters", () => {
     expect(applyMessagesFilter([room], "bots-bot-bot", ownedAgentIds)).toEqual([]);
   });
 
-  it("classifies owner-chat rm_oc rooms as my own bot conversations", () => {
+  it("excludes owner-chat rm_oc rooms from the Messages list", () => {
     const rooms = mergeOwnerVisibleRooms({
       ownRooms: [],
       ownedAgentRooms: [
@@ -213,17 +213,14 @@ describe("messages merge filters", () => {
     });
     const ownedAgentIds = new Set(["ag_bot"]);
 
-    expect(applyMessagesFilter(rooms, "self-my-bot", ownedAgentIds).map((room) => room.room_id)).toEqual([
-      "rm_oc_abc123",
-    ]);
-    expect(applyMessagesFilter(rooms, "self-all", ownedAgentIds).map((room) => room.room_id)).toEqual([
-      "rm_oc_abc123",
-    ]);
+    expect(rooms).toEqual([]);
+    expect(applyMessagesFilter(rooms, "self-my-bot", ownedAgentIds)).toEqual([]);
+    expect(applyMessagesFilter(rooms, "self-all", ownedAgentIds)).toEqual([]);
     expect(applyMessagesFilter(rooms, "bots-all", ownedAgentIds)).toEqual([]);
     expect(applyMessagesFilter(rooms, "bots-group", ownedAgentIds)).toEqual([]);
     expect(countMessagesByFilter(rooms, ownedAgentIds)).toMatchObject({
-      "self-all": 1,
-      "self-my-bot": 1,
+      "self-all": 0,
+      "self-my-bot": 0,
       "bots-all": 0,
       "bots-group": 0,
     });

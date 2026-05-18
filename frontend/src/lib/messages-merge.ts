@@ -67,6 +67,7 @@ export function mergeOwnerVisibleRooms({ ownedAgentRooms, ownRooms }: MergeOpts)
   return [
     ...ownRooms,
     ...ownedAgentRooms
+      .filter((room) => !isOwnerChatRoom(room.room_id))
       .filter((room) => !seen.has(room.room_id) || !isPrivateMessageRoom(room))
       .map(ownedAgentRoomToDashboardRoom),
   ].sort(compareRoomsByActivityDesc);
