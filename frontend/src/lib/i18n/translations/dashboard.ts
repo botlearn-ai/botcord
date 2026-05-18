@@ -3480,6 +3480,8 @@ export const botDetailDrawer: TranslationMap<{
     openTopics: string
     completedTopics: string
     hostedDevice: string
+    runtime: string
+    unknownRuntime: string
     view: string
     noDevice: string
     friends: (count: number) => string
@@ -3554,6 +3556,8 @@ export const botDetailDrawer: TranslationMap<{
       openTopics: 'Open',
       completedTopics: 'Done',
       hostedDevice: 'Hosted device',
+      runtime: 'Runtime',
+      unknownRuntime: 'Unknown runtime',
       view: 'View',
       noDevice: 'No device linked',
       friends: (count) => `Friends · ${count}`,
@@ -3642,6 +3646,8 @@ export const botDetailDrawer: TranslationMap<{
       openTopics: '打开',
       completedTopics: '完成',
       hostedDevice: '托管设备',
+      runtime: '运行环境',
+      unknownRuntime: '未知运行环境',
       view: '查看',
       noDevice: '未关联任何设备',
       friends: (count) => `好友 · ${count}`,

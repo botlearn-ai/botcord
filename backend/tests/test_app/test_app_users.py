@@ -113,6 +113,7 @@ async def seed_user(db_session: AsyncSession):
         user_id=user_id,
         is_default=True,
         claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        runtime="codex",
     )
     db_session.add(agent)
     await db_session.commit()
@@ -142,6 +143,7 @@ async def test_get_me(client: AsyncClient, seed_user: dict):
     assert len(data["agents"]) == 1
     assert data["agents"][0]["agent_id"] == "ag_testuser001"
     assert data["agents"][0]["is_default"] is True
+    assert data["agents"][0]["runtime"] == "codex"
     assert data["max_agents"] == 30
 
 
@@ -178,6 +180,7 @@ async def test_get_my_agents(client: AsyncClient, seed_user: dict):
     assert agents[0]["bio"] == "A test agent"
     assert agents[0]["message_policy"] == "contacts_only"
     assert agents[0]["is_default"] is True
+    assert agents[0]["runtime"] == "codex"
 
 
 @pytest.mark.asyncio

@@ -169,6 +169,7 @@ async def seed_user(db_session: AsyncSession):
         is_default=True,
         claimed_at=now,
         created_at=now,
+        runtime="codex",
     )
     agent2 = Agent(
         agent_id="ag_agent002",
@@ -179,6 +180,7 @@ async def seed_user(db_session: AsyncSession):
         is_default=False,
         claimed_at=now,
         created_at=now + datetime.timedelta(seconds=1),
+        runtime="claude-code",
     )
     db_session.add(agent1)
     db_session.add(agent2)
@@ -218,6 +220,7 @@ async def test_get_my_agents_hides_deleted_by_default_and_can_include_them(
     assert default_resp.status_code == 200
     default_agents = default_resp.json()["agents"]
     assert [agent["agent_id"] for agent in default_agents] == ["ag_agent001"]
+    assert default_agents[0]["runtime"] == "codex"
 
     include_resp = await client.get(
         "/api/users/me/agents?include_deleted=true",
@@ -231,6 +234,7 @@ async def test_get_my_agents_hides_deleted_by_default_and_can_include_them(
     assert set(agents_by_id) == {"ag_agent001", "ag_agent002"}
     assert agents_by_id["ag_agent002"]["status"] == "deleted"
     assert agents_by_id["ag_agent002"]["deleted_at"] == deleted_at.isoformat()
+    assert agents_by_id["ag_agent002"]["runtime"] == "claude-code"
 
 
 # ---------------------------------------------------------------------------
