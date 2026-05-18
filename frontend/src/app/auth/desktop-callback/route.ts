@@ -21,21 +21,42 @@ export async function GET(request: Request) {
       main { width: min(420px, calc(100vw - 32px)); text-align: center; }
       h1 { margin: 0 0 10px; font-size: 22px; font-weight: 650; }
       p { margin: 0 0 22px; color: #9aa4b5; line-height: 1.5; }
-      a { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 18px; border: 1px solid #1f9fb4; border-radius: 10px; color: #22d3ee; text-decoration: none; background: rgba(34, 211, 238, 0.1); }
+      button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 18px; border: 1px solid #1f9fb4; border-radius: 10px; color: #22d3ee; text-decoration: none; background: rgba(34, 211, 238, 0.1); font: inherit; cursor: pointer; }
+      iframe { display: none; }
     </style>
   </head>
   <body>
     <main>
       <h1>Opening BotCord</h1>
-      <p>You can close this tab after BotCord opens.</p>
-      <a href="${escapeHtml(deepLink)}">Open BotCord</a>
+      <p id="status">If this tab does not close automatically, you can close it after BotCord opens.</p>
+      <button id="open" type="button">Open BotCord</button>
+      <iframe id="handoff" title="BotCord handoff"></iframe>
     </main>
     <script>
       const target = ${JSON.stringify(deepLink)};
-      window.location.replace(target);
-      window.setTimeout(() => {
+      const status = document.getElementById("status");
+      const handoff = document.getElementById("handoff");
+      const openButton = document.getElementById("open");
+
+      function tryClose() {
+        window.open("", "_self");
         window.close();
-      }, 900);
+      }
+
+      function openBotCord() {
+        status.textContent = "Opening BotCord...";
+        // Do not navigate the top-level browser tab to botcord://. Chrome/Safari
+        // can leave that tab on a blank custom-scheme page. A hidden iframe
+        // triggers the protocol handler while this page remains closable.
+        handoff.src = target;
+        window.setTimeout(tryClose, 800);
+        window.setTimeout(() => {
+          status.textContent = "BotCord should be open now. You can close this tab.";
+        }, 1600);
+      }
+
+      openButton.addEventListener("click", openBotCord);
+      window.setTimeout(openBotCord, 150);
     </script>
   </body>
 </html>`;

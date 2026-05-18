@@ -32,6 +32,13 @@ struct DesktopConfig {
     label: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserAuthConfig {
+    #[serde(default)]
+    label: Option<String>,
+}
+
 impl Default for DesktopConfig {
     fn default() -> Self {
         Self {
@@ -237,8 +244,69 @@ pub fn run() {
         ])
         .plugin(tauri_plugin_deep_link::init())
         .plugin(desktop_auth_plugin())
+        .setup(|_| {
+            thread::spawn(|| {
+                if let Err(err) = auto_start_daemon_if_authorized() {
+                    eprintln!("[desktop-daemon] auto-start skipped: {err}");
+                }
+            });
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running BotCord desktop");
+}
+
+fn auto_start_daemon_if_authorized() -> Result<(), String> {
+    let user_auth = load_user_auth_config()?;
+    let mut config = load_config()?;
+    if config.label.is_empty() {
+        if let Some(label) = user_auth
+            .label
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            config.label = label.to_string();
+        }
+    }
+
+    ensure_daemon_available(&config)?;
+
+    if daemon_status_alive(&config)? {
+        return Ok(());
+    }
+
+    let mut args = vec![
+        "start".to_string(),
+        "--background".to_string(),
+        "--hub".to_string(),
+        config.hub_url.clone(),
+    ];
+    if !config.label.is_empty() {
+        args.push("--label".to_string());
+        args.push(config.label.clone());
+    }
+    run_daemon_owned(&config.daemon_bin, args)?;
+    Ok(())
+}
+
+fn load_user_auth_config() -> Result<UserAuthConfig, String> {
+    let path = user_auth_path()?;
+    if !path.exists() {
+        return Err("no daemon user-auth record".to_string());
+    }
+    let data = fs::read_to_string(path).map_err(|err| err.to_string())?;
+    serde_json::from_str(&data).map_err(|err| err.to_string())
+}
+
+fn daemon_status_alive(config: &DesktopConfig) -> Result<bool, String> {
+    let output = run_daemon(config, ["status", "--json"])?;
+    let parsed: Value = serde_json::from_str(&output)
+        .map_err(|err| format!("status output was not JSON: {err}"))?;
+    Ok(parsed
+        .get("alive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false))
 }
 
 fn desktop_auth_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
@@ -539,8 +607,6 @@ fn rewrite_oauth_redirect(url: &Url, config: &DesktopConfig) -> String {
     let mut desktop_redirect = Url::parse(&config.dashboard_url)
         .or_else(|_| Url::parse(DEFAULT_DASHBOARD_URL))
         .expect("valid default dashboard URL");
-    // Use a web callback page so the browser tab can hand off to the desktop
-    // app and then close itself instead of being left on a blank custom-scheme page.
     desktop_redirect.set_path("/auth/desktop-callback");
     desktop_redirect.set_query(None);
     desktop_redirect.set_fragment(None);
@@ -634,6 +700,10 @@ fn open_url(url: &str) -> Result<(), String> {
 
 fn config_path() -> Result<PathBuf, String> {
     Ok(home_dir()?.join(".botcord").join("desktop").join("config.json"))
+}
+
+fn user_auth_path() -> Result<PathBuf, String> {
+    Ok(home_dir()?.join(".botcord").join("daemon").join("user-auth.json"))
 }
 
 fn launchd_plist_path() -> Result<PathBuf, String> {
@@ -1014,7 +1084,10 @@ mod tests {
         let rewritten = rewrite_oauth_redirect(&original, &config);
         let redirect = redirect_to(&rewritten);
 
-        assert_eq!(redirect.origin().unicode_serialization(), "https://preview.botcord.chat");
+        assert_eq!(
+            redirect.origin().unicode_serialization(),
+            "https://preview.botcord.chat"
+        );
         assert_eq!(redirect.path(), "/auth/desktop-callback");
         assert_eq!(redirect.query(), None);
     }
@@ -1030,7 +1103,10 @@ mod tests {
         let rewritten = rewrite_oauth_redirect(&original, &config);
         let redirect = redirect_to(&rewritten);
 
-        assert_eq!(redirect.origin().unicode_serialization(), "https://botcord.chat");
+        assert_eq!(
+            redirect.origin().unicode_serialization(),
+            "https://botcord.chat"
+        );
         assert_eq!(redirect.path(), "/auth/desktop-callback");
         assert_eq!(redirect.query(), None);
     }
