@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isImeComposing, textHasMention } from "./MessageComposer";
+import { getClipboardFiles, isImeComposing, textHasMention } from "./MessageComposer";
 
 describe("textHasMention", () => {
   it("keeps structured @Name(agentId) mentions active", () => {
@@ -26,5 +26,29 @@ describe("isImeComposing", () => {
 
   it("returns false for regular key events outside composition", () => {
     expect(isImeComposing({ isComposing: false, keyCode: 13 }, false)).toBe(false);
+  });
+});
+
+describe("getClipboardFiles", () => {
+  it("uses clipboard files when the browser exposes them directly", () => {
+    const image = { name: "screenshot.png", type: "image/png" } as File;
+    const text = { name: "notes.txt", type: "text/plain" } as File;
+
+    expect(getClipboardFiles({
+      files: [image, text] as unknown as FileList,
+      items: [] as unknown as DataTransferItemList,
+    })).toEqual([image, text]);
+  });
+
+  it("falls back to file items for pasted screenshots", () => {
+    const image = { name: "image.png", type: "image/png" } as File;
+
+    expect(getClipboardFiles({
+      files: [] as unknown as FileList,
+      items: [
+        { kind: "string", getAsFile: () => null },
+        { kind: "file", getAsFile: () => image },
+      ] as unknown as DataTransferItemList,
+    })).toEqual([image]);
   });
 });
