@@ -9,6 +9,7 @@ import type {
   DashboardMessage,
   DashboardOverview,
   DashboardRoom,
+  HumanAgentRoomSummary,
   HumanRoomSummary,
   ParticipantType,
   PublicRoom,
@@ -152,6 +153,8 @@ export function getLatestSeenAtForRoom(
     publicRoomDetails: Record<string, PublicRoom>;
     publicRooms: PublicRoom[];
     recentVisitedRooms: PublicRoom[];
+    ownedAgentRooms?: HumanAgentRoomSummary[];
+    humanRooms?: HumanRoomSummary[];
   },
 ): string | null {
   const latestMessage = data.messages[roomId]?.[data.messages[roomId].length - 1];
@@ -164,5 +167,11 @@ export function getLatestSeenAtForRoom(
   if (publicRoom?.last_message_at) return publicRoom.last_message_at;
 
   const recentRoom = data.recentVisitedRooms.find((room) => room.room_id === roomId);
-  return recentRoom?.last_message_at ?? null;
+  if (recentRoom?.last_message_at) return recentRoom.last_message_at;
+
+  const ownedAgentRoom = data.ownedAgentRooms?.find((room) => room.room_id === roomId);
+  if (ownedAgentRoom?.last_message_at) return ownedAgentRoom.last_message_at;
+
+  const humanRoom = data.humanRooms?.find((room) => room.room_id === roomId);
+  return humanRoom?.last_message_at ?? null;
 }
