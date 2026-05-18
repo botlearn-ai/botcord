@@ -16,6 +16,7 @@ const DEFAULT_HUB_URL: &str = "https://api.botcord.chat";
 const DEFAULT_DASHBOARD_URL: &str = "https://botcord.chat/chats";
 const DEEP_LINK_CALLBACK: &str = "botcord://install";
 const DAEMON_PACKAGE: &str = "@botcord/daemon@latest";
+const DAEMON_PACKAGE_NAME: &str = "@botcord/daemon";
 const NODE_VERSION: &str = "v20.18.1";
 const NODE_DIST_URL: &str = "https://nodejs.org/dist";
 
@@ -37,6 +38,11 @@ struct DesktopConfig {
 struct UserAuthConfig {
     #[serde(default)]
     label: Option<String>,
+}
+
+struct DaemonAvailability {
+    path: String,
+    updated: bool,
 }
 
 impl Default for DesktopConfig {
@@ -270,9 +276,9 @@ fn auto_start_daemon_if_authorized() -> Result<(), String> {
         }
     }
 
-    ensure_daemon_available(&config)?;
+    let daemon = ensure_daemon_available_state(&config)?;
 
-    if daemon_status_alive(&config)? {
+    if daemon_status_alive(&config)? && !daemon.updated {
         return Ok(());
     }
 
@@ -727,11 +733,101 @@ fn home_dir() -> Result<PathBuf, String> {
 }
 
 fn ensure_daemon_available(config: &DesktopConfig) -> Result<String, String> {
+    Ok(ensure_daemon_available_state(config)?.path)
+}
+
+fn ensure_daemon_available_state(config: &DesktopConfig) -> Result<DaemonAvailability, String> {
     let resolved = resolve_daemon_bin(&config.daemon_bin);
-    if Path::new(&resolved).is_file() || command_exists(&config.daemon_bin) {
-        return Ok(resolved);
+    if is_default_managed_daemon(config, &resolved)? {
+        return ensure_managed_daemon_current();
     }
-    install_managed_daemon()
+    if Path::new(&resolved).is_file() || command_exists(&config.daemon_bin) {
+        return Ok(DaemonAvailability {
+            path: resolved,
+            updated: false,
+        });
+    }
+    install_managed_daemon().map(|path| DaemonAvailability {
+        path,
+        updated: true,
+    })
+}
+
+fn is_default_managed_daemon(config: &DesktopConfig, resolved: &str) -> Result<bool, String> {
+    if config.daemon_bin != DEFAULT_DAEMON_BIN {
+        return Ok(false);
+    }
+    let managed = managed_daemon_wrapper_path()?;
+    Ok(Path::new(resolved) == managed.as_path())
+}
+
+fn ensure_managed_daemon_current() -> Result<DaemonAvailability, String> {
+    let wrapper = managed_daemon_wrapper_path()?;
+    if !wrapper.is_file() {
+        return install_managed_daemon().map(|path| DaemonAvailability {
+            path,
+            updated: true,
+        });
+    }
+
+    match managed_daemon_needs_update() {
+        Ok(true) => install_managed_daemon().map(|path| DaemonAvailability {
+            path,
+            updated: true,
+        }),
+        Ok(false) => Ok(DaemonAvailability {
+            path: wrapper.display().to_string(),
+            updated: false,
+        }),
+        Err(err) => {
+            eprintln!("[desktop-daemon] managed daemon update check skipped: {err}");
+            Ok(DaemonAvailability {
+                path: wrapper.display().to_string(),
+                updated: false,
+            })
+        }
+    }
+}
+
+fn managed_daemon_needs_update() -> Result<bool, String> {
+    let current = read_managed_daemon_version()?;
+    let latest = fetch_latest_daemon_version()?;
+    Ok(current != latest)
+}
+
+fn read_managed_daemon_version() -> Result<String, String> {
+    let pkg = managed_daemon_package_json_path()?;
+    let data = fs::read_to_string(&pkg)
+        .map_err(|err| format!("failed to read managed daemon package.json: {err}"))?;
+    let json: Value = serde_json::from_str(&data)
+        .map_err(|err| format!("managed daemon package.json was not JSON: {err}"))?;
+    json.get("version")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| "managed daemon package.json has no version".to_string())
+}
+
+fn fetch_latest_daemon_version() -> Result<String, String> {
+    let home = home_dir()?;
+    let node_root = home.join(".botcord").join("node");
+    let (node_bin, npm_bin) = node_toolchain(&node_root)?;
+    let node_bin_dir = node_bin
+        .parent()
+        .ok_or_else(|| format!("invalid node path: {}", node_bin.display()))?;
+    let path_env = format!("{}:{}", node_bin_dir.display(), daemon_path_env()?);
+    let output = Command::new(&npm_bin)
+        .args(["view", DAEMON_PACKAGE_NAME, "version", "--silent"])
+        .env("PATH", path_env)
+        .output()
+        .map_err(|err| format!("failed to check latest daemon version: {err}"))?;
+    let version = command_output(output)?.trim().to_string();
+    if version.is_empty() {
+        Err("npm returned empty daemon version".to_string())
+    } else {
+        Ok(version)
+    }
 }
 
 fn install_managed_daemon() -> Result<String, String> {
@@ -770,7 +866,7 @@ fn install_managed_daemon() -> Result<String, String> {
         ));
     }
 
-    let wrapper = bin_dir.join(DEFAULT_DAEMON_BIN);
+    let wrapper = managed_daemon_wrapper_path()?;
     let data = format!(
         "#!/bin/sh\nPATH=\"{}:$PATH\"\nexport PATH\nexec \"{}\" \"{}\" \"$@\"\n",
         node_bin_dir.display(),
@@ -780,6 +876,20 @@ fn install_managed_daemon() -> Result<String, String> {
     atomic_write(&wrapper, data.as_bytes())?;
     make_executable(&wrapper)?;
     Ok(wrapper.display().to_string())
+}
+
+fn managed_daemon_wrapper_path() -> Result<PathBuf, String> {
+    Ok(home_dir()?.join(".botcord").join("bin").join(DEFAULT_DAEMON_BIN))
+}
+
+fn managed_daemon_package_json_path() -> Result<PathBuf, String> {
+    Ok(home_dir()?
+        .join(".botcord")
+        .join("daemon")
+        .join("node_modules")
+        .join("@botcord")
+        .join("daemon")
+        .join("package.json"))
 }
 
 fn node_toolchain(node_root: &Path) -> Result<(PathBuf, PathBuf), String> {
