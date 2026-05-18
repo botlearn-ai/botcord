@@ -81,6 +81,20 @@ export function isImeComposing(
   return compositionActive || event.isComposing || event.keyCode === 229;
 }
 
+export function getClipboardFiles(
+  clipboardData: Pick<DataTransfer, "files" | "items"> | null | undefined,
+): File[] {
+  if (!clipboardData) return [];
+
+  const files = Array.from(clipboardData.files || []);
+  if (files.length > 0) return files;
+
+  return Array.from(clipboardData.items || [])
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+}
+
 export default function MessageComposer({
   onSend,
   onTransfer,
@@ -185,7 +199,7 @@ export default function MessageComposer({
     setMentionMatch(detectMention(el.value, cursor));
   }, [mentionEnabled]);
 
-  const addFiles = useCallback((list: FileList | null) => {
+  const addFiles = useCallback((list: FileList | File[] | null) => {
     if (!list || list.length === 0 || !allowAttachments) return;
     setFiles((prev) => {
       const remaining = maxFiles - prev.length;
@@ -345,10 +359,14 @@ export default function MessageComposer({
   }, [wouldExceedMaxLength]);
 
   const handlePaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedFiles = getClipboardFiles(e.clipboardData);
+    if (pastedFiles.length > 0) {
+      addFiles(pastedFiles);
+    }
     if (wouldExceedMaxLength(e.clipboardData.getData("text"))) {
       setShowLengthError(true);
     }
-  }, [wouldExceedMaxLength]);
+  }, [addFiles, wouldExceedMaxLength]);
 
   const hasLengthError = text.length > MESSAGE_MAX_LENGTH || showLengthError;
   const canSend = !disabled && !hasLengthError && (text.trim().length > 0 || files.length > 0);
