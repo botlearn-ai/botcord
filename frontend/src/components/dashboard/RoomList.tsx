@@ -75,7 +75,7 @@ export default function RoomList({
   rooms: propsRooms,
   loading = false,
   searchQuery = "",
-  includeUserChat = true,
+  includeUserChat = false,
   roomMeta,
 }: RoomListProps) {
   const router = useRouter();
