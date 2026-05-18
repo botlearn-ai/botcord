@@ -100,6 +100,8 @@ export interface ContactRequestItem {
   id: number | string;
   from_agent_id: string;
   to_agent_id: string;
+  from_avatar_url?: string | null;
+  to_avatar_url?: string | null;
   state: "pending" | "accepted" | "rejected";
   message: string | null;
   created_at: string;
@@ -1083,9 +1085,11 @@ export interface HumanContactRequestSummary {
   from_participant_id: string;
   from_type: ParticipantType;
   from_display_name: string | null;
+  from_avatar_url?: string | null;
   to_participant_id: string;
   to_type: ParticipantType;
   to_display_name: string | null;
+  to_avatar_url?: string | null;
   state: "pending" | "accepted" | "rejected";
   message: string | null;
   created_at: number;

@@ -64,6 +64,8 @@ function normalizeHumanContactRequest(item: HumanContactRequestSummary): Contact
     resolved_at: null,
     from_display_name: item.from_display_name,
     to_display_name: item.to_display_name,
+    from_avatar_url: item.from_avatar_url,
+    to_avatar_url: item.to_avatar_url,
   };
 }
 
