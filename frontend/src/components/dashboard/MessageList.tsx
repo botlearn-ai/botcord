@@ -17,6 +17,7 @@ import type { DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types"
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
@@ -400,10 +401,6 @@ export default function MessageList() {
   }, [roomId, roomMemberVersion, loadRoomMembers]);
 
   const commitRoomSeen = useCallback((targetRoomId: string) => {
-    const joinedRoom = overview?.rooms.find((room) => room.room_id === targetRoomId);
-    if (!joinedRoom) {
-      return;
-    }
     void markRoomSeen(
       targetRoomId,
       getLatestSeenAtForRoom(targetRoomId, {
@@ -412,9 +409,11 @@ export default function MessageList() {
         publicRoomDetails: useDashboardChatStore.getState().publicRoomDetails,
         publicRooms: useDashboardChatStore.getState().publicRooms,
         recentVisitedRooms: useDashboardChatStore.getState().recentVisitedRooms,
+        ownedAgentRooms: useDashboardChatStore.getState().ownedAgentRooms,
+        humanRooms: useDashboardSessionStore.getState().humanRooms,
       }),
     );
-  }, [markRoomSeen, overview]);
+  }, [markRoomSeen]);
 
   useEffect(() => {
     setOpenedTopicId(null);

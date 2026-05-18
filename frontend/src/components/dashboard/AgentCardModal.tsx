@@ -65,7 +65,7 @@ export default function AgentCardModal({
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             {agent ? (
-              <BotAvatar agentId={agent.agent_id} size={44} alt={agent.display_name} />
+              <BotAvatar agentId={agent.agent_id} avatarUrl={agent.avatar_url} size={44} alt={agent.display_name} />
             ) : null}
             <div className="min-w-0">
               <div className="flex items-center gap-2">

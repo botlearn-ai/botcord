@@ -259,9 +259,11 @@ class HumanContactRequestSummary(BaseModel):
     from_participant_id: str
     from_type: Literal["agent", "human"]
     from_display_name: str | None
+    from_avatar_url: str | None = None
     to_participant_id: str
     to_type: Literal["agent", "human"]
     to_display_name: str | None
+    to_avatar_url: str | None = None
     state: Literal["pending", "accepted", "rejected"]
     message: str | None
     created_at: int
@@ -2077,30 +2079,30 @@ async def _resolve_participant_display_name(
     return row.scalar_one_or_none()
 
 
-async def _resolve_participant_display_names(
+async def _resolve_participant_profiles(
     db: AsyncSession,
     ids_by_type: dict[ParticipantType, set[str]],
-) -> dict[tuple[ParticipantType, str], str | None]:
-    """Batch lookup display names for mixed Agent/Human participant ids."""
-    name_lookup: dict[tuple[ParticipantType, str], str | None] = {}
+) -> dict[tuple[ParticipantType, str], tuple[str | None, str | None]]:
+    """Batch lookup display names and avatars for mixed Agent/Human participant ids."""
+    profile_lookup: dict[tuple[ParticipantType, str], tuple[str | None, str | None]] = {}
     agent_ids = ids_by_type.get(ParticipantType.agent, set())
     if agent_ids:
         rows = await db.execute(
-            select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
+            select(Agent.agent_id, Agent.display_name, Agent.avatar_url).where(Agent.agent_id.in_(agent_ids))
         )
-        for aid, name in rows.all():
-            name_lookup[(ParticipantType.agent, aid)] = name
+        for aid, name, avatar_url in rows.all():
+            profile_lookup[(ParticipantType.agent, aid)] = (name, avatar_url)
 
     human_ids = ids_by_type.get(ParticipantType.human, set())
     if human_ids:
         rows = await db.execute(
-            select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
+            select(User.human_id, User.display_name, User.avatar_url).where(User.human_id.in_(human_ids))
         )
-        for hid, name in rows.all():
+        for hid, name, avatar_url in rows.all():
             if hid is not None:
-                name_lookup[(ParticipantType.human, hid)] = name
+                profile_lookup[(ParticipantType.human, hid)] = (name, avatar_url)
 
-    return name_lookup
+    return profile_lookup
 
 
 async def _serialise_contact_requests(
@@ -2122,25 +2124,18 @@ async def _serialise_contact_requests(
         else:
             human_ids.add(req.to_agent_id)
 
-    name_lookup: dict[tuple[ParticipantType, str], str | None] = {}
-    if agent_ids:
-        agent_rows = await db.execute(
-            select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
-        )
-        for aid, name in agent_rows.all():
-            name_lookup[(ParticipantType.agent, aid)] = name
-    if human_ids:
-        human_rows = await db.execute(
-            select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
-        )
-        for hid, name in human_rows.all():
-            if hid is not None:
-                name_lookup[(ParticipantType.human, hid)] = name
+    profile_lookup = await _resolve_participant_profiles(
+        db,
+        {
+            ParticipantType.agent: agent_ids,
+            ParticipantType.human: human_ids,
+        },
+    )
 
     summaries: list[HumanContactRequestSummary] = []
     for req in rows:
-        from_name = name_lookup.get((req.from_type, req.from_agent_id))
-        to_name = name_lookup.get((req.to_type, req.to_agent_id))
+        from_name, from_avatar = profile_lookup.get((req.from_type, req.from_agent_id), (None, None))
+        to_name, to_avatar = profile_lookup.get((req.to_type, req.to_agent_id), (None, None))
         summaries.append(
             HumanContactRequestSummary(
                 id=str(req.id),
@@ -2149,11 +2144,13 @@ async def _serialise_contact_requests(
                 if hasattr(req.from_type, "value")
                 else str(req.from_type),
                 from_display_name=from_name,
+                from_avatar_url=from_avatar,
                 to_participant_id=req.to_agent_id,
                 to_type=req.to_type.value
                 if hasattr(req.to_type, "value")
                 else str(req.to_type),
                 to_display_name=to_name,
+                to_avatar_url=to_avatar,
                 state=req.state.value if hasattr(req.state, "value") else str(req.state),
                 message=req.message,
                 created_at=_ts(req.created_at),
@@ -2384,15 +2381,22 @@ async def list_pending_approvals(
                     queue_name_ids[from_type].add(from_pid)
         queue_payloads.append((entry, payload))
 
-    queue_name_lookup = await _resolve_participant_display_names(db, queue_name_ids)
+    queue_profile_lookup = await _resolve_participant_profiles(db, queue_name_ids)
     for entry, payload in queue_payloads:
-        if entry.kind == ApprovalKind.contact_request and not payload.get("from_display_name"):
+        if entry.kind == ApprovalKind.contact_request and (
+            not payload.get("from_display_name") or not payload.get("from_avatar_url")
+        ):
             from_pid = payload.get("from_participant_id")
             from_type_raw = payload.get("from_type")
             if isinstance(from_pid, str) and from_type_raw in {p.value for p in ParticipantType}:
-                payload["from_display_name"] = queue_name_lookup.get(
-                    (ParticipantType(from_type_raw), from_pid)
+                from_name, from_avatar = queue_profile_lookup.get(
+                    (ParticipantType(from_type_raw), from_pid),
+                    (None, None),
                 )
+                if not payload.get("from_display_name"):
+                    payload["from_display_name"] = from_name
+                if not payload.get("from_avatar_url"):
+                    payload["from_avatar_url"] = from_avatar
         approvals.append(
             PendingApprovalSummary(
                 id=str(entry.id),
@@ -2419,22 +2423,17 @@ async def list_pending_approvals(
     cr_rows = list(cr_result.scalars().all())
     if cr_rows:
         # Resolve display names once per request for the panel header.
-        name_lookup: dict[tuple[ParticipantType, str], str | None] = {}
         agent_ids = {r.from_agent_id for r in cr_rows if r.from_type == ParticipantType.agent}
         human_ids = {r.from_agent_id for r in cr_rows if r.from_type == ParticipantType.human}
-        if agent_ids:
-            rows = await db.execute(
-                select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
-            )
-            for aid, name in rows.all():
-                name_lookup[(ParticipantType.agent, aid)] = name
-        if human_ids:
-            rows = await db.execute(
-                select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
-            )
-            for hid, name in rows.all():
-                name_lookup[(ParticipantType.human, hid)] = name
+        profile_lookup = await _resolve_participant_profiles(
+            db,
+            {
+                ParticipantType.agent: agent_ids,
+                ParticipantType.human: human_ids,
+            },
+        )
         for req in cr_rows:
+            from_name, from_avatar = profile_lookup.get((req.from_type, req.from_agent_id), (None, None))
             approvals.append(
                 PendingApprovalSummary(
                     id=f"cr_{req.id}",
@@ -2443,9 +2442,8 @@ async def list_pending_approvals(
                     payload={
                         "from_participant_id": req.from_agent_id,
                         "from_type": req.from_type.value,
-                        "from_display_name": name_lookup.get(
-                            (req.from_type, req.from_agent_id)
-                        ),
+                        "from_display_name": from_name,
+                        "from_avatar_url": from_avatar,
                         "message": req.message,
                     },
                     created_at=_ts(req.created_at),

@@ -663,6 +663,8 @@ def _serialize_contact_request(
     req: ContactRequest,
     from_display_name: str | None = None,
     to_display_name: str | None = None,
+    from_avatar_url: str | None = None,
+    to_avatar_url: str | None = None,
 ) -> dict:
     """Return the canonical JSON shape for a ContactRequest row."""
 
@@ -675,6 +677,8 @@ def _serialize_contact_request(
         "to_agent_id": req.to_agent_id,
         "from_type": _state(req.from_type),
         "to_type": _state(req.to_type),
+        "from_avatar_url": from_avatar_url,
+        "to_avatar_url": to_avatar_url,
         "state": _state(req.state),
         "message": req.message,
         "created_at": req.created_at.isoformat() if req.created_at else None,
@@ -818,29 +822,29 @@ async def send_contact_request(
     )
 
 
-async def _resolve_display_names(
+async def _resolve_participant_profiles(
     db: AsyncSession,
     ids_by_type: dict[ParticipantType, set[str]],
-) -> dict[tuple[ParticipantType, str], str]:
-    """Bulk-resolve display names for a mixed set of agent/human ids."""
-    out: dict[tuple[ParticipantType, str], str] = {}
+) -> dict[tuple[ParticipantType, str], tuple[str | None, str | None]]:
+    """Bulk-resolve display names and avatars for mixed agent/human ids."""
+    out: dict[tuple[ParticipantType, str], tuple[str | None, str | None]] = {}
 
     agent_ids = ids_by_type.get(ParticipantType.agent, set())
     if agent_ids:
         result = await db.execute(
-            select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
+            select(Agent.agent_id, Agent.display_name, Agent.avatar_url).where(Agent.agent_id.in_(agent_ids))
         )
-        for agent_id, name in result.all():
-            out[(ParticipantType.agent, agent_id)] = name
+        for agent_id, name, avatar_url in result.all():
+            out[(ParticipantType.agent, agent_id)] = (name, avatar_url)
 
     human_ids = ids_by_type.get(ParticipantType.human, set())
     if human_ids:
         result = await db.execute(
-            select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
+            select(User.human_id, User.display_name, User.avatar_url).where(User.human_id.in_(human_ids))
         )
-        for human_id, name in result.all():
+        for human_id, name, avatar_url in result.all():
             if human_id is not None:
-                out[(ParticipantType.human, human_id)] = name
+                out[(ParticipantType.human, human_id)] = (name, avatar_url)
 
     return out
 
@@ -881,13 +885,14 @@ async def list_received_requests(
     }
     for cr in rows:
         ids_by_type[cr.from_type].add(cr.from_agent_id)
-    names = await _resolve_display_names(db, ids_by_type)
+    profiles = await _resolve_participant_profiles(db, ids_by_type)
 
     return {
         "requests": [
             _serialize_contact_request(
                 cr,
-                from_display_name=names.get((cr.from_type, cr.from_agent_id)),
+                from_display_name=profiles.get((cr.from_type, cr.from_agent_id), (None, None))[0],
+                from_avatar_url=profiles.get((cr.from_type, cr.from_agent_id), (None, None))[1],
                 to_display_name=None,
             )
             for cr in rows
@@ -931,14 +936,15 @@ async def list_sent_requests(
     }
     for cr in rows:
         ids_by_type[cr.to_type].add(cr.to_agent_id)
-    names = await _resolve_display_names(db, ids_by_type)
+    profiles = await _resolve_participant_profiles(db, ids_by_type)
 
     return {
         "requests": [
             _serialize_contact_request(
                 cr,
                 from_display_name=None,
-                to_display_name=names.get((cr.to_type, cr.to_agent_id)),
+                to_display_name=profiles.get((cr.to_type, cr.to_agent_id), (None, None))[0],
+                to_avatar_url=profiles.get((cr.to_type, cr.to_agent_id), (None, None))[1],
             )
             for cr in rows
         ],

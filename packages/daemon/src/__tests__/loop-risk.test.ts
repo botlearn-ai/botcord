@@ -22,7 +22,13 @@ describe("stripBotCordPromptScaffolding", () => {
       "hello world",
       "</agent-message>",
       "",
-      '[In group chats, do NOT reply unless you are explicitly mentioned or addressed. If no response is needed, reply with exactly "NO_REPLY" and nothing else.]',
+      "[In group chats, do not send a message back to the current group room unless you are explicitly mentioned, addressed, or the room policy says you should participate.",
+      "",
+      "This group-reply restriction only controls whether you post back into the current group. It does not prevent you from performing owner-approved or policy-approved background actions, including analyzing the message, updating memory, calling tools, starting a task, forwarding a summary, or notifying the owner.",
+      "",
+      "When a message matches an active monitoring rule, automation goal, working-memory task, keyword, sender rule, or owner-approved workflow, perform the required action even if you do not reply to the group.",
+      "",
+      'If no group reply and no background action is needed, reply exactly "NO_REPLY".]',
     ].join("\n");
     expect(stripBotCordPromptScaffolding(wrapped)).toBe("hello world");
   });

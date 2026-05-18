@@ -39,6 +39,7 @@ interface Props {
 interface BotApprovalGroup {
   agentId: string;
   displayName: string;
+  avatarUrl: string | null;
   approvals: PendingApproval[];
 }
 
@@ -112,6 +113,10 @@ export default function ContactRequestsInbox({
     () => new Map(ownedAgents.map((agent) => [agent.agent_id, agent.display_name])),
     [ownedAgents],
   );
+  const agentAvatarById = useMemo(
+    () => new Map(ownedAgents.map((agent) => [agent.agent_id, agent.avatar_url ?? null])),
+    [ownedAgents],
+  );
   const botApprovalGroups = useMemo<BotApprovalGroup[]>(() => {
     const grouped = new Map<string, PendingApproval[]>();
     for (const approval of botApprovals) {
@@ -123,10 +128,11 @@ export default function ContactRequestsInbox({
       .map(([agentId, approvals]) => ({
         agentId,
         displayName: agentNameById.get(agentId) || agentId,
+        avatarUrl: agentAvatarById.get(agentId) ?? null,
         approvals,
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
-  }, [agentNameById, botApprovals]);
+  }, [agentAvatarById, agentNameById, botApprovals]);
   const receivedCount = pendingReceived.length + botApprovals.length;
   const receivedLoading = contactRequestsLoading || botApprovalsLoading;
 
@@ -228,7 +234,7 @@ export default function ContactRequestsInbox({
                             }
                             className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-glass-bg/50"
                           >
-                            <BotAvatar agentId={group.agentId} alt={group.displayName} size={36} />
+                            <BotAvatar agentId={group.agentId} avatarUrl={group.avatarUrl} alt={group.displayName} size={36} />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-semibold text-text-primary">
                                 {group.displayName}
@@ -329,7 +335,7 @@ function ReceivedRequestCard({
             {initial || "?"}
           </div>
         ) : (
-          <BotAvatar agentId={req.from_agent_id} alt={req.from_display_name ?? undefined} size={40} />
+          <BotAvatar agentId={req.from_agent_id} avatarUrl={req.from_avatar_url} alt={req.from_display_name ?? undefined} size={40} />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -386,6 +392,7 @@ function BotApprovalCard({
   const fromId = payloadString(approval.payload, "from_participant_id") || "unknown";
   const fromName = payloadString(approval.payload, "from_display_name") || fromId;
   const message = payloadString(approval.payload, "message");
+  const fromAvatarUrl = payloadString(approval.payload, "from_avatar_url");
   const isHuman = payloadString(approval.payload, "from_type") === "human" || isHumanId(fromId);
   const initial = fromName.trim().charAt(0).toUpperCase();
   const processing = isApproving || isRejecting;
@@ -398,7 +405,7 @@ function BotApprovalCard({
             {initial || "?"}
           </div>
         ) : (
-          <BotAvatar agentId={fromId} alt={fromName} size={40} />
+          <BotAvatar agentId={fromId} avatarUrl={fromAvatarUrl} alt={fromName} size={40} />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -469,7 +476,7 @@ function SentRequestCard({
             {toInitial || "?"}
           </div>
         ) : (
-          <BotAvatar agentId={req.to_agent_id} alt={req.to_display_name ?? undefined} size={40} />
+          <BotAvatar agentId={req.to_agent_id} avatarUrl={req.to_avatar_url} alt={req.to_display_name ?? undefined} size={40} />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

@@ -106,7 +106,12 @@ async def client(db_session: AsyncSession, monkeypatch):
 async def seed(db_session: AsyncSession):
     """Create one authenticated user + a Role, and assign it."""
     supabase_uid = uuid.uuid4()
-    user = User(supabase_user_id=supabase_uid, display_name="Alice", email="alice@example.com")
+    user = User(
+        supabase_user_id=supabase_uid,
+        display_name="Alice",
+        email="alice@example.com",
+        avatar_url="https://example.test/alice-human.png",
+    )
     db_session.add(user)
     await db_session.flush()
 
@@ -1425,7 +1430,11 @@ async def test_moderator_non_owner_cannot_transfer(
 
 async def _seed_second_human(db_session: AsyncSession, display_name: str = "Bob") -> tuple[uuid.UUID, str, str]:
     supa = uuid.uuid4()
-    u = User(supabase_user_id=supa, display_name=display_name)
+    u = User(
+        supabase_user_id=supa,
+        display_name=display_name,
+        avatar_url=f"https://example.test/{display_name.lower()}-human.png",
+    )
     db_session.add(u)
     await db_session.commit()
     await db_session.refresh(u)
@@ -1462,6 +1471,8 @@ async def test_h2h_request_received_listing(
     # Display-name resolution: Alice's User row.
     assert reqs[0]["from_display_name"] == "Alice"
     assert reqs[0]["to_display_name"] == "Bob"
+    assert reqs[0]["from_avatar_url"] == "https://example.test/alice-human.png"
+    assert reqs[0]["to_avatar_url"] == "https://example.test/bob-human.png"
 
     # Alice sees the same request in sent.
     sent = await client.get(
@@ -1588,6 +1599,7 @@ async def test_h2h_request_surfaces_in_pending_approvals(
     assert entry["payload"]["from_participant_id"] == seed["human_id"]
     assert entry["payload"]["from_type"] == "human"
     assert entry["payload"]["from_display_name"] == "Alice"
+    assert entry["payload"]["from_avatar_url"] == "https://example.test/alice-human.png"
     assert entry["payload"]["message"] == "ping"
 
     # Alice cannot resolve Bob's approval.

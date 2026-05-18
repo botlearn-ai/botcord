@@ -40,6 +40,10 @@ function latestPreviewMessage(messages: DashboardMessage[] | undefined): Dashboa
   return messages?.findLast((m) => m.type !== "ack" && m.type !== "result" && m.type !== "error") ?? null;
 }
 
+function latestOwnerChatPreviewMessage(messages: ReturnType<typeof useOwnerChatStore.getState>["messages"][number][] | undefined) {
+  return messages?.findLast((m) => m.type !== "error" && (m.text.trim() || (m.attachments?.length ?? 0) > 0)) ?? null;
+}
+
 function buildRoomAvatarLabel(roomName: string): string {
   const normalized = roomName.trim();
   if (!normalized) return "?";
@@ -138,6 +142,10 @@ export default function RoomList({
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
   const ownerChatRoomId = useOwnerChatStore((state) => state.roomId);
+  const ownerChatLatestMessage = useMemo(
+    () => latestOwnerChatPreviewMessage(ownerChatMessages),
+    [ownerChatMessages],
+  );
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   // Agent-centric rooms (overview.rooms) ∪ Human-centric rooms (humanRooms),
   // deduped by room_id. When callers pass propsRooms explicitly we honour
@@ -286,10 +294,14 @@ export default function RoomList({
           ? messagesPane === "user-chat" && ownerChatAgentId === (userChatAgentId || activeAgentId)
           : messagesPane === "room" && focusedRoomId === room.room_id;
         const cachedLatestMessage = cachedLatestMessages[room.room_id] ?? null;
+        const ownerChatLatestForRoom = room.room_id === ownerChatRoomId ? ownerChatLatestMessage : null;
         // Preview text and sender must come from the same source to stay consistent
         let previewText: string;
         let previewSender: string;
-        if (room.last_message_preview != null || room.last_sender_name != null) {
+        if (ownerChatLatestForRoom) {
+          previewText = ownerChatLatestForRoom.text || (ownerChatLatestForRoom.attachments?.length ? "[Attachment]" : t.noMessagesYet);
+          previewSender = ownerChatLatestForRoom.senderName || "";
+        } else if (room.last_message_preview != null || room.last_sender_name != null) {
           previewText = room.last_message_preview ?? t.noMessagesYet;
           previewSender = room.last_sender_name ?? "";
         } else if (cachedLatestMessage) {
@@ -301,7 +313,7 @@ export default function RoomList({
         }
         const previewLine = previewSender ? `${previewSender}: ${previewText}` : previewText;
         const metaLine = roomMeta?.[room.room_id] ?? null;
-        const messageTime = formatLastMessageTime(room.last_message_at || cachedLatestMessage?.created_at || null);
+        const messageTime = formatLastMessageTime(ownerChatLatestForRoom?.createdAt || room.last_message_at || cachedLatestMessage?.created_at || null);
         const selfRoomId = viewMode === "human" ? humanId : activeAgentId;
         const displayName = resolveDmDisplayName(room.room_id, selfRoomId, contacts, room.name);
         const avatarLabel = buildRoomAvatarLabel(displayName);
