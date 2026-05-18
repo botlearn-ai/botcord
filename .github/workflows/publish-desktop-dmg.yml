@@ -1,0 +1,201 @@
+name: Publish Desktop DMG
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build"
+        required: false
+        default: "main"
+        type: string
+      release_tag:
+        description: "GitHub Release tag."
+        required: false
+        default: "botcord-desktop-beta"
+        type: string
+      draft:
+        description: "Create/update the release as draft"
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark the release as prerelease"
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "desktop-v*"
+      - "botcord-desktop-*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-desktop-dmg-${{ github.event_name == 'push' && github.ref_name || inputs.release_tag || inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.release_tag }}" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            TAG="botcord-desktop-beta"
+          fi
+          ARCH=$(uname -m)
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "asset_prefix=BotCord_${TAG}_macos_${ARCH}" >> "$GITHUB_OUTPUT"
+          echo "Resolved desktop release ${TAG} (${VERSION})"
+
+      - name: Build Tauri app + DMG
+        run: npm run build
+
+      - name: Prepare release assets
+        id: assets
+        run: |
+          set -euo pipefail
+
+          DMG=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name "*.dmg" -print -quit)
+          APP="src-tauri/target/release/bundle/macos/BotCord.app"
+
+          test -f "$DMG"
+          test -d "$APP"
+
+          mkdir -p release-assets
+          DMG_OUT="release-assets/${{ steps.meta.outputs.asset_prefix }}.dmg"
+          ZIP_OUT="release-assets/${{ steps.meta.outputs.asset_prefix }}.app.zip"
+
+          cp "$DMG" "$DMG_OUT"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP_OUT"
+
+          shasum -a 256 "$DMG_OUT" "$ZIP_OUT" > release-assets/SHA256SUMS.txt
+
+          echo "dmg=${DMG_OUT}" >> "$GITHUB_OUTPUT"
+          echo "zip=${ZIP_OUT}" >> "$GITHUB_OUTPUT"
+          echo "checksums=release-assets/SHA256SUMS.txt" >> "$GITHUB_OUTPUT"
+          ls -lh release-assets
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: botcord-desktop-macos-${{ steps.meta.outputs.tag }}
+          path: |
+            desktop/${{ steps.assets.outputs.dmg }}
+            desktop/${{ steps.assets.outputs.zip }}
+            desktop/${{ steps.assets.outputs.checksums }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          DESKTOP_VERSION: ${{ steps.meta.outputs.version }}
+          DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
+          PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || startsWith(steps.meta.outputs.tag, 'desktop-v0.') || contains(steps.meta.outputs.tag, 'beta') }}
+          DMG_PATH: desktop/${{ steps.assets.outputs.dmg }}
+          ZIP_PATH: desktop/${{ steps.assets.outputs.zip }}
+          CHECKSUMS_PATH: desktop/${{ steps.assets.outputs.checksums }}
+        with:
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = process.env.RELEASE_TAG;
+            const draft = process.env.DRAFT === "true";
+            const prerelease = process.env.PRERELEASE === "true";
+            const body = [
+              `BotCord Desktop ${process.env.DESKTOP_VERSION}`,
+              "",
+              "Assets:",
+              "- macOS DMG installer",
+              "- zipped .app bundle",
+              "- SHA256 checksums",
+            ].join("\n");
+
+            let release;
+            try {
+              const res = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              release = res.data;
+              await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: release.id,
+                name: tag,
+                body,
+                draft,
+                prerelease,
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              const res = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                name: tag,
+                body,
+                draft,
+                prerelease,
+                target_commitish: context.sha,
+              });
+              release = res.data;
+            }
+
+            const files = [
+              process.env.DMG_PATH,
+              process.env.ZIP_PATH,
+              process.env.CHECKSUMS_PATH,
+            ];
+
+            for (const file of files) {
+              const name = path.basename(file);
+              for (const asset of release.assets.filter((asset) => asset.name === name)) {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner,
+                  repo,
+                  asset_id: asset.id,
+                });
+              }
+              await github.rest.repos.uploadReleaseAsset({
+                owner,
+                repo,
+                release_id: release.id,
+                name,
+                data: fs.readFileSync(file),
+              });
+              console.log(`Uploaded ${name}`);
+            }

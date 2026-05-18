@@ -1,0 +1,28 @@
+{
+  "name": "botcord-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "web:dev": "vite --host 127.0.0.1",
+    "web:build": "tsc --noEmit && vite build",
+    "web:preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-deep-link": "^2.0.0",
+    "lucide-react": "^0.577.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5",
+    "vite": "^7.0.0"
+  }
+}
