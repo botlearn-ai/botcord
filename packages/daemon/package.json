@@ -32,6 +32,9 @@
     "@larksuiteoapi/node-sdk": "^1.63.1",
     "ws": "^8.18.0"
   },
+  "overrides": {
+    "axios": "^1.15.2"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
