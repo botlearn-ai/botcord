@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import {
+  Bot,
   Eye,
   FileText,
   Loader2,
@@ -14,15 +15,16 @@ import {
   Wallet as WalletIcon,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api, userApi } from "@/lib/api";
-import type { ActivityStats, HumanAgentRoomSummary } from "@/lib/types";
+import type { ActivityStats, HumanAgentRoomSummary, UserAgent } from "@/lib/types";
 import { dmPeerId } from "@/components/dashboard/dmRoom";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { isOwnerChatRoom } from "@/store/dashboard-shared";
-import { useDaemonStore } from "@/store/useDaemonStore";
+import { useDaemonStore, type DaemonInstance } from "@/store/useDaemonStore";
 import { useLanguage } from "@/lib/i18n";
 import { botDetailDrawer } from "@/lib/i18n/translations/dashboard";
 import {
@@ -347,9 +349,9 @@ function OverviewTab({
   onOpenChat,
 }: {
   t: BotDetailDrawerCopy;
-  bot: { agent_id: string; display_name: string; bio?: string | null };
+  bot: UserAgent;
   stats: ActivityStats | null;
-  device: { id: string; label: string | null; status: string } | null;
+  device: DaemonInstance | null;
   friends: BotFriendRoom[];
   groups: HumanAgentRoomSummary[];
   onJumpToDevice: (id: string) => void;
@@ -357,9 +359,18 @@ function OverviewTab({
   onJumpToGroup: (group: HumanAgentRoomSummary) => void;
   onOpenChat: () => void;
 }) {
+  const runtimeId = getBotRuntimeId(bot, device);
   return (
     <div className="space-y-4">
-      <ProfileEditor t={t} agentId={bot.agent_id} initialName={bot.display_name} initialBio={bot.bio ?? ""} />
+      <ProfileEditor
+        t={t}
+        agentId={bot.agent_id}
+        initialName={bot.display_name}
+        initialBio={bot.bio ?? ""}
+        runtimeLabel={t.overview.runtime}
+        runtimeId={runtimeId}
+        unknownRuntimeLabel={t.overview.unknownRuntime}
+      />
 
       {stats ? (
         <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
@@ -526,6 +537,86 @@ function OverviewTab({
   );
 }
 
+type RuntimeLogoEntry =
+  | { kind: "img"; src: string; classes: string }
+  | { kind: "icon"; Icon: LucideIcon; classes: string };
+
+const RUNTIME_LOGO: Record<string, RuntimeLogoEntry> = {
+  "claude-code": { kind: "img", src: "/runtime-logos/Claude.png", classes: "border-glass-border bg-glass-bg/40" },
+  codex: { kind: "img", src: "/runtime-logos/Codex.png", classes: "border-glass-border bg-glass-bg/40" },
+  gemini: { kind: "img", src: "/runtime-logos/Gemini.png", classes: "border-glass-border bg-glass-bg/40" },
+  "openclaw-acp": { kind: "img", src: "/runtime-logos/Openclaw.png", classes: "border-glass-border bg-glass-bg/40" },
+  qclaw: { kind: "img", src: "/runtime-logos/Qclaw.png", classes: "border-glass-border bg-glass-bg/40" },
+  "hermes-agent": { kind: "img", src: "/runtime-logos/Hermes.png", classes: "border-glass-border bg-glass-bg/40" },
+};
+
+function RuntimeLogo({ runtimeId }: { runtimeId: string | null }) {
+  const entry: RuntimeLogoEntry | null = runtimeId
+    ? RUNTIME_LOGO[runtimeId] ?? {
+        kind: "icon",
+        Icon: Bot,
+        classes: "border-glass-border bg-glass-bg/40 text-text-secondary",
+      }
+    : null;
+  if (!entry) {
+    return (
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-glass-border bg-glass-bg/40 text-text-secondary">
+        <Bot className="h-3 w-3" />
+      </span>
+    );
+  }
+  if (entry.kind === "img") {
+    return (
+      <span className="relative block h-5 w-5 shrink-0 overflow-hidden rounded-md">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={entry.src} alt="" className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+  return (
+    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${entry.classes}`}>
+      <entry.Icon className="h-3 w-3" />
+    </span>
+  );
+}
+
+function RuntimeChip({
+  label,
+  runtimeId,
+  unknownLabel,
+}: {
+  label: string;
+  runtimeId: string | null;
+  unknownLabel: string;
+}) {
+  return (
+    <span
+      title={`${label}: ${runtimeId || unknownLabel}`}
+      className="inline-flex max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border border-glass-border bg-deep-black/40 px-2 py-1"
+    >
+      <RuntimeLogo runtimeId={runtimeId} />
+      <span className="truncate font-mono text-[11px] text-text-primary">{runtimeId || unknownLabel}</span>
+    </span>
+  );
+}
+
+function getBotRuntimeId(bot: UserAgent, device: DaemonInstance | null): string | null {
+  if (bot.runtime) return bot.runtime;
+  for (const runtime of device?.runtimes ?? []) {
+    if (runtime.profiles?.some((profile) => profile.occupiedBy === bot.agent_id)) {
+      return runtime.id;
+    }
+    if (
+      runtime.endpoints?.some((endpoint) =>
+        endpoint.agents?.some((profile) => profile.botcordBinding?.agentId === bot.agent_id),
+      )
+    ) {
+      return runtime.id;
+    }
+  }
+  return null;
+}
+
 /* --------------------------- Profile --------------------------- */
 
 function ProfileEditor({
@@ -533,11 +624,17 @@ function ProfileEditor({
   agentId,
   initialName,
   initialBio,
+  runtimeLabel,
+  runtimeId,
+  unknownRuntimeLabel,
 }: {
   t: BotDetailDrawerCopy;
   agentId: string;
   initialName: string;
   initialBio: string;
+  runtimeLabel: string;
+  runtimeId: string | null;
+  unknownRuntimeLabel: string;
 }) {
   const [name, setName] = useState(initialName);
   const [bio, setBio] = useState(initialBio);
@@ -566,9 +663,12 @@ function ProfileEditor({
 
   return (
     <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
-      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
-        <Pencil className="h-3.5 w-3.5" />
-        {t.profile.title}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          <Pencil className="h-3.5 w-3.5" />
+          {t.profile.title}
+        </div>
+        <RuntimeChip label={runtimeLabel} runtimeId={runtimeId} unknownLabel={unknownRuntimeLabel} />
       </div>
       <label className="mb-1 block text-xs text-text-secondary/65">{t.profile.displayName}</label>
       <input
