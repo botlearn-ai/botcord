@@ -145,8 +145,8 @@ class TestSharePrompt:
         assert "BotCord 群邀请" in prompt
         assert "Test Room" in prompt
         assert seed_room_invite.code in prompt
-        assert "botcord_contacts" in prompt
-        assert "redeem_invite" in prompt
+        assert "兑换邀请：POST" in prompt
+        assert f"/hub/invites/{seed_room_invite.code}/redeem" in prompt
 
     @pytest.mark.asyncio
     async def test_share_with_invite_code_en(self, client: AsyncClient, seed_room_invite: Invite):
@@ -158,7 +158,8 @@ class TestSharePrompt:
         prompt = resp.json()["prompt"]
         assert "invitation to a BotCord group" in prompt
         assert "Test Room" in prompt
-        assert "redeem_invite" in prompt
+        assert "Redeem the invite: POST" in prompt
+        assert f"/hub/invites/{seed_room_invite.code}/redeem" in prompt
 
     @pytest.mark.asyncio
     async def test_share_with_room_id_zh(self, client: AsyncClient, seed_room: Room):
@@ -169,7 +170,7 @@ class TestSharePrompt:
         assert resp.status_code == 200
         prompt = resp.json()["prompt"]
         assert "BotCord 群邀请" in prompt
-        assert "botcord_rooms" in prompt
+        assert "botcord room join" in prompt
         assert seed_room.room_id in prompt
 
     @pytest.mark.asyncio
@@ -205,7 +206,7 @@ class TestSharePrompt:
         assert "步骤一" in prompt
         assert "步骤二" in prompt
         assert "sp_test" in prompt
-        assert "botcord_subscription" in prompt
+        assert "/subscriptions/products/sp_test/subscribe" in prompt
 
     @pytest.mark.asyncio
     async def test_share_missing_params(self, client: AsyncClient):
@@ -285,7 +286,8 @@ class TestFriendInvitePrompt:
         prompt = resp.json()["prompt"]
         assert "好友邀请" in prompt
         assert seed_friend_invite.code in prompt
-        assert "botcord_contacts" in prompt
+        assert "兑换邀请：POST" in prompt
+        assert f"/hub/invites/{seed_friend_invite.code}/redeem" in prompt
 
     @pytest.mark.asyncio
     async def test_friend_invite_en(self, client: AsyncClient, seed_friend_invite: Invite):
@@ -296,7 +298,8 @@ class TestFriendInvitePrompt:
         assert resp.status_code == 200
         prompt = resp.json()["prompt"]
         assert "friend invite" in prompt
-        assert "redeem_invite" in prompt
+        assert "Redeem the invite: POST" in prompt
+        assert f"/hub/invites/{seed_friend_invite.code}/redeem" in prompt
 
     @pytest.mark.asyncio
     async def test_friend_invite_not_found(self, client: AsyncClient):
@@ -339,7 +342,7 @@ class TestSelfJoinPrompt:
         assert "帮我加入" in prompt
         assert "Test Room" in prompt
         assert seed_room.room_id in prompt
-        assert "botcord_rooms" in prompt
+        assert "botcord room join" in prompt
 
     @pytest.mark.asyncio
     async def test_self_join_en(self, client: AsyncClient, seed_room: Room):
@@ -371,7 +374,7 @@ class TestCreateRoomPrompt:
         assert resp.status_code == 200
         prompt = resp.json()["prompt"]
         assert "帮我创建" in prompt
-        assert "botcord_rooms" in prompt
+        assert "botcord room create" in prompt
         assert "create" in prompt
 
     @pytest.mark.asyncio
@@ -380,7 +383,7 @@ class TestCreateRoomPrompt:
         assert resp.status_code == 200
         prompt = resp.json()["prompt"]
         assert "Help me create" in prompt
-        assert "botcord_rooms" in prompt
+        assert "botcord room create" in prompt
 
     @pytest.mark.asyncio
     async def test_create_room_default_language(self, client: AsyncClient):
