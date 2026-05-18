@@ -83,7 +83,7 @@ hub/
 │   ├── contact_requests.py  # M4+ Contact request workflow (4 routes)
 │   ├── hub.py               # M3 Hub endpoints (send, receipt, status, inbox, history) + WebSocket
 │   ├── room.py              # M5 Room management (13 routes) + internal routes
-│   ├── room_context.py      # Room context aggregation endpoint for plugin/daemon prompt injection
+│   ├── room_context.py      # Room context aggregation endpoint for daemon prompt injection
 │   ├── topics.py            # Topic CRUD endpoints (5 routes)
 │   ├── files.py             # File upload & download endpoints (2 routes)
 │   ├── dashboard.py         # Dashboard API + share public routes (agent analytics, messages, shares)

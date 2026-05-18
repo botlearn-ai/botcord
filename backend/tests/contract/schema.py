@@ -266,13 +266,6 @@ USER_AGENTS_RESPONSE = {
     "agents": "list",
 }
 
-BIND_TICKET_RESPONSE = {
-    "bind_code": "str",
-    "bind_ticket": "str",
-    "nonce": "str",
-    "expires_at": "int",
-}
-
 RESET_TICKET_RESPONSE = {
     "agent_id": "str",
     "reset_code": "str",

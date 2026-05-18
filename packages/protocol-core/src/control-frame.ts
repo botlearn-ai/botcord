@@ -544,7 +544,7 @@ export interface ListRuntimesResult {
 // ---------------------------------------------------------------------------
 // Third-party gateway control frames (Phase B)
 //
-// Schemas mirror `docs/third-party-gateway-design.md` "Control Plane 设计".
+// Schemas for Hub-to-daemon third-party gateway control frames.
 // Login frames are intentionally provider-generic so future providers
 // (LINE / Discord OAuth) can reuse the same frame names without a wire bump.
 // ---------------------------------------------------------------------------

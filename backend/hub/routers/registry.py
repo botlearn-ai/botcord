@@ -2,12 +2,11 @@ import datetime
 import hashlib
 import json
 import logging
-import re
 import time
 import uuid
 
 import jcs
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 logger = logging.getLogger(__name__)
 from hub.i18n import I18nHTTPException
@@ -20,7 +19,7 @@ from hub.auth import create_agent_token, get_current_agent
 from hub.agent_avatars import normalize_agent_avatar_url
 from hub.config import CHALLENGE_EXPIRE_MINUTES
 from hub import config as hub_config
-from hub.constants import DEFAULT_TTL_SEC, MIN_PLUGIN_VERSION, PROTOCOL_VERSION, get_latest_plugin_version, is_below_min_version
+from hub.constants import DEFAULT_TTL_SEC, PROTOCOL_VERSION
 from hub.crypto import generate_challenge, verify_challenge_sig
 from hub.database import get_db
 from hub.id_generators import generate_endpoint_id, generate_hub_msg_id, generate_key_id
@@ -660,22 +659,9 @@ async def revoke_key(
 
 @router.post("/agents/{agent_id}/token/refresh", response_model=VerifyResponse)
 async def refresh_token(
-    agent_id: str, req: TokenRefreshRequest, request: Request, db: AsyncSession = Depends(get_db)
+    agent_id: str, req: TokenRefreshRequest, db: AsyncSession = Depends(get_db)
 ):
     """Refresh JWT by proving key ownership via nonce signature."""
-    # Log and enforce client plugin version
-    plugin_version = re.sub(r"[^\w.\-]", "", request.headers.get("X-Plugin-Version", "")[:20]) or None
-    if plugin_version:
-        logger.info("Token refresh: agent=%s plugin_version=%s", agent_id, plugin_version)
-        if is_below_min_version(plugin_version):
-            logger.warning("Token refresh rejected: agent=%s plugin_version=%s below min=%s",
-                           agent_id, plugin_version, MIN_PLUGIN_VERSION)
-            raise HTTPException(
-                status_code=426,
-                detail=f"Plugin {plugin_version} is below minimum {MIN_PLUGIN_VERSION}. "
-                       f"Please update: openclaw plugins install @botcord/botcord@latest",
-            )
-
     # 1. Look up the signing key
     result = await db.execute(
         select(SigningKey).where(
@@ -721,6 +707,4 @@ async def refresh_token(
     return VerifyResponse(
         agent_token=token,
         expires_at=expires_at,
-        latest_plugin_version=get_latest_plugin_version(),
-        min_plugin_version=MIN_PLUGIN_VERSION,
     )

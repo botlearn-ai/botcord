@@ -42,7 +42,7 @@ function summarizeResult(result: string): string {
 }
 
 /** Normalize a stream block into a displayable view-model, handling both the
- *  legacy plugin shape (`payload`) and the daemon-gateway shape (`raw`). */
+ *  legacy payload shape and the daemon-gateway shape (`raw`). */
 interface BlockView {
   kind: "tool_call" | "tool_result" | "reasoning" | "system" | "error" | "todo" | "unknown";
   toolName?: string;

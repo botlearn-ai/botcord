@@ -12,7 +12,6 @@ import {
   assertRestartHealthcheckOk,
 } from "./agent-output.js";
 import {
-  assertPluginInstallPresent,
   assertBotcordEnabled,
   assertCredentialsFileExists,
   assertDeliveryModeSet,
@@ -68,8 +67,7 @@ const ASSERTION_REGISTRY: Record<string, SyncAssertionFn | AsyncAssertionFn> = {
   "agent_output.status_ok": (inst, ev) => assertStatusOk(inst, ev),
   "agent_output.payload_non_empty": (inst, ev) => assertPayloadNonEmpty(inst, ev),
 
-  // ── Plugin & filesystem ─────────────────────────────────────────
-  "plugin.install_present": (inst, ev) => assertPluginInstallPresent(inst, ev),
+  // ── OpenClaw config & filesystem ────────────────────────────────
   "openclaw_config.botcord_enabled": (inst, ev) => assertBotcordEnabled(inst, ev),
   "openclaw_config.credentials_file_exists": (inst, ev) => assertCredentialsFileExists(inst, ev),
   "openclaw_config.delivery_mode_set": (inst, ev) => assertDeliveryModeSet(inst, ev),

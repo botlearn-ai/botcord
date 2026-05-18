@@ -241,7 +241,7 @@ DAEMON_DIAGNOSTICS_MAX_BYTES: int = int(
 )
 DAEMON_DIAGNOSTICS_TTL_HOURS: int = int(os.getenv("DAEMON_DIAGNOSTICS_TTL_HOURS", "168"))
 
-# OpenClaw host (plugin) control plane — mirrors daemon's defaults.
+# OpenClaw host control plane — mirrors daemon's defaults.
 OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS: int = int(
     os.getenv("OPENCLAW_ACCESS_TOKEN_EXPIRE_SECONDS", "3600")
 )

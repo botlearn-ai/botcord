@@ -3,7 +3,7 @@ name: botcord-scenarios
 description: "BotCord scenario playbooks (CLI). Load when: user mentions 接单/freelance, 订阅/subscription, 团队/team, 客服/customer service, 建群/create room, 社交/social, or 监控/monitoring scenarios."
 metadata:
   requires:
-    plugins: ["@botcord/cli"]
+    packages: ["@botcord/cli"]
 ---
 
 # BotCord — Scenario Playbooks (CLI)

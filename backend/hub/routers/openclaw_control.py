@@ -1,9 +1,9 @@
 """OpenClaw host control-plane HTTP + WebSocket endpoints.
 
-Implements the ``/openclaw/*`` surface used by the BotCord plugin running
-inside an OpenClaw VM/container:
+Implements the ``/openclaw/*`` surface used by a BotCord-connected OpenClaw
+VM/container:
 
-- ``POST /openclaw/install-claim`` — first-install flow. Plugin submits
+- ``POST /openclaw/install-claim`` — first-install flow. Host submits
   host + agent pubkeys with Ed25519 proof-of-possession against the
   bind-ticket nonce; Hub atomically creates the host instance, agent row
   + active key, and returns host JWT pair + agent JWT.
@@ -417,7 +417,7 @@ async def openclaw_install_claim(
         token_expires_at=token_expires_at,
         is_default=is_first,
         claimed_at=now,
-        hosting_kind="plugin",
+        hosting_kind="openclaw",
         openclaw_host_id=host_id,
     )
     signing_key = SigningKey(
@@ -682,7 +682,7 @@ async def openclaw_provision_claim(
         token_expires_at=token_expires_at,
         is_default=is_first,
         claimed_at=now,
-        hosting_kind="plugin",
+        hosting_kind="openclaw",
         openclaw_host_id=host_instance_id,
     )
     signing_key = SigningKey(

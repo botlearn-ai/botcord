@@ -258,7 +258,7 @@ async def dispatch_schedule_run(
             from hub.routers.daemon_control import send_control_frame
 
             ack = await send_control_frame(agent.daemon_instance_id, "wake_agent", params, timeout_ms=30000)
-        elif agent.hosting_kind == "plugin" and agent.openclaw_host_id:
+        elif agent.hosting_kind == "openclaw" and agent.openclaw_host_id:
             from hub.routers.openclaw_control import send_host_control_frame
 
             ack = await send_host_control_frame(agent.openclaw_host_id, "wake_agent", params, timeout_ms=30000)

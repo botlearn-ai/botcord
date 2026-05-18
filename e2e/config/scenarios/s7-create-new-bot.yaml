@@ -6,8 +6,8 @@ description: >
   connect prompt with mode=create.  The key assertion is that the
   resulting agent ID differs from the original.
 
-  Dependency note: like S6, this scenario depends on S1 (plugin
-  installed) and is classified as Layer 1 / seeded because an initial
+  Dependency note: like S6, this scenario depends on S1 (BotCord
+  connected) and is classified as Layer 1 / seeded because an initial
   identity must exist first so we can verify the new one is different.
   The standalone YAML replays S1 to produce that seed.
 runtime:
@@ -26,10 +26,10 @@ steps:
   # -- Seed: install to produce an initial identity -------------------
   - id: send_quickstart_prompt
     action: openclaw.agent_prompt
-    description: Install BotCord plugin and register initial identity
+    description: Connect BotCord and register initial identity
   - id: wait_gateway_recovered
     action: runtime.wait_healthy
-    description: Wait for gateway to recover after plugin installation
+    description: Wait for gateway to recover after BotCord setup
     params:
       delay_seconds: 10
   - id: read_credentials

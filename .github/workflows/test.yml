@@ -60,7 +60,7 @@ jobs:
       - name: Run pytest
         run: uv run pytest tests/
 
-  # ── Node tests (plugin vitest + frontend vitest) ─────────────────────────────
+  # ── Node tests (frontend vitest) ─────────────────────────────────────────────
   node-tests:
     name: Node Tests
     runs-on: self-hosted
@@ -72,12 +72,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - name: plugin tests
-        working-directory: plugin
-        run: |
-          npm install
-          npx tsc --noEmit
-          npm test
       - name: frontend tests
         working-directory: frontend
         run: |

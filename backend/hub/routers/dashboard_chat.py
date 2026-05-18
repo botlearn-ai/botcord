@@ -210,7 +210,7 @@ async def send_chat_message(
     """Send a message from the dashboard user to their own agent.
 
     Creates a MessageRecord with source_type='dashboard_user_chat' and delivers
-    it into the agent's inbox so the plugin can pick it up.
+    it into the agent's inbox so the connected agent can pick it up.
     """
     agent_id, user_id = agent_and_user
     if not user_id:
@@ -275,7 +275,7 @@ async def send_chat_message(
 
     await db.commit()
 
-    # Notify inbox listeners so the plugin picks up the message.
+    # Notify inbox listeners so connected agents pick up the message.
     # Skip Supabase realtime event — the dedicated owner-chat WS path
     # handles real-time delivery to the dashboard frontend.
     try:

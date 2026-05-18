@@ -94,10 +94,6 @@ export class OpenClawRuntime {
             dangerouslyDisableDeviceAuth: true,
           },
         },
-        plugins: {
-          entries: {},
-          installs: {},
-        },
       };
       await mkdir(openclawDir, { recursive: true });
       await writeFile(

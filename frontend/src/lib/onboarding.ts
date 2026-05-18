@@ -4,7 +4,7 @@
  * [POS]: frontend onboarding 提示词模板层，负责把用户动作语言与内部实现细节隔离开，并禁止把内部页面路由伪装成对外入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  *
- * Prompt 三级优先级：Plugin > CLI > HTTP
+ * Prompt 优先级：CLI > HTTP
  */
 
 function trimTrailingSlash(value: string): string {
@@ -31,7 +31,7 @@ export function getBotcordWebAppUrl(): string {
 }
 
 export function getBotcordInstallGuideUrl(): string {
-  return `${getBotcordWebAppUrl()}/openclaw-setup-instruction-script.md`;
+  return `${getBotcordWebAppUrl()}/chats`;
 }
 
 export function getHubApiBaseUrl(): string {
@@ -62,20 +62,15 @@ export function rebaseToCurrentOrigin(url: string): string {
 // ---------------------------------------------------------------------------
 
 interface TierInstructions {
-  plugin?: string[];
   cli?: string[];
   http?: string[];
 }
 
 function buildTieredBlock(locale: PromptLocale, tiers: TierInstructions): string[] {
   const lines: string[] = [];
-  const hasMultiple = [tiers.plugin, tiers.cli, tiers.http].filter(Boolean).length > 1;
+  const hasMultiple = [tiers.cli, tiers.http].filter(Boolean).length > 1;
 
   if (locale === "en") {
-    if (tiers.plugin?.length) {
-      if (hasMultiple) lines.push("If BotCord Plugin (OpenClaw) is installed:");
-      for (const l of tiers.plugin) lines.push(hasMultiple ? `  ${l}` : l);
-    }
     if (tiers.cli?.length) {
       if (hasMultiple) lines.push("If BotCord CLI is installed:");
       for (const l of tiers.cli) lines.push(hasMultiple ? `  ${l}` : l);
@@ -85,10 +80,6 @@ function buildTieredBlock(locale: PromptLocale, tiers: TierInstructions): string
       for (const l of tiers.http) lines.push(hasMultiple ? `  ${l}` : l);
     }
   } else {
-    if (tiers.plugin?.length) {
-      if (hasMultiple) lines.push("如果已安装 BotCord Plugin（OpenClaw 插件）：");
-      for (const l of tiers.plugin) lines.push(hasMultiple ? `  ${l}` : l);
-    }
     if (tiers.cli?.length) {
       if (hasMultiple) lines.push("如果已安装 BotCord CLI（botcord 命令行）：");
       for (const l of tiers.cli) lines.push(hasMultiple ? `  ${l}` : l);
@@ -143,7 +134,6 @@ export function buildConnectBotPrompt(options: {
       lines.push(
         "",
         ...buildTieredBlock(locale, {
-          plugin: [`Use the botcord_bind tool with bind_ticket "${options.connectionCode}".`],
           cli: [`Run: botcord bind ${options.connectionCode}`],
         }),
       );
@@ -178,7 +168,6 @@ export function buildConnectBotPrompt(options: {
     lines.push(
       "",
       ...buildTieredBlock(locale, {
-        plugin: [`使用 botcord_bind 工具，传入 bind_ticket "${options.connectionCode}" 完成绑定。`],
         cli: [`执行命令：botcord bind ${options.connectionCode}`],
       }),
     );
@@ -194,40 +183,6 @@ export function buildConnectBotPrompt(options: {
     "不要向我解释内部技术细节；完成后直接告诉我结果。",
   );
   return lines.join("\n");
-}
-
-// ---------------------------------------------------------------------------
-// 1b. Upgrade Plugin
-// ---------------------------------------------------------------------------
-
-export function buildUpgradePluginPrompt(options?: {
-  locale?: PromptLocale;
-  latestVersion?: string;
-}): string {
-  const locale = resolveLocale(options?.locale);
-  const baseUrl = getBotcordWebAppUrl();
-  const cmd = `bash <(curl -fsSL ${baseUrl}/install.sh)`;
-  const ver = options?.latestVersion;
-
-  if (locale === "en") {
-    return [
-      ver
-        ? `Help me upgrade the BotCord plugin to version ${ver}.`
-        : "Help me upgrade the BotCord plugin to the latest version.",
-      `Run this command: ${cmd}`,
-      "After the upgrade, restart the OpenClaw gateway.",
-      "Do not explain internal technical details. Just tell me when it is done.",
-    ].join("\n");
-  }
-
-  return [
-    ver
-      ? `帮我把 BotCord 插件升级到 ${ver} 版本。`
-      : "帮我把 BotCord 插件升级到最新版本。",
-    `执行这个命令：${cmd}`,
-    "升级完成后，重启 OpenClaw gateway。",
-    "不要向我解释内部技术细节；完成后直接告诉我结果。",
-  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -252,9 +207,6 @@ export function buildResetCredentialPrompt(options: {
       `Reset code: ${options.resetCode}`,
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use the botcord_reset_credential tool with agent_id "${options.agentId}" and reset code "${options.resetCode}".`,
-        ],
         cli: [
           `Run: botcord bind ${options.resetCode} (CLI will detect this is a reset ticket and handle credential rotation).`,
         ],
@@ -273,9 +225,6 @@ export function buildResetCredentialPrompt(options: {
     `Reset code：${options.resetCode}`,
     "",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_reset_credential 工具，传入 agent_id "${options.agentId}" 和 reset code "${options.resetCode}"。`,
-      ],
       cli: [
         `执行命令：botcord bind ${options.resetCode}（CLI 会检测到这是 reset ticket 并自动处理 credential 轮换）。`,
       ],
@@ -322,9 +271,6 @@ export function buildSharePrompt(options: {
         "",
         `Step 1 — Subscribe to product ${options.productId}:`,
         ...buildTieredBlock(locale, {
-          plugin: [
-            `Use the botcord_subscription tool with action "subscribe" and product_id "${options.productId}".`,
-          ],
           cli: [
             `Subscribe: POST ${subscribeUrl}`,
           ],
@@ -348,9 +294,6 @@ export function buildSharePrompt(options: {
       if (!options.isReadOnly) {
         lines.push(
           ...buildTieredBlock(locale, {
-            plugin: [
-              `Use the botcord_contacts tool with action "redeem_invite" and invite_code "${options.inviteCode}".`,
-            ],
             cli: [
               `Redeem the invite: POST ${redeemUrl}`,
             ],
@@ -369,9 +312,6 @@ export function buildSharePrompt(options: {
       const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
       lines.push(
         ...buildTieredBlock(locale, {
-          plugin: [
-            `Use the botcord_rooms tool with action "join" and room_id "${options.roomId}".`,
-          ],
           cli: [
             `Run: botcord room join --room ${options.roomId}`,
           ],
@@ -392,9 +332,6 @@ export function buildSharePrompt(options: {
         `View share details and find room_id: GET ${shareInfoUrl}`,
         "",
         ...buildTieredBlock(locale, {
-          plugin: [
-            `Use the botcord_rooms tool with action "join" and the room_id from the share details.`,
-          ],
           cli: [
             `Run: botcord room join --room <room_id> (get room_id from the share details above).`,
           ],
@@ -427,9 +364,6 @@ export function buildSharePrompt(options: {
       "",
       `步骤一 — 订阅产品 ${options.productId}：`,
       ...buildTieredBlock(locale, {
-        plugin: [
-          `使用 botcord_subscription 工具，action 为 "subscribe"，product_id 为 "${options.productId}"。`,
-        ],
         cli: [
           `订阅：POST ${subscribeUrl}`,
         ],
@@ -453,9 +387,6 @@ export function buildSharePrompt(options: {
     if (!options.isReadOnly) {
       lines.push(
         ...buildTieredBlock(locale, {
-          plugin: [
-            `使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "${options.inviteCode}"。`,
-          ],
           cli: [
             `兑换邀请：POST ${redeemUrl}`,
           ],
@@ -474,9 +405,6 @@ export function buildSharePrompt(options: {
     const joinUrl = `${hubApiBaseUrl}/hub/rooms/${options.roomId}/members`;
     lines.push(
       ...buildTieredBlock(locale, {
-        plugin: [
-          `使用 botcord_rooms 工具，action 为 "join"，room_id 为 "${options.roomId}"。`,
-        ],
         cli: [
           `执行命令：botcord room join --room ${options.roomId}`,
         ],
@@ -497,9 +425,6 @@ export function buildSharePrompt(options: {
       `查看分享详情并获取 room_id：GET ${shareInfoUrl}`,
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `使用 botcord_rooms 工具，action 为 "join"，room_id 从分享详情中获取。`,
-        ],
         cli: [
           `执行命令：botcord room join --room <room_id>（room_id 从上面的分享详情中获取）。`,
         ],
@@ -543,9 +468,6 @@ export function buildFriendInvitePrompt(options: {
       `Preview invite details: GET ${previewApiUrl}`,
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use the botcord_contacts tool with action "redeem_invite" and invite_code "${options.inviteCode}".`,
-        ],
         cli: [
           `Redeem the invite: POST ${redeemApiUrl}`,
         ],
@@ -566,9 +488,6 @@ export function buildFriendInvitePrompt(options: {
     `查看邀请详情：GET ${previewApiUrl}`,
     "",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_contacts 工具，action 为 "redeem_invite"，invite_code 为 "${options.inviteCode}"。`,
-      ],
       cli: [
         `兑换邀请：POST ${redeemApiUrl}`,
       ],
@@ -601,9 +520,6 @@ export function buildCreateRoomPrompt(options?: {
       "If I do not specify anything else, choose the safer defaults: private group, invite-only access, members can send messages, and regular members cannot invite others.",
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use the botcord_rooms tool with action "create".`,
-        ],
         cli: [
           `Run: botcord room create --name <name> [--visibility private] [--join-policy invite_only]`,
         ],
@@ -625,9 +541,6 @@ export function buildCreateRoomPrompt(options?: {
     "如果我没有特别说明，默认用更稳妥的方式创建：私有群、需要邀请才能加入、成员可以发言、普通成员不能继续拉人。",
     "",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms 工具，action 为 "create"。`,
-      ],
       cli: [
         `执行命令：botcord room create --name <群名> [--visibility private] [--join-policy invite_only]`,
       ],
@@ -928,9 +841,6 @@ export function buildTeamAsyncRoomPrompt(options?: {
       "\"\"\"",
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use the botcord_rooms tool with action "create" and pass all the above parameters including the rule.`,
-        ],
         cli: [
           `Run: botcord room create --name <name> --visibility private --join-policy invite_only`,
         ],
@@ -944,9 +854,6 @@ export function buildTeamAsyncRoomPrompt(options?: {
       "",
       "After creating the room, if I provided agent IDs, invite them immediately:",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use botcord_rooms with action "invite" for each agent ID.`,
-        ],
         cli: [
           `Run: botcord room invite --room <room_id> --agent <agent_id> (for each agent)`,
         ],
@@ -994,9 +901,6 @@ export function buildTeamAsyncRoomPrompt(options?: {
     "\"\"\"",
     "",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms 工具，action 为 "create"，传入上述所有参数和 rule。`,
-      ],
       cli: [
         `执行：botcord room create --name <群名> --visibility private --join-policy invite_only`,
       ],
@@ -1010,9 +914,6 @@ export function buildTeamAsyncRoomPrompt(options?: {
     "",
     "创建完成后，如果用户提供了 agent ID 列表，立即邀请他们加入：",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms，action 为 "invite"，逐个邀请。`,
-      ],
       cli: [
         `执行：botcord room invite --room <room_id> --agent <agent_id>（逐个邀请）`,
       ],
@@ -1088,10 +989,6 @@ export function buildAgentServiceRoomPrompt(options?: {
       "If using quote-per-request pricing, replace {{pricing details}} with: \"Quote per request: the service provider will quote based on complexity; client pays after confirming.\"",
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use botcord_rooms with action "create" to create the room with the rule above.`,
-          `If fixed pricing, also use botcord_subscription with action "create_product".`,
-        ],
         cli: [
           `Run: botcord room create --name <name> --visibility public --join-policy open`,
         ],
@@ -1160,10 +1057,6 @@ export function buildAgentServiceRoomPrompt(options?: {
     "如果是按需报价模式，将 {{定价说明}} 替换为：\"按需报价：服务方根据需求复杂度报价，客户确认后付款。\"",
     "",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms，action 为 "create"，传入上述所有参数和 rule。`,
-        `如果是固定价格，同时使用 botcord_subscription，action 为 "create_product"。`,
-      ],
       cli: [
         `执行：botcord room create --name <群名> --visibility public --join-policy open`,
       ],
@@ -1253,9 +1146,6 @@ export function buildOpcManagerRoomPrompt(options?: {
       "\"\"\"",
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use the botcord_rooms tool with action "create" and pass all the above parameters including the rule.`,
-        ],
         cli: [
           `Run: botcord room create --name <name> --visibility private --join-policy invite_only`,
         ],
@@ -1269,9 +1159,6 @@ export function buildOpcManagerRoomPrompt(options?: {
       "",
       "After creating the room, if I provided agent IDs, invite them immediately:",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use botcord_rooms with action "invite" for each agent ID.`,
-        ],
         cli: [
           `Run: botcord room invite --room <room_id> --agent <agent_id> (for each agent)`,
         ],
@@ -1349,9 +1236,6 @@ export function buildOpcManagerRoomPrompt(options?: {
     "\"\"\"",
     "",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms 工具，action 为 "create"，传入上述所有参数和 rule。`,
-      ],
       cli: [
         `执行：botcord room create --name <群名> --visibility private --join-policy invite_only`,
       ],
@@ -1365,9 +1249,6 @@ export function buildOpcManagerRoomPrompt(options?: {
     "",
     "创建完成后，如果我提供了 agent ID 列表，立即邀请他们加入：",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms，action 为 "invite"，逐个邀请。`,
-      ],
       cli: [
         `执行：botcord room invite --room <room_id> --agent <agent_id>（逐个邀请）`,
       ],
@@ -1452,9 +1333,6 @@ export function buildOpcSwarmRoomPrompt(options?: {
       "\"\"\"",
       "",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use the botcord_rooms tool with action "create" and pass all the above parameters including the rule.`,
-        ],
         cli: [
           `Run: botcord room create --name <name> --visibility private --join-policy invite_only`,
         ],
@@ -1468,9 +1346,6 @@ export function buildOpcSwarmRoomPrompt(options?: {
       "",
       "After creating the room, if I provided agent IDs, invite them immediately:",
       ...buildTieredBlock(locale, {
-        plugin: [
-          `Use botcord_rooms with action "invite" for each agent ID.`,
-        ],
         cli: [
           `Run: botcord room invite --room <room_id> --agent <agent_id> (for each agent)`,
         ],
@@ -1543,9 +1418,6 @@ export function buildOpcSwarmRoomPrompt(options?: {
     "\"\"\"",
     "",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms 工具，action 为 "create"，传入上述所有参数和 rule。`,
-      ],
       cli: [
         `执行：botcord room create --name <群名> --visibility private --join-policy invite_only`,
       ],
@@ -1559,9 +1431,6 @@ export function buildOpcSwarmRoomPrompt(options?: {
     "",
     "创建完成后，如果我提供了 agent ID 列表，立即邀请他们加入：",
     ...buildTieredBlock(locale, {
-      plugin: [
-        `使用 botcord_rooms，action 为 "invite"，逐个邀请。`,
-      ],
       cli: [
         `执行：botcord room invite --room <room_id> --agent <agent_id>（逐个邀请）`,
       ],

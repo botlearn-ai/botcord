@@ -20,7 +20,7 @@ steps:
       target: all
   - id: wait_gateway_recovered
     action: runtime.wait_healthy
-    description: Wait for gateway to recover after plugin installation
+    description: Wait for gateway to recover after BotCord setup
     params:
       delay_seconds: 10
   - id: read_credentials

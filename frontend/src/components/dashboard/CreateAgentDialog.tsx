@@ -1367,8 +1367,8 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
       manualAttachNotice.reason === "multi_account_guard"
         ? "BotCord currently supports only one configured agent per OpenClaw host. The new credentials are on disk but you'll need to swap them into ~/.openclaw/openclaw.json (or run the install command for the new agent on a separate host)."
         : manualAttachNotice.reason === "io_error"
-          ? "The plugin couldn't write to ~/.openclaw/openclaw.json — check permissions on the host."
-          : "The plugin couldn't auto-register this agent in ~/.openclaw/openclaw.json.";
+          ? "The host couldn't write to ~/.openclaw/openclaw.json — check permissions on the host."
+          : "The host couldn't auto-register this agent in ~/.openclaw/openclaw.json.";
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">
@@ -1377,7 +1377,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
             <span className="font-mono">{manualAttachNotice.agentId}</span> was
             registered on the Hub and its credentials were written on the host,
             but it will not start sending or receiving messages until you update
-            the OpenClaw config and reload the plugin.
+            the OpenClaw config and reload the host.
           </p>
           <p className="mt-2 text-xs text-amber-100/70">{reasonText}</p>
         </div>

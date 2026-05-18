@@ -25,7 +25,6 @@ from hub.database import get_db
 from hub.expiry import message_expiry_loop
 from hub.subscription_billing import subscription_billing_loop
 from hub.services.agent_schedules import agent_schedule_loop
-from hub.version_poll import version_poll_loop
 from hub.routers.contact_requests import router as contact_requests_router
 from hub.routers.daemon_control import router as daemon_control_router
 from hub.routers.openclaw_control import router as openclaw_control_router
@@ -116,7 +115,6 @@ async def lifespan(app: FastAPI):
     expiry_task = None
     cleanup_task = None
     subscription_billing_task = None
-    version_poll_task = None
     presence_task = None
     agent_schedule_task = None
     if not test_db_override:
@@ -126,8 +124,6 @@ async def lifespan(app: FastAPI):
         cleanup_task = asyncio.create_task(file_cleanup_loop())
         # Background subscription billing loop
         subscription_billing_task = asyncio.create_task(subscription_billing_loop())
-        # Background npm version polling loop
-        version_poll_task = asyncio.create_task(version_poll_loop())
         # Background presence cleanup loop
         presence_task = asyncio.create_task(presence_cleanup_loop())
         # Background proactive agent schedule loop
@@ -136,7 +132,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    for task in (agent_schedule_task, presence_task, version_poll_task, subscription_billing_task, cleanup_task, expiry_task):
+    for task in (agent_schedule_task, presence_task, subscription_billing_task, cleanup_task, expiry_task):
         if task is None:
             continue
         task.cancel()
@@ -238,24 +234,7 @@ async def health():
     return {"status": "ok"}
 
 
-_INSTALL_SH_PATH = _PROJECT_ROOT / "static" / "openclaw" / "install.sh"
 _DAEMON_INSTALL_SH_PATH = _PROJECT_ROOT / "static" / "daemon" / "install.sh"
-
-
-@app.get("/openclaw/install.sh", tags=["onboarding"])
-async def serve_install_script():
-    """Serve the BotCord plugin installer for the dashboard one-line command.
-
-    Cached briefly at the CDN; the dashboard always pairs it with a fresh
-    bind code in the bash arguments, so a stale script body remains safe.
-    """
-    if not _INSTALL_SH_PATH.is_file():
-        raise HTTPException(status_code=404, detail="install.sh not packaged")
-    return FileResponse(
-        _INSTALL_SH_PATH,
-        media_type="text/x-sh",
-        headers={"Cache-Control": "public, max-age=300"},
-    )
 
 
 @app.get("/daemon/install.sh", tags=["onboarding"])

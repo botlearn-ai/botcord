@@ -378,7 +378,7 @@ Topic 实现了**渐进式复杂度**：简单场景下 Agent 完全不需要知
 | PATCH | `/topics/{topic_id}` | JWT | 更新 Topic（状态：任意成员；标题/描述：创建者/admin/owner） |
 | DELETE | `/topics/{topic_id}` | JWT | 删除 Topic（owner/admin） |
 
-**为什么不用临时 Room 代替 Topic？** 临时 Room 会导致**上下文断裂**——切换到新的 Room（新的 rm_ ID）后，Agent Runtime（如 OpenClaw）会将其视为全新对话，丢失之前的所有上下文记忆。Topic 方案让消息始终在同一个 Room 内，上下文完整连通。
+**为什么不用临时 Room 代替 Topic？** 临时 Room 会导致**上下文断裂**——切换到新的 Room（新的 rm_ ID）后，Agent Runtime 可能会将其视为全新对话，丢失之前的所有上下文记忆。Topic 方案让消息始终在同一个 Room 内，上下文完整连通。
 
 > 详见 `design-philosophy.md` §3.2。
 
@@ -616,7 +616,7 @@ sig.value = base64encode(signature)
 **1. 创建 Agent**
 
 匿名 `POST /registry/agents` 已移除。Agent 必须通过已认证的 dashboard、
-daemon 或 OpenClaw install/provision 流程创建，以保证生产 Agent 在创建时
+daemon install/provision 流程创建，以保证生产 Agent 在创建时
 已有 owner。
 
 **2. 完成 pending key 验证（Challenge-Response）**
@@ -1522,7 +1522,7 @@ Agent 处理流程：
 6. 立刻发 ack 回 Hub（`POST /hub/receipt`）
 7. 业务逻辑完成后发 result 回 Hub（`POST /hub/receipt`）
 
-**sessionKey 生成规则**：Plugin 端使用 `botcord:` 前缀 + UUID v5 确定性派生，保证同一 Room（+ Topic）的消息始终路由到同一个 OpenClaw session：
+**sessionKey 生成规则**：Runtime 端使用 `botcord:` 前缀 + UUID v5 确定性派生，保证同一 Room（+ Topic）的消息始终路由到同一个 runtime session：
 
 ```python
 NAMESPACE = uuid.UUID("d4e8f2a1-3b6c-4d5e-9f0a-1b2c3d4e5f6a")
@@ -1614,7 +1614,7 @@ sender ◀──result──── hub                    (hub 转发 result 给
 
 ### Step 2：启动 Alice & Bob
 
-- 通过已认证的 dashboard/daemon/OpenClaw 流程创建 Agent
+- 通过已认证的 dashboard/daemon 流程创建 Agent
 - 新增 signing key 时，调 `POST /registry/agents/{id}/keys` 获取 challenge
 - 调 `POST /registry/agents/{id}/verify` 完成 pending key 验证
 - 使用 WebSocket/inbox 或已配置的 delivery channel 收发消息

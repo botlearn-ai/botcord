@@ -7,58 +7,13 @@ interface TemplateEntry {
 }
 
 const TEMPLATES: Record<string, TemplateEntry> = {
-  // Markdown docs
-  "openclaw-setup_instruction.md": {
-    file: "setup-instruction.template.md",
-    contentType: "text/markdown; charset=utf-8",
-  },
-  "openclaw-setup-instruction-script.md": {
-    file: "setup-instruction-script.template.md",
-    contentType: "text/markdown; charset=utf-8",
-  },
-  "openclaw-setup-instruction-beta.md": {
-    file: "setup-instruction-beta.template.md",
-    contentType: "text/markdown; charset=utf-8",
-  },
-  "openclaw-setup-instruction-script-beta.md": {
-    file: "setup-instruction-script-beta.template.md",
-    contentType: "text/markdown; charset=utf-8",
-  },
-  "openclaw-setup-instruction-upgrade-to-beta.md": {
-    file: "setup-instruction-upgrade-to-beta.template.md",
-    contentType: "text/markdown; charset=utf-8",
-  },
-  "openclaw-best-practices.md": {
-    file: "best-practices.template.md",
-    contentType: "text/markdown; charset=utf-8",
-  },
-  "openclaw-onboarding.md": {
-    file: "onboarding.template.md",
-    contentType: "text/markdown; charset=utf-8",
-  },
   // Shell scripts
-  "install.sh": {
-    file: "install.template.sh",
-    contentType: "text/x-shellscript; charset=utf-8",
-  },
   "register.sh": {
     file: "register.template.sh",
     contentType: "text/x-shellscript; charset=utf-8",
   },
-  "install-beta.sh": {
-    file: "install-beta.template.sh",
-    contentType: "text/x-shellscript; charset=utf-8",
-  },
-  "install-native.sh": {
-    file: "install-native.template.sh",
-    contentType: "text/x-shellscript; charset=utf-8",
-  },
   "register-beta.sh": {
     file: "register-beta.template.sh",
-    contentType: "text/x-shellscript; charset=utf-8",
-  },
-  "uninstall.sh": {
-    file: "uninstall.template.sh",
     contentType: "text/x-shellscript; charset=utf-8",
   },
   "daemon-install.sh": {

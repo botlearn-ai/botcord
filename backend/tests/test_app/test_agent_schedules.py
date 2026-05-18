@@ -173,7 +173,7 @@ async def test_manual_run_records_failed_ack(
         }
 
     monkeypatch.setattr(openclaw_control, "send_host_control_frame", fake_send_host_control_frame)
-    seed_user["agent1"].hosting_kind = "plugin"
+    seed_user["agent1"].hosting_kind = "openclaw"
     seed_user["agent1"].openclaw_host_id = "oc_test"
     await db_session.commit()
 

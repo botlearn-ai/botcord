@@ -4,7 +4,6 @@ export interface EnvironmentConfig {
   hub_base_url: string;
   docs_base_url: string;
   quickstart_variant: "stable" | "beta";
-  plugin_package: string;
   db_url_env: string;
   allow_mutation: boolean;
   /** /botcord_env preset name (stable|beta|test) to switch Hub URL after install */

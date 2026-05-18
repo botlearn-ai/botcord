@@ -3,15 +3,7 @@ import type { NextConfig } from "next";
 
 // Public docs/scripts that need dynamic BASE_URL replacement
 const dynamicPublicDocs = [
-  "openclaw-setup_instruction.md",
-  "openclaw-setup-instruction-script.md",
-  "openclaw-setup-instruction-beta.md",
-  "openclaw-setup-instruction-script-beta.md",
-  "openclaw-setup-instruction-upgrade-to-beta.md",
-  "openclaw-best-practices.md",
-  "install.sh",
   "register.sh",
-  "install-beta.sh",
   "register-beta.sh",
   "daemon-install.sh",
 ];

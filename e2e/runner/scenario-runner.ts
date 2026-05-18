@@ -55,7 +55,7 @@ export async function runScenario(
 
   // 2. Check mutation safety
   if (!env.allow_mutation) {
-    // For now, quickstart always mutates (installs plugin, registers)
+    // For now, quickstart always mutates (connects BotCord, registers)
     // In the future, read-only scenarios can bypass this check
     console.warn(`\n⚠  Environment "${envName}" has allow_mutation=false.`);
     console.warn("   This scenario requires mutation (install + register). Aborting.\n");

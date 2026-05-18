@@ -90,7 +90,7 @@ async def client(db_session, monkeypatch):
 async def seed(db_session: AsyncSession):
     """Owner with a daemon-hosted agent + a different user with a daemon agent.
 
-    Also seeds a non-daemon-hosted plugin agent owned by the same user so we
+    Also seeds a non-daemon-hosted OpenClaw agent owned by the same user so we
     can assert the 422 ``agent_not_daemon_hosted`` branch.
     """
     supabase_uuid = uuid.uuid4()
@@ -143,14 +143,14 @@ async def seed(db_session: AsyncSession):
         hosting_kind="daemon",
         daemon_instance_id="dm_abcdef123456",
     )
-    plugin_agent = Agent(
-        agent_id="ag_plugin",
-        display_name="Plugin Agent",
+    openclaw_agent = Agent(
+        agent_id="ag_openclaw",
+        display_name="OpenClaw Agent",
         bio="b",
         message_policy=MessagePolicy.contacts_only,
         user_id=user_id,
         claimed_at=now,
-        hosting_kind="plugin",
+        hosting_kind="openclaw",
     )
     other_agent = Agent(
         agent_id="ag_other",
@@ -162,7 +162,7 @@ async def seed(db_session: AsyncSession):
         hosting_kind="daemon",
         daemon_instance_id="dm_otherbeefcafe",
     )
-    db_session.add_all([daemon_agent, plugin_agent, other_agent])
+    db_session.add_all([daemon_agent, openclaw_agent, other_agent])
     await db_session.commit()
     return {
         "token": _token(str(supabase_uuid)),
@@ -205,7 +205,7 @@ async def test_create_rejects_non_daemon_agent(client, seed, monkeypatch):
     _patch_daemon(monkeypatch, online=True)
     headers = {"Authorization": f"Bearer {seed['token']}"}
     r = await client.post(
-        "/api/agents/ag_plugin/gateways",
+        "/api/agents/ag_openclaw/gateways",
         headers=headers,
         json={"provider": "telegram", "bot_token": "t"},
     )

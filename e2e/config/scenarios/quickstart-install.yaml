@@ -18,7 +18,7 @@ steps:
     description: Send the Quick Start prompt to each OpenClaw instance
   - id: wait_gateway_recovered
     action: runtime.wait_healthy
-    description: Wait for gateway to recover after plugin installation
+    description: Wait for gateway to recover after BotCord setup
     params:
       delay_seconds: 10
   - id: run_healthcheck
@@ -47,8 +47,6 @@ assertions:
     description: OpenClaw CLI returns JSON with status ok
   - id: agent_output.payload_non_empty
     description: Agent response payload is non-empty
-  - id: plugin.install_present
-    description: BotCord plugin directory exists
   - id: openclaw_config.botcord_enabled
     description: channels.botcord.enabled is true in openclaw.json
   - id: openclaw_config.credentials_file_exists

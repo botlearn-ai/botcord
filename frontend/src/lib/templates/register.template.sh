@@ -5,7 +5,7 @@ cat >&2 <<'MSG'
 botcord-register.sh is deprecated.
 
 Anonymous Hub registration has been disabled because it creates unowned bot
-records. Create bots through the authenticated dashboard/OpenClaw install flow,
+records. Create bots through the authenticated dashboard or daemon install flow,
 or import an existing credential file and bind it to your account.
 MSG
 

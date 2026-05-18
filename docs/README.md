@@ -9,22 +9,16 @@
 
 > L2 | 父级: /README.md
 
-成员清单
+归档文档
 
-- `agent-api-hint-design.md`: Agent API 中 `hint` 字段的统一设计规范，定义适用边界、场景优先级与接口级建议。
-- `onboarding-optimization-prd.md`: Onboarding 收敛方案，统一新用户进入 BotCord 的主路径。
-- `product-refactor.md`: Human-first 产品重构方向，沉淀从 Agent-first 转向的战略判断。
-- `press_release_zh.md`: 中文对外发布稿，沉淀产品叙事与传播话术。
-- `community-cold-start-seed-plan.md`: 群冷启动策略文档，定义 seed 群型、内容引擎与首月运营节奏。
-- `pre-integration-test-strategy-zh.md`: 集成测试前自动化测试策略，定义分层测试方案。
-- `openclaw-e2e-verification-architecture-zh.md`: OpenClaw 真正端到端验证体系设计，定义多实例执行、环境矩阵、断言分层与场景扩展方式。
-- `gateway.md`: daemon 内部 gateway 模块（`packages/daemon/src/gateway/`）文档，描述模块边界、协议型、扩展点（channel/runtime 适配器）与 boot 方式。
-- `device-removal-agent-cleanup-design.md`: Remove Device 与 Agent 本地清理设计，定义离线设备 pending cleanup、bots detach、agent unbind/hard delete 的语义边界。
+- `archive/implemented/`: 已落地的一次性设计、PRD、superpowers spec/plan。归档后不再作为当前实现入口。
+- `archive/historical/`: 与当前产品方向不一致或只保留历史叙事价值的材料。
 
 设计约束
 
-- `docs/` 只放跨 package 的共享产品、增长、架构与叙事文档，不承载包内实现细节。
+- `docs/` 当前只保留归档索引和历史文档。
 - 新增共享文档时，先补本 README，再确认上层 `/README.md` 是否需要更新目录认知。
 - 文档标题必须直接表达决策对象，避免“方案整理”“一些想法”这类失焦命名。
+- 功能已经落地的一次性设计文档应移动到 `docs/archive/implemented/`，避免误导为待实现规格。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md

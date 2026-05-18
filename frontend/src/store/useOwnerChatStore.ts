@@ -29,7 +29,7 @@ const MAX_BLOCKS_PER_TRACE = 200;
 
 /** Extract streamed assistant text from stream blocks.
  *  Supports three shapes:
- *   - legacy plugin: `{ kind: "assistant", payload: { text } }`
+ *   - legacy structured payload: `{ kind: "assistant", payload: { text } }`
  *   - daemon gateway pure text: `{ kind: "assistant_text", raw: <event> }`
  *   - daemon gateway mixed: `{ kind: "tool_use", raw: <Claude assistant event> }`
  *     where Claude-code labelled the block as tool_use because the content

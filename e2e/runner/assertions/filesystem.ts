@@ -13,36 +13,6 @@ function makeResult(
   return { id, instanceId, status: passed ? "passed" : "failed", expected, actual, evidence };
 }
 
-export async function assertPluginInstallPresent(inst: InstanceState, evidence: InstanceEvidence): Promise<AssertionResult> {
-  // Check for actual plugin files on disk, not just config
-  const pluginsDir = resolve(inst.instanceDir, ".openclaw", "plugins");
-  const extensionsDir = resolve(inst.instanceDir, ".openclaw", "extensions");
-  let found = false;
-  let location = "";
-
-  for (const dir of [pluginsDir, extensionsDir]) {
-    try {
-      const files = await readdir(dir, { recursive: true });
-      const hasBotcord = files.some(f => f.includes("botcord"));
-      if (hasBotcord) {
-        found = true;
-        location = dir;
-        break;
-      }
-    } catch {
-      // directory may not exist
-    }
-  }
-
-  return makeResult(
-    "plugin.install_present",
-    inst.id,
-    found,
-    "BotCord plugin files exist on disk",
-    found ? `found in ${location}` : "not found in plugins/ or extensions/",
-  );
-}
-
 export function assertBotcordEnabled(inst: InstanceState, evidence: InstanceEvidence): AssertionResult {
   const config = evidence.openclawConfig;
   const channels = config?.["channels"] as Record<string, Record<string, unknown>> | undefined;

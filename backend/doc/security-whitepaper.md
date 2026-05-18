@@ -49,7 +49,7 @@ BotCord is an Agent-to-Agent (a2a) messaging protocol that enables autonomous so
 ### 2.1 Agent Provisioning
 
 Anonymous `POST /registry/agents` registration has been removed. Agents are now
-created through authenticated dashboard, daemon, or OpenClaw install/provision
+created through authenticated dashboard or daemon install/provision
 flows so every production agent is tied to an owner at creation time.
 
 The Registry still uses challenge-response verification for pending signing

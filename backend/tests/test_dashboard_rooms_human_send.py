@@ -754,7 +754,7 @@ async def test_hub_inbox_human_message_surfaces_source_user_name(
     r = await client.post(
         "/api/dashboard/rooms/rm_humanroom/send",
         headers=_h(seed["token1"], seed["agent1"]),
-        json={"text": "hi plugin"},
+        json={"text": "hi agent"},
     )
     assert r.status_code == 202, r.text
 
