@@ -23,11 +23,13 @@ from hub.models import (
     Agent,
     MessageRecord,
     MessageState,
+    ParticipantType,
     Room,
     RoomJoinPolicy,
     RoomMember,
     RoomRole,
     RoomVisibility,
+    User,
 )
 from hub.routers.hub import notify_inbox
 from hub.i18n import I18nHTTPException
@@ -76,6 +78,61 @@ def _build_owner_chat_room_id(user_id: str, agent_id: str) -> str:
     return f"{_OWNER_CHAT_ROOM_PREFIX}{digest}"
 
 
+async def _resolve_owner_human_id(db: AsyncSession, user_id: str) -> str | None:
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        return None
+
+    result = await db.execute(select(User.human_id).where(User.id == user_uuid))
+    return result.scalar_one_or_none()
+
+
+async def _ensure_owner_chat_members(
+    db: AsyncSession,
+    room_id: str,
+    user_id: str,
+    agent_id: str,
+) -> None:
+    """Ensure owner-chat rooms expose both participants in RoomMember."""
+    result = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == agent_id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        db.add(
+            RoomMember(
+                room_id=room_id,
+                agent_id=agent_id,
+                participant_type=ParticipantType.agent,
+                role=RoomRole.owner,
+            )
+        )
+
+    human_id = await _resolve_owner_human_id(db, user_id)
+    if not human_id:
+        return
+
+    result = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.agent_id == human_id,
+            RoomMember.participant_type == ParticipantType.human,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        db.add(
+            RoomMember(
+                room_id=room_id,
+                agent_id=human_id,
+                participant_type=ParticipantType.human,
+                role=RoomRole.member,
+            )
+        )
+
+
 async def _ensure_owner_chat_room(
     db: AsyncSession,
     user_id: str,
@@ -87,6 +144,8 @@ async def _ensure_owner_chat_room(
 
     result = await db.execute(select(Room).where(Room.room_id == room_id))
     if result.scalar_one_or_none() is not None:
+        await _ensure_owner_chat_members(db, room_id, user_id, agent_id)
+        await db.flush()
         return room_id
 
     room = Room(
@@ -104,12 +163,11 @@ async def _ensure_owner_chat_room(
             await db.flush()
     except IntegrityError:
         # Race: another request created it first
+        await _ensure_owner_chat_members(db, room_id, user_id, agent_id)
+        await db.flush()
         return room_id
 
-    # Add the agent as the sole member (owner-perspective).
-    # The user is not an agent so they don't get a RoomMember row;
-    # they interact exclusively via the dashboard chat API.
-    db.add(RoomMember(room_id=room_id, agent_id=agent_id, role=RoomRole.owner))
+    await _ensure_owner_chat_members(db, room_id, user_id, agent_id)
     await db.flush()
 
     return room_id

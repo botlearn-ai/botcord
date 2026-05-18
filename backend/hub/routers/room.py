@@ -174,11 +174,56 @@ def _normalize_room_rule(rule: str | None) -> str | None:
     return normalized or None
 
 
+def _is_human_member(member: RoomMember) -> bool:
+    ptype = getattr(member, "participant_type", None)
+    return ptype == ParticipantType.human or getattr(ptype, "value", None) == "human"
+
+
+async def _ensure_owner_chat_human_member(db: AsyncSession, room: Room) -> bool:
+    """Backfill the human owner RoomMember for legacy rm_oc_* rooms."""
+    if not room.room_id.startswith("rm_oc_"):
+        return False
+    if any(_is_human_member(m) for m in room.members):
+        return False
+
+    result = await db.execute(
+        select(User.human_id)
+        .join(Agent, Agent.user_id == User.id)
+        .where(Agent.agent_id == room.owner_id)
+    )
+    human_id = result.scalar_one_or_none()
+    if not human_id:
+        return False
+    if any(m.agent_id == human_id for m in room.members):
+        return False
+
+    room.members.append(
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=human_id,
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        )
+    )
+    await db.flush()
+    return True
+
+
 def _room_url(room_id: str) -> str:
     return frontend_url(f"/chats/messages/{room_id}")
 
 
 def _build_room_response(room: Room) -> RoomResponse:
+    def _agent_display_name(member: RoomMember) -> str | None:
+        if _is_human_member(member):
+            return None
+        return member.agent.display_name if member.agent is not None else None
+
+    def _agent_avatar_url(member: RoomMember) -> str | None:
+        if _is_human_member(member):
+            return None
+        return member.agent.avatar_url if member.agent is not None else None
+
     return RoomResponse(
         room_id=room.room_id,
         name=room.name,
@@ -197,8 +242,8 @@ def _build_room_response(room: Room) -> RoomResponse:
         members=[
             RoomMemberResponse(
                 agent_id=m.agent_id,
-                display_name=m.agent.display_name if m.agent is not None else None,
-                avatar_url=m.agent.avatar_url if m.agent is not None else None,
+                display_name=_agent_display_name(m),
+                avatar_url=_agent_avatar_url(m),
                 role=m.role.value,
                 muted=m.muted,
                 can_send=m.can_send,
@@ -819,6 +864,11 @@ async def list_my_rooms(
         .offset(offset)
     )
     rooms = list(result.scalars().unique().all())
+    repaired = False
+    for room in rooms:
+        repaired = await _ensure_owner_chat_human_member(db, room) or repaired
+    if repaired:
+        await db.commit()
     return RoomListResponse(
         rooms=[_build_room_response(r) for r in rooms]
     )
@@ -833,6 +883,8 @@ async def get_room(
     """Get room info. Only members can view."""
     room = await _load_room(db, room_id, fresh=True)
     _require_membership(room, current_agent)
+    if await _ensure_owner_chat_human_member(db, room):
+        await db.commit()
     return _build_room_response(room)
 
 

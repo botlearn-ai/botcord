@@ -946,6 +946,7 @@ async def _send_room_message(
 ) -> SendResponse:
     """Handle sending a message to a room (fan-out to all members except sender)."""
     room_id = envelope.to
+    is_owner_chat = room_id.startswith("rm_oc_")
 
     # Load room with members
     result = await db.execute(
@@ -997,11 +998,25 @@ async def _send_room_message(
             db, room_id, topic, envelope.from_, envelope.type, goal=goal,
         )
 
-    # Fan-out: create a MessageRecord for each member except sender, skip muted and blockers
-    receivers = {
+    # Fan-out: create a MessageRecord for each member except sender, skip muted and blockers.
+    # Owner-chat rooms include the human owner as a RoomMember for discoverability,
+    # but the human does not poll /hub/inbox. Deliver those rows immediately and
+    # push through the dedicated owner-chat websocket below.
+    owner_chat_human_receivers = {
         m.agent_id for m in room.members
-        if m.agent_id != envelope.from_ and not m.muted and m.agent_id not in blocked_by
+        if is_owner_chat
+        and m.agent_id != envelope.from_
+        and m.participant_type == ParticipantType.human
+        and not m.muted
+        and m.agent_id not in blocked_by
     }
+    if owner_chat_human_receivers:
+        receivers = owner_chat_human_receivers
+    else:
+        receivers = {
+            m.agent_id for m in room.members
+            if m.agent_id != envelope.from_ and not m.muted and m.agent_id not in blocked_by
+        }
 
     # Resolve sender display name for realtime events
     _sender_name_result = await db.execute(
@@ -1040,10 +1055,12 @@ async def _send_room_message(
             receiver_id in mentioned_set or "@all" in mentioned_set
         )
 
-        # Self-delivery records are marked as 'delivered' immediately so they
-        # never appear in the agent's inbox poll.  They exist solely for room
-        # history queries.
+        # Self-delivery and owner-chat human-delivery records are marked as
+        # delivered immediately so they never appear in any plugin inbox poll.
         _is_self_delivery = _self_delivery and receiver_id == envelope.from_
+        _is_owner_chat_human_delivery = (
+            is_owner_chat and receiver_id in owner_chat_human_receivers
+        )
         record = MessageRecord(
             hub_msg_id=hub_msg_id,
             msg_id=envelope.msg_id,
@@ -1053,7 +1070,11 @@ async def _send_room_message(
             topic=topic,
             topic_id=topic_id,
             goal=goal,
-            state=MessageState.delivered if _is_self_delivery else MessageState.queued,
+            state=(
+                MessageState.delivered
+                if (_is_self_delivery or _is_owner_chat_human_delivery)
+                else MessageState.queued
+            ),
             envelope_json=envelope_json,
             ttl_sec=envelope.ttl_sec,
             mentioned=is_mentioned,
@@ -1098,8 +1119,11 @@ async def _send_room_message(
                 # Skip Supabase realtime for owner-chat rooms — the dedicated
                 # WS path handles delivery; publishing here would cause
                 # redundant polling from the Supabase realtime listener.
-                if not room_id.startswith("rm_oc_"):
+                if not is_owner_chat:
                     await _publish_agent_realtime_event(db, rt_event)
+            elif is_owner_chat and receiver_id in owner_chat_human_receivers:
+                # Dedicated owner-chat WS handles immediate dashboard delivery.
+                pass
             else:
                 await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
         except Exception as exc:
@@ -1109,7 +1133,7 @@ async def _send_room_message(
             )
 
     # Push agent reply to owner-chat WS clients when applicable
-    if _self_delivery and room_id.startswith("rm_oc_"):
+    if is_owner_chat and (_self_delivery or owner_chat_human_receivers):
         from hub.routers.owner_chat_ws import notify_oc_ws_message
         _oc_text = (envelope.payload or {}).get("text", "")
         await notify_oc_ws_message(
