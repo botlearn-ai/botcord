@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent } from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
 
 interface PendingFile {
@@ -74,6 +74,13 @@ export function textHasMention(text: string, displayName: string): boolean {
   }
 }
 
+export function isImeComposing(
+  event: Pick<globalThis.KeyboardEvent, "isComposing"> & { keyCode?: number },
+  compositionActive = false,
+): boolean {
+  return compositionActive || event.isComposing || event.keyCode === 229;
+}
+
 export default function MessageComposer({
   onSend,
   onTransfer,
@@ -98,6 +105,7 @@ export default function MessageComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionListRef = useRef<HTMLDivElement>(null);
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const compositionActiveRef = useRef(false);
 
   const mentionEnabled = !!mentionCandidates && mentionCandidates.length > 0;
 
@@ -263,7 +271,8 @@ export default function MessageComposer({
     await onSend(trimmed, raw, mentions.length > 0 ? mentions : undefined);
   }, [text, files, disabled, showLengthError, activeMentions, onSend]);
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const composing = isImeComposing(e.nativeEvent, compositionActiveRef.current);
     if (mentionMatch && suggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -286,7 +295,7 @@ export default function MessageComposer({
         return;
       }
       if (e.key === "Enter" || e.key === "Tab") {
-        if (!e.nativeEvent.isComposing) {
+        if (!composing) {
           e.preventDefault();
           const pick = suggestions[mentionIndex] ?? suggestions[0];
           if (pick) commitMention(pick);
@@ -299,7 +308,7 @@ export default function MessageComposer({
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === "Enter" && !e.shiftKey && !composing) {
       e.preventDefault();
       void handleSend();
     }
@@ -464,9 +473,20 @@ export default function MessageComposer({
           }}
           onBeforeInput={handleBeforeInput}
           onPaste={handlePaste}
+          onCompositionStart={() => {
+            compositionActiveRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            setTimeout(() => {
+              compositionActiveRef.current = false;
+            }, 0);
+          }}
           onKeyUp={updateMentionMatch}
           onClick={updateMentionMatch}
-          onBlur={() => setTimeout(() => setMentionMatch(null), 120)}
+          onBlur={() => {
+            compositionActiveRef.current = false;
+            setTimeout(() => setMentionMatch(null), 120);
+          }}
           onKeyDown={handleKeyDown}
           rows={1}
           disabled={disabled}
