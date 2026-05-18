@@ -30,9 +30,18 @@ describe("uploadRoomAttachments", () => {
     expect(uploadFile).toHaveBeenCalledWith(file, "ag_owner");
   });
 
-  it("requires an owned agent for file uploads", async () => {
-    await expect(uploadRoomAttachments([{ name: "report.pdf" } as File], null)).rejects.toThrow(
-      "Choose or create an agent before sending files.",
-    );
+  it("uploads files without an agent so the backend can attribute them to the human user", async () => {
+    const file = { name: "report.pdf" } as File;
+    const uploadFile = vi.fn(async () => ({
+      file_id: "f_123",
+      url: "https://api.example.test/hub/files/f_123",
+      original_filename: "report.pdf",
+      content_type: "application/pdf",
+      size_bytes: 42,
+      expires_at: "2026-05-12T00:00:00Z",
+    }));
+
+    await expect(uploadRoomAttachments([file], null, uploadFile)).resolves.toHaveLength(1);
+    expect(uploadFile).toHaveBeenCalledWith(file, null);
   });
 });

@@ -3246,6 +3246,19 @@ async def _resolve_owner_chat_agent(
     return agent_id, (agent.display_name or agent_id)
 
 
+async def _resolve_dashboard_upload_owner(
+    db: AsyncSession,
+    ctx: RequestContext,
+    requested_agent_id: str | None,
+) -> str:
+    if requested_agent_id or ctx.active_agent_id:
+        agent_id, _display_name = await _resolve_owner_chat_agent(db, ctx, requested_agent_id)
+        return agent_id
+    if not ctx.human_id:
+        raise HTTPException(status_code=404, detail="Human identity not found")
+    return ctx.human_id
+
+
 @router.get("/chat/room")
 async def get_chat_room(
     agent_id: str | None = Query(default=None),
@@ -3300,7 +3313,7 @@ async def dashboard_upload_file(
     if len(buf) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    uploader_agent_id, _display_name = await _resolve_owner_chat_agent(db, ctx, agent_id)
+    uploader_id = await _resolve_dashboard_upload_owner(db, ctx, agent_id)
 
     raw_name = file.filename or "upload"
     original_filename = os.path.basename(raw_name).strip()[:200] or "upload"
@@ -3316,7 +3329,7 @@ async def dashboard_upload_file(
     )
     record = FileRecord(
         file_id=file_id,
-        uploader_id=uploader_agent_id,
+        uploader_id=uploader_id,
         original_filename=original_filename,
         content_type=content_type,
         size_bytes=len(data),
