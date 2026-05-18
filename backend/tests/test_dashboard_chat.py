@@ -14,7 +14,8 @@ from nacl.signing import SigningKey
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock
 
-from hub.models import Agent, Base, MessagePolicy, MessageRecord
+from hub.enums import ParticipantType
+from hub.models import Agent, Base, MessagePolicy, MessageRecord, RoomMember, User
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -151,6 +152,15 @@ async def test_dashboard_chat_send_and_room_creation(
     import uuid as _uuid
 
     user_id = str(_uuid.uuid4())
+    owner = User(
+        id=_uuid.UUID(user_id),
+        display_name="Owner User",
+        email="owner@example.com",
+        status="active",
+        supabase_user_id=_uuid.uuid4(),
+        human_id="hu_ownerchat01",
+    )
+    db_session.add(owner)
     await db_session.execute(
         update(Agent)
         .where(Agent.agent_id == agent_id)
@@ -238,6 +248,61 @@ async def test_dashboard_chat_room_is_stable(
 
 
 @pytest.mark.asyncio
+async def test_owner_chat_room_info_backfills_human_member(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    """Legacy owner-chat rooms are repaired when an agent reads room info."""
+    agent_id, token, _sk, _kid = await _register_and_verify(client, "BackfillAgent")
+
+    import uuid as _uuid
+    from sqlalchemy import select, update
+
+    user_id = str(_uuid.uuid4())
+    owner = User(
+        id=_uuid.UUID(user_id),
+        display_name="Owner User",
+        email="backfill-owner@example.com",
+        status="active",
+        supabase_user_id=_uuid.uuid4(),
+        human_id="hu_backfill01",
+    )
+    db_session.add(owner)
+    owner_human_id = owner.human_id
+    await db_session.execute(
+        update(Agent)
+        .where(Agent.agent_id == agent_id)
+        .values(
+            user_id=_uuid.UUID(user_id),
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    headers = _auth_header(token)
+    resp = await client.get("/dashboard/chat/room", headers=headers)
+    assert resp.status_code == 200
+    room_id = resp.json()["room_id"]
+
+    human_member = (
+        await db_session.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == owner_human_id,
+            )
+        )
+    ).scalar_one()
+    await db_session.delete(human_member)
+    await db_session.commit()
+
+    resp = await client.get(f"/hub/rooms/{room_id}", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["member_count"] == 2
+    assert {m["agent_id"] for m in data["members"]} == {agent_id, owner_human_id}
+
+
+@pytest.mark.asyncio
 async def test_dashboard_chat_inbox_includes_source_type(
     client: AsyncClient,
     db_session: AsyncSession,
@@ -290,14 +355,24 @@ async def test_agent_reply_to_owner_chat_creates_record(
     client: AsyncClient,
     db_session: AsyncSession,
 ):
-    """When an agent sends a reply to its owner-chat room (rm_oc_*), a self-delivery
-    MessageRecord is created so the dashboard can display the reply."""
+    """When an agent sends a reply to its owner-chat room (rm_oc_*), a delivered
+    MessageRecord is created for the human owner so the dashboard can display it."""
     agent_id, token, sk, key_id = await _register_and_verify(client, "ReplyAgent")
 
     import uuid as _uuid
     from sqlalchemy import select, update
 
     user_id = str(_uuid.uuid4())
+    owner = User(
+        id=_uuid.UUID(user_id),
+        display_name="Owner User",
+        email="reply-owner@example.com",
+        status="active",
+        supabase_user_id=_uuid.uuid4(),
+        human_id="hu_replyown01",
+    )
+    db_session.add(owner)
+    owner_human_id = owner.human_id
     await db_session.execute(
         update(Agent)
         .where(Agent.agent_id == agent_id)
@@ -315,6 +390,17 @@ async def test_agent_reply_to_owner_chat_creates_record(
     assert resp.status_code == 200
     room_id = resp.json()["room_id"]
     assert room_id.startswith("rm_oc_")
+    members_result = await db_session.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id)
+    )
+    members = members_result.scalars().all()
+    assert {
+        (m.agent_id, m.participant_type)
+        for m in members
+    } == {
+        (agent_id, ParticipantType.agent),
+        (owner_human_id, ParticipantType.human),
+    }
 
     # Agent sends a reply back to this room via /hub/send (simulating plugin reply)
     envelope = _build_envelope(
@@ -341,8 +427,7 @@ async def test_agent_reply_to_owner_chat_creates_record(
     record = result.scalar_one()
     assert record.room_id == room_id
     assert record.sender_id == agent_id
-    # Self-delivery: receiver is the sender
-    assert record.receiver_id == agent_id
+    assert record.receiver_id == owner_human_id
     # Crucially: state is 'delivered' (not 'queued') so it never appears in
     # inbox polling — the plugin must not re-process its own reply.
     assert record.state.value == "delivered"
