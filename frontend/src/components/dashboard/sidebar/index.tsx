@@ -171,6 +171,10 @@ export default function Sidebar({
     overview: s.overview,
     recentVisitedRooms: s.recentVisitedRooms,
   })));
+  const contactStore = useDashboardContactStore(useShallow((s) => ({
+    contactRequestsBotApprovalCount: s.contactRequestsBotApprovalCount,
+    loadContactRequests: s.loadContactRequests,
+  })));
   const unreadStore = useDashboardUnreadStore(useShallow((s) => ({
     optimisticUnreadRoomIds: s.optimisticUnreadRoomIds,
     isRoomUnread: s.isRoomUnread,
@@ -270,12 +274,16 @@ export default function Sidebar({
     return persistedCount + optimisticOnlyCount;
   }, [unreadStore, visibleMessageRooms]);
 
-  const pendingContactRequests = chatStore.overview?.pending_requests || 0;
+  const pendingContactRequests = (chatStore.overview?.pending_requests || 0) + contactStore.contactRequestsBotApprovalCount;
   const visibleSidebarTab = sidebarTabOverride ?? uiStore.sidebarTab;
   const secondaryPanelLoading = Boolean(
     uiStore.pendingPrimaryNavigation && uiStore.pendingPrimaryNavigation.tab === visibleSidebarTab,
   );
   const showMessagesGrouping = visibleSidebarTab === "messages" && !isGuest && uiStore.messagesGroupingOpen;
+
+  useEffect(() => {
+    if (!isGuest) void contactStore.loadContactRequests();
+  }, [contactStore.loadContactRequests, isGuest]);
 
   useEffect(() => {
     const prefetch = (path: string) => {
@@ -349,7 +357,7 @@ export default function Sidebar({
             if (item.key === "contacts" && pendingContactRequests > 0 && !requiresLogin) {
               badge = (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]">
-                  {pendingContactRequests > 9 ? "9+" : pendingContactRequests}
+                  {formatBadgeCount(pendingContactRequests)}
                 </span>
               );
             }
@@ -393,7 +401,7 @@ export default function Sidebar({
             <>
               <AccountMenu
                 user={sessionStore.user}
-                pendingRequests={chatStore.overview?.pending_requests || 0}
+                pendingRequests={pendingContactRequests}
                 onLogout={handleLogout}
               />
             </>

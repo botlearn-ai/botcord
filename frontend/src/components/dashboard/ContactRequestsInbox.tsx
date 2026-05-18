@@ -137,13 +137,14 @@ export default function ContactRequestsInbox({
       try {
         await humansApi.resolvePendingApproval(approvalId, decision);
         setBotApprovals((prev) => prev.filter((approval) => approval.id !== approvalId));
+        await loadContactRequests();
       } catch (err: any) {
         setBotApprovalsError(err?.message || (locale === "zh" ? "处理 Bot 请求失败" : "Failed to resolve bot request"));
       } finally {
         setBotApprovalAction(null);
       }
     },
-    [locale],
+    [loadContactRequests, locale],
   );
 
   return (

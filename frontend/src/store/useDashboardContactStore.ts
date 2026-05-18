@@ -15,6 +15,7 @@ interface DashboardContactState {
   pendingFriendRequests: string[];
   contactRequestsReceived: ContactRequestItem[];
   contactRequestsSent: ContactRequestItem[];
+  contactRequestsBotApprovalCount: number;
   contactRequestsLoading: boolean;
   processingContactRequestId: number | string | null;
   processingContactRequestAction: "accept" | "reject" | null;
@@ -31,6 +32,7 @@ const initialContactState = {
   pendingFriendRequests: [],
   contactRequestsReceived: [],
   contactRequestsSent: [],
+  contactRequestsBotApprovalCount: 0,
   contactRequestsLoading: false,
   processingContactRequestId: null,
   processingContactRequestAction: null,
@@ -82,30 +84,36 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
       set({
         contactRequestsReceived: [],
         contactRequestsSent: [],
+        contactRequestsBotApprovalCount: 0,
         contactRequestsLoading: false,
       });
       return;
     }
     set({ contactRequestsLoading: true });
     try {
-      const [received, sent] = isHumanContactSurface()
+      const [received, sent, botApprovalCount] = isHumanContactSurface()
         ? await Promise.all([
             humansApi.listReceivedContactRequests(),
             humansApi.listSentContactRequests(),
-          ]).then(([receivedRes, sentRes]) => [
+            humansApi.listPendingApprovals(),
+          ]).then(([receivedRes, sentRes, approvalsRes]) => [
             { requests: receivedRes.requests.map(normalizeHumanContactRequest) },
             { requests: sentRes.requests.map(normalizeHumanContactRequest) },
+            approvalsRes.approvals.filter((approval) => (
+              approval.kind === "contact_request" && !approval.id.startsWith("cr_")
+            )).length,
           ] as const)
         : await Promise.all([
             api.getContactRequestsReceived(),
             api.getContactRequestsSent(),
-          ]);
+          ]).then(([receivedRes, sentRes]) => [receivedRes, sentRes, 0] as const);
       const pendingSentTargets = sent.requests
         .filter((item) => item.state === "pending")
         .map((item) => item.to_agent_id);
       set({
         contactRequestsReceived: received.requests,
         contactRequestsSent: sent.requests,
+        contactRequestsBotApprovalCount: botApprovalCount,
         pendingFriendRequests: Array.from(new Set([...get().pendingFriendRequests, ...pendingSentTargets])),
         contactRequestsLoading: false,
       });
