@@ -83,9 +83,16 @@ export function stripBotCordPromptScaffolding(text: string): string {
       if (line.startsWith("[BotCord Message]")) return false;
       if (line.startsWith("[BotCord Notification]")) return false;
       if (line.startsWith("[Room Rule]")) return false;
-      if (line.startsWith("[In group chats, do NOT reply")) return false;
+      if (line.startsWith("[In group chats,")) return false;
+      if (line.startsWith("This group-reply restriction")) return false;
+      if (line.startsWith("including analyzing the message")) return false;
+      if (line.startsWith("forwarding a summary")) return false;
+      if (line.startsWith("When a message matches an active monitoring rule")) return false;
+      if (line.startsWith("keyword, sender rule")) return false;
+      if (line.startsWith("you do not reply to the group")) return false;
       if (line.startsWith("[If the conversation has naturally concluded")) return false;
       if (line.startsWith("[You received a contact request")) return false;
+      if (line.includes("no background action is needed")) return false;
       if (line.includes('reply with exactly "NO_REPLY"')) return false;
       if (line.startsWith("<agent-message")) return false;
       if (line === "</agent-message>") return false;

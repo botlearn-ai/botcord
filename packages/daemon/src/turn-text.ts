@@ -15,9 +15,11 @@
  *   hello
  *   </agent-message>
  *
- *   [In group chats, do NOT reply unless you are explicitly mentioned or
- *    addressed. If no response is needed, reply with exactly "NO_REPLY"
- *    and nothing else.]
+ *   [In group chats, do not send a message back to the current group room
+ *    unless you are explicitly mentioned, addressed, or the room policy says
+ *    you should participate. This group-reply restriction only controls
+ *    whether you post back into the current group. It does not prevent
+ *    owner-approved or policy-approved background actions...]
  *
  * Owner-chat messages bypass the wrapper entirely — they are trusted and
  * the owner-chat scene prompt in `system-context.ts` already gives the
@@ -28,8 +30,16 @@ import { sanitizeSenderName, sanitizeUntrustedContent } from "./gateway/index.js
 import { classifyActivitySender } from "./sender-classify.js";
 
 const GROUP_HINT =
-  '[In group chats, do NOT reply unless you are explicitly mentioned or addressed. ' +
-  'If no response is needed, reply with exactly "NO_REPLY" and nothing else.]';
+  "[In group chats, do not send a message back to the current group room " +
+  "unless you are explicitly mentioned, addressed, or the room policy says you should participate.\n\n" +
+  "This group-reply restriction only controls whether you post back into the current group. " +
+  "It does not prevent you from performing owner-approved or policy-approved background actions, " +
+  "including analyzing the message, updating memory, calling tools, starting a task, " +
+  "forwarding a summary, or notifying the owner.\n\n" +
+  "When a message matches an active monitoring rule, automation goal, working-memory task, " +
+  "keyword, sender rule, or owner-approved workflow, perform the required action even if " +
+  "you do not reply to the group.\n\n" +
+  'If no group reply and no background action is needed, reply exactly "NO_REPLY".]';
 const DIRECT_HINT =
   '[If the conversation has naturally concluded or no response is needed, ' +
   'reply with exactly "NO_REPLY" and nothing else.]';

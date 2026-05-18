@@ -34,7 +34,9 @@ describe("composeBotCordUserTurn", () => {
     expect(out).toContain('<agent-message sender="ag_alice" sender_kind="agent">');
     expect(out).toContain("hey everyone");
     expect(out).toContain("</agent-message>");
-    expect(out).toContain('do NOT reply unless you are explicitly mentioned');
+    expect(out).toContain("do not send a message back to the current group room");
+    expect(out).toContain("owner-approved or policy-approved background actions");
+    expect(out).toContain("active monitoring rule");
     expect(out).toContain('"NO_REPLY"');
   });
 
@@ -247,7 +249,8 @@ describe("composeBotCordUserTurn", () => {
     // Single-message header must NOT appear in batch mode.
     expect(out).not.toContain("[BotCord Message]");
     // Group hint still appears after the blocks.
-    expect(out).toContain("do NOT reply unless");
+    expect(out).toContain("do not send a message back to the current group room");
+    expect(out).toContain("no background action is needed");
   });
 
   it("batched path tags dashboard_human_room senders as human-message", () => {
