@@ -2102,6 +2102,14 @@ async def test_a2a_contact_request_approval_creates_correct_contacts(
     assert entry.owner_user_id == bob.id
 
     bob_headers = {"Authorization": f"Bearer {_token(str(bob_supa))}"}
+    listing = await client.get("/api/humans/me/pending-approvals", headers=bob_headers)
+    assert listing.status_code == 200, listing.text
+    approvals = listing.json()["approvals"]
+    assert len(approvals) == 1
+    assert approvals[0]["payload"]["from_participant_id"] == ext_id
+    assert approvals[0]["payload"]["from_type"] == "agent"
+    assert approvals[0]["payload"]["from_display_name"] == "external"
+
     resolve = await client.post(
         f"/api/humans/me/pending-approvals/{entry.id}/resolve",
         headers=bob_headers,

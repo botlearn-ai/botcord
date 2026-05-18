@@ -126,11 +126,14 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
     selectedContactKey: s.selectedContactKey,
     setSelectedContactKey: s.setSelectedContactKey,
   })));
-  const { contactRequestsReceived } = useDashboardContactStore(useShallow((s) => ({
+  const { contactRequestsReceived, contactRequestsBotApprovalCount } = useDashboardContactStore(useShallow((s) => ({
     contactRequestsReceived: s.contactRequestsReceived,
+    contactRequestsBotApprovalCount: s.contactRequestsBotApprovalCount,
   })));
 
   const pending = contactRequestsReceived.filter((r) => r.state === "pending");
+  const directPendingCount = Math.max(pending.length, overview?.pending_requests || 0);
+  const totalPendingRequests = directPendingCount + contactRequestsBotApprovalCount;
   const contacts = overview?.contacts || [];
   const ownedAgentIds = new Set(ownedAgents.map((a) => a.agent_id));
   // Owned bots are listed separately at the top; drop them from the contact list
@@ -207,15 +210,15 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-text-primary">{t.newRequests}</span>
-            {pending.length > 0 ? (
+            {totalPendingRequests > 0 ? (
               <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
-                {pending.length}
+                {totalPendingRequests > 99 ? "99+" : totalPendingRequests}
               </span>
             ) : null}
           </div>
           <p className="truncate text-[11px] text-text-secondary/60">
-            {pending.length > 0
-              ? t.pendingRequests(pending.length)
+            {totalPendingRequests > 0
+              ? t.pendingRequests(totalPendingRequests)
               : t.noPendingRequests}
           </p>
         </div>

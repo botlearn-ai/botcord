@@ -2077,6 +2077,32 @@ async def _resolve_participant_display_name(
     return row.scalar_one_or_none()
 
 
+async def _resolve_participant_display_names(
+    db: AsyncSession,
+    ids_by_type: dict[ParticipantType, set[str]],
+) -> dict[tuple[ParticipantType, str], str | None]:
+    """Batch lookup display names for mixed Agent/Human participant ids."""
+    name_lookup: dict[tuple[ParticipantType, str], str | None] = {}
+    agent_ids = ids_by_type.get(ParticipantType.agent, set())
+    if agent_ids:
+        rows = await db.execute(
+            select(Agent.agent_id, Agent.display_name).where(Agent.agent_id.in_(agent_ids))
+        )
+        for aid, name in rows.all():
+            name_lookup[(ParticipantType.agent, aid)] = name
+
+    human_ids = ids_by_type.get(ParticipantType.human, set())
+    if human_ids:
+        rows = await db.execute(
+            select(User.human_id, User.display_name).where(User.human_id.in_(human_ids))
+        )
+        for hid, name in rows.all():
+            if hid is not None:
+                name_lookup[(ParticipantType.human, hid)] = name
+
+    return name_lookup
+
+
 async def _serialise_contact_requests(
     db: AsyncSession,
     rows: list[ContactRequest],
@@ -2328,11 +2354,45 @@ async def list_pending_approvals(
         .order_by(AgentApprovalQueue.created_at.asc())
     )
     approvals: list[PendingApprovalSummary] = []
-    for entry in queue_result.scalars().all():
+    queue_entries = list(queue_result.scalars().all())
+    queue_payloads: list[tuple[AgentApprovalQueue, dict]] = []
+    queue_name_ids: dict[ParticipantType, set[str]] = {
+        ParticipantType.agent: set(),
+        ParticipantType.human: set(),
+    }
+    for entry in queue_entries:
         try:
             payload = json.loads(entry.payload_json or "{}")
         except json.JSONDecodeError:
             payload = {}
+        if entry.kind == ApprovalKind.contact_request:
+            from_pid = payload.get("from_participant_id")
+            if isinstance(from_pid, str) and from_pid:
+                from_type_raw = payload.get("from_type")
+                if from_type_raw in {p.value for p in ParticipantType}:
+                    from_type = ParticipantType(from_type_raw)
+                elif from_pid.startswith("ag_"):
+                    from_type = ParticipantType.agent
+                    payload["from_type"] = from_type.value
+                elif from_pid.startswith("hu_"):
+                    from_type = ParticipantType.human
+                    payload["from_type"] = from_type.value
+                else:
+                    from_type = ParticipantType.human
+                    payload["from_type"] = from_type.value
+                if not payload.get("from_display_name"):
+                    queue_name_ids[from_type].add(from_pid)
+        queue_payloads.append((entry, payload))
+
+    queue_name_lookup = await _resolve_participant_display_names(db, queue_name_ids)
+    for entry, payload in queue_payloads:
+        if entry.kind == ApprovalKind.contact_request and not payload.get("from_display_name"):
+            from_pid = payload.get("from_participant_id")
+            from_type_raw = payload.get("from_type")
+            if isinstance(from_pid, str) and from_type_raw in {p.value for p in ParticipantType}:
+                payload["from_display_name"] = queue_name_lookup.get(
+                    (ParticipantType(from_type_raw), from_pid)
+                )
         approvals.append(
             PendingApprovalSummary(
                 id=str(entry.id),
