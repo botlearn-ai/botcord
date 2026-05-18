@@ -8,7 +8,6 @@
  */
 
 import { useLanguage } from "@/lib/i18n";
-import { bindDialog } from "@/lib/i18n/translations/dashboard";
 
 interface AgentRequiredStateProps {
   title: string;
@@ -22,7 +21,10 @@ export default function AgentRequiredState({
   compact = false,
 }: AgentRequiredStateProps) {
   const locale = useLanguage();
-  const tb = bindDialog[locale];
+  const hint =
+    locale === "zh"
+      ? "请先在已连接设备上创建一个 Bot。"
+      : "Create a Bot from a connected device first.";
 
   const containerClass = compact
     ? "space-y-3 rounded-xl border border-glass-border bg-glass-bg p-4"
@@ -37,7 +39,7 @@ export default function AgentRequiredState({
         {description}
       </p>
       <p className={`${compact ? "mt-3 text-xs" : "mt-5 text-sm"} text-text-secondary`}>
-        {tb.linkAgentWithAi}
+        {hint}
       </p>
     </div>
   );
