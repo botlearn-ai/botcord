@@ -97,11 +97,12 @@ function ownerChatAgentId(room: HumanAgentRoomSummary): string | null {
 }
 
 function buildOptimisticOwnerChatRoom(
-  agent: Pick<UserAgent, "agent_id" | "display_name">,
+  agent: Pick<UserAgent, "agent_id" | "display_name"> & Partial<Pick<UserAgent, "claimed_at">>,
   roomId?: string | null,
   existing?: HumanAgentRoomSummary,
 ): HumanAgentRoomSummary {
   const now = new Date().toISOString();
+  const createdAt = existing?.created_at ?? agent.claimed_at ?? now;
   return {
     ...existing,
     room_id: roomId || ownerChatRoomIdForOptimistic(agent.agent_id),
@@ -112,10 +113,10 @@ function buildOptimisticOwnerChatRoom(
     visibility: existing?.visibility || "private",
     join_policy: existing?.join_policy || "invite_only",
     member_count: existing?.member_count ?? 1,
-    created_at: existing?.created_at ?? now,
+    created_at: createdAt,
     required_subscription_product_id: existing?.required_subscription_product_id ?? null,
     last_message_preview: existing?.last_message_preview ?? null,
-    last_message_at: existing?.last_message_at ?? now,
+    last_message_at: existing?.last_message_at ?? null,
     last_sender_name: existing?.last_sender_name ?? null,
     allow_human_send: existing?.allow_human_send ?? true,
     members_preview: existing?.members_preview ?? null,
@@ -125,6 +126,25 @@ function buildOptimisticOwnerChatRoom(
       role: "owner",
     }],
   };
+}
+
+function ensureOwnerChatRoomsForOwnedAgents(
+  rooms: HumanAgentRoomSummary[],
+  agents: UserAgent[],
+): HumanAgentRoomSummary[] {
+  if (agents.length === 0) return rooms;
+
+  const roomAgentIds = new Set(
+    rooms
+      .map(ownerChatAgentId)
+      .filter((agentId): agentId is string => Boolean(agentId)),
+  );
+  const fallbackRooms = agents
+    .filter((agent) => !roomAgentIds.has(agent.agent_id))
+    .map((agent) => buildOptimisticOwnerChatRoom(agent));
+
+  if (fallbackRooms.length === 0) return rooms;
+  return [...rooms, ...fallbackRooms].sort(compareRoomsByActivityDesc);
 }
 
 function mergeOptimisticOwnerChatRooms(
@@ -802,7 +822,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       loadOwnedAgentRooms: async () => {
-        const { token, activeIdentity } = useDashboardSessionStore.getState();
+        const { token, activeIdentity, ownedAgents } = useDashboardSessionStore.getState();
         if (!token || activeIdentity?.type !== "human") {
           set({ ownedAgentRooms: [], ownedAgentRoomsLoading: false, ownedAgentRoomsLoaded: true });
           return;
@@ -815,13 +835,20 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             get().optimisticOwnerChatRooms,
           );
           set({
-            ownedAgentRooms: mergeOptimisticOwnerChatRooms(result.rooms, optimisticOwnerChatRooms),
+            ownedAgentRooms: ensureOwnerChatRoomsForOwnedAgents(
+              mergeOptimisticOwnerChatRooms(result.rooms, optimisticOwnerChatRooms),
+              ownedAgents,
+            ),
             optimisticOwnerChatRooms,
             ownedAgentRoomsLoading: false,
             ownedAgentRoomsLoaded: true,
           });
         } catch (error) {
           set({
+            ownedAgentRooms: ensureOwnerChatRoomsForOwnedAgents(
+              get().ownedAgentRooms,
+              ownedAgents,
+            ),
             ownedAgentRoomsLoading: false,
             ownedAgentRoomsLoaded: true,
           });
