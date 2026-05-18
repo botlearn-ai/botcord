@@ -204,7 +204,7 @@ DAEMON_BIN="$DAEMON_PREFIX/node_modules/.bin/botcord-daemon"
 WRAPPER="$BIN_DIR/botcord-daemon"
 {
   printf '#!/bin/sh\n'
-  printf 'PATH="%s:$PATH"\n' "$NODE_BIN_DIR"
+  printf 'PATH="%s:$HOME/.botcord/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.deno/bin:$HOME/.npm-global/bin:$HOME/.yarn/bin:$HOME/.pnpm:$HOME/.pyenv/shims:$HOME/.rye/shims:$HOME/.pixi/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:$PATH"\n' "$NODE_BIN_DIR"
   printf 'export PATH\n'
   printf 'exec "%s" "%s" "$@"\n' "$NODE_BIN" "$DAEMON_BIN"
 } > "$WRAPPER"

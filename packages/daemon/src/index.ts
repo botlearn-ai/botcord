@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, rmSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
+import { augmentProcessPath } from "./path-env.js";
 import {
   loadConfig,
   saveConfig,
@@ -64,6 +65,8 @@ import {
   mergeOpenclawGateways,
   openclawDiscoveryConfigEnabled,
 } from "./openclaw-discovery.js";
+
+augmentProcessPath();
 
 const ADAPTER_LIST = listAdapterIds().join("|");
 
