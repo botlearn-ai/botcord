@@ -97,6 +97,31 @@ describe("composeBotCordUserTurn", () => {
     expect(out).not.toContain("do NOT reply unless");
   });
 
+  it("renders schedule timing metadata for proactive schedule turns", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        conversation: { id: "rm_schedule_ag_me", kind: "direct", title: "BotCord Scheduler", threadId: "sch_daily" },
+        sender: { id: "hub", name: "BotCord Scheduler", kind: "system" },
+        text: "daily brief",
+        mentioned: true,
+        raw: {
+          source_type: "botcord_schedule",
+          schedule_id: "sch_daily",
+          scheduled_for: "2026-05-19T01:30:00+00:00",
+          dispatched_at: "2026-05-19T01:30:02+00:00",
+          run_id: "sr_daily",
+        },
+      }),
+    );
+    expect(out).toContain("[BotCord Schedule]");
+    expect(out).toContain("This turn was triggered by a proactive schedule.");
+    expect(out).toContain("schedule_id: sch_daily");
+    expect(out).toContain("scheduled_for: 2026-05-19T01:30:00+00:00");
+    expect(out).toContain("dispatched_at: 2026-05-19T01:30:02+00:00");
+    expect(out).toContain("run_id: sr_daily");
+    expect(out.indexOf("[BotCord Schedule]")).toBeLessThan(out.indexOf("<agent-message"));
+  });
+
   it("keeps the botcord_send delivery hint for non-owner BotCord rooms", () => {
     const out = composeBotCordUserTurn(
       makeMessage({

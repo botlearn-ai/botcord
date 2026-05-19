@@ -265,6 +265,8 @@ describe("wake_agent handler", () => {
         message: "【BotCord 自主任务】执行本轮工作目标。",
         run_id: "sr_test",
         schedule_id: "sch_test",
+        scheduled_for: "2026-05-19T01:30:00+00:00",
+        dispatched_at: "2026-05-19T01:30:02+00:00",
         dedupe_key: "sch_test:1:auto",
       },
     });
@@ -279,6 +281,14 @@ describe("wake_agent handler", () => {
     expect(msg.sender.kind).toBe("system");
     expect(msg.text).toContain("BotCord 自主任务");
     expect(msg.conversation.threadId).toBe("sch_test");
+    expect(msg.raw).toMatchObject({
+      source_type: "botcord_schedule",
+      schedule_id: "sch_test",
+      scheduled_for: "2026-05-19T01:30:00+00:00",
+      dispatched_at: "2026-05-19T01:30:02+00:00",
+      run_id: "sr_test",
+      dedupe_key: "sch_test:1:auto",
+    });
   });
 
   it("rejects wake_agent for an unloaded agent", async () => {

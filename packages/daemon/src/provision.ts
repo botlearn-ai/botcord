@@ -467,6 +467,10 @@ interface WakeAgentParams {
   runId?: string;
   schedule_id?: string;
   scheduleId?: string;
+  scheduled_for?: string;
+  scheduledFor?: string;
+  dispatched_at?: string;
+  dispatchedAt?: string;
   dedupe_key?: string;
   dedupeKey?: string;
 }
@@ -504,6 +508,8 @@ async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody>
 
   const runId = params.run_id || params.runId || `wake-${Date.now()}`;
   const scheduleId = params.schedule_id || params.scheduleId;
+  const scheduledFor = params.scheduled_for || params.scheduledFor;
+  const dispatchedAt = params.dispatched_at || params.dispatchedAt;
   const dedupeKey = params.dedupe_key || params.dedupeKey;
   const conversationId = `rm_schedule_${agentId}`;
   const msg: GatewayInboundMessage = {
@@ -525,6 +531,8 @@ async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody>
     raw: {
       source_type: "botcord_schedule",
       schedule_id: scheduleId,
+      scheduled_for: scheduledFor,
+      dispatched_at: dispatchedAt,
       run_id: runId,
       dedupe_key: dedupeKey,
     },

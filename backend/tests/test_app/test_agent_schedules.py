@@ -165,7 +165,10 @@ async def test_manual_run_records_failed_ack(
 ):
     import hub.routers.openclaw_control as openclaw_control
 
-    async def fake_send_host_control_frame(*_args, **_kwargs):
+    captured: dict = {}
+
+    async def fake_send_host_control_frame(host_id, frame_type, params, **_kwargs):
+        captured.update({"host_id": host_id, "frame_type": frame_type, "params": params})
         return {
             "id": "frame_1",
             "ok": False,
@@ -199,3 +202,12 @@ async def test_manual_run_records_failed_ack(
     body = run_resp.json()
     assert body["status"] == "failed"
     assert body["error"] == "agent_not_loaded: not loaded"
+    assert captured["host_id"] == "oc_test"
+    assert captured["frame_type"] == "wake_agent"
+    params = captured["params"]
+    assert params["schedule_id"] == schedule_id
+    assert params["run_id"] == body["id"]
+    assert params["scheduled_for"]
+    assert params["dispatched_at"]
+    datetime.datetime.fromisoformat(params["scheduled_for"])
+    datetime.datetime.fromisoformat(params["dispatched_at"])
