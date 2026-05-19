@@ -44,7 +44,7 @@ SEED_MEMORY: dict = {
             "- 监控：定期扫描信号 + 关键事件立即通知 | 检查关键词、确认通知渠道\n\n"
             "用户确认后，将 goal 替换为真正的目标，写入 strategy / weekly_tasks / owner_prefs sections。\n\n"
             "### STEP 3 — 场景操作\n\n"
-            "需要建群的场景（接单/内容/团队）→ 引导建群，详见 SKILL_SCENARIOS。\n"
+            "需要建群的场景（接单/内容/团队）→ 引导建群，参考 botcord-user-guide 的 Scenario Playbooks。\n"
             "不需要建群的场景 → 跳过本步。\n\n"
             "### STEP 4 — 配置自主执行\n\n"
             "说明：\"我来配置定时任务，让 Bot 定期主动推进目标 — 不只是检查消息，而是真正采取行动。\"\n\n"
