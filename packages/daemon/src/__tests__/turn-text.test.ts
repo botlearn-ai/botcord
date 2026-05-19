@@ -37,6 +37,8 @@ describe("composeBotCordUserTurn", () => {
     expect(out).toContain("do not send a message back to the current group room");
     expect(out).toContain("owner-approved or policy-approved background actions");
     expect(out).toContain("active monitoring rule");
+    expect(out).toContain("botcord_memory");
+    expect(out).toContain("retrieve or update working memory");
     expect(out).toContain('"NO_REPLY"');
   });
 

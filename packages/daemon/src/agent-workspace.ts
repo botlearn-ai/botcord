@@ -32,6 +32,7 @@ import {
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 
@@ -397,9 +398,23 @@ export function ensureAgentHermesWorkspace(
  * Seeded fresh per `ensureAgent*` call (force-overwrite) so daemon
  * upgrades propagate.
  */
-const BUNDLED_SKILLS = ["botcord", "botcord-user-guide"] as const;
+const BUNDLED_SKILLS = ["botcord", "botcord-user-guide", "botcord_memory"] as const;
+
+function resolveRepoCliSkillsRoot(): string | null {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 6; i += 1) {
+    const candidate = path.join(dir, "cli", "skills");
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
 
 function resolveBundledCliSkillsRoot(): string | null {
+  const repoRoot = resolveRepoCliSkillsRoot();
+  if (repoRoot) return repoRoot;
   try {
     const pkgJsonPath = require.resolve("@botcord/cli/package.json");
     const root = path.join(path.dirname(pkgJsonPath), "skills");

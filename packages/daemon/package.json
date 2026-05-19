@@ -30,7 +30,7 @@
     "@botcord/cli": "^0.1.7",
     "@botcord/protocol-core": "^0.2.4",
     "@larksuiteoapi/node-sdk": "^1.63.1",
-    "ws": "^8.18.0"
+    "ws": "^8.20.1"
   },
   "overrides": {
     "axios": "^1.15.2"

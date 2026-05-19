@@ -90,6 +90,9 @@ export function stripBotCordPromptScaffolding(text: string): string {
       if (line.startsWith("When a message matches an active monitoring rule")) return false;
       if (line.startsWith("keyword, sender rule")) return false;
       if (line.startsWith("you do not reply to the group")) return false;
+      if (line.startsWith("Before replying NO_REPLY in a non-owner group room")) return false;
+      if (line.startsWith("match a memory-backed monitoring rule")) return false;
+      if (line.startsWith("or owner-approved workflow. If needed")) return false;
       if (line.startsWith("[If the conversation has naturally concluded")) return false;
       if (line.startsWith("[You received a contact request")) return false;
       if (line.includes("no background action is needed")) return false;

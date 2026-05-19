@@ -28,6 +28,8 @@ describe("stripBotCordPromptScaffolding", () => {
       "",
       "When a message matches an active monitoring rule, automation goal, working-memory task, keyword, sender rule, or owner-approved workflow, perform the required action even if you do not reply to the group.",
       "",
+      "Before replying NO_REPLY in a non-owner group room, consider whether this message could match a memory-backed monitoring rule, automation goal, pending task, keyword, sender rule, or owner-approved workflow. If needed, use the botcord_memory skill to retrieve or update working memory.",
+      "",
       'If no group reply and no background action is needed, reply exactly "NO_REPLY".]',
     ].join("\n");
     expect(stripBotCordPromptScaffolding(wrapped)).toBe("hello world");
