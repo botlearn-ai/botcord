@@ -182,6 +182,7 @@ jobs:
 
       - name: Build signed installer pkg
         id: package
+        timeout-minutes: 10
         run: |
           set -euo pipefail
 
@@ -190,9 +191,13 @@ jobs:
 
           test -d "$APP_PATH"
           mkdir -p release-assets
+          du -sh "$APP_PATH"
+          echo "Using installer signing identity: $MAC_INSTALLER_SIGNING_IDENTITY"
+          security find-certificate -a -c "$MAC_INSTALLER_SIGNING_IDENTITY" "$SIGNING_KEYCHAIN" >/dev/null
 
           xcrun productbuild \
             --sign "$MAC_INSTALLER_SIGNING_IDENTITY" \
+            --keychain "$SIGNING_KEYCHAIN" \
             --component "$APP_PATH" /Applications \
             "$PKG_PATH"
 
