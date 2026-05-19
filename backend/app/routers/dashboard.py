@@ -228,6 +228,9 @@ async def _build_rooms_from_sql(
             "max_members",
             "slow_mode_seconds",
             "members_preview",
+            "last_message_preview",
+            "last_message_at",
+            "last_sender_name",
         )
         for item in mapped:
             room_id = item.get("room_id")
@@ -237,7 +240,7 @@ async def _build_rooms_from_sql(
             if fallback is None:
                 continue
             for key in fill_keys:
-                if key not in item:
+                if key not in item or item.get(key) is None:
                     item[key] = fallback.get(key)
         missing_rooms = [room for room in orm_rooms if room["room_id"] not in sql_room_ids]
         combined = mapped if not missing_rooms else _sort_room_previews(mapped + missing_rooms)

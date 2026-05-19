@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import datetime
 import hashlib
+import json
 import time
 import uuid
 from unittest.mock import AsyncMock
@@ -27,8 +28,9 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.elements import TextClause
 
-from hub.enums import RoomInvitePolicy, RoomJoinPolicy, RoomVisibility
+from hub.enums import MessageState, RoomInvitePolicy, RoomJoinPolicy, RoomVisibility
 from hub.models import (
     Agent,
     AgentApprovalQueue,
@@ -39,6 +41,7 @@ from hub.models import (
     ContactRequest,
     ContactRequestState,
     MessagePolicy,
+    MessageRecord,
     ParticipantType,
     Role,
     Room,
@@ -612,6 +615,148 @@ async def test_list_owned_agent_rooms_excludes_current_human_rooms(
         {"agent_id": "ag_peer000001", "avatar_url": None, "display_name": "Peer Bot"},
         {"agent_id": "ag_third00001", "avatar_url": None, "display_name": "Third Bot"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_list_owned_agent_rooms_keeps_owner_chat_even_with_human_member(
+    client, seed, db_session: AsyncSession
+):
+    agent = Agent(
+        agent_id="ag_aliceowner1",
+        display_name="Alice Owner Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    room = Room(
+        room_id="rm_oc_aliceowner1",
+        name="Alice Owner Bot",
+        description="Owner chat",
+        owner_id="ag_aliceowner1",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([
+        agent,
+        room,
+        RoomMember(
+            room_id="rm_oc_aliceowner1",
+            agent_id="ag_aliceowner1",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id="rm_oc_aliceowner1",
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_ownerchat001",
+            msg_id="msg_ownerchat001",
+            sender_id=seed["human_id"],
+            receiver_id="ag_aliceowner1",
+            room_id="rm_oc_aliceowner1",
+            envelope_json=json.dumps({
+                "from": seed["human_id"],
+                "type": "message",
+                "payload": {"text": "owner chat latest"},
+            }),
+            state=MessageState.delivered,
+            ttl_sec=3600,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/humans/me/agent-rooms",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    rooms = {room["room_id"]: room for room in resp.json()["rooms"]}
+    assert rooms["rm_oc_aliceowner1"]["last_message_preview"] == "owner chat latest"
+    assert rooms["rm_oc_aliceowner1"]["last_message_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_sql_room_preview_nulls_are_filled_from_orm_fallback(
+    seed, db_session: AsyncSession, monkeypatch
+):
+    from app.routers.dashboard import _build_rooms_from_sql
+
+    agent = Agent(
+        agent_id="ag_previewfill1",
+        display_name="Preview Fill Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    room = Room(
+        room_id="rm_previewfill1",
+        name="Preview Fill",
+        description="Preview fallback",
+        owner_id="ag_previewfill1",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([
+        agent,
+        room,
+        RoomMember(
+            room_id="rm_previewfill1",
+            agent_id="ag_previewfill1",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_previewfill1",
+            msg_id="msg_previewfill1",
+            sender_id="ag_previewfill1",
+            receiver_id="ag_previewfill1",
+            room_id="rm_previewfill1",
+            envelope_json=json.dumps({
+                "from": "ag_previewfill1",
+                "type": "message",
+                "payload": {"text": "filled by orm fallback"},
+            }),
+            state=MessageState.delivered,
+            ttl_sec=3600,
+        ),
+    ])
+    await db_session.commit()
+
+    real_execute = db_session.execute
+
+    class _MappingsResult:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [{
+                "room_id": "rm_previewfill1",
+                "room_name": "Preview Fill",
+                "room_description": "Preview fallback",
+                "owner_id": "ag_previewfill1",
+                "visibility": "private",
+                "member_count": 1,
+                "my_role": "owner",
+                "last_message_preview": None,
+                "last_message_at": None,
+                "last_sender_name": None,
+            }]
+
+    async def execute_with_null_sql_preview(statement, *args, **kwargs):
+        if isinstance(statement, TextClause) and "get_agent_room_previews" in str(statement):
+            return _MappingsResult()
+        return await real_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "execute", execute_with_null_sql_preview)
+
+    rooms = await _build_rooms_from_sql("ag_previewfill1", db_session)
+    assert rooms[0]["room_id"] == "rm_previewfill1"
+    assert rooms[0]["last_message_preview"] == "filled by orm fallback"
+    assert rooms[0]["last_message_at"] is not None
+    assert rooms[0]["last_sender_name"] == "Preview Fill Bot"
 
 
 # ---------------------------------------------------------------------------
