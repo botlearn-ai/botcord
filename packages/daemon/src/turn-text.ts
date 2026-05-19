@@ -120,6 +120,41 @@ interface RoomContextRaw {
   my_can_send?: unknown;
 }
 
+interface ScheduleRaw {
+  source_type?: unknown;
+  schedule_id?: unknown;
+  scheduled_for?: unknown;
+  dispatched_at?: unknown;
+  run_id?: unknown;
+}
+
+function formatScheduleContext(raw: unknown): string[] {
+  const r = raw && typeof raw === "object" ? (raw as ScheduleRaw) : {};
+  if (r.source_type !== "botcord_schedule") return [];
+
+  const fields: string[] = [];
+  if (typeof r.schedule_id === "string" && r.schedule_id) {
+    fields.push(`schedule_id: ${sanitizeSenderName(r.schedule_id)}`);
+  }
+  if (typeof r.scheduled_for === "string" && r.scheduled_for) {
+    fields.push(`scheduled_for: ${sanitizeSenderName(r.scheduled_for)}`);
+  }
+  if (typeof r.dispatched_at === "string" && r.dispatched_at) {
+    fields.push(`dispatched_at: ${sanitizeSenderName(r.dispatched_at)}`);
+  }
+  if (typeof r.run_id === "string" && r.run_id) {
+    fields.push(`run_id: ${sanitizeSenderName(r.run_id)}`);
+  }
+
+  return fields.length > 0
+    ? [
+        "[BotCord Schedule]",
+        "This turn was triggered by a proactive schedule.",
+        fields.join(" | "),
+      ]
+    : ["[BotCord Schedule]", "This turn was triggered by a proactive schedule."];
+}
+
 /**
  * Read the `raw.batch` array emitted by the BotCord channel when inbox
  * drain groups multiple messages for the same `(room, topic)`. Returns the
@@ -256,6 +291,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
 
   const lines: string[] = [
     headerFields.join(" | "),
+    ...formatScheduleContext(msg.raw),
     ...(isGroup ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle }) : []),
     `<${tag} sender="${sanitizedSenderLabel}" sender_kind="${senderKindAttr}">`,
     trimmed,

@@ -249,6 +249,8 @@ async def dispatch_schedule_run(
         "trigger": "botcord.proactive",
         "message": schedule.payload_json.get("message", DEFAULT_PROACTIVE_MESSAGE),
         "schedule_id": schedule.id,
+        "scheduled_for": aware(scheduled_for).isoformat(),
+        "dispatched_at": aware(run.started_at).isoformat() if run.started_at else now_utc().isoformat(),
         "run_id": run.id,
         "dedupe_key": run.dedupe_key,
     }
