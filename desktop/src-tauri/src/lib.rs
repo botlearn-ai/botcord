@@ -609,13 +609,28 @@ fn is_supabase_oauth_authorize(url: &Url) -> bool {
     has_provider && (host.ends_with(".supabase.co") || host.contains("supabase"))
 }
 
-fn rewrite_oauth_redirect(url: &Url, config: &DesktopConfig) -> String {
-    let mut desktop_redirect = Url::parse(&config.dashboard_url)
-        .or_else(|_| Url::parse(DEFAULT_DASHBOARD_URL))
-        .expect("valid default dashboard URL");
-    desktop_redirect.set_path("/auth/desktop-callback");
+fn rewrite_oauth_redirect(url: &Url, _config: &DesktopConfig) -> String {
+    let mut desktop_redirect = Url::parse("botcord://auth/callback")
+        .expect("valid desktop auth callback URL");
     desktop_redirect.set_query(None);
     desktop_redirect.set_fragment(None);
+    let original_redirect = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "redirect_to").then(|| value.to_string()));
+    let original_next = original_redirect
+        .as_deref()
+        .and_then(|value| Url::parse(value).ok())
+        .and_then(|redirect| {
+            redirect
+                .query_pairs()
+                .find_map(|(key, value)| (key == "next").then(|| value.to_string()))
+        });
+    {
+        let mut pairs = desktop_redirect.query_pairs_mut();
+        if let Some(next) = original_next.as_deref() {
+            pairs.append_pair("next", next);
+        }
+    }
 
     let mut rewritten = url.clone();
     rewritten.set_query(None);
@@ -1184,7 +1199,7 @@ mod tests {
     }
 
     #[test]
-    fn oauth_redirect_uses_preview_desktop_callback() {
+    fn oauth_redirect_uses_deep_link_callback_for_preview() {
         let config = DesktopConfig {
             dashboard_url: "https://preview.botcord.chat/chats".to_string(),
             ..DesktopConfig::default()
@@ -1194,16 +1209,14 @@ mod tests {
         let rewritten = rewrite_oauth_redirect(&original, &config);
         let redirect = redirect_to(&rewritten);
 
-        assert_eq!(
-            redirect.origin().unicode_serialization(),
-            "https://preview.botcord.chat"
-        );
-        assert_eq!(redirect.path(), "/auth/desktop-callback");
-        assert_eq!(redirect.query(), None);
+        assert_eq!(redirect.scheme(), "botcord");
+        assert_eq!(redirect.host_str(), Some("auth"));
+        assert_eq!(redirect.path(), "/callback");
+        assert_eq!(redirect.query(), Some("next=%2Fchats%2Fhome"));
     }
 
     #[test]
-    fn oauth_redirect_uses_prod_desktop_callback() {
+    fn oauth_redirect_uses_deep_link_callback_for_prod() {
         let config = DesktopConfig {
             dashboard_url: "https://botcord.chat/chats".to_string(),
             ..DesktopConfig::default()
@@ -1213,12 +1226,10 @@ mod tests {
         let rewritten = rewrite_oauth_redirect(&original, &config);
         let redirect = redirect_to(&rewritten);
 
-        assert_eq!(
-            redirect.origin().unicode_serialization(),
-            "https://botcord.chat"
-        );
-        assert_eq!(redirect.path(), "/auth/desktop-callback");
-        assert_eq!(redirect.query(), None);
+        assert_eq!(redirect.scheme(), "botcord");
+        assert_eq!(redirect.host_str(), Some("auth"));
+        assert_eq!(redirect.path(), "/callback");
+        assert_eq!(redirect.query(), Some("next=%2Fsettings%2Fdaemons"));
     }
 
     #[test]
