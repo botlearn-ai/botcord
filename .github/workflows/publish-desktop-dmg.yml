@@ -89,9 +89,8 @@ jobs:
           security import "$APP_CERT_PATH" \
             -k "$KEYCHAIN_PATH" \
             -P "$MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            -A
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,unsigned: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
 
           APP_SIGNING_IDENTITY="$(security find-certificate -a "$KEYCHAIN_PATH" | awk -F'"' '/alis/ && $4 ~ /^Developer ID Application:/ { print $4; exit }')"
           APP_SIGNING_IDENTITY_HASH="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Developer ID Application:/{ print $2; exit }')"
@@ -111,7 +110,9 @@ jobs:
             echo "APPLE_SIGNING_IDENTITY=$APP_SIGNING_IDENTITY"
             echo "DEVELOPER_ID_SIGNING_IDENTITY_HASH=$APP_SIGNING_IDENTITY_HASH"
             echo "SIGNING_KEYCHAIN=$KEYCHAIN_PATH"
+            echo "SIGNING_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD"
           } >> "$GITHUB_ENV"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
 
       - name: Prepare App Store Connect API key
         env:
