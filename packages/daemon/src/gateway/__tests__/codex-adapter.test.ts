@@ -77,13 +77,14 @@ process.exit(0);
     expect(res.error).toBeUndefined();
   });
 
-  it("emits tool_use StreamBlock for command_execution items", async () => {
+  it("emits tool_use/tool_result StreamBlocks for command_execution items", async () => {
     const script = makeScript(
       "toolblock.js",
       `
 const lines = [
   {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde0"},
   {type:"item.started", item:{id:"i0", type:"command_execution", command:"ls"}},
+  {type:"item.completed", item:{id:"i0", type:"command_execution", status:"completed", output:"ok"}},
   {type:"item.completed", item:{id:"i1", type:"agent_message", text:"done"}},
 ];
 for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
@@ -103,6 +104,7 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     });
     expect(res.text).toBe("done");
     expect(seen).toContain("tool_use");
+    expect(seen).toContain("tool_result");
     expect(seen).toContain("assistant_text");
     expect(seen).toContain("system");
   });

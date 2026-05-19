@@ -420,7 +420,7 @@ function normalizeBlock(obj: any, seq: number): StreamBlock {
       itemType === "mcp_tool_call" ||
       itemType === "web_search"
     ) {
-      kind = "tool_use";
+      kind = type === "item.completed" ? "tool_result" : "tool_use";
     }
   }
   return { raw: obj, kind, seq };

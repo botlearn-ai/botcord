@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer, type WebSocket as WsType } from "ws";
 import type { AddressInfo } from "node:net";
-import { createBotCordChannel, type BotCordChannelClient } from "../channels/botcord.js";
+import {
+  createBotCordChannel,
+  __normalizeBlockForHubForTests,
+  type BotCordChannelClient,
+} from "../channels/botcord.js";
 import type { ChannelStartContext, GatewayInboundEnvelope } from "../types.js";
 import type { GatewayLogger } from "../log.js";
 import type { InboxMessage } from "@botcord/protocol-core";
@@ -649,6 +653,89 @@ describe("createBotCordChannel — ack + dedup", () => {
 // ---------------------------------------------------------------------------
 
 describe("createBotCordChannel — streamBlock()", () => {
+  it("normalizes Codex tool items without using internal ids as params", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_use",
+          seq: 1,
+          raw: {
+            type: "item.started",
+            item: { id: "item_26", type: "command_execution", command: "rg stream-block" },
+          },
+        },
+        1,
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      seq: 1,
+      payload: {
+        name: "command_execution",
+        id: "item_26",
+        params: { command: "rg stream-block" },
+      },
+    });
+
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_use",
+          seq: 2,
+          raw: {
+            type: "item.started",
+            item: {
+              id: "ws_abc",
+              type: "web_search",
+              action: { type: "search", query: "codex stream response" },
+            },
+          },
+        },
+        2,
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      seq: 2,
+      payload: {
+        name: "web_search",
+        id: "ws_abc",
+        params: {
+          action: { type: "search", query: "codex stream response" },
+          query: "codex stream response",
+        },
+      },
+    });
+  });
+
+  it("normalizes Codex completed tool items as results", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_result",
+          seq: 3,
+          raw: {
+            type: "item.completed",
+            item: {
+              id: "item_26",
+              type: "command_execution",
+              status: "completed",
+              exit_code: 0,
+              output: "found 3 matches",
+            },
+          },
+        },
+        3,
+      ),
+    ).toEqual({
+      kind: "tool_result",
+      seq: 3,
+      payload: {
+        name: "command_execution",
+        tool_use_id: "item_26",
+        result: "status: completed\nexit_code: 0\nfound 3 matches",
+      },
+    });
+  });
+
   it("POSTs to /hub/stream-block with the right trace_id + block", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const realFetch = globalThis.fetch;
