@@ -720,17 +720,8 @@ export default function DashboardApp() {
   ]);
 
   useEffect(() => {
-    if (!sessionStore.authResolved) return;
+    if (!sessionStore.authResolved || routeSidebarTab !== "messages") return;
 
-    if (!chatStore.publicRoomsLoaded && !chatStore.publicRoomsLoading) {
-      void chatStore.loadPublicRooms();
-    }
-    if (!chatStore.publicAgentsLoaded && !chatStore.publicAgentsLoading) {
-      void chatStore.loadPublicAgents();
-    }
-    if (!chatStore.publicHumansLoaded && !chatStore.publicHumansLoading) {
-      void chatStore.loadPublicHumans();
-    }
     if (
       sessionStore.activeIdentity?.type === "human"
       && !chatStore.ownedAgentRoomsLoaded
@@ -741,17 +732,9 @@ export default function DashboardApp() {
   }, [
     sessionStore.authResolved,
     sessionStore.activeIdentity?.type,
-    chatStore.publicRoomsLoaded,
-    chatStore.publicRoomsLoading,
-    chatStore.publicAgentsLoaded,
-    chatStore.publicAgentsLoading,
-    chatStore.publicHumansLoaded,
-    chatStore.publicHumansLoading,
+    routeSidebarTab,
     chatStore.ownedAgentRoomsLoaded,
     chatStore.ownedAgentRoomsLoading,
-    chatStore.loadPublicRooms,
-    chatStore.loadPublicAgents,
-    chatStore.loadPublicHumans,
     chatStore.loadOwnedAgentRooms,
   ]);
 
@@ -762,6 +745,7 @@ export default function DashboardApp() {
       sessionStore.sessionMode !== "authed-ready"
       && sessionStore.sessionMode !== "authed-no-agent"
     ) return;
+    if (uiStore.sidebarTab !== "wallet") return;
     if (!sessionStore.activeIdentity) return;
 
     if (!walletStore.wallet && !walletStore.walletLoading && !walletStore.walletError) {
@@ -777,6 +761,7 @@ export default function DashboardApp() {
   }, [
     sessionStore.sessionMode,
     sessionStore.activeIdentity,
+    uiStore.sidebarTab,
     walletStore.wallet,
     walletStore.walletLoading,
     walletStore.walletError,

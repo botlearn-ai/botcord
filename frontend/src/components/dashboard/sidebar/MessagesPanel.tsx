@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useMemo, useState } from "react";
 // messagesFilter is in useDashboardUIStore so ChatPane can also read it.
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
@@ -55,15 +55,11 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     setOpenedTopicId: s.setOpenedTopicId,
   })));
   const contactRequestsReceived = useDashboardContactStore((s) => s.contactRequestsReceived);
-  const loadContactRequests = useDashboardContactStore((s) => s.loadContactRequests);
   const pendingRequests = useMemo(
     () => contactRequestsReceived.filter((r) => r.state === "pending"),
     [contactRequestsReceived],
   );
   const pendingRequestCount = pendingRequests.length;
-  useEffect(() => {
-    void loadContactRequests();
-  }, [loadContactRequests]);
   const { overview, messages, recentVisitedRooms, ownedAgentRooms } = useDashboardChatStore(useShallow((s) => ({
     overview: s.overview,
     messages: s.messages,

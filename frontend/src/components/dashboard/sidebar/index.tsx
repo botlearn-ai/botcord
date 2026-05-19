@@ -285,18 +285,6 @@ export default function Sidebar({
     if (!isGuest) void contactStore.loadContactRequests();
   }, [contactStore.loadContactRequests, isGuest]);
 
-  useEffect(() => {
-    const prefetch = (path: string) => {
-      if (typeof router.prefetch !== "function") return;
-      void router.prefetch(path);
-    };
-    prefetch("/chats/messages");
-    prefetch(`/chats/contacts/${uiStore.contactsView}`);
-    prefetch(`/chats/explore/${uiStore.exploreView}`);
-    prefetch("/chats/wallet");
-    prefetch("/chats/activity");
-  }, [router, uiStore.contactsView, uiStore.exploreView]);
-
   const showLoginModal = () => router.push("/login");
 
   const navigatePrimaryTab = (tab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots") => {
