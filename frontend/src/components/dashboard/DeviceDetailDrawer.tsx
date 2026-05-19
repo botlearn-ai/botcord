@@ -224,7 +224,12 @@ export default function DeviceDetailDrawer() {
                 onClick={() => setViewingBotId(bot.agent_id)}
                 className="flex items-center gap-2.5 rounded-lg border border-glass-border bg-glass-bg/60 px-2 py-1.5 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
               >
-                <BotAvatar agentId={bot.agent_id} size={28} alt={bot.display_name} />
+                <BotAvatar
+                  agentId={bot.agent_id}
+                  avatarUrl={bot.avatar_url}
+                  size={28}
+                  alt={bot.display_name}
+                />
                 <span className="flex-1 truncate text-sm text-text-primary">{bot.display_name}</span>
                 {bot.is_default ? (
                   <span className="rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[9px] text-neon-purple">
