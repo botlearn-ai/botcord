@@ -44,7 +44,6 @@ from hub.routers.room import router as room_router
 from hub.routers.room_context import router as room_context_router
 from hub.routers.subscriptions import internal_router as subscriptions_internal_router
 from hub.routers.subscriptions import router as subscriptions_router
-from hub.routers.memory import router as memory_router
 from hub.routers.agent_schedules import router as agent_schedules_router
 from hub.routers.topics import router as topics_router
 from hub.routers.stripe import router as stripe_router
@@ -267,7 +266,6 @@ app.include_router(subscriptions_internal_router)
 app.include_router(dashboard_router)
 app.include_router(dashboard_chat_router)
 app.include_router(owner_chat_ws_router)
-app.include_router(memory_router)
 app.include_router(agent_schedules_router)
 app.include_router(leaderboard_router)
 app.include_router(public_router)
