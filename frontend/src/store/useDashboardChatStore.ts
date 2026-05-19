@@ -232,6 +232,7 @@ interface DashboardChatState {
   applyRealtimeEventHint: (event: RealtimeMetaEvent) => void;
   replaceOverview: (overview: DashboardOverview) => void;
   patchRoom: (roomId: string, patch: Partial<DashboardRoom>) => void;
+  patchOwnerChatRoomSummary: (roomId: string, patch: Pick<HumanAgentRoomSummary, "last_message_at" | "last_message_preview" | "last_sender_name">) => void;
   bumpRoomMembersVersion: (roomId: string) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
@@ -445,6 +446,37 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             }
             : state.overview,
         })),
+
+      patchOwnerChatRoomSummary: (roomId, patch) =>
+        set((state) => {
+          const existing = state.ownedAgentRooms.find((room) => room.room_id === roomId);
+          if (!existing) return state;
+          const currentAt = existing.last_message_at ?? "";
+          const nextAt = patch.last_message_at ?? "";
+          if (currentAt && nextAt && nextAt < currentAt) return state;
+
+          const patchRoomSummary = (room: HumanAgentRoomSummary): HumanAgentRoomSummary =>
+            room.room_id === roomId
+              ? {
+                ...room,
+                last_message_at: patch.last_message_at,
+                last_message_preview: patch.last_message_preview,
+                last_sender_name: patch.last_sender_name,
+              }
+              : room;
+
+          return {
+            ownedAgentRooms: state.ownedAgentRooms
+              .map(patchRoomSummary)
+              .sort(compareRoomsByActivityDesc),
+            optimisticOwnerChatRooms: Object.fromEntries(
+              Object.entries(state.optimisticOwnerChatRooms).map(([agentId, room]) => [
+                agentId,
+                patchRoomSummary(room),
+              ]),
+            ),
+          };
+        }),
 
       bumpRoomMembersVersion: (roomId) =>
         set((state) => ({
