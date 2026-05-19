@@ -1,0 +1,235 @@
+name: Publish Desktop App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build"
+        required: false
+        default: "main"
+        type: string
+      upload:
+        description: "Upload the signed pkg to App Store Connect"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-desktop-appstore-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Build and upload macOS pkg
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      APP_IDENTIFIER: ai.ouraca.botcord
+      APP_NAME: BotCord
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Import Apple certificates
+        env:
+          MAC_APP_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.MAC_APP_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          MAC_APP_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.MAC_APP_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          MAC_INSTALLER_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.MAC_INSTALLER_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          MAC_INSTALLER_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.MAC_INSTALLER_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          APP_CERT_PATH="$RUNNER_TEMP/mac-app-distribution.p12"
+          INSTALLER_CERT_PATH="$RUNNER_TEMP/mac-installer-distribution.p12"
+
+          printf "%s" "$MAC_APP_DISTRIBUTION_CERTIFICATE_BASE64" | base64 -D > "$APP_CERT_PATH"
+          printf "%s" "$MAC_INSTALLER_DISTRIBUTION_CERTIFICATE_BASE64" | base64 -D > "$INSTALLER_CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          security import "$APP_CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MAC_APP_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security import "$INSTALLER_CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MAC_INSTALLER_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/productbuild \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          APP_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Mac App Distribution:.*\)".*/\1/p' | head -n 1)"
+          INSTALLER_SIGNING_IDENTITY="$(security find-certificate -a -c "Mac Installer Distribution" "$KEYCHAIN_PATH" | awk -F'"' '/alis/{print $4; exit}')"
+
+          if [ -z "$APP_SIGNING_IDENTITY" ]; then
+            echo "Mac App Distribution signing identity was not found." >&2
+            exit 1
+          fi
+          if [ -z "$INSTALLER_SIGNING_IDENTITY" ]; then
+            echo "Mac Installer Distribution signing identity was not found." >&2
+            exit 1
+          fi
+
+          {
+            echo "APPLE_SIGNING_IDENTITY=$APP_SIGNING_IDENTITY"
+            echo "MAC_INSTALLER_SIGNING_IDENTITY=$INSTALLER_SIGNING_IDENTITY"
+            echo "SIGNING_KEYCHAIN=$KEYCHAIN_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare App Store provisioning and configuration
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_PROVISION_PROFILE_BASE64: ${{ secrets.MACOS_PROVISION_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          PROFILE_PATH="$RUNNER_TEMP/BotCord.provisionprofile"
+          printf "%s" "$MACOS_PROVISION_PROFILE_BASE64" | base64 -D > "$PROFILE_PATH"
+
+          PROFILE_UUID="$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -o - -)"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.provisionprofile"
+
+          cat > src-tauri/Entitlements.appstore.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.security.app-sandbox</key>
+            <true/>
+            <key>com.apple.security.network.client</key>
+            <true/>
+            <key>com.apple.application-identifier</key>
+            <string>${APPLE_TEAM_ID}.${APP_IDENTIFIER}</string>
+            <key>com.apple.developer.team-identifier</key>
+            <string>${APPLE_TEAM_ID}</string>
+          </dict>
+          </plist>
+          EOF
+
+          cat > src-tauri/Info.appstore.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>ITSAppUsesNonExemptEncryption</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+          python3 - <<PY
+          import json
+          profile_path = "$PROFILE_PATH"
+          config = {
+              "bundle": {
+                  "macOS": {
+                      "entitlements": "./Entitlements.appstore.plist",
+                      "infoPlist": "./Info.appstore.plist",
+                      "files": {
+                          "embedded.provisionprofile": profile_path
+                      },
+                  }
+              }
+          }
+          with open("src-tauri/tauri.appstore.conf.json", "w", encoding="utf-8") as f:
+              json.dump(config, f, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Build universal macOS app bundle
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          npx tauri build --ci --no-bundle --target universal-apple-darwin
+          npx tauri bundle \
+            --ci \
+            --bundles app \
+            --target universal-apple-darwin \
+            --config src-tauri/tauri.appstore.conf.json
+
+      - name: Build signed installer pkg
+        id: package
+        run: |
+          set -euo pipefail
+
+          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/${APP_NAME}.app"
+          PKG_PATH="release-assets/${APP_NAME}_macos_appstore.pkg"
+
+          test -d "$APP_PATH"
+          mkdir -p release-assets
+
+          xcrun productbuild \
+            --sign "$MAC_INSTALLER_SIGNING_IDENTITY" \
+            --component "$APP_PATH" /Applications \
+            "$PKG_PATH"
+
+          xcrun pkgutil --check-signature "$PKG_PATH"
+          shasum -a 256 "$PKG_PATH" > release-assets/SHA256SUMS-appstore.txt
+
+          echo "pkg=$PKG_PATH" >> "$GITHUB_OUTPUT"
+          ls -lh release-assets
+
+      - name: Upload pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: botcord-macos-appstore-pkg
+          path: |
+            desktop/${{ steps.package.outputs.pkg }}
+            desktop/release-assets/SHA256SUMS-appstore.txt
+          if-no-files-found: error
+
+      - name: Prepare App Store Connect API key
+        if: ${{ inputs.upload }}
+        env:
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf "%s" "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 -D > "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+
+      - name: Upload to App Store Connect
+        if: ${{ inputs.upload }}
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          xcrun altool \
+            --upload-app \
+            --type macos \
+            --file "${{ steps.package.outputs.pkg }}" \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_API_ISSUER_ID"
