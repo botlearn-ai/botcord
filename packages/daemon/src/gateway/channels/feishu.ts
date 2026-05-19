@@ -21,6 +21,8 @@ import type { FeishuDomain } from "./feishu-registration.js";
 const FEISHU_PROVIDER = "feishu" as const;
 const DEFAULT_SPLIT_AT = 4000;
 const MAX_SEEN_MESSAGES = 2048;
+const TYPING_EMOJI = "Typing";
+const TYPING_REACTION_TTL_MS = 20_000;
 
 export interface FeishuChannelOptions {
   id: string;
@@ -80,6 +82,10 @@ interface FeishuApiResponse {
 }
 
 type FeishuClient = { request(args: unknown): Promise<unknown> };
+type TypingReactionState = {
+  reactionId: string | null;
+  timer: ReturnType<typeof setTimeout> | null;
+};
 
 function sdkDomain(domain: FeishuDomain | undefined): unknown {
   const sdk = Lark as unknown as {
@@ -137,6 +143,7 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
   let botOpenId: string | undefined;
   let botName: string | undefined;
   let liveSetStatus: ((patch: Partial<ChannelStatusSnapshot>) => void) | null = null;
+  const activeTypingReactions = new Map<string, TypingReactionState>();
 
   let statusSnapshot: ChannelStatusSnapshot = {
     channel: opts.id,
@@ -387,6 +394,44 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     );
   }
 
+  function resultReactionId(res: FeishuApiResponse): string | null {
+    return (
+      (typeof res.data?.reaction_id === "string" ? res.data.reaction_id : undefined) ??
+      (typeof res.reaction_id === "string" ? res.reaction_id : undefined) ??
+      null
+    );
+  }
+
+  function messageIdFromTrace(traceId: string): string | null {
+    if (!traceId.startsWith("feishu:")) return null;
+    const messageId = traceId.slice("feishu:".length).trim();
+    return messageId.length > 0 ? messageId : null;
+  }
+
+  async function removeTypingReaction(messageId: string): Promise<void> {
+    const state = activeTypingReactions.get(messageId);
+    if (!state) return;
+    activeTypingReactions.delete(messageId);
+    if (state.timer) clearTimeout(state.timer);
+    if (!state.reactionId) return;
+    try {
+      await callFeishu({
+        method: "DELETE",
+        url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(state.reactionId)}`,
+      });
+    } catch (err) {
+      statusSnapshot.lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function scheduleTypingCleanup(messageId: string, state: TypingReactionState): void {
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = setTimeout(() => {
+      void removeTypingReaction(messageId);
+    }, TYPING_REACTION_TTL_MS);
+    if (typeof state.timer.unref === "function") state.timer.unref();
+  }
+
   function resultResourceKey(res: FeishuApiResponse, key: "image_key" | "file_key"): string {
     const direct = res[key];
     if (typeof direct === "string") return direct;
@@ -516,15 +561,61 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
         replyInThread: Boolean(ctx.message.threadId),
       }) ?? providerMessageId;
     }
+    if (ctx.message.replyTo) {
+      void removeTypingReaction(ctx.message.replyTo);
+    }
+    if (ctx.message.threadId && ctx.message.threadId !== ctx.message.replyTo) {
+      void removeTypingReaction(ctx.message.threadId);
+    }
     markStatus({ lastSendAt: Date.now() });
     return { providerMessageId };
   }
 
   async function typing(ctx: ChannelTypingContext): Promise<void> {
-    ctx.log.debug("feishu typing ignored: no native bot typing API", {
-      channel: opts.id,
-      conversationId: ctx.conversationId,
-    });
+    const messageId = messageIdFromTrace(ctx.traceId);
+    if (!messageId) {
+      ctx.log.debug("feishu typing skipped: trace id has no message id", {
+        channel: opts.id,
+        conversationId: ctx.conversationId,
+        traceId: ctx.traceId,
+      });
+      return;
+    }
+    const existing = activeTypingReactions.get(messageId);
+    if (existing) {
+      scheduleTypingCleanup(messageId, existing);
+      return;
+    }
+
+    const state: TypingReactionState = { reactionId: null, timer: null };
+    activeTypingReactions.set(messageId, state);
+    scheduleTypingCleanup(messageId, state);
+    try {
+      const res = await callFeishu({
+        method: "POST",
+        url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions`,
+        data: { reaction_type: { emoji_type: TYPING_EMOJI } },
+      });
+      const reactionId = resultReactionId(res);
+      if (activeTypingReactions.get(messageId) !== state) {
+        if (reactionId) {
+          await callFeishu({
+            method: "DELETE",
+            url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(reactionId)}`,
+          });
+        }
+        return;
+      }
+      state.reactionId = reactionId;
+    } catch (err) {
+      activeTypingReactions.delete(messageId);
+      if (state.timer) clearTimeout(state.timer);
+      ctx.log.warn("feishu typing reaction failed", {
+        channel: opts.id,
+        conversationId: ctx.conversationId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   async function stop(_ctx: ChannelStopContext): Promise<void> {
@@ -534,6 +625,7 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
       // best effort
     }
     wsClient = null;
+    await Promise.allSettled(Array.from(activeTypingReactions.keys()).map(removeTypingReaction));
     try {
       stateStore?.close();
     } catch {
