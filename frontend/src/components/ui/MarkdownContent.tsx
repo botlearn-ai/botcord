@@ -1,6 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { isValidElement, useEffect, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -166,6 +168,65 @@ function rehypeMentions(options?: { candidates?: MentionTextCandidate[] }) {
   return (tree: HastRootNode) => visit(tree);
 }
 
+function nodeToText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeToText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return nodeToText(node.props.children);
+  return "";
+}
+
+function MarkdownCodeBlock({ children }: { children: ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+  const text = nodeToText(children).replace(/\n$/, "");
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+      timerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        timerRef.current = null;
+      }, 1600);
+    } catch {
+      // The code remains selectable when clipboard access is unavailable.
+    }
+  };
+
+  return (
+    <div className="group relative mb-2 last:mb-0">
+      <button
+        type="button"
+        onClick={() => void handleCopy()}
+        className="absolute right-2 top-2 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-glass-border bg-black/70 px-2 text-[11px] font-medium text-text-secondary shadow-lg shadow-black/20 transition hover:border-neon-cyan/40 hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
+        title={copied ? "Copied" : "Copy code"}
+        aria-label={copied ? "Copied code" : "Copy code"}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-neon-green" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <pre className="overflow-x-auto rounded-lg border border-glass-border bg-black/40 p-3 pr-20 font-mono text-xs text-neon-cyan/90 [&>code]:!block [&>code]:!rounded-none [&>code]:!border-0 [&>code]:!bg-transparent [&>code]:!p-0 [&>code]:!text-xs [&>code]:!text-neon-cyan/90">
+        {children}
+      </pre>
+    </div>
+  );
+}
+
 function createComponents(renderMention?: MarkdownContentProps["renderMention"]): Components {
   return {
     p: ({ children }) => (
@@ -211,7 +272,7 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
       const isBlock = className?.includes("language-");
       if (isBlock) {
         return (
-          <code className="block overflow-x-auto rounded-lg border border-glass-border bg-black/40 p-3 font-mono text-xs text-neon-cyan/90">
+          <code className="block whitespace-pre">
             {children}
           </code>
         );
@@ -222,9 +283,7 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
         </code>
       );
     },
-    pre: ({ children }) => (
-      <pre className="mb-2 last:mb-0">{children}</pre>
-    ),
+    pre: ({ children }) => <MarkdownCodeBlock>{children}</MarkdownCodeBlock>,
     blockquote: ({ children }) => (
       <blockquote className="mb-2 border-l-2 border-neon-purple/50 pl-3 text-text-secondary last:mb-0">
         {children}
