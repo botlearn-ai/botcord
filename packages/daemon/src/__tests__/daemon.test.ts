@@ -255,12 +255,11 @@ describe("backfillBootAgents", () => {
 
   it("is idempotent: a second call leaves user-edited files alone", () => {
     backfillBootAgents([bootAgent("ag_one")], { logger: silentLogger() });
-    const memoryPath = path.join(agentWorkspaceDir("ag_one"), "memory.md");
-    const edited = "# My notes\n\nremembered thing\n";
-    // Simulate the LLM/user editing memory.md.
-    writeFileSync(memoryPath, edited);
+    const taskPath = path.join(agentWorkspaceDir("ag_one"), "task.md");
+    const edited = "# Current Task\n\nin progress\n";
+    writeFileSync(taskPath, edited);
     backfillBootAgents([bootAgent("ag_one")], { logger: silentLogger() });
-    expect(readFileSync(memoryPath, "utf8")).toBe(edited);
+    expect(readFileSync(taskPath, "utf8")).toBe(edited);
   });
 
   it("warns and continues when ensureAgentWorkspace throws for one agent", () => {

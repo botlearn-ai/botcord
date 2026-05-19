@@ -332,10 +332,10 @@ export interface AgentRuntimeFile {
    * read one file; they must not construct filesystem paths.
    */
   id: string;
-  /** Display filename, e.g. `SOUL.md` or `workspace/memory.md`. */
+  /** Display filename, e.g. `SOUL.md` or `memory/working-memory.json`. */
   name: string;
   /** Logical source bucket for UI grouping. */
-  scope: "workspace" | "hermes" | "openclaw";
+  scope: "workspace" | "memory" | "hermes" | "openclaw";
   /** Runtime that exposed this file. */
   runtime?: string;
   /** Runtime profile binding, when applicable. */

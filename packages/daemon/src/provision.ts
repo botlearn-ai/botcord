@@ -71,6 +71,7 @@ import {
 } from "./gateway/runtimes/hermes-agent.js";
 import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
+import { resolveMemoryDir } from "./working-memory.js";
 
 /**
  * Information passed to {@link OnAgentInstalledHook} after a successful
@@ -618,7 +619,7 @@ interface ListAgentFilesParams {
 interface AgentRuntimeFile {
   id: string;
   name: string;
-  scope: "workspace" | "hermes" | "openclaw";
+  scope: "workspace" | "memory" | "hermes" | "openclaw";
   runtime?: string;
   profile?: string;
   size?: number;
@@ -642,6 +643,7 @@ interface RuntimeFileCandidate {
   relativePath: string;
   runtime?: string;
   profile?: string;
+  missingContent?: string;
 }
 
 function listAgentRuntimeFiles(params: ListAgentFilesParams): ListAgentFilesResult {
@@ -664,6 +666,7 @@ function runtimeFileCandidates(credentials: StoredBotCordCredentials): RuntimeFi
   const out: RuntimeFileCandidate[] = [];
 
   addWorkspaceFiles(out, agentId, runtime);
+  addWorkingMemoryFile(out, agentId, runtime);
 
   if (runtime === "hermes-agent") {
     addHermesFiles(out, credentials);
@@ -681,7 +684,7 @@ function addWorkspaceFiles(
   runtime?: string,
 ): void {
   const root = agentWorkspaceDir(agentId);
-  for (const file of ["AGENTS.md", "CLAUDE.md", "identity.md", "memory.md", "task.md"]) {
+  for (const file of ["AGENTS.md", "CLAUDE.md", "identity.md", "task.md"]) {
     out.push({
       id: `workspace:${file}`,
       name: `workspace/${file}`,
@@ -691,6 +694,26 @@ function addWorkspaceFiles(
       ...(runtime ? { runtime } : {}),
     });
   }
+}
+
+function addWorkingMemoryFile(
+  out: RuntimeFileCandidate[],
+  agentId: string,
+  runtime?: string,
+): void {
+  out.push({
+    id: "memory:working-memory.json",
+    name: "memory/working-memory.json",
+    scope: "memory",
+    root: resolveMemoryDir(agentId),
+    relativePath: "working-memory.json",
+    ...(runtime ? { runtime } : {}),
+    missingContent: JSON.stringify(
+      { version: 2, sections: {}, updatedAt: null },
+      null,
+      2,
+    ),
+  });
 }
 
 function addHermesFiles(
@@ -786,7 +809,16 @@ function readRuntimeFileCandidate(candidate: RuntimeFileCandidate): AgentRuntime
     base.content = readFileSync(resolved, "utf8");
     return base;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      if (candidate.missingContent !== undefined) {
+        return {
+          ...base,
+          size: Buffer.byteLength(candidate.missingContent, "utf8"),
+          content: candidate.missingContent,
+        };
+      }
+      return null;
+    }
     return {
       ...base,
       error: err instanceof Error ? err.message : String(err),

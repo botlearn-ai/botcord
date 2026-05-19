@@ -34,7 +34,7 @@ type BotDetailDrawerCopy = typeof botDetailDrawer["en"];
 interface AgentRuntimeFile {
   id: string;
   name: string;
-  scope: "workspace" | "hermes" | "openclaw";
+  scope: "workspace" | "memory" | "hermes" | "openclaw";
   runtime?: string;
   profile?: string;
   size?: number;
@@ -179,6 +179,7 @@ function formatBytes(value?: number): string {
 }
 
 function scopeLabel(scope: AgentRuntimeFile["scope"]): string {
+  if (scope === "memory") return "Memory";
   if (scope === "hermes") return "Hermes";
   if (scope === "openclaw") return "OpenClaw";
   return "Workspace";

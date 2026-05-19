@@ -60,9 +60,10 @@ describe("ensureAgentWorkspace", () => {
     expect(existsSync(state)).toBe(true);
     expect(existsSync(path.join(workspace, "notes"))).toBe(true);
 
-    for (const name of ["AGENTS.md", "CLAUDE.md", "identity.md", "memory.md", "task.md"]) {
+    for (const name of ["AGENTS.md", "CLAUDE.md", "identity.md", "task.md"]) {
       expect(existsSync(path.join(workspace, name))).toBe(true);
     }
+    expect(existsSync(path.join(workspace, "memory.md"))).toBe(false);
 
     const agentsMd = readFileSync(path.join(workspace, "AGENTS.md"), "utf8");
     const claudeMd = readFileSync(path.join(workspace, "CLAUDE.md"), "utf8");
@@ -172,16 +173,6 @@ describe("ensureAgentWorkspace", () => {
     );
     expect(existsSync(hermesWorkspace)).toBe(true);
     expect(existsSync(hermesHome)).toBe(false);
-  });
-
-  it("does not overwrite a user-modified memory.md on a second call", () => {
-    ensureAgentWorkspace("ag_keep", {});
-    const memoryPath = path.join(agentWorkspaceDir("ag_keep"), "memory.md");
-    writeFileSync(memoryPath, "my custom notes\n");
-
-    ensureAgentWorkspace("ag_keep", {});
-
-    expect(readFileSync(memoryPath, "utf8")).toBe("my custom notes\n");
   });
 
   it("seeds Hermes config and provider env without copying unrelated secrets", () => {

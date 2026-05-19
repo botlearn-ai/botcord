@@ -347,6 +347,7 @@ export function buildWorkingMemoryPrompt(opts: {
     "[BotCord Working Memory]",
     "You have a persistent working memory that survives across turns and rooms.",
     "Use it to track your goal, important facts, pending commitments, and context worth remembering.",
+    "This is the only BotCord memory source. It is stored in `~/.botcord/memory/{agentId}/working-memory.json`; do not create or update workspace memory files.",
     "",
     "Update via the daemon's `memory` CLI (or whatever tool the operator wires):",
     "- goal: a short pinned statement of what you're working on.",

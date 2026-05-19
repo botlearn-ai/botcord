@@ -234,10 +234,10 @@ async def test_runtime_files_for_owned_daemon_agent_dispatches_control_frame(
                 "runtime": "hermes-agent",
                 "files": [
                     {
-                        "id": "workspace:memory.md",
-                        "name": "workspace/memory.md",
-                        "scope": "workspace",
-                        "content": "# Memory\n",
+                        "id": "memory:working-memory.json",
+                        "name": "memory/working-memory.json",
+                        "scope": "memory",
+                        "content": '{"sections":{}}\n',
                     }
                 ],
             },
@@ -247,16 +247,16 @@ async def test_runtime_files_for_owned_daemon_agent_dispatches_control_frame(
 
     headers = {"Authorization": f"Bearer {seed['token']}"}
     r = await client.get(
-        "/api/agents/ag_owned/runtime-files?file_id=workspace%3Amemory.md",
+        "/api/agents/ag_owned/runtime-files?file_id=memory%3Aworking-memory.json",
         headers=headers,
     )
     assert r.status_code == 200, r.text
-    assert r.json()["files"][0]["content"] == "# Memory\n"
+    assert r.json()["files"][0]["content"] == '{"sections":{}}\n'
     assert calls == [
         {
             "daemon_instance_id": "dm_files",
             "type": "list_agent_files",
-            "params": {"agentId": "ag_owned", "fileId": "workspace:memory.md"},
+            "params": {"agentId": "ag_owned", "fileId": "memory:working-memory.json"},
             "timeout_ms": 5000,
         }
     ]

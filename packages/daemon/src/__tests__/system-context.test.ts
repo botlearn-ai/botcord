@@ -65,11 +65,12 @@ describe("createDaemonSystemContextBuilder", () => {
     expect(out).toContain("cannot access this machine's local filesystem");
   });
 
-  it("returns undefined for direct rooms when working memory is empty and no activity tracker is wired", () => {
+  it("injects the empty working-memory block even when no memory file exists", () => {
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    expect(
-      builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } })),
-    ).toBeUndefined();
+    const out = builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } }));
+    expect(out).toContain("[BotCord Working Memory]");
+    expect(out).toContain("This is the only BotCord memory source.");
+    expect(out).toContain("Your working memory is currently empty.");
   });
 
   it("still injects group-room runtime environment when the activity digest is empty", () => {
@@ -137,7 +138,8 @@ describe("createDaemonSystemContextBuilder", () => {
     // No ensureAgentWorkspace — workspace never provisioned.
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
     const out = builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } }));
-    expect(out).toBeUndefined();
+    expect(out).not.toContain("[BotCord Identity]");
+    expect(out).toContain("[BotCord Working Memory]");
   });
 
   it("skips the identity block when identity.md is blank", () => {
@@ -151,9 +153,9 @@ describe("createDaemonSystemContextBuilder", () => {
 
   it("detects a newly added global Claude skill on the next turn", () => {
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    expect(
-      builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } })),
-    ).toBeUndefined();
+    const before = builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } }));
+    expect(before).toContain("[BotCord Working Memory]");
+    expect(before).not.toContain("[BotCord Daemon Skill Index]");
 
     const skillDir = path.join(tmpDir, ".claude", "skills", "digest-query");
     mkdirSync(skillDir, { recursive: true });

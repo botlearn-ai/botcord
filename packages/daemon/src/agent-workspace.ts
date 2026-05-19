@@ -3,7 +3,7 @@
  * directory tree under `~/.botcord/agents/{agentId}/`:
  *
  *   workspace/   — runtime cwd; seed Markdown files live here (LLM-owned)
- *   state/       — daemon-owned JSON (e.g. working-memory.json)
+ *   state/       — daemon-owned JSON
  *   codex-home/  — per-agent CODEX_HOME used by the codex adapter so codex
  *                  reads a daemon-written AGENTS.md (systemContext carrier)
  *                  and stores its sessions/ without touching ~/.codex.
@@ -108,8 +108,6 @@ This directory is your persistent workspace. You run with \`cwd\` set here.
 ## Files you own
 
 - \`identity.md\` — who you are, your role, your boundaries. Read before responding.
-- \`memory.md\` — long-lived facts, user preferences, past decisions. Update when
-  you learn something durable. Prune when it grows stale.
 - \`task.md\` — current task and plan. Update as you make progress. Clear when done.
 - \`notes/\` — free-form scratch space.
 
@@ -118,6 +116,10 @@ This directory is your persistent workspace. You run with \`cwd\` set here.
 - Do not modify files outside this workspace unless the user explicitly asks.
 - \`../state/\` (sibling directory, outside this workspace) is managed by the
   daemon — do not read or edit it directly.
+- Working memory is stored outside this workspace at
+  \`~/.botcord/memory/{agentId}/working-memory.json\`. Read and update it with
+  \`botcord memory\` or the \`botcord_memory\` skill instead of creating local
+  memory notes.
 
 ## How to use this
 
@@ -125,21 +127,10 @@ This directory is your persistent workspace. You run with \`cwd\` set here.
   system context as the \`[BotCord Identity]\` block. Edits to this file (yours,
   the dashboard's via \`applyAgentIdentity\`, or a hello-snapshot reapply) take
   effect on the next turn — no restart needed.
-- \`memory.md\` and \`task.md\` are **convention, not mechanism**. The daemon does
-  not auto-load them; you are instructed to skim them before responding and to
-  write back what changed after meaningful turns. Keep them tight enough to be
-  worth re-reading.
-`;
-
-const MEMORY_MD = `# Memory
-
-<!--
-Long-lived facts about the user, past decisions, and preferences that should
-survive across conversations. Organize by topic. Keep entries short. Prune
-regularly — AGENTS.md instructs you to consult this file before each
-response, but nothing loads it automatically (unlike identity.md); keep it
-short enough to be worth re-reading.
--->
+- Working memory is **mechanism**: the daemon loads \`working-memory.json\` fresh
+  and injects it into every turn as the \`[BotCord Working Memory]\` block.
+- \`task.md\` is **convention, not mechanism**. The daemon does not auto-load it;
+  keep it only for short-lived task notes that are not durable memory.
 `;
 
 const TASK_MD = `# Current Task
@@ -491,7 +482,7 @@ export function ensureAttachedHermesProfileSkills(profileHome: string): void {
 /**
  * Idempotently create the agent's home / workspace / state directories and
  * seed the workspace Markdown files. Existing files are never overwritten —
- * users' edits to AGENTS.md, memory.md, etc. are preserved across calls.
+ * users' edits to AGENTS.md, task.md, etc. are preserved across calls.
  * State files are not touched here; working-memory.ts owns `state/`.
  */
 export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void {
@@ -513,7 +504,6 @@ export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void
   writeIfMissing(agentsMdPath, AGENTS_MD);
   writeIfMissing(claudeMdPath, AGENTS_MD);
   writeIfMissing(path.join(workspace, "identity.md"), renderIdentity(agentId, seed));
-  writeIfMissing(path.join(workspace, "memory.md"), MEMORY_MD);
   writeIfMissing(path.join(workspace, "task.md"), TASK_MD);
   writeIfMissing(path.join(notes, ".gitkeep"), "");
   seedClaudeCodeSkills(workspace);
