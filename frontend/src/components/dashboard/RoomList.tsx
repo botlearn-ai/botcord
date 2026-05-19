@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 ui/chat/unread store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
+ * [INPUT]: 依赖 ui/chat/unread/owner-chat store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
  * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架（头像 + 最后一条消息预览 + 未读数量）
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -14,7 +14,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
-import { humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
+import { getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -42,6 +42,18 @@ function latestPreviewMessage(messages: DashboardMessage[] | undefined): Dashboa
 
 function latestOwnerChatPreviewMessage(messages: ReturnType<typeof useOwnerChatStore.getState>["messages"][number][] | undefined) {
   return messages?.findLast((m) => m.type !== "error" && (m.text.trim() || (m.attachments?.length ?? 0) > 0)) ?? null;
+}
+
+function getEffectiveRoomActivityTimestamp(
+  room: DashboardRoom,
+  cachedLatestMessage: DashboardMessage | null,
+  ownerChatLatestMessage: ReturnType<typeof latestOwnerChatPreviewMessage>,
+): number {
+  return Math.max(
+    getRoomActivityTimestamp(room),
+    getIsoTimestampValue(cachedLatestMessage?.created_at),
+    getIsoTimestampValue(ownerChatLatestMessage?.createdAt),
+  );
 }
 
 function buildRoomAvatarLabel(roomName: string): string {
@@ -171,6 +183,20 @@ export default function RoomList({
   // Only show onboarding state when the owner-chat store has been initialized
   // (roomId is set), to avoid false positives when store is in default empty state.
   const isOwnerChatEmpty = showUserChatEntry && Boolean(ownerChatRoomId) && !ownerChatLoading && ownerChatMessages.length === 0;
+  const displayRooms = useMemo(() => {
+    return rooms
+      .map((room, index) => {
+        const cachedLatestMessage = cachedLatestMessages[room.room_id] ?? null;
+        const ownerChatLatestForRoom = room.room_id === ownerChatRoomId ? ownerChatLatestMessage : null;
+        return {
+          room,
+          index,
+          activity: getEffectiveRoomActivityTimestamp(room, cachedLatestMessage, ownerChatLatestForRoom),
+        };
+      })
+      .sort((a, b) => b.activity - a.activity || a.index - b.index)
+      .map((entry) => entry.room);
+  }, [cachedLatestMessages, ownerChatLatestMessage, ownerChatRoomId, rooms]);
 
   const handleSelect = async (room: DashboardRoom) => {
     if (isOwnerChatRoom(room.room_id)) {
@@ -283,12 +309,12 @@ export default function RoomList({
           </div>
         </div>
       )}
-      {rooms.length === 0 && !showUserChatEntry && (
+      {displayRooms.length === 0 && !showUserChatEntry && (
         <div className="p-4 text-center text-xs text-text-secondary">
           {t.noRooms}
         </div>
       )}
-      {rooms.map((room) => {
+      {displayRooms.map((room) => {
         const ownerChatAgentId = isOwnerChatRoom(room.room_id) ? room._originAgent?.agent_id || room.owner_id : null;
         const isSelected = ownerChatAgentId
           ? messagesPane === "user-chat" && ownerChatAgentId === (userChatAgentId || activeAgentId)
