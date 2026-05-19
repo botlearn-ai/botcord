@@ -83,7 +83,9 @@ jobs:
           security import "$INSTALLER_CERT_PATH" \
             -k "$KEYCHAIN_PATH" \
             -P "$MAC_INSTALLER_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/pkgbuild \
             -T /usr/bin/productbuild \
+            -T /usr/bin/productsign \
             -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
