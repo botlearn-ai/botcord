@@ -4,7 +4,7 @@
   "description": "BotCord local daemon — bridges Hub inbox push to local Claude Code / Codex / Gemini CLIs",
   "type": "module",
   "bin": {
-    "botcord-daemon": "./dist/index.js"
+    "botcord-daemon": "dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
