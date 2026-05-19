@@ -255,27 +255,80 @@ describe("createFeishuChannel", () => {
     expect(JSON.parse(send.data.content as string)).toEqual({ file_key: "file_v2_uploaded" });
   });
 
-  it("exposes typing as a safe no-op because Feishu has no bot typing API", async () => {
-    const debug = vi.fn();
+  it("adds a Typing reaction for typing and removes it when replying", async () => {
     const adapter = createFeishuChannel({
       id: "gw_fs",
       accountId: "ag_self",
       appId: "cli_a",
       appSecret: "sec",
     });
+    larkMock.responses.push(
+      { code: 0, data: { reaction_id: "react_typing_1" } },
+      { code: 0, data: { message_id: "om_reply" } },
+      { code: 0, data: {} },
+    );
 
     await adapter.typing?.({
       traceId: "feishu:om_1",
       accountId: "ag_self",
       conversationId: "feishu:chat:oc_chat",
-      log: { ...SILENT_LOG, debug },
+      log: SILENT_LOG,
     });
 
-    expect(larkMock.requests).toHaveLength(0);
-    expect(debug).toHaveBeenCalledWith(
-      "feishu typing ignored: no native bot typing API",
-      expect.objectContaining({ channel: "gw_fs" }),
-    );
+    expect(larkMock.requests).toHaveLength(1);
+    expect(larkMock.requests[0]).toEqual({
+      method: "POST",
+      url: "/open-apis/im/v1/messages/om_1/reactions",
+      data: { reaction_type: { emoji_type: "Typing" } },
+    });
+
+    await adapter.send({
+      message: {
+        channel: "gw_fs",
+        accountId: "ag_self",
+        conversationId: "feishu:chat:oc_chat",
+        text: "reply",
+        replyTo: "om_1",
+      },
+      log: SILENT_LOG,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(larkMock.requests).toHaveLength(3);
+    expect(larkMock.requests[2]).toEqual({
+      method: "DELETE",
+      url: "/open-apis/im/v1/messages/om_1/reactions/react_typing_1",
+    });
+  });
+
+  it("refreshes an existing Feishu typing reaction without creating duplicates", async () => {
+    const adapter = createFeishuChannel({
+      id: "gw_fs",
+      accountId: "ag_self",
+      appId: "cli_a",
+      appSecret: "sec",
+    });
+    larkMock.responses.push({ code: 0, data: { reaction_id: "react_typing_1" } });
+
+    await adapter.typing?.({
+      traceId: "feishu:om_1",
+      accountId: "ag_self",
+      conversationId: "feishu:chat:oc_chat",
+      log: SILENT_LOG,
+    });
+    await adapter.typing?.({
+      traceId: "feishu:om_1",
+      accountId: "ag_self",
+      conversationId: "feishu:chat:oc_chat",
+      log: SILENT_LOG,
+    });
+
+    expect(larkMock.requests).toHaveLength(1);
+    expect(larkMock.requests[0]).toEqual({
+      method: "POST",
+      url: "/open-apis/im/v1/messages/om_1/reactions",
+      data: { reaction_type: { emoji_type: "Typing" } },
+    });
   });
 
   it("surfaces websocket start failures in channel status", async () => {
