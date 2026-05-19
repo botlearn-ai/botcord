@@ -87,15 +87,17 @@ jobs:
             -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          APP_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Mac App Distribution:.*\)".*/\1/p' | head -n 1)"
-          INSTALLER_SIGNING_IDENTITY="$(security find-certificate -a -c "Mac Installer Distribution" "$KEYCHAIN_PATH" | awk -F'"' '/alis/{print $4; exit}')"
+          APP_SIGNING_IDENTITY="$(security find-certificate -a "$KEYCHAIN_PATH" | awk -F'"' '/alis/ && ($4 ~ /^Mac App Distribution:/ || $4 ~ /^3rd Party Mac Developer Application:/) { print $4; exit }')"
+          INSTALLER_SIGNING_IDENTITY="$(security find-certificate -a "$KEYCHAIN_PATH" | awk -F'"' '/alis/ && ($4 ~ /^Mac Installer Distribution:/ || $4 ~ /^3rd Party Mac Developer Installer:/) { print $4; exit }')"
 
           if [ -z "$APP_SIGNING_IDENTITY" ]; then
             echo "Mac App Distribution signing identity was not found." >&2
+            security find-certificate -a "$KEYCHAIN_PATH" | awk -F'"' '/alis/{ print $4 }' >&2 || true
             exit 1
           fi
           if [ -z "$INSTALLER_SIGNING_IDENTITY" ]; then
             echo "Mac Installer Distribution signing identity was not found." >&2
+            security find-certificate -a "$KEYCHAIN_PATH" | awk -F'"' '/alis/{ print $4 }' >&2 || true
             exit 1
           fi
 
