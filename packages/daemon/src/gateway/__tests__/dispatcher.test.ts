@@ -293,6 +293,30 @@ describe("Dispatcher", () => {
     expect(store.all()[0].threadId).toBe("t_1");
   });
 
+  it("sends replies to the provider reply id when it differs from the internal message id", async () => {
+    const runtime = new FakeRuntime({ reply: "ok" });
+    const feishuChannel = new FakeChannel({ id: "gw_feishu_1", type: "feishu" });
+    const { dispatcher, channel } = await scaffold({
+      runtimeFactory: () => runtime,
+      channel: feishuChannel,
+      config: baseConfig({
+        channels: [{ id: "gw_feishu_1", type: "feishu", accountId: "ag_me" }],
+      }),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "feishu:om_internal_wrapped",
+        replyTo: "om_provider_raw",
+        channel: "gw_feishu_1",
+        conversation: { id: "feishu:user:oc_chat", kind: "direct" },
+      }),
+    );
+
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.replyTo).toBe("om_provider_raw");
+  });
+
   it("reuses session id on second message with same queue key", async () => {
     const seen: Array<string | null> = [];
     const runtime = new FakeRuntime({
@@ -2009,7 +2033,8 @@ describe("Dispatcher", () => {
     });
     await dispatcher.handle(
       makeEnvelope({
-        id: "m_err",
+        id: "feishu:om_internal_err",
+        replyTo: "om_provider_err",
         conversation: { id: "rm_g_other", kind: "group" },
       }),
     );
@@ -2017,7 +2042,7 @@ describe("Dispatcher", () => {
     expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error: boom");
     expect(channel.sends[0].message.conversationId).toBe("rm_g_other");
-    expect(channel.sends[0].message.replyTo).toBe("m_err");
+    expect(channel.sends[0].message.replyTo).toBe("om_provider_err");
   });
 
   // ─────────────────────────────────────────────────────────────────────
