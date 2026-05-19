@@ -8,6 +8,7 @@ desktop/src-tauri/target/
 # env files: ignore all, but keep example templates
 .env*
 !.env.example
+.ci_secret
 .gstack/
 
 CLAUDE.md
