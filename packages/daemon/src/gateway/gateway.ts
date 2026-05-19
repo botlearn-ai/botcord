@@ -17,6 +17,7 @@ import type {
   GatewayRoute,
   GatewayRuntimeSnapshot,
   InboundObserver,
+  MemoryContextBuilder,
   OutboundObserver,
   SystemContextBuilder,
   UserTurnBuilder,
@@ -39,6 +40,11 @@ export interface GatewayBootOptions {
    * abort the turn.
    */
   buildSystemContext?: SystemContextBuilder;
+  /**
+   * Snapshot/version hook for working memory. Forwarded to dispatcher so
+   * resumed runtime sessions get an explicit prompt when memory changes.
+   */
+  buildMemoryContext?: MemoryContextBuilder;
   /**
    * Observer called after the dispatcher acks each inbound message. Useful
    * for activity tracking or metrics. Errors are logged and swallowed.
@@ -159,6 +165,7 @@ export class Gateway {
       log: this.log,
       turnTimeoutMs: opts.turnTimeoutMs,
       buildSystemContext: opts.buildSystemContext,
+      buildMemoryContext: opts.buildMemoryContext,
       onInbound: opts.onInbound,
       composeUserTurn: opts.composeUserTurn,
       onOutbound: opts.onOutbound,

@@ -17,6 +17,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 import { agentStateDir } from "./agent-workspace.js";
@@ -28,6 +29,11 @@ export interface WorkingMemory {
   goal?: string;
   sections: Record<string, string>;
   updatedAt: string;
+}
+
+export interface WorkingMemorySnapshot {
+  memory: WorkingMemory | null;
+  version: string;
 }
 
 /** v1 shape kept only for one-way migration on read. */
@@ -203,6 +209,33 @@ export function readWorkingMemory(agentId: string): WorkingMemory | null {
   const p = resolveReadPath(agentId);
   if (!p) return null;
   return normalize(readJson<unknown>(p));
+}
+
+function canonicalizeWorkingMemory(memory: WorkingMemory | null): unknown {
+  const sections: Record<string, string> = {};
+  for (const [key, value] of Object.entries(memory?.sections ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    sections[key] = value;
+  }
+  return {
+    version: 2,
+    goal: memory?.goal ?? null,
+    sections,
+  };
+}
+
+export function workingMemoryVersion(memory: WorkingMemory | null): string {
+  const canonical = JSON.stringify(canonicalizeWorkingMemory(memory));
+  return `wm-sha256:${createHash("sha256").update(canonical).digest("hex").slice(0, 16)}`;
+}
+
+export function readWorkingMemorySnapshot(agentId: string): WorkingMemorySnapshot {
+  const memory = readWorkingMemory(agentId);
+  return {
+    memory,
+    version: workingMemoryVersion(memory),
+  };
 }
 
 export function writeWorkingMemory(agentId: string, data: WorkingMemory): void {

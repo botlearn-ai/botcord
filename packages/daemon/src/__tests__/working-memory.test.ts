@@ -274,3 +274,33 @@ describe("buildWorkingMemoryPrompt", () => {
     expect(p).toContain("‹current_memory›");
   });
 });
+
+describe("working-memory version", () => {
+  it("is stable for identical content regardless of section insertion order or updatedAt", () => {
+    const a = wm.workingMemoryVersion({
+      version: 2,
+      sections: { b: "two", a: "one" },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const b = wm.workingMemoryVersion({
+      version: 2,
+      sections: { a: "one", b: "two" },
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+    expect(a).toBe(b);
+  });
+
+  it("changes when durable memory content changes", () => {
+    const a = wm.workingMemoryVersion({
+      version: 2,
+      sections: { notes: "old" },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const b = wm.workingMemoryVersion({
+      version: 2,
+      sections: { notes: "new" },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(a).not.toBe(b);
+  });
+});

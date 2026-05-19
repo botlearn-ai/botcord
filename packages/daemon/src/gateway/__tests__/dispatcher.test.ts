@@ -1605,6 +1605,71 @@ describe("Dispatcher", () => {
     ).toBe(true);
   });
 
+  it("injects a memory update notice into resumed sessions when memory version changes", async () => {
+    const seenText: string[] = [];
+    let memoryVersion = "wm-sha256:v1";
+    const runtime = new FakeRuntime({
+      newSessionId: (opts) => opts.sessionId ?? "sid-1",
+      observeRun: (opts) => seenText.push(opts.text),
+    });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const channels = new Map<string, ChannelAdapter>([[channel.id, channel]]);
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels,
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      buildMemoryContext: () => ({
+        version: memoryVersion,
+      }),
+    });
+
+    await dispatcher.handle(makeEnvelope({ id: "msg_1", text: "first" }));
+    expect(seenText[0]).toBe("first");
+    expect(store.all()[0].memoryVersion).toBe("wm-sha256:v1");
+
+    memoryVersion = "wm-sha256:v2";
+    await dispatcher.handle(makeEnvelope({ id: "msg_2", text: "second" }));
+    expect(seenText[1]).toContain("[BotCord Memory Update Notice]");
+    expect(seenText[1]).toContain("previous: wm-sha256:v1, current: wm-sha256:v2");
+    expect(seenText[1]).toContain("retrieve the latest working memory");
+    expect(seenText[1]).toContain("botcord-daemon memory get");
+    expect(seenText[1]).not.toContain("[BotCord Working Memory]\nversion wm-sha256:v2");
+    expect(seenText[1]).toContain("[Current Message]\nsecond");
+    expect(store.all()[0].memoryVersion).toBe("wm-sha256:v2");
+  });
+
+  it("does not inject a memory update notice when the resumed session already has the current memory version", async () => {
+    const seenText: string[] = [];
+    const runtime = new FakeRuntime({
+      newSessionId: (opts) => opts.sessionId ?? "sid-1",
+      observeRun: (opts) => seenText.push(opts.text),
+    });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const channels = new Map<string, ChannelAdapter>([[channel.id, channel]]);
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels,
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+      buildMemoryContext: () => ({
+        version: "wm-sha256:same",
+      }),
+    });
+
+    await dispatcher.handle(makeEnvelope({ id: "msg_1", text: "first" }));
+    await dispatcher.handle(makeEnvelope({ id: "msg_2", text: "second" }));
+
+    expect(seenText).toEqual(["first", "second"]);
+    expect(store.all()[0].memoryVersion).toBe("wm-sha256:same");
+  });
+
   it("onInbound: observer is invoked with the message between ack and runtime.run", async () => {
     const order: string[] = [];
     const runtime = new FakeRuntime({

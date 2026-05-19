@@ -35,6 +35,7 @@ import {
 import { openclawAutoProvisionEnabled } from "./openclaw-discovery.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
+import { readWorkingMemorySnapshot } from "./working-memory.js";
 import { createRoomStaticContextBuilder } from "./room-context.js";
 import { createRoomContextFetcher } from "./room-context-fetcher.js";
 import {
@@ -400,6 +401,8 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     const fallback = scBuilders.get(first);
     return fallback ? fallback(message) : undefined;
   };
+  const buildMemoryContext = (message: GatewayInboundMessage) =>
+    readWorkingMemorySnapshot(message.accountId);
 
   // Observer runs after ack + before runtime.run. Keeping the side effect
   // outside the system-context builder (option A) means the builder stays
@@ -511,6 +514,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     log: logger,
     turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
     buildSystemContext,
+    buildMemoryContext,
     onInbound,
     onOutbound,
     composeUserTurn: composeBotCordUserTurn,

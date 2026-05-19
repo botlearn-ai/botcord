@@ -18,6 +18,7 @@ import type {
   GatewayRoute,
   GatewaySessionEntry,
   InboundObserver,
+  MemoryContextBuilder,
   OutboundObserver,
   QueueMode,
   RuntimeAdapter,
@@ -71,6 +72,23 @@ const TYPING_RECENCY_CAP = 1024;
 function transcriptBlocksVerbose(): boolean {
   return process.env.BOTCORD_TRANSCRIPT_BLOCKS === "verbose" ||
     process.env.BOTCORD_TRACE_VERBOSE === "1";
+}
+
+function buildMemoryUpdateNotice(args: {
+  previousVersion: string | null;
+  currentVersion: string;
+  userTurn: string;
+}): string {
+  return [
+    "[BotCord Memory Update Notice]",
+    `The persistent working memory changed since this runtime session last used it (previous: ${args.previousVersion ?? "none"}, current: ${args.currentVersion}).`,
+    "Before acting on the message below, retrieve the latest working memory through the available BotCord memory tool or CLI, then treat that latest memory as authoritative.",
+    "If using the local daemon CLI, run: botcord-daemon memory get",
+    "The latest memory supersedes older goals, monitoring rules, preferences, and task state in the resumed conversation.",
+    "",
+    "[Current Message]",
+    args.userTurn,
+  ].join("\n");
 }
 
 function summarizeStreamBlock(block: StreamBlock): TranscriptBlockSummary {
@@ -150,6 +168,13 @@ export interface DispatcherOptions {
    * swallowed and logged — they never abort the turn.
    */
   buildSystemContext?: SystemContextBuilder;
+  /**
+   * Optional hook returning the current working-memory snapshot/version. When
+   * a resumed runtime session last saw a different version, dispatcher injects
+   * the snapshot into the actual user prompt so resumed transcripts cannot
+   * keep following stale memory.
+   */
+  buildMemoryContext?: MemoryContextBuilder;
   /**
    * Optional side-effect hook invoked after ack, before the turn runs.
    * Intended for bookkeeping (e.g. activity tracking). Errors are logged
@@ -285,6 +310,7 @@ export class Dispatcher {
   private readonly log: GatewayLogger;
   private readonly turnTimeoutMs: number;
   private readonly buildSystemContext?: SystemContextBuilder;
+  private readonly buildMemoryContext?: MemoryContextBuilder;
   private readonly onInbound?: InboundObserver;
   private readonly onOutbound?: OutboundObserver;
   private readonly composeUserTurn?: UserTurnBuilder;
@@ -311,6 +337,7 @@ export class Dispatcher {
     this.log = opts.log;
     this.turnTimeoutMs = opts.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     this.buildSystemContext = opts.buildSystemContext;
+    this.buildMemoryContext = opts.buildMemoryContext;
     this.onInbound = opts.onInbound;
     this.onOutbound = opts.onOutbound;
     this.composeUserTurn = opts.composeUserTurn;
@@ -990,6 +1017,8 @@ export class Dispatcher {
     });
     const entry = this.sessionStore.get(key);
     const sessionId = entry?.runtimeSessionId ?? null;
+    let currentMemoryVersion: string | undefined;
+    let runtimeText = text;
     const trustLevel = route.trustLevel ?? "trusted";
 
     const streamable = msg.trace?.streamable === true;
@@ -1252,13 +1281,47 @@ export class Dispatcher {
       }
     }
 
+    if (this.buildMemoryContext) {
+      try {
+        const snapshot = await this.buildMemoryContext(msg);
+        if (
+          snapshot &&
+          typeof snapshot.version === "string" &&
+          snapshot.version.length > 0
+        ) {
+          currentMemoryVersion = snapshot.version;
+          const previousMemoryVersion = entry?.memoryVersion ?? null;
+          if (sessionId && previousMemoryVersion !== currentMemoryVersion) {
+            runtimeText = buildMemoryUpdateNotice({
+              previousVersion: previousMemoryVersion,
+              currentVersion: currentMemoryVersion,
+              userTurn: text,
+            });
+            this.log.info("dispatcher: injected memory update notice", {
+              agentId: msg.accountId,
+              roomId: msg.conversation.id,
+              topicId: msg.conversation.threadId ?? null,
+              turnId,
+              previousMemoryVersion,
+              currentMemoryVersion,
+            });
+          }
+        }
+      } catch (err) {
+        this.log.warn("buildMemoryContext threw — continuing without memory version check", {
+          error: err instanceof Error ? err.message : String(err),
+          messageId: msg.id,
+        });
+      }
+    }
+
     const runtime = this.runtimeFactory(route.runtime, route.extraArgs);
     let result: { text: string; newSessionId: string; costUsd?: number; error?: string } | undefined;
     let threw: unknown;
     try {
       try {
         result = await runtime.run({
-          text,
+          text: runtimeText,
           sessionId,
           cwd: route.cwd,
           accountId: msg.accountId,
@@ -1438,6 +1501,7 @@ export class Dispatcher {
           key,
           runtime: route.runtime,
           runtimeSessionId: result.newSessionId,
+          memoryVersion: currentMemoryVersion ?? entry?.memoryVersion ?? null,
           channel: msg.channel,
           accountId: msg.accountId,
           conversationKind: msg.conversation.kind,
