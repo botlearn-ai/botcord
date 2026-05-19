@@ -1343,7 +1343,7 @@ export class Dispatcher {
             threadId: msg.conversation.threadId ?? null,
             type: "error",
             text: `⚠️ Runtime timeout after ${Math.round(this.turnTimeoutMs / 60000)} minute(s); aborted`,
-            replyTo: msg.id,
+            replyTo: this.providerReplyTo(msg),
             traceId: msg.trace?.id ?? null,
           }, turnId);
         } else {
@@ -1389,7 +1389,7 @@ export class Dispatcher {
             threadId: msg.conversation.threadId ?? null,
             type: "error",
             text: `⚠️ Runtime error: ${truncate(errMsg, 500)}`,
-            replyTo: msg.id,
+            replyTo: this.providerReplyTo(msg),
             traceId: msg.trace?.id ?? null,
           }, turnId);
         } else {
@@ -1494,7 +1494,7 @@ export class Dispatcher {
               threadId: msg.conversation.threadId ?? null,
               type: "error",
               text: `⚠️ Runtime error: ${truncate(result.error, 500)}`,
-              replyTo: msg.id,
+              replyTo: this.providerReplyTo(msg),
               traceId: msg.trace?.id ?? null,
             }, turnId);
             this.emitOutbound({
@@ -1571,7 +1571,7 @@ export class Dispatcher {
         conversationId: msg.conversation.id,
         threadId: msg.conversation.threadId ?? null,
         text: replyText,
-        replyTo: msg.id,
+        replyTo: this.providerReplyTo(msg),
         traceId: msg.trace?.id ?? null,
       }, turnId);
       this.emitOutbound({
@@ -1636,6 +1636,10 @@ export class Dispatcher {
       }
     }
     return { ok: true };
+  }
+
+  private providerReplyTo(msg: GatewayInboundMessage): string {
+    return msg.replyTo ?? msg.id;
   }
 
   private emitInbound(turnId: string, msg: GatewayInboundEnvelope["message"]): void {
