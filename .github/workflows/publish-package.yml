@@ -170,6 +170,7 @@ jobs:
           if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
             git add package-lock.json
           fi
+          git add -u .
           case "$PKG" in
             cli) TAG_PREFIX="cli-" ;;
             protocol-core) TAG_PREFIX="protocol-core-" ;;
