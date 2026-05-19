@@ -20,6 +20,7 @@ import type {
   DashboardMessage,
 } from "@/lib/types";
 import { dashboardMsgToOwnerChat } from "@/lib/types";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 
 const MAX_BLOCKS_PER_TRACE = 200;
 
@@ -60,6 +61,26 @@ function extractAssistantText(blocks: StreamBlockEntry[]): string {
     }
   }
   return parts.join("");
+}
+
+function latestPreviewableMessage(messages: OwnerChatMessage[]): OwnerChatMessage | null {
+  return messages.reduce<OwnerChatMessage | null>((latest, msg) => {
+    if (msg.type === "error" || msg.status === "failed") return latest;
+    if (!msg.text.trim() && (msg.attachments?.length ?? 0) === 0) return latest;
+    if (!latest) return msg;
+    return Date.parse(msg.createdAt) >= Date.parse(latest.createdAt) ? msg : latest;
+  }, null);
+}
+
+function syncOwnerChatRoomSummary(roomId: string | null, messages: OwnerChatMessage[]): void {
+  if (!roomId) return;
+  const latest = latestPreviewableMessage(messages);
+  if (!latest) return;
+  useDashboardChatStore.getState().patchOwnerChatRoomSummary(roomId, {
+    last_message_at: latest.createdAt,
+    last_message_preview: latest.text || ((latest.attachments?.length ?? 0) > 0 ? "[Attachment]" : ""),
+    last_sender_name: latest.senderName || (latest.sender === "user" ? "You" : null),
+  });
 }
 
 /** In-flight guard + request token to prevent stale loadInitial responses. */
@@ -205,6 +226,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           roomId,
         };
       });
+      syncOwnerChatRoomSummary(roomId, get().messages);
     } catch (err: any) {
       set({ error: err?.message || "Failed to load messages", loading: false });
     } finally {
@@ -233,6 +255,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         messages: [...older, ...state.messages],
         hasMore: result.has_more,
       }));
+      syncOwnerChatRoomSummary(roomId, get().messages);
     } catch (err) {
       console.error("[OwnerChatStore] Failed to load more:", err);
     } finally {
@@ -242,17 +265,21 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
   // ------ Message lifecycle ------
 
-  addOptimistic: (msg) =>
-    set((state) => ({ messages: [...state.messages, msg] })),
+  addOptimistic: (msg) => {
+    set((state) => ({ messages: [...state.messages, msg] }));
+    syncOwnerChatRoomSummary(get().roomId, get().messages);
+  },
 
-  confirmOptimistic: (clientId, hubMsgId, createdAt, attachments) =>
+  confirmOptimistic: (clientId, hubMsgId, createdAt, attachments) => {
     set((state) => ({
       messages: state.messages.map((m) =>
         m.clientId === clientId
           ? { ...m, hubMsgId, status: "confirmed" as const, createdAt, attachments: attachments ?? m.attachments, sendText: undefined, retryFiles: undefined }
           : m
       ),
-    })),
+    }));
+    syncOwnerChatRoomSummary(get().roomId, get().messages);
+  },
 
   failOptimistic: (clientId, error) =>
     set((state) => ({
@@ -274,7 +301,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
   // ------ Server-delivered messages ------
 
-  upsertMessage: (msg) =>
+  upsertMessage: (msg) => {
     set((state) => {
       // Dedup by hubMsgId
       if (msg.hubMsgId && state.messages.some((m) => m.hubMsgId === msg.hubMsgId)) {
@@ -324,7 +351,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       // Append new message
       return { messages: [...state.messages, msg] };
-    }),
+    });
+    syncOwnerChatRoomSummary(get().roomId, get().messages);
+  },
 
   mergeApiMessages: (msgs, _direction) => {
     const agentName = get().agentName;
@@ -373,11 +402,12 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       if (deduped.length === 0 && reconciled === state.messages) return state;
       return { messages: deduped.length > 0 ? [...reconciled, ...deduped] : reconciled };
     });
+    syncOwnerChatRoomSummary(get().roomId, get().messages);
   },
 
   // ------ Streaming ------
 
-  appendStreamBlock: (entry) =>
+  appendStreamBlock: (entry) => {
     set((state) => {
       const traceId = entry.trace_id;
 
@@ -427,9 +457,11 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         activeTraceId: traceId,
         agentTyping: false,
       };
-    }),
+    });
+    syncOwnerChatRoomSummary(get().roomId, get().messages);
+  },
 
-  finalizeStream: (traceId, finalData) =>
+  finalizeStream: (traceId, finalData) => {
     set((state) => {
       const idx = state.messages.findIndex(
         (m) => m.traceId === traceId && m.status === "streaming"
@@ -497,7 +529,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         messages: newMessages,
         activeTraceId: null,
       };
-    }),
+    });
+    syncOwnerChatRoomSummary(get().roomId, get().messages);
+  },
 
   // ------ Connection state ------
 
