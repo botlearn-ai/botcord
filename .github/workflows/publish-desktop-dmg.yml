@@ -62,6 +62,67 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Import Developer ID certificate
+        env:
+          MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64: ${{ secrets.MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+          MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/developer-id-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          APP_CERT_PATH="$RUNNER_TEMP/developer-id-application.p12"
+          WWDR_CERT_PATH="$RUNNER_TEMP/AppleWWDRCAG3.cer"
+
+          printf "%s" "$MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64" | base64 -D > "$APP_CERT_PATH"
+          curl -fsSL https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer -o "$WWDR_CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          security import "$WWDR_CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security import "$APP_CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          APP_SIGNING_IDENTITY="$(security find-certificate -a "$KEYCHAIN_PATH" | awk -F'"' '/alis/ && $4 ~ /^Developer ID Application:/ { print $4; exit }')"
+          APP_SIGNING_IDENTITY_HASH="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Developer ID Application:/{ print $2; exit }')"
+
+          if [ -z "$APP_SIGNING_IDENTITY" ]; then
+            echo "Developer ID Application signing identity was not found." >&2
+            security find-certificate -a "$KEYCHAIN_PATH" | awk -F'"' '/alis/{ print $4 }' >&2 || true
+            exit 1
+          fi
+          if [ -z "$APP_SIGNING_IDENTITY_HASH" ]; then
+            echo "Developer ID Application signing identity hash was not found." >&2
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" >&2 || true
+            exit 1
+          fi
+
+          {
+            echo "APPLE_SIGNING_IDENTITY=$APP_SIGNING_IDENTITY"
+            echo "DEVELOPER_ID_SIGNING_IDENTITY_HASH=$APP_SIGNING_IDENTITY_HASH"
+            echo "SIGNING_KEYCHAIN=$KEYCHAIN_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare App Store Connect API key
+        env:
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf "%s" "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 -D > "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+
       - name: Resolve release metadata
         id: meta
         run: |
@@ -81,10 +142,15 @@ jobs:
           echo "Resolved desktop release ${TAG} (${VERSION})"
 
       - name: Build Tauri app + DMG
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
         run: npm run build
 
       - name: Prepare release assets
         id: assets
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
         run: |
           set -euo pipefail
 
@@ -98,8 +164,25 @@ jobs:
           DMG_OUT="release-assets/${{ steps.meta.outputs.asset_prefix }}.dmg"
           ZIP_OUT="release-assets/${{ steps.meta.outputs.asset_prefix }}.app.zip"
 
+          codesign --verify --deep --strict --verbose=2 "$APP"
           cp "$DMG" "$DMG_OUT"
+          codesign --force \
+            --sign "$DEVELOPER_ID_SIGNING_IDENTITY_HASH" \
+            --keychain "$SIGNING_KEYCHAIN" \
+            --timestamp \
+            "$DMG_OUT"
+          codesign --verify --verbose=2 "$DMG_OUT"
+
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP_OUT"
+
+          xcrun notarytool submit "$DMG_OUT" \
+            --key "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8" \
+            --key-id "$APP_STORE_CONNECT_API_KEY_ID" \
+            --issuer "$APP_STORE_CONNECT_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "$DMG_OUT"
+          xcrun stapler validate "$DMG_OUT"
+          spctl -a -vv --type open --context context:primary-signature "$DMG_OUT"
 
           shasum -a 256 "$DMG_OUT" "$ZIP_OUT" > release-assets/SHA256SUMS.txt
 

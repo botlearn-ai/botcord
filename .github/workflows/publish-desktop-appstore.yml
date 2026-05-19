@@ -203,8 +203,6 @@ jobs:
           set -euo pipefail
 
           APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/${APP_NAME}.app"
-          COMPONENT_PKG_PATH="release-assets/${APP_NAME}_component_unsigned.pkg"
-          UNSIGNED_PKG_PATH="release-assets/${APP_NAME}_macos_appstore_unsigned.pkg"
           PKG_PATH="release-assets/${APP_NAME}_macos_appstore.pkg"
 
           test -d "$APP_PATH"
@@ -215,19 +213,11 @@ jobs:
           echo "Using installer signing identity: $MAC_INSTALLER_SIGNING_IDENTITY"
           security find-certificate -a -c "$MAC_INSTALLER_SIGNING_IDENTITY" "$SIGNING_KEYCHAIN" >/dev/null
 
-          xcrun pkgbuild \
-            --component "$APP_PATH" \
-            --install-location /Applications \
-            "$COMPONENT_PKG_PATH"
-
+          echo "Building signed App Store pkg with productbuild"
           xcrun productbuild \
-            --package "$COMPONENT_PKG_PATH" \
-            "$UNSIGNED_PKG_PATH"
-
-          xcrun productsign \
-            --sign "$MAC_INSTALLER_SIGNING_IDENTITY_HASH" \
+            --component "$APP_PATH" /Applications \
+            --sign "$MAC_INSTALLER_SIGNING_IDENTITY" \
             --keychain "$SIGNING_KEYCHAIN" \
-            "$UNSIGNED_PKG_PATH" \
             "$PKG_PATH"
 
           xcrun pkgutil --check-signature "$PKG_PATH"
