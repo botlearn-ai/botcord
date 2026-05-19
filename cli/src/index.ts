@@ -24,6 +24,7 @@ import { tokenCommand } from "./commands/token.js";
 import { envCommand } from "./commands/env.js";
 import { memoryCommand } from "./commands/memory.js";
 import { scheduleCommand } from "./commands/schedule.js";
+import { gatewayCommand } from "./commands/gateway.js";
 
 const VERSION = "0.1.0";
 
@@ -55,6 +56,7 @@ Commands:
   env               View or switch hub environment
   memory            Manage working memory
   schedule          Manage proactive schedules
+  gateway           Send through third-party gateways
 
 Global options:
   --agent <id>      Use specific agent credentials
@@ -154,6 +156,9 @@ async function main(): Promise<void> {
         break;
       case "schedule":
         await scheduleCommand(args, globalHub, globalAgent);
+        break;
+      case "gateway":
+        await gatewayCommand(args, globalHub, globalAgent);
         break;
       default:
         outputError(`unknown command: ${args.command}. Run "botcord --help" for usage.`);

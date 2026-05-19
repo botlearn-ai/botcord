@@ -176,6 +176,20 @@ interface GatewayRecentSendersResult {
   senders: GatewayRecentSender[];
 }
 
+interface GatewaySendParams {
+  agentId: string;
+  gatewayId: string;
+  conversationId: string;
+  text: string;
+  idempotencyKey?: string;
+}
+
+interface GatewaySendResult {
+  gatewayId: string;
+  conversationId: string;
+  providerMessageId?: string | null;
+}
+
 export type { FetchLike };
 
 export interface GatewayControlContext {
@@ -927,6 +941,80 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     }
   }
 
+  // --- gateway_send -------------------------------------------------------
+  async function handleSend(params: GatewaySendParams): Promise<AckBody> {
+    if (!params.agentId || typeof params.agentId !== "string") {
+      return badParams("gateway_send: agentId is required");
+    }
+    if (!params.gatewayId || typeof params.gatewayId !== "string") {
+      return badParams("gateway_send: gatewayId is required");
+    }
+    if (!params.conversationId || typeof params.conversationId !== "string") {
+      return badParams("gateway_send: conversationId is required");
+    }
+    if (typeof params.text !== "string" || params.text.length === 0) {
+      return badParams("gateway_send: text is required");
+    }
+
+    const cfg = cfgIO.load();
+    const profile = (cfg.thirdPartyGateways ?? []).find((g) => g.id === params.gatewayId);
+    if (!profile) {
+      return {
+        ok: false,
+        error: { code: "unknown_gateway", message: `no gateway with id "${params.gatewayId}"` },
+      };
+    }
+    if (profile.accountId !== params.agentId) {
+      return {
+        ok: false,
+        error: { code: "account_mismatch", message: "gateway is bound to a different agent" },
+      };
+    }
+    if (profile.enabled === false) {
+      return {
+        ok: false,
+        error: { code: "gateway_disabled", message: "gateway is disabled" },
+      };
+    }
+    if (profile.type === "wechat") {
+      return {
+        ok: false,
+        error: { code: "unsupported_provider", message: "wechat gateway_send requires an inbound context_token and is not supported" },
+      };
+    }
+
+    const conversationErr = validateOutboundConversation(profile, params.conversationId);
+    if (conversationErr) return conversationErr;
+
+    try {
+      const sendResult = await ctx.gateway.sendOutbound({
+        channel: params.gatewayId,
+        accountId: params.agentId,
+        conversationId: params.conversationId,
+        text: params.text,
+        traceId: `gateway-send:${params.idempotencyKey ?? Date.now()}`,
+      });
+      const result: GatewaySendResult = {
+        gatewayId: params.gatewayId,
+        conversationId: params.conversationId,
+        providerMessageId: sendResult.providerMessageId ?? null,
+      };
+      return { ok: true, result };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      daemonLog.warn("gateway_send failed", {
+        gatewayId: params.gatewayId,
+        accountId: params.agentId,
+        conversationId: params.conversationId,
+        error: message,
+      });
+      return {
+        ok: false,
+        error: { code: "send_failed", message },
+      };
+    }
+  }
+
   return {
     handleList,
     handleUpsert,
@@ -935,6 +1023,7 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     handleLoginStart,
     handleLoginStatus,
     handleRecentSenders,
+    handleSend,
     /** Exposed for tests — direct access to the in-memory session map. */
     _sessions: sessions,
   };
@@ -956,6 +1045,55 @@ function validateUpsertParams(p: UpsertGatewayParams): string | null {
   if (!p.id || typeof p.id !== "string") return "upsert_gateway: id is required";
   if (!isProvider(p.type)) return `upsert_gateway: unknown provider "${String(p.type)}"`;
   if (!p.accountId || typeof p.accountId !== "string") return "upsert_gateway: accountId is required";
+  return null;
+}
+
+function validateOutboundConversation(
+  profile: ThirdPartyGatewayProfile,
+  conversationId: string,
+): AckBody | null {
+  const chatId = chatIdFromConversation(profile.type, conversationId);
+  if (!chatId) {
+    return {
+      ok: false,
+      error: {
+        code: "bad_conversation",
+        message: `conversationId "${conversationId}" is not valid for ${profile.type}`,
+      },
+    };
+  }
+  const allowed = new Set((profile.allowedChatIds ?? []).map(String));
+  if (!allowed.has(chatId)) {
+    return {
+      ok: false,
+      error: {
+        code: "conversation_not_allowed",
+        message: "conversation is not in the gateway allowedChatIds list",
+      },
+    };
+  }
+  return null;
+}
+
+function chatIdFromConversation(provider: ThirdPartyGatewayProfile["type"], conversationId: string): string | null {
+  if (provider === "telegram") {
+    if (conversationId.startsWith("telegram:user:")) {
+      return conversationId.slice("telegram:user:".length);
+    }
+    if (conversationId.startsWith("telegram:group:")) {
+      return conversationId.slice("telegram:group:".length);
+    }
+    return null;
+  }
+  if (provider === "feishu") {
+    if (conversationId.startsWith("feishu:user:")) {
+      return conversationId.slice("feishu:user:".length);
+    }
+    if (conversationId.startsWith("feishu:chat:")) {
+      return conversationId.slice("feishu:chat:".length);
+    }
+    return null;
+  }
   return null;
 }
 

@@ -15,6 +15,7 @@ from cachetools import TTLCache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from hub.i18n import I18nHTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,7 @@ from hub.id_generators import generate_hub_msg_id, generate_topic_id
 from hub.models import (
     Agent,
     AgentApprovalQueue,
+    AgentGatewayConnection,
     Block,
     Contact,
     ContactRequest,
@@ -52,6 +54,7 @@ from hub.models import (
     Topic,
     User,
 )
+from hub.routers.daemon_control import is_daemon_online, send_control_frame
 from hub.enums import ApprovalKind, ApprovalState, ParticipantType
 from hub.policy import Principal, check_direct_admission
 from hub.prompt_guard import scan_content, InjectionRisk
@@ -104,6 +107,23 @@ _inbox_conditions: dict[str, asyncio.Condition] = {}
 # In-memory WebSocket connections: agent_id → set of WebSocket
 # ---------------------------------------------------------------------------
 _ws_connections: dict[str, set[WebSocket]] = {}
+
+
+class GatewaySendRequest(BaseModel):
+    conversation_id: str = Field(..., alias="conversationId", min_length=1, max_length=256)
+    text: str = Field(..., min_length=1, max_length=20000)
+    idempotency_key: str | None = Field(
+        default=None,
+        alias="idempotencyKey",
+        max_length=160,
+    )
+
+
+class GatewaySendResponse(BaseModel):
+    ok: bool
+    gateway_id: str
+    conversation_id: str
+    provider_message_id: str | None = None
 
 
 def _ws_connection_counts(agent_id: str | None = None) -> dict[str, int]:
@@ -518,6 +538,86 @@ def _check_rate_limit(agent_id: str, target_id: str | None = None) -> None:
                 limit=PAIR_RATE_LIMIT_PER_MINUTE,
             )
         pair_window.append(now)
+
+
+def _gateway_chat_id(provider: str, conversation_id: str) -> str | None:
+    prefixes = {
+        "telegram": ("telegram:user:", "telegram:group:"),
+        "feishu": ("feishu:user:", "feishu:chat:"),
+    }.get(provider)
+    if not prefixes:
+        return None
+    for prefix in prefixes:
+        if conversation_id.startswith(prefix):
+            return conversation_id[len(prefix):]
+    return None
+
+
+def _conversation_allowed(provider: str, config: dict[str, Any], conversation_id: str) -> bool:
+    chat_id = _gateway_chat_id(provider, conversation_id)
+    if not chat_id:
+        return False
+    allowed = config.get("allowedChatIds")
+    return isinstance(allowed, list) and chat_id in {str(v) for v in allowed}
+
+
+@router.post("/gateways/{gateway_id}/send", response_model=GatewaySendResponse)
+async def send_gateway_message(
+    gateway_id: str,
+    body: GatewaySendRequest,
+    current_agent: str = Depends(get_current_claimed_agent),
+    db: AsyncSession = Depends(get_db),
+) -> GatewaySendResponse:
+    """Send a proactive outbound message through a third-party gateway."""
+    _check_rate_limit(current_agent, gateway_id)
+    result = await db.execute(
+        select(AgentGatewayConnection).where(
+            AgentGatewayConnection.id == gateway_id,
+            AgentGatewayConnection.agent_id == current_agent,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="gateway_not_found")
+    if not row.enabled or row.status == "disabled":
+        raise HTTPException(status_code=409, detail="gateway_disabled")
+    if row.provider == "wechat":
+        raise HTTPException(status_code=400, detail="gateway_provider_unsupported")
+    if row.provider not in ("telegram", "feishu"):
+        raise HTTPException(status_code=400, detail="gateway_provider_unsupported")
+
+    config = dict(row.config_json or {})
+    if not _conversation_allowed(row.provider, config, body.conversation_id):
+        raise HTTPException(status_code=403, detail="gateway_conversation_not_allowed")
+    if not is_daemon_online(row.daemon_instance_id):
+        raise HTTPException(status_code=409, detail="daemon_offline")
+
+    params: dict[str, Any] = {
+        "agentId": current_agent,
+        "gatewayId": row.id,
+        "conversationId": body.conversation_id,
+        "text": body.text,
+    }
+    if body.idempotency_key:
+        params["idempotencyKey"] = body.idempotency_key
+
+    ack = await send_control_frame(
+        row.daemon_instance_id,
+        "gateway_send",
+        params,
+        timeout_ms=30000,
+    )
+    if not isinstance(ack, dict) or ack.get("ok") is not True:
+        detail = ack.get("error") if isinstance(ack, dict) else "daemon_gateway_send_failed"
+        raise HTTPException(status_code=502, detail=detail)
+    ack_result = ack.get("result") if isinstance(ack.get("result"), dict) else {}
+    provider_message_id = ack_result.get("providerMessageId")
+    return GatewaySendResponse(
+        ok=True,
+        gateway_id=row.id,
+        conversation_id=body.conversation_id,
+        provider_message_id=provider_message_id if isinstance(provider_message_id, str) else None,
+    )
 
 
 async def _verify_envelope(envelope: MessageEnvelope, db: AsyncSession) -> None:

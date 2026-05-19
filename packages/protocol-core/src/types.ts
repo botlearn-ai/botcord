@@ -71,6 +71,13 @@ export type SendResponse = {
   topic_id?: string;
 };
 
+export type GatewaySendResponse = {
+  ok: boolean;
+  gateway_id: string;
+  conversation_id: string;
+  provider_message_id?: string | null;
+};
+
 export type RoomInfo = {
   room_id: string;
   name: string;

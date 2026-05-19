@@ -843,6 +843,7 @@ _ALLOWED_DISPATCH_TYPES = {
     # per-room override endpoints (the latter ship in PR2). Daemon handler
     # invalidates `policyResolver` cache for the (agent, room?) pair.
     "policy_updated",
+    "gateway_send",
 }
 
 

@@ -8,6 +8,7 @@ import { buildSignedEnvelope, derivePublicKey, generateKeypair, signChallenge } 
 import { normalizeAndValidateHubUrl } from "./hub-url.js";
 import type {
   BotCordMessageEnvelope,
+  GatewaySendResponse,
   InboxPollResponse,
   SendResponse,
   RoomInfo,
@@ -285,6 +286,23 @@ export class BotCordClient {
       body: JSON.stringify(envelope),
     });
     return (await resp.json()) as SendResponse;
+  }
+
+  async sendGatewayMessage(params: {
+    gatewayId: string;
+    conversationId: string;
+    text: string;
+    idempotencyKey?: string;
+  }): Promise<GatewaySendResponse> {
+    const resp = await this.hubFetch(`/hub/gateways/${encodeURIComponent(params.gatewayId)}/send`, {
+      method: "POST",
+      body: JSON.stringify({
+        conversationId: params.conversationId,
+        text: params.text,
+        ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
+      }),
+    });
+    return (await resp.json()) as GatewaySendResponse;
   }
 
   // ── Inbox ─────────────────────────────────────────────────────
