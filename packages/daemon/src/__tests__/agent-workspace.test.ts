@@ -88,6 +88,7 @@ describe("ensureAgentWorkspace", () => {
     const skillsDir = path.join(agentWorkspaceDir("ag_skills"), ".claude", "skills");
     expect(existsSync(path.join(skillsDir, "botcord", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(skillsDir, "botcord-user-guide", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord_memory", "SKILL.md"))).toBe(true);
   });
 
   it("re-seeds skills on a second call so daemon upgrades propagate", () => {
@@ -113,6 +114,7 @@ describe("ensureAgentWorkspace", () => {
     const skillsDir = path.join(agentCodexHomeDir("ag_codex_skills"), "skills");
     expect(existsSync(path.join(skillsDir, "botcord", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(skillsDir, "botcord-user-guide", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord_memory", "SKILL.md"))).toBe(true);
   });
 
   it("re-seeds codex skills on subsequent ensureAgentCodexHome calls", () => {
@@ -137,6 +139,7 @@ describe("ensureAgentWorkspace", () => {
     const skillsDir = path.join(hermesHome, "skills");
     expect(existsSync(path.join(skillsDir, "botcord", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(skillsDir, "botcord-user-guide", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord_memory", "SKILL.md"))).toBe(true);
   });
 
   it("re-seeds hermes skills on subsequent ensureAgentHermesWorkspace calls", () => {
@@ -162,6 +165,9 @@ describe("ensureAgentWorkspace", () => {
 
     expect(existsSync(path.join(profileHome, "skills", "botcord", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(profileHome, "skills", "botcord-user-guide", "SKILL.md"))).toBe(
+      true,
+    );
+    expect(existsSync(path.join(profileHome, "skills", "botcord_memory", "SKILL.md"))).toBe(
       true,
     );
     expect(existsSync(hermesWorkspace)).toBe(true);
