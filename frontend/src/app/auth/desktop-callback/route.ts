@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     <main>
       <h1>Opening BotCord</h1>
       <p id="status">If this tab does not close automatically, you can close it after BotCord opens.</p>
-      <button id="open" type="button">Open BotCord</button>
+      <a id="open" href=${JSON.stringify(deepLink)}>Open BotCord</a>
       <iframe id="handoff" title="BotCord handoff"></iframe>
     </main>
     <script>
@@ -45,13 +45,17 @@ export async function GET(request: Request) {
 
       function openBotCord() {
         status.textContent = "Opening BotCord...";
-        // Do not navigate the top-level browser tab to botcord://. Chrome/Safari
-        // can leave that tab on a blank custom-scheme page. A hidden iframe
-        // triggers the protocol handler while this page remains closable.
-        handoff.src = target;
+        // Custom protocol launches from hidden iframes can be blocked by modern
+        // browsers after OAuth redirects. A top-level navigation is the most
+        // reliable handoff, with the iframe kept as a secondary trigger for
+        // browsers that allow it.
+        window.location.href = target;
+        window.setTimeout(() => {
+          handoff.src = target;
+        }, 250);
         window.setTimeout(tryClose, 800);
         window.setTimeout(() => {
-          status.textContent = "BotCord should be open now. You can close this tab.";
+          status.textContent = "If BotCord did not open, use the Open BotCord button.";
         }, 1600);
       }
 
