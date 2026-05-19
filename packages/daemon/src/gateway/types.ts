@@ -162,6 +162,14 @@ export type InboundObserver = (
  */
 export type UserTurnBuilder = (message: GatewayInboundMessage) => string;
 
+export interface MemoryContextSnapshot {
+  version: string;
+}
+
+export type MemoryContextBuilder = (
+  message: GatewayInboundMessage,
+) => Promise<MemoryContextSnapshot | null | undefined> | MemoryContextSnapshot | null | undefined;
+
 /**
  * Optional hook fired after the dispatcher dispatches a reply to a channel.
  * Intended for outbound bookkeeping (loop-risk tracking, metrics). Errors
@@ -448,6 +456,8 @@ export interface GatewaySessionEntry {
   key: string;
   runtime: string;
   runtimeSessionId: string;
+  /** Version of working memory last injected into this runtime session. */
+  memoryVersion?: string | null;
   channel: string;
   accountId: string;
   conversationKind: "direct" | "group";
