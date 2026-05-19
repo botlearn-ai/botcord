@@ -156,7 +156,7 @@ export function createDaemonSystemContextBuilder(
     const environment = ownerScene ? null : buildGroupRoomEnvironmentContext(message);
 
     const wm = safeReadWorkingMemory(deps.agentId);
-    const memory = wm ? buildWorkingMemoryPrompt({ workingMemory: wm }) : null;
+    const memory = buildWorkingMemoryPrompt({ workingMemory: wm });
 
     const digest = deps.activityTracker
       ? buildCrossRoomDigest({

@@ -175,8 +175,10 @@ describe("list_agent_files handler", () => {
       );
 
       const workspace = nodePath.join(tmp, ".botcord", "agents", "ag_hermes", "workspace");
+      const memoryDir = nodePath.join(tmp, ".botcord", "memory", "ag_hermes");
       fs.mkdirSync(workspace, { recursive: true });
-      fs.writeFileSync(nodePath.join(workspace, "memory.md"), "# Memory\nowned\n");
+      fs.mkdirSync(memoryDir, { recursive: true });
+      fs.writeFileSync(nodePath.join(memoryDir, "working-memory.json"), '{"sections":{}}\n');
       fs.writeFileSync(nodePath.join(workspace, "task.md"), "# Task\n");
 
       const hermesMem = nodePath.join(tmp, ".hermes", "memories");
@@ -196,7 +198,7 @@ describe("list_agent_files handler", () => {
       expect(result.agentId).toBe("ag_hermes");
       expect(result.runtime).toBe("hermes-agent");
       const byName = Object.fromEntries(result.files.map((f: any) => [f.name, f]));
-      expect(byName["workspace/memory.md"].content).toBe("# Memory\nowned\n");
+      expect(byName["memory/working-memory.json"].content).toBe('{"sections":{}}\n');
       expect(byName["workspace/task.md"].content).toBe("# Task\n");
       expect(byName["hermes/default/SOUL.md"].content).toBe("# Soul\n");
       expect(byName["hermes/default/memories/MEMORY.md"].content).toBe("# Hermes Memory\n");
@@ -231,7 +233,6 @@ describe("list_agent_files handler", () => {
       );
       const workspace = nodePath.join(tmp, ".botcord", "agents", "ag_one", "workspace");
       fs.mkdirSync(workspace, { recursive: true });
-      fs.writeFileSync(nodePath.join(workspace, "memory.md"), "# Memory\n");
       fs.writeFileSync(nodePath.join(workspace, "task.md"), "# Task\n");
 
       const handler = createProvisioner({ gateway: makeFakeGateway() as any });
@@ -246,6 +247,50 @@ describe("list_agent_files handler", () => {
       expect(result.files).toHaveLength(1);
       expect(result.files[0].name).toBe("workspace/task.md");
       expect(result.files[0].content).toBe("# Task\n");
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+    }
+  });
+
+  it("returns a stable empty working-memory file when none exists yet", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+
+    const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "daemon-runtime-files-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      const credDir = nodePath.join(tmp, ".botcord", "credentials");
+      fs.mkdirSync(credDir, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(credDir, "ag_empty_mem.json"),
+        JSON.stringify({
+          version: 1,
+          hubUrl: "https://hub.example",
+          agentId: "ag_empty_mem",
+          keyId: "k_empty_mem",
+          privateKey: Buffer.alloc(32, 9).toString("base64"),
+          runtime: "claude-code",
+        }),
+      );
+
+      const handler = createProvisioner({ gateway: makeFakeGateway() as any });
+      const res = await handler({
+        id: "req_empty_memory_file",
+        type: "list_agent_files",
+        params: { agentId: "ag_empty_mem", fileId: "memory:working-memory.json" },
+      });
+
+      expect(res.ok).toBe(true);
+      const result = res.result as any;
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].id).toBe("memory:working-memory.json");
+      expect(result.files[0].name).toBe("memory/working-memory.json");
+      expect(result.files[0].scope).toBe("memory");
+      expect(result.files[0].content).toContain('"version": 2');
+      expect(result.files[0].content).toContain('"sections": {}');
     } finally {
       if (prevHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevHome;
@@ -704,7 +749,7 @@ async function withSandboxHome<T>(run: (sbx: SandboxFixture) => Promise<T>): Pro
   }
 }
 
-const SEED_FILES = ["AGENTS.md", "CLAUDE.md", "identity.md", "memory.md", "task.md"];
+const SEED_FILES = ["AGENTS.md", "CLAUDE.md", "identity.md", "task.md"];
 
 describe("provision_agent seeds workspace + hot-adds managed route", () => {
   it("defaults cwd to agentWorkspaceDir on the fast path (Hub-supplied credentials)", async () => {
@@ -1375,7 +1420,7 @@ function seedAgentOnDisk(
       savedAt: new Date().toISOString(),
     }),
   );
-  fs.writeFileSync(nodePath.join(workspaceDir, "memory.md"), "# Memory\nprecious\n");
+  fs.writeFileSync(nodePath.join(workspaceDir, "task.md"), "# Task\nprecious\n");
   fs.writeFileSync(nodePath.join(stateDir, "working-memory.json"), "{}");
   return { credFile, workspaceDir, stateDir, homeDir };
 }

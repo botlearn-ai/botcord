@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/agents", tags=["app-runtime-files"])
 class AgentRuntimeFileOut(BaseModel):
     id: str
     name: str
-    scope: Literal["workspace", "hermes", "openclaw"]
+    scope: Literal["workspace", "memory", "hermes", "openclaw"]
     runtime: str | None = None
     profile: str | None = None
     size: int | None = None
