@@ -728,7 +728,12 @@ async def list_owned_agent_only_rooms(
     response_rooms: list[HumanAgentRoomSummary] = []
     for room_id, preview in rooms_by_id.items():
         owner_id = str(preview.get("owner_id") or "")
-        if room_id in human_member_room_ids or owner_id == human_id:
+        # Owner-chat rooms are rendered through the bot-owned conversation
+        # surface even when legacy/backfill data has also seated the Human.
+        if (
+            not room_id.startswith("rm_oc_")
+            and (room_id in human_member_room_ids or owner_id == human_id)
+        ):
             continue
         bots = list(bots_by_room.get(room_id, {}).values())
         if not bots:
