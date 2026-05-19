@@ -104,7 +104,12 @@ export default function MyDevicesView() {
                           key={bot.agent_id}
                           className="flex items-center gap-2 rounded-full border border-glass-border bg-glass-bg/60 py-1 pl-1 pr-3 transition-colors hover:border-neon-cyan/30"
                         >
-                          <BotAvatar agentId={bot.agent_id} size={24} alt={bot.display_name} />
+                          <BotAvatar
+                            agentId={bot.agent_id}
+                            avatarUrl={bot.avatar_url}
+                            size={24}
+                            alt={bot.display_name}
+                          />
                           <span className="text-xs text-text-primary">{bot.display_name}</span>
                           {bot.is_default ? (
                             <span className="rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[9px] text-neon-purple">
