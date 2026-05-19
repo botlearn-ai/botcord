@@ -13,6 +13,7 @@ import type {
   GatewayChannelConfig,
   GatewayConfig,
   GatewayInboundMessage,
+  GatewayOutboundMessage,
   GatewayRoute,
   GatewayRuntimeSnapshot,
   InboundObserver,
@@ -270,5 +271,18 @@ export class Gateway {
    */
   async injectInbound(message: GatewayInboundMessage): Promise<void> {
     await this.dispatcher.handle({ message });
+  }
+
+  /**
+   * Send a daemon-control initiated outbound message through a registered
+   * channel. Used by proactive third-party gateway sends where the runtime
+   * explicitly targets an external provider conversation.
+   */
+  async sendOutbound(message: GatewayOutboundMessage): Promise<{ providerMessageId?: string | null }> {
+    const channel = this.channelMap.get(message.channel);
+    if (!channel) {
+      throw new Error(`channel "${message.channel}" is not registered`);
+    }
+    return channel.send({ message, log: this.log });
   }
 }

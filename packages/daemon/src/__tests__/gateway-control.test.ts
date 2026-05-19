@@ -43,6 +43,7 @@ interface FakeGateway {
   channels: Map<string, { id: string; status: Record<string, unknown> }>;
   addChannel: ReturnType<typeof vi.fn>;
   removeChannel: ReturnType<typeof vi.fn>;
+  sendOutbound: ReturnType<typeof vi.fn>;
   snapshot: () => { channels: Record<string, any>; turns: Record<string, any> };
 }
 
@@ -66,6 +67,7 @@ function makeFakeGateway(): FakeGateway {
     removeChannel: vi.fn(async (id: string) => {
       channels.delete(id);
     }),
+    sendOutbound: vi.fn(async () => ({ providerMessageId: "provider-msg-1" })),
     snapshot: () => ({
       channels: Object.fromEntries([...channels].map(([id, e]) => [id, e.status])),
       turns: {},
@@ -614,6 +616,75 @@ describe("list_gateways", () => {
     expect(g.enabled).toBe(true);
     expect(g.status?.running).toBe(true);
     expect(g.status?.authorized).toBe(true);
+  });
+});
+
+describe("gateway_send", () => {
+  it("sends through an enabled allowed telegram gateway", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "telegram",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["-1001"],
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "telegram:group:-1001",
+      text: "hello",
+      idempotencyKey: "k1",
+    });
+
+    expect(ack.ok).toBe(true);
+    expect(gw.sendOutbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: gwId,
+        accountId: "ag_alice",
+        conversationId: "telegram:group:-1001",
+        text: "hello",
+        traceId: "gateway-send:k1",
+      }),
+    );
+    expect((ack.result as any).providerMessageId).toBe("provider-msg-1");
+  });
+
+  it("rejects conversations outside allowedChatIds", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-deny");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["oc_allowed"],
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_other",
+      text: "hello",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("conversation_not_allowed");
+    expect(gw.sendOutbound).not.toHaveBeenCalled();
   });
 });
 

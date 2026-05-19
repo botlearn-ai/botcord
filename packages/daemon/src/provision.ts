@@ -400,6 +400,16 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
       }
 
+      case "gateway_send": {
+        const v = validateGatewayParams(frame.params, {
+          required: ["agentId", "gatewayId", "conversationId", "text"],
+        });
+        if (!v.ok) return v.ack;
+        return gatewayControl.handleSend(
+          v.params as unknown as Parameters<typeof gatewayControl.handleSend>[0],
+        );
+      }
+
       case "list_agent_files": {
         const params = (frame.params ?? {}) as unknown as ListAgentFilesParams;
         if (!params.agentId) {

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock
 
+from hub.auth import create_agent_token
 from hub.enums import MessagePolicy
 from hub.models import (
     Agent,
@@ -180,6 +181,45 @@ def _patch_daemon(monkeypatch, *, online: bool, send=None):
         monkeypatch.setattr(gw, "send_control_frame", send)
 
 
+def _patch_hub_gateway_send(monkeypatch, *, online: bool, send=None):
+    """Stub the /hub/gateways/{id}/send daemon hooks."""
+    import hub.routers.hub as hub_router
+
+    monkeypatch.setattr(hub_router, "is_daemon_online", lambda _id: online)
+    if send is not None:
+        monkeypatch.setattr(hub_router, "send_control_frame", send)
+
+
+async def _insert_gateway(
+    db_session: AsyncSession,
+    *,
+    gateway_id: str = "gw_tg_send",
+    user_id: uuid.UUID | None = None,
+    provider: str = "telegram",
+    agent_id: str = "ag_daemon",
+    daemon_id: str = "dm_abcdef123456",
+    enabled: bool = True,
+    status: str = "active",
+    config: dict | None = None,
+) -> AgentGatewayConnection:
+    row = AgentGatewayConnection(
+        id=gateway_id,
+        user_id=user_id or uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        agent_id=agent_id,
+        daemon_instance_id=daemon_id,
+        provider=provider,
+        status=status,
+        enabled=enabled,
+        config_json=config or {
+            "allowedChatIds": ["-1001"],
+            "allowedSenderIds": ["42"],
+        },
+    )
+    db_session.add(row)
+    await db_session.commit()
+    return row
+
+
 # ---------------------------------------------------------------------------
 # Auth / ownership / shape gates
 # ---------------------------------------------------------------------------
@@ -224,6 +264,80 @@ async def test_create_returns_409_when_daemon_offline(client, seed, monkeypatch)
     )
     assert r.status_code == 409
     assert r.json()["detail"] == "daemon_offline"
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_send_dispatches_to_daemon(client, seed, db_session, monkeypatch):
+    token, _ = create_agent_token("ag_daemon")
+    await _insert_gateway(db_session, user_id=seed["user_id"])
+    calls: list[dict] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append(
+            {
+                "daemon_instance_id": daemon_instance_id,
+                "type": type_,
+                "params": params,
+                "timeout_ms": timeout_ms,
+            }
+        )
+        return {
+            "ok": True,
+            "result": {"providerMessageId": "telegram:-1001:10"},
+        }
+
+    _patch_hub_gateway_send(monkeypatch, online=True, send=fake_send)
+    r = await client.post(
+        "/hub/gateways/gw_tg_send/send",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "conversationId": "telegram:group:-1001",
+            "text": "hello",
+            "idempotencyKey": "k1",
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "ok": True,
+        "gateway_id": "gw_tg_send",
+        "conversation_id": "telegram:group:-1001",
+        "provider_message_id": "telegram:-1001:10",
+    }
+    assert calls == [
+        {
+            "daemon_instance_id": seed["daemon_id"],
+            "type": "gateway_send",
+            "params": {
+                "agentId": "ag_daemon",
+                "gatewayId": "gw_tg_send",
+                "conversationId": "telegram:group:-1001",
+                "text": "hello",
+                "idempotencyKey": "k1",
+            },
+            "timeout_ms": 30000,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_send_rejects_unallowed_conversation(
+    client, seed, db_session, monkeypatch
+):
+    token, _ = create_agent_token("ag_daemon")
+    await _insert_gateway(db_session, user_id=seed["user_id"])
+    fake_send = AsyncMock()
+    _patch_hub_gateway_send(monkeypatch, online=True, send=fake_send)
+
+    r = await client.post(
+        "/hub/gateways/gw_tg_send/send",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"conversationId": "telegram:group:-9999", "text": "hello"},
+    )
+
+    assert r.status_code == 403
+    assert r.json()["detail"] == "gateway_conversation_not_allowed"
+    fake_send.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
