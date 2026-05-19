@@ -142,3 +142,47 @@ describe("useOwnerChatStore room summaries", () => {
     ]);
   });
 });
+
+describe("useOwnerChatStore empty message handling", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    useOwnerChatStore.getState().reset();
+    useDashboardChatStore.setState({
+      ownedAgentRooms: [makeOwnedAgentRoom()],
+      optimisticOwnerChatRooms: {},
+    });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  it("filters delivered API messages with no visible content", async () => {
+    mocks.getRoomMessages.mockResolvedValue({
+      messages: [
+        makeDashboardMessage({ hub_msg_id: "msg_empty", msg_id: "msg_empty", text: "", payload: {} }),
+        makeDashboardMessage({ hub_msg_id: "msg_text", msg_id: "msg_text", text: "visible" }),
+      ],
+      has_more: false,
+    });
+
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+
+    expect(useOwnerChatStore.getState().messages.map((m) => m.hubMsgId)).toEqual(["msg_text"]);
+  });
+
+  it("keeps delivered messages that only have visible stream blocks", () => {
+    useOwnerChatStore.getState().upsertMessage(makeOwnerChatMessage({
+      hubMsgId: "msg_1",
+      sender: "agent",
+      text: "",
+      status: "delivered",
+      senderName: "Owned bot",
+      streamBlocks: [{
+        trace_id: "tr_1",
+        seq: 1,
+        created_at: "2026-05-19T03:00:00.000Z",
+        block: { kind: "reasoning", payload: { text: "reasoning" } },
+      }],
+    }));
+
+    expect(useOwnerChatStore.getState().messages).toHaveLength(1);
+  });
+});

@@ -534,113 +534,122 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           }
 
           // --- Confirmed / Delivered messages ---
+          const hasText = msg.text.trim().length > 0;
+          const hasAttachments = (msg.attachments?.length ?? 0) > 0;
+          const hasVisibleBubble = hasText || hasAttachments || isUser;
+          if (!hasVisibleBubble && msg.streamBlocks.length === 0) {
+            return null;
+          }
+
           return (
             <div key={msg.clientId} className="space-y-1.5">
               {/* Finalized execution blocks above agent message */}
               {!isUser && msg.streamBlocks.length > 0 && (
                 <StreamBlocksView key={`${msg.clientId}-delivered`} blocks={msg.streamBlocks} />
               )}
-              <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                    isUser
-                      ? "bg-cyan-500/20 text-cyan-100 border border-cyan-500/30"
-                      : "bg-zinc-800 text-zinc-200 border border-zinc-700"
-                  }`}
-                >
-                  <div className={`mb-1 flex items-center gap-1.5 ${isUser ? "justify-end" : ""}`}>
-                    {isUser ? (
-                      <>
-                        <span className="text-xs font-medium text-cyan-100/90">
-                          {msg.senderName}
-                        </span>
-                        <span
-                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
-                          title="Human"
-                          aria-label="Human sender"
-                        >
-                          <User className="h-2.5 w-2.5" />
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300"
-                          title="Bot"
-                          aria-label="Bot sender"
-                        >
-                          <Bot className="h-2.5 w-2.5" />
-                        </span>
-                      <span className="text-xs font-medium text-zinc-300">
-                        {msg.senderName}
-                      </span>
-                      {chatAgentId && (
-                        <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
+              {hasVisibleBubble && (
+                <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
+                      isUser
+                        ? "bg-cyan-500/20 text-cyan-100 border border-cyan-500/30"
+                        : "bg-zinc-800 text-zinc-200 border border-zinc-700"
+                    }`}
+                  >
+                    <div className={`mb-1 flex items-center gap-1.5 ${isUser ? "justify-end" : ""}`}>
+                      {isUser ? (
+                        <>
+                          <span className="text-xs font-medium text-cyan-100/90">
+                            {msg.senderName}
+                          </span>
+                          <span
+                            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
+                            title="Human"
+                            aria-label="Human sender"
+                          >
+                            <User className="h-2.5 w-2.5" />
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300"
+                            title="Bot"
+                            aria-label="Bot sender"
+                          >
+                            <Bot className="h-2.5 w-2.5" />
+                          </span>
+                          <span className="text-xs font-medium text-zinc-300">
+                            {msg.senderName}
+                          </span>
+                          {chatAgentId && (
+                            <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
+                          )}
+                        </>
                       )}
-                      </>
-                    )}
-                  </div>
-                  {/* Typewriter for new agent messages; skip if already animated or was streamed */}
-                  {(() => {
-                    const wasStreamed = msg.traceId && streamedTraceIds.current?.has(msg.traceId);
-                    if (wasStreamed) {
-                      // Mark as animated and clean up traceId to avoid memory leak
-                      animatedRef.current.add(msg.clientId);
-                      streamedTraceIds.current.delete(msg.traceId!);
-                    }
-                    const skipTypewriter = isUser || initialLoadRef.current || animatedRef.current.has(msg.clientId);
-                    if (skipTypewriter) {
-                      return <MarkdownContent content={msg.text || ""} />;
-                    }
-                    return (
-                      <TypewriterText
-                        text={msg.text || ""}
-                        onTick={scrollToBottom}
-                        onComplete={() => {
-                          animatedRef.current.add(msg.clientId);
-                          forceRender((n) => n + 1);
-                        }}
-                      />
-                    );
-                  })()}
-                  {/* Attachments */}
-                  {msg.attachments && msg.attachments.length > 0 && (
-                    <div className="mt-2 space-y-1.5">
-                      {msg.attachments.map((att, idx) => {
-                        const fullUrl = att.url.startsWith("/") ? `${HUB_BASE_URL}${att.url}` : att.url;
-                        const isImage = att.content_type?.startsWith("image/");
-                        if (isImage) {
+                    </div>
+                    {/* Typewriter for new agent messages; skip if already animated or was streamed */}
+                    {(() => {
+                      const wasStreamed = msg.traceId && streamedTraceIds.current?.has(msg.traceId);
+                      if (wasStreamed) {
+                        // Mark as animated and clean up traceId to avoid memory leak
+                        animatedRef.current.add(msg.clientId);
+                        streamedTraceIds.current.delete(msg.traceId!);
+                      }
+                      const skipTypewriter = isUser || initialLoadRef.current || animatedRef.current.has(msg.clientId);
+                      if (skipTypewriter) {
+                        return <MarkdownContent content={msg.text || ""} />;
+                      }
+                      return (
+                        <TypewriterText
+                          text={msg.text || ""}
+                          onTick={scrollToBottom}
+                          onComplete={() => {
+                            animatedRef.current.add(msg.clientId);
+                            forceRender((n) => n + 1);
+                          }}
+                        />
+                      );
+                    })()}
+                    {/* Attachments */}
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        {msg.attachments.map((att, idx) => {
+                          const fullUrl = att.url.startsWith("/") ? `${HUB_BASE_URL}${att.url}` : att.url;
+                          const isImage = att.content_type?.startsWith("image/");
+                          if (isImage) {
+                            return (
+                              <a key={idx} href={fullUrl} target="_blank" rel="noopener noreferrer" className="block">
+                                <img
+                                  src={fullUrl}
+                                  alt={att.filename || "Image"}
+                                  className="max-h-48 max-w-full rounded border border-zinc-600 object-cover hover:opacity-80 transition-opacity"
+                                />
+                                <span className="mt-0.5 block text-[10px] text-zinc-500">{att.filename}</span>
+                              </a>
+                            );
+                          }
                           return (
-                            <a key={idx} href={fullUrl} target="_blank" rel="noopener noreferrer" className="block">
-                              <img
-                                src={fullUrl}
-                                alt={att.filename || "Image"}
-                                className="max-h-48 max-w-full rounded border border-zinc-600 object-cover hover:opacity-80 transition-opacity"
-                              />
-                              <span className="mt-0.5 block text-[10px] text-zinc-500">{att.filename}</span>
+                            <a
+                              key={idx}
+                              href={fullUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{att.filename || "Attachment"}</span>
                             </a>
                           );
-                        }
-                        return (
-                          <a
-                            key={idx}
-                            href={fullUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-                          >
-                            <FileText className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate">{att.filename || "Attachment"}</span>
-                          </a>
-                        );
-                      })}
+                        })}
+                      </div>
+                    )}
+                    <div className="text-xs text-zinc-500 mt-1 text-right">
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
-                  )}
-                  <div className="text-xs text-zinc-500 mt-1 text-right">
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}

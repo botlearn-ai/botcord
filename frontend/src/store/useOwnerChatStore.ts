@@ -83,6 +83,14 @@ function syncOwnerChatRoomSummary(roomId: string | null, messages: OwnerChatMess
   });
 }
 
+function hasVisibleOwnerChatContent(msg: OwnerChatMessage): boolean {
+  if (msg.type !== "message") return true;
+  if (msg.status === "streaming" || msg.status === "optimistic" || msg.status === "failed") return true;
+  if (msg.text.trim()) return true;
+  if ((msg.attachments?.length ?? 0) > 0) return true;
+  return msg.streamBlocks.length > 0;
+}
+
 /** In-flight guard + request token to prevent stale loadInitial responses. */
 let loadInFlight = false;
 let loadRequestId = 0;
@@ -175,15 +183,12 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       if (thisRequestId !== loadRequestId || get().roomId !== roomId) return;
 
       const agentName = get().agentName;
-      const apiMsgs = result.messages.reverse().map((m) => dashboardMsgToOwnerChat(m, agentName));
+      const apiMsgs = result.messages
+        .reverse()
+        .map((m) => dashboardMsgToOwnerChat(m, agentName))
+        .filter(hasVisibleOwnerChatContent);
 
       set((state) => {
-        // Build lookup for API messages by hubMsgId
-        const apiByHubId = new Map<string, OwnerChatMessage>();
-        for (const m of apiMsgs) {
-          if (m.hubMsgId) apiByHubId.set(m.hubMsgId, m);
-        }
-
         // Build lookup for existing messages by hubMsgId
         const existingByHubId = new Map<string, OwnerChatMessage>();
         for (const m of state.messages) {
@@ -249,7 +254,10 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         limit: 50,
       });
       const agentName = get().agentName;
-      const older = result.messages.reverse().map((m) => dashboardMsgToOwnerChat(m, agentName));
+      const older = result.messages
+        .reverse()
+        .map((m) => dashboardMsgToOwnerChat(m, agentName))
+        .filter(hasVisibleOwnerChatContent);
 
       set((state) => ({
         messages: [...older, ...state.messages],
@@ -303,6 +311,8 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
   upsertMessage: (msg) => {
     set((state) => {
+      if (!hasVisibleOwnerChatContent(msg)) return state;
+
       // Dedup by hubMsgId
       if (msg.hubMsgId && state.messages.some((m) => m.hubMsgId === msg.hubMsgId)) {
         return state;
@@ -358,7 +368,10 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   mergeApiMessages: (msgs, _direction) => {
     const agentName = get().agentName;
     // API returns newest-first; reverse to chronological order before merge
-    const converted = [...msgs].reverse().map((m) => dashboardMsgToOwnerChat(m, agentName));
+    const converted = [...msgs]
+      .reverse()
+      .map((m) => dashboardMsgToOwnerChat(m, agentName))
+      .filter(hasVisibleOwnerChatContent);
 
     set((state) => {
       const existingIds = new Set(
@@ -468,6 +481,10 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       );
 
       if (idx === -1) {
+        if (!finalData.text.trim() && (finalData.attachments?.length ?? 0) === 0) {
+          return { activeTraceId: null };
+        }
+
         // No streaming placeholder — insert as a new delivered message
         const msg: OwnerChatMessage = {
           clientId: finalData.hubMsgId,
@@ -510,6 +527,17 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       } else {
         mergedText = finalText;
       }
+      const visibleStreamBlocks = existing.streamBlocks.filter(
+        (b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text",
+      );
+      if (!mergedText.trim() && (finalData.attachments?.length ?? 0) === 0 && visibleStreamBlocks.length === 0) {
+        const newMessages = state.messages.filter((_, i) => i !== idx);
+        return {
+          messages: newMessages,
+          activeTraceId: null,
+        };
+      }
+
       const finalizedMsg: OwnerChatMessage = {
         ...existing,
         hubMsgId: finalData.hubMsgId,
@@ -519,7 +547,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         attachments: finalData.attachments,
         status: "delivered",
         // Keep only execution blocks (assistant text now lives in `text`)
-        streamBlocks: existing.streamBlocks.filter((b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text"),
+        streamBlocks: visibleStreamBlocks,
       };
 
       const newMessages = [...state.messages];
@@ -587,8 +615,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       if (result.messages.length === 0) return;
 
-      const serverMsgs = result.messages.map((m) => dashboardMsgToOwnerChat(m, agentName));
-      const serverTexts = new Set(serverMsgs.map((m) => m.text));
+      const serverMsgs = result.messages
+        .map((m) => dashboardMsgToOwnerChat(m, agentName))
+        .filter(hasVisibleOwnerChatContent);
 
       set((state) => {
         const existingHubIds = new Set(
