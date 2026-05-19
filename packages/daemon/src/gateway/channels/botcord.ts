@@ -979,7 +979,7 @@ function normalizeBlockForHub(
 
   if (kind === "tool_use") {
     // Claude Code: assistant message w/ content[].type === "tool_use" → {id,name,input}
-    // Codex:       item.started / item.completed for command_execution, file_change, mcp_tool_call, web_search
+    // Codex:       item.started for command_execution, file_change, mcp_tool_call, web_search
     const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
     const tu = contents.find((c: any) => c?.type === "tool_use");
     if (tu) {
@@ -988,13 +988,17 @@ function normalizeBlockForHub(
       if (typeof tu.id === "string") payload.id = tu.id;
     } else if (raw?.item && typeof raw.item === "object") {
       payload.name = typeof raw.item.type === "string" ? raw.item.type : "tool";
-      payload.params = raw.item;
+      const params = codexToolParams(raw.item);
+      if (Object.keys(params).length > 0) payload.params = params;
+      if (typeof raw.item.id === "string") payload.id = raw.item.id;
+      if (typeof raw.item.status === "string") payload.status = raw.item.status;
     }
     return { kind: "tool_call", seq, payload };
   }
 
   if (kind === "tool_result") {
     // Claude Code: {type:"user", message:{content:[{type:"tool_result",tool_use_id,content}]}}
+    // Codex:       item.completed for command_execution, file_change, mcp_tool_call, web_search
     const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
     const tr = contents.find((c: any) => c?.type === "tool_result");
     if (tr) {
@@ -1008,6 +1012,11 @@ function normalizeBlockForHub(
       }
       payload.result = resultStr;
       if (typeof tr.tool_use_id === "string") payload.tool_use_id = tr.tool_use_id;
+    } else if (raw?.item && typeof raw.item === "object") {
+      payload.name = typeof raw.item.type === "string" ? raw.item.type : "tool";
+      if (typeof raw.item.id === "string") payload.tool_use_id = raw.item.id;
+      const result = codexToolResult(raw.item);
+      if (result) payload.result = result;
     }
     return { kind: "tool_result", seq, payload };
   }
@@ -1060,6 +1069,56 @@ function formatBlockDetails(raw: unknown): string {
   } catch {
     return String(raw);
   }
+}
+
+function codexToolParams(item: Record<string, unknown>): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+  for (const key of [
+    "command",
+    "cmd",
+    "args",
+    "path",
+    "query",
+    "url",
+    "name",
+    "input",
+    "arguments",
+    "action",
+    "changes",
+  ]) {
+    const value = item[key];
+    if (value !== undefined && value !== null && value !== "") params[key] = value;
+  }
+
+  const action = item.action as Record<string, unknown> | undefined;
+  if (action && typeof action === "object") {
+    for (const key of ["query", "url", "command", "path"]) {
+      const value = action[key];
+      if (value !== undefined && value !== null && value !== "") params[key] = value;
+    }
+  }
+
+  return params;
+}
+
+function codexToolResult(item: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const status = typeof item.status === "string" ? item.status : "";
+  const exitCode = item.exit_code ?? item.exitCode;
+  if (status) parts.push(`status: ${status}`);
+  if (typeof exitCode === "number" || typeof exitCode === "string") parts.push(`exit_code: ${exitCode}`);
+
+  for (const key of ["output", "stdout", "stderr", "aggregated_output", "result", "summary"]) {
+    const value = item[key];
+    if (typeof value === "string" && value.trim()) parts.push(value.trim());
+  }
+
+  const results = item.results;
+  if (Array.isArray(results) && results.length > 0) {
+    parts.push(JSON.stringify(results, null, 2));
+  }
+
+  return parts.join("\n");
 }
 
 function extractContentText(content: unknown): string {
