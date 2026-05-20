@@ -220,7 +220,7 @@ function MarkdownCodeBlock({ children }: { children: ReactNode }) {
         )}
         {copied ? "Copied" : "Copy"}
       </button>
-      <pre className="overflow-x-auto rounded-lg border border-glass-border bg-black/40 p-3 pr-20 font-mono text-xs text-neon-cyan/90 [&>code]:!block [&>code]:!rounded-none [&>code]:!border-0 [&>code]:!bg-transparent [&>code]:!p-0 [&>code]:!text-xs [&>code]:!text-neon-cyan/90">
+      <pre className="max-w-full overflow-x-auto rounded-lg border border-glass-border bg-black/40 p-3 pb-4 pr-20 font-mono text-xs text-neon-cyan/90 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&>code]:!block [&>code]:!rounded-none [&>code]:!border-0 [&>code]:!bg-transparent [&>code]:!p-0 [&>code]:!text-xs [&>code]:!text-neon-cyan/90">
         {children}
       </pre>
     </div>
