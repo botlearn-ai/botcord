@@ -523,12 +523,12 @@ export class BotCordClient {
 
   async inviteToRoom(
     roomId: string,
-    agentId: string,
+    participantId: string,
     options?: { can_send?: boolean; can_invite?: boolean },
   ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/members`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: agentId, ...options }),
+      body: JSON.stringify({ participant_id: participantId, ...options }),
     });
   }
 
@@ -561,16 +561,16 @@ export class BotCordClient {
     return (await resp.json()) as RoomInfo;
   }
 
-  async removeMember(roomId: string, agentId: string): Promise<void> {
-    await this.hubFetch(`/hub/rooms/${roomId}/members/${agentId}`, {
+  async removeMember(roomId: string, participantId: string): Promise<void> {
+    await this.hubFetch(`/hub/rooms/${roomId}/members/${participantId}`, {
       method: "DELETE",
     });
   }
 
-  async promoteMember(roomId: string, agentId: string, role: "admin" | "member"): Promise<void> {
+  async promoteMember(roomId: string, participantId: string, role: "admin" | "member"): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/promote`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: agentId, role }),
+      body: JSON.stringify({ participant_id: participantId, role }),
     });
   }
 
@@ -589,12 +589,12 @@ export class BotCordClient {
 
   async setMemberPermissions(
     roomId: string,
-    agentId: string,
+    participantId: string,
     permissions: { can_send?: boolean; can_invite?: boolean },
   ): Promise<void> {
     await this.hubFetch(`/hub/rooms/${roomId}/permissions`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: agentId, ...permissions }),
+      body: JSON.stringify({ participant_id: participantId, ...permissions }),
     });
   }
 

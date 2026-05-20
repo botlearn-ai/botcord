@@ -10,7 +10,7 @@ No Supabase / human JWT is accepted here.
 Human-scoped room operations (rooms that are owned by a human user and the
 BFF endpoints called from the dashboard while the user is signed in as a
 human) live at ``/api/humans/me/rooms*`` in ``app/routers/humans.py``. Human
-users MUST go through that router — they cannot create, invite, transfer, or
+users MUST go through that router -- they cannot create, invite, transfer, or
 otherwise operate on rooms through this router.
 
 Polymorphism notes (post Human-first merge):
@@ -18,12 +18,13 @@ Polymorphism notes (post Human-first merge):
 * ``Room.owner_type`` can be ``'agent'`` (default) or ``'human'``.
 * ``RoomMember.participant_type`` can be ``'agent'`` or ``'human'``.
 
-This router only creates ``owner_type='agent'`` rooms — ``hu_*`` ids are
-rejected on any input field (member ids, new owner id, promote target, etc.)
-with HTTP 400. The permission helpers in this module also make sure that
-when the caller is an agent we only ever look at the agent's own
-``RoomMember`` row (``participant_type='agent'``) so a human's row in the
-same room doesn't collide or grant the agent unintended privileges.
+This router creates rooms as ``owner_type='agent'`` but may manage both
+Agent and Human room participants. Human targets must already be in the
+authenticated agent's contacts when they are added to a room. The permission
+helpers in this module also make sure that when the caller is an agent we
+only ever look at the agent's own ``RoomMember`` row
+(``participant_type='agent'``) so a human's row in the same room doesn't
+collide or grant the agent unintended privileges.
 """
 
 from __future__ import annotations
@@ -131,37 +132,6 @@ def _require_internal(authorization: str | None = None):
 # ---------------------------------------------------------------------------
 
 
-_HUMAN_ID_ERROR = (
-    "human ids (hu_*) are not accepted on the hub router; "
-    "use /api/humans/me/rooms*"
-)
-
-
-def _reject_human_id(value: str | None, *, field: str = "id") -> None:
-    """Reject ``hu_*`` ids on any input field of this router.
-
-    Humans operate through ``/api/humans/*`` (Supabase-authenticated BFF),
-    never through the agent-protocol layer. We only validate inputs here —
-    read-only output fields that may legitimately contain ``hu_*`` ids
-    (e.g. a member list) are untouched.
-    """
-    if value is None:
-        return
-    if isinstance(value, str) and value.startswith("hu_"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"{_HUMAN_ID_ERROR} (field={field}, value={value})",
-        )
-
-
-def _reject_human_ids(values, *, field: str = "ids") -> None:
-    """Batch version of :func:`_reject_human_id`."""
-    if not values:
-        return
-    for v in values:
-        _reject_human_id(v, field=field)
-
-
 def _room_owner_is_human(room: Room) -> bool:
     return getattr(room, "owner_type", "agent") == "human"
 
@@ -209,6 +179,91 @@ async def _ensure_owner_chat_human_member(db: AsyncSession, room: Room) -> bool:
     return True
 
 
+def _participant_type_for_id(participant_id: str) -> ParticipantType:
+    return ParticipantType.human if participant_id.startswith("hu_") else ParticipantType.agent
+
+
+def _requested_member_id(body: AddRoomMemberRequest | None) -> str | None:
+    if body is None:
+        return None
+    if body.agent_id and body.participant_id and body.agent_id != body.participant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="agent_id and participant_id must match when both are provided",
+        )
+    return body.participant_id or body.agent_id
+
+
+def _requested_participant_id(body) -> str:
+    agent_id = getattr(body, "agent_id", None)
+    participant_id = getattr(body, "participant_id", None)
+    if agent_id and participant_id and agent_id != participant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="agent_id and participant_id must match when both are provided",
+        )
+    target_id = participant_id or agent_id
+    if not target_id:
+        raise HTTPException(status_code=400, detail="participant_id is required")
+    return target_id
+
+
+async def _require_human_contact(
+    db: AsyncSession,
+    *,
+    owner_agent_id: str,
+    human_id: str,
+) -> None:
+    result = await db.execute(
+        select(Contact).where(
+            Contact.owner_id == owner_agent_id,
+            Contact.owner_type == ParticipantType.agent,
+            Contact.contact_agent_id == human_id,
+            Contact.peer_type == ParticipantType.human,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise I18nHTTPException(status_code=403, message_key="not_in_contacts")
+
+
+async def _require_human_contacts(
+    db: AsyncSession,
+    *,
+    owner_agent_id: str,
+    human_ids: set[str],
+) -> None:
+    if not human_ids:
+        return
+    result = await db.execute(
+        select(Contact.contact_agent_id).where(
+            Contact.owner_id == owner_agent_id,
+            Contact.owner_type == ParticipantType.agent,
+            Contact.contact_agent_id.in_(human_ids),
+            Contact.peer_type == ParticipantType.human,
+        )
+    )
+    contacted = set(result.scalars().all())
+    missing = human_ids - contacted
+    if missing:
+        raise I18nHTTPException(status_code=403, message_key="not_in_contacts")
+
+
+def _find_room_member(room: Room, participant_id: str) -> RoomMember | None:
+    participant_type = _participant_type_for_id(participant_id)
+    for member in room.members:
+        if member.agent_id != participant_id:
+            continue
+        member_type = getattr(member, "participant_type", None)
+        if (
+            member_type is not None
+            and member_type != participant_type
+            and getattr(member_type, "value", None) != participant_type.value
+        ):
+            continue
+        return member
+    return None
+
+
 def _room_url(room_id: str) -> str:
     return frontend_url(f"/chats/messages/{room_id}")
 
@@ -230,6 +285,11 @@ def _build_room_response(room: Room) -> RoomResponse:
         description=room.description,
         rule=room.rule,
         owner_id=room.owner_id,
+        owner_type=(
+            room.owner_type.value
+            if hasattr(room.owner_type, "value")
+            else (room.owner_type or ParticipantType.agent.value)
+        ),
         visibility=room.visibility.value,
         join_policy=room.join_policy.value,
         required_subscription_product_id=room.required_subscription_product_id,
@@ -242,6 +302,11 @@ def _build_room_response(room: Room) -> RoomResponse:
         members=[
             RoomMemberResponse(
                 agent_id=m.agent_id,
+                participant_type=(
+                    m.participant_type.value
+                    if hasattr(m.participant_type, "value")
+                    else (m.participant_type or ParticipantType.agent.value)
+                ),
                 display_name=_agent_display_name(m),
                 avatar_url=_agent_avatar_url(m),
                 role=m.role.value,
@@ -637,9 +702,6 @@ async def create_room(
     Rooms created through this router default to ``owner_type='agent'``.
     Human-owned rooms must be created via ``POST /api/humans/me/rooms``.
     """
-    # Reject hu_* in any input list — humans cannot be invited through the
-    # agent-protocol layer.
-    _reject_human_ids(body.member_ids, field="member_ids")
     _validate_subscription_room_config(
         body.visibility, body.join_policy, body.required_subscription_product_id
     )
@@ -651,13 +713,27 @@ async def create_room(
     )
 
     unique_member_ids = set(body.member_ids) - {current_agent}
+    member_types = {
+        member_id: _participant_type_for_id(member_id)
+        for member_id in unique_member_ids
+    }
+    agent_member_ids = {
+        member_id
+        for member_id, participant_type in member_types.items()
+        if participant_type == ParticipantType.agent
+    }
+    human_member_ids = {
+        member_id
+        for member_id, participant_type in member_types.items()
+        if participant_type == ParticipantType.human
+    }
 
-    if unique_member_ids:
+    if agent_member_ids:
         result = await db.execute(
-            select(Agent).where(Agent.agent_id.in_(unique_member_ids))
+            select(Agent).where(Agent.agent_id.in_(agent_member_ids))
         )
         agents = list(result.scalars().all())
-        if len(agents) != len(unique_member_ids):
+        if len(agents) != len(agent_member_ids):
             raise I18nHTTPException(status_code=400, message_key="member_ids_not_found")
 
         # Admission policy via the central helper — applied per-invitee so
@@ -678,11 +754,29 @@ async def create_room(
                 denied=str(sorted(denied)),
             )
 
+    if human_member_ids:
+        result = await db.execute(
+            select(User.human_id).where(User.human_id.in_(human_member_ids))
+        )
+        found_humans = set(result.scalars().all())
+        if found_humans != human_member_ids:
+            raise I18nHTTPException(status_code=400, message_key="member_ids_not_found")
+        await _require_human_contacts(
+            db,
+            owner_agent_id=current_agent,
+            human_ids=human_member_ids,
+        )
+
     if body.max_members is not None and len(unique_member_ids) + 1 > body.max_members:
         raise I18nHTTPException(status_code=400, message_key="initial_members_exceed_max")
 
     if body.required_subscription_product_id:
-        for member_id in unique_member_ids:
+        if human_member_ids:
+            raise HTTPException(
+                status_code=403,
+                detail="subscription-gated rooms do not yet support human members",
+            )
+        for member_id in agent_member_ids:
             result = await db.execute(
                 select(AgentSubscription).where(
                     AgentSubscription.product_id == body.required_subscription_product_id,
@@ -725,6 +819,7 @@ async def create_room(
         db.add(RoomMember(
             room_id=room.room_id,
             agent_id=mid,
+            participant_type=member_types[mid],
             role=RoomRole.member,
         ))
 
@@ -1004,22 +1099,24 @@ async def add_member(
 ):
     """Add a member to the room.
 
-    - If body is empty or agent_id matches current agent → self-join
+    - If body is empty or agent_id/participant_id matches current agent -> self-join
       (only allowed for public + open rooms).
-    - Otherwise → invite (requires invite permission via _can_invite).
+    - Otherwise -> invite (requires invite permission via _can_invite).
     - Admission policy: contacts_only agents require inviter in their contacts.
+    - Human invitees are allowed only when already in the inviter's contacts.
     """
-    # Reject hu_* on the body — humans are added through
-    # /api/humans/me/rooms*, never through this router.
-    if body is not None:
-        _reject_human_id(body.agent_id, field="agent_id")
-
     room = await _load_room(db, room_id)
-    target_agent_id = body.agent_id if body and body.agent_id else None
-    is_self_join = target_agent_id is None or target_agent_id == current_agent
+    target_participant_id = _requested_member_id(body)
+    target_participant_type = (
+        _participant_type_for_id(target_participant_id)
+        if target_participant_id is not None
+        else ParticipantType.agent
+    )
+    is_self_join = target_participant_id is None or target_participant_id == current_agent
 
     if is_self_join:
-        target_agent_id = current_agent
+        target_participant_id = current_agent
+        target_participant_type = ParticipantType.agent
         # Subscription-gated rooms: subscribers can self-join regardless of join_policy,
         # but room must still be public (visibility check is NOT bypassed).
         has_subscription_access = False
@@ -1027,7 +1124,7 @@ async def add_member(
             sub_result = await db.execute(
                 select(AgentSubscription).where(
                     AgentSubscription.product_id == room.required_subscription_product_id,
-                    AgentSubscription.subscriber_agent_id == target_agent_id,
+                    AgentSubscription.subscriber_agent_id == target_participant_id,
                     AgentSubscription.status == SubscriptionStatus.active,
                 )
             )
@@ -1045,62 +1142,81 @@ async def add_member(
         if not _can_invite(room, inviter):
             raise I18nHTTPException(status_code=403, message_key="no_invite_permission")
 
-        # Check target agent exists and load for admission policy
-        result = await db.execute(
-            select(Agent).where(Agent.agent_id == target_agent_id)
-        )
-        target_agent = result.scalar_one_or_none()
-        if target_agent is None:
-            raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+        if target_participant_type == ParticipantType.agent:
+            # Check target agent exists and load for admission policy
+            result = await db.execute(
+                select(Agent).where(Agent.agent_id == target_participant_id)
+            )
+            target_agent = result.scalar_one_or_none()
+            if target_agent is None:
+                raise I18nHTTPException(status_code=404, message_key="agent_not_found")
 
-        # Admission policy via the central helper.
-        try:
-            await check_room_invite_admission(
+            # Admission policy via the central helper.
+            try:
+                await check_room_invite_admission(
+                    db,
+                    inviter=Principal(id=current_agent, type=ParticipantType.agent),
+                    invitee=target_agent,
+                )
+            except I18nHTTPException as exc:
+                # Preserve the legacy message key for the contacts_only path so
+                # existing clients keep their copy; pass through other reasons.
+                if exc.message_key == "room_invite_requires_contact":
+                    raise I18nHTTPException(
+                        status_code=403,
+                        message_key="admission_denied_target_contacts_only",
+                    ) from None
+                raise
+
+            # Claimed agents: queue the invite for owner Human to approve
+            if target_agent.user_id is not None:
+                import json as _json
+                entry = AgentApprovalQueue(
+                    agent_id=target_participant_id,
+                    owner_user_id=target_agent.user_id,
+                    kind=ApprovalKind.room_invite,
+                    payload_json=_json.dumps({
+                        "room_id": room_id,
+                        "invited_by": current_agent,
+                        "can_send": body.can_send if body else None,
+                        "can_invite": body.can_invite if body else None,
+                    }),
+                    state=ApprovalState.pending,
+                )
+                db.add(entry)
+                await db.commit()
+                return JSONResponse(
+                    {"status": "queued_for_approval", "approval_id": str(entry.id)},
+                    status_code=202,
+                )
+        else:
+            result = await db.execute(
+                select(User).where(User.human_id == target_participant_id)
+            )
+            if result.scalar_one_or_none() is None:
+                raise HTTPException(status_code=404, detail="Human not found")
+            await _require_human_contact(
                 db,
-                inviter=Principal(id=current_agent, type=ParticipantType.agent),
-                invitee=target_agent,
+                owner_agent_id=current_agent,
+                human_id=target_participant_id,
             )
-        except I18nHTTPException as exc:
-            # Preserve the legacy message key for the contacts_only path so
-            # existing clients keep their copy; pass through other reasons.
-            if exc.message_key == "room_invite_requires_contact":
-                raise I18nHTTPException(
+            if room.required_subscription_product_id:
+                raise HTTPException(
                     status_code=403,
-                    message_key="admission_denied_target_contacts_only",
-                ) from None
-            raise
-
-        # Claimed agents: queue the invite for owner Human to approve
-        if target_agent.user_id is not None:
-            import json as _json
-            entry = AgentApprovalQueue(
-                agent_id=target_agent_id,
-                owner_user_id=target_agent.user_id,
-                kind=ApprovalKind.room_invite,
-                payload_json=_json.dumps({
-                    "room_id": room_id,
-                    "invited_by": current_agent,
-                    "can_send": body.can_send if body else None,
-                    "can_invite": body.can_invite if body else None,
-                }),
-                state=ApprovalState.pending,
-            )
-            db.add(entry)
-            await db.commit()
-            return JSONResponse(
-                {"status": "queued_for_approval", "approval_id": str(entry.id)},
-                status_code=202,
-            )
+                    detail="subscription-gated rooms do not yet support human members",
+                )
 
     # Check max_members
     if room.max_members is not None and len(room.members) >= room.max_members:
         raise I18nHTTPException(status_code=400, message_key="room_is_full")
 
-    await _ensure_subscription_room_access(db, room, target_agent_id)
+    if target_participant_type == ParticipantType.agent:
+        await _ensure_subscription_room_access(db, room, target_participant_id)
 
     new_member = RoomMember(
         room_id=room.room_id,
-        agent_id=target_agent_id,
+        agent_id=target_participant_id,
+        participant_type=target_participant_type,
         role=RoomRole.member,
         can_send=body.can_send if body else None,
         can_invite=body.can_invite if body else None,
@@ -1123,14 +1239,14 @@ async def add_member(
     await record_room_member_joined_system_message(
         db,
         room_id=room.room_id,
-        participant_id=target_agent_id,
+        participant_id=target_participant_id,
         notify_participant_ids=all_member_ids,
     )
     await _notify_room_member_change(
         db,
         event_type="room_member_added",
         room_id=room.room_id,
-        changed_agent_id=target_agent_id,
+        changed_agent_id=target_participant_id,
         notify_agent_ids=all_member_ids,
     )
 
@@ -1145,17 +1261,10 @@ async def remove_member(
     current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Remove a member from the room. Owner/admin only. Cannot remove the owner."""
-    # Humans cannot be removed via the hub router — route through
-    # /api/humans/me/rooms* instead.
-    _reject_human_id(agent_id, field="agent_id")
     room = await _load_room(db, room_id)
     caller = _require_admin_or_owner(room, current_agent)
 
-    target = None
-    for m in room.members:
-        if m.agent_id == agent_id:
-            target = m
-            break
+    target = _find_room_member(room, agent_id)
     if target is None:
         raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
@@ -1224,10 +1333,9 @@ async def transfer_ownership(
 ):
     """Transfer room ownership to another member. Owner only.
 
-    Only agent-to-agent transfers are supported here. Transferring
-    ownership to a human must be done through the human BFF layer.
+    The new owner may be an Agent (``ag_*``) or a Human (``hu_*``), but must
+    already be a member of the room.
     """
-    _reject_human_id(body.new_owner_id, field="new_owner_id")
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
@@ -1236,15 +1344,12 @@ async def transfer_ownership(
     if body.new_owner_id == current_agent:
         raise I18nHTTPException(status_code=400, message_key="cannot_transfer_to_self")
 
-    new_owner_member = None
-    for m in room.members:
-        if m.agent_id == body.new_owner_id:
-            new_owner_member = m
-            break
+    new_owner_type = _participant_type_for_id(body.new_owner_id)
+    new_owner_member = _find_room_member(room, body.new_owner_id)
     if new_owner_member is None:
         raise I18nHTTPException(status_code=404, message_key="new_owner_not_member")
 
-    if room.required_subscription_product_id:
+    if room.required_subscription_product_id and new_owner_type == ParticipantType.agent:
         await _ensure_room_subscription_product(
             db, body.new_owner_id, room.required_subscription_product_id
         )
@@ -1252,6 +1357,7 @@ async def transfer_ownership(
     caller.role = RoomRole.member
     new_owner_member.role = RoomRole.owner
     room.owner_id = body.new_owner_id
+    room.owner_type = new_owner_type
 
     await db.commit()
     room = await _load_room(db, room.room_id, fresh=True)
@@ -1266,17 +1372,13 @@ async def promote_demote(
     current_agent: str = Depends(get_current_claimed_agent),
 ):
     """Promote/demote a member. Owner only. Valid roles: 'admin', 'member'."""
-    _reject_human_id(body.agent_id, field="agent_id")
+    target_id = _requested_participant_id(body)
     room = await _load_room(db, room_id)
     caller = _require_membership(room, current_agent)
     if caller.role != RoomRole.owner:
         raise I18nHTTPException(status_code=403, message_key="only_owner_can_promote")
 
-    target = None
-    for m in room.members:
-        if m.agent_id == body.agent_id:
-            target = m
-            break
+    target = _find_room_member(room, target_id)
     if target is None:
         raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 
@@ -1317,15 +1419,11 @@ async def set_member_permissions(
     - Cannot modify owner's permissions.
     - Admin cannot modify another admin's permissions.
     """
-    _reject_human_id(body.agent_id, field="agent_id")
+    target_id = _requested_participant_id(body)
     room = await _load_room(db, room_id)
     caller = _require_admin_or_owner(room, current_agent)
 
-    target = None
-    for m in room.members:
-        if m.agent_id == body.agent_id:
-            target = m
-            break
+    target = _find_room_member(room, target_id)
     if target is None:
         raise I18nHTTPException(status_code=404, message_key="member_not_found_in_room")
 

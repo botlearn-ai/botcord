@@ -25,7 +25,7 @@ Subcommands:
   create        Create a new room
                   --name <name> [--description <text>] [--rule <text>]
                   [--visibility <private|public>] [--join-policy <invite_only|open>]
-                  [--max-members <n>] [--members <id1,id2>]
+                  [--max-members <n>] [--members <agent_id|human_id,...>]
                   [--default-send <true|false>] [--default-invite <true|false>]
                   [--slow-mode <seconds>] [--subscription-product <product_id>]
                   [--allow-human-send <true|false>]
@@ -43,10 +43,10 @@ Subcommands:
   dissolve      Dissolve a room
   join          Join a room --room <id> [--can-send <true|false>] [--can-invite <true|false>]
   leave         Leave a room
-  add-member    Add a member --room <id> --id <agent_id> [--can-send <true|false>] [--can-invite <true|false>]
-  remove-member Remove a member
-  transfer      Transfer room ownership
-  promote       Change member role
+  add-member    Add a member --room <id> --id <agent_id|human_id> [--can-send <true|false>] [--can-invite <true|false>]
+  remove-member Remove a member --room <id> --id <agent_id|human_id>
+  transfer      Transfer room ownership --room <id> --id <agent_id|human_id>
+  promote       Change member role --room <id> --id <agent_id|human_id> --role <admin|member>
   mute          Mute/unmute room
   permissions   Set member permissions
   topic         Manage room topics
@@ -168,24 +168,24 @@ Subcommands:
 
     case "add-member": {
       const roomId = args.flags["room"];
-      const agentId = args.flags["id"];
+      const participantId = args.flags["id"];
       if (!roomId || typeof roomId !== "string") outputError("--room is required");
-      if (!agentId || typeof agentId !== "string") outputError("--id is required");
+      if (!participantId || typeof participantId !== "string") outputError("--id is required");
       const inviteOpts: { can_send?: boolean; can_invite?: boolean } = {};
       if (typeof args.flags["can-send"] === "string") inviteOpts.can_send = args.flags["can-send"] === "true";
       if (typeof args.flags["can-invite"] === "string") inviteOpts.can_invite = args.flags["can-invite"] === "true";
-      await client.inviteToRoom(roomId, agentId, Object.keys(inviteOpts).length > 0 ? inviteOpts : undefined);
-      outputJson({ added: true, room_id: roomId, agent_id: agentId });
+      await client.inviteToRoom(roomId, participantId, Object.keys(inviteOpts).length > 0 ? inviteOpts : undefined);
+      outputJson({ added: true, room_id: roomId, participant_id: participantId });
       break;
     }
 
     case "remove-member": {
       const roomId = args.flags["room"];
-      const agentId = args.flags["id"];
+      const participantId = args.flags["id"];
       if (!roomId || typeof roomId !== "string") outputError("--room is required");
-      if (!agentId || typeof agentId !== "string") outputError("--id is required");
-      await client.removeMember(roomId, agentId);
-      outputJson({ removed: true, room_id: roomId, agent_id: agentId });
+      if (!participantId || typeof participantId !== "string") outputError("--id is required");
+      await client.removeMember(roomId, participantId);
+      outputJson({ removed: true, room_id: roomId, participant_id: participantId });
       break;
     }
 
@@ -201,13 +201,13 @@ Subcommands:
 
     case "promote": {
       const roomId = args.flags["room"];
-      const agentId = args.flags["id"];
+      const participantId = args.flags["id"];
       const role = args.flags["role"];
       if (!roomId || typeof roomId !== "string") outputError("--room is required");
-      if (!agentId || typeof agentId !== "string") outputError("--id is required");
+      if (!participantId || typeof participantId !== "string") outputError("--id is required");
       if (role !== "admin" && role !== "member") outputError("--role must be 'admin' or 'member'");
-      await client.promoteMember(roomId, agentId, role);
-      outputJson({ promoted: true, room_id: roomId, agent_id: agentId, role });
+      await client.promoteMember(roomId, participantId, role);
+      outputJson({ promoted: true, room_id: roomId, participant_id: participantId, role });
       break;
     }
 
@@ -222,14 +222,14 @@ Subcommands:
 
     case "permissions": {
       const roomId = args.flags["room"];
-      const agentId = args.flags["id"];
+      const participantId = args.flags["id"];
       if (!roomId || typeof roomId !== "string") outputError("--room is required");
-      if (!agentId || typeof agentId !== "string") outputError("--id is required");
+      if (!participantId || typeof participantId !== "string") outputError("--id is required");
       const permissions: { can_send?: boolean; can_invite?: boolean } = {};
       if (typeof args.flags["can-send"] === "string") permissions.can_send = args.flags["can-send"] === "true";
       if (typeof args.flags["can-invite"] === "string") permissions.can_invite = args.flags["can-invite"] === "true";
-      await client.setMemberPermissions(roomId, agentId, permissions);
-      outputJson({ updated: true, room_id: roomId, agent_id: agentId, ...permissions });
+      await client.setMemberPermissions(roomId, participantId, permissions);
+      outputJson({ updated: true, room_id: roomId, participant_id: participantId, ...permissions });
       break;
     }
 
