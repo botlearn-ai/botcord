@@ -21,6 +21,68 @@ const DAEMON_PACKAGE: &str = "@botcord/daemon@latest";
 const DAEMON_PACKAGE_NAME: &str = "@botcord/daemon";
 const NODE_VERSION: &str = "v20.18.1";
 const NODE_DIST_URL: &str = "https://nodejs.org/dist";
+const EXTERNAL_OPEN_HOST: &str = "open-external";
+const EXTERNAL_LINK_INTERCEPTOR: &str = r#"
+(() => {
+  if (window.__BOTCORD_EXTERNAL_LINK_INTERCEPTOR__) return;
+  window.__BOTCORD_EXTERNAL_LINK_INTERCEPTOR__ = true;
+
+  function externalRequestUrl(url) {
+    return "botcord://open-external?url=" + encodeURIComponent(url.href);
+  }
+
+  function isDownloadPath(url) {
+    return /\/download(?:[/?#]|$)/.test(url.pathname);
+  }
+
+  function shouldOpenExternally(anchor, url) {
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    if (anchor && anchor.hasAttribute("download")) return true;
+    if (isDownloadPath(url)) return true;
+    if (anchor && (anchor.getAttribute("target") || "").toLowerCase() === "_blank") return true;
+    return url.origin !== window.location.origin;
+  }
+
+  function openExternal(url) {
+    window.location.href = externalRequestUrl(url);
+  }
+
+  document.addEventListener("click", (event) => {
+    const anchor = event.target && event.target.closest ? event.target.closest("a[href]") : null;
+    if (!anchor) return;
+    let url;
+    try {
+      url = new URL(anchor.href, window.location.href);
+    } catch {
+      return;
+    }
+    if (!shouldOpenExternally(anchor, url)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openExternal(url);
+  }, true);
+
+  const nativeOpen = window.open;
+  window.open = function(input, target) {
+    if (input) {
+      try {
+        const url = new URL(String(input), window.location.href);
+        const anchor = {
+          getAttribute: (name) => name === "target" ? (target || "") : "",
+          hasAttribute: () => false
+        };
+        if (shouldOpenExternally(anchor, url)) {
+          openExternal(url);
+          return null;
+        }
+      } catch {
+        // fall through to the native implementation
+      }
+    }
+    return nativeOpen ? nativeOpen.apply(window, arguments) : null;
+  };
+})();
+"#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -235,6 +297,7 @@ fn uninstall_service() -> Result<String, String> {
 
 pub fn run() {
     tauri::Builder::default()
+        .append_invoke_initialization_script(EXTERNAL_LINK_INTERCEPTOR)
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -324,6 +387,17 @@ fn desktop_auth_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 
     tauri::plugin::Builder::new("botcord-auth")
         .on_navigation(|webview, url| {
+            if let Some(external_url) = external_url_from_deep_link(url) {
+                match open_url(&external_url) {
+                    Ok(()) => {
+                        eprintln!("[desktop-link] opened URL externally: {external_url}");
+                    }
+                    Err(err) => {
+                        eprintln!("[desktop-link] failed to open URL externally: {err}");
+                    }
+                }
+                return false;
+            }
             if let Some(request) = install_request_from_deep_link(url) {
                 handle_install_request_for_webview(webview.clone(), request);
                 return false;
@@ -336,6 +410,18 @@ fn desktop_auth_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
                     }
                     Err(err) => {
                         eprintln!("[desktop-auth] failed to open OAuth URL externally: {err}");
+                        return true;
+                    }
+                }
+            }
+            if let Some(external_url) = external_http_navigation_url(url) {
+                match open_url(&external_url) {
+                    Ok(()) => {
+                        eprintln!("[desktop-link] opened navigation externally: {external_url}");
+                        return false;
+                    }
+                    Err(err) => {
+                        eprintln!("[desktop-link] failed to open navigation externally: {err}");
                         return true;
                     }
                 }
@@ -381,6 +467,10 @@ fn desktop_auth_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
                         }
                     } else if let Some(request) = install_request_from_deep_link(&url) {
                         handle_install_request_for_app(app_handle.clone(), request);
+                    } else if let Some(external_url) = external_url_from_deep_link(&url) {
+                        if let Err(err) = open_url(&external_url) {
+                            eprintln!("[desktop-link] failed to open URL externally: {err}");
+                        }
                     }
                 }
             });
@@ -681,6 +771,56 @@ fn dashboard_auth_callback_url(url: &Url) -> Option<Url> {
     target.set_query(url.query());
     target.set_fragment(url.fragment());
     Some(target)
+}
+
+fn external_url_from_deep_link(url: &Url) -> Option<String> {
+    if url.scheme() != "botcord" || url.host_str() != Some(EXTERNAL_OPEN_HOST) {
+        return None;
+    }
+    let target = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "url").then(|| value.to_string()))?;
+    let parsed = Url::parse(&target).ok()?;
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+        return None;
+    }
+    Some(parsed.to_string())
+}
+
+fn external_http_navigation_url(url: &Url) -> Option<String> {
+    if url.scheme() != "https" && url.scheme() != "http" {
+        return None;
+    }
+    if is_dashboard_navigation_url(url) {
+        return None;
+    }
+    Some(url.to_string())
+}
+
+fn is_dashboard_navigation_url(url: &Url) -> bool {
+    if matches!(url.host_str(), Some("botcord.chat") | Some("preview.botcord.chat")) {
+        return true;
+    }
+
+    #[cfg(debug_assertions)]
+    if matches!(url.host_str(), Some("localhost") | Some("127.0.0.1")) {
+        return true;
+    }
+
+    if let Ok(config) = load_config() {
+        if let Ok(dashboard_url) = Url::parse(&config.dashboard_url) {
+            return same_web_origin(url, &dashboard_url);
+        }
+    }
+    Url::parse(DEFAULT_DASHBOARD_URL)
+        .map(|dashboard_url| same_web_origin(url, &dashboard_url))
+        .unwrap_or(false)
+}
+
+fn same_web_origin(a: &Url, b: &Url) -> bool {
+    a.scheme() == b.scheme()
+        && a.host_str() == b.host_str()
+        && a.port_or_known_default() == b.port_or_known_default()
 }
 
 struct InstallRequest {
