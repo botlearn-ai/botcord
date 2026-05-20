@@ -125,6 +125,7 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MACOS_PROVISION_PROFILE_BASE64: ${{ secrets.MACOS_PROVISION_PROFILE_BASE64 }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
 
@@ -157,6 +158,8 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
+            <key>CFBundleVersion</key>
+            <string>${BUILD_NUMBER}</string>
             <key>ITSAppUsesNonExemptEncryption</key>
             <false/>
           </dict>
@@ -207,6 +210,7 @@ jobs:
           mkdir -p release-assets
           du -sh "$APP_PATH"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$APP_PATH/Contents/Info.plist" | grep -q "botcord"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Contents/Info.plist"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           echo "Using installer signing identity: $MAC_INSTALLER_SIGNING_IDENTITY ($MAC_INSTALLER_SIGNING_IDENTITY_HASH)"
           security find-certificate -a -c "$MAC_INSTALLER_SIGNING_IDENTITY" "$SIGNING_KEYCHAIN" >/dev/null
