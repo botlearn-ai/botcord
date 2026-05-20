@@ -41,6 +41,11 @@ function sameOriginNextPath(): string {
   return path.startsWith("/") && !path.startsWith("//") ? path : "/desktop/install";
 }
 
+function sanitizeNextPath(raw: string | null): string {
+  if (!raw) return "/chats/home";
+  return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/chats/home";
+}
+
 type Phase =
   | { kind: "probing" }
   | { kind: "minting" }
@@ -59,6 +64,10 @@ export default function DesktopInstallClient() {
   );
   const hub = searchParams.get("hub") || HUB_BASE_URL;
   const label = searchParams.get("label") || "";
+  const nextPath = useMemo(
+    () => sanitizeNextPath(searchParams.get("next")),
+    [searchParams],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +105,7 @@ export default function DesktopInstallClient() {
           });
           if (cancelled) return;
           setPhase({ kind: "desktop-connected", detail });
+          window.location.replace(nextPath);
           return;
         }
 
@@ -103,6 +113,7 @@ export default function DesktopInstallClient() {
         out.searchParams.set("install_token", data.install_token);
         out.searchParams.set("hub", hub);
         if (label) out.searchParams.set("label", label);
+        out.searchParams.set("next", nextPath);
         const url = out.toString();
         setPhase({ kind: "redirect", url });
         window.location.href = url;
@@ -119,7 +130,7 @@ export default function DesktopInstallClient() {
     return () => {
       cancelled = true;
     };
-  }, [callback, hub, label]);
+  }, [callback, hub, label, nextPath]);
 
   const isDone = phase.kind === "desktop-connected";
   const heading =
