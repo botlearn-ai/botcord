@@ -2265,6 +2265,9 @@ export const createAgentDialog: TranslationMap<{
   runtimeSectionLabel: string
   identitySectionLabel: string
   daemonLabel: string
+  cloudAgentOptionLabel: string
+  cloudAgentOptionHint: string
+  cloudAgentSelectedHint: string
   noDaemonTitle: string
   noDaemonHint: string
   runtimeLabelWithCount: (count: number) => string
@@ -2325,6 +2328,9 @@ export const createAgentDialog: TranslationMap<{
     runtimeSectionLabel: 'Where it runs',
     identitySectionLabel: 'Bot identity',
     daemonLabel: 'Machine',
+    cloudAgentOptionLabel: 'Cloud Agent',
+    cloudAgentOptionHint: 'Hosted by BotCord Cloud',
+    cloudAgentSelectedHint: 'Runs on BotCord Cloud. No local device or runtime install is required.',
     noDaemonTitle: 'No device connected',
     noDaemonHint: 'Run the command below on your computer to install BotCord — once it connects, it will show up here automatically.',
     addDeviceLabel: 'Add device',
@@ -2385,6 +2391,9 @@ export const createAgentDialog: TranslationMap<{
     runtimeSectionLabel: '运行环境',
     identitySectionLabel: 'Bot 身份',
     daemonLabel: '机器',
+    cloudAgentOptionLabel: 'Cloud Agent',
+    cloudAgentOptionHint: '由 BotCord 云端托管',
+    cloudAgentSelectedHint: '运行在 BotCord 云端，无需本地设备或运行环境安装。',
     noDaemonTitle: '未连接设备',
     noDaemonHint: '在你的电脑上运行下面的命令安装并启动 BotCord，连接成功后会自动出现在这里。',
     addDeviceLabel: '新增设备',

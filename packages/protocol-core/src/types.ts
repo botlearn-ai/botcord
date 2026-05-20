@@ -14,7 +14,39 @@ export type MessageType =
   | "contact_request"
   | "contact_request_response"
   | "contact_removed"
-  | "system";
+  | "system"
+  /**
+   * Cloud Agent run envelope. The Hub injects this envelope type into a
+   * Cloud Agent's inbox when a user triggers a run via the API. The
+   * payload carries the prompt text plus a `cloud_run` block with the
+   * `run_id` and budget caps. Only the cloud daemon (`/cloud/daemon/ws`)
+   * is expected to receive this envelope; local daemons ignore it.
+   * See ``docs/cloud-agent-technical-design.md`` §6.
+   */
+  | "cloud_run";
+
+/**
+ * Per-run budget caps the Hub attaches to a `cloud_run` envelope. The cloud
+ * daemon enforces these before kicking the runtime. See
+ * ``backend/hub/services/cloud_agent.py``.
+ */
+export interface CloudRunBudget {
+  max_wall_time_seconds: number;
+  max_tool_calls: number;
+}
+
+/**
+ * Payload shape carried inside the `cloud_run` envelope. The daemon reads
+ * `text` as the runtime prompt and `cloud_run` as routing metadata for the
+ * settle endpoint.
+ */
+export interface CloudRunPayload {
+  text: string;
+  cloud_run: {
+    run_id: string;
+    budget: CloudRunBudget;
+  };
+}
 
 export type BotCordMessageEnvelope = {
   v: string;
@@ -34,7 +66,13 @@ export type BotCordMessageEnvelope = {
 };
 
 // Inbox poll response
-export type SourceType = "agent" | "dashboard_user_chat" | "dashboard_human_room";
+export type SourceType =
+  | "agent"
+  | "dashboard_user_chat"
+  | "dashboard_human_room"
+  // Cloud Agent run task injected by the Hub via the cloud-agents API —
+  // Hub-issued, owner-trust posture.
+  | "cloud_agent_run";
 
 export type InboxMessage = {
   hub_msg_id: string;

@@ -69,7 +69,7 @@ class Agent(Base):
     __tablename__ = "agents"
     __table_args__ = (
         CheckConstraint(
-            "hosting_kind IS NULL OR hosting_kind IN ('daemon', 'openclaw', 'cli')",
+            "hosting_kind IS NULL OR hosting_kind IN ('daemon', 'openclaw', 'cli', 'cloud')",
             name="ck_agents_hosting_kind",
         ),
     )
@@ -1241,10 +1241,22 @@ class DaemonInstance(Base):
     """
 
     __tablename__ = "daemon_instances"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('local', 'cloud')",
+            name="ck_daemon_instances_kind",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)  # dm_<12 hex>
     user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Distinguishes user-installed daemons ('local') from Hub-managed cloud
+    # daemons running inside an E2B sandbox ('cloud'). See
+    # docs/cloud-agent-technical-design.md §3.2 and §5.1.
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="local", server_default="local", index=True
+    )
     refresh_token_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -1721,4 +1733,303 @@ class AgentGatewayConnection(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cloud Agent MVP — see docs/cloud-agent-technical-design.md §5
+#
+# Schema supports one cloud daemon (E2B sandbox) hosting multiple Cloud
+# Agents. MVP per-user agent limits are enforced at the service layer, not
+# the schema.
+# ---------------------------------------------------------------------------
+
+
+class CloudDaemonInstance(Base):
+    """One Hub-managed cloud daemon (E2B sandbox) hosting >=1 Cloud Agents."""
+
+    __tablename__ = "cloud_daemon_instances"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('creating', 'starting', 'ready', 'paused', 'failed', 'deleting', 'deleted')",
+            name="ck_cloud_daemon_instances_status",
+        ),
+        CheckConstraint(
+            "active_agent_count >= 0",
+            name="ck_cloud_daemon_instances_active_agent_count",
+        ),
+        UniqueConstraint("daemon_instance_id", name="uq_cloud_daemon_instances_daemon_instance_id"),
+        Index("ix_cloud_daemon_instances_user", "user_id"),
+        Index("ix_cloud_daemon_instances_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # cloud_dm_<12 hex>
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    daemon_instance_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("daemon_instances.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_sandbox_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    provider_template_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="creating", server_default="creating"
+    )
+    region: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime: Mapped[str] = mapped_column(String(64), nullable=False)
+    max_agents: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    active_agent_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_started_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_paused_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class CloudAgentInstance(Base):
+    """One Cloud Agent ↔ cloud daemon binding (1:1 with the underlying Agent)."""
+
+    __tablename__ = "cloud_agent_instances"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('provisioning', 'ready', 'paused', 'failed', 'deleting', 'deleted')",
+            name="ck_cloud_agent_instances_status",
+        ),
+        Index("ix_cloud_agent_instances_user", "user_id"),
+        Index("ix_cloud_agent_instances_cloud_daemon", "cloud_daemon_instance_id"),
+        Index("ix_cloud_agent_instances_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # cloud_ag_<12 hex>
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    cloud_daemon_instance_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("cloud_daemon_instances.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    daemon_instance_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("daemon_instances.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    runtime: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_profile: Mapped[str] = mapped_column(String(64), nullable=False)
+    workspace_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="provisioning", server_default="provisioning"
+    )
+    last_run_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class UsageEvent(Base):
+    """One settleable Cloud Agent run usage record. Must be idempotent."""
+
+    __tablename__ = "usage_events"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_usage_events_idempotency_key"),
+        Index("ix_usage_events_user_created", "user_id", "created_at"),
+        Index("ix_usage_events_agent_created", "agent_id", "created_at"),
+        Index("ix_usage_events_run", "run_id"),
+    )
+
+    # Migration uses BIGSERIAL on Postgres; SQLite maps INTEGER PRIMARY KEY
+    # to rowid autoincrement (BigInteger pk does not autoincrement on SQLite).
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_cache_hit_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    input_cache_miss_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    output_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    sandbox_seconds: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    credits_charged: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class UsageBalance(Base):
+    """Per-user, per-period Cloud Credits and sandbox-seconds balance."""
+
+    __tablename__ = "usage_balances"
+    __table_args__ = (
+        UniqueConstraint("user_id", "period_start", name="uq_usage_balances_user_period"),
+        CheckConstraint(
+            "used_credits >= 0 AND reserved_credits >= 0 "
+            "AND used_sandbox_seconds >= 0 AND reserved_sandbox_seconds >= 0",
+            name="ck_usage_balances_non_negative",
+        ),
+        Index("ix_usage_balances_user", "user_id"),
+    )
+
+    # See note on UsageEvent.id — Integer PK for SQLite autoincrement compat.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    period_start: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_end: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    included_credits: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    used_credits: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    reserved_credits: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    included_sandbox_seconds: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    used_sandbox_seconds: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    reserved_sandbox_seconds: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class UsageReservation(Base):
+    """Per-run credit + sandbox-seconds reservation.
+
+    See ``docs/cloud-agent-technical-design.md`` §9 — Hub reserves
+    estimated cost at preflight, then either ``settle``s the reservation
+    into the ``usage_balances`` aggregates (and writes a ``usage_events``
+    row) or ``release``s the reservation if the run never produces
+    settlement. One row per ``run_id``.
+    """
+
+    __tablename__ = "usage_reservations"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_usage_reservations_run_id"),
+        CheckConstraint(
+            "state IN ('active', 'settled', 'released')",
+            name="ck_usage_reservations_state",
+        ),
+        CheckConstraint(
+            "reserved_credits >= 0 AND reserved_sandbox_seconds >= 0",
+            name="ck_usage_reservations_non_negative",
+        ),
+        Index("ix_usage_reservations_user_state", "user_id", "state"),
+        Index("ix_usage_reservations_agent", "agent_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    reserved_credits: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    reserved_sandbox_seconds: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default="active"
+    )
+    metadata_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    settled_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    released_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

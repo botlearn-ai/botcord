@@ -114,7 +114,7 @@ export interface OutboundTranscriptRecord extends TranscriptRecordBase {
 
 export interface TurnErrorTranscriptRecord extends TranscriptRecordBase {
   kind: "turn_error";
-  phase: "runtime" | "timeout";
+  phase: "runtime" | "timeout" | "budget";
   error: string;
   durationMs: number;
 }

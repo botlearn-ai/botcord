@@ -13,6 +13,7 @@ import {
   Bot,
   Check,
   ChevronDown,
+  Cloud,
   Code2,
   Feather,
   Gem,
@@ -60,6 +61,7 @@ function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
 const UNSUPPORTED_RUNTIME_IDS = new Set(["gemini"]);
 const OPENCLAW_RUNTIME_ID = "openclaw-acp";
 const QCLAW_RUNTIME_ID = "qclaw";
+const CLOUD_AGENT_OPTION_ID = "__botcord_cloud_agent__";
 
 type DaemonRuntimeEndpoint = NonNullable<DaemonRuntime["endpoints"]>[number];
 
@@ -69,6 +71,44 @@ function isOpenclawFamilyRuntime(id: string | null): boolean {
 
 function daemonRuntimeId(id: string): string {
   return id === QCLAW_RUNTIME_ID ? OPENCLAW_RUNTIME_ID : id;
+}
+
+async function createCloudAgent(input: {
+  name: string;
+  bio?: string;
+}): Promise<{ agentId: string }> {
+  const res = await fetch("/api/cloud-agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: input.name,
+      ...(input.bio ? { bio: input.bio } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    const detail = data?.detail;
+    const message =
+      typeof detail === "object" && detail && typeof detail.message === "string"
+        ? detail.message
+        : typeof detail === "string"
+          ? detail
+          : typeof data?.error === "string"
+            ? data.error
+            : res.statusText;
+    throw new Error(message);
+  }
+  const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  const agentId =
+    typeof data?.agent_id === "string"
+      ? data.agent_id
+      : typeof data?.agentId === "string"
+        ? data.agentId
+        : null;
+  if (!agentId) {
+    throw new ProvisionAgentError("missing_agent_id");
+  }
+  return { agentId };
 }
 
 function isQclawEndpoint(endpoint: DaemonRuntimeEndpoint): boolean {
@@ -208,6 +248,21 @@ export default function CreateAgentDialog({
     () => daemons.filter((d) => d.status === "online"),
     [daemons],
   );
+  const deviceOptions = useMemo(
+    () => [
+      ...onlineDaemons.map((d, index) => ({
+        value: d.id,
+        label: `${d.label || d.id}${index === onlineDaemons.length - 1 ? " · latest" : ""}`,
+        sublabel: d.id,
+      })),
+      {
+        value: CLOUD_AGENT_OPTION_ID,
+        label: t.cloudAgentOptionLabel,
+        sublabel: t.cloudAgentOptionHint,
+      },
+    ],
+    [onlineDaemons, t.cloudAgentOptionHint, t.cloudAgentOptionLabel],
+  );
   const hasOfflineBoundDevices = daemons.some((d) => d.status === "offline");
   const hasOnlyOfflineBoundDevices = loaded && hasOfflineBoundDevices && onlineDaemons.length === 0;
 
@@ -295,22 +350,32 @@ export default function CreateAgentDialog({
       setSelectedDaemonId(preselectedDaemonId);
       return;
     }
+    if (selectedDaemonId === CLOUD_AGENT_OPTION_ID) {
+      return;
+    }
     if (selectedDaemonId) {
       const stillOnline = onlineDaemons.some((d) => d.id === selectedDaemonId);
       if (stillOnline) return;
     }
     const pick = firstOnline(daemons);
-    setSelectedDaemonId(pick?.id ?? null);
+    setSelectedDaemonId(pick?.id ?? CLOUD_AGENT_OPTION_ID);
   }, [daemons, onlineDaemons, selectedDaemonId, preselectedDaemonId]);
 
+  const isCloudAgentSelected = selectedDaemonId === CLOUD_AGENT_OPTION_ID;
+
   const selectedDaemon = useMemo(() => {
+    if (isCloudAgentSelected) return null;
     const d = daemons.find((d) => d.id === selectedDaemonId) ?? null;
     if (!d) return d;
     return { ...d, runtimes: applyRuntimeSupport(d.runtimes, t.runtimeNotSupported) };
-  }, [daemons, selectedDaemonId, t.runtimeNotSupported]);
+  }, [daemons, isCloudAgentSelected, selectedDaemonId, t.runtimeNotSupported]);
 
   // Auto-select first available runtime when daemon changes.
   useEffect(() => {
+    if (isCloudAgentSelected) {
+      setSelectedRuntimeId(null);
+      return;
+    }
     if (!selectedDaemon) {
       setSelectedRuntimeId(null);
       return;
@@ -322,7 +387,7 @@ export default function CreateAgentDialog({
     if (stillValid) return;
     const firstAvailable = runtimes.find((r) => r.available);
     setSelectedRuntimeId(firstAvailable?.id ?? null);
-  }, [selectedDaemon, selectedRuntimeId]);
+  }, [isCloudAgentSelected, selectedDaemon, selectedRuntimeId]);
 
   // Reset OpenClaw selections when leaving the OpenClaw/QClaw runtime family.
   const selectedRuntime = useMemo(
@@ -411,7 +476,7 @@ export default function CreateAgentDialog({
     setSelectedHermesProfile((active ?? firstFree)?.name ?? null);
   }, [selectedRuntime, selectedRuntimeId, selectedHermesProfile]);
 
-  const showEmptyState = onlineDaemons.length === 0 && !loading;
+  const showEmptyState = deviceOptions.length === 0 && !loading;
   const trimmedName = name.trim();
 
   // Auto-detect daemon coming online while user stares at the install command.
@@ -472,7 +537,8 @@ export default function CreateAgentDialog({
   }
 
   async function handleSubmit(): Promise<void> {
-    if (!selectedDaemonId || !selectedRuntimeId) return;
+    if (!selectedDaemonId) return;
+    if (!isCloudAgentSelected && !selectedRuntimeId) return;
     if (!trimmedName) {
       setError(t.nameRequired);
       return;
@@ -480,20 +546,25 @@ export default function CreateAgentDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await provisionAgent(selectedDaemonId, {
-        name: trimmedName,
-        bio: bio.trim() || undefined,
-        runtime: daemonRuntimeId(selectedRuntimeId),
-        ...(isOpenclawFamilyRuntime(selectedRuntimeId) && selectedGateway
-          ? {
-              openclawGateway: selectedGateway,
-              ...(selectedOpenclawAgent ? { openclawAgent: selectedOpenclawAgent } : {}),
-            }
-          : {}),
-        ...(selectedRuntimeId === "hermes-agent" && selectedHermesProfile
-          ? { hermesProfile: selectedHermesProfile }
-          : {}),
-      });
+      const res = isCloudAgentSelected
+        ? await createCloudAgent({
+            name: trimmedName,
+            bio: bio.trim() || undefined,
+          })
+        : await provisionAgent(selectedDaemonId, {
+            name: trimmedName,
+            bio: bio.trim() || undefined,
+            runtime: daemonRuntimeId(selectedRuntimeId!),
+            ...(isOpenclawFamilyRuntime(selectedRuntimeId) && selectedGateway
+              ? {
+                  openclawGateway: selectedGateway,
+                  ...(selectedOpenclawAgent ? { openclawAgent: selectedOpenclawAgent } : {}),
+                }
+              : {}),
+            ...(selectedRuntimeId === "hermes-agent" && selectedHermesProfile
+              ? { hermesProfile: selectedHermesProfile }
+              : {}),
+          });
       await onSuccess(res.agentId);
       onClose();
     } catch (err) {
@@ -509,11 +580,11 @@ export default function CreateAgentDialog({
     needsOpenclawGateway && (selectedOpenclawEndpoint?.agents?.length ?? 0) > 0;
   const canSubmit =
     !!selectedDaemonId &&
-    !!selectedRuntimeId &&
+    (isCloudAgentSelected || !!selectedRuntimeId) &&
     !!trimmedName &&
-    (!needsOpenclawGateway || !!selectedGateway) &&
-    (!needsOpenclawAgent || !!selectedOpenclawAgent) &&
-    (!needsHermesProfile || !!selectedHermesProfile) &&
+    (isCloudAgentSelected || !needsOpenclawGateway || !!selectedGateway) &&
+    (isCloudAgentSelected || !needsOpenclawAgent || !!selectedOpenclawAgent) &&
+    (isCloudAgentSelected || !needsHermesProfile || !!selectedHermesProfile) &&
     !submitting;
 
   const selectedRuntimeDetails: ReactNode = needsOpenclawGateway ? (
@@ -687,7 +758,7 @@ export default function CreateAgentDialog({
                   {t.addDeviceLabel}
                 </button>
               </div>
-              {onlineDaemons.length > 1 ? (
+              {deviceOptions.length > 1 ? (
                 <DashboardSelect
                   value={selectedDaemonId}
                   onChange={(value) => {
@@ -695,13 +766,24 @@ export default function CreateAgentDialog({
                   }}
                   disabled={submitting}
                   placeholder={t.daemonLabel}
-                  leadingIcon={<Server className="h-3.5 w-3.5 text-neon-cyan" />}
+                  leadingIcon={
+                    isCloudAgentSelected
+                      ? <Cloud className="h-3.5 w-3.5 text-neon-cyan" />
+                      : <Server className="h-3.5 w-3.5 text-neon-cyan" />
+                  }
                   buttonClassName="min-h-11 pl-3"
-                  options={onlineDaemons.map((d, index) => ({
-                    value: d.id,
-                    label: `${d.label || d.id}${index === onlineDaemons.length - 1 ? " · latest" : ""}`,
-                  }))}
+                  options={deviceOptions}
                 />
+              ) : isCloudAgentSelected ? (
+                <div className="flex h-11 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-xs text-text-secondary">
+                  <Cloud className="h-3.5 w-3.5 text-neon-cyan" />
+                  <span className="text-text-primary">
+                    {t.cloudAgentOptionLabel}
+                  </span>
+                  <span className="ml-auto text-[11px] text-text-secondary/70">
+                    {t.cloudAgentOptionHint}
+                  </span>
+                </div>
               ) : selectedDaemon ? (
                 <div className="flex h-11 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-xs text-text-secondary">
                   <Server className="h-3.5 w-3.5 text-neon-cyan" />
@@ -713,33 +795,40 @@ export default function CreateAgentDialog({
               ) : null}
             </section>
 
-            <RuntimePicker
-              daemon={selectedDaemon}
-              selectedRuntimeId={selectedRuntimeId}
-              onSelect={setSelectedRuntimeId}
-              selectedRuntimeDetails={selectedRuntimeDetails}
-              refreshing={
-                !!selectedDaemon &&
-                refreshingRuntimesId === selectedDaemon.id
-              }
-              onRefresh={() => {
-                if (selectedDaemon) void refreshRuntimes(selectedDaemon.id);
-              }}
-              labels={{
-                runtimeLabel: t.runtimeLabel,
-                runtimeLabelWithCount: t.runtimeLabelWithCount,
-                runtimeAvailable: t.runtimeAvailable,
-                noRuntimesDetected: t.noRuntimesDetected,
-                probeRuntimes: t.probeRuntimes,
-                unavailable: t.runtimeUnavailable,
-                runtimeUnavailableGroup: t.runtimeUnavailableGroup,
-                runtimeFound: t.runtimeFound,
-                runtimeUnavailableCount: t.runtimeUnavailableCount,
-                showUnavailable: t.showUnavailable,
-                hideUnavailable: t.hideUnavailable,
-              }}
-              disabled={submitting}
-            />
+            {isCloudAgentSelected ? (
+              <div className="flex items-start gap-2 rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-3 py-2.5 text-xs leading-5 text-text-secondary">
+                <Cloud className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon-cyan" />
+                <span>{t.cloudAgentSelectedHint}</span>
+              </div>
+            ) : (
+              <RuntimePicker
+                daemon={selectedDaemon}
+                selectedRuntimeId={selectedRuntimeId}
+                onSelect={setSelectedRuntimeId}
+                selectedRuntimeDetails={selectedRuntimeDetails}
+                refreshing={
+                  !!selectedDaemon &&
+                  refreshingRuntimesId === selectedDaemon.id
+                }
+                onRefresh={() => {
+                  if (selectedDaemon) void refreshRuntimes(selectedDaemon.id);
+                }}
+                labels={{
+                  runtimeLabel: t.runtimeLabel,
+                  runtimeLabelWithCount: t.runtimeLabelWithCount,
+                  runtimeAvailable: t.runtimeAvailable,
+                  noRuntimesDetected: t.noRuntimesDetected,
+                  probeRuntimes: t.probeRuntimes,
+                  unavailable: t.runtimeUnavailable,
+                  runtimeUnavailableGroup: t.runtimeUnavailableGroup,
+                  runtimeFound: t.runtimeFound,
+                  runtimeUnavailableCount: t.runtimeUnavailableCount,
+                  showUnavailable: t.showUnavailable,
+                  hideUnavailable: t.hideUnavailable,
+                }}
+                disabled={submitting}
+              />
+            )}
 
             </div>
 

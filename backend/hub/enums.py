@@ -94,6 +94,7 @@ class MessageType(str, enum.Enum):
     contact_request_response = "contact_request_response"
     contact_removed = "contact_removed"
     system = "system"
+    cloud_run = "cloud_run"
 
 
 class TopicStatus(str, enum.Enum):
@@ -196,6 +197,36 @@ class ApprovalState(str, enum.Enum):
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
+
+
+class DaemonInstanceKind(str, enum.Enum):
+    """Differentiates user-installed daemons from Hub-managed cloud daemons."""
+
+    local = "local"
+    cloud = "cloud"
+
+
+class CloudDaemonInstanceStatus(str, enum.Enum):
+    """Lifecycle states for a Hub-managed cloud daemon (E2B sandbox)."""
+
+    creating = "creating"
+    starting = "starting"
+    ready = "ready"
+    paused = "paused"
+    failed = "failed"
+    deleting = "deleting"
+    deleted = "deleted"
+
+
+class CloudAgentInstanceStatus(str, enum.Enum):
+    """Lifecycle states for a Cloud Agent binding on a cloud daemon."""
+
+    provisioning = "provisioning"
+    ready = "ready"
+    paused = "paused"
+    failed = "failed"
+    deleting = "deleting"
+    deleted = "deleted"
 
 
 class ErrorCode(str, enum.Enum):

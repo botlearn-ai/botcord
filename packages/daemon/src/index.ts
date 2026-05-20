@@ -65,6 +65,8 @@ import {
   mergeOpenclawGateways,
   openclawDiscoveryConfigEnabled,
 } from "./openclaw-discovery.js";
+import { isCloudMode, loadCloudModeConfig } from "./cloud-mode.js";
+import { startCloudDaemon } from "./cloud-daemon.js";
 
 augmentProcessPath();
 
@@ -596,6 +598,16 @@ async function ensureUserAuthForStart(args: ParsedArgs): Promise<UserAuthRecord 
 }
 
 async function cmdStart(args: ParsedArgs): Promise<void> {
+  // Cloud-mode short-circuit: the Hub-managed E2B sandbox launches the
+  // daemon with `BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN` set in the environment.
+  // In that case we skip the entire device-code / install-token / on-disk
+  // user-auth flow and dial `/cloud/daemon/ws` directly with the injected
+  // JWT. See ``packages/daemon/src/cloud-mode.ts`` + the design doc §4.
+  if (isCloudMode()) {
+    await cmdStartCloud(args);
+    return;
+  }
+
   let cfg = loadOrInitConfig(args);
   cfg = await refreshDiscoveredOpenclawGateways(cfg, "start");
   // Foreground is now the default. --background (alias -d) detaches.
@@ -677,6 +689,53 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
   // alive until a signal arrives; the channel manager owns its own loops.
   await new Promise<void>(() => {
     // Deliberately never resolves; `shutdown()` calls process.exit(0).
+  });
+}
+
+/**
+ * Cloud-mode start: launched by the Hub-managed E2B sandbox provider.
+ *
+ * No login flow, no on-disk credentials at boot, no PID-file dance
+ * (the sandbox is the lifecycle manager). The cloud daemon stays in the
+ * foreground until killed; agents arrive via `provision_agent` frames
+ * over `/cloud/daemon/ws`.
+ *
+ * Always foreground — `--background` / `-d` is silently ignored because
+ * E2B sandboxes don't have a meaningful detach concept.
+ */
+async function cmdStartCloud(_args: ParsedArgs): Promise<void> {
+  const cloudConfig = loadCloudModeConfig();
+  log.info("cmd start (cloud mode)", {
+    cloudDaemonInstanceId: cloudConfig.cloudDaemonInstanceId,
+    daemonInstanceId: cloudConfig.daemonInstanceId,
+    hubUrl: cloudConfig.hubUrl,
+  });
+
+  // Cloud daemons always start with an empty in-memory config — every
+  // agent + route arrives over the control plane. We synthesize the
+  // shape `Gateway` expects without ever touching `~/.botcord/daemon/config.json`.
+  const cfg: DaemonConfig = {
+    defaultRoute: { adapter: "deepseek-tui", cwd: homedir() },
+    routes: [],
+    streamBlocks: true,
+  };
+
+  const handle = await startCloudDaemon({
+    cloudConfig,
+    config: cfg,
+    configPath: "(cloud-mode, no on-disk config)",
+  });
+
+  const shutdown = async (sig: string): Promise<void> => {
+    log.info("signal received", { sig });
+    await handle.stop(sig);
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+
+  await new Promise<void>(() => {
+    // Deliberately never resolves; `shutdown()` calls `process.exit(0)`.
   });
 }
 

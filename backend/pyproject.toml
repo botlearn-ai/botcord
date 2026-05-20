@@ -19,6 +19,7 @@ dependencies = [
     "stripe>=8.0,<10",
     "cryptography>=46.0.5",
     "sentry-sdk[fastapi]>=2.0,<3",
+    "e2b>=2.21,<3",
 ]
 
 [project.scripts]
