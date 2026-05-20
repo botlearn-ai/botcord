@@ -6,8 +6,10 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{Manager, Url};
+use tauri::webview::PageLoadEvent;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 const SERVICE_LABEL: &str = "chat.botcord.daemon";
@@ -316,8 +318,16 @@ fn daemon_status_alive(config: &DesktopConfig) -> Result<bool, String> {
 }
 
 fn desktop_auth_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    let pending_install_next: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let pending_install_for_page_load = pending_install_next.clone();
+    let pending_install_for_deep_link = pending_install_next.clone();
+
     tauri::plugin::Builder::new("botcord-auth")
-        .on_navigation(|_, url| {
+        .on_navigation(|webview, url| {
+            if let Some(request) = install_request_from_deep_link(url) {
+                handle_install_request_for_webview(webview.clone(), request);
+                return false;
+            }
             if let Some(external_url) = external_oauth_url(url) {
                 match open_url(&external_url) {
                     Ok(()) => {
@@ -332,34 +342,45 @@ fn desktop_auth_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             }
             true
         })
+        .on_page_load(move |webview, payload| {
+            if payload.event() != PageLoadEvent::Finished {
+                return;
+            }
+            let next = match pending_install_for_page_load.lock() {
+                Ok(mut pending) => {
+                    if pending.is_none() || has_user_auth_record() || !is_post_auth_dashboard_page(payload.url()) {
+                        return;
+                    }
+                    pending.take()
+                }
+                Err(_) => return,
+            };
+            if let Some(target) = load_config()
+                .ok()
+                .and_then(|config| dashboard_install_url_for_next(&config, next.as_deref()))
+            {
+                let _ = webview.navigate(target);
+            }
+        })
         .setup(|app, _| {
             let app_handle = app.clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
                     if let Some(target) = dashboard_auth_callback_url(&url) {
+                        if !has_user_auth_record() && oauth_callback_has_code(&url) {
+                            let original_next = url
+                                .query_pairs()
+                                .find_map(|(key, value)| (key == "next").then(|| value.to_string()))
+                                .and_then(|value| sanitize_next_path(&value));
+                            if let Ok(mut pending) = pending_install_for_deep_link.lock() {
+                                *pending = Some(original_next.unwrap_or_else(|| "/chats/home".to_string()));
+                            }
+                        }
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.navigate(target);
                         }
                     } else if let Some(request) = install_request_from_deep_link(&url) {
-                        let app_handle = app_handle.clone();
-                        thread::spawn(move || {
-                            if let Err(err) = connect_with_install_token(
-                                request.hub_url,
-                                request.install_token,
-                                request.label,
-                            ) {
-                                eprintln!("[desktop-install] failed to connect daemon: {err}");
-                            }
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let target = load_config()
-                                    .ok()
-                                    .and_then(|config| Url::parse(&config.dashboard_url).ok())
-                                    .or_else(|| Url::parse(DEFAULT_DASHBOARD_URL).ok());
-                                if let Some(target) = target {
-                                    let _ = window.navigate(target);
-                                }
-                            }
-                        });
+                        handle_install_request_for_app(app_handle.clone(), request);
                     }
                 }
             });
@@ -666,6 +687,7 @@ struct InstallRequest {
     hub_url: String,
     install_token: String,
     label: String,
+    next_path: Option<String>,
 }
 
 fn install_request_from_deep_link(url: &Url) -> Option<InstallRequest> {
@@ -676,11 +698,13 @@ fn install_request_from_deep_link(url: &Url) -> Option<InstallRequest> {
     let mut install_token = None;
     let mut hub_url = None;
     let mut label = String::new();
+    let mut next_path = None;
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
             "install_token" => install_token = Some(value.to_string()),
             "hub" => hub_url = Some(value.to_string()),
             "label" => label = value.to_string(),
+            "next" => next_path = sanitize_next_path(&value),
             _ => {}
         }
     }
@@ -693,7 +717,106 @@ fn install_request_from_deep_link(url: &Url) -> Option<InstallRequest> {
         hub_url: blank_default(hub_url.unwrap_or_default(), DEFAULT_HUB_URL),
         install_token,
         label: label.trim().to_string(),
+        next_path,
     })
+}
+
+fn handle_install_request_for_webview<R: tauri::Runtime>(
+    webview: tauri::Webview<R>,
+    request: InstallRequest,
+) {
+    thread::spawn(move || {
+        let target = connect_install_request(request);
+        if let Some(target) = target {
+            let _ = webview.navigate(target);
+        }
+    });
+}
+
+fn handle_install_request_for_app<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    request: InstallRequest,
+) {
+    thread::spawn(move || {
+        let target = connect_install_request(request);
+        if let Some(window) = app_handle.get_webview_window("main") {
+            if let Some(target) = target {
+                let _ = window.navigate(target);
+            }
+        }
+    });
+}
+
+fn connect_install_request(request: InstallRequest) -> Option<Url> {
+    let next_path = request.next_path;
+    if let Err(err) =
+        connect_with_install_token(request.hub_url, request.install_token, request.label)
+    {
+        eprintln!("[desktop-install] failed to connect daemon: {err}");
+    }
+    load_config()
+        .ok()
+        .and_then(|config| dashboard_url_for_next(&config, next_path.as_deref()))
+        .or_else(|| Url::parse(DEFAULT_DASHBOARD_URL).ok())
+}
+
+fn has_user_auth_record() -> bool {
+    user_auth_path().map(|path| path.exists()).unwrap_or(false)
+}
+
+fn oauth_callback_has_code(url: &Url) -> bool {
+    url.query_pairs()
+        .any(|(key, value)| key == "code" && !value.trim().is_empty())
+}
+
+fn desktop_install_next_path(config: &DesktopConfig, original_next: Option<&str>) -> String {
+    let mut path = format!(
+        "/desktop/install?callback={}&hub={}",
+        url_encode(DEEP_LINK_CALLBACK),
+        url_encode(&config.hub_url)
+    );
+    if !config.label.is_empty() {
+        path.push_str("&label=");
+        path.push_str(&url_encode(&config.label));
+    }
+    if let Some(next) = original_next.and_then(sanitize_next_path) {
+        path.push_str("&next=");
+        path.push_str(&url_encode(&next));
+    }
+    path
+}
+
+fn dashboard_install_url_for_next(config: &DesktopConfig, next_path: Option<&str>) -> Option<Url> {
+    dashboard_url_for_next(config, Some(&desktop_install_next_path(config, next_path)))
+}
+
+fn dashboard_url_for_next(config: &DesktopConfig, next_path: Option<&str>) -> Option<Url> {
+    let mut target = Url::parse(&config.dashboard_url)
+        .or_else(|_| Url::parse(DEFAULT_DASHBOARD_URL))
+        .ok()?;
+    if let Some(next) = next_path.and_then(sanitize_next_path) {
+        let parsed = Url::parse(&format!("https://botcord.local{next}")).ok()?;
+        target.set_path(parsed.path());
+        target.set_query(parsed.query());
+        target.set_fragment(parsed.fragment());
+    }
+    Some(target)
+}
+
+fn is_post_auth_dashboard_page(url: &Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    !matches!(url.path(), "/auth/callback" | "/login" | "/desktop/install")
+}
+
+fn sanitize_next_path(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.starts_with('/') && !trimmed.starts_with("//") {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
 }
 
 fn open_url(url: &str) -> Result<(), String> {
@@ -1198,6 +1321,11 @@ mod tests {
             .expect("redirect_to should be present")
     }
 
+    fn auth_callback_target(raw: &str) -> Url {
+        let url = Url::parse(raw).expect("valid auth callback URL");
+        dashboard_auth_callback_url(&url).expect("dashboard callback target")
+    }
+
     #[test]
     fn oauth_redirect_uses_deep_link_callback_for_preview() {
         let config = DesktopConfig {
@@ -1233,6 +1361,47 @@ mod tests {
     }
 
     #[test]
+    fn auth_callback_preserves_next() {
+        let target = auth_callback_target("botcord://auth/callback?code=abc123&next=%2Fsettings%2Fdaemons");
+
+        assert_eq!(target.path(), "/auth/callback");
+        assert_eq!(
+            target.query(),
+            Some("code=abc123&next=%2Fsettings%2Fdaemons")
+        );
+    }
+
+    #[test]
+    fn dashboard_install_url_keeps_original_next() {
+        let config = DesktopConfig::default();
+        let install = dashboard_install_url_for_next(&config, Some("/chats/home"))
+            .expect("install URL");
+
+        assert_eq!(install.path(), "/desktop/install");
+        assert_eq!(
+            install
+                .query_pairs()
+                .find(|(key, _)| key == "callback")
+                .map(|(_, value)| value.to_string()),
+            Some("botcord://install".to_string())
+        );
+        assert_eq!(
+            install
+                .query_pairs()
+                .find(|(key, _)| key == "hub")
+                .map(|(_, value)| value.to_string()),
+            Some(DEFAULT_HUB_URL.to_string())
+        );
+        assert_eq!(
+            install
+                .query_pairs()
+                .find(|(key, _)| key == "next")
+                .map(|(_, value)| value.to_string()),
+            Some("/chats/home".to_string())
+        );
+    }
+
+    #[test]
     fn desktop_install_url_uses_dashboard_origin_not_current_path() {
         let config = DesktopConfig {
             dashboard_url: "https://preview.botcord.chat/chats".to_string(),
@@ -1254,7 +1423,7 @@ mod tests {
     #[test]
     fn install_deep_link_extracts_install_request() {
         let url = Url::parse(
-            "botcord://install?install_token=dit_123&hub=https%3A%2F%2Fapi.preview.botcord.chat&label=Local%20Mac",
+            "botcord://install?install_token=dit_123&hub=https%3A%2F%2Fapi.preview.botcord.chat&label=Local%20Mac&next=%2Fsettings%2Fdaemons",
         )
         .expect("valid install link");
 
@@ -1263,6 +1432,7 @@ mod tests {
         assert_eq!(request.install_token, "dit_123");
         assert_eq!(request.hub_url, "https://api.preview.botcord.chat");
         assert_eq!(request.label, "Local Mac");
+        assert_eq!(request.next_path, Some("/settings/daemons".to_string()));
     }
 
     #[test]
