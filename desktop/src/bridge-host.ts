@@ -15,6 +15,7 @@ const APP_VERSION = "0.1.0";
 const SOURCE_TAG = "botcord-desktop-bridge";
 const TRUSTED_DASHBOARD_ORIGINS = new Set([
   "https://botcord.chat",
+  "https://www.botcord.chat",
   "https://preview.botcord.chat",
 ]);
 const DEV_DASHBOARD_ORIGINS = new Set([

@@ -9,7 +9,12 @@ function normalizeUrl(raw: string): string {
       ? trimmed
       : `https://${trimmed}`;
   const url = new URL(base);
-  if ((url.hostname === "botcord.chat" || url.hostname === "preview.botcord.chat") && url.pathname === "/") {
+  if (
+    (url.hostname === "botcord.chat" ||
+      url.hostname === "www.botcord.chat" ||
+      url.hostname === "preview.botcord.chat") &&
+    url.pathname === "/"
+  ) {
     url.pathname = "/chats";
   }
   return url.toString();

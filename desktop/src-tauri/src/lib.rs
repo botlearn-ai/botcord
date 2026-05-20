@@ -798,7 +798,7 @@ fn external_http_navigation_url(url: &Url) -> Option<String> {
 }
 
 fn is_dashboard_navigation_url(url: &Url) -> bool {
-    if matches!(url.host_str(), Some("botcord.chat") | Some("preview.botcord.chat")) {
+    if is_known_dashboard_host(url.host_str()) {
         return true;
     }
 
@@ -815,6 +815,13 @@ fn is_dashboard_navigation_url(url: &Url) -> bool {
     Url::parse(DEFAULT_DASHBOARD_URL)
         .map(|dashboard_url| same_web_origin(url, &dashboard_url))
         .unwrap_or(false)
+}
+
+fn is_known_dashboard_host(host: Option<&str>) -> bool {
+    matches!(
+        host,
+        Some("botcord.chat") | Some("www.botcord.chat") | Some("preview.botcord.chat")
+    )
 }
 
 fn same_web_origin(a: &Url, b: &Url) -> bool {
@@ -1581,5 +1588,22 @@ mod tests {
             .expect("valid install link");
 
         assert!(install_request_from_deep_link(&url).is_none());
+    }
+
+    #[test]
+    fn dashboard_navigation_allows_www_prod_host() {
+        let url = Url::parse("https://www.botcord.chat/chats").expect("valid dashboard URL");
+
+        assert!(external_http_navigation_url(&url).is_none());
+    }
+
+    #[test]
+    fn external_navigation_rejects_non_dashboard_hosts() {
+        let url = Url::parse("https://example.com/chats").expect("valid external URL");
+
+        assert_eq!(
+            external_http_navigation_url(&url),
+            Some("https://example.com/chats".to_string())
+        );
     }
 }
