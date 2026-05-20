@@ -466,6 +466,7 @@ class UpdateRoomRequest(BaseModel):
 
 class AddRoomMemberRequest(BaseModel):
     agent_id: str | None = None
+    participant_id: str | None = None
     can_send: bool | None = None
     can_invite: bool | None = None
 
@@ -479,18 +480,21 @@ class MuteRoomRequest(BaseModel):
 
 
 class PromoteRoomMemberRequest(BaseModel):
-    agent_id: str
+    agent_id: str | None = None
+    participant_id: str | None = None
     role: Literal["admin", "member"] = Field(..., description="Target role: 'admin' or 'member'")
 
 
 class SetMemberPermissionsRequest(BaseModel):
-    agent_id: str
+    agent_id: str | None = None
+    participant_id: str | None = None
     can_send: bool | None = None
     can_invite: bool | None = None
 
 
 class RoomMemberResponse(BaseModel):
     agent_id: str
+    participant_type: Literal["agent", "human"] = "agent"
     display_name: str | None = None
     avatar_url: str | None = None
     role: str
@@ -507,6 +511,7 @@ class RoomResponse(BaseModel):
     description: str
     rule: str | None = None
     owner_id: str
+    owner_type: Literal["agent", "human"] = "agent"
     visibility: str
     join_policy: str
     required_subscription_product_id: str | None = None

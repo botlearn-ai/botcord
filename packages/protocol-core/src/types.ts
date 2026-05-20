@@ -83,6 +83,8 @@ export type RoomInfo = {
   name: string;
   description?: string;
   rule?: string | null;
+  owner_id?: string;
+  owner_type?: "agent" | "human";
   visibility: "private" | "public";
   join_policy: "invite_only" | "open";
   required_subscription_product_id?: string | null;
