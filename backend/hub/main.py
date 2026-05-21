@@ -18,6 +18,7 @@ from sqlalchemy import text
 from hub.config import DATABASE_SCHEMA
 from hub.database import async_session, engine
 from hub.models import Agent, Base, MessagePolicy
+from hub.cloud_agent_idle import cloud_agent_idle_pause_loop
 from hub.cleanup import file_cleanup_loop
 from hub.presence_cleanup import presence_cleanup_loop
 from hub import config as hub_config
@@ -119,6 +120,7 @@ async def lifespan(app: FastAPI):
     subscription_billing_task = None
     presence_task = None
     agent_schedule_task = None
+    cloud_agent_idle_task = None
     if not test_db_override:
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
@@ -130,11 +132,20 @@ async def lifespan(app: FastAPI):
         presence_task = asyncio.create_task(presence_cleanup_loop())
         # Background proactive agent schedule loop
         agent_schedule_task = asyncio.create_task(agent_schedule_loop())
+        # Background Cloud Agent idle sandbox pause loop
+        cloud_agent_idle_task = asyncio.create_task(cloud_agent_idle_pause_loop())
 
     yield
 
     # Shutdown
-    for task in (agent_schedule_task, presence_task, subscription_billing_task, cleanup_task, expiry_task):
+    for task in (
+        cloud_agent_idle_task,
+        agent_schedule_task,
+        presence_task,
+        subscription_billing_task,
+        cleanup_task,
+        expiry_task,
+    ):
         if task is None:
             continue
         task.cancel()

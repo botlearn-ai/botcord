@@ -216,11 +216,32 @@ async def send_chat_message(
     if not user_id:
         raise I18nHTTPException(status_code=400, message_key="user_id_required_for_chat")
 
-    # Fetch agent display name
-    agent_result = await db.execute(
-        select(Agent.display_name).where(Agent.agent_id == agent_id)
-    )
-    agent_display_name = agent_result.scalar_one_or_none() or agent_id
+    # Fetch agent and wake/resume its cloud runtime when needed.
+    agent_result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = agent_result.scalar_one_or_none()
+    agent_display_name = agent.display_name if agent is not None else agent_id
+    if agent is not None and agent.hosting_kind == "cloud":
+        try:
+            from hub.services.cloud_agent import CloudAgentError, CloudAgentService
+
+            await CloudAgentService().resume_cloud_agent(
+                db,
+                user_id=uuid.UUID(user_id),
+                agent_id=agent_id,
+            )
+        except (CloudAgentError, ValueError) as exc:
+            logger.warning(
+                "Dashboard chat cloud resume skipped: agent=%s err=%s",
+                agent_id,
+                exc,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "Dashboard chat cloud resume failed: agent=%s err=%s",
+                agent_id,
+                exc,
+                exc_info=True,
+            )
 
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)
