@@ -296,14 +296,22 @@ CLOUD_AGENT_DEFAULT_MODEL_PROFILE: str = os.getenv(
     "CLOUD_AGENT_DEFAULT_MODEL_PROFILE", "deepseek-v4-flash"
 )
 
-# Provider implementation key. ``fake`` for PR 3 unit tests and local dev.
-# PR 4 will introduce ``e2b`` once the E2BCloudDaemonProvider lands.
-CLOUD_AGENT_DEFAULT_PROVIDER: str = os.getenv("CLOUD_AGENT_DEFAULT_PROVIDER", "fake")
+# Provider implementation key. Production/preview must use ``e2b`` so a
+# created Cloud Agent actually gets a sandbox-backed daemon. Tests and local
+# smoke runs that intentionally avoid E2B can opt into ``fake`` explicitly.
+CLOUD_AGENT_DEFAULT_PROVIDER: str = os.getenv("CLOUD_AGENT_DEFAULT_PROVIDER", "e2b")
 
 # Slot capacity per cloud daemon — schema allows >1 to keep the per-agent
 # sandbox cost down. Conservative default while we observe real load.
 CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON: int = int(
     os.getenv("CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON", "2")
+)
+
+CLOUD_AGENT_IDLE_PAUSE_SECONDS: float = float(
+    os.getenv("CLOUD_AGENT_IDLE_PAUSE_SECONDS", "300")
+)
+CLOUD_AGENT_IDLE_SWEEP_INTERVAL_SECONDS: float = float(
+    os.getenv("CLOUD_AGENT_IDLE_SWEEP_INTERVAL_SECONDS", "60")
 )
 
 # ---------------------------------------------------------------------------
