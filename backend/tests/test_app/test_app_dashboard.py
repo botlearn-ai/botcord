@@ -376,6 +376,62 @@ async def test_dashboard_overview_human_mode(
 
 
 @pytest.mark.asyncio
+async def test_dashboard_room_messages_allows_human_owner_to_read_owned_bot_dm(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+):
+    """Human owner can read bot-only rooms surfaced by /humans/me/agent-rooms."""
+    room_id = "rm_dm_ag_dashtest001_ag_other00001"
+    db_session.add(
+        Room(
+            room_id=room_id,
+            name="Bot DM",
+            description="Bot to bot DM",
+            owner_id="ag_dashtest001",
+            owner_type=ParticipantType.agent,
+            visibility=RoomVisibility.private,
+            join_policy=RoomJoinPolicy.invite_only,
+        )
+    )
+    db_session.add_all([
+        RoomMember(
+            room_id=room_id,
+            agent_id="ag_dashtest001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id=room_id,
+            agent_id="ag_other00001",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_botdm001",
+            msg_id="msg_botdm001",
+            sender_id="ag_dashtest001",
+            receiver_id="ag_other00001",
+            room_id=room_id,
+            envelope_json='{"from":"ag_dashtest001","type":"message","payload":{"text":"owned bot hello"}}',
+            ttl_sec=3600,
+        ),
+    ])
+    await db_session.commit()
+
+    resp = await client.get(
+        f"/api/dashboard/rooms/{room_id}/messages",
+        headers={"Authorization": f"Bearer {seed_data['token']}"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["messages"][0]["hub_msg_id"] == "hm_botdm001"
+    assert data["messages"][0]["text"] == "owned bot hello"
+    assert data["messages"][0]["is_mine"] is True
+
+
+@pytest.mark.asyncio
 async def test_dashboard_overview_wrong_agent(client: AsyncClient, seed_data: dict):
     """Should return 404 when X-Active-Agent references a non-existent agent."""
     token = seed_data["token"]

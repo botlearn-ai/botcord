@@ -2262,6 +2262,27 @@ async def get_room_messages(
                 if owner_agent_result.scalar_one_or_none() is not None:
                     is_member = True
                     viewer_agent_id = room.owner_id
+
+            # The Human-first messages list also exposes rooms joined only by
+            # bots owned by the signed-in user (see /api/humans/me/agent-rooms).
+            # Let the owner read those histories without forcing the frontend
+            # to switch the whole dashboard into X-Active-Agent mode.
+            if not is_member:
+                owned_agent_member_result = await db.execute(
+                    select(RoomMember.agent_id)
+                    .join(Agent, Agent.agent_id == RoomMember.agent_id)
+                    .where(
+                        RoomMember.room_id == room_id,
+                        RoomMember.participant_type == ParticipantType.agent,
+                        Agent.user_id == user.id,
+                    )
+                    .order_by(Agent.created_at)
+                    .limit(1)
+                )
+                owned_agent_id = owned_agent_member_result.scalar_one_or_none()
+                if owned_agent_id is not None:
+                    is_member = True
+                    viewer_agent_id = owned_agent_id
         except HTTPException:
             pass  # Invalid token — fall through to public view
 
