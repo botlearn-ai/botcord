@@ -61,6 +61,7 @@ RUN apt-get update \
         python3-pip \
         gnupg \
         passwd \
+        libdbus-1-3 \
  && rm -rf /var/lib/apt/lists/*
 
 # Node 20 via NodeSource. We register the repo manually and pin the priority
