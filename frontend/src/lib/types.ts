@@ -852,6 +852,7 @@ export interface UserAgent {
   claimed_at: string;
   ws_online: boolean;
   daemon_instance_id?: string | null;
+  hosting_kind?: "daemon" | "openclaw" | "cli" | "cloud" | string | null;
   runtime?: string | null;
 }
 

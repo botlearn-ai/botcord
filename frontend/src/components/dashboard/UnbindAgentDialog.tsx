@@ -9,6 +9,7 @@ import { AlertTriangle, Loader2, Unlink, X } from "lucide-react";
 interface UnbindAgentDialogProps {
   agentId: string;
   agentName: string;
+  deleteMode?: "unbind" | "cloud";
   onClose: () => void;
   onUnbound: (agentId: string) => Promise<void> | void;
 }
@@ -16,11 +17,36 @@ interface UnbindAgentDialogProps {
 export default function UnbindAgentDialog({
   agentId,
   agentName,
+  deleteMode = "unbind",
   onClose,
   onUnbound,
 }: UnbindAgentDialogProps) {
   const locale = useLanguage();
   const t = unbindAgentDialog[locale];
+  const isCloudDelete = deleteMode === "cloud";
+  const copy = isCloudDelete
+    ? {
+        title: locale === "zh" ? "删除云端 Bot" : "Delete Cloud Bot",
+        description: locale === "zh"
+          ? "这将删除云端 Bot，并清理对应的云端运行环境、凭据与未结算用量预留。"
+          : "This will delete the Cloud Bot and clean up its cloud runtime, credentials, and pending usage reservations.",
+        warning: locale === "zh"
+          ? "此操作不可撤销。删除后如果需要使用该 Bot，需要重新创建。"
+          : "This action cannot be undone. Create a new Bot if you need it again.",
+        targetAgent: locale === "zh" ? "即将删除：" : "Bot to delete: ",
+        confirm: locale === "zh" ? "确认删除" : "Confirm Delete",
+        loading: locale === "zh" ? "删除中..." : "Deleting...",
+        failed: locale === "zh" ? "删除云端 Bot 失败" : "Failed to delete Cloud Bot",
+      }
+    : {
+        title: t.title,
+        description: t.description,
+        warning: t.warning,
+        targetAgent: t.targetAgent,
+        confirm: t.confirm,
+        loading: t.unbinding,
+        failed: t.failed,
+      };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,11 +54,15 @@ export default function UnbindAgentDialog({
     setLoading(true);
     setError(null);
     try {
-      await userApi.unbindAgent(agentId);
+      if (isCloudDelete) {
+        await userApi.deleteCloudAgent(agentId);
+      } else {
+        await userApi.unbindAgent(agentId);
+      }
       await onUnbound(agentId);
       onClose();
     } catch (err: any) {
-      setError(err?.message || t.failed);
+      setError(err?.message || copy.failed);
       setLoading(false);
     }
   }
@@ -51,20 +81,20 @@ export default function UnbindAgentDialog({
         <div className="mb-5 pr-8">
           <h3 className="flex items-center gap-2 text-xl font-bold text-text-primary">
             <Unlink className="h-5 w-5 text-red-400" />
-            {t.title}
+            {copy.title}
           </h3>
-          <p className="mt-2 text-sm text-text-secondary">{t.description}</p>
+          <p className="mt-2 text-sm text-text-secondary">{copy.description}</p>
         </div>
 
         <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
-            <p className="text-xs text-amber-300">{t.warning}</p>
+            <p className="text-xs text-amber-300">{copy.warning}</p>
           </div>
         </div>
 
         <p className="mt-4 text-xs text-text-secondary">
-          {t.targetAgent}
+          {copy.targetAgent}
           <span className="font-mono text-text-primary">{agentName}</span>
           <span className="ml-1 text-text-secondary/50">({agentId})</span>
         </p>
@@ -91,10 +121,10 @@ export default function UnbindAgentDialog({
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {t.unbinding}
+                {copy.loading}
               </>
             ) : (
-              t.confirm
+              copy.confirm
             )}
           </button>
         </div>
