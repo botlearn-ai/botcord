@@ -277,6 +277,51 @@ async def test_cloud_registry_does_not_collide_with_local_daemon_registry():
         await cloud_registry.unregister(cloud_conn)
 
 
+@pytest.mark.asyncio
+async def test_instance_view_reflects_cloud_daemon_connection():
+    """``/daemon/instances`` must report ``online=True`` for a cloud daemon
+    that has an active ``/cloud/daemon/ws`` connection.
+
+    Regression: ``_instance_to_view`` previously consulted only the local
+    registry, so cloud daemons were stuck displaying offline in the
+    dashboard even while their WS was live (and messages still flowed).
+    """
+    from hub.routers.cloud_daemon_control import is_cloud_daemon_online_by_daemon_id
+    from hub.routers.daemon_control import _instance_online
+
+    cloud_registry = _registry_for_tests()
+
+    cloud_daemon_id = "cloud_dm_view"
+    daemon_id = "dm_view_check"
+    fake_instance = DaemonInstance(
+        id=daemon_id,
+        user_id=uuid.uuid4(),
+        kind="cloud",
+        refresh_token_hash="z" * 64,
+    )
+
+    # No connection yet — must be offline.
+    assert is_cloud_daemon_online_by_daemon_id(daemon_id) is False
+    assert _instance_online(fake_instance) is False
+
+    conn = _CloudDaemonConn(
+        ws=_FakeWS(),
+        user_id="u",
+        cloud_daemon_instance_id=cloud_daemon_id,
+        daemon_instance_id=daemon_id,
+    )
+    await cloud_registry.register(conn)
+    try:
+        assert is_cloud_daemon_online_by_daemon_id(daemon_id) is True
+        assert _instance_online(fake_instance) is True
+    finally:
+        await cloud_registry.unregister(conn)
+
+    # And back to offline after disconnect.
+    assert is_cloud_daemon_online_by_daemon_id(daemon_id) is False
+    assert _instance_online(fake_instance) is False
+
+
 # ---------------------------------------------------------------------------
 # runtime_snapshot persistence — exercises the cloud event handler directly
 # ---------------------------------------------------------------------------

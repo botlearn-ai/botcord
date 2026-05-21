@@ -333,9 +333,9 @@ class _FakeCommands:
     def __init__(self, record: list[dict]) -> None:
         self._record = record
 
-    async def run(self, cmd, background=None, envs=None, **_kwargs):
+    async def run(self, cmd, background=None, envs=None, timeout=None, **_kwargs):
         self._record.append(
-            {"cmd": cmd, "background": background, "envs": envs}
+            {"cmd": cmd, "background": background, "envs": envs, "timeout": timeout}
         )
         # Background commands return a handle without waiting; we just
         # return a sentinel — _E2BSdkClient discards the value.
@@ -472,6 +472,10 @@ async def test_sdk_client_run_command_forwards_envs(fake_e2b_sdk_client):
     assert cmd["cmd"] == CLOUD_DAEMON_STARTUP_COMMAND
     assert cmd["background"] is True
     assert cmd["envs"] == {"BOTCORD_HUB_URL": "https://hub.test"}
+    # Background daemons must outlive the SDK-side connection; the e2b SDK's
+    # default 60s connection timeout would otherwise have envd terminate the
+    # orphaned process exactly one minute after boot.
+    assert cmd["timeout"] == 0
 
 
 @pytest.mark.asyncio

@@ -176,6 +176,16 @@ def is_cloud_daemon_online(cloud_daemon_instance_id: str) -> bool:
     return _REGISTRY.is_online(cloud_daemon_instance_id)
 
 
+def is_cloud_daemon_online_by_daemon_id(daemon_instance_id: str) -> bool:
+    """Same as :func:`is_cloud_daemon_online` but keyed by ``daemon_instance_id``.
+
+    The dashboard's ``/daemon/instances`` list iterates ``DaemonInstance`` rows
+    and needs an online flag without a separate ``CloudDaemonInstance`` lookup —
+    the cloud registry already indexes by both keys so this is O(1).
+    """
+    return _REGISTRY.get_by_daemon(daemon_instance_id) is not None
+
+
 def _registry_for_tests() -> _CloudDaemonRegistry:
     """Test-only accessor for injecting fake connections."""
     return _REGISTRY

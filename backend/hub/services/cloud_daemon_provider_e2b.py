@@ -218,8 +218,14 @@ class _E2BSdkClient:
         sandbox = await self._connect(sandbox_id, timeout_seconds=0)
         try:
             if background:
-                # Background=True returns immediately with a handle we discard.
-                await sandbox.commands.run(command, background=True, envs=env)
+                # ``timeout=0`` keeps envd's process stream open indefinitely.
+                # The SDK default (60s) closes the stream once the Python
+                # provider returns, and envd then terminates the orphaned
+                # background process — sandbox keeps running, but the cloud
+                # daemon dies exactly one minute after boot.
+                await sandbox.commands.run(
+                    command, background=True, envs=env, timeout=0
+                )
             else:
                 await sandbox.commands.run(command, envs=env)
         except self._e2b.SandboxNotFoundException as exc:

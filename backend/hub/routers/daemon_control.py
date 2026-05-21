@@ -566,6 +566,25 @@ def _instance_status(instance: DaemonInstance) -> str:
     return "active"
 
 
+def _instance_online(instance: DaemonInstance) -> bool:
+    """Resolve a daemon's WS-presence flag against the registry that owns it.
+
+    Local daemons register on ``/daemon/ws`` (``_REGISTRY``); cloud daemons
+    register on ``/cloud/daemon/ws`` in :class:`_CloudDaemonRegistry`. Both
+    registries index by ``daemon_instance_id`` so a single key works against
+    either — querying the wrong one was the source of the "cloud daemon stuck
+    offline in dashboard" bug.
+    """
+    if instance.kind == "cloud":
+        # Late import to avoid a control-plane import cycle.
+        from hub.routers.cloud_daemon_control import (
+            is_cloud_daemon_online_by_daemon_id,
+        )
+
+        return is_cloud_daemon_online_by_daemon_id(instance.id)
+    return _REGISTRY.is_online(instance.id)
+
+
 def _instance_to_view(instance: DaemonInstance) -> _InstanceView:
     return _InstanceView(
         id=instance.id,
@@ -576,7 +595,7 @@ def _instance_to_view(instance: DaemonInstance) -> _InstanceView:
         removal_requested_at=instance.removal_requested_at,
         cleanup_completed_at=instance.cleanup_completed_at,
         status=_instance_status(instance),
-        online=_REGISTRY.is_online(instance.id),
+        online=_instance_online(instance),
         runtimes=instance.runtimes_json if instance.runtimes_json else None,
         runtimes_probed_at=instance.runtimes_probed_at,
     )
