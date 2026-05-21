@@ -176,6 +176,22 @@ def test_verify_rejects_missing_cloud_id():
     payload = {
         "kind": CLOUD_DAEMON_TOKEN_KIND,
         "iss": CLOUD_DAEMON_TOKEN_ISSUER,
+        "user_id": str(uuid.uuid4()),
+        "daemon_instance_id": "dm_xxx",
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+    }
+    token = pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    from hub.routers.cloud_daemon_control import _TokenError
+
+    with pytest.raises(_TokenError):
+        _verify_cloud_daemon_access_token(token)
+
+
+def test_verify_rejects_missing_user_id():
+    payload = {
+        "kind": CLOUD_DAEMON_TOKEN_KIND,
+        "iss": CLOUD_DAEMON_TOKEN_ISSUER,
+        "cloud_daemon_instance_id": "cloud_dm_xxx",
         "daemon_instance_id": "dm_xxx",
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
     }
@@ -426,6 +442,30 @@ async def test_ws_rejects_when_daemon_is_local_kind(
         cloud_daemon_instance_id=cloud.id,
         daemon_instance_id=daemon.id,
         user_id=str(daemon.user_id),
+    )
+
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect as _WSD
+
+    with TestClient(app_with_shared_session) as tc:
+        with pytest.raises(_WSD) as excinfo:
+            with tc.websocket_connect(
+                "/cloud/daemon/ws",
+                headers={"Authorization": f"Bearer {token}"},
+            ):
+                pass
+        assert excinfo.value.code == 4401
+
+
+@pytest.mark.asyncio
+async def test_ws_rejects_when_token_user_mismatches_rows(
+    db_session, app_with_shared_session
+):
+    daemon, cloud = await _seed_cloud_daemon(db_session)
+    token, _ = _create_cloud_daemon_access_token(
+        cloud_daemon_instance_id=cloud.id,
+        daemon_instance_id=daemon.id,
+        user_id=str(uuid.uuid4()),
     )
 
     from starlette.testclient import TestClient

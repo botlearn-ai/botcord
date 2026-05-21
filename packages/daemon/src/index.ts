@@ -719,11 +719,13 @@ async function cmdStartCloud(_args: ParsedArgs): Promise<void> {
     routes: [],
     streamBlocks: true,
   };
+  saveConfig(cfg);
+  log.info("cloud mode config initialized", { configPath: CONFIG_FILE_PATH });
 
   const handle = await startCloudDaemon({
     cloudConfig,
     config: cfg,
-    configPath: "(cloud-mode, no on-disk config)",
+    configPath: CONFIG_FILE_PATH,
   });
 
   const shutdown = async (sig: string): Promise<void> => {

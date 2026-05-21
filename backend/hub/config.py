@@ -322,6 +322,25 @@ E2B_DEFAULT_REGION: str | None = os.getenv("E2B_DEFAULT_REGION") or None
 # as the sandbox's max-lifetime hint so a hung sandbox is recycled.
 E2B_SANDBOX_TIMEOUT_SECONDS: int = int(os.getenv("E2B_SANDBOX_TIMEOUT_SECONDS", "1800"))
 
+# Command Hub runs inside a freshly-created or resumed cloud daemon instance.
+# The default supports purpose-built images that already contain
+# ``botcord-daemon`` and preview templates that need to install it at boot.
+CLOUD_DAEMON_NPM_SPEC: str = os.getenv(
+    "CLOUD_DAEMON_NPM_SPEC", "@botcord/daemon@latest"
+)
+CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
+    "CLOUD_DAEMON_STARTUP_COMMAND",
+    (
+        "sh -lc '"
+        "if command -v botcord-daemon >/dev/null 2>&1; then "
+        "exec botcord-daemon start --foreground; "
+        "fi; "
+        "exec npx --yes --package \"${CLOUD_DAEMON_NPM_SPEC:-@botcord/daemon@latest}\" "
+        "botcord-daemon start --foreground"
+        "'"
+    ),
+)
+
 # DeepSeek model API key forwarded to the cloud daemon as an env var on
 # sandbox start. PR 4 keeps it as a plain Hub env var; a real secret-manager
 # integration is part of production hardening, not the MVP.

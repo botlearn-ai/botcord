@@ -40,6 +40,8 @@ def _make_provider(
     *,
     client: FakeE2BSandboxClient | None = None,
     deepseek_api_key: str | None = "ds-secret",
+    startup_command: str = CLOUD_DAEMON_STARTUP_COMMAND,
+    daemon_npm_spec: str = "@botcord/daemon@0.2.75",
 ) -> tuple[E2BCloudDaemonProvider, FakeE2BSandboxClient]:
     client = client or FakeE2BSandboxClient()
     provider = E2BCloudDaemonProvider(
@@ -49,6 +51,8 @@ def _make_provider(
         sandbox_timeout_seconds=120,
         hub_public_base_url="https://hub.test",
         deepseek_api_key=deepseek_api_key,
+        startup_command=startup_command,
+        daemon_npm_spec=daemon_npm_spec,
     )
     return provider, client
 
@@ -85,11 +89,30 @@ async def test_create_or_resume_starts_sandbox_and_injects_env():
     assert env["BOTCORD_CLOUD_DAEMON_INSTANCE_ID"] == "cloud_dm_aaa"
     assert env["BOTCORD_DAEMON_INSTANCE_ID"] == "dm_bbb"
     assert env["DEEPSEEK_API_KEY"] == "ds-secret"
+    assert env["CLOUD_DAEMON_NPM_SPEC"] == "@botcord/daemon@0.2.75"
 
     # And the injected access token is a valid cloud-daemon-access JWT.
     claims = _verify_cloud_daemon_access_token(env["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"])
     assert claims["cloud_daemon_instance_id"] == "cloud_dm_aaa"
     assert claims["daemon_instance_id"] == "dm_bbb"
+
+
+@pytest.mark.asyncio
+async def test_create_or_resume_uses_configured_startup_command():
+    """Provider can launch a purpose-built image with a custom entrypoint."""
+    provider, client = _make_provider(
+        startup_command="/usr/local/bin/start-cloud-daemon"
+    )
+    handle = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_cmd",
+        daemon_instance_id="dm_cmd",
+        user_id=str(uuid.uuid4()),
+        runtime="deepseek-tui",
+    )
+
+    sandbox = client.get(handle.provider_sandbox_id)
+    assert sandbox is not None
+    assert sandbox.commands == ["/usr/local/bin/start-cloud-daemon"]
 
 
 @pytest.mark.asyncio

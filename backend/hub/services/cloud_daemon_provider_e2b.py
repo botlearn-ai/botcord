@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from hub.config import (
+    CLOUD_DAEMON_NPM_SPEC,
+    CLOUD_DAEMON_STARTUP_COMMAND,
     DEEPSEEK_API_KEY,
     E2B_API_KEY,
     E2B_DEFAULT_REGION,
@@ -44,9 +46,6 @@ from hub.routers.cloud_daemon_control import _create_cloud_daemon_access_token
 from hub.services.cloud_daemon_provider import CloudDaemonHandle
 
 logger = logging.getLogger(__name__)
-
-
-CLOUD_DAEMON_STARTUP_COMMAND = "botcord-daemon start --foreground"
 
 
 # ---------------------------------------------------------------------------
@@ -401,12 +400,16 @@ class E2BCloudDaemonProvider:
         sandbox_timeout_seconds: int = E2B_SANDBOX_TIMEOUT_SECONDS,
         hub_public_base_url: str = HUB_PUBLIC_BASE_URL,
         deepseek_api_key: str | None = None,
+        startup_command: str = CLOUD_DAEMON_STARTUP_COMMAND,
+        daemon_npm_spec: str = CLOUD_DAEMON_NPM_SPEC,
     ) -> None:
         self._client = client
         self._template_id = template_id
         self._default_region = default_region
         self._sandbox_timeout_seconds = sandbox_timeout_seconds
         self._hub_public_base_url = hub_public_base_url
+        self._startup_command = startup_command
+        self._daemon_npm_spec = daemon_npm_spec
         # Allow tests to inject a key; otherwise default to Hub config.
         self._deepseek_api_key = (
             deepseek_api_key if deepseek_api_key is not None else DEEPSEEK_API_KEY
@@ -473,7 +476,7 @@ class E2BCloudDaemonProvider:
             # Launch (or relaunch) the daemon as a background process.
             await self._client.run_command(
                 sandbox_id=run.sandbox_id,
-                command=CLOUD_DAEMON_STARTUP_COMMAND,
+                command=self._startup_command,
                 env=env,
                 background=True,
             )
@@ -626,6 +629,7 @@ class E2BCloudDaemonProvider:
             "BOTCORD_CLOUD_DAEMON_INSTANCE_ID": cloud_daemon_instance_id,
             "BOTCORD_DAEMON_INSTANCE_ID": daemon_instance_id,
             "BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN": access_token,
+            "CLOUD_DAEMON_NPM_SPEC": self._daemon_npm_spec,
         }
         if self._deepseek_api_key:
             env["DEEPSEEK_API_KEY"] = self._deepseek_api_key

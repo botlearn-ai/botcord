@@ -107,6 +107,8 @@ def _verify_cloud_daemon_access_token(token: str) -> dict[str, Any]:
         raise _TokenError(4401, "missing cloud_daemon_instance_id claim")
     if not payload.get("daemon_instance_id"):
         raise _TokenError(4401, "missing daemon_instance_id claim")
+    if not payload.get("user_id"):
+        raise _TokenError(4401, "missing user_id claim")
     return payload
 
 
@@ -299,6 +301,9 @@ async def cloud_daemon_control_ws(ws: WebSocket) -> None:
             # Token's cloud/daemon pair must match the persisted binding.
             await ws.close(code=4401, reason="cloud daemon mismatch")
             return
+        if str(cloud_row.user_id) != str(user_id):
+            await ws.close(code=4401, reason="cloud daemon user mismatch")
+            return
         if cloud_row.status in {"deleting", "deleted"}:
             await ws.close(code=4403, reason="cloud daemon revoked")
             return
@@ -311,6 +316,9 @@ async def cloud_daemon_control_ws(ws: WebSocket) -> None:
             return
         if daemon_row.kind != "cloud":
             await ws.close(code=4401, reason="not a cloud daemon")
+            return
+        if str(daemon_row.user_id) != str(user_id):
+            await ws.close(code=4401, reason="daemon user mismatch")
             return
         if daemon_row.revoked_at is not None:
             await ws.close(code=4403, reason="daemon revoked")
