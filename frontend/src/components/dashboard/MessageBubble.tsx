@@ -3,7 +3,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Bot, ChevronDown, ChevronUp, MoreHorizontal, User } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, MoreHorizontal, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import type { DashboardMessage, Attachment } from "@/lib/types";
@@ -347,6 +347,7 @@ function SenderAvatar({
 export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId, mentionCandidates }: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const locale = useLanguage();
@@ -462,6 +463,17 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     if (displayText) setForwardQuote(buildQuote());
   };
 
+  const handleCopyClick = useCallback(async () => {
+    if (!displayText) return;
+    try {
+      await navigator.clipboard.writeText(displayText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard not available */
+    }
+  }, [displayText]);
+
   const sideAvatar = !fullWidth && (
     <SenderAvatar
       senderId={message.sender_id}
@@ -491,6 +503,18 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
           >
             转发
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); void handleCopyClick(); }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="h-3.5 w-3.5 text-zinc-500" />
+            )}
+            {copied ? "已复制" : "复制"}
           </button>
         </div>
       )}
