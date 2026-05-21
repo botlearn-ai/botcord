@@ -59,6 +59,7 @@ from hub.models import (
     MessageRecord,
     SigningKey,
     UsageEvent,
+    UsageReservation,
 )
 from hub.routers.cloud_daemon_control import (
     CloudDaemonDispatchError,
@@ -187,6 +188,27 @@ _RUN_PROMPT_MAX_CHARS = 64 * 1024
 
 def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _as_aware_utc(value: datetime.datetime | None) -> datetime.datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.timezone.utc)
+    return value.astimezone(datetime.timezone.utc)
+
+
+def _cloud_agent_last_activity_at(
+    cai: CloudAgentInstance, cdi: CloudDaemonInstance
+) -> datetime.datetime:
+    candidates = [
+        _as_aware_utc(cai.last_run_at),
+        _as_aware_utc(cai.updated_at),
+        _as_aware_utc(cai.created_at),
+        _as_aware_utc(cdi.last_started_at),
+        _as_aware_utc(cdi.created_at),
+    ]
+    return max(ts for ts in candidates if ts is not None)
 
 
 def _placeholder_refresh_hash() -> str:
@@ -475,6 +497,51 @@ class CloudAgentService:
         await db.refresh(cdi)
         return _make_view(agent, cai, cdi)
 
+    async def pause_idle_cloud_daemons(
+        self,
+        db: AsyncSession,
+        *,
+        idle_seconds: float,
+        now: datetime.datetime | None = None,
+        limit: int = 100,
+    ) -> int:
+        """Pause ready cloud daemon sandboxes that have been idle long enough.
+
+        This is intentionally conservative: a daemon is eligible only when all
+        ready agents under it are idle and no cloud-run message or usage
+        reservation suggests work is still pending.
+        """
+        if idle_seconds <= 0:
+            return 0
+
+        current = now or _now()
+        cutoff = current - datetime.timedelta(seconds=idle_seconds)
+        result = await db.execute(
+            select(CloudDaemonInstance)
+            .where(CloudDaemonInstance.status == "ready")
+            .order_by(CloudDaemonInstance.updated_at.asc())
+            .limit(limit)
+        )
+        candidates = list(result.scalars().all())
+        paused = 0
+
+        for cdi in candidates:
+            try:
+                if await self._pause_cloud_daemon_if_idle(
+                    db, cdi, cutoff=cutoff, now=current
+                ):
+                    paused += 1
+            except Exception as exc:  # noqa: BLE001
+                await db.rollback()
+                logger.warning(
+                    "idle pause failed: cloud=%s sandbox=%s err=%s",
+                    cdi.id,
+                    cdi.provider_sandbox_id,
+                    exc,
+                )
+
+        return paused
+
     async def resume_cloud_agent(
         self,
         db: AsyncSession,
@@ -489,11 +556,18 @@ class CloudAgentService:
                 f"cannot resume cloud agent in status {cai.status!r}",
                 http_status=409,
             )
-        if cai.status == "ready":
+        daemon_online = is_cloud_daemon_online(cdi.id)
+        if cai.status == "ready" and daemon_online:
             return _make_view(agent, cai, cdi)
 
         provider = self._get_provider()
-        if cdi.status != "ready":
+        if cdi.status != "ready" or not daemon_online:
+            if not daemon_online:
+                _ensure_provisioning_metadata(db, cai, agent)
+                cai.status = "provisioning"
+                cai.error_code = None
+                cai.error_message = None
+                await db.commit()
             handle = await provider.create_or_resume(
                 cloud_daemon_instance_id=cdi.id,
                 daemon_instance_id=cdi.daemon_instance_id,
@@ -503,9 +577,22 @@ class CloudAgentService:
             )
             _apply_handle_to_rows(cdi, handle)
             cdi.last_started_at = _now()
-        cai.status = "ready"
-        cai.error_code = None
-        cai.error_message = None
+            if handle.status == "failed":
+                cai.status = "failed"
+                cai.error_code = handle.error_code
+                cai.error_message = handle.error_message
+            elif handle.status == "ready":
+                cai.status = "ready"
+                cai.error_code = None
+                cai.error_message = None
+            else:
+                cai.status = "provisioning"
+                cai.error_code = None
+                cai.error_message = None
+        else:
+            cai.status = "ready"
+            cai.error_code = None
+            cai.error_message = None
         await db.commit()
         await db.refresh(cai)
         await db.refresh(cdi)
@@ -1049,6 +1136,89 @@ class CloudAgentService:
                 http_status=403,
             )
 
+    async def _pause_cloud_daemon_if_idle(
+        self,
+        db: AsyncSession,
+        cdi: CloudDaemonInstance,
+        *,
+        cutoff: datetime.datetime,
+        now: datetime.datetime,
+    ) -> bool:
+        agents_result = await db.execute(
+            select(CloudAgentInstance).where(
+                CloudAgentInstance.cloud_daemon_instance_id == cdi.id,
+                CloudAgentInstance.status.in_(("provisioning", "ready")),
+            )
+        )
+        agents = list(agents_result.scalars().all())
+        if not agents:
+            return False
+        if any(agent.status == "provisioning" for agent in agents):
+            return False
+        if await self._cloud_daemon_has_active_run(db, cdi.id):
+            return False
+
+        for agent in agents:
+            if _cloud_agent_last_activity_at(agent, cdi) > cutoff:
+                return False
+
+        provider = self._get_provider()
+        handle = await provider.pause(
+            cloud_daemon_instance_id=cdi.id,
+            provider_sandbox_id=cdi.provider_sandbox_id,
+        )
+        _apply_handle_to_rows(cdi, handle)
+        cdi.last_paused_at = now
+        cdi.metadata_json = {
+            **(cdi.metadata_json or {}),
+            "last_pause_reason": "idle_timeout",
+        }
+        flag_modified(cdi, "metadata_json")
+        for agent in agents:
+            agent.status = "paused"
+            agent.error_code = None
+            agent.error_message = None
+        await db.commit()
+        logger.info(
+            "idle-paused cloud daemon %s after %d idle agent(s)",
+            cdi.id,
+            len(agents),
+        )
+        return True
+
+    async def _cloud_daemon_has_active_run(
+        self, db: AsyncSession, cloud_daemon_instance_id: str
+    ) -> bool:
+        agent_ids_subquery = (
+            select(CloudAgentInstance.agent_id)
+            .where(
+                CloudAgentInstance.cloud_daemon_instance_id
+                == cloud_daemon_instance_id
+            )
+            .subquery()
+        )
+        active_reservations = await db.scalar(
+            select(func.count())
+            .select_from(UsageReservation)
+            .where(
+                UsageReservation.agent_id.in_(select(agent_ids_subquery.c.agent_id)),
+                UsageReservation.state == "active",
+            )
+        )
+        if (active_reservations or 0) > 0:
+            return True
+
+        active_messages = await db.scalar(
+            select(func.count())
+            .select_from(MessageRecord)
+            .where(
+                MessageRecord.receiver_id.in_(select(agent_ids_subquery.c.agent_id)),
+                MessageRecord.source_type == "cloud_agent_run",
+                MessageRecord.state.notin_((MessageState.done, MessageState.failed)),
+            )
+        )
+        return (active_messages or 0) > 0
+
     async def _enforce_per_user_quota(
         self,
         db: AsyncSession,
@@ -1196,6 +1366,51 @@ def _scrub_provisioning_metadata(cai: CloudAgentInstance) -> None:
     # SQLAlchemy needs an explicit dirty flag on mutable JSON columns
     # when we mutate-in-place; assigning a fresh dict above already
     # triggers it, but flag_modified is the safer pattern here.
+    flag_modified(cai, "metadata_json")
+
+
+def _ensure_provisioning_metadata(
+    db: AsyncSession,
+    cai: CloudAgentInstance,
+    agent: Agent,
+) -> None:
+    """Ensure a cloud agent can be provisioned into a fresh sandbox.
+
+    E2B sandboxes can disappear after their lifetime elapses. A restarted
+    cloud daemon always boots with zero channels, so Hub must be able to send
+    ``provision_agent`` again even for agents that were previously ready. If
+    the one-time provisioning key was scrubbed, rotate in a new signing key for
+    the same agent id and issue a fresh agent token.
+    """
+    provisioning = (cai.metadata_json or {}).get("provisioning") or {}
+    if provisioning.get("private_key_b64") and provisioning.get("key_id"):
+        return
+
+    signing_key = NaClSigningKey.generate()
+    pubkey_b64 = base64.b64encode(bytes(signing_key.verify_key)).decode("ascii")
+    private_key_b64 = base64.b64encode(bytes(signing_key)).decode("ascii")
+    key_id = generate_key_id()
+    cai.metadata_json = {
+        **(cai.metadata_json or {}),
+        "provisioning": {
+            "private_key_b64": private_key_b64,
+            "public_key_b64": pubkey_b64,
+            "key_id": key_id,
+        },
+    }
+    db.add(
+        SigningKey(
+            agent_id=agent.agent_id,
+            key_id=key_id,
+            pubkey=f"ed25519:{pubkey_b64}",
+            state=KeyState.active,
+        )
+    )
+    agent_token, token_expires_at = create_agent_token(agent.agent_id)
+    agent.agent_token = agent_token
+    agent.token_expires_at = datetime.datetime.fromtimestamp(
+        token_expires_at, tz=datetime.timezone.utc
+    )
     flag_modified(cai, "metadata_json")
 
 

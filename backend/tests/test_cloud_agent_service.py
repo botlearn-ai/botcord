@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import uuid
 
 import pytest
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hub.auth import assert_current_agent_token
-from hub.enums import KeyState
+from hub.enums import KeyState, MessageState
 from hub.i18n import I18nHTTPException
 from hub.models import (
     Agent,
@@ -18,7 +19,9 @@ from hub.models import (
     CloudAgentInstance,
     CloudDaemonInstance,
     DaemonInstance,
+    MessageRecord,
     SigningKey,
+    UsageReservation,
 )
 from hub.services.cloud_agent import (
     CloudAgentError,
@@ -280,6 +283,141 @@ async def test_pause_only_pauses_daemon_when_last_agent_paused(db_session):
     await db_session.refresh(cdi)
     assert cdi.status == "paused"
     assert fake.calls(a.cloud_daemon_instance_id)["pause"] == 1
+
+
+@pytest.mark.asyncio
+async def test_idle_pause_pauses_ready_daemon_and_agents(db_session):
+    user_id = uuid.uuid4()
+    svc, fake = _make_service()
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    future_now = datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc)
+
+    paused_count = await svc.pause_idle_cloud_daemons(
+        db_session, idle_seconds=300, now=future_now
+    )
+
+    cai = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == view.agent_id)
+    )
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    assert paused_count == 1
+    assert cai.status == "paused"
+    assert cdi.status == "paused"
+    assert cdi.last_paused_at.replace(tzinfo=datetime.timezone.utc) == future_now
+    assert cdi.metadata_json["last_pause_reason"] == "idle_timeout"
+    assert fake.calls(view.cloud_daemon_instance_id)["pause"] == 1
+
+
+@pytest.mark.asyncio
+async def test_idle_pause_waits_for_all_agents_on_daemon(db_session):
+    user_id = uuid.uuid4()
+    svc, fake = _make_service(max_per_user=4, max_agents_per_daemon=2)
+    a = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    b = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    )
+    assert a.cloud_daemon_instance_id == b.cloud_daemon_instance_id
+
+    now = datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc)
+    recent = now - datetime.timedelta(seconds=30)
+    b_row = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == b.agent_id)
+    )
+    b_row.last_run_at = recent
+    await db_session.commit()
+
+    paused_count = await svc.pause_idle_cloud_daemons(
+        db_session, idle_seconds=300, now=now
+    )
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == a.cloud_daemon_instance_id
+        )
+    )
+    assert paused_count == 0
+    assert cdi.status == "ready"
+    assert fake.calls(a.cloud_daemon_instance_id)["pause"] == 0
+
+
+@pytest.mark.asyncio
+async def test_idle_pause_skips_active_reservation(db_session):
+    user_id = uuid.uuid4()
+    svc, fake = _make_service()
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    db_session.add(
+        UsageReservation(
+            user_id=user_id,
+            agent_id=view.agent_id,
+            run_id="run_active",
+            reserved_credits=10,
+            reserved_sandbox_seconds=60,
+            state="active",
+        )
+    )
+    await db_session.commit()
+
+    paused_count = await svc.pause_idle_cloud_daemons(
+        db_session,
+        idle_seconds=300,
+        now=datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    assert paused_count == 0
+    assert cdi.status == "ready"
+    assert fake.calls(view.cloud_daemon_instance_id)["pause"] == 0
+
+
+@pytest.mark.asyncio
+async def test_idle_pause_skips_active_cloud_run_message(db_session):
+    user_id = uuid.uuid4()
+    svc, fake = _make_service()
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    db_session.add(
+        MessageRecord(
+            hub_msg_id="hub_msg_idle_active",
+            msg_id="msg_idle_active",
+            sender_id=view.agent_id,
+            receiver_id=view.agent_id,
+            state=MessageState.queued,
+            envelope_json="{}",
+            ttl_sec=300,
+            source_type="cloud_agent_run",
+        )
+    )
+    await db_session.commit()
+
+    paused_count = await svc.pause_idle_cloud_daemons(
+        db_session,
+        idle_seconds=300,
+        now=datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    assert paused_count == 0
+    assert cdi.status == "ready"
+    assert fake.calls(view.cloud_daemon_instance_id)["pause"] == 0
 
 
 # ---------------------------------------------------------------------------

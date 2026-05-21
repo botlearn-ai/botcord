@@ -296,6 +296,47 @@ async def test_provision_dispatch_ack_false_leaves_provisioning(db_session):
 
 
 @pytest.mark.asyncio
+async def test_resume_ready_agent_offline_rotates_key_for_reprovision(db_session):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    conn, ws = await _register_fake_conn(view.cloud_daemon_instance_id, "dm_resume")
+    try:
+        t = asyncio.create_task(
+            _ack_frame_when_sent(conn, ws, expected_type="provision_agent")
+        )
+        await service.provision_pending_for_cloud_daemon(
+            db_session, cloud_daemon_instance_id=view.cloud_daemon_instance_id
+        )
+        await t
+    finally:
+        await _registry_for_tests().unregister(conn)
+
+    cai = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == view.agent_id)
+    )
+    assert cai is not None
+    assert "provisioning" not in (cai.metadata_json or {})
+
+    resumed = await service.resume_cloud_agent(
+        db_session, user_id=user_id, agent_id=view.agent_id
+    )
+    assert resumed.status == "provisioning"
+    assert resumed.cloud_daemon_status == "starting"
+
+    refreshed = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == view.agent_id)
+    )
+    provisioning = (refreshed.metadata_json or {}).get("provisioning")
+    assert provisioning["private_key_b64"]
+    assert provisioning["public_key_b64"]
+    assert provisioning["key_id"]
+
+
+@pytest.mark.asyncio
 async def test_provision_dispatch_offline_records_error(db_session):
     """provision drain with no daemon connected stamps an error, no exception."""
     service = _make_e2b_service()
