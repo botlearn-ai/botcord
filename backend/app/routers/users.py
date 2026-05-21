@@ -956,6 +956,7 @@ async def get_me(
                 "claimed_at": a.claimed_at.isoformat() if a.claimed_at else None,
                 "ws_online": is_agent_ws_online(a.agent_id),
                 "daemon_instance_id": a.daemon_instance_id,
+                "hosting_kind": a.hosting_kind,
                 "runtime": a.runtime,
             }
             for a in agents
@@ -992,6 +993,7 @@ async def get_my_agents(
                 "deleted_at": a.deleted_at.isoformat() if a.deleted_at else None,
                 "ws_online": is_agent_ws_online(a.agent_id),
                 "daemon_instance_id": a.daemon_instance_id,
+                "hosting_kind": a.hosting_kind,
                 "runtime": a.runtime,
             }
             for a in agents

@@ -926,6 +926,17 @@ const userApi = {
     return result;
   },
 
+  async deleteCloudAgent(agentId: string): Promise<{ agent_id: string; status: string }> {
+    const result = await apiDelete<{ agent_id: string; status: string }>(
+      `/api/cloud-agents/${encodeURIComponent(agentId)}`,
+    );
+    invalidateMeCache();
+    if (getActiveAgentId() === agentId) {
+      setActiveAgentId(null);
+    }
+    return result;
+  },
+
   listAgentSchedules(agentId: string): Promise<{ schedules: any[] }> {
     return apiGet<{ schedules: any[] }>(`/api/agents/${encodeURIComponent(agentId)}/schedules`);
   },

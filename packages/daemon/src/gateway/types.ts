@@ -383,6 +383,15 @@ export interface RuntimeRunOptions {
   systemContext?: string;
   /** Channel-agnostic bag for dispatch-time data (traceId, channel, conversation, etc.). */
   context?: Record<string, unknown>;
+  /**
+   * Cloud Agent run budget. Present only for Hub-issued `cloud_run` envelopes.
+   * Dispatcher enforces wall time and tool-call count; runtimes may also use it
+   * to apply provider-native limits when available.
+   */
+  budget?: {
+    maxWallTimeMs?: number;
+    maxToolCalls?: number;
+  };
   /** Called for every parsed block while the turn is in progress. */
   onBlock?: (block: StreamBlock) => void;
   /**
@@ -421,6 +430,15 @@ export interface RuntimeRunResult {
   costUsd?: number;
   /** Populated when the runtime reported a hard error. */
   error?: string;
+  /**
+   * Optional token-count breakdown reported by the runtime. Used by the
+   * cloud daemon's ``cloud_run`` settle hook to charge a run against the
+   * user's Cloud Credits. Adapters that don't surface usage data leave
+   * these undefined; the settle path treats undefined as ``0``.
+   */
+  inputCacheHitTokens?: number;
+  inputCacheMissTokens?: number;
+  outputTokens?: number;
 }
 
 /** Detection result for whether a runtime binary/SDK is usable on this machine. */

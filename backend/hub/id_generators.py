@@ -113,6 +113,21 @@ def generate_daemon_instance_id() -> str:
     return "dm_" + secrets.token_hex(6)
 
 
+def generate_cloud_daemon_instance_id() -> str:
+    """Generate cloud daemon instance ID: 'cloud_dm_' + 12 random hex chars."""
+    return "cloud_dm_" + secrets.token_hex(6)
+
+
+def generate_cloud_agent_instance_id() -> str:
+    """Generate cloud agent instance ID: 'cloud_ag_' + 12 random hex chars."""
+    return "cloud_ag_" + secrets.token_hex(6)
+
+
+def generate_cloud_agent_run_id() -> str:
+    """Generate cloud agent run ID: 'crun_' + 16 random hex chars."""
+    return "crun_" + secrets.token_hex(8)
+
+
 def generate_gateway_connection_id(provider: str) -> str:
     """Generate third-party gateway connection ID: 'gw_<provider>_<12 hex>'.
 

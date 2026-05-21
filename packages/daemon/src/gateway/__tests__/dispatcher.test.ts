@@ -188,6 +188,23 @@ function makeEnvelope(
   return { message: makeMessage(partial), ack };
 }
 
+function cloudRunRaw(
+  budget: { max_wall_time_seconds?: number; max_tool_calls?: number },
+): Record<string, unknown> {
+  return {
+    envelope: {
+      type: "cloud_run",
+      payload: {
+        text: "run this",
+        cloud_run: {
+          run_id: "crun_test",
+          budget,
+        },
+      },
+    },
+  };
+}
+
 function baseConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
   return {
     channels: [{ id: "botcord", type: "botcord", accountId: "ag_me" }],
@@ -291,6 +308,51 @@ describe("Dispatcher", () => {
     expect(store.all().length).toBe(1);
     expect(store.all()[0].runtimeSessionId).toBe("new-sid");
     expect(store.all()[0].threadId).toBe("t_1");
+  });
+
+  it("cloud_run: forwards budget caps to the runtime", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-cloud" });
+    const { dispatcher } = await scaffold({
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "msg_cloud_budget",
+        raw: cloudRunRaw({ max_wall_time_seconds: 12, max_tool_calls: 7 }),
+      }),
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(runtime.calls[0].budget).toEqual({
+      maxWallTimeMs: 12000,
+      maxToolCalls: 7,
+    });
+  });
+
+  it("cloud_run: aborts the turn when tool-call budget is exceeded", async () => {
+    const runtime = new FakeRuntime({
+      reply: "should not deliver",
+      newSessionId: "sid-budget",
+      blocks: [
+        { raw: { type: "tool", name: "one" }, kind: "tool_use", seq: 1 },
+        { raw: { type: "tool", name: "two" }, kind: "tool_use", seq: 2 },
+      ],
+    });
+    const { dispatcher, channel, store } = await scaffold({
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "msg_cloud_tool_budget",
+        raw: cloudRunRaw({ max_tool_calls: 1 }),
+      }),
+    );
+
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.text).toContain("Cloud run budget exceeded");
+    expect(store.all().length).toBe(0);
   });
 
   it("sends replies to the provider reply id when it differs from the internal message id", async () => {

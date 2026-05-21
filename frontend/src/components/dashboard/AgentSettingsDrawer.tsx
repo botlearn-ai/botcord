@@ -24,6 +24,7 @@ interface AgentSettingsDrawerProps {
   displayName: string;
   bio?: string | null;
   avatarUrl?: string | null;
+  hostingKind?: string | null;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -246,6 +247,7 @@ export default function AgentSettingsDrawer({
   displayName,
   bio,
   avatarUrl,
+  hostingKind,
   onClose,
   onSaved,
 }: AgentSettingsDrawerProps) {
@@ -805,6 +807,7 @@ export default function AgentSettingsDrawer({
         <UnbindAgentDialog
           agentId={agentId}
           agentName={displayName}
+          deleteMode={hostingKind === "cloud" ? "cloud" : "unbind"}
           onClose={() => setShowUnbind(false)}
           onUnbound={async () => {
             await refreshUserProfile();

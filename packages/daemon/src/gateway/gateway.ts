@@ -1,5 +1,9 @@
 import { ChannelManager, type ChannelBackoffOptions } from "./channel-manager.js";
-import { Dispatcher, type RuntimeFactory } from "./dispatcher.js";
+import {
+  Dispatcher,
+  type DispatcherOptions,
+  type RuntimeFactory,
+} from "./dispatcher.js";
 import { consoleLogger, type GatewayLogger } from "./log.js";
 import { createRuntime } from "./runtimes/registry.js";
 import { DEFAULT_SESSION_STORE_MAX_ENTRY_AGE_MS, SessionStore } from "./session-store.js";
@@ -61,6 +65,13 @@ export interface GatewayBootOptions {
    * bookkeeping like loop-risk tracking.
    */
   onOutbound?: OutboundObserver;
+  /**
+   * Optional observer fired after each runtime turn resolves. Forwarded
+   * to the dispatcher verbatim — see {@link Dispatcher} for semantics.
+   * Cloud daemon hooks this to settle ``cloud_run`` envelopes against
+   * the Hub usage ledger.
+   */
+  onTurnComplete?: DispatcherOptions["onTurnComplete"];
   /**
    * Optional attention gate (PR3, design §4.2). Forwarded to the dispatcher
    * verbatim — see {@link Dispatcher} for semantics. Returning `false` skips
@@ -169,6 +180,7 @@ export class Gateway {
       onInbound: opts.onInbound,
       composeUserTurn: opts.composeUserTurn,
       onOutbound: opts.onOutbound,
+      onTurnComplete: opts.onTurnComplete,
       managedRoutes: this.managedRoutes,
       attentionGate: opts.attentionGate,
       resolveHubUrl: opts.resolveHubUrl,

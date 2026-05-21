@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@botcord/cli": "^0.1.7",
-    "@botcord/protocol-core": "^0.2.4",
+    "@botcord/protocol-core": "file:../protocol-core",
     "@larksuiteoapi/node-sdk": "^1.63.1",
     "ws": "^8.20.1"
   },

@@ -1,0 +1,43 @@
+# Build context is the repo root; trim everything we don't need.
+# Only packages/protocol-core/{src,package.json,tsconfig*.json},
+# packages/daemon/{src,package.json,tsconfig*.json}, and e2b/entrypoint.sh
+# are actually referenced by e2b.Dockerfile.
+
+# VCS + tooling
+.git
+.gitignore
+.github
+.claude
+.vscode
+.idea
+
+# Anything that isn't packages/* or e2b/
+backend
+frontend
+cli
+e2e
+docs
+scripts
+infrastructure
+Makefile
+README.md
+CLAUDE.md
+*.md
+
+# Per-package noise
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.turbo
+**/.cache
+**/coverage
+**/__pycache__
+**/.venv
+**/.pytest_cache
+
+# OS / editor cruft
+.DS_Store
+*.log
+*.tmp
+*.swp

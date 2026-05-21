@@ -492,6 +492,25 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.ZH: "未找到订阅产品",
     },
     # -----------------------------------------------------------------------
+    # Cloud Agent run settlement (routers/cloud_agent_internal.py)
+    # -----------------------------------------------------------------------
+    "cloud_run_reservation_not_found": {
+        Locale.EN: "No usage reservation exists for this cloud run",
+        Locale.ZH: "未找到该 cloud run 对应的用量预留",
+    },
+    "cloud_run_reservation_not_active": {
+        Locale.EN: "Cloud run reservation is no longer active",
+        Locale.ZH: "该 cloud run 的用量预留已不再处于活跃状态",
+    },
+    "cloud_run_settle_failed": {
+        Locale.EN: "Failed to settle cloud run usage",
+        Locale.ZH: "结算 cloud run 用量失败",
+    },
+    "cloud_run_settle_wrong_daemon": {
+        Locale.EN: "This cloud daemon is not authorised to settle the requested run",
+        Locale.ZH: "当前 cloud daemon 无权结算该 run",
+    },
+    # -----------------------------------------------------------------------
     # Dashboard (dashboard.py)
     # -----------------------------------------------------------------------
     "before_after_exclusive": {
@@ -1061,6 +1080,26 @@ HINT_MESSAGES: dict[str, dict[Locale, str]] = {
     "subscription_product_not_found": {
         Locale.EN: "Check the product_id. Subscription product IDs start with 'sp_'.",
         Locale.ZH: "请检查 product_id 是否正确，订阅产品 ID 以 'sp_' 开头。",
+    },
+
+    # -----------------------------------------------------------------------
+    # Cloud Agent run settlement
+    # -----------------------------------------------------------------------
+    "cloud_run_reservation_not_found": {
+        Locale.EN: "Verify the run_id. The reservation may have already been released or the run was never created.",
+        Locale.ZH: "请检查 run_id 是否正确；该用量预留可能已被释放，或该 run 从未创建。",
+    },
+    "cloud_run_reservation_not_active": {
+        Locale.EN: "The reservation has already been settled or released; retry only with the original idempotency_key.",
+        Locale.ZH: "该用量预留已被结算或释放；如需重试请使用最初的 idempotency_key。",
+    },
+    "cloud_run_settle_failed": {
+        Locale.EN: "Check the request body and retry; persistent failures should be reported to the Hub maintainers.",
+        Locale.ZH: "请检查请求体并重试；若问题持续，请联系 Hub 维护者。",
+    },
+    "cloud_run_settle_wrong_daemon": {
+        Locale.EN: "The cloud daemon token does not host the agent that owns this run; check that the daemon is settling its own runs.",
+        Locale.ZH: "当前 cloud daemon 的访问 token 未托管该 run 对应的 agent；请确认 daemon 仅结算自己产生的 run。",
     },
 
     # -----------------------------------------------------------------------

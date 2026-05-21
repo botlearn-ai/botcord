@@ -153,6 +153,9 @@ function defaultClientFactory(input: {
 function isOwnerTrust(msg: InboxMessage): boolean {
   if (msg.room_id?.startsWith(OWNER_CHAT_PREFIX)) return true;
   if (msg.source_type === "dashboard_user_chat") return true;
+  // Cloud Agent run tasks are Hub-issued on the user's behalf, same
+  // trust posture as owner chat.
+  if (msg.source_type === "cloud_agent_run") return true;
   return false;
 }
 
@@ -186,11 +189,19 @@ function normalizeInbox(
   if (!env) return null;
   // `message` is the normal conversational envelope; `contact_request` is
   // a lightweight inbound asking the agent to notify its owner (the
-  // composer appends the notify-owner hint). All other envelope types
-  // (notification, system, contact_added/removed, …) are still filtered
-  // out here — they belong in a separate push-notification path that
-  // daemon does not yet implement.
-  if (env.type !== "message" && env.type !== "contact_request") return null;
+  // composer appends the notify-owner hint); `cloud_run` carries a
+  // Cloud Agent run task with embedded run_id + budget (the cloud
+  // daemon's runtime adapter reads them from `raw.envelope.payload.cloud_run`
+  // and reports usage back via /internal/cloud-agents/.../settle when the
+  // run completes). All other envelope types (notification, system,
+  // contact_added/removed, …) are still filtered out — they belong in
+  // a separate push-notification path that daemon does not yet implement.
+  if (
+    env.type !== "message" &&
+    env.type !== "contact_request" &&
+    env.type !== "cloud_run"
+  )
+    return null;
   if (!msg.room_id) return null;
 
   const rawText =

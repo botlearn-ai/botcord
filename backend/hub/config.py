@@ -275,3 +275,116 @@ def is_claim_gift_active(now: datetime.datetime | None = None) -> bool:
     """Return whether the cold-start claim gift should be granted now."""
     current = now or datetime.datetime.now(datetime.timezone.utc)
     return CLAIM_GIFT_WINDOW_START_AT <= current < CLAIM_GIFT_WINDOW_END_AT_EXCLUSIVE
+
+
+# ---------------------------------------------------------------------------
+# Cloud Agent (PR 3+) — feature flag + per-user limits.
+# See docs/cloud-agent-subscription-implementation-plan.md §2.
+# ---------------------------------------------------------------------------
+
+CLOUD_AGENT_FEATURE_ENABLED: bool = os.getenv(
+    "CLOUD_AGENT_FEATURE_ENABLED", "false"
+).lower() in ("true", "1", "yes")
+
+CLOUD_AGENT_MAX_PER_USER: int = int(os.getenv("CLOUD_AGENT_MAX_PER_USER", "3"))
+
+CLOUD_AGENT_DEFAULT_RUNTIME: str = os.getenv(
+    "CLOUD_AGENT_DEFAULT_RUNTIME", "deepseek-tui"
+)
+
+CLOUD_AGENT_DEFAULT_MODEL_PROFILE: str = os.getenv(
+    "CLOUD_AGENT_DEFAULT_MODEL_PROFILE", "deepseek-v4-flash"
+)
+
+# Provider implementation key. ``fake`` for PR 3 unit tests and local dev.
+# PR 4 will introduce ``e2b`` once the E2BCloudDaemonProvider lands.
+CLOUD_AGENT_DEFAULT_PROVIDER: str = os.getenv("CLOUD_AGENT_DEFAULT_PROVIDER", "fake")
+
+# Slot capacity per cloud daemon — schema allows >1 to keep the per-agent
+# sandbox cost down. Conservative default while we observe real load.
+CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON: int = int(
+    os.getenv("CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON", "2")
+)
+
+# ---------------------------------------------------------------------------
+# E2B sandbox provider (PR 4) — credentials + template + region.
+#
+# Gate 0 validated the Ubuntu 24.04 / glibc 2.39 template
+# ``botcord-deepseek-tui-ubuntu2404-dev2`` (ID ``z0f20u29zdgx7cxnuzcu``);
+# that is the default. Override via ``E2B_TEMPLATE_ID`` once a new image
+# is promoted.
+# ---------------------------------------------------------------------------
+
+E2B_API_KEY: str | None = os.getenv("E2B_API_KEY")
+E2B_TEMPLATE_ID: str = os.getenv("E2B_TEMPLATE_ID", "z0f20u29zdgx7cxnuzcu")
+E2B_DEFAULT_REGION: str | None = os.getenv("E2B_DEFAULT_REGION") or None
+# Wall-clock cap on a sandbox between hellos; the provider passes it to E2B
+# as the sandbox's max-lifetime hint so a hung sandbox is recycled.
+E2B_SANDBOX_TIMEOUT_SECONDS: int = int(os.getenv("E2B_SANDBOX_TIMEOUT_SECONDS", "1800"))
+
+# Command Hub runs inside a freshly-created or resumed cloud daemon instance.
+# The default supports purpose-built images that already contain
+# ``botcord-daemon`` and preview templates that need to install it at boot.
+CLOUD_DAEMON_NPM_SPEC: str = os.getenv(
+    "CLOUD_DAEMON_NPM_SPEC", "@botcord/daemon@latest"
+)
+CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
+    "CLOUD_DAEMON_STARTUP_COMMAND",
+    (
+        "sh -lc '"
+        "if command -v botcord-daemon >/dev/null 2>&1; then "
+        "exec botcord-daemon start --foreground; "
+        "fi; "
+        "exec npx --yes --package \"${CLOUD_DAEMON_NPM_SPEC:-@botcord/daemon@latest}\" "
+        "botcord-daemon start --foreground"
+        "'"
+    ),
+)
+
+# DeepSeek model API key forwarded to the cloud daemon as an env var on
+# sandbox start. PR 4 keeps it as a plain Hub env var; a real secret-manager
+# integration is part of production hardening, not the MVP.
+DEEPSEEK_API_KEY: str | None = os.getenv("DEEPSEEK_API_KEY")
+
+
+# ---------------------------------------------------------------------------
+# Cloud Agent usage ledger / quota (PR 7).
+#
+# Free-tier included quotas land on each ``usage_balances`` row when the
+# Hub creates one for a new (user_id, period_start). The credit-per-X
+# coefficients translate observed token / sandbox-second usage into the
+# unified Cloud Credit unit used for quota and (future) billing.
+# ---------------------------------------------------------------------------
+
+CLOUD_AGENT_FREE_CREDITS_PER_PERIOD: int = int(
+    os.getenv("CLOUD_AGENT_FREE_CREDITS_PER_PERIOD", "1000")
+)
+CLOUD_AGENT_FREE_SANDBOX_SECONDS_PER_PERIOD: int = int(
+    os.getenv("CLOUD_AGENT_FREE_SANDBOX_SECONDS_PER_PERIOD", "3600")
+)
+
+# Credit-per-X coefficients are stored as ``credit-millis`` (1/1000 credit)
+# so the integers work without floats. Defaults are conservative
+# placeholders; final pricing comes out of Gate 4 cost analysis.
+#
+# Examples with the defaults below: 1k output tokens ≈ 1 credit;
+# 1k input cache-miss tokens ≈ 0.2 credits; 1 sandbox-second ≈ 0.01 credit.
+CREDIT_MILLIS_PER_INPUT_CACHE_HIT_KILOTOKEN: int = int(
+    os.getenv("CREDIT_MILLIS_PER_INPUT_CACHE_HIT_KILOTOKEN", "50")
+)
+CREDIT_MILLIS_PER_INPUT_CACHE_MISS_KILOTOKEN: int = int(
+    os.getenv("CREDIT_MILLIS_PER_INPUT_CACHE_MISS_KILOTOKEN", "200")
+)
+CREDIT_MILLIS_PER_OUTPUT_KILOTOKEN: int = int(
+    os.getenv("CREDIT_MILLIS_PER_OUTPUT_KILOTOKEN", "1000")
+)
+CREDIT_MILLIS_PER_SANDBOX_SECOND: int = int(
+    os.getenv("CREDIT_MILLIS_PER_SANDBOX_SECOND", "10")
+)
+
+# Floor for per-run reservation so trivially small runs still get the
+# bookkeeping overhead reserved. Prevents zero-credit reservations from
+# slipping past quota gates.
+CLOUD_AGENT_RUN_CREDIT_RESERVATION_FLOOR: int = int(
+    os.getenv("CLOUD_AGENT_RUN_CREDIT_RESERVATION_FLOOR", "5")
+)

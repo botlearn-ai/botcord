@@ -309,6 +309,7 @@ export default function BotsPanel({
           displayName={agentSettingsBot.display_name}
           bio={agentSettingsBot.bio ?? null}
           avatarUrl={agentSettingsBot.avatar_url ?? null}
+          hostingKind={agentSettingsBot.hosting_kind ?? null}
           onClose={() => setAgentSettingsBot(null)}
           onSaved={() => setAgentSettingsBot(null)}
         />

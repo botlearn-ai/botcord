@@ -21,7 +21,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from hub.auth import get_current_claimed_agent, get_dashboard_claimed_agent, verify_agent_token
+from hub.auth import (
+    assert_current_agent_token,
+    get_current_claimed_agent,
+    get_dashboard_claimed_agent,
+    verify_agent_token,
+)
 from hub.config import (
     HUB_PUBLIC_BASE_URL,
     INBOX_POLL_MAX_TIMEOUT,
@@ -107,6 +112,22 @@ _inbox_conditions: dict[str, asyncio.Condition] = {}
 # In-memory WebSocket connections: agent_id → set of WebSocket
 # ---------------------------------------------------------------------------
 _ws_connections: dict[str, set[WebSocket]] = {}
+
+
+async def _load_agent_for_ws_auth(ws: WebSocket, agent_id: str) -> Agent | None:
+    """Load an agent for WebSocket auth without pinning a DB session to the socket."""
+    app = ws.scope.get("app")
+    override = getattr(app, "dependency_overrides", {}).get(get_db) if app else None
+    if override is not None:
+        db_iter = override()
+        db = await db_iter.__anext__()
+        try:
+            return await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
+        finally:
+            await db_iter.aclose()
+
+    async with async_session() as db:
+        return await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
 
 
 class GatewaySendRequest(BaseModel):
@@ -2046,6 +2067,12 @@ async def websocket_inbox(ws: WebSocket):
 
         try:
             agent_id = verify_agent_token(token)
+            agent = await _load_agent_for_ws_auth(ws, agent_id)
+            if agent is None:
+                raise I18nHTTPException(
+                    status_code=404, message_key="agent_not_found"
+                )
+            assert_current_agent_token(agent, token)
         except Exception as exc:
             logger.warning("WebSocket auth failed: %s: %s", type(exc).__name__, exc)
             await ws.close(code=4001, reason="Invalid token")

@@ -72,15 +72,39 @@ def get_current_agent(authorization: str = Header(...)) -> str:
         raise I18nHTTPException(status_code=401, message_key="invalid_token")
 
 
+def assert_current_agent_token(agent: Agent, token: str) -> None:
+    """Reject stale/revoked agent JWTs after the stateless signature check."""
+    if agent.status != "active":
+        raise I18nHTTPException(status_code=401, message_key="invalid_token")
+    if agent.agent_token is not None and agent.agent_token != token:
+        raise I18nHTTPException(status_code=401, message_key="invalid_token")
+    if agent.token_expires_at is None:
+        return
+    expires_at = agent.token_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+    if expires_at <= datetime.datetime.now(datetime.timezone.utc):
+        raise I18nHTTPException(status_code=401, message_key="token_expired")
+
+
 async def get_current_claimed_agent(
     authorization: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ) -> str:
-    agent_id = get_current_agent(authorization)
+    if not authorization.startswith("Bearer "):
+        raise I18nHTTPException(status_code=401, message_key="invalid_authorization_header")
+    token = authorization[len("Bearer "):]
+    try:
+        agent_id = verify_agent_token(token)
+    except jwt.ExpiredSignatureError:
+        raise I18nHTTPException(status_code=401, message_key="token_expired")
+    except jwt.InvalidTokenError:
+        raise I18nHTTPException(status_code=401, message_key="invalid_token")
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    assert_current_agent_token(agent, token)
     if agent.claimed_at is None:
         claim_url = f"{FRONTEND_BASE_URL.rstrip('/')}/agents/claim/{agent.claim_code}" if agent.claim_code else None
         if claim_url:
@@ -119,10 +143,10 @@ def verify_supabase_token(token: str) -> str:
 def _parse_dashboard_token(
     authorization: str,
     x_active_agent: str | None,
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, str | None]:
     """Parse a dashboard Authorization header.
 
-    Returns (agent_id, supabase_user_id | None).
+    Returns (agent_id, supabase_user_id | None, agent_token | None).
     When the token is a botcord agent JWT, supabase_user_id is None (trusted).
     When the token is a Supabase JWT, supabase_user_id is extracted from ``sub``
     and must be verified against the agent's ``user_id`` by the caller.
@@ -133,7 +157,7 @@ def _parse_dashboard_token(
 
     # Fast path: botcord agent JWT — agent_id is embedded, already trusted.
     try:
-        return verify_agent_token(token), None
+        return verify_agent_token(token), None, token
     except jwt.InvalidTokenError:
         pass
 
@@ -146,7 +170,7 @@ def _parse_dashboard_token(
     if not x_active_agent:
         raise I18nHTTPException(status_code=400, message_key="active_agent_header_required")
 
-    return x_active_agent, supabase_user_id
+    return x_active_agent, supabase_user_id, None
 
 
 async def _resolve_internal_user_id(
@@ -177,18 +201,22 @@ async def get_dashboard_agent(
     When using Supabase JWT, verifies that the agent belongs to the
     authenticated user (via ``users.supabase_user_id`` → ``agents.user_id``).
     """
-    agent_id, supabase_uid = _parse_dashboard_token(authorization, x_active_agent)
+    agent_id, supabase_uid, agent_token = _parse_dashboard_token(authorization, x_active_agent)
 
+    result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if supabase_uid is not None:
         internal_uid = await _resolve_internal_user_id(db, supabase_uid)
         if internal_uid is None:
             raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
-        result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
-        agent = result.scalar_one_or_none()
-        if agent is None:
+        if agent.status != "active":
             raise I18nHTTPException(status_code=404, message_key="agent_not_found")
         if str(agent.user_id) != internal_uid:
             raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
+    elif agent_token is not None:
+        assert_current_agent_token(agent, agent_token)
 
     return agent_id
 
@@ -202,11 +230,15 @@ async def get_dashboard_claimed_agent(
 
     When using Supabase JWT, verifies agent ownership via ``users`` → ``agents.user_id``.
     """
-    agent_id, supabase_uid = _parse_dashboard_token(authorization, x_active_agent)
+    agent_id, supabase_uid, agent_token = _parse_dashboard_token(authorization, x_active_agent)
 
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    if supabase_uid is None and agent_token is not None:
+        assert_current_agent_token(agent, agent_token)
+    elif agent.status != "active":
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
         raise I18nHTTPException(status_code=403, message_key="agent_not_claimed_generic")
@@ -227,11 +259,15 @@ async def get_dashboard_agent_with_user(
 
     Returns (agent_id, internal_user_id | None).
     """
-    agent_id, supabase_uid = _parse_dashboard_token(authorization, x_active_agent)
+    agent_id, supabase_uid, agent_token = _parse_dashboard_token(authorization, x_active_agent)
 
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    if supabase_uid is None and agent_token is not None:
+        assert_current_agent_token(agent, agent_token)
+    elif agent.status != "active":
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
         raise I18nHTTPException(status_code=403, message_key="agent_not_claimed_generic")
@@ -256,7 +292,7 @@ def get_optional_dashboard_agent(
     if not authorization:
         return None
     try:
-        agent_id, _ = _parse_dashboard_token(authorization, x_active_agent)
+        agent_id, _, _ = _parse_dashboard_token(authorization, x_active_agent)
         return agent_id
     except Exception:
         return None

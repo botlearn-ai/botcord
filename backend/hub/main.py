@@ -26,6 +26,7 @@ from hub.expiry import message_expiry_loop
 from hub.subscription_billing import subscription_billing_loop
 from hub.services.agent_schedules import agent_schedule_loop
 from hub.routers.contact_requests import router as contact_requests_router
+from hub.routers.cloud_daemon_control import router as cloud_daemon_control_router
 from hub.routers.daemon_control import router as daemon_control_router
 from hub.routers.openclaw_control import router as openclaw_control_router
 from hub.routers.contacts import router as contacts_router
@@ -49,6 +50,7 @@ from hub.routers.topics import router as topics_router
 from hub.routers.stripe import router as stripe_router
 from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
+from hub.routers.cloud_agent_internal import internal_router as cloud_agent_internal_router
 from hub.storage import storage_requires_local_disk
 
 from app.routers.humans import router as app_humans_router
@@ -64,6 +66,7 @@ from app.routers.subscriptions import router as app_subscriptions_router
 from app.routers.beta import router as app_beta_router
 from app.routers.admin_beta import router as app_admin_beta_router
 from app.routers.activity import router as app_activity_router
+from app.routers.cloud_agents import router as app_cloud_agents_router
 from app.routers.policy import router as app_policy_router
 from app.routers.gateways import router as app_gateways_router
 from app.routers.prompts import router as app_prompts_router
@@ -260,6 +263,7 @@ app.include_router(topics_router)
 app.include_router(files_router)
 app.include_router(wallet_router)
 app.include_router(wallet_internal_router)
+app.include_router(cloud_agent_internal_router)
 app.include_router(stripe_router)
 app.include_router(subscriptions_router)
 app.include_router(subscriptions_internal_router)
@@ -285,6 +289,7 @@ app.include_router(app_subscriptions_router, dependencies=_beta_gate)
 app.include_router(app_beta_router)
 app.include_router(app_admin_beta_router)
 app.include_router(app_policy_router, dependencies=_beta_gate)
+app.include_router(app_cloud_agents_router, dependencies=_beta_gate)
 app.include_router(app_gateways_router, dependencies=_beta_gate)
 app.include_router(app_runtime_files_router, dependencies=_beta_gate)
 app.include_router(app_schedules_router, dependencies=_beta_gate)
@@ -292,4 +297,5 @@ app.include_router(app_prompts_router)
 app.include_router(app_presence_router, dependencies=_beta_gate)
 app.include_router(app_presence_status_router, dependencies=_beta_gate)
 app.include_router(daemon_control_router)
+app.include_router(cloud_daemon_control_router)
 app.include_router(openclaw_control_router)

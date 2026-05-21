@@ -22,6 +22,7 @@ import type {
   OutboundObserver,
   QueueMode,
   RuntimeAdapter,
+  RuntimeRunResult,
   RuntimeStatusEvent,
   StreamBlock,
   SystemContextBuilder,
@@ -142,6 +143,41 @@ function redactSecretString(value: string): string {
     .replace(/\b(drt_|dit_|gho_)[A-Za-z0-9_-]+/g, "$1[REDACTED]");
 }
 
+function extractCloudRunBudget(msg: GatewayInboundMessage): CloudRunBudgetCaps | undefined {
+  const envelope = (msg.raw as { envelope?: unknown } | undefined)?.envelope as
+    | {
+        type?: unknown;
+        payload?: {
+          cloud_run?: {
+            budget?: {
+              max_wall_time_seconds?: unknown;
+              max_tool_calls?: unknown;
+            } | null;
+          } | null;
+        } | null;
+      }
+    | undefined;
+  if (envelope?.type !== "cloud_run") return undefined;
+  const budget = envelope.payload?.cloud_run?.budget;
+  if (!budget) return undefined;
+  const out: CloudRunBudgetCaps = {};
+  if (
+    typeof budget.max_wall_time_seconds === "number" &&
+    Number.isFinite(budget.max_wall_time_seconds) &&
+    budget.max_wall_time_seconds > 0
+  ) {
+    out.maxWallTimeMs = Math.floor(budget.max_wall_time_seconds * 1000);
+  }
+  if (
+    typeof budget.max_tool_calls === "number" &&
+    Number.isFinite(budget.max_tool_calls) &&
+    budget.max_tool_calls > 0
+  ) {
+    out.maxToolCalls = Math.floor(budget.max_tool_calls);
+  }
+  return out.maxWallTimeMs !== undefined || out.maxToolCalls !== undefined ? out : undefined;
+}
+
 /** Factory signature for building a runtime adapter at turn dispatch time. */
 export type RuntimeFactory = (
   runtimeId: string,
@@ -195,6 +231,23 @@ export interface DispatcherOptions {
    */
   onOutbound?: OutboundObserver;
   /**
+   * Optional observer fired exactly once per turn after ``runtime.run``
+   * resolves (or throws / times out). Receives the inbound message, the
+   * raw runtime result (may be undefined on throw), the elapsed wall
+   * time in milliseconds, and any thrown error. The cloud daemon hooks
+   * this to settle ``cloud_run`` envelopes against the Hub's usage
+   * ledger; local daemons leave it unset.
+   *
+   * Errors thrown by the observer are logged and swallowed — settle
+   * failures must never break the agent reply path.
+   */
+  onTurnComplete?: (event: {
+    message: GatewayInboundMessage;
+    result?: RuntimeRunResult;
+    wallTimeMs: number;
+    error?: unknown;
+  }) => Promise<void> | void;
+  /**
    * Optional attention gate (PR3, design §4.2). Resolved AFTER `onInbound`
    * runs and BEFORE the runtime turn enqueues, so working memory / activity
    * tracking still observe the message even when the gate skips the wake.
@@ -245,6 +298,7 @@ interface TurnSlot {
   turnId: string;
   controller: AbortController;
   timedOut: boolean;
+  budgetExceeded: string | null;
   snapshot: TurnStatusSnapshot;
   done: Promise<void>;
   dispatchedAt: number;
@@ -288,6 +342,11 @@ interface QueueState {
   serialWorkerActive: boolean;
 }
 
+interface CloudRunBudgetCaps {
+  maxWallTimeMs?: number;
+  maxToolCalls?: number;
+}
+
 interface DeferredMultimodalEntry extends BufferedSerialEntry {
   queuedAt: number;
 }
@@ -313,6 +372,7 @@ export class Dispatcher {
   private readonly buildMemoryContext?: MemoryContextBuilder;
   private readonly onInbound?: InboundObserver;
   private readonly onOutbound?: OutboundObserver;
+  private readonly onTurnComplete?: DispatcherOptions["onTurnComplete"];
   private readonly composeUserTurn?: UserTurnBuilder;
   private readonly managedRoutes?: Map<string, GatewayRoute>;
   private readonly attentionGate?: (
@@ -340,6 +400,7 @@ export class Dispatcher {
     this.buildMemoryContext = opts.buildMemoryContext;
     this.onInbound = opts.onInbound;
     this.onOutbound = opts.onOutbound;
+    this.onTurnComplete = opts.onTurnComplete;
     this.composeUserTurn = opts.composeUserTurn;
     this.managedRoutes = opts.managedRoutes;
     this.attentionGate = opts.attentionGate;
@@ -956,6 +1017,7 @@ export class Dispatcher {
       turnId,
       controller,
       timedOut: false,
+      budgetExceeded: null,
       snapshot,
       done,
       dispatchedAt: startedAt,
@@ -992,6 +1054,13 @@ export class Dispatcher {
       composedPreview: logPreview(text),
     });
 
+    const cloudRunBudget = extractCloudRunBudget(msg);
+    const effectiveTurnTimeoutMs = Math.min(
+      this.turnTimeoutMs,
+      cloudRunBudget?.maxWallTimeMs ?? this.turnTimeoutMs,
+    );
+    let observedToolCalls = 0;
+
     // Hard-cap turn with a timeout.
     const timer = setTimeout(() => {
       slot.timedOut = true;
@@ -1001,10 +1070,10 @@ export class Dispatcher {
         topicId: msg.conversation.threadId ?? null,
         turnId,
         queueKey,
-        timeoutMs: this.turnTimeoutMs,
+        timeoutMs: effectiveTurnTimeoutMs,
       });
       controller.abort();
-    }, this.turnTimeoutMs);
+    }, effectiveTurnTimeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
     const key = sessionKey({
@@ -1030,6 +1099,22 @@ export class Dispatcher {
     const canStream =
       streamable && typeof traceId === "string" && typeof channel.streamBlock === "function";
     const recordBlock = (block: StreamBlock): void => {
+      if (block.kind === "tool_use" && cloudRunBudget?.maxToolCalls !== undefined) {
+        observedToolCalls += 1;
+        if (observedToolCalls > cloudRunBudget.maxToolCalls && !controller.signal.aborted) {
+          slot.budgetExceeded = `tool call budget exceeded after ${observedToolCalls} tool call(s)`;
+          this.log.warn("dispatcher: cloud_run tool budget exceeded", {
+            agentId: msg.accountId,
+            roomId: msg.conversation.id,
+            topicId: msg.conversation.threadId ?? null,
+            turnId,
+            queueKey,
+            maxToolCalls: cloudRunBudget.maxToolCalls,
+            observedToolCalls,
+          });
+          controller.abort(new Error(slot.budgetExceeded));
+        }
+      }
       const summary = summarizeStreamBlock(block);
       slot.blocks.push(summary);
       if (this.transcript.enabled) {
@@ -1215,7 +1300,9 @@ export class Dispatcher {
         }
       : undefined;
 
-    const onBlock = (canStream || this.transcript.enabled)
+    const shouldObserveBlocks =
+      canStream || this.transcript.enabled || cloudRunBudget?.maxToolCalls !== undefined;
+    const onBlock = shouldObserveBlocks
       ? (block: StreamBlock) => {
           // Always record adapter-emitted blocks for transcript fidelity, even
           // after abort — the transcript reflects what the runtime emitted,
@@ -1316,8 +1403,9 @@ export class Dispatcher {
     }
 
     const runtime = this.runtimeFactory(route.runtime, route.extraArgs);
-    let result: { text: string; newSessionId: string; costUsd?: number; error?: string } | undefined;
+    let result: RuntimeRunResult | undefined;
     let threw: unknown;
+    const turnStartedAt = Date.now();
     try {
       try {
         result = await runtime.run({
@@ -1340,6 +1428,7 @@ export class Dispatcher {
             channel: msg.channel,
             conversationKind: msg.conversation.kind,
           },
+          ...(cloudRunBudget ? { budget: cloudRunBudget } : {}),
           gateway: route.gateway,
           ...(route.hermesProfile ? { hermesProfile: route.hermesProfile } : {}),
         });
@@ -1347,6 +1436,26 @@ export class Dispatcher {
         threw = err;
       } finally {
         clearTimeout(timer);
+      }
+
+      // Fire onTurnComplete observer. Cloud daemon hooks this to settle
+      // ``cloud_run`` envelopes against the Hub usage ledger. Errors are
+      // swallowed so settle failures never break the reply path.
+      if (this.onTurnComplete) {
+        const wallTimeMs = Date.now() - turnStartedAt;
+        try {
+          await this.onTurnComplete({
+            message: msg,
+            result,
+            wallTimeMs,
+            ...(threw !== undefined ? { error: threw } : {}),
+          });
+        } catch (hookErr) {
+          this.log.warn("dispatcher: onTurnComplete threw — continuing", {
+            error: hookErr instanceof Error ? hookErr.message : String(hookErr),
+            messageId: msg.id,
+          });
+        }
       }
 
       // Re-check the abort signal AFTER runtime.run resolves but BEFORE any
@@ -1361,7 +1470,7 @@ export class Dispatcher {
       // record from `runCancelPrevious` BEFORE aborting, so we MUST NOT also
       // emit a `turn_error` here — that would violate the "exactly one
       // terminal record per turnId" invariant.
-      if (controller.signal.aborted && !slot.timedOut) {
+      if (controller.signal.aborted && !slot.timedOut && !slot.budgetExceeded) {
         return;
       }
 
@@ -1386,7 +1495,9 @@ export class Dispatcher {
       const canDeliverRuntimeText = isOwnerChat || !isBotCordChannel(channel);
       const canDeliverRuntimeDiagnostics = canDeliverRuntimeText || isBotCordChannel(channel);
 
-      if (slot.timedOut) {
+      if (slot.timedOut || slot.budgetExceeded) {
+        const phase = slot.budgetExceeded ? "budget" : "timeout";
+        const error = slot.budgetExceeded ?? `runtime timeout after ${effectiveTurnTimeoutMs}ms`;
         this.transcript.write({
           ts: nowIso(),
           kind: "turn_error",
@@ -1394,8 +1505,8 @@ export class Dispatcher {
           agentId: msg.accountId,
           roomId: msg.conversation.id,
           topicId: msg.conversation.threadId ?? null,
-          phase: "timeout",
-          error: `runtime timeout after ${this.turnTimeoutMs}ms`,
+          phase,
+          error,
           durationMs: Date.now() - slot.dispatchedAt,
         });
         if (canDeliverRuntimeDiagnostics) {
@@ -1405,7 +1516,9 @@ export class Dispatcher {
             conversationId: msg.conversation.id,
             threadId: msg.conversation.threadId ?? null,
             type: "error",
-            text: `⚠️ Runtime timeout after ${Math.round(this.turnTimeoutMs / 60000)} minute(s); aborted`,
+            text: slot.budgetExceeded
+              ? `Cloud run budget exceeded: ${slot.budgetExceeded}`
+              : `Runtime timeout after ${Math.round(effectiveTurnTimeoutMs / 60000)} minute(s); aborted`,
             replyTo: this.providerReplyTo(msg),
             traceId: msg.trace?.id ?? null,
           }, turnId);
@@ -1416,7 +1529,8 @@ export class Dispatcher {
             topicId: msg.conversation.threadId ?? null,
             turnId,
             queueKey,
-            timeoutMs: this.turnTimeoutMs,
+            timeoutMs: effectiveTurnTimeoutMs,
+            budgetExceeded: slot.budgetExceeded,
           });
         }
         return;
